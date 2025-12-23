@@ -39,28 +39,43 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     window.addEventListener('appinstalled', appInstalledHandler);
 
     // Service Worker Update Handling
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.ready.then(reg => {
-        setRegistration(reg);
-        
-        // Check if there is already a waiting worker
-        if (reg.waiting) {
-            setIsUpdateAvailable(true);
-        }
-
-        // Listen for new workers
-        reg.addEventListener('updatefound', () => {
-            const newWorker = reg.installing;
-            if (newWorker) {
-                newWorker.addEventListener('statechange', () => {
-                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                        // New content is available; please refresh.
-                        setIsUpdateAvailable(true);
-                    }
-                });
-            }
-        });
+    // Only use service worker if not in Electron (service workers don't work with file:// protocol)
+    const isElectron = typeof window !== 'undefined' && (window as any).electronAPI !== undefined;
+    
+    if ('serviceWorker' in navigator && !isElectron) {
+      // Add timeout to prevent hanging if service worker registration was removed
+      const readyPromise = navigator.serviceWorker.ready;
+      const timeoutPromise = new Promise<ServiceWorkerRegistration>((_, reject) => {
+        setTimeout(() => reject(new Error('Service worker ready timeout')), 5000);
       });
+
+      Promise.race([readyPromise, timeoutPromise])
+        .then(reg => {
+          setRegistration(reg);
+          
+          // Check if there is already a waiting worker
+          if (reg.waiting) {
+              setIsUpdateAvailable(true);
+          }
+
+          // Listen for new workers
+          reg.addEventListener('updatefound', () => {
+              const newWorker = reg.installing;
+              if (newWorker) {
+                  newWorker.addEventListener('statechange', () => {
+                      if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                          // New content is available; please refresh.
+                          setIsUpdateAvailable(true);
+                      }
+                  });
+              }
+          });
+        })
+        .catch(err => {
+          // Service worker not available or timed out - this is expected in Electron or if registration was removed
+          console.log('Service worker not available:', err.message);
+          setRegistration(null);
+        });
 
       // Reload when the new worker takes control
       let refreshing = false;

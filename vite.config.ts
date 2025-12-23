@@ -159,12 +159,11 @@ export default defineConfig({
           '<!-- Tailwind config removed in production build -->'
         )
         
-        // Also remove service worker registration (doesn't work in Electron file:// protocol)
-        // Match the entire service worker registration script block - non-greedy
-        result = result.replace(
-          /<script>[\s\S]*?serviceWorker[\s\S]*?register[\s\S]*?<\/script>/g,
-          '<!-- Service worker registration removed in production build (not supported in Electron) -->'
-        )
+        // Service worker registration is kept in the HTML for browser PWA support
+        // PWAContext.tsx handles Electron detection at runtime and skips service worker logic in Electron
+        // In Electron (file:// protocol), service worker registration will fail gracefully
+        // In browsers (http/https), service worker will register successfully for PWA functionality
+        // This allows the same build to work in both Electron and browser environments
         
         return result
       }
