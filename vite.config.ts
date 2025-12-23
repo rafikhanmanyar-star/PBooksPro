@@ -73,10 +73,13 @@ export default defineConfig({
           // Split node_modules into separate chunks
           if (id.includes('node_modules')) {
             // React and React-DOM in their own chunk - ensure they're together
-            if (id.includes('react') && !id.includes('react-dom')) {
+            // Match exact package names to avoid matching @react-pdf, @react-icons, react-router, etc.
+            // Use regex to match exact package paths: node_modules/react/ or node_modules/react-dom/
+            // This avoids false positives from packages like react-router, react-icons, @react-pdf, etc.
+            if (/node_modules[\/\\]react[\/\\]/.test(id) && !/node_modules[\/\\]react-dom[\/\\]/.test(id) && !id.includes('@react')) {
               return 'react-vendor';
             }
-            if (id.includes('react-dom')) {
+            if (/node_modules[\/\\]react-dom[\/\\]/.test(id)) {
               return 'react-vendor'; // Keep react-dom with react
             }
             
