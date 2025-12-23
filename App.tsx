@@ -1,6 +1,5 @@
 
-import React, { useEffect, useState, useMemo, Suspense, useCallback } from 'react';
-import ReactDOM from 'react-dom/client';
+import React, { useEffect, useState, useMemo, Suspense, useCallback, useTransition } from 'react';
 import Header from './components/layout/Header';
 import Footer from './components/layout/Footer';
 import Sidebar from './components/layout/Sidebar';
@@ -14,7 +13,6 @@ import KPIPanel from './components/kpi/KPIPanel';
 import { useKpis } from './context/KPIContext';
 import KPIDrilldown from './components/kpi/KPIDrilldown';
 import ScrollToTop from './components/ui/ScrollToTop';
-import Loading from './components/ui/Loading';
 import { useLicense } from './context/LicenseContext';
 import LicenseLockScreen from './components/license/LicenseLockScreen';
 import LoginPage from './components/auth/LoginPage';
@@ -22,13 +20,14 @@ import { syncService } from './services/SyncService';
 import UpdateNotification from './components/ui/UpdateNotification';
 import { createBackup, restoreBackup } from './services/backupService';
 import { useProgress } from './context/ProgressContext';
+import { usePagePreloader } from './hooks/usePagePreloader';
 
 // Note: electronAPI type declarations are in other files (UpdateCheck.tsx, UpdateNotification.tsx)
 // Using type assertion (window as any).electronAPI to avoid type conflicts
 
 // Lazy Load Components
 const DashboardPage = React.lazy(() => import('./components/dashboard/DashboardPage'));
-const TransactionsPage = React.lazy(() => import('./components/transactions/TransactionsPage'));
+const EnhancedLedgerPage = React.lazy(() => import('./components/transactions/EnhancedLedgerPage'));
 const SettingsPage = React.lazy(() => import('./components/settings/SettingsPage'));
 const ImportPage = React.lazy(() => import('./components/settings/ImportPage'));
 const RentalManagementPage = React.lazy(() => import('./components/rentalManagement/RentalManagementPage'));
@@ -69,10 +68,19 @@ const App: React.FC = () => {
   // State to track if the native OS keyboard is likely open
   const [isNativeKeyboardOpen, setIsNativeKeyboardOpen] = useState(false);
   
-  // Simple memoized navigation handler - no transitions, instant response
+  // Use React 18 startTransition for non-blocking navigation (improves INP)
+  const [isPending, startNavTransition] = useTransition();
+  
+  // Preload pages for instant navigation
+  usePagePreloader();
+  
+  // Optimized navigation handler - uses startTransition for non-blocking updates
   const handleSetPage = useCallback((page: Page) => {
-    dispatch({ type: 'SET_PAGE', payload: page });
-  }, [dispatch]);
+    // Mark navigation as non-urgent to keep UI responsive
+    startNavTransition(() => {
+      dispatch({ type: 'SET_PAGE', payload: page });
+    });
+  }, [dispatch, startNavTransition]);
 
   // Initialize Sync Service with access to dispatch
   useEffect(() => {
@@ -84,15 +92,17 @@ const App: React.FC = () => {
     const electronAPI = (window as any).electronAPI;
     if (typeof window !== 'undefined' && electronAPI?.onOpenUpdateSettings) {
       const cleanup = electronAPI.onOpenUpdateSettings(() => {
-        // Navigate to settings page
+        // Navigate to settings page and ensure data management section is visible
         dispatch({ type: 'SET_PAGE', payload: 'settings' });
+        // Dispatch custom event to set active category to 'data' (Data Management)
+        window.dispatchEvent(new CustomEvent('open-data-management-section'));
         // Scroll to update section after a brief delay to allow page to render
         setTimeout(() => {
           const updateSection = document.querySelector('[data-update-section]');
           if (updateSection) {
             updateSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }
-        }, 100);
+        }, 200);
       });
       return cleanup;
     }
@@ -138,6 +148,29 @@ const App: React.FC = () => {
             helpButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
             // Click the help button to activate it
             (helpButton as HTMLElement).click();
+          }
+        }, 100);
+      });
+      return cleanup;
+    }
+  }, [dispatch]);
+
+  // Listen for open backup & restore page menu action
+  useEffect(() => {
+    const electronAPI = (window as any).electronAPI;
+    if (typeof window !== 'undefined' && electronAPI?.onOpenBackupRestore) {
+      const cleanup = electronAPI.onOpenBackupRestore(() => {
+        // Navigate to settings page
+        dispatch({ type: 'SET_PAGE', payload: 'settings' });
+        // Dispatch custom event to set active category to 'backup'
+        window.dispatchEvent(new CustomEvent('open-backup-restore-section'));
+        // Scroll to backup section after a brief delay to allow page to render
+        setTimeout(() => {
+          const backupButton = document.querySelector('[data-backup-section]');
+          if (backupButton) {
+            backupButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Click the backup button to activate it
+            (backupButton as HTMLElement).click();
           }
         }, 100);
       });
@@ -244,6 +277,7 @@ const App: React.FC = () => {
   };
 
   // Optimized page renderer - only render active page for better performance
+  // Memoized with minimal dependencies to prevent unnecessary re-renders
   const renderPersistentPage = useCallback((groupKey: string, content: React.ReactNode) => {
     // Only render if visited before (lazy load on first visit)
     if (!visitedGroups.has(groupKey)) return null;
@@ -263,11 +297,12 @@ const App: React.FC = () => {
 
     return (
       <div 
+        key={groupKey}
         className={`absolute inset-0 ${overflowClass} overflow-x-hidden p-4 md:p-6 scroll-smooth overscroll-none ${bgClass} ${shouldHideFooter ? 'pb-4' : 'pb-24 md:pb-6'}`}
         id={pageId}
       >
         <div className="w-full h-full">
-          <Suspense fallback={<Loading />}>
+          <Suspense fallback={null}>
              {content}
           </Suspense>
         </div>
@@ -301,12 +336,12 @@ const App: React.FC = () => {
             className="flex-1 flex flex-col min-w-0 transition-all duration-300 ease-in-out md:pl-64"
             style={{ marginRight: 'var(--right-sidebar-width, 0px)' }} 
         >
-            <Header title={getPageTitle(currentPage)} />
+            <Header title={getPageTitle(currentPage)} isNavigating={isPending} />
             
             <main className="flex-1 relative overflow-hidden overscroll-none" id="main-container">
                 <ErrorBoundary dispatch={dispatch}>
                     {renderPersistentPage('DASHBOARD', <DashboardPage />)}
-                    {renderPersistentPage('TRANSACTIONS', <TransactionsPage />)}
+                    {renderPersistentPage('TRANSACTIONS', <EnhancedLedgerPage />)}
                     {renderPersistentPage('PAYMENTS', <MobilePaymentsPage />)}
                     {renderPersistentPage('LOANS', <LoanManagementPage />)}
                     {renderPersistentPage('VENDORS', <VendorDirectoryPage />)}
