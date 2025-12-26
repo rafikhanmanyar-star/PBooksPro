@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { Contact, ContactType, Bill, Transaction, Page, TransactionType } from '../../types';
 import ContactForm from '../settings/ContactForm';
@@ -12,14 +12,21 @@ import VendorBillPaymentModal from './VendorBillPaymentModal';
 import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarningModal';
 import { useNotification } from '../../context/NotificationContext';
 import Input from '../ui/Input';
+import { WhatsAppService } from '../../services/whatsappService';
 import VendorBills from './VendorBills';
 import VendorQuotationsTable from './VendorQuotationsTable';
 import QuotationForm from './QuotationForm';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { Quotation } from '../../types';
 import { ImportType } from '../../services/importService';
+import ResizeHandle from '../ui/ResizeHandle';
+import AllQuotationsTable from './AllQuotationsTable';
+import AllBillsTable from './AllBillsTable';
+import VendorComparisonReport from '../reports/VendorComparisonReport';
+import VendorLedgerReport from '../reports/VendorLedgerReport';
+import { reportDefinitions } from '../reports/reportDefinitions';
 
-const AddVendorSection: React.FC = () => {
+const AddVendorSection: React.FC<{ optionsView: 'Quotation' | 'Bills' | 'Reports'; setOptionsView: (view: 'Quotation' | 'Bills' | 'Reports') => void }> = ({ optionsView, setOptionsView }) => {
     const { state, dispatch } = useAppContext();
     const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -32,10 +39,41 @@ const AddVendorSection: React.FC = () => {
         <>
             <div className="bg-white border-b border-slate-200 shadow-sm flex-shrink-0">
                 <div className="px-6 py-4 flex items-center justify-between">
-                    <div>
-                        <h1 className="text-xl font-bold text-slate-900">Vendor Directory</h1>
-                        <p className="text-sm text-slate-500 mt-1">Manage your suppliers and vendors</p>
+                    {/* Left side: Options tabs */}
+                    <div className="flex items-center gap-1">
+                        <button 
+                            onClick={() => setOptionsView('Quotation')} 
+                            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all duration-200 ${
+                                optionsView === 'Quotation' 
+                                    ? 'bg-indigo-600 text-white shadow border border-indigo-700' 
+                                    : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200 border border-slate-300'
+                            }`}
+                        >
+                            Quotation
+                        </button>
+                        <button 
+                            onClick={() => setOptionsView('Bills')} 
+                            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all duration-200 ${
+                                optionsView === 'Bills' 
+                                    ? 'bg-indigo-600 text-white shadow border border-indigo-700' 
+                                    : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200 border border-slate-300'
+                            }`}
+                        >
+                            Bills
+                        </button>
+                        <button 
+                            onClick={() => setOptionsView('Reports')} 
+                            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all duration-200 ${
+                                optionsView === 'Reports' 
+                                    ? 'bg-indigo-600 text-white shadow border border-indigo-700' 
+                                    : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200 border border-slate-300'
+                            }`}
+                        >
+                            Reports
+                        </button>
                     </div>
+                    
+                    {/* Right side: Action buttons */}
                     <div className="flex gap-2">
                         <Button
                             variant="secondary"
@@ -68,6 +106,9 @@ const AddVendorSection: React.FC = () => {
     );
 };
 
+type SortKey = 'name' | 'payable';
+type SortDirection = 'asc' | 'desc';
+
 const VendorDirectoryPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { showConfirm } = useNotification();
@@ -86,8 +127,26 @@ const VendorDirectoryPage: React.FC = () => {
     
     const [vendorSearch, setVendorSearch] = useState('');
     const [activeTab, setActiveTab] = useLocalStorage<'Ledger' | 'Bills' | 'Quotations'>('vendorDirectory_activeTab', 'Ledger');
+    const [optionsView, setOptionsView] = useLocalStorage<'Quotation' | 'Bills' | 'Reports'>('vendorDirectory_optionsView', 'Quotation');
+    const [selectedReport, setSelectedReport] = useState<string>('vendor-comparison');
+    const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('vendorDirectory_sidebarWidth', 320);
+    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'name', direction: 'asc' });
+    
+    // Resize handlers
+    const isResizing = useRef(false);
+    const startX = useRef(0);
+    const startWidth = useRef(0);
     
     const [duplicateBillData, setDuplicateBillData] = useState<Partial<Bill> | null>(null);
+
+    // Check if we need to open a vendor from search
+    useEffect(() => {
+        const vendorId = sessionStorage.getItem('openVendorId');
+        if (vendorId) {
+            sessionStorage.removeItem('openVendorId');
+            setSelectedVendorId(vendorId);
+        }
+    }, []);
 
     const vendors = state.contacts
         .filter(c => c.type === ContactType.VENDOR)
@@ -101,7 +160,7 @@ const VendorDirectoryPage: React.FC = () => {
 
     // Calculate payable amounts for each vendor
     const vendorsWithPayable = useMemo(() => {
-        return filteredVendors.map(vendor => {
+        const vendors = filteredVendors.map(vendor => {
             const vendorBills = state.bills.filter(b => b.contactId === vendor.id);
             
             // Calculate total payable as sum of unpaid balances for all bills
@@ -115,7 +174,58 @@ const VendorDirectoryPage: React.FC = () => {
                 payableAmount
             };
         });
-    }, [filteredVendors, state.bills]);
+        
+        // Sort vendors
+        return [...vendors].sort((a, b) => {
+            let aVal: any = a[sortConfig.key];
+            let bVal: any = b[sortConfig.key];
+            
+            if (sortConfig.key === 'name') {
+                aVal = aVal.toLowerCase();
+                bVal = bVal.toLowerCase();
+            }
+            
+            if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }, [filteredVendors, state.bills, sortConfig]);
+    
+    const handleSort = (key: SortKey) => {
+        setSortConfig(current => ({
+            key,
+            direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+        }));
+    };
+    
+    const handleResize = useCallback((e: MouseEvent) => {
+        if (isResizing.current) {
+            const delta = e.clientX - startX.current;
+            const newWidth = Math.max(200, Math.min(600, startWidth.current + delta));
+            setSidebarWidth(newWidth);
+        }
+    }, [setSidebarWidth]);
+
+    const stopResize = useCallback(() => {
+        isResizing.current = false;
+        document.removeEventListener('mousemove', handleResize);
+        document.removeEventListener('mouseup', stopResize);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+    }, [handleResize]);
+
+    const startResizing = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        isResizing.current = true;
+        startX.current = e.clientX;
+        startWidth.current = sidebarWidth;
+
+        document.addEventListener('mousemove', handleResize);
+        document.addEventListener('mouseup', stopResize);
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+    }, [sidebarWidth, handleResize, stopResize]);
         
     const selectedVendor = vendors.find(v => v.id === selectedVendorId) || null;
     
@@ -196,14 +306,35 @@ const VendorDirectoryPage: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full bg-slate-50">
-            <AddVendorSection />
-            <div className="flex-grow flex flex-col lg:flex-row gap-4 p-4 min-h-0">
+            <AddVendorSection optionsView={optionsView} setOptionsView={setOptionsView} />
+            <div className="flex-grow flex flex-col md:flex-row gap-4 p-4 min-h-0">
                 {/* Vendor List Sidebar */}
-                <div className="lg:w-80 xl:w-96 flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 h-64 lg:h-full shrink-0 overflow-hidden">
+                <div 
+                    className="hidden md:flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 h-full flex-shrink-0 overflow-hidden"
+                    style={{ width: sidebarWidth }}
+                >
                     <div className="p-4 border-b border-slate-200 flex-shrink-0 bg-gradient-to-r from-slate-50 to-white">
                         <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">All Vendors</h3>
-                            <span className="text-xs text-slate-500 font-medium">Payable</span>
+                            <button
+                                onClick={() => handleSort('name')}
+                                className="text-sm font-bold text-slate-700 uppercase tracking-wider hover:text-slate-900 flex items-center gap-1 cursor-pointer"
+                                title="Sort by Name"
+                            >
+                                All Vendors
+                                <span className="text-[10px]">
+                                    {sortConfig.key === 'name' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
+                                </span>
+                            </button>
+                            <button
+                                onClick={() => handleSort('payable')}
+                                className="text-xs text-slate-500 font-medium hover:text-slate-700 flex items-center gap-1 cursor-pointer"
+                                title="Sort by Payable"
+                            >
+                                Payable
+                                <span className="text-[10px]">
+                                    {sortConfig.key === 'payable' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
+                                </span>
+                            </button>
                         </div>
                         <div className="relative">
                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -282,6 +413,11 @@ const VendorDirectoryPage: React.FC = () => {
                     </div>
                 </div>
 
+                {/* Resize Handle */}
+                <div className="hidden md:block h-full">
+                    <ResizeHandle onMouseDown={startResizing} />
+                </div>
+
                 {/* Main Content Area */}
                 <div className="flex-1 flex flex-col min-h-0">
                     {selectedVendor ? (
@@ -347,10 +483,15 @@ const VendorDirectoryPage: React.FC = () => {
                                         {selectedVendor.contactNo && (
                                             <button
                                                 onClick={async () => {
-                                                    const message = state.whatsAppTemplates.vendorGreeting.replace(/{contactName}/g, selectedVendor.name);
-                                                    const phoneNumber = selectedVendor.contactNo!.replace(/[^0-9]/g, '');
-                                                    const encodedMessage = encodeURIComponent(message);
-                                                    window.open(`https://wa.me/${phoneNumber}?text=${encodedMessage}`, '_blank');
+                                                    try {
+                                                        const message = WhatsAppService.generateVendorGreeting(
+                                                            state.whatsAppTemplates.vendorGreeting,
+                                                            selectedVendor
+                                                        );
+                                                        WhatsAppService.sendMessage({ contact: selectedVendor, message });
+                                                    } catch (error) {
+                                                        await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
+                                                    }
                                                 }}
                                                 className="flex items-center justify-center w-7 h-7 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 border border-green-200 transition-colors"
                                                 title="Send WhatsApp Message"
@@ -474,15 +615,68 @@ const VendorDirectoryPage: React.FC = () => {
                             )}
                         </>
                     ) : (
-                        <div className="flex-grow flex flex-col items-center justify-center bg-white rounded-xl shadow-sm border-2 border-dashed border-slate-300">
-                            <div className="text-center p-8">
-                                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-indigo-100 to-blue-100 flex items-center justify-center mx-auto mb-4">
-                                    <div className="w-10 h-10 text-indigo-600">{ICONS.search}</div>
-                                </div>
-                                <h3 className="text-sm font-semibold text-slate-900 mb-2">Select a Vendor</h3>
-                                <p className="text-sm text-slate-500 max-w-sm">
-                                    Choose a vendor from the list to view their details, transaction ledger, and bills
-                                </p>
+                        <div className="flex-grow flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 min-h-0 overflow-hidden">
+                            {/* Options Content */}
+                            <div className="flex-grow overflow-y-auto min-h-0 p-3">
+                                {optionsView === 'Quotation' ? (
+                                    <AllQuotationsTable 
+                                        onEditQuotation={(quotation) => {
+                                            const vendor = state.contacts.find(c => c.id === quotation.vendorId);
+                                            if (vendor) {
+                                                setSelectedVendorId(vendor.id);
+                                                setActiveTab('Quotations');
+                                                setEditingQuotation(quotation);
+                                                setIsQuotationFormModalOpen(true);
+                                            }
+                                        }}
+                                    />
+                                ) : optionsView === 'Bills' ? (
+                                    <AllBillsTable 
+                                        onEditBill={(bill) => {
+                                            const vendor = state.contacts.find(c => c.id === bill.contactId);
+                                            if (vendor) {
+                                                setSelectedVendorId(vendor.id);
+                                                setActiveTab('Bills');
+                                                setEditingItem({ id: bill.id, type: 'bill' });
+                                            }
+                                        }}
+                                    />
+                                ) : (
+                                    <div className="h-full flex flex-col">
+                                        {/* Report Selection */}
+                                        <div className="mb-4 flex-shrink-0">
+                                            <label className="block text-sm font-semibold text-slate-700 mb-2">Select Report</label>
+                                            <select
+                                                value={selectedReport}
+                                                onChange={(e) => setSelectedReport(e.target.value)}
+                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                            >
+                                                <option value="vendor-comparison">Vendor Comparison Report</option>
+                                                <option value="vendor-ledger">Vendor Ledger Report</option>
+                                                {reportDefinitions
+                                                    .filter(r => r.title.toLowerCase().includes('vendor'))
+                                                    .map(report => (
+                                                        <option key={report.id} value={report.id}>
+                                                            {report.title}
+                                                        </option>
+                                                    ))}
+                                            </select>
+                                        </div>
+                                        
+                                        {/* Report Display */}
+                                        <div className="flex-grow min-h-0 overflow-hidden">
+                                            {selectedReport === 'vendor-comparison' ? (
+                                                <VendorComparisonReport />
+                                            ) : selectedReport === 'vendor-ledger' ? (
+                                                <VendorLedgerReport />
+                                            ) : (
+                                                <div className="p-8 text-center text-slate-500">
+                                                    <p>Report view will be implemented here</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

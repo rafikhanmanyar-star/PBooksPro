@@ -35,5 +35,6 @@ export const reportDefinitions: ReportDefinition[] = [
     { id: 'project-contract-report', title: 'Contract Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Contract Report' },
 
     // General Reports
-    { id: 'transfer-statistics', title: 'Transfer Statistics Report', group: 'General', path: 'dashboard', subPath: '' }, 
+    { id: 'transfer-statistics', title: 'Transfer Statistics Report', group: 'General', path: 'dashboard', subPath: '' },
+    { id: 'vendor-comparison', title: 'Vendor Comparison Report', group: 'General', path: 'vendorDirectory', subPath: '' },
 ];
