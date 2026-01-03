@@ -1,21 +1,10 @@
-// Get API URL - Always use production URL for deployed version
-// Check if we're on Render (production) by checking hostname
-const isProduction = typeof window !== 'undefined' && 
-  (window.location.hostname.includes('onrender.com') || 
-   window.location.hostname.includes('render.com') ||
-   import.meta.env.PROD);
+// HARDCODED: Always use production API URL
+// This ensures the deployed version always uses the correct URL
+const ADMIN_API_URL = 'https://pbookspro-api.onrender.com/api/admin';
 
-// Use production URL if in production, otherwise use env var or localhost
-const ADMIN_API_URL = isProduction
-  ? 'https://pbookspro-api.onrender.com/api/admin'
-  : ((import.meta.env.VITE_ADMIN_API_URL as string) || 'http://localhost:3000/api/admin');
-
-// Debug: Always log the API URL being used (helps debug production issues)
+// Debug: Log the API URL being used
 console.log('🔧 Admin API URL:', ADMIN_API_URL);
 console.log('🔧 Hostname:', typeof window !== 'undefined' ? window.location.hostname : 'server');
-console.log('🔧 Is Production:', isProduction);
-console.log('🔧 Environment:', import.meta.env.MODE);
-console.log('🔧 VITE_ADMIN_API_URL env var:', import.meta.env.VITE_ADMIN_API_URL);
 
 class AdminApi {
   private getAuthHeaders(): HeadersInit {
