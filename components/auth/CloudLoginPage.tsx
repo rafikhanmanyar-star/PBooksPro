@@ -39,7 +39,7 @@ const CloudLoginPage: React.FC = () => {
     setLookupResults([]);
 
     try {
-      const response = await apiClient.post<{ tenants: Array<{ id: string; name: string; company_name: string; email: string }> }>('/api/auth/lookup-tenant', {
+      const response = await apiClient.post<{ tenants: Array<{ id: string; name: string; company_name: string; email: string }> }>('/auth/lookup-tenant', {
         email: tenantSearch.includes('@') ? tenantSearch : undefined,
         companyName: tenantSearch.includes('@') ? undefined : tenantSearch,
       });
