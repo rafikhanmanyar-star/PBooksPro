@@ -29,7 +29,30 @@ async function runMigrations() {
     console.log('🔄 Running database migrations...');
     
     // Read and execute PostgreSQL schema
-    const schemaPath = join(__dirname, '../migrations/postgresql-schema.sql');
+    // Try multiple paths to find the SQL file (works in both dev and production)
+    const possiblePaths = [
+      join(__dirname, '../migrations/postgresql-schema.sql'),      // dist/scripts -> dist/migrations
+      join(__dirname, '../../migrations/postgresql-schema.sql'),  // dist/scripts -> migrations (source)
+      join(process.cwd(), 'server/migrations/postgresql-schema.sql'), // From project root
+      join(process.cwd(), 'migrations/postgresql-schema.sql'),    // From project root (if in server/)
+    ];
+    
+    let schemaPath: string | null = null;
+    for (const path of possiblePaths) {
+      try {
+        readFileSync(path, 'utf8'); // Test if file exists
+        schemaPath = path;
+        break;
+      } catch (e) {
+        // Try next path
+      }
+    }
+    
+    if (!schemaPath) {
+      throw new Error(`Could not find postgresql-schema.sql. Tried: ${possiblePaths.join(', ')}`);
+    }
+    
+    console.log('📋 Reading schema from:', schemaPath);
     const schemaSQL = readFileSync(schemaPath, 'utf8');
     
     // Execute schema - DROP IF EXISTS and CREATE IF NOT EXISTS ensure idempotency
