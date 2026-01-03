@@ -7,6 +7,7 @@ import Button from '../ui/Button';
 import { formatDate } from '../../utils/dateUtils';
 import ReportHeader from '../reports/ReportHeader';
 import ReportFooter from '../reports/ReportFooter';
+import { WhatsAppService } from '../../services/whatsappService';
 
 interface ProjectContractDetailModalProps {
     contract: Contract;
@@ -38,20 +39,23 @@ const ProjectContractDetailModal: React.FC<ProjectContractDetailModalProps> = ({
             return;
         }
         
-        let message = `*Contract Details*\n`;
-        message += `Ref: ${contract.contractNumber}\n`;
-        message += `Title: ${contract.name}\n`;
-        message += `Project: ${project?.name}\n`;
-        if (contract.area && contract.rate) {
-            message += `Area: ${contract.area} sqft @ ${contract.rate}/sqft\n`;
-        }
-        message += `Total Value: ${CURRENCY} ${contract.totalAmount.toLocaleString()}\n`;
-        message += `Paid to Date: ${CURRENCY} ${totalPaid.toLocaleString()}\n`;
-        message += `Balance: ${CURRENCY} ${balance.toLocaleString()}\n\n`;
-        message += `Terms:\n${contract.termsAndConditions}`;
+        try {
+            let message = `*Contract Details*\n`;
+            message += `Ref: ${contract.contractNumber}\n`;
+            message += `Title: ${contract.name}\n`;
+            message += `Project: ${project?.name}\n`;
+            if (contract.area && contract.rate) {
+                message += `Area: ${contract.area} sqft @ ${contract.rate}/sqft\n`;
+            }
+            message += `Total Value: ${CURRENCY} ${contract.totalAmount.toLocaleString()}\n`;
+            message += `Paid to Date: ${CURRENCY} ${totalPaid.toLocaleString()}\n`;
+            message += `Balance: ${CURRENCY} ${balance.toLocaleString()}\n\n`;
+            message += `Terms:\n${contract.termsAndConditions}`;
 
-        const phoneNumber = vendor.contactNo.replace(/[^0-9]/g, '');
-        window.open(`https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`, '_blank');
+            WhatsAppService.sendMessage({ contact: vendor, message });
+        } catch (error) {
+            alert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
+        }
     };
 
     return (

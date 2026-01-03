@@ -1,12 +1,14 @@
 
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useState, useRef } from 'react';
-import { AppState, AppAction, Transaction, TransactionType, Account, Category, AccountType, LoanSubtype, InvoiceStatus, TransactionLogEntry, Page, ContractStatus, User, UserRole, Staff, Payslip, PayslipStatus, SalaryComponent, SalaryComponentType, LifeCycleEvent, ProjectAgreementStatus } from '../types';
+import { AppState, AppAction, Transaction, TransactionType, Account, Category, AccountType, LoanSubtype, InvoiceStatus, TransactionLogEntry, Page, ContractStatus, User, UserRole, Staff, Payslip, PayslipStatus, SalaryComponent, SalaryComponentType, LifeCycleEvent, ProjectAgreementStatus, Bill, SalesReturn, SalesReturnStatus, SalesReturnReason } from '../types';
 import useDatabaseState from '../hooks/useDatabaseState';
 import { useDatabaseStateFallback } from '../hooks/useDatabaseStateFallback';
-import { syncService } from '../services/SyncService';
+// import { syncService } from '../services/SyncService';
 import { runAllMigrations, needsMigration } from '../services/database/migration';
 import { getDatabaseService } from '../services/database/databaseService';
 import { AppStateRepository } from '../services/database/repositories/appStateRepository';
+import { useAuth } from './AuthContext';
+import { getAppStateApiService } from '../services/api/appStateApi';
 import packageJson from '../package.json';
 
 const SYSTEM_ACCOUNTS: Account[] = [
@@ -32,8 +34,9 @@ const SYSTEM_CATEGORIES: Category[] = [
     { id: 'sys-cat-sec-dep', name: 'Security Deposit', type: TransactionType.INCOME, isPermanent: true, isRental: true },
     { id: 'sys-cat-proj-list', name: 'Project Listed Income', type: TransactionType.INCOME, isPermanent: true },
     { id: 'sys-cat-unit-sell', name: 'Unit Selling Income', type: TransactionType.INCOME, isPermanent: true },
+    { id: 'sys-cat-penalty-inc', name: 'Penalty Income', type: TransactionType.INCOME, isPermanent: true },
     { id: 'sys-cat-own-eq', name: 'Owner Equity', type: TransactionType.INCOME, isPermanent: true },
-    
+
     // Expense
     { id: 'sys-cat-sal-adv', name: 'Salary Advance', type: TransactionType.EXPENSE, isPermanent: true },
     { id: 'sys-cat-proj-sal', name: 'Project Staff Salary', type: TransactionType.EXPENSE, isPermanent: true },
@@ -49,13 +52,13 @@ const SYSTEM_CATEGORIES: Category[] = [
     { id: 'sys-cat-rebate', name: 'Rebate Amount', type: TransactionType.EXPENSE, isPermanent: true },
     { id: 'sys-cat-pm-cost', name: 'Project Management Cost', type: TransactionType.EXPENSE, isPermanent: true },
     { id: 'sys-cat-own-with', name: 'Owner Withdrawn', type: TransactionType.EXPENSE, isPermanent: true },
-    
+
     // Discounts (Virtual Expenses)
     { id: 'sys-cat-disc-cust', name: 'Customer Discount', type: TransactionType.EXPENSE, isPermanent: true },
     { id: 'sys-cat-disc-flr', name: 'Floor Discount', type: TransactionType.EXPENSE, isPermanent: true },
     { id: 'sys-cat-disc-lump', name: 'Lump Sum Discount', type: TransactionType.EXPENSE, isPermanent: true },
     { id: 'sys-cat-disc-misc', name: 'Misc Discount', type: TransactionType.EXPENSE, isPermanent: true },
-    
+
     // Legacy
     { id: 'sys-cat-svc-deduct', name: 'Service Charge Deduction', type: TransactionType.EXPENSE, isPermanent: true, isRental: true },
 ];
@@ -194,6 +197,7 @@ const initialState: AppState = {
     bills: [],
     rentalAgreements: [],
     projectAgreements: [],
+    salesReturns: [],
     contracts: [],
     budgets: [],
     recurringInvoiceTemplates: [],
@@ -219,7 +223,11 @@ const initialState: AppState = {
     showSystemTransactions: false,
     enableColorCoding: true,
     enableBeepOnSave: false,
+    enableDatePreservation: false,
+    lastPreservedDate: undefined,
     pmCostPercentage: 0,
+    defaultProjectId: undefined,
+    documentStoragePath: undefined,
     errorLog: [],
     transactionLog: [],
     currentPage: 'dashboard',
@@ -267,11 +275,11 @@ const updateContractStatus = (state: AppState, contractId: string | undefined): 
     const totalPaid = state.transactions
         .filter(t => t.contractId === contractId)
         .reduce((sum, t) => sum + t.amount, 0);
-    
+
     const isFullyPaid = totalPaid >= (contract.totalAmount - 1.0);
-    
+
     let newStatus = contract.status;
-    
+
     if (isFullyPaid && contract.status === ContractStatus.ACTIVE) {
         newStatus = ContractStatus.COMPLETED;
     } else if (!isFullyPaid && contract.status === ContractStatus.COMPLETED) {
@@ -279,8 +287,8 @@ const updateContractStatus = (state: AppState, contractId: string | undefined): 
     }
 
     if (newStatus !== contract.status) {
-         const newContracts = state.contracts.map(c => c.id === contractId ? { ...c, status: newStatus } : c);
-         return { ...state, contracts: newContracts };
+        const newContracts = state.contracts.map(c => c.id === contractId ? { ...c, status: newStatus } : c);
+        return { ...state, contracts: newContracts };
     }
     return state;
 };
@@ -299,10 +307,10 @@ const applyTransactionEffect = (state: AppState, tx: Transaction, isAdd: boolean
             if (acc.id === tx.toAccountId) change = tx.amount;
         }
         else if (tx.type === TransactionType.LOAN && acc.id === tx.accountId) {
-                if (tx.subtype === LoanSubtype.RECEIVE) change = tx.amount;
-                else change = -tx.amount;
+            if (tx.subtype === LoanSubtype.RECEIVE) change = tx.amount;
+            else change = -tx.amount;
         }
-        
+
         if (change !== 0) return { ...acc, balance: acc.balance + (change * factor) };
         return acc;
     });
@@ -328,34 +336,43 @@ const applyTransactionEffect = (state: AppState, tx: Transaction, isAdd: boolean
             if (b.id === tx.billId) {
                 const newPaid = Math.max(0, (b.paidAmount || 0) + (tx.amount * factor));
                 let newStatus = b.status;
-                if (newPaid >= b.amount - 0.1) newStatus = InvoiceStatus.PAID;
-                else if (newPaid > 0.1) newStatus = InvoiceStatus.PARTIALLY_PAID;
+                // Use consistent threshold of 0.01 for "fully paid" check
+                const threshold = 0.01;
+                const wasFullyPaid = (b.paidAmount || 0) >= b.amount - threshold;
+                const isNowFullyPaid = newPaid >= b.amount - threshold;
+
+                if (newPaid >= b.amount - threshold) newStatus = InvoiceStatus.PAID;
+                else if (newPaid > threshold) newStatus = InvoiceStatus.PARTIALLY_PAID;
                 else newStatus = InvoiceStatus.UNPAID;
+
+                // NOTE: Refunds no longer use bills - they are tracked directly via transactions
+                // Sales Return status is updated in the refund payment handler
+
                 return { ...b, paidAmount: newPaid, status: newStatus };
             }
             return b;
         });
     }
-    
+
     // 4. Payslip Status
     if (tx.payslipId && tx.type === TransactionType.EXPENSE) {
-         // Find payslip in either project or rental list
-         const findAndUpdate = (list: Payslip[]) => list.map(p => {
-             if (p.id === tx.payslipId) {
-                 const newPaid = Math.max(0, (p.paidAmount || 0) + (tx.amount * factor));
-                 let newStatus = p.status;
-                 // Allow paying more than net if advance is handled, but status caps at Paid
-                 if (newPaid >= p.netSalary - 1) newStatus = PayslipStatus.PAID;
-                 else if (newPaid > 0) newStatus = PayslipStatus.PARTIALLY_PAID;
-                 else newStatus = PayslipStatus.APPROVED; // Revert to Approved if unpaid
-                 return { ...p, paidAmount: newPaid, status: newStatus };
-             }
-             return p;
-         });
-         newState.projectPayslips = findAndUpdate(newState.projectPayslips);
-         newState.rentalPayslips = findAndUpdate(newState.rentalPayslips);
+        // Find payslip in either project or rental list
+        const findAndUpdate = (list: Payslip[]) => list.map(p => {
+            if (p.id === tx.payslipId) {
+                const newPaid = Math.max(0, (p.paidAmount || 0) + (tx.amount * factor));
+                let newStatus = p.status;
+                // Allow paying more than net if advance is handled, but status caps at Paid
+                if (newPaid >= p.netSalary - 1) newStatus = PayslipStatus.PAID;
+                else if (newPaid > 0) newStatus = PayslipStatus.PARTIALLY_PAID;
+                else newStatus = PayslipStatus.APPROVED; // Revert to Approved if unpaid
+                return { ...p, paidAmount: newPaid, status: newStatus };
+            }
+            return p;
+        });
+        newState.projectPayslips = findAndUpdate(newState.projectPayslips);
+        newState.rentalPayslips = findAndUpdate(newState.rentalPayslips);
     }
-    
+
     // 5. Staff Advance Balance (If transaction Category is Salary Advance)
     const advCat = state.categories.find(c => c.name === 'Salary Advance');
     if (advCat && tx.categoryId === advCat.id && tx.contactId && tx.type === TransactionType.EXPENSE) {
@@ -368,7 +385,7 @@ const applyTransactionEffect = (state: AppState, tx: Transaction, isAdd: boolean
         newState.projectStaff = updateStaff(newState.projectStaff);
         newState.rentalStaff = updateStaff(newState.rentalStaff);
     }
-    
+
     return newState;
 };
 
@@ -389,7 +406,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
     // If action is from remote sync, we assume conflict resolution is done by SyncService merge logic
     // but some actions like DELETE need to run logic. However, for SYNC_REQUEST (SET_STATE), we just replace state.
     // For single actions broadcasted, we apply them normally.
-    
+
     switch (action.type) {
         case 'SET_STATE':
             return { ...state, ...action.payload };
@@ -418,10 +435,10 @@ const reducer = (state: AppState, action: AppAction): AppState => {
         case 'CLEAR_EDITING_ENTITY':
             return { ...state, editingEntity: null };
         case 'SET_UPDATE_AVAILABLE':
-            return state; 
+            return state;
         case 'UPDATE_INVOICE_TEMPLATE':
             return { ...state, invoiceHtmlTemplate: action.payload };
-        
+
         // --- TRANSACTION HANDLERS ---
         case 'ADD_TRANSACTION': {
             const tx = action.payload as Transaction;
@@ -453,7 +470,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             const tx = state.transactions.find(t => t.id === txId);
             if (!tx) return state;
             const newStateWithoutTx = { ...state, transactions: state.transactions.filter(t => t.id !== txId) };
-            const finalState = applyTransactionEffect(newStateWithoutTx, tx, false); 
+            const finalState = applyTransactionEffect(newStateWithoutTx, tx, false);
             if (tx.contractId) Object.assign(finalState, updateContractStatus(finalState, tx.contractId));
             const logEntry = createLogEntry('DELETE', 'Transaction', tx.id, `Deleted ${tx.type}: ${tx.description}`, state.currentUser, tx);
             finalState.transactionLog = [logEntry, ...(state.transactionLog || [])];
@@ -465,7 +482,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             let batchState = { ...state, transactions: [...state.transactions, ...txs] };
             txs.forEach(tx => {
                 batchState = applyTransactionEffect(batchState, tx, true);
-                if(tx.contractId) batchState = updateContractStatus(batchState, tx.contractId);
+                if (tx.contractId) batchState = updateContractStatus(batchState, tx.contractId);
             });
             const logEntry = createLogEntry('CREATE', 'Transaction', 'BATCH', `Batch added ${txs.length} transactions`, state.currentUser);
             batchState.transactionLog = [logEntry, ...(state.transactionLog || [])];
@@ -485,19 +502,19 @@ const reducer = (state: AppState, action: AppAction): AppState => {
 
         // --- ACCOUNT HANDLERS ---
         case 'ADD_ACCOUNT':
-             return { ...state, accounts: [...state.accounts, action.payload] };
+            return { ...state, accounts: [...state.accounts, action.payload] };
         case 'UPDATE_ACCOUNT':
-             return { ...state, accounts: state.accounts.map(a => a.id === action.payload.id ? action.payload : a) };
+            return { ...state, accounts: state.accounts.map(a => a.id === action.payload.id ? action.payload : a) };
         case 'DELETE_ACCOUNT':
-             return { ...state, accounts: state.accounts.filter(a => a.id !== action.payload) };
+            return { ...state, accounts: state.accounts.filter(a => a.id !== action.payload) };
 
         // --- CONTACT HANDLERS ---
         case 'ADD_CONTACT':
-             return { ...state, contacts: [...state.contacts, action.payload] };
+            return { ...state, contacts: [...state.contacts, action.payload] };
         case 'UPDATE_CONTACT':
-             return { ...state, contacts: state.contacts.map(c => c.id === action.payload.id ? action.payload : c) };
+            return { ...state, contacts: state.contacts.map(c => c.id === action.payload.id ? action.payload : c) };
         case 'DELETE_CONTACT':
-             return { ...state, contacts: state.contacts.filter(c => c.id !== action.payload) };
+            return { ...state, contacts: state.contacts.filter(c => c.id !== action.payload) };
 
         // --- ENTITY HANDLERS (Projects, Buildings, etc) ---
         case 'ADD_PROJECT':
@@ -534,7 +551,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, categories: state.categories.map(c => c.id === action.payload.id ? action.payload : c) };
         case 'DELETE_CATEGORY':
             return { ...state, categories: state.categories.filter(c => c.id !== action.payload) };
-            
+
         case 'ADD_USER':
             return { ...state, users: [...state.users, action.payload] };
         case 'UPDATE_USER':
@@ -556,13 +573,13 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             const updatedBill = action.payload as Bill;
             const originalBill = state.bills.find(b => b.id === updatedBill.id);
             if (!originalBill) return state;
-            
+
             let newState = { ...state, bills: state.bills.map(b => b.id === updatedBill.id ? updatedBill : b) };
-            
+
             // If contractId is being added or changed, update existing transactions
             const contractIdChanged = updatedBill.contractId !== originalBill.contractId;
             const hasPayments = updatedBill.paidAmount > 0;
-            
+
             if (contractIdChanged) {
                 // If bill had a contract and it's being changed or removed, unlink transactions from old contract
                 if (originalBill.contractId) {
@@ -576,7 +593,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                     // Update old contract status
                     newState = updateContractStatus(newState, originalBill.contractId);
                 }
-                
+
                 // If bill is being linked to a contract (new or changed), link transactions to new contract
                 if (updatedBill.contractId) {
                     // Link all bill transactions to the new contract
@@ -586,12 +603,12 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                         }
                         return tx;
                     });
-                    
+
                     // Update contract status to reflect the payments
                     newState = updateContractStatus(newState, updatedBill.contractId);
                 }
             }
-            
+
             return newState;
         }
         case 'DELETE_BILL':
@@ -625,42 +642,157 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, rentalAgreements: state.rentalAgreements.filter(r => r.id !== action.payload) };
 
         case 'ADD_PROJECT_AGREEMENT':
-             return { ...state, projectAgreements: [...state.projectAgreements, action.payload] };
+            return { ...state, projectAgreements: [...state.projectAgreements, action.payload] };
         case 'UPDATE_PROJECT_AGREEMENT':
-             return { ...state, projectAgreements: state.projectAgreements.map(p => p.id === action.payload.id ? action.payload : p) };
+            return { ...state, projectAgreements: state.projectAgreements.map(p => p.id === action.payload.id ? action.payload : p) };
         case 'DELETE_PROJECT_AGREEMENT':
-             return { ...state, projectAgreements: state.projectAgreements.filter(p => p.id !== action.payload) };
+            return { ...state, projectAgreements: state.projectAgreements.filter(p => p.id !== action.payload) };
         case 'CANCEL_PROJECT_AGREEMENT': {
-            const { agreementId, penaltyPercentage, penaltyAmount, refundAmount, refundAccountId } = action.payload;
+            const { agreementId, penaltyPercentage, penaltyAmount, refundAmount, penaltyCategoryId, salesReturnId } = action.payload;
             const updatedAgreement = state.projectAgreements.find(pa => pa.id === agreementId);
             if (!updatedAgreement) return state;
-            
-            const newAgreements = state.projectAgreements.map(pa => 
+
+            // Update agreement status and cancellation details
+            const newAgreements = state.projectAgreements.map(pa =>
                 pa.id === agreementId ? { ...pa, status: ProjectAgreementStatus.CANCELLED, cancellationDetails: { date: new Date().toISOString(), penaltyAmount, penaltyPercentage, refundAmount } } : pa
             );
-            
+
             let newState = { ...state, projectAgreements: newAgreements };
-            
-            if (refundAmount > 0 && refundAccountId) {
-                // Record Refund Transaction
-                const tx: Transaction = {
-                    id: `ref-${Date.now()}`,
-                    type: TransactionType.EXPENSE, // Refund is expense to company
-                    amount: refundAmount,
+
+            // 1. Update unit status to unsold (clear contactId from units)
+            if (updatedAgreement.unitIds && updatedAgreement.unitIds.length > 0) {
+                newState.units = newState.units.map(unit => {
+                    if (updatedAgreement.unitIds.includes(unit.id)) {
+                        return { ...unit, contactId: undefined };
+                    }
+                    return unit;
+                });
+            }
+
+            // 2. Zero out pending invoices (set paidAmount = amount to void them for balance sheet)
+            const agreementInvoices = newState.invoices.filter(inv => inv.agreementId === agreementId);
+            const pendingInvoices = agreementInvoices.filter(inv =>
+                inv.status === InvoiceStatus.UNPAID || inv.status === InvoiceStatus.PARTIALLY_PAID
+            );
+
+            // Zero out pending invoices by setting paidAmount = amount (voids them for balance sheet)
+            // Also add a description to mark them as voided from cancelled agreement
+            newState.invoices = newState.invoices.map(inv => {
+                if (pendingInvoices.some(pInv => pInv.id === inv.id)) {
+                    return {
+                        ...inv,
+                        paidAmount: inv.amount,
+                        status: InvoiceStatus.PAID, // Mark as paid to void them
+                        description: `VOIDED (Cancelled Agreement #${updatedAgreement.agreementNumber}) - ${inv.description || ''}`.trim()
+                    };
+                }
+                return inv;
+            });
+
+            // 3. Record Penalty - Reduce Unit Selling Income AND add as Penalty Income
+            if (penaltyAmount > 0) {
+                // Get Unit Selling Income category to reduce it
+                const unitSellingCategoryId = updatedAgreement.sellingPriceCategoryId;
+                if (!unitSellingCategoryId) {
+                    return newState;
+                }
+
+                // Find or use Penalty Income category
+                let penaltyCategoryId = state.categories.find(c => c.name === 'Penalty Income')?.id;
+                if (!penaltyCategoryId) {
+                    console.warn('Penalty Income category not found');
+                    return newState;
+                }
+
+                // Use Cash account for the penalty reduction transaction
+                // This ensures the penalty reduction appears in P&L (not excluded like Internal Clearing)
+                const cashAccount = state.accounts.find(a => a.name === 'Cash') || state.accounts.find(a => a.type === AccountType.BANK);
+                if (!cashAccount) {
+                    return newState;
+                }
+
+                // Step 1: Reduce Unit Selling Income by penalty amount (expense with Unit Selling Income category)
+                // This reduces income in P&L when sales return is processed
+                const reduceIncomeByPenaltyTx: Transaction = {
+                    id: `reduce-income-penalty-${Date.now()}`,
+                    type: TransactionType.EXPENSE, // Expense reduces income (via category)
+                    amount: Math.round(penaltyAmount), // Round to whole number
                     date: new Date().toISOString().split('T')[0],
-                    description: `Refund for Cancelled Agreement #${updatedAgreement.agreementNumber}`,
-                    accountId: refundAccountId,
+                    description: `Revenue Reduction - Penalty for Cancelled Agreement #${updatedAgreement.agreementNumber}`,
+                    accountId: cashAccount.id, // Use Cash account so it appears in P&L
                     contactId: updatedAgreement.clientId,
                     projectId: updatedAgreement.projectId,
-                    categoryId: updatedAgreement.sellingPriceCategoryId // Or a specific 'Refund' category
+                    categoryId: unitSellingCategoryId, // Unit Selling Income category to reduce it
+                    agreementId: agreementId
                 };
-                newState.transactions = [...newState.transactions, tx];
-                newState = applyTransactionEffect(newState, tx, true);
+                newState.transactions = [...newState.transactions, reduceIncomeByPenaltyTx];
+                newState = applyTransactionEffect(newState, reduceIncomeByPenaltyTx, true);
+
+                // Step 2: Add Penalty as INCOME in Penalty Income category
+                const penaltyTx: Transaction = {
+                    id: `penalty-${Date.now()}`,
+                    type: TransactionType.INCOME, // Penalty is income to company
+                    amount: Math.round(penaltyAmount), // Round to whole number
+                    date: new Date().toISOString().split('T')[0],
+                    description: `Cancellation Penalty - Agreement #${updatedAgreement.agreementNumber} (${penaltyPercentage}% of ${updatedAgreement.sellingPrice.toLocaleString()})`,
+                    accountId: cashAccount.id, // Use Cash account (penalty is retained)
+                    contactId: updatedAgreement.clientId,
+                    projectId: updatedAgreement.projectId,
+                    categoryId: penaltyCategoryId, // Penalty Income category
+                    agreementId: agreementId
+                };
+                newState.transactions = [...newState.transactions, penaltyTx];
+                newState = applyTransactionEffect(newState, penaltyTx, true);
             }
-            
+
+            // 4. Record Refundable Amount
+            // NOTE: We do NOT reduce income by refund amount at this point
+            // The refund amount will reduce income only when it's actually paid to the owner
+            // This ensures P&L shows correct figures:
+            // - After sales return processed: Unit Selling Income = (original income - penalty)
+            // - After refund paid: Unit Selling Income = (original income - penalty - refund)
+            if (refundAmount > 0) {
+                // No transaction is created here - the refund reduction will happen when refund is paid
+                // The refund amount is tracked in the Sales Return record
+                // When refund is paid via ProjectOwnerPayoutModal, it will:
+                // 1. Create an EXPENSE transaction with Unit Selling Income category
+                // 2. This will reduce Unit Selling Income in P&L (revenue reduction)
+                // 3. Reduce Cash/Bank account (cash outflow)
+            }
+
             return newState;
         }
 
+        case 'ADD_SALES_RETURN':
+            return { ...state, salesReturns: [...(state.salesReturns || []), action.payload] };
+        case 'UPDATE_SALES_RETURN':
+            return { ...state, salesReturns: (state.salesReturns || []).map(sr => sr.id === action.payload.id ? action.payload : sr) };
+        case 'DELETE_SALES_RETURN':
+            return { ...state, salesReturns: (state.salesReturns || []).filter(sr => sr.id !== action.payload) };
+        case 'PROCESS_SALES_RETURN': {
+            const returnRecord = state.salesReturns.find(sr => sr.id === action.payload.returnId);
+            if (!returnRecord) return state;
+            return {
+                ...state,
+                salesReturns: state.salesReturns.map(sr =>
+                    sr.id === action.payload.returnId
+                        ? { ...sr, status: SalesReturnStatus.PROCESSED, processedDate: new Date().toISOString() }
+                        : sr
+                )
+            };
+        }
+        case 'MARK_RETURN_REFUNDED': {
+            const returnRecord = state.salesReturns.find(sr => sr.id === action.payload.returnId);
+            if (!returnRecord) return state;
+            return {
+                ...state,
+                salesReturns: state.salesReturns.map(sr =>
+                    sr.id === action.payload.returnId
+                        ? { ...sr, status: SalesReturnStatus.REFUNDED, refundedDate: action.payload.refundDate }
+                        : sr
+                )
+            };
+        }
         case 'ADD_CONTRACT':
             return { ...state, contracts: [...(state.contracts || []), action.payload] };
         case 'UPDATE_CONTRACT':
@@ -675,7 +807,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, recurringInvoiceTemplates: state.recurringInvoiceTemplates.map(t => t.id === action.payload.id ? action.payload : t) };
         case 'DELETE_RECURRING_TEMPLATE':
             return { ...state, recurringInvoiceTemplates: state.recurringInvoiceTemplates.filter(t => t.id !== action.payload) };
-        
+
         // --- PAYROLL & STAFF ---
         case 'ADD_SALARY_COMPONENT':
             return { ...state, salaryComponents: [...state.salaryComponents, action.payload] };
@@ -683,21 +815,21 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, salaryComponents: state.salaryComponents.map(c => c.id === action.payload.id ? action.payload : c) };
         case 'DELETE_SALARY_COMPONENT':
             return { ...state, salaryComponents: state.salaryComponents.filter(c => c.id !== action.payload) };
-        
+
         case 'ADD_PROJECT_STAFF':
             return { ...state, projectStaff: [...state.projectStaff, action.payload] };
         case 'UPDATE_PROJECT_STAFF':
             return { ...state, projectStaff: state.projectStaff.map(s => s.id === action.payload.id ? action.payload : s) };
         case 'DELETE_PROJECT_STAFF':
             return { ...state, projectStaff: state.projectStaff.filter(s => s.id !== action.payload) };
-            
+
         case 'ADD_RENTAL_STAFF':
             return { ...state, rentalStaff: [...state.rentalStaff, action.payload] };
         case 'UPDATE_RENTAL_STAFF':
             return { ...state, rentalStaff: state.rentalStaff.map(s => s.id === action.payload.id ? action.payload : s) };
         case 'DELETE_RENTAL_STAFF':
-             return { ...state, rentalStaff: state.rentalStaff.filter(s => s.id !== action.payload) };
-             
+            return { ...state, rentalStaff: state.rentalStaff.filter(s => s.id !== action.payload) };
+
         case 'PROMOTE_STAFF': {
             const { staffId, newDesignation, newSalary, effectiveDate, type } = action.payload;
             const updateStaff = (list: Staff[]) => list.map(s => {
@@ -709,12 +841,12 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             });
             return { ...state, projectStaff: updateStaff(state.projectStaff), rentalStaff: updateStaff(state.rentalStaff) };
         }
-        
+
         case 'TRANSFER_STAFF': {
             const { staffId, newProjectId, newBuildingId, effectiveDate } = action.payload;
             let staffToMove: Staff | undefined;
             let sourceListType: 'project' | 'rental' = 'project';
-            
+
             // Find and Remove from old list
             let newProjectStaff = state.projectStaff.filter(s => {
                 if (s.id === staffId) { staffToMove = s; sourceListType = 'project'; return false; }
@@ -724,61 +856,61 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                 if (s.id === staffId) { staffToMove = s; sourceListType = 'rental'; return false; }
                 return true;
             });
-            
+
             if (staffToMove) {
                 const event: LifeCycleEvent = { date: effectiveDate, type: 'Transfer', description: `Transferred to ${newProjectId ? 'Project' : 'Building'}` };
                 const updatedStaff = { ...staffToMove, projectId: newProjectId, buildingId: newBuildingId, history: [event, ...staffToMove.history] };
-                
+
                 if (newProjectId) newProjectStaff.push(updatedStaff);
                 else newRentalStaff.push(updatedStaff);
             }
-            
+
             return { ...state, projectStaff: newProjectStaff, rentalStaff: newRentalStaff };
         }
-        
+
         case 'STAFF_EXIT': {
             const { staffId, type, date, reason, gratuityAmount, benefitsAmount, paymentAccountId } = action.payload;
             const updateExit = (list: Staff[]) => list.map(s => {
                 if (s.id === staffId) {
-                     const event: LifeCycleEvent = { date, type: 'Exit', description: `${type}: ${reason}` };
-                     // Correctly type the new status using type assertion if needed, though ternary should infer correctly
-                     const newStatus: Staff['status'] = type === 'Resignation' ? 'Resigned' : 'Terminated';
-                     return { 
-                         ...s, 
-                         status: newStatus, 
-                         exitDetails: { date, type, reason, gratuityAmount, benefitsAmount, paymentAccountId }, 
-                         history: [event, ...s.history] 
-                     };
+                    const event: LifeCycleEvent = { date, type: 'Exit', description: `${type}: ${reason}` };
+                    // Correctly type the new status using type assertion if needed, though ternary should infer correctly
+                    const newStatus: Staff['status'] = type === 'Resignation' ? 'Resigned' : 'Terminated';
+                    return {
+                        ...s,
+                        status: newStatus,
+                        exitDetails: { date, type, reason, gratuityAmount, benefitsAmount, paymentAccountId },
+                        history: [event, ...s.history]
+                    };
                 }
                 return s;
             });
-            
+
             let newState = { ...state, projectStaff: updateExit(state.projectStaff), rentalStaff: updateExit(state.rentalStaff) };
-            
+
             // If settlement payment is needed, create transaction
             if ((gratuityAmount > 0 || benefitsAmount > 0) && paymentAccountId) {
-                 const total = gratuityAmount + benefitsAmount;
-                 // Find Category (Assuming 'Salary' category for simplicity, or specific 'Settlement' category could be used)
-                 const salaryCat = state.categories.find(c => c.name.includes('Salary'))?.id;
-                 if (salaryCat) {
-                     const tx: Transaction = {
-                         id: `settlement-${staffId}-${Date.now()}`,
-                         type: TransactionType.EXPENSE,
-                         amount: total,
-                         date,
-                         description: `Final Settlement for ${state.contacts.find(c => c.id === staffId)?.name}`,
-                         accountId: paymentAccountId,
-                         categoryId: salaryCat,
-                         contactId: staffId
-                     };
-                     newState.transactions = [...newState.transactions, tx];
-                     newState = applyTransactionEffect(newState, tx, true);
-                 }
+                const total = gratuityAmount + benefitsAmount;
+                // Find Category (Assuming 'Salary' category for simplicity, or specific 'Settlement' category could be used)
+                const salaryCat = state.categories.find(c => c.name.includes('Salary'))?.id;
+                if (salaryCat) {
+                    const tx: Transaction = {
+                        id: `settlement-${staffId}-${Date.now()}`,
+                        type: TransactionType.EXPENSE,
+                        amount: total,
+                        date,
+                        description: `Final Settlement for ${state.contacts.find(c => c.id === staffId)?.name}`,
+                        accountId: paymentAccountId,
+                        categoryId: salaryCat,
+                        contactId: staffId
+                    };
+                    newState.transactions = [...newState.transactions, tx];
+                    newState = applyTransactionEffect(newState, tx, true);
+                }
             }
             return newState;
         }
 
-        case 'GENERATE_PAYROLL': 
+        case 'GENERATE_PAYROLL':
         case 'GENERATE_PROJECT_PAYROLL':
         case 'GENERATE_RENTAL_PAYROLL': {
             const { month, issueDate } = action.payload;
@@ -801,7 +933,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                             totalAllow += amount;
                             return { name: def?.name || 'Unknown', amount };
                         });
-                        
+
                         let totalDeduct = 0;
                         const deductions = s.salaryStructure.filter(comp => {
                             const def = state.salaryComponents.find(c => c.id === comp.componentId);
@@ -812,7 +944,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                             totalDeduct += amount;
                             return { name: def?.name || 'Unknown', amount };
                         });
-                        
+
                         // Loan/Advance Deduction Logic (Simplified: Check balance)
                         if (s.advanceBalance > 0) {
                             deductions.push({ name: 'Advance Adjustment', amount: s.advanceBalance }); // Fully deduct if possible, or partial logic can be added
@@ -841,70 +973,70 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                 });
                 return [...payslipList, ...newPayslips];
             };
-            
+
             const doProject = action.type === 'GENERATE_PAYROLL' ? (genType === 'All' || genType === 'Project') : action.type === 'GENERATE_PROJECT_PAYROLL';
             const doRental = action.type === 'GENERATE_PAYROLL' ? (genType === 'All' || genType === 'Rental') : action.type === 'GENERATE_RENTAL_PAYROLL';
-            
+
             let newState = { ...state };
             if (doProject) newState.projectPayslips = generateForStaff(state.projectStaff, state.projectPayslips, true);
             if (doRental) newState.rentalPayslips = generateForStaff(state.rentalStaff, state.rentalPayslips, false);
-            
+
             return newState;
         }
-        
+
         case 'UPDATE_PAYSLIP': {
             const updated = action.payload;
             const updateList = (list: Payslip[]) => list.map(p => p.id === updated.id ? updated : p);
             return { ...state, projectPayslips: updateList(state.projectPayslips), rentalPayslips: updateList(state.rentalPayslips) };
         }
-        
+
         case 'MARK_PROJECT_PAYSLIP_PAID':
         case 'MARK_RENTAL_PAYSLIP_PAID': {
-             const { payslipId, accountId, paymentDate, amount, description } = action.payload;
-             const isProject = action.type === 'MARK_PROJECT_PAYSLIP_PAID';
-             const list = isProject ? state.projectPayslips : state.rentalPayslips;
-             const payslip = list.find(p => p.id === payslipId);
-             
-             if (!payslip) return state;
-             
-             // Create Transaction
-             const catName = isProject ? 'Project Staff Salary' : 'Rental Staff Salary';
-             const categoryId = state.categories.find(c => c.name === catName)?.id;
-             
-             const tx: Transaction = {
-                 id: `pay-tx-${payslipId}-${Date.now()}`,
-                 type: TransactionType.EXPENSE,
-                 amount,
-                 date: paymentDate,
-                 description: description || `Salary Payment for ${payslip.month}`,
-                 accountId,
-                 categoryId,
-                 contactId: payslip.staffId,
-                 payslipId: payslip.id,
-                 projectId: isProject ? action.payload.projectId : undefined, // Only for project payslips
-                 buildingId: !isProject ? payslip.buildingId : undefined // Only for rental payslips
-             };
-             
-             let newState = { ...state, transactions: [...state.transactions, tx] };
-             newState = applyTransactionEffect(newState, tx, true);
-             
-             // Update Payslip Status (Handled in applyTransactionEffect implicitly via payslipId, but explicit here for clarity/safety if effect misses it)
-             // Actually applyTransactionEffect handles it.
-             
-             return newState;
+            const { payslipId, accountId, paymentDate, amount, description } = action.payload;
+            const isProject = action.type === 'MARK_PROJECT_PAYSLIP_PAID';
+            const list = isProject ? state.projectPayslips : state.rentalPayslips;
+            const payslip = list.find(p => p.id === payslipId);
+
+            if (!payslip) return state;
+
+            // Create Transaction
+            const catName = isProject ? 'Project Staff Salary' : 'Rental Staff Salary';
+            const categoryId = state.categories.find(c => c.name === catName)?.id;
+
+            const tx: Transaction = {
+                id: `pay-tx-${payslipId}-${Date.now()}`,
+                type: TransactionType.EXPENSE,
+                amount,
+                date: paymentDate,
+                description: description || `Salary Payment for ${payslip.month}`,
+                accountId,
+                categoryId,
+                contactId: payslip.staffId,
+                payslipId: payslip.id,
+                projectId: isProject ? action.payload.projectId : undefined, // Only for project payslips
+                buildingId: !isProject ? payslip.buildingId : undefined // Only for rental payslips
+            };
+
+            let newState = { ...state, transactions: [...state.transactions, tx] };
+            newState = applyTransactionEffect(newState, tx, true);
+
+            // Update Payslip Status (Handled in applyTransactionEffect implicitly via payslipId, but explicit here for clarity/safety if effect misses it)
+            // Actually applyTransactionEffect handles it.
+
+            return newState;
         }
 
         case 'DELETE_PROJECT_PAYSLIP':
-             return { ...state, projectPayslips: state.projectPayslips.filter(p => p.id !== action.payload) };
+            return { ...state, projectPayslips: state.projectPayslips.filter(p => p.id !== action.payload) };
         case 'DELETE_RENTAL_PAYSLIP':
-             return { ...state, rentalPayslips: state.rentalPayslips.filter(p => p.id !== action.payload) };
+            return { ...state, rentalPayslips: state.rentalPayslips.filter(p => p.id !== action.payload) };
 
         // --- ENTERPRISE PAYROLL ACTIONS ---
         case 'ADD_EMPLOYEE': {
             const employee = { ...action.payload, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
             const logEntry = createLogEntry('CREATE', 'Employee', employee.id, `Added employee: ${employee.employeeId}`, state.currentUser, employee);
-            return { 
-                ...state, 
+            return {
+                ...state,
                 employees: [...(state.employees || []), employee],
                 transactionLog: [logEntry, ...(state.transactionLog || [])]
             };
@@ -912,16 +1044,16 @@ const reducer = (state: AppState, action: AppAction): AppState => {
         case 'UPDATE_EMPLOYEE': {
             const updated = { ...action.payload, updatedAt: new Date().toISOString() };
             const logEntry = createLogEntry('UPDATE', 'Employee', updated.id, `Updated employee: ${updated.employeeId}`, state.currentUser, updated);
-            return { 
-                ...state, 
+            return {
+                ...state,
                 employees: (state.employees || []).map(e => e.id === updated.id ? updated : e),
                 transactionLog: [logEntry, ...(state.transactionLog || [])]
             };
         }
         case 'DELETE_EMPLOYEE': {
             const logEntry = createLogEntry('DELETE', 'Employee', action.payload, 'Deleted employee', state.currentUser);
-            return { 
-                ...state, 
+            return {
+                ...state,
                 employees: (state.employees || []).filter(e => e.id !== action.payload),
                 transactionLog: [logEntry, ...(state.transactionLog || [])]
             };
@@ -930,7 +1062,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             const { employeeId, newDesignation, newSalary, effectiveDate, newGrade, newDepartment } = action.payload;
             const employee = (state.employees || []).find(e => e.id === employeeId);
             if (!employee) return state;
-            
+
             const event: LifeCycleEvent = {
                 id: Date.now().toString(),
                 date: effectiveDate,
@@ -946,7 +1078,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                 newDepartment,
                 performedBy: state.currentUser?.id
             };
-            
+
             const updated = {
                 ...employee,
                 basicSalary: newSalary,
@@ -959,10 +1091,10 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                 lifecycleHistory: [event, ...employee.lifecycleHistory],
                 updatedAt: new Date().toISOString()
             };
-            
+
             const logEntry = createLogEntry('UPDATE', 'Employee', employeeId, `Promoted employee: ${newDesignation}`, state.currentUser);
-            return { 
-                ...state, 
+            return {
+                ...state,
                 employees: (state.employees || []).map(e => e.id === employeeId ? updated : e),
                 transactionLog: [logEntry, ...(state.transactionLog || [])]
             };
@@ -971,7 +1103,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             const { employeeId, projectAssignments, effectiveDate } = action.payload;
             const employee = (state.employees || []).find(e => e.id === employeeId);
             if (!employee) return state;
-            
+
             const prevAssignments = employee.projectAssignments;
             const event: LifeCycleEvent = {
                 id: Date.now().toString(),
@@ -982,17 +1114,17 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                 newProjectId: projectAssignments[0]?.projectId,
                 performedBy: state.currentUser?.id
             };
-            
+
             const updated = {
                 ...employee,
                 projectAssignments,
                 lifecycleHistory: [event, ...employee.lifecycleHistory],
                 updatedAt: new Date().toISOString()
             };
-            
+
             const logEntry = createLogEntry('UPDATE', 'Employee', employeeId, 'Transferred employee', state.currentUser);
-            return { 
-                ...state, 
+            return {
+                ...state,
                 employees: (state.employees || []).map(e => e.id === employeeId ? updated : e),
                 transactionLog: [logEntry, ...(state.transactionLog || [])]
             };
@@ -1001,7 +1133,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             const { employeeId, terminationDetails } = action.payload;
             const employee = (state.employees || []).find(e => e.id === employeeId);
             if (!employee) return state;
-            
+
             const event: LifeCycleEvent = {
                 id: Date.now().toString(),
                 date: terminationDetails.date,
@@ -1009,7 +1141,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                 description: `${terminationDetails.type}: ${terminationDetails.reason}`,
                 performedBy: state.currentUser?.id
             };
-            
+
             const updated = {
                 ...employee,
                 status: terminationDetails.type === 'Resignation' ? 'Resigned' : 'Terminated',
@@ -1017,10 +1149,10 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                 lifecycleHistory: [event, ...employee.lifecycleHistory],
                 updatedAt: new Date().toISOString()
             };
-            
+
             const logEntry = createLogEntry('UPDATE', 'Employee', employeeId, `Terminated employee: ${terminationDetails.type}`, state.currentUser);
-            return { 
-                ...state, 
+            return {
+                ...state,
                 employees: (state.employees || []).map(e => e.id === employeeId ? updated : e),
                 transactionLog: [logEntry, ...(state.transactionLog || [])]
             };
@@ -1059,10 +1191,10 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, payrollCycles: (state.payrollCycles || []).map(c => c.id === action.payload.id ? action.payload : c) };
         case 'LOCK_PAYROLL_CYCLE': {
             const { cycleId, lockedBy } = action.payload;
-            return { 
-                ...state, 
-                payrollCycles: (state.payrollCycles || []).map(c => 
-                    c.id === cycleId 
+            return {
+                ...state,
+                payrollCycles: (state.payrollCycles || []).map(c =>
+                    c.id === cycleId
                         ? { ...c, status: 'Locked' as const, lockedAt: new Date().toISOString(), lockedBy }
                         : c
                 )
@@ -1070,10 +1202,10 @@ const reducer = (state: AppState, action: AppAction): AppState => {
         }
         case 'APPROVE_PAYROLL_CYCLE': {
             const { cycleId, approvedBy } = action.payload;
-            return { 
-                ...state, 
-                payrollCycles: (state.payrollCycles || []).map(c => 
-                    c.id === cycleId 
+            return {
+                ...state,
+                payrollCycles: (state.payrollCycles || []).map(c =>
+                    c.id === cycleId
                         ? { ...c, status: 'Approved' as const, approvedAt: new Date().toISOString(), approvedBy }
                         : c
                 )
@@ -1090,7 +1222,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             const { payslipIds, approvedBy } = action.payload;
             return {
                 ...state,
-                payslips: (state.payslips || []).map(p => 
+                payslips: (state.payslips || []).map(p =>
                     payslipIds.includes(p.id)
                         ? { ...p, status: 'Approved' as const, approvedAt: new Date().toISOString(), approvedBy }
                         : p
@@ -1112,22 +1244,22 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                     payslipId: payslip.id,
                     contactId: payslip.employeeId
                 }));
-            
-            let newState = { 
-                ...state, 
+
+            let newState = {
+                ...state,
                 transactions: [...state.transactions, ...transactions],
-                payslips: (state.payslips || []).map(p => 
+                payslips: (state.payslips || []).map(p =>
                     payslipIds.includes(p.id)
                         ? { ...p, status: 'Paid' as const, paidAmount: p.netSalary, paymentDate, paymentAccountId: accountId }
                         : p
                 )
             };
-            
+
             // Apply transaction effects
             transactions.forEach(tx => {
                 newState = applyTransactionEffect(newState, tx, true);
             });
-            
+
             return newState;
         }
         case 'ADD_TAX_CONFIGURATION':
@@ -1155,28 +1287,50 @@ const reducer = (state: AppState, action: AppAction): AppState => {
         case 'UPDATE_PROJECT_INVOICE_SETTINGS':
             return { ...state, projectInvoiceSettings: action.payload };
         case 'UPDATE_PRINT_SETTINGS':
-             return { ...state, printSettings: action.payload };
+            return { ...state, printSettings: action.payload };
         case 'UPDATE_WHATSAPP_TEMPLATES':
-             return { ...state, whatsAppTemplates: action.payload };
+            return { ...state, whatsAppTemplates: action.payload };
         case 'UPDATE_PM_COST_PERCENTAGE':
-             return { ...state, pmCostPercentage: action.payload };
+            return { ...state, pmCostPercentage: action.payload };
+        case 'UPDATE_DEFAULT_PROJECT':
+            return { ...state, defaultProjectId: action.payload };
+        case 'UPDATE_DOCUMENT_STORAGE_PATH':
+            return { ...state, documentStoragePath: action.payload };
         case 'SET_LAST_SERVICE_CHARGE_RUN':
-             return { ...state, lastServiceChargeRun: action.payload };
-        
+            return { ...state, lastServiceChargeRun: action.payload };
+
         case 'TOGGLE_SYSTEM_TRANSACTIONS': return { ...state, showSystemTransactions: action.payload };
         case 'TOGGLE_COLOR_CODING': return { ...state, enableColorCoding: action.payload };
         case 'TOGGLE_BEEP_ON_SAVE': return { ...state, enableBeepOnSave: action.payload };
-        
+        case 'TOGGLE_DATE_PRESERVATION': return { ...state, enableDatePreservation: action.payload };
+        case 'UPDATE_PRESERVED_DATE': return { ...state, lastPreservedDate: action.payload };
+
         case 'ADD_ERROR_LOG':
-             return { ...state, errorLog: [action.payload, ...state.errorLog].slice(0, 50) };
+            return { ...state, errorLog: [action.payload, ...state.errorLog].slice(0, 50) };
         case 'CLEAR_ERROR_LOG':
-             return { ...state, errorLog: [] };
-             
-        case 'RESET_TRANSACTIONS':
-             return { ...state, transactions: [], invoices: [], bills: [], projectPayslips: [], rentalPayslips: [], recurringInvoiceTemplates: [] };
+            return { ...state, errorLog: [] };
+
+        case 'RESET_TRANSACTIONS': {
+            const logEntry = createLogEntry('CLEAR_ALL', 'Transactions', undefined, 'Cleared all transactions, invoices, bills, contracts, agreements, sales returns, and payslips', state.currentUser, undefined);
+            return {
+                ...state,
+                transactions: [],
+                invoices: [],
+                bills: [],
+                contracts: [],
+                rentalAgreements: [],
+                projectAgreements: [],
+                salesReturns: [],
+                projectPayslips: [],
+                rentalPayslips: [],
+                // Preserve settings: recurringInvoiceTemplates, accounts (balances reset), contacts, categories, projects, buildings, properties, units
+                accounts: state.accounts.map(acc => ({ ...acc, balance: 0 })),
+                transactionLog: [logEntry, ...(state.transactionLog || [])]
+            };
+        }
         case 'LOAD_SAMPLE_DATA':
-             // Return initial state (or a sample set if defined)
-             return { ...initialState, users: state.users, printSettings: state.printSettings }; // Keep users/settings
+            // Return initial state (or a sample set if defined)
+            return { ...initialState, users: state.users, printSettings: state.printSettings }; // Keep users/settings
 
         default:
             return state;
@@ -1184,12 +1338,17 @@ const reducer = (state: AppState, action: AppAction): AppState => {
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    // Get auth status - must be called unconditionally at top level
+    // AuthProvider wraps AppProvider in index.tsx, so this should work
+    const auth = useAuth();
+    const isAuthenticated = auth.isAuthenticated;
+    
     const [isInitializing, setIsInitializing] = useState(true);
     const [initMessage, setInitMessage] = useState('Initializing application...');
     const [initProgress, setInitProgress] = useState(0);
     const [useFallback, setUseFallback] = useState(false);
     const [initError, setInitError] = useState<string | null>(null);
-    
+
     // 1. Initialize State with Database (with fallback to localStorage)
     // Try database first, fallback to localStorage if database fails
     // Use fallback immediately if there's an error
@@ -1197,7 +1356,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let setDbState: React.Dispatch<React.SetStateAction<AppState>>;
     let fallbackState: AppState;
     let setFallbackState: React.Dispatch<React.SetStateAction<AppState>>;
-    
+
     try {
         [dbState, setDbState] = useDatabaseState<AppState>('finance_app_state_v4', initialState);
     } catch (error) {
@@ -1207,43 +1366,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dbState = fallbackState;
         setDbState = setFallbackState;
     }
-    
+
     try {
         [fallbackState, setFallbackState] = useDatabaseStateFallback<AppState>('finance_app_state_v4', initialState);
     } catch (error) {
         console.error('Failed to initialize fallback state:', error);
         fallbackState = initialState;
-        setFallbackState = () => {};
+        setFallbackState = () => { };
     }
-    
+
     const storedState = useFallback ? fallbackState : dbState;
     const setStoredState = useFallback ? setFallbackState : setDbState;
-    
+
     // 2. Version check and logout on version update or app relaunch
     useEffect(() => {
         const VERSION_STORAGE_KEY = 'app_version';
         const SESSION_FLAG_KEY = 'app_session_active';
         const currentVersion = packageJson.version;
-        
+
         // Check if app was just launched (no session flag) or version changed
         const isAppRelaunched = !sessionStorage.getItem(SESSION_FLAG_KEY);
         const storedVersion = localStorage.getItem(VERSION_STORAGE_KEY);
         const versionChanged = storedVersion !== null && storedVersion !== currentVersion;
         const isFirstInstall = storedVersion === null;
-        
+
         // Always update version if it doesn't exist or changed
         if (isFirstInstall || versionChanged) {
             localStorage.setItem(VERSION_STORAGE_KEY, currentVersion);
         }
-        
+
         // Logout user if app relaunched OR version changed
         if (storedState.currentUser && (isAppRelaunched || versionChanged)) {
             const reason = versionChanged ? `Version changed (${storedVersion} -> ${currentVersion})` : 'Application relaunched';
             console.log(`🔄 ${reason} - logging out user`);
-            
+
             const updatedState = { ...storedState, currentUser: null };
             setStoredState(updatedState);
-            
+
             // Also clear from database if available (async, don't block)
             (async () => {
                 try {
@@ -1262,21 +1421,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }
             })();
         }
-        
+
         // Set session flag to indicate app is running
         sessionStorage.setItem(SESSION_FLAG_KEY, 'true');
-        
+
         // Clear session flag when page unloads (app closes)
         const handleBeforeUnload = () => {
             sessionStorage.removeItem(SESSION_FLAG_KEY);
         };
         window.addEventListener('beforeunload', handleBeforeUnload);
-        
+
         return () => {
             window.removeEventListener('beforeunload', handleBeforeUnload);
         };
     }, []); // Run only once on mount
-    
+
     // 3. Run migration on mount if needed
     useEffect(() => {
         let isMounted = true;
@@ -1286,7 +1445,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const runMigration = async () => {
             try {
                 console.log('🚀 Starting app initialization...');
-                
+
                 // Safety timeout - if initialization takes more than 30 seconds, show error
                 timeoutId = setTimeout(() => {
                     if (isMounted) {
@@ -1306,22 +1465,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
                 setInitMessage('Checking for data migration...');
                 setInitProgress(5);
-                
+
                 if (needsMigration()) {
                     setInitMessage('Migrating data from localStorage to SQL database...');
                     setInitProgress(10);
-                    
+
                     const result = await runAllMigrations((progress, message) => {
                         if (isMounted) {
                             setInitProgress(progress);
                             setInitMessage(message);
                         }
                     });
-                    
+
                     if (!isMounted) return;
                     if (timeoutId) clearTimeout(timeoutId);
                     if (forceTimeoutId) clearTimeout(forceTimeoutId);
-                    
+
                     if (!result.success) {
                         const errorMsg = result.error || 'Migration failed';
                         setInitMessage(`Migration error: ${errorMsg}`);
@@ -1333,13 +1492,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     } else if (result.migrated) {
                         console.log('Migration completed successfully:', result.recordCounts);
                         const recordCount = Object.values(result.recordCounts || {}).reduce((a, b) => a + b, 0);
-                        
+
                         // Reload state after migration
                         setInitMessage(`Loading migrated data (${recordCount} records)...`);
                         setInitProgress(95);
                         const appStateRepo = new AppStateRepository();
                         const migratedState = await appStateRepo.loadState();
-                        
+
                         if (isMounted) {
                             setStoredState(migratedState as AppState);
                             setInitProgress(100);
@@ -1358,70 +1517,125 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     // No migration needed, just loading
                     setInitMessage('Loading application data...');
                     setInitProgress(50);
-                    
-                    // Try to initialize database (but don't fail if it doesn't work)
-                    try {
-                        const dbService = getDatabaseService();
-                        if (!dbService.isReady()) {
-                            setInitMessage('Initializing database...');
-                            setInitProgress(60);
-                            await dbService.initialize();
-                            console.log('✅ Database ready');
+
+                    // Check if user is authenticated (cloud mode)
+                    if (isAuthenticated) {
+                        // Load from API (cloud mode)
+                        setInitMessage('Loading data from cloud...');
+                        setInitProgress(60);
+                        
+                        try {
+                            const apiService = getAppStateApiService();
+                            const apiState = await apiService.loadState();
+                            
+                            // Merge API data with current state
+                            if (isMounted) {
+                                setStoredState(prev => ({
+                                    ...prev,
+                                    accounts: apiState.accounts || prev.accounts,
+                                    contacts: apiState.contacts || prev.contacts,
+                                    transactions: apiState.transactions || prev.transactions,
+                                    categories: apiState.categories || prev.categories,
+                                    projects: apiState.projects || prev.projects,
+                                    buildings: apiState.buildings || prev.buildings,
+                                    properties: apiState.properties || prev.properties,
+                                    units: apiState.units || prev.units,
+                                    invoices: apiState.invoices || prev.invoices,
+                                    bills: apiState.bills || prev.bills,
+                                    budgets: apiState.budgets || prev.budgets,
+                                    rentalAgreements: apiState.rentalAgreements || prev.rentalAgreements,
+                                    projectAgreements: apiState.projectAgreements || prev.projectAgreements,
+                                    contracts: apiState.contracts || prev.contracts,
+                                }));
+                                console.log('✅ Loaded data from API:', {
+                                    accounts: apiState.accounts?.length || 0,
+                                    contacts: apiState.contacts?.length || 0,
+                                    transactions: apiState.transactions?.length || 0,
+                                    categories: apiState.categories?.length || 0,
+                                    projects: apiState.projects?.length || 0,
+                                    buildings: apiState.buildings?.length || 0,
+                                    properties: apiState.properties?.length || 0,
+                                    units: apiState.units?.length || 0,
+                                    invoices: apiState.invoices?.length || 0,
+                                    bills: apiState.bills?.length || 0,
+                                    budgets: apiState.budgets?.length || 0,
+                                    rentalAgreements: apiState.rentalAgreements?.length || 0,
+                                    projectAgreements: apiState.projectAgreements?.length || 0,
+                                    contracts: apiState.contracts?.length || 0,
+                                });
+                                setInitProgress(80);
+                            }
+                        } catch (apiError) {
+                            console.error('⚠️ Failed to load from API:', apiError);
+                            // Continue with local database as fallback
+                            setInitMessage('API unavailable, using local data...');
                         }
-                    } catch (dbError) {
-                        console.warn('⚠️ Database initialization failed, using localStorage fallback:', dbError);
-                        setUseFallback(true);
-                        setInitMessage('Using localStorage (database unavailable)...');
-                        // Continue anyway - app can work without database
-                    }
-                    
-                    // Wait for state to load from database
-                    setInitMessage('Loading application data from database...');
-                    setInitProgress(70);
-                    
-                    // Wait longer for database state to load (up to 5 seconds)
-                    let stateLoaded = false;
-                    const checkStateLoaded = () => {
-                        // Check if storedState has been loaded (not just initial state)
-                        const hasLoadedData = storedState.contacts.length > 0 || 
-                                            storedState.transactions.length > 0 ||
-                                            storedState.invoices.length > 0 ||
-                                            storedState.accounts.length > SYSTEM_ACCOUNTS.length;
-                        return hasLoadedData || storedState !== initialState;
-                    };
-                    
-                    // Poll for state to load (with timeout)
-                    const maxWaitTime = 5000; // 5 seconds max
-                    const pollInterval = 100; // Check every 100ms
-                    const startTime = Date.now();
-                    
-                    while (!stateLoaded && (Date.now() - startTime) < maxWaitTime) {
-                        await new Promise(resolve => setTimeout(resolve, pollInterval));
-                        if (checkStateLoaded()) {
-                            stateLoaded = true;
-                            console.log('✅ Database state loaded');
-                            break;
+                    } else {
+                        // Load from local database (offline mode)
+                        // Try to initialize database (but don't fail if it doesn't work)
+                        try {
+                            const dbService = getDatabaseService();
+                            if (!dbService.isReady()) {
+                                setInitMessage('Initializing database...');
+                                setInitProgress(60);
+                                await dbService.initialize();
+                                console.log('✅ Database ready');
+                            }
+                        } catch (dbError) {
+                            console.warn('⚠️ Database initialization failed, using localStorage fallback:', dbError);
+                            setUseFallback(true);
+                            setInitMessage('Using localStorage (database unavailable)...');
+                            // Continue anyway - app can work without database
                         }
+
+                        // Wait for state to load from database
+                        setInitMessage('Loading application data from database...');
+                        setInitProgress(70);
+
+                        // Wait longer for database state to load (up to 5 seconds)
+                        let stateLoaded = false;
+                        const checkStateLoaded = () => {
+                            // Check if storedState has been loaded (not just initial state)
+                            const hasLoadedData = storedState.contacts.length > 0 ||
+                                storedState.transactions.length > 0 ||
+                                storedState.invoices.length > 0 ||
+                                storedState.accounts.length > SYSTEM_ACCOUNTS.length;
+                            return hasLoadedData || storedState !== initialState;
+                        };
+
+                        // Poll for state to load (with timeout)
+                        const maxWaitTime = 5000; // 5 seconds max
+                        const pollInterval = 100; // Check every 100ms
+                        const startTime = Date.now();
+
+                        while (!stateLoaded && (Date.now() - startTime) < maxWaitTime) {
+                            await new Promise(resolve => setTimeout(resolve, pollInterval));
+                            if (checkStateLoaded()) {
+                                stateLoaded = true;
+                                console.log('✅ Database state loaded');
+                                break;
+                            }
+                        }
+
+                        if (!isMounted) return;
+                        if (timeoutId) clearTimeout(timeoutId);
+                        if (forceTimeoutId) clearTimeout(forceTimeoutId);
+
+                        setInitProgress(100);
+                        setInitMessage('Ready!');
+                        setTimeout(() => {
+                            if (isMounted) setIsInitializing(false);
+                        }, 300);
                     }
-                    
-                    if (!isMounted) return;
-                    if (timeoutId) clearTimeout(timeoutId);
-                    if (forceTimeoutId) clearTimeout(forceTimeoutId);
-                    
-                    setInitProgress(100);
-                    setInitMessage('Ready!');
-                    setTimeout(() => {
-                        if (isMounted) setIsInitializing(false);
-                    }, 300);
                 }
             } catch (error) {
                 if (!isMounted) return;
                 if (timeoutId) clearTimeout(timeoutId);
                 if (forceTimeoutId) clearTimeout(forceTimeoutId);
-                
+
                 console.error('❌ Initialization error:', error);
                 const errorMsg = error instanceof Error ? error.message : 'Unknown initialization error';
-                
+
                 // Log error
                 try {
                     const { getErrorLogger } = await import('../services/errorLogger');
@@ -1432,7 +1646,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 } catch (logError) {
                     console.error('Failed to log initialization error:', logError);
                 }
-                
+
                 setInitMessage(`⚠️ Warning: ${errorMsg}. Using localStorage fallback.`);
                 // Switch to fallback mode
                 setUseFallback(true);
@@ -1454,22 +1668,306 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (forceTimeoutId) clearTimeout(forceTimeoutId);
         };
     }, []);
-    
-    // 2. Wrap Reducer to Persist
+
+    // 2. Wrap Reducer to Persist - OPTIMIZED: Skip sync for navigation actions
     const reducerWithPersistence = useCallback((state: AppState, action: AppAction) => {
         const newState = reducer(state, action);
-        
-        // Sync Broadcast
-        if (!(action as any)._isRemote) {
-             syncService.broadcastAction(action);
+
+        // Sync to API if authenticated (cloud mode)
+        if (isAuthenticated && !(action as any)._isRemote) {
+            const NAVIGATION_ACTIONS = ['SET_PAGE', 'SET_INITIAL_TABS', 'CLEAR_INITIAL_TABS',
+                'SET_INITIAL_TRANSACTION_TYPE', 'CLEAR_INITIAL_TRANSACTION_TYPE',
+                'SET_INITIAL_TRANSACTION_FILTER', 'SET_INITIAL_IMPORT_TYPE',
+                'CLEAR_INITIAL_IMPORT_TYPE', 'SET_EDITING_ENTITY', 'CLEAR_EDITING_ENTITY'];
+
+            // Skip navigation actions
+            if (!NAVIGATION_ACTIONS.includes(action.type)) {
+                // Sync to API asynchronously (don't block UI)
+                const syncToApi = async () => {
+                    try {
+                        const apiService = getAppStateApiService();
+
+                        // Handle account changes
+                        if (action.type === 'ADD_ACCOUNT') {
+                            const account = action.payload as Account;
+                            // Skip system accounts (they're permanent)
+                            if (!account.isPermanent) {
+                                await apiService.saveAccount(account);
+                                console.log('✅ Synced account to API:', account.name);
+                            }
+                        } else if (action.type === 'UPDATE_ACCOUNT') {
+                            const account = action.payload as Account;
+                            if (!account.isPermanent) {
+                                await apiService.saveAccount(account);
+                                console.log('✅ Synced account update to API:', account.name);
+                            }
+                        } else if (action.type === 'DELETE_ACCOUNT') {
+                            const accountId = action.payload as string;
+                            // Check if it's a system account before deleting
+                            const account = state.accounts.find(a => a.id === accountId);
+                            if (account && !account.isPermanent) {
+                                await apiService.deleteAccount(accountId);
+                                console.log('✅ Synced account deletion to API:', accountId);
+                            }
+                        }
+
+                        // Handle contact changes
+                        if (action.type === 'ADD_CONTACT') {
+                            const contact = action.payload;
+                            await apiService.saveContact(contact);
+                            console.log('✅ Synced contact to API:', contact.name);
+                        } else if (action.type === 'UPDATE_CONTACT') {
+                            const contact = action.payload;
+                            await apiService.saveContact(contact);
+                            console.log('✅ Synced contact update to API:', contact.name);
+                        } else if (action.type === 'DELETE_CONTACT') {
+                            const contactId = action.payload as string;
+                            await apiService.deleteContact(contactId);
+                            console.log('✅ Synced contact deletion to API:', contactId);
+                        }
+
+                        // Handle transaction changes
+                        if (action.type === 'ADD_TRANSACTION') {
+                            const transaction = action.payload as Transaction;
+                            await apiService.saveTransaction(transaction);
+                            console.log('✅ Synced transaction to API:', transaction.id);
+                        } else if (action.type === 'UPDATE_TRANSACTION') {
+                            const transaction = action.payload as Transaction;
+                            await apiService.saveTransaction(transaction);
+                            console.log('✅ Synced transaction update to API:', transaction.id);
+                        } else if (action.type === 'DELETE_TRANSACTION') {
+                            const transactionId = action.payload as string;
+                            await apiService.deleteTransaction(transactionId);
+                            console.log('✅ Synced transaction deletion to API:', transactionId);
+                        } else if (action.type === 'BATCH_ADD_TRANSACTIONS') {
+                            // Sync batch transactions
+                            const transactions = action.payload as Transaction[];
+                            const syncPromises = transactions.map(tx => 
+                                apiService.saveTransaction(tx).catch(err => {
+                                    console.error(`⚠️ Failed to sync transaction ${tx.id}:`, err);
+                                    return null;
+                                })
+                            );
+                            await Promise.all(syncPromises);
+                            console.log(`✅ Synced ${transactions.length} transactions to API (batch)`);
+                        } else if (action.type === 'RESTORE_TRANSACTION') {
+                            const transaction = action.payload as Transaction;
+                            await apiService.saveTransaction(transaction);
+                            console.log('✅ Synced restored transaction to API:', transaction.id);
+                        }
+
+                        // Handle category changes
+                        if (action.type === 'ADD_CATEGORY') {
+                            const category = action.payload;
+                            await apiService.saveCategory(category);
+                            console.log('✅ Synced category to API:', category.name);
+                        } else if (action.type === 'UPDATE_CATEGORY') {
+                            const category = action.payload;
+                            await apiService.saveCategory(category);
+                            console.log('✅ Synced category update to API:', category.name);
+                        } else if (action.type === 'DELETE_CATEGORY') {
+                            const categoryId = action.payload as string;
+                            await apiService.deleteCategory(categoryId);
+                            console.log('✅ Synced category deletion to API:', categoryId);
+                        }
+
+                        // Handle project changes
+                        if (action.type === 'ADD_PROJECT') {
+                            const project = action.payload;
+                            await apiService.saveProject(project);
+                            console.log('✅ Synced project to API:', project.name);
+                        } else if (action.type === 'UPDATE_PROJECT') {
+                            const project = action.payload;
+                            await apiService.saveProject(project);
+                            console.log('✅ Synced project update to API:', project.name);
+                        } else if (action.type === 'DELETE_PROJECT') {
+                            const projectId = action.payload as string;
+                            await apiService.deleteProject(projectId);
+                            console.log('✅ Synced project deletion to API:', projectId);
+                        }
+
+                        // Handle building changes
+                        if (action.type === 'ADD_BUILDING') {
+                            const building = action.payload;
+                            await apiService.saveBuilding(building);
+                            console.log('✅ Synced building to API:', building.name);
+                        } else if (action.type === 'UPDATE_BUILDING') {
+                            const building = action.payload;
+                            await apiService.saveBuilding(building);
+                            console.log('✅ Synced building update to API:', building.name);
+                        } else if (action.type === 'DELETE_BUILDING') {
+                            const buildingId = action.payload as string;
+                            await apiService.deleteBuilding(buildingId);
+                            console.log('✅ Synced building deletion to API:', buildingId);
+                        }
+
+                        // Handle property changes
+                        if (action.type === 'ADD_PROPERTY') {
+                            const property = action.payload;
+                            await apiService.saveProperty(property);
+                            console.log('✅ Synced property to API:', property.name);
+                        } else if (action.type === 'UPDATE_PROPERTY') {
+                            const property = action.payload;
+                            await apiService.saveProperty(property);
+                            console.log('✅ Synced property update to API:', property.name);
+                        } else if (action.type === 'DELETE_PROPERTY') {
+                            const propertyId = action.payload as string;
+                            await apiService.deleteProperty(propertyId);
+                            console.log('✅ Synced property deletion to API:', propertyId);
+                        }
+
+                        // Handle unit changes
+                        if (action.type === 'ADD_UNIT') {
+                            const unit = action.payload;
+                            await apiService.saveUnit(unit);
+                            console.log('✅ Synced unit to API:', unit.name);
+                        } else if (action.type === 'UPDATE_UNIT') {
+                            const unit = action.payload;
+                            await apiService.saveUnit(unit);
+                            console.log('✅ Synced unit update to API:', unit.name);
+                        } else if (action.type === 'DELETE_UNIT') {
+                            const unitId = action.payload as string;
+                            await apiService.deleteUnit(unitId);
+                            console.log('✅ Synced unit deletion to API:', unitId);
+                        }
+
+                        // Handle invoice changes
+                        if (action.type === 'ADD_INVOICE') {
+                            const invoice = action.payload;
+                            await apiService.saveInvoice(invoice);
+                            console.log('✅ Synced invoice to API:', invoice.invoiceNumber);
+                        } else if (action.type === 'UPDATE_INVOICE') {
+                            const invoice = action.payload;
+                            await apiService.saveInvoice(invoice);
+                            console.log('✅ Synced invoice update to API:', invoice.invoiceNumber);
+                        } else if (action.type === 'DELETE_INVOICE') {
+                            const invoiceId = action.payload as string;
+                            await apiService.deleteInvoice(invoiceId);
+                            console.log('✅ Synced invoice deletion to API:', invoiceId);
+                        }
+
+                        // Handle bill changes
+                        if (action.type === 'ADD_BILL') {
+                            const bill = action.payload;
+                            await apiService.saveBill(bill);
+                            console.log('✅ Synced bill to API:', bill.billNumber);
+                        } else if (action.type === 'UPDATE_BILL') {
+                            const bill = action.payload;
+                            await apiService.saveBill(bill);
+                            console.log('✅ Synced bill update to API:', bill.billNumber);
+                        } else if (action.type === 'DELETE_BILL') {
+                            const billId = action.payload as string;
+                            await apiService.deleteBill(billId);
+                            console.log('✅ Synced bill deletion to API:', billId);
+                        }
+
+                        // Handle budget changes
+                        if (action.type === 'ADD_BUDGET') {
+                            const budget = action.payload;
+                            await apiService.saveBudget(budget);
+                            console.log('✅ Synced budget to API:', budget.id);
+                        } else if (action.type === 'UPDATE_BUDGET') {
+                            const budget = action.payload;
+                            await apiService.saveBudget(budget);
+                            console.log('✅ Synced budget update to API:', budget.id);
+                        } else if (action.type === 'DELETE_BUDGET') {
+                            const budgetId = action.payload as string;
+                            await apiService.deleteBudget(budgetId);
+                            console.log('✅ Synced budget deletion to API:', budgetId);
+                        }
+
+                        // Handle rental agreement changes
+                        if (action.type === 'ADD_RENTAL_AGREEMENT') {
+                            const agreement = action.payload;
+                            await apiService.saveRentalAgreement(agreement);
+                            console.log('✅ Synced rental agreement to API:', agreement.agreementNumber);
+                        } else if (action.type === 'UPDATE_RENTAL_AGREEMENT') {
+                            const agreement = action.payload;
+                            await apiService.saveRentalAgreement(agreement);
+                            console.log('✅ Synced rental agreement update to API:', agreement.agreementNumber);
+                        } else if (action.type === 'DELETE_RENTAL_AGREEMENT') {
+                            const agreementId = action.payload as string;
+                            await apiService.deleteRentalAgreement(agreementId);
+                            console.log('✅ Synced rental agreement deletion to API:', agreementId);
+                        }
+
+                        // Handle project agreement changes
+                        if (action.type === 'ADD_PROJECT_AGREEMENT') {
+                            const agreement = action.payload;
+                            await apiService.saveProjectAgreement(agreement);
+                            console.log('✅ Synced project agreement to API:', agreement.agreementNumber);
+                        } else if (action.type === 'UPDATE_PROJECT_AGREEMENT') {
+                            const agreement = action.payload;
+                            await apiService.saveProjectAgreement(agreement);
+                            console.log('✅ Synced project agreement update to API:', agreement.agreementNumber);
+                        } else if (action.type === 'DELETE_PROJECT_AGREEMENT') {
+                            const agreementId = action.payload as string;
+                            await apiService.deleteProjectAgreement(agreementId);
+                            console.log('✅ Synced project agreement deletion to API:', agreementId);
+                        }
+
+                        // Handle contract changes
+                        if (action.type === 'ADD_CONTRACT') {
+                            const contract = action.payload;
+                            await apiService.saveContract(contract);
+                            console.log('✅ Synced contract to API:', contract.contractNumber);
+                        } else if (action.type === 'UPDATE_CONTRACT') {
+                            const contract = action.payload;
+                            await apiService.saveContract(contract);
+                            console.log('✅ Synced contract update to API:', contract.contractNumber);
+                        } else if (action.type === 'DELETE_CONTRACT') {
+                            const contractId = action.payload as string;
+                            await apiService.deleteContract(contractId);
+                            console.log('✅ Synced contract deletion to API:', contractId);
+                        }
+                    } catch (error) {
+                        // Log error but don't block UI - state is already updated locally
+                        console.error('⚠️ Failed to sync to API:', error);
+                        // Optionally show a toast notification to user
+                        // For now, just log - user can retry by refreshing
+                    }
+                };
+
+                // Defer API sync to avoid blocking UI
+                if ('requestIdleCallback' in window) {
+                    requestIdleCallback(syncToApi, { timeout: 2000 });
+                } else {
+                    setTimeout(syncToApi, 0);
+                }
+            }
         }
-        
+
+        // Sync Broadcast - Skip for navigation-only actions (performance optimization)
+        if (!(action as any)._isRemote) {
+            const NAVIGATION_ACTIONS = ['SET_PAGE', 'SET_INITIAL_TABS', 'CLEAR_INITIAL_TABS',
+                'SET_INITIAL_TRANSACTION_TYPE', 'CLEAR_INITIAL_TRANSACTION_TYPE',
+                'SET_INITIAL_TRANSACTION_FILTER', 'SET_INITIAL_IMPORT_TYPE',
+                'CLEAR_INITIAL_IMPORT_TYPE', 'SET_EDITING_ENTITY', 'CLEAR_EDITING_ENTITY'];
+
+            // Only broadcast non-navigation actions to avoid blocking
+            if (!NAVIGATION_ACTIONS.includes(action.type)) {
+                // Defer sync broadcast to avoid blocking navigation
+                // TODO: Re-enable when syncService is properly configured with peerjs
+                /*
+                if ('requestIdleCallback' in window) {
+                    requestIdleCallback(() => {
+                        syncService.broadcastAction(action);
+                    });
+                } else {
+                    setTimeout(() => {
+                        syncService.broadcastAction(action);
+                    }, 0);
+                }
+                */
+            }
+        }
+
         return newState;
-    }, []);
+    }, [isAuthenticated]);
 
     // Use a ref to track if we've initialized the reducer with database state
     const reducerInitializedRef = useRef(false);
-    
+
     // Initialize reducer with storedState, but update it when database loads
     const [state, dispatch] = useReducer(reducerWithPersistence, storedState);
 
@@ -1482,11 +1980,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 console.log('💾 Save database requested - saving all pending data...');
                 try {
                     // Ensure database is initialized
-                    const { getDatabaseService, ensureDatabaseInitialized } = await import('../services/database/databaseService');
+                    const { getDatabaseService } = await import('../services/database/databaseService');
                     const { getErrorLogger } = await import('../services/errorLogger');
-                    
+
                     try {
-                        await ensureDatabaseInitialized();
+                        const dbService = getDatabaseService();
+                        if (!dbService.isReady()) {
+                            await dbService.initialize();
+                        }
                     } catch (initError) {
                         console.error('❌ Database initialization failed during save:', initError);
                         await getErrorLogger().logError(initError instanceof Error ? initError : new Error(String(initError)), {
@@ -1495,7 +1996,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         });
                         throw initError;
                     }
-                    
+
                     // Save current state to database (this will save all pending changes)
                     try {
                         const appStateRepo = new AppStateRepository();
@@ -1508,7 +2009,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         });
                         throw saveError;
                     }
-                    
+
                     // Force database to persist to storage (Electron userData file)
                     try {
                         const dbService = getDatabaseService();
@@ -1523,7 +2024,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         });
                         // Don't throw - at least state was saved to memory
                     }
-                    
+
                     // Notify main process that save is complete
                     if (electronAPI?.notifyDatabaseSaveComplete) {
                         electronAPI.notifyDatabaseSaveComplete({ success: true });
@@ -1542,9 +2043,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     }
                     // Still notify main process (with error) so it doesn't hang
                     if (electronAPI?.notifyDatabaseSaveComplete) {
-                        electronAPI.notifyDatabaseSaveComplete({ 
-                            success: false, 
-                            error: error instanceof Error ? error.message : String(error) 
+                        electronAPI.notifyDatabaseSaveComplete({
+                            success: false,
+                            error: error instanceof Error ? error.message : String(error)
                         });
                     }
                 }
@@ -1558,21 +2059,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!isInitializing) {
             // Check if storedState has more data than current state (database loaded)
             const storedHasMoreData = storedState.contacts.length > state.contacts.length ||
-                                     storedState.transactions.length > state.transactions.length ||
-                                     storedState.invoices.length > state.invoices.length ||
-                                     storedState.accounts.length > state.accounts.length;
-            
+                storedState.transactions.length > state.transactions.length ||
+                storedState.invoices.length > state.invoices.length ||
+                storedState.accounts.length > state.accounts.length;
+
             // Check if storedState has any user data (not just system defaults)
-            const storedHasUserData = storedState.contacts.length > 0 || 
-                                     storedState.transactions.length > 0 ||
-                                     storedState.invoices.length > 0 ||
-                                     storedState.bills.length > 0;
-            
-            const currentHasUserData = state.contacts.length > 0 || 
-                                      state.transactions.length > 0 ||
-                                      state.invoices.length > 0 ||
-                                      state.bills.length > 0;
-            
+            const storedHasUserData = storedState.contacts.length > 0 ||
+                storedState.transactions.length > 0 ||
+                storedState.invoices.length > 0 ||
+                storedState.bills.length > 0;
+
+            const currentHasUserData = state.contacts.length > 0 ||
+                state.transactions.length > 0 ||
+                state.invoices.length > 0 ||
+                state.bills.length > 0;
+
             // Sync if database has more data or has user data when current doesn't
             // Only sync once during initialization to avoid infinite loops
             if ((storedHasMoreData || (storedHasUserData && !currentHasUserData)) && !reducerInitializedRef.current) {
@@ -1594,65 +2095,97 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, [storedState, isInitializing, state]);
 
     // 3. Persist State Changes (with error handling) - OPTIMIZED: Skip navigation-only changes
-    const previousStateRef = useRef<AppState | null>(null);
+    // Use refs to track previous values for fast comparison (no JSON.stringify blocking)
+    const prevContactsLengthRef = useRef(state.contacts.length);
+    const prevTransactionsLengthRef = useRef(state.transactions.length);
+    const prevInvoicesLengthRef = useRef(state.invoices.length);
+    const prevBillsLengthRef = useRef(state.bills.length);
+    const prevAccountsLengthRef = useRef(state.accounts.length);
+    const prevProjectsLengthRef = useRef(state.projects.length);
+    const prevBuildingsLengthRef = useRef(state.buildings.length);
+    const prevPropertiesLengthRef = useRef(state.properties.length);
+    const prevUnitsLengthRef = useRef(state.units.length);
+    const prevCategoriesLengthRef = useRef(state.categories.length);
+    const prevCurrentUserRef = useRef(state.currentUser);
+    const prevCurrentPageRef = useRef(state.currentPage);
+
     useEffect(() => {
-        if (!isInitializing && previousStateRef.current) {
-            const prev = previousStateRef.current;
-            
-            // Check if navigation-related state changed
-            const navigationChanged = 
-                prev.currentPage !== state.currentPage ||
-                prev.initialTabs !== state.initialTabs ||
-                prev.initialTransactionType !== state.initialTransactionType ||
-                prev.initialTransactionFilter !== state.initialTransactionFilter ||
-                prev.initialImportType !== state.initialImportType ||
-                prev.editingEntity !== state.editingEntity;
-            
-            // Check if actual data changed
-            const dataChanged = 
-                prev.contacts.length !== state.contacts.length ||
-                prev.transactions.length !== state.transactions.length ||
-                prev.invoices.length !== state.invoices.length ||
-                prev.bills.length !== state.bills.length ||
-                prev.accounts.length !== state.accounts.length ||
-                prev.projects.length !== state.projects.length ||
-                prev.buildings.length !== state.buildings.length ||
-                prev.properties.length !== state.properties.length ||
-                prev.units.length !== state.units.length ||
-                prev.categories.length !== state.categories.length ||
-                prev.currentUser !== state.currentUser ||
-                JSON.stringify(prev.dashboardConfig) !== JSON.stringify(state.dashboardConfig) ||
-                JSON.stringify(prev.printSettings) !== JSON.stringify(state.printSettings);
-            
-            // Only persist if data changed (skip if only navigation changed)
+        if (!isInitializing) {
+            // Fast check: Skip if only navigation changed (most common case)
+            if (prevCurrentPageRef.current !== state.currentPage) {
+                prevCurrentPageRef.current = state.currentPage;
+                // Navigation change - skip save (performance optimization)
+                return;
+            }
+
+            // Fast length checks (no expensive operations)
+            const dataChanged =
+                prevContactsLengthRef.current !== state.contacts.length ||
+                prevTransactionsLengthRef.current !== state.transactions.length ||
+                prevInvoicesLengthRef.current !== state.invoices.length ||
+                prevBillsLengthRef.current !== state.bills.length ||
+                prevAccountsLengthRef.current !== state.accounts.length ||
+                prevProjectsLengthRef.current !== state.projects.length ||
+                prevBuildingsLengthRef.current !== state.buildings.length ||
+                prevPropertiesLengthRef.current !== state.properties.length ||
+                prevUnitsLengthRef.current !== state.units.length ||
+                prevCategoriesLengthRef.current !== state.categories.length ||
+                prevCurrentUserRef.current !== state.currentUser;
+
+            // Only persist if data changed
             if (dataChanged) {
-                try {
-                    setStoredState(state);
-                } catch (error) {
-                    console.error('Failed to persist state:', error);
+                // Update refs
+                prevContactsLengthRef.current = state.contacts.length;
+                prevTransactionsLengthRef.current = state.transactions.length;
+                prevInvoicesLengthRef.current = state.invoices.length;
+                prevBillsLengthRef.current = state.bills.length;
+                prevAccountsLengthRef.current = state.accounts.length;
+                prevProjectsLengthRef.current = state.projects.length;
+                prevBuildingsLengthRef.current = state.buildings.length;
+                prevPropertiesLengthRef.current = state.properties.length;
+                prevUnitsLengthRef.current = state.units.length;
+                prevCategoriesLengthRef.current = state.categories.length;
+                prevCurrentUserRef.current = state.currentUser;
+
+                // Defer save to avoid blocking (use requestIdleCallback or setTimeout)
+                if ('requestIdleCallback' in window) {
+                    requestIdleCallback(() => {
+                        try {
+                            setStoredState(state);
+                        } catch (error) {
+                            console.error('Failed to persist state:', error);
+                        }
+                    });
+                } else {
+                    setTimeout(() => {
+                        try {
+                            setStoredState(state);
+                        } catch (error) {
+                            console.error('Failed to persist state:', error);
+                        }
+                    }, 0);
                 }
             }
         }
-        previousStateRef.current = state;
     }, [state, setStoredState, isInitializing]);
-    
+
     // 4. Force immediate save for critical operations (LOGIN, LOGOUT, ADD_CONTACT, etc.)
     const previousContactsLengthRef = useRef(state.contacts.length);
     const previousTransactionsLengthRef = useRef(state.transactions.length);
     const previousBillsLengthRef = useRef(state.bills.length);
-    
+
     useEffect(() => {
         if (!isInitializing) {
             // Check if contacts, transactions, or bills were added (critical data changes)
             const contactsChanged = state.contacts.length !== previousContactsLengthRef.current;
             const transactionsChanged = state.transactions.length !== previousTransactionsLengthRef.current;
             const billsChanged = state.bills.length !== previousBillsLengthRef.current;
-            
+
             if (contactsChanged || transactionsChanged || billsChanged) {
                 previousContactsLengthRef.current = state.contacts.length;
                 previousTransactionsLengthRef.current = state.transactions.length;
                 previousBillsLengthRef.current = state.bills.length;
-                
+
                 // Save immediately for critical data changes (no delay for transactions)
                 const saveImmediately = async () => {
                     try {
@@ -1660,7 +2193,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         if (!dbService.isReady()) {
                             await dbService.initialize();
                         }
-                        
+
                         const appStateRepo = new AppStateRepository();
                         await appStateRepo.saveState(state);
                         console.log('✅ State saved immediately after data change:', {
@@ -1684,7 +2217,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         });
                     }
                 };
-                
+
                 // For transactions, save immediately (no delay)
                 if (transactionsChanged) {
                     saveImmediately();
@@ -1696,7 +2229,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
         }
     }, [state.contacts.length, state.transactions.length, state.bills.length, isInitializing, state]);
-    
+
     useEffect(() => {
         if (!isInitializing && state.currentUser) {
             // After login, ensure state is saved immediately
@@ -1712,7 +2245,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     console.error('Failed to save state after login:', error);
                 }
             }, 100); // Small delay to ensure state is updated
-            
+
             return () => clearTimeout(saveTimer);
         }
     }, [state.currentUser, isInitializing, state]);
@@ -1720,47 +2253,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Show loading/initialization state
     if (isInitializing) {
         return (
-            <div style={{ 
-                display: 'flex', 
-                justifyContent: 'center', 
-                alignItems: 'center', 
+            <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
                 height: '100vh',
                 flexDirection: 'column',
                 gap: '1.5rem',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                color: 'white',
+                background: '#ffffff',
+                color: '#1f2937',
                 fontFamily: 'system-ui, -apple-system, sans-serif'
             }}>
                 <div style={{
-                    background: 'rgba(255, 255, 255, 0.1)',
-                    backdropFilter: 'blur(10px)',
+                    background: '#ffffff',
                     padding: '2rem 3rem',
                     borderRadius: '1rem',
                     boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
+                    border: '1px solid #e5e7eb',
                     minWidth: '400px',
                     textAlign: 'center'
                 }}>
                     <div style={{
                         fontSize: '2rem',
                         fontWeight: 'bold',
-                        marginBottom: '1rem'
+                        marginBottom: '1rem',
+                        color: '#16a34a'
                     }}>
-                        Finance Tracker Pro
+                        PBooksPro
                     </div>
-                    
+
                     <div style={{
                         fontSize: '1rem',
                         marginBottom: '1.5rem',
-                        opacity: 0.9
+                        color: '#6b7280'
                     }}>
                         {initMessage}
                     </div>
-                    
+
                     {/* Progress Bar */}
                     <div style={{
                         width: '100%',
                         height: '8px',
-                        background: 'rgba(255, 255, 255, 0.2)',
+                        background: '#e5e7eb',
                         borderRadius: '4px',
                         overflow: 'hidden',
                         marginBottom: '0.5rem'
@@ -1768,20 +2302,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         <div style={{
                             width: `${initProgress}%`,
                             height: '100%',
-                            background: 'white',
+                            background: '#16a34a',
                             borderRadius: '4px',
                             transition: 'width 0.3s ease',
-                            boxShadow: '0 0 10px rgba(255, 255, 255, 0.5)'
+                            boxShadow: '0 0 10px rgba(22, 163, 74, 0.3)'
                         }} />
                     </div>
-                    
+
                     <div style={{
                         fontSize: '0.875rem',
-                        opacity: 0.7
+                        color: '#6b7280'
                     }}>
                         {Math.round(initProgress)}%
                     </div>
-                    
+
                     {/* Spinner */}
                     {initProgress < 100 && (
                         <div style={{
@@ -1792,8 +2326,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             <div style={{
                                 width: '40px',
                                 height: '40px',
-                                border: '4px solid rgba(255, 255, 255, 0.3)',
-                                borderTop: '4px solid white',
+                                border: '4px solid #e5e7eb',
+                                borderTop: '4px solid #16a34a',
                                 borderRadius: '50%',
                                 animation: 'spin 1s linear infinite'
                             }} />
@@ -1805,11 +2339,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         <div style={{
                             marginTop: '1.5rem',
                             padding: '0.75rem',
-                            background: 'rgba(0, 0, 0, 0.2)',
+                            background: '#f3f4f6',
                             borderRadius: '0.5rem',
                             fontSize: '0.75rem',
                             textAlign: 'left',
-                            fontFamily: 'monospace'
+                            fontFamily: 'monospace',
+                            color: '#374151',
+                            border: '1px solid #e5e7eb'
                         }}>
                             <div>Mode: {useFallback ? 'localStorage (fallback)' : 'SQL Database'}</div>
                             <div>Progress: {initProgress}%</div>
@@ -1817,7 +2353,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         </div>
                     )}
                 </div>
-                
+
                 <style>{`
                     @keyframes spin {
                         0% { transform: rotate(0deg); }

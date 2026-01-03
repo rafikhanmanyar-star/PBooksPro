@@ -14,7 +14,7 @@ const MobilePaymentsPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const [activeTab, setActiveTab] = useState('Pay Bills');
     const [searchQuery, setSearchQuery] = useState('');
-    const [projectFilter, setProjectFilter] = useState('all');
+    const [projectFilter, setProjectFilter] = useState(state.defaultProjectId || 'all');
     
     // Default to unpaid/partial for operational view
     const [statusFilter, setStatusFilter] = useState('Unpaid'); 

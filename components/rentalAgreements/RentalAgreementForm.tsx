@@ -8,6 +8,7 @@ import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { CURRENCY, ICONS } from '../../constants';
+import { getFormBackgroundColorStyle } from '../../utils/formColorUtils';
 
 interface RentalAgreementFormProps {
     onClose: () => void;
@@ -56,7 +57,18 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     };
 
     // Initialize Dates
-    const defaultStart = new Date();
+    // Use preserved date if option is enabled and creating new agreement
+    const getDefaultStartDate = () => {
+        if (agreementToEdit?.startDate) {
+            return new Date(agreementToEdit.startDate);
+        }
+        if (state.enableDatePreservation && state.lastPreservedDate && !agreementToEdit) {
+            return new Date(state.lastPreservedDate);
+        }
+        return new Date();
+    };
+    
+    const defaultStart = getDefaultStartDate();
     const defaultEnd = new Date(defaultStart);
     defaultEnd.setFullYear(defaultEnd.getFullYear() + 1);
     defaultEnd.setDate(defaultEnd.getDate() - 1); // Standard 1 year lease ends day before anniversary
@@ -81,10 +93,19 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     
     // Properties: Filtered by Building AND Availability
     const properties = useMemo(() => {
-        // Get IDs of properties currently in active agreements (excluding this one if editing)
+        // Get IDs of properties currently in active agreements
+        // When creating a NEW agreement: exclude ALL properties with active agreements
+        // When EDITING an existing agreement: exclude properties with active agreements EXCEPT the one being edited
+        // Properties with EXPIRED or TERMINATED agreements are available for new agreements
         const occupiedPropertyIds = new Set(
             state.rentalAgreements
-                .filter(ra => ra.status === RentalAgreementStatus.ACTIVE && ra.id !== agreementToEdit?.id)
+                .filter(ra => {
+                    // Only consider ACTIVE agreements (not EXPIRED, TERMINATED, or RENEWED)
+                    if (ra.status !== RentalAgreementStatus.ACTIVE) return false;
+                    // If editing, exclude the current agreement from the filter
+                    if (agreementToEdit && ra.id === agreementToEdit.id) return false;
+                    return true;
+                })
                 .map(ra => ra.propertyId)
         );
         
@@ -92,7 +113,8 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             .filter(p => {
                 // Filter by Building Selection
                 if (buildingId && p.buildingId !== buildingId) return false;
-                // Filter by Occupancy
+                // Filter by Occupancy: Exclude properties with active agreements
+                // Properties with expired/terminated agreements are available
                 if (occupiedPropertyIds.has(p.id)) return false;
                 return true;
             })
@@ -131,6 +153,11 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     const handleStartDateChange = (newDate: Date) => {
         const newStart = newDate.toISOString().split('T')[0];
         setStartDate(newStart);
+        
+        // Save date to preserved date when changed (if option is enabled)
+        if (state.enableDatePreservation && !agreementToEdit) {
+            dispatch({ type: 'UPDATE_PRESERVED_DATE', payload: newStart });
+        }
         
         if (newStart) {
             const d = new Date(newStart);
@@ -572,8 +599,12 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
         }
     }
 
+    const formBackgroundStyle = useMemo(() => {
+        return getFormBackgroundColorStyle(undefined, buildingId, state);
+    }, [buildingId, state]);
+
     return (
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" style={formBackgroundStyle}>
             <div className="flex justify-between items-center mb-2">
                 <h3 className="font-bold text-lg text-slate-700">
                     {renewMode ? 'Renew Agreement' : agreementToEdit ? 'Edit Agreement' : 'New Agreement'}

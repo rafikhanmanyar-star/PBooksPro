@@ -4,6 +4,7 @@ import { Invoice, Bill } from '../../types';
 import { CURRENCY } from '../../constants';
 import { useAppContext } from '../../context/AppContext';
 import { formatDate } from '../../utils/dateUtils';
+import { formatCurrency } from '../../utils/numberUtils';
 
 interface SimpleInvoiceBillItemProps {
   item: Invoice | Bill;
@@ -26,7 +27,7 @@ const SimpleInvoiceBillItem: React.FC<SimpleInvoiceBillItemProps> = ({ item, typ
           <p className="text-sm text-gray-600 font-medium">{contactLabel}: {contactName}</p>
         </div>
         <div className="text-right flex-shrink-0">
-          <p className="font-semibold text-danger">{CURRENCY} {(balance || 0).toLocaleString()}</p>
+          <p className="font-semibold text-danger">{CURRENCY} {formatCurrency(balance || 0)}</p>
           <p className="text-xs text-gray-500">Balance Due</p>
         </div>
       </div>

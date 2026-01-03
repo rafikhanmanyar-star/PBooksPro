@@ -102,6 +102,19 @@ const ProjectAgreementsPage: React.FC = () => {
         }
     }, []);
 
+    // Check if we need to open an agreement from search
+    useEffect(() => {
+        const agreementId = sessionStorage.getItem('openProjectAgreementId');
+        if (agreementId) {
+            sessionStorage.removeItem('openProjectAgreementId');
+            const agreement = state.projectAgreements.find(a => a.id === agreementId);
+            if (agreement) {
+                setAgreementToEdit(agreement);
+                setIsCreateModalOpen(true);
+            }
+        }
+    }, [state.projectAgreements]);
+
     // Filter agreements by date first
     const dateFilteredAgreements = useMemo(() => {
         let agreements = state.projectAgreements;
@@ -110,7 +123,7 @@ const ProjectAgreementsPage: React.FC = () => {
             start.setHours(0, 0, 0, 0);
             const end = new Date(endDate);
             end.setHours(23, 59, 59, 999);
-            
+
             agreements = agreements.filter(a => {
                 const d = new Date(a.issueDate);
                 return d >= start && d <= end;
@@ -137,7 +150,7 @@ const ProjectAgreementsPage: React.FC = () => {
 
         dateFilteredAgreements.forEach(pa => {
             const projectNode = projectMap.get(pa.projectId);
-            
+
             if (projectNode) {
                 const client = state.contacts.find(c => c.id === pa.clientId);
                 const clientId = pa.clientId;
@@ -183,7 +196,7 @@ const ProjectAgreementsPage: React.FC = () => {
             const paid = state.invoices
                 .filter(inv => inv.agreementId === pa.id)
                 .reduce((sum, inv) => sum + inv.paidAmount, 0);
-            
+
             const balance = pa.sellingPrice - paid;
 
             return {
@@ -208,7 +221,7 @@ const ProjectAgreementsPage: React.FC = () => {
         // 2. Filter by Search
         if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase();
-            agreements = agreements.filter(pa => 
+            agreements = agreements.filter(pa =>
                 String(pa.agreementNumber || '').toLowerCase().includes(q) ||
                 String(pa.ownerName || '').toLowerCase().includes(q) ||
                 String(pa.projectName || '').toLowerCase().includes(q) ||
@@ -222,7 +235,7 @@ const ProjectAgreementsPage: React.FC = () => {
             let valA: any = '';
             let valB: any = '';
 
-            switch(sortConfig.key) {
+            switch (sortConfig.key) {
                 case 'agreementNumber': valA = a.agreementNumber; valB = b.agreementNumber; break;
                 case 'owner': valA = a.ownerName; valB = b.ownerName; break;
                 case 'project': valA = a.projectName; valB = b.projectName; break;
@@ -254,8 +267,12 @@ const ProjectAgreementsPage: React.FC = () => {
     };
 
     const SortIcon = ({ column }: { column: SortKey }) => (
-        <span className="ml-1 text-[10px] text-slate-400">
-            {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
+        <span className={`ml-1.5 inline-flex flex-shrink-0 transition-opacity duration-200 ${sortConfig.key === column ? 'opacity-100 text-indigo-600' : 'opacity-0 group-hover:opacity-100 text-slate-400'}`}>
+            <div className="w-3 h-3 transform scale-90">
+                {sortConfig.key === column
+                    ? (sortConfig.direction === 'asc' ? ICONS.arrowUp : ICONS.arrowDown)
+                    : ICONS.arrowUpDown}
+            </div>
         </span>
     );
 
@@ -265,182 +282,226 @@ const ProjectAgreementsPage: React.FC = () => {
     };
 
     return (
-        <div className="flex flex-col h-full space-y-4">
-            {/* Toolbar */}
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex flex-col gap-3 flex-shrink-0">
-                <div className="flex flex-wrap items-center gap-2">
-                    {/* Date Range Filter */}
-                    <div className="flex bg-slate-100 p-1 rounded-lg flex-shrink-0 overflow-x-auto">
-                        {(['all', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
-                            <button
-                                key={opt}
-                                onClick={() => handleRangeChange(opt)}
-                                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap capitalize ${
-                                    dateRange === opt 
-                                    ? 'bg-white text-accent shadow-sm font-bold' 
-                                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
-                                }`}
-                            >
-                                {opt === 'all' ? 'Total' : opt.replace(/([A-Z])/g, ' $1')}
-                            </button>
-                        ))}
+        <div className="flex flex-col h-full bg-slate-50/50 p-4 sm:p-6 gap-4 sm:gap-6">
+            {/* Header & Controls */}
+            <div className="flex flex-col gap-4 flex-shrink-0">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Project Agreements</h1>
+                        <p className="text-xs sm:text-sm text-slate-500 mt-1">Manage contracts, timelines, and payment schedules</p>
                     </div>
-
-                    {dateRange === 'custom' && (
-                        <div className="flex items-center gap-2 animate-fade-in">
-                            <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(d.toISOString().split('T')[0], endDate)} />
-                            <span className="text-slate-400">-</span>
-                            <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, d.toISOString().split('T')[0])} />
-                        </div>
-                    )}
-                </div>
-
-                <div className="flex flex-col sm:flex-row items-center gap-4">
-                    <div className="relative flex-grow w-full sm:w-auto">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                            <div className="w-5 h-5">{ICONS.search}</div>
-                        </div>
-                        <Input 
-                            placeholder="Search agreements..." 
-                            value={searchQuery} 
-                            onChange={(e) => setSearchQuery(e.target.value)} 
-                            className="pl-10"
-                        />
-                        {searchQuery && (
-                            <button 
-                                type="button" 
-                                onClick={() => setSearchQuery('')} 
-                                className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
-                            >
-                                <div className="w-5 h-5">{ICONS.x}</div>
-                            </button>
-                        )}
-                    </div>
-                    
-                    <div className="flex items-center gap-2 flex-shrink-0 w-full sm:w-auto">
+                    <div className="flex items-center gap-3 w-full sm:w-auto">
                         <Button
                             variant="secondary"
                             onClick={() => {
                                 dispatch({ type: 'SET_INITIAL_IMPORT_TYPE', payload: ImportType.PROJECT_AGREEMENTS });
                                 dispatch({ type: 'SET_PAGE', payload: 'import' });
                             }}
-                            className="justify-center whitespace-nowrap w-full sm:w-auto"
+                            className="flex-1 sm:flex-none justify-center !px-4 !py-2 !rounded-xl border-slate-200 bg-white hover:border-indigo-300 hover:text-indigo-600 shadow-sm text-xs sm:text-sm"
                         >
-                            <div className="w-4 h-4 mr-2">{ICONS.download}</div>
-                            <span>Bulk Import</span>
+                            <div className="w-4 h-4 mr-2 opacity-70">{ICONS.download}</div>
+                            Import
                         </Button>
-                        <Button onClick={() => { setAgreementToEdit(null); setIsCreateModalOpen(true); }} className="justify-center whitespace-nowrap w-full sm:w-auto">
+                        <Button
+                            onClick={() => { setAgreementToEdit(null); setIsCreateModalOpen(true); }}
+                            className="flex-1 sm:flex-none justify-center !px-4 !py-2 !rounded-xl shadow-md shadow-indigo-500/20 text-xs sm:text-sm"
+                        >
                             <div className="w-4 h-4 mr-2">{ICONS.plus}</div>
-                            <span>Create New</span>
+                            Create New
                         </Button>
+                    </div>
+                </div>
+
+                <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3 items-center">
+                    {/* Date Controls */}
+                    <div className="flex bg-slate-100/80 p-1 rounded-lg flex-shrink-0 self-stretch md:self-auto overflow-x-auto">
+                        {(['all', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
+                            <button
+                                key={opt}
+                                onClick={() => handleRangeChange(opt)}
+                                className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all whitespace-nowrap capitalize ${dateRange === opt
+                                        ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5'
+                                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                                    }`}
+                            >
+                                {opt === 'all' ? 'All Time' : opt.replace(/([A-Z])/g, ' $1')}
+                            </button>
+                        ))}
+                    </div>
+
+                    {dateRange === 'custom' && (
+                        <div className="flex items-center gap-2 animate-fade-in px-2 border-l border-slate-100">
+                            <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(d.toISOString().split('T')[0], endDate)} className="!py-1.5 !text-xs !w-32" />
+                            <span className="text-slate-300">to</span>
+                            <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, d.toISOString().split('T')[0])} className="!py-1.5 !text-xs !w-32" />
+                        </div>
+                    )}
+
+                    <div className="hidden md:block w-px h-6 bg-slate-200 mx-1"></div>
+
+                    {/* Search */}
+                    <div className="relative flex-grow w-full md:w-auto">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <div className="w-4 h-4">{ICONS.search}</div>
+                        </div>
+                        <input
+                            type="text"
+                            placeholder="Search agreements, projects, or owners..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="block w-full pl-9 pr-8 py-1.5 text-sm border-0 bg-transparent focus:ring-0 placeholder:text-slate-400 text-slate-700"
+                        />
+                        {searchQuery && (
+                            <button
+                                type="button"
+                                onClick={() => setSearchQuery('')}
+                                className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-rose-500 transition-colors"
+                            >
+                                <div className="w-4 h-4">{ICONS.x}</div>
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
 
-            {/* Split View */}
-            <div className="flex-grow flex flex-col md:flex-row gap-4 overflow-hidden min-h-0">
-                
+            {/* Main Split View */}
+            <div className="flex-grow flex flex-col md:flex-row gap-6 overflow-hidden min-h-0">
+
                 {/* Left Tree View */}
-                <div 
-                    className="hidden md:flex flex-col h-full flex-shrink-0"
+                <div
+                    className="hidden md:flex flex-col h-full flex-shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
                     style={{ width: sidebarWidth }}
                 >
-                    <div className="font-bold text-slate-700 mb-2 px-1 flex justify-between items-center">
-                        <span>Projects & Owners</span>
+                    <div className="p-3 bg-slate-50/50 border-b border-slate-100 flex justify-between items-center">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Project Explorer</span>
                         {selectedTreeId && (
-                            <button onClick={() => { setSelectedTreeId(null); setSelectedTreeType(null); }} className="text-xs text-accent hover:underline">Clear</button>
+                            <button
+                                onClick={() => { setSelectedTreeId(null); setSelectedTreeType(null); }}
+                                className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full hover:bg-indigo-100 font-medium transition-colors"
+                            >
+                                Clear Selection
+                            </button>
                         )}
                     </div>
-                    <PayrollTreeView 
-                        treeData={treeData} 
-                        selectedId={selectedTreeId} 
-                        onSelect={(id, type) => {
-                            if (selectedTreeId === id) {
-                                setSelectedTreeId(null);
-                                setSelectedTreeType(null);
-                            } else {
-                                setSelectedTreeId(id);
-                                setSelectedTreeType(type as any);
-                            }
-                        }} 
-                    />
+                    <div className="flex-grow overflow-y-auto p-2">
+                        <PayrollTreeView
+                            treeData={treeData}
+                            selectedId={selectedTreeId}
+                            onSelect={(id, type) => {
+                                if (selectedTreeId === id) {
+                                    setSelectedTreeId(null);
+                                    setSelectedTreeType(null);
+                                } else {
+                                    setSelectedTreeId(id);
+                                    setSelectedTreeType(type as any);
+                                }
+                            }}
+                        />
+                    </div>
                 </div>
 
                 {/* Resizer Handle */}
-                <div className="hidden md:block h-full">
-                    <ResizeHandle onMouseDown={startResizing} />
+                <div className="hidden md:flex items-center justify-center w-2 hover:w-3 -ml-3 -mr-3 z-10 cursor-col-resize group transition-all" onMouseDown={startResizing}>
+                    <div className="w-1 h-8 rounded-full bg-slate-200 group-hover:bg-indigo-400 transition-colors"></div>
                 </div>
 
                 {/* Right Data Grid */}
-                <div className="flex-grow overflow-hidden flex flex-col bg-white rounded-lg border border-slate-200 shadow-sm">
+                <div className="flex-grow overflow-hidden flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm">
                     <div className="flex-grow overflow-y-auto">
-                        <table className="min-w-full divide-y divide-slate-200 text-sm">
-                            <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+                        <table className="min-w-full divide-y divide-slate-100">
+                            <thead className="bg-slate-50 sticky top-0 z-10">
                                 <tr>
-                                    <th onClick={() => handleSort('agreementNumber')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">ID <SortIcon column="agreementNumber"/></th>
-                                    <th onClick={() => handleSort('owner')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Owner <SortIcon column="owner"/></th>
-                                    <th onClick={() => handleSort('project')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Project <SortIcon column="project"/></th>
-                                    <th onClick={() => handleSort('units')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Units <SortIcon column="units"/></th>
-                                    <th onClick={() => handleSort('price')} className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Price <SortIcon column="price"/></th>
-                                    <th onClick={() => handleSort('paid')} className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Paid <SortIcon column="paid"/></th>
-                                    <th onClick={() => handleSort('balance')} className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Balance <SortIcon column="balance"/></th>
-                                    <th onClick={() => handleSort('date')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Date <SortIcon column="date"/></th>
-                                    <th onClick={() => handleSort('status')} className="px-4 py-3 text-center font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Status <SortIcon column="status"/></th>
+                                    <th onClick={() => handleSort('agreementNumber')} className="group px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200 w-24">ID <SortIcon column="agreementNumber" /></th>
+                                    <th onClick={() => handleSort('owner')} className="group px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200">Owner <SortIcon column="owner" /></th>
+                                    <th onClick={() => handleSort('project')} className="group px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200">Project <SortIcon column="project" /></th>
+                                    <th onClick={() => handleSort('units')} className="group px-4 py-2.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200">Units <SortIcon column="units" /></th>
+                                    <th onClick={() => handleSort('price')} className="group px-4 py-2.5 text-right text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200">Price <SortIcon column="price" /></th>
+                                    <th onClick={() => handleSort('paid')} className="group px-4 py-2.5 text-right text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200">Paid <SortIcon column="paid" /></th>
+                                    <th onClick={() => handleSort('balance')} className="group px-4 py-2.5 text-right text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200">Balance <SortIcon column="balance" /></th>
+                                    <th onClick={() => handleSort('status')} className="group px-4 py-2.5 text-center text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200">Status <SortIcon column="status" /></th>
+                                    <th onClick={() => handleSort('date')} className="group px-4 py-2.5 text-right text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200">Date <SortIcon column="date" /></th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200 bg-white">
+                            <tbody className="divide-y divide-slate-100 bg-white">
                                 {filteredAgreements.length > 0 ? filteredAgreements.map(agreement => (
-                                    <tr 
-                                        key={agreement.id} 
+                                    <tr
+                                        key={agreement.id}
                                         onClick={() => handleEdit(agreement)}
                                         className="hover:bg-slate-50 cursor-pointer transition-colors group"
                                     >
-                                        <td className="px-4 py-3 font-mono text-xs font-medium text-slate-600">{agreement.agreementNumber}</td>
-                                        <td className="px-4 py-3 font-medium text-slate-800 truncate max-w-[150px]" title={agreement.ownerName}>{agreement.ownerName}</td>
-                                        <td className="px-4 py-3 text-slate-600 truncate max-w-[150px]" title={agreement.projectName}>{agreement.projectName}</td>
-                                        <td className="px-4 py-3 text-slate-500 truncate max-w-[100px]" title={agreement.unitNames}>{agreement.unitNames}</td>
-                                        <td className="px-4 py-3 text-right font-medium text-slate-700">{CURRENCY} {agreement.sellingPrice.toLocaleString()}</td>
-                                        <td className="px-4 py-3 text-right text-emerald-600">{CURRENCY} {agreement.paid.toLocaleString()}</td>
-                                        <td className={`px-4 py-3 text-right font-bold text-slate-600`}>{CURRENCY} {agreement.balance.toLocaleString()}</td>
-                                        <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{formatDate(agreement.issueDate)}</td>
-                                        <td className="px-4 py-3 text-center">
-                                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                                                agreement.status === 'Active' ? 'bg-emerald-100 text-emerald-800' : 
-                                                agreement.status === 'Cancelled' ? 'bg-rose-100 text-rose-800' : 
-                                                'bg-slate-100 text-slate-600'
-                                            }`}>
+                                        <td className="px-4 py-2 whitespace-nowrap">
+                                            <span className="font-mono text-[10px] sm:text-xs font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md border border-slate-200 group-hover:border-indigo-200 group-hover:text-indigo-600 transition-colors">
+                                                {agreement.agreementNumber}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-2 text-xs font-medium text-slate-800 truncate max-w-[140px]" title={agreement.ownerName}>
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-bold">
+                                                    {agreement.ownerName.charAt(0)}
+                                                </div>
+                                                {agreement.ownerName}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-2 text-xs text-slate-600 truncate max-w-[140px]" title={agreement.projectName}>{agreement.projectName}</td>
+                                        <td className="px-4 py-2 text-xs text-slate-500 truncate max-w-[100px]" title={agreement.unitNames}>{agreement.unitNames}</td>
+                                        <td className="px-4 py-2 text-xs text-right font-medium text-slate-700 tabular-nums">{CURRENCY} {agreement.sellingPrice.toLocaleString()}</td>
+                                        <td className="px-4 py-2 text-xs text-right text-emerald-600 tabular-nums font-medium">{CURRENCY} {agreement.paid.toLocaleString()}</td>
+                                        <td className={`px-4 py-2 text-xs text-right font-bold tabular-nums ${agreement.balance > 0 ? 'text-slate-700' : 'text-slate-400'}`}>{CURRENCY} {agreement.balance.toLocaleString()}</td>
+                                        <td className="px-4 py-2 text-center whitespace-nowrap">
+                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${agreement.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                                                    agreement.status === ProjectAgreementStatus.COMPLETED ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' :
+                                                        agreement.status === 'Cancelled' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
+                                                            'bg-slate-100 text-slate-600 border border-slate-200'
+                                                }`}>
+                                                {agreement.status === 'Active' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>}
                                                 {agreement.status}
                                             </span>
                                         </td>
+                                        <td className="px-4 py-2 text-xs text-right text-slate-400 whitespace-nowrap">{formatDate(agreement.issueDate)}</td>
                                     </tr>
                                 )) : (
                                     <tr>
-                                        <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
-                                            No agreements found matching your criteria.
+                                        <td colSpan={9} className="px-4 py-16 text-center">
+                                            <div className="flex flex-col items-center justify-center opacity-40">
+                                                <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
+                                                    <div className="transform scale-150 text-slate-400">{ICONS.fileText}</div>
+                                                </div>
+                                                <p className="text-sm font-semibold text-slate-600">No agreements found</p>
+                                                <p className="text-xs text-slate-500 mt-1">Try adjusting your search or date filters</p>
+                                            </div>
                                         </td>
                                     </tr>
                                 )}
                             </tbody>
                         </table>
                     </div>
-                    <div className="p-3 border-t border-slate-200 bg-slate-50 text-sm font-medium text-slate-600 flex justify-between">
-                        <span>Total Agreements: {filteredAgreements.length}</span>
-                        <span>Total Value: {CURRENCY} {filteredAgreements.reduce((sum, a) => sum + a.sellingPrice, 0).toLocaleString()}</span>
+                    <div className="px-4 py-3 border-t border-slate-200 bg-slate-50/50 backdrop-blur-sm flex flex-col sm:flex-row justify-between items-center gap-2 text-xs font-medium text-slate-600">
+                        <div className="flex items-center gap-2">
+                            <span className="bg-white border border-slate-200 px-2 py-0.5 rounded-md shadow-sm">{filteredAgreements.length} Agreements</span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <span>Total Value: <span className="text-slate-900 font-bold">{CURRENCY} {filteredAgreements.reduce((sum, a) => sum + a.sellingPrice, 0).toLocaleString()}</span></span>
+                            <span>Outstanding: <span className="text-indigo-600 font-bold">{CURRENCY} {filteredAgreements.reduce((sum, a) => sum + (a.sellingPrice - a.paid), 0).toLocaleString()}</span></span>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title={agreementToEdit ? `Edit Agreement ${agreementToEdit.agreementNumber}` : "New Project Agreement"} size="xl">
-                <ProjectAgreementForm 
-                    onClose={() => setIsCreateModalOpen(false)} 
-                    agreementToEdit={agreementToEdit} 
+                <ProjectAgreementForm
+                    onClose={() => setIsCreateModalOpen(false)}
+                    agreementToEdit={agreementToEdit}
+                    onCancelRequest={(agreement) => {
+                        setIsCreateModalOpen(false);
+                        setCancelAgreement(agreement);
+                    }}
                 />
             </Modal>
 
-            <CancelAgreementModal 
-                isOpen={!!cancelAgreement} 
-                onClose={() => setCancelAgreement(null)} 
-                agreement={cancelAgreement} 
+            <CancelAgreementModal
+                isOpen={!!cancelAgreement}
+                onClose={() => setCancelAgreement(null)}
+                agreement={cancelAgreement}
             />
         </div>
     );

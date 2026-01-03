@@ -26,7 +26,7 @@ interface ContractReportRow {
 
 const ProjectContractReport: React.FC = () => {
     const { state } = useAppContext();
-    const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
+    const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || 'all');
     const [searchQuery, setSearchQuery] = useState('');
 
     const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...state.projects], [state.projects]);

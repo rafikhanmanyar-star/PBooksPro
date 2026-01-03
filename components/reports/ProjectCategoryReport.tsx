@@ -76,7 +76,7 @@ const ProjectCategoryReport: React.FC<ProjectCategoryReportProps> = ({ type }) =
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
     const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
     const [endDate, setEndDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]);
-    const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
+    const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || 'all');
     
     const [drilldownData, setDrilldownData] = useState<{
         isOpen: boolean;
@@ -139,7 +139,41 @@ const ProjectCategoryReport: React.FC<ProjectCategoryReportProps> = ({ type }) =
                 const bill = state.bills.find(b => b.id === tx.billId);
                 if (bill) {
                     if (!projectId) projectId = bill.projectId;
-                    if (!categoryId) categoryId = bill.categoryId;
+                    
+                    // Filter by project before processing
+                    if (!projectId) return;
+                    if (selectedProjectId !== 'all' && projectId !== selectedProjectId) return;
+                    
+                    // Handle expenseCategoryItems: if bill has multiple categories, distribute transaction amount proportionally
+                    if (bill.expenseCategoryItems && bill.expenseCategoryItems.length > 0) {
+                        const totalBillAmount = bill.expenseCategoryItems.reduce((sum, item) => sum + (item.netValue || 0), 0);
+                        if (totalBillAmount > 0) {
+                            // Distribute transaction amount across categories proportionally
+                            bill.expenseCategoryItems.forEach(item => {
+                                if (!item.categoryId) return;
+                                const proportion = (item.netValue || 0) / totalBillAmount;
+                                const allocatedAmount = tx.amount * proportion;
+                                
+                                // Process each category separately
+                                const itemCategoryId = item.categoryId;
+                                if (rentalCategoryIds.has(itemCategoryId)) return;
+                                
+                                const date = new Date(tx.date);
+                                if (date < start || date > end) return;
+                                
+                                if (tx.type === type) {
+                                    const catId = itemCategoryId || 'uncategorized';
+                                    if (!categoryMap[catId]) categoryMap[catId] = { amount: 0, count: 0 };
+                                    categoryMap[catId].amount += allocatedAmount;
+                                    categoryMap[catId].count += 1;
+                                    totalAmount += allocatedAmount;
+                                }
+                            });
+                            return; // Skip the single category processing below
+                        }
+                    } else if (!categoryId) {
+                        categoryId = bill.categoryId;
+                    }
                 }
             }
             

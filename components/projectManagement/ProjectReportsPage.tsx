@@ -12,16 +12,22 @@ import ProjectLayoutReport from '../reports/ProjectLayoutReport';
 import RevenueAnalysisReport from '../reports/RevenueAnalysisReport';
 import ProjectBrokerReport from '../reports/ProjectBrokerReport';
 import ProjectContractReport from '../reports/ProjectContractReport';
+import ProjectBudgetReport from '../reports/ProjectBudgetReport';
+import ProjectMaterialReport from '../reports/ProjectMaterialReport';
+import ProjectCashFlowReport from '../reports/ProjectCashFlowReport';
 
 const PRIMARY_REPORTS = ['Visual Layout', 'Project Units'];
 const SECONDARY_REPORTS = [
     'Project Summary',
+    'Budget vs Actual',
+    'Cash Flows',
     'Contract Report',
     'Revenue Analysis', 
     'Owner Ledger', 
     'Broker Report', 
     'Income by Category',
     'Expense by Category',
+    'Material Report',
     'Vendor Ledger'
 ];
 
@@ -44,6 +50,10 @@ const ProjectReportsPage: React.FC<ProjectReportsPageProps> = ({ initialTab }) =
                 return <ProjectLayoutReport />;
             case 'Project Summary':
                 return <ProjectSummaryReport />;
+            case 'Budget vs Actual':
+                return <ProjectBudgetReport />;
+            case 'Cash Flows':
+                return <ProjectCashFlowReport />;
             case 'Contract Report':
                 return <ProjectContractReport />;
             case 'Revenue Analysis':
@@ -58,6 +68,8 @@ const ProjectReportsPage: React.FC<ProjectReportsPageProps> = ({ initialTab }) =
                 return <ClientLedgerReport />;
             case 'Broker Report':
                 return <ProjectBrokerReport />;
+            case 'Material Report':
+                return <ProjectMaterialReport />;
             case 'Vendor Ledger':
                 return <VendorLedgerReport context="Project" />;
             default:

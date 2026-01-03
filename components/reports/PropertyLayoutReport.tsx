@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { CURRENCY } from '../../constants';
+import { CURRENCY, ICONS } from '../../constants';
 import { InvoiceStatus, TransactionType, InvoiceType, RentalAgreementStatus } from '../../types';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
@@ -489,20 +489,27 @@ const PropertyLayoutReport: React.FC = () => {
                 }
             `}</style>
 
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-4 no-print">
-                {data.type === 'RENTAL' && (
-                    <div className="w-full sm:w-64">
-                        <ComboBox
-                            label="Filter by Building"
-                            items={buildingItems}
-                            selectedId={selectedBuildingId}
-                            onSelect={(item) => setSelectedBuildingId(item?.id || 'all')}
-                            allowAddNew={false}
-                        />
+            {/* Custom Toolbar - All controls in first row */}
+            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm no-print mb-4">
+                <div className="flex flex-wrap items-center gap-3">
+                    {/* Building Filter - Only for Rental */}
+                    {data.type === 'RENTAL' && (
+                        <div className="w-48 flex-shrink-0">
+                            <ComboBox
+                                items={buildingItems}
+                                selectedId={selectedBuildingId}
+                                onSelect={(item) => setSelectedBuildingId(item?.id || 'all')}
+                                allowAddNew={false}
+                                placeholder="Filter Building"
+                            />
+                        </div>
+                    )}
+                    {/* Actions Group */}
+                    <div className="flex items-center gap-2 ml-auto">
+                        <Button variant="secondary" size="sm" onClick={handlePrint} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
+                            <div className="w-4 h-4 mr-1">{ICONS.print}</div> Print Layout
+                        </Button>
                     </div>
-                )}
-                <div className="ml-auto">
-                    <Button onClick={handlePrint}>Print Layout</Button>
                 </div>
             </div>
 

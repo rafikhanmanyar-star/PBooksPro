@@ -8,6 +8,7 @@
 import { AppState } from '../../../types';
 import { getDatabaseService } from '../databaseService';
 import { objectToDbFormat } from '../columnMapper';
+import { migrateBudgetsToNewStructure, migrateBudgetsArray } from '../budgetMigration';
 import { 
     UsersRepository, AccountsRepository, ContactsRepository, CategoriesRepository,
     ProjectsRepository, BuildingsRepository, PropertiesRepository, UnitsRepository,
@@ -74,6 +75,22 @@ export class AppStateRepository {
                 throw new Error(`Failed to initialize database: ${error instanceof Error ? error.message : String(error)}`);
             }
         }
+        
+        // CRITICAL: Ensure all schema columns exist BEFORE loading data
+        // This prevents data loss when columns are missing (e.g., after restore)
+        this.db.ensureAllTablesExist();
+        this.db.ensureContractColumnsExist();
+        
+        // Run budget migration if needed (handles old backups with monthly budgets)
+        try {
+            const migrationResult = migrateBudgetsToNewStructure();
+            if (migrationResult.success && migrationResult.migrated > 0) {
+                console.log(`✅ Migrated ${migrationResult.migrated} budgets from old format`);
+            }
+        } catch (migrationError) {
+            console.error('⚠️ Budget migration failed, continuing anyway:', migrationError);
+        }
+        
         // Load all entities
         const users = this.usersRepo.findAll();
         const accounts = this.accountsRepo.findAll();
@@ -126,7 +143,7 @@ export class AppStateRepository {
 
         // Build AppState
         const state: AppState = {
-            version: parseInt(this.db.getMetadata('schema_version') || '4'),
+            version: parseInt(this.db.getMetadata('schema_version') || '5'),
             users,
             currentUser,
             accounts,
@@ -138,7 +155,12 @@ export class AppStateRepository {
             units,
             transactions,
             invoices,
-            bills,
+            bills: bills.map(b => ({
+                ...b,
+                expenseCategoryItems: b.expenseCategoryItems 
+                    ? (typeof b.expenseCategoryItems === 'string' ? JSON.parse(b.expenseCategoryItems) : b.expenseCategoryItems)
+                    : undefined
+            })),
             quotations: quotations.map(q => ({
                 ...q,
                 items: typeof q.items === 'string' ? JSON.parse(q.items) : q.items
@@ -147,7 +169,12 @@ export class AppStateRepository {
             budgets,
             rentalAgreements,
             projectAgreements,
-            contracts,
+            contracts: contracts.map(c => ({
+                ...c,
+                expenseCategoryItems: c.expenseCategoryItems 
+                    ? (typeof c.expenseCategoryItems === 'string' ? JSON.parse(c.expenseCategoryItems) : c.expenseCategoryItems)
+                    : undefined
+            })),
             projectStaff,
             rentalStaff,
             employees,
@@ -186,6 +213,8 @@ export class AppStateRepository {
             enableColorCoding: settings.enableColorCoding ?? true,
             enableBeepOnSave: settings.enableBeepOnSave ?? false,
             pmCostPercentage: settings.pmCostPercentage ?? 0,
+            defaultProjectId: settings.defaultProjectId || undefined,
+            documentStoragePath: settings.documentStoragePath || undefined,
             lastServiceChargeRun: settings.lastServiceChargeRun,
             transactionLog,
             errorLog,
@@ -216,6 +245,13 @@ export class AppStateRepository {
                     this.db.ensureAllTablesExist();
                 } catch (tableCheckError) {
                     console.warn('⚠️ Could not verify tables exist, continuing anyway:', tableCheckError);
+                }
+                
+                // Migrate budgets if they're in old format (for in-memory data being saved)
+                try {
+                    state.budgets = migrateBudgetsArray(state.budgets);
+                } catch (budgetMigrationError) {
+                    console.warn('⚠️ Could not migrate budgets array, continuing anyway:', budgetMigrationError);
                 }
 
                 console.log('💾 Saving state to database:', {
@@ -283,7 +319,13 @@ export class AppStateRepository {
                             this.unitsRepo.saveAll(state.units);
                             this.transactionsRepo.saveAll(state.transactions);
                             this.invoicesRepo.saveAll(state.invoices);
-                            this.billsRepo.saveAll(state.bills);
+                            // Save bills with expenseCategoryItems serialized as JSON
+                            this.billsRepo.saveAll(state.bills.map(b => ({
+                                ...b,
+                                expenseCategoryItems: b.expenseCategoryItems 
+                                    ? (typeof b.expenseCategoryItems === 'string' ? b.expenseCategoryItems : JSON.stringify(b.expenseCategoryItems))
+                                    : undefined
+                            })));
                         } catch (e) {
                             console.error('❌ Failed to save projects/buildings/properties/units/transactions/invoices/bills:', e);
                             throw e;
@@ -305,7 +347,13 @@ export class AppStateRepository {
                             this.budgetsRepo.saveAll(state.budgets);
                             this.rentalAgreementsRepo.saveAll(state.rentalAgreements);
                             this.projectAgreementsRepo.saveAll(state.projectAgreements);
-                            this.contractsRepo.saveAll(state.contracts || []);
+                            // Save contracts with expenseCategoryItems serialized as JSON
+                            this.contractsRepo.saveAll((state.contracts || []).map(c => ({
+                                ...c,
+                                expenseCategoryItems: c.expenseCategoryItems 
+                                    ? (typeof c.expenseCategoryItems === 'string' ? c.expenseCategoryItems : JSON.stringify(c.expenseCategoryItems))
+                                    : undefined
+                            })));
                             this.recurringTemplatesRepo.saveAll(state.recurringInvoiceTemplates);
                             this.salaryComponentsRepo.saveAll(state.salaryComponents);
                         } catch (e) {
@@ -388,6 +436,8 @@ export class AppStateRepository {
                                 enableColorCoding: state.enableColorCoding,
                                 enableBeepOnSave: state.enableBeepOnSave,
                                 pmCostPercentage: state.pmCostPercentage,
+                                defaultProjectId: state.defaultProjectId,
+                                documentStoragePath: state.documentStoragePath,
                                 lastServiceChargeRun: state.lastServiceChargeRun,
                                 currentPage: state.currentPage
                             });

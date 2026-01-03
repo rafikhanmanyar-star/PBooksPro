@@ -24,31 +24,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('update-checking', handler);
     return () => ipcRenderer.removeListener('update-checking', handler);
   },
-  
+
   onUpdateAvailable: (callback) => {
     const handler = (event, info) => callback(info);
     ipcRenderer.on('update-available', handler);
     return () => ipcRenderer.removeListener('update-available', handler);
   },
-  
+
   onUpdateNotAvailable: (callback) => {
     const handler = (event, info) => callback(info);
     ipcRenderer.on('update-not-available', handler);
     return () => ipcRenderer.removeListener('update-not-available', handler);
   },
-  
+
   onUpdateError: (callback) => {
     const handler = (event, error) => callback(error);
     ipcRenderer.on('update-error', handler);
     return () => ipcRenderer.removeListener('update-error', handler);
   },
-  
+
   onDownloadProgress: (callback) => {
     const handler = (event, progress) => callback(progress);
     ipcRenderer.on('download-progress', handler);
     return () => ipcRenderer.removeListener('download-progress', handler);
   },
-  
+
   onUpdateDownloaded: (callback) => {
     const handler = (event, info) => callback(info);
     ipcRenderer.on('update-downloaded', handler);
@@ -90,6 +90,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('open-help-section', handler);
   },
 
+  onOpenBackupRestore: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('open-backup-restore', handler);
+    return () => ipcRenderer.removeListener('open-backup-restore', handler);
+  },
+
   // Database save before close
   onSaveDatabaseNow: (callback) => {
     const handler = () => callback();
@@ -101,6 +107,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   notifyDatabaseSaveComplete: (result) => {
     ipcRenderer.send('database-save-complete', result);
   },
+
+  // Native SQLite (better-sqlite3) scaffolding
+  listNativeTransactions: (args) => ipcRenderer.invoke('native-db:list-transactions', args),
+  countNativeTransactions: (args) => ipcRenderer.invoke('native-db:count-transactions', args),
+  getNativeTotals: (args) => ipcRenderer.invoke('native-db:totals', args),
+  upsertNativeTransaction: (tx) => ipcRenderer.invoke('native-db:upsert-transaction', tx),
+  bulkUpsertNativeTransactions: (transactions) => ipcRenderer.invoke('native-db:bulk-upsert-transactions', transactions),
+
+  // Document management
+  selectDocumentFolder: () => ipcRenderer.invoke('select-document-folder'),
+  saveDocumentFile: (params) => ipcRenderer.invoke('save-document-file', params),
+  openDocumentFile: (params) => ipcRenderer.invoke('open-document-file', params),
 });
 
 // Log that preload script has loaded

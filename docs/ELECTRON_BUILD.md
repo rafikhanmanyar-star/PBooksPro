@@ -1,6 +1,6 @@
 # Electron Build Guide
 
-This guide explains how to build Finance Tracker Pro as a Windows executable with auto-update functionality.
+This guide explains how to build PBooksPro as a Windows executable with auto-update functionality.
 
 ## Prerequisites
 
@@ -51,7 +51,7 @@ npm run electron:build:win
 ```
 
 This creates:
-- **Installer**: `release/Finance Tracker Pro Setup 1.0.0.exe` (NSIS installer with auto-update support)
+- **Installer**: `release/PBooksPro Setup 1.0.0.exe` (NSIS installer with auto-update support)
 
 ### Build and Publish Update
 
@@ -74,10 +74,10 @@ Creates only the portable executable. **Note:** Portable versions do not support
 All built files are in the `release/` directory:
 ```
 release/
-├── Finance Tracker Pro Setup 1.0.0.exe  (Installer)
-├── Finance Tracker Pro-1.0.0-portable.exe  (Portable, if built)
+├── PBooksPro Setup 1.0.0.exe  (Installer)
+├── PBooksPro-1.0.0-portable.exe  (Portable, if built)
 ├── latest.yml  (Update metadata for auto-updater)
-├── Finance Tracker Pro Setup 1.0.0.exe.blockmap  (Differential update data)
+├── PBooksPro Setup 1.0.0.exe.blockmap  (Differential update data)
 └── win-unpacked/  (Unpacked files for testing)
 ```
 
@@ -152,18 +152,18 @@ The update server URL is configured in `package.json`:
 #### Option 1: Generic HTTP Server
 
 Upload these files to your web server:
-- `Finance Tracker Pro Setup X.X.X.exe`
+- `PBooksPro Setup X.X.X.exe`
 - `latest.yml`
-- `Finance Tracker Pro Setup X.X.X.exe.blockmap` (for differential updates)
+- `PBooksPro Setup X.X.X.exe.blockmap` (for differential updates)
 
 Example directory structure on server:
 ```
 https://your-server.com/releases/
 ├── latest.yml
-├── Finance Tracker Pro Setup 1.0.0.exe
-├── Finance Tracker Pro Setup 1.0.0.exe.blockmap
-├── Finance Tracker Pro Setup 1.0.1.exe
-└── Finance Tracker Pro Setup 1.0.1.exe.blockmap
+├── PBooksPro Setup 1.0.0.exe
+├── PBooksPro Setup 1.0.0.exe.blockmap
+├── PBooksPro Setup 1.0.1.exe
+└── PBooksPro Setup 1.0.1.exe.blockmap
 ```
 
 #### Option 2: GitHub Releases
@@ -234,14 +234,14 @@ After building, upload these files to your update server:
 - Users can install the app like any Windows application
 - Creates Start Menu and Desktop shortcuts
 - **Supports auto-update**
-- Stores data in: `%APPDATA%\Finance Tracker Pro\`
+- Stores data in: `%APPDATA%\PBooksPro\`
 - Can be uninstalled via Windows Settings
 
 ### Portable Version
 - No installation required
 - Can run from USB drive or any folder
 - **Does NOT support auto-update**
-- Stores data in: `[App Folder]\Finance Tracker Pro\`
+- Stores data in: `[App Folder]\PBooksPro\`
 - Self-contained executable
 
 ## Database Storage in Electron
@@ -250,12 +250,12 @@ When running as an Electron app, the database is stored in:
 
 **Windows:**
 ```
-%APPDATA%\Finance Tracker Pro\finance_db.sqlite
+%APPDATA%\PBooksPro\finance_db.sqlite
 ```
 
 Or for portable version:
 ```
-[App Folder]\Finance Tracker Pro\finance_db.sqlite
+[App Folder]\PBooksPro\finance_db.sqlite
 ```
 
 The OPFS storage will use Electron's app data directory instead of browser storage.
@@ -336,7 +336,7 @@ Edit `package.json` → `build` section:
 {
   "build": {
     "appId": "com.financetracker.pro",
-    "productName": "Finance Tracker Pro",
+    "productName": "PBooksPro",
     "win": {
       "target": ["nsis"],
       "icon": "build/icon.ico"
@@ -384,7 +384,7 @@ For beta testing, add a separate channel:
 ## Testing the Build
 
 1. **Test installer:**
-   - Run `release/Finance Tracker Pro Setup 1.0.0.exe`
+   - Run `release/PBooksPro Setup 1.0.0.exe`
    - Install to a test location
    - Verify app runs correctly
 

@@ -18,6 +18,14 @@ win-unpacked
 mac-unpacked
 linux-unpacked
 
+# Code signing certificates (NEVER commit these!)
+*.pfx
+*.p12
+*.pem
+build/*.pfx
+build/*.p12
+build/*.pem
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -28,3 +36,27 @@ linux-unpacked
 *.njsproj
 *.sln
 *.sw?
+
+# Environment variables (NEVER commit these!)
+.env
+.env.local
+.env.*.local
+server/.env
+admin/.env
+*.env
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Server build outputs (built on Render)
+server/api/*.js
+server/api/**/*.js
+server/**/*.js
+!server/scripts/*.js
+*.js.map
+
+# Logs
+logs/
+*.log

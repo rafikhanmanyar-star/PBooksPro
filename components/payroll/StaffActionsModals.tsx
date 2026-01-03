@@ -265,8 +265,8 @@ export const StaffExitModal: React.FC<StaffExitModalProps> = ({ isOpen, onClose,
     const [benefitsAmount, setBenefitsAmount] = useState('');
     const [paymentAccountId, setPaymentAccountId] = useState('');
 
-    // Filter for Bank Accounts
-    const accounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK), [state.accounts]);
+    // Filter for Bank Accounts (exclude Internal Clearing)
+    const accounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
     
     const totalSettlement = (parseFloat(gratuityAmount) || 0) + (parseFloat(benefitsAmount) || 0);
 

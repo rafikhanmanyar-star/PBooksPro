@@ -30,8 +30,8 @@ const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalP
     // Refund Mode State
     const [refundAction, setRefundAction] = useState<'COMPANY_REFUND' | 'OWNER_DIRECT' | 'NONE'>('NONE');
 
-    // Filter for Bank Accounts
-    const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK), [state.accounts]);
+    // Filter for Bank Accounts (exclude Internal Clearing)
+    const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
 
     useEffect(() => {
         if (isOpen && agreement) {

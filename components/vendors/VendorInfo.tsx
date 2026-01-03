@@ -5,6 +5,7 @@ import { ICONS } from '../../constants';
 import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
 import Button from '../ui/Button';
+import { WhatsAppService } from '../../services/whatsappService';
 
 interface VendorInfoProps {
   vendor: Contact;
@@ -23,11 +24,16 @@ const VendorInfo: React.FC<VendorInfoProps> = ({ vendor, onEdit, onCreateBill, o
         await showAlert("This vendor does not have a phone number saved.");
         return;
     }
-    const message = state.whatsAppTemplates.vendorGreeting.replace(/{contactName}/g, vendor.name);
-    const phoneNumber = vendor.contactNo.replace(/[^0-9]/g, ''); // Clean the number
-    const encodedMessage = encodeURIComponent(message);
-    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodedMessage}`;
-    window.open(whatsappUrl, '_blank');
+
+    try {
+      const message = WhatsAppService.generateVendorGreeting(
+        state.whatsAppTemplates.vendorGreeting,
+        vendor
+      );
+      WhatsAppService.sendMessage({ contact: vendor, message });
+    } catch (error) {
+      await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
+    }
   };
 
   const getInitials = (name: string) => {

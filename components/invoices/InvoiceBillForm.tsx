@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
-import { Invoice, Bill, InvoiceStatus, Contact, Property, InvoiceType, ContactType, RentalAgreement, Project, TransactionType, Category, Unit, ProjectAgreement, Building, RecurringInvoiceTemplate, ProjectAgreementStatus, ContractStatus } from '../../types';
+import { Invoice, Bill, InvoiceStatus, Contact, Property, InvoiceType, ContactType, RentalAgreement, Project, TransactionType, Category, Unit, ProjectAgreement, Building, RecurringInvoiceTemplate, ProjectAgreementStatus, ContractStatus, ContractExpenseCategoryItem } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import Modal from '../ui/Modal';
@@ -11,6 +11,8 @@ import ContactForm from '../settings/ContactForm';
 import ComboBox from '../ui/ComboBox';
 import Select from '../ui/Select';
 import DatePicker from '../ui/DatePicker';
+import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
+import { getFormBackgroundColorStyle } from '../../utils/formColorUtils';
 
 interface InvoiceBillFormProps {
   onClose: () => void;
@@ -22,18 +24,20 @@ interface InvoiceBillFormProps {
   rentalContext?: boolean;
   onDuplicate?: (data: Partial<Bill>) => void;
   initialData?: Partial<Invoice | Bill>;
+  projectContext?: boolean; // When true, bill form is opened from project management - simplifies to project-only allocation
 }
 
 type BillAllocationType = 'project' | 'building' | 'owner' | 'tenant' | 'staff';
 type RootBillType = 'project' | 'building' | 'staff';
 
-const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemToEdit, invoiceTypeForNew, agreementForInvoice, initialContactId, rentalContext, onDuplicate, initialData }) => {
+const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemToEdit, invoiceTypeForNew, agreementForInvoice, initialContactId, rentalContext, onDuplicate, initialData, projectContext = false }) => {
   const { state, dispatch } = useAppContext();
   const { showToast, showAlert, showConfirm } = useNotification();
   const { rentalInvoiceSettings, projectInvoiceSettings } = state;
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   const [isDirty, setIsDirty] = useState(false);
+  const entityFormModal = useEntityFormModal();
 
   // Merge itemToEdit with initialData for defaults (initialData used when duplicating)
   const defaults = itemToEdit || initialData || {};
@@ -42,6 +46,9 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   // --- Initialization Logic ---
   const getInitialRootType = (): RootBillType => {
+      // When opened from project management, always use project allocation
+      if (projectContext && type === 'bill') return 'project';
+      
       if (type === 'bill' && defaults) {
           const bill = defaults as Bill;
           if (bill.staffId) return 'staff';
@@ -56,6 +63,14 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   };
 
   const [rootAllocationType, setRootAllocationType] = useState<RootBillType>(getInitialRootType());
+  
+  // When projectContext is true, force rootAllocationType to 'project'
+  useEffect(() => {
+      if (projectContext && type === 'bill') {
+          setRootAllocationType('project');
+          setBillAllocationType('project');
+      }
+  }, [projectContext, type]);
 
   const getInitialAllocationType = (): BillAllocationType => {
       if (type === 'bill' && defaults) {
@@ -146,7 +161,11 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   const [numberError, setNumberError] = useState('');
   const [contactId, setContactId] = useState(defaults.contactId || agreementForInvoice?.clientId || initialContactId || '');
   const [propertyId, setPropertyId] = useState(defaults.propertyId || '');
-  const [projectId, setProjectId] = useState((defaults && 'projectId' in defaults ? defaults.projectId : '') || agreementForInvoice?.projectId || '');
+  const [projectId, setProjectId] = useState(
+    (defaults && 'projectId' in defaults ? defaults.projectId : '') || 
+    agreementForInvoice?.projectId || 
+    (type === 'bill' && !itemToEdit ? (state.defaultProjectId || '') : '')
+  );
   
   // For Building flow: buildingId might come from defaults, or be derived from propertyId. 
   // We need it in state to drive the filter.
@@ -170,8 +189,29 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   );
 
   const [categoryId, setCategoryId] = useState(defaults && 'categoryId' in defaults ? (defaults as Invoice | Bill).categoryId : '');
-  const [issueDate, setIssueDate] = useState(defaults.issueDate ? (defaults.issueDate as string).split('T')[0] : new Date().toISOString().split('T')[0]);
+  
+  // Get initial date: use preserved date if option is enabled and creating new record, otherwise use defaults or current date
+  const getInitialIssueDate = () => {
+    if (defaults.issueDate) {
+      return (defaults.issueDate as string).split('T')[0];
+    }
+    if (state.enableDatePreservation && state.lastPreservedDate && !itemToEdit) {
+      return state.lastPreservedDate;
+    }
+    return new Date().toISOString().split('T')[0];
+  };
+  
+  const [issueDate, setIssueDate] = useState(getInitialIssueDate());
   const [dueDate, setDueDate] = useState(defaults && 'dueDate' in defaults && defaults.dueDate ? (defaults.dueDate as string).split('T')[0] : '');
+  
+  // Save date to preserved date when changed (if option is enabled)
+  const handleIssueDateChange = (date: Date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    setIssueDate(dateStr);
+    if (state.enableDatePreservation && !itemToEdit) {
+      dispatch({ type: 'UPDATE_PRESERVED_DATE', payload: dateStr });
+    }
+  };
   const [description, setDescription] = useState(defaults.description || '');
 
   const [agreementId, setAgreementId] = useState(
@@ -203,6 +243,35 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   const [isContactLockedByUnit, setIsContactLockedByUnit] = useState(false);
   const isLocked = !!(defaults && 'agreementId' in defaults && defaults.agreementId);
   
+  // Expense Category Items - for Bills only
+  // Handle backward compatibility: if bill has categoryId but no expenseCategoryItems, migrate it
+  const initialExpenseCategoryItems = useMemo(() => {
+    if (type !== 'bill' || !defaults) return [];
+    
+    const bill = defaults as Bill;
+    if (bill.expenseCategoryItems && bill.expenseCategoryItems.length > 0) {
+      return bill.expenseCategoryItems;
+    }
+    
+    // Migration: convert old categoryId to expenseCategoryItem
+    if (bill.categoryId) {
+      return [{
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+        categoryId: bill.categoryId,
+        unit: 'quantity' as const,
+        quantity: 1,
+        pricePerUnit: bill.amount || 0,
+        netValue: bill.amount || 0
+      }];
+    }
+    
+    return [];
+  }, [type, defaults]);
+  
+  const [expenseCategoryItems, setExpenseCategoryItems] = useState<ContractExpenseCategoryItem[]>(initialExpenseCategoryItems);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [documentPath, setDocumentPath] = useState((defaults as Bill)?.documentPath || '');
+  
   const { amountAlreadyInvoiced, agreementBalance } = useMemo(() => {
     if (!agreementForInvoice) return { amountAlreadyInvoiced: 0, agreementBalance: 0 };
     const alreadyInvoiced = state.invoices.filter(inv => inv.agreementId === agreementForInvoice.id).reduce((sum, inv) => sum + inv.amount, 0);
@@ -210,51 +279,53 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   }, [agreementForInvoice, state.invoices]);
 
   const formStyle = useMemo(() => {
-      if (!state.enableColorCoding) return {};
-
-      let color = null;
-      if (projectId) {
-          const p = state.projects.find(proj => proj.id === projectId);
-          if (p?.color) color = p.color;
-      }
-      if (!color && buildingId) {
-          const b = state.buildings.find(bd => bd.id === buildingId);
-          if (b?.color) color = b.color;
-      }
-
-      if (color) {
-          const r = parseInt(color.slice(1, 3), 16);
-          const g = parseInt(color.slice(3, 5), 16);
-          const b = parseInt(color.slice(5, 7), 16);
-          return { 
-              background: `linear-gradient(0deg, rgba(${r}, ${g}, ${b}, 0.12), rgba(${r}, ${g}, ${b}, 0.12)), #ffffff`,
-              padding: '1rem', 
-              borderRadius: '0.75rem' 
+      const bgStyle = getFormBackgroundColorStyle(projectId, buildingId, state);
+      // If we have a background color, add padding and border radius for better appearance
+      if (bgStyle.backgroundColor) {
+          return {
+              ...bgStyle,
+              padding: '1rem',
+              borderRadius: '0.75rem'
           };
       }
       return {};
-  }, [projectId, buildingId, state.projects, state.buildings, state.enableColorCoding]);
+  }, [projectId, buildingId, state]);
 
   // Mark dirty on changes
   useEffect(() => {
       setIsDirty(true);
-  }, [number, contactId, propertyId, projectId, buildingId, staffId, unitId, categoryId, issueDate, dueDate, description, amount, rentAmount, securityDepositCharge, contractId]);
+  }, [number, contactId, propertyId, projectId, buildingId, staffId, unitId, categoryId, issueDate, dueDate, description, amount, rentAmount, securityDepositCharge, contractId, expenseCategoryItems]);
   
   // Reset dirty state initially after mount
   useEffect(() => {
       setIsDirty(false);
   }, []);
 
-  // Validate contractId when vendor or project changes
+  // Validate contractId when vendor or project changes, and auto-set projectId from contract
   useEffect(() => {
       if (contractId && contactId && type === 'bill') {
           const contract = state.contracts.find(c => c.id === contractId);
-          // If contract exists but vendor doesn't match, clear the contract link
-          if (contract && contract.vendorId !== contactId) {
-              setContractId('');
+          if (contract) {
+              // If contract exists but vendor doesn't match, clear the contract link
+              if (contract.vendorId !== contactId) {
+                  setContractId('');
+                  return;
+              } 
+              // Validate projectId match: if either has a projectId, they must match
+              if (projectId || contract.projectId) {
+                  if (projectId !== contract.projectId) {
+                      // ProjectIds don't match - clear the contract
+                      setContractId('');
+                      return;
+                  }
+              }
+              // Auto-set projectId from contract if not already set (only if contract has projectId)
+              if (contract.projectId && !projectId) {
+                  setProjectId(contract.projectId);
+              }
           }
       }
-  }, [contactId, contractId, state.contracts, type]);
+  }, [contactId, contractId, state.contracts, type, projectId]);
 
   // Auto-set issue date to agreement start date if this is the first invoice for the agreement
   useEffect(() => {
@@ -331,23 +402,23 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   const availableContracts = useMemo(() => {
       if (type !== 'bill' || billAllocationType !== 'project' || !contactId) return [];
       
-      // Filter contracts for the same vendor (Active only, unless editing an existing bill with that contract)
-      // If projectId is set, prioritize contracts from that project but also show others from the same vendor
-      const vendorContracts = (state.contracts || []).filter(c => 
-          c.vendorId === contactId && 
-          (c.status === ContractStatus.ACTIVE || c.id === contractId)
-      );
-      
-      // Sort: contracts from the selected project first, then others
-      const sorted = vendorContracts.sort((a, b) => {
-          if (projectId) {
-              if (a.projectId === projectId && b.projectId !== projectId) return -1;
-              if (a.projectId !== projectId && b.projectId === projectId) return 1;
+      // Filter contracts for the same vendor AND same project
+      // Rule: Bill and contract must have the same projectId (or both be null/undefined)
+      // Active only, unless editing an existing bill with that contract
+      const vendorContracts = (state.contracts || []).filter(c => {
+          // Must match vendor
+          if (c.vendorId !== contactId) return false;
+          
+          // Must match project: if either has a projectId, they must be the same
+          if (projectId || c.projectId) {
+              if (projectId !== c.projectId) return false;
           }
-          return 0;
+          
+          // Active contracts only, unless it's the currently selected contract
+          return c.status === ContractStatus.ACTIVE || c.id === contractId;
       });
       
-      return sorted.map(c => {
+      return vendorContracts.map(c => {
           const project = state.projects.find(p => p.id === c.projectId);
           const projectName = project ? ` (${project.name})` : '';
           return { id: c.id, name: `${c.contractNumber} - ${c.name}${projectName}` };
@@ -356,6 +427,69 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   const incomeCategories = useMemo(() => state.categories.filter(c => c.type === TransactionType.INCOME), [state.categories]);
   const expenseCategories = useMemo(() => state.categories.filter(c => c.type === TransactionType.EXPENSE), [state.categories]);
+
+  // Get available categories (not already used in items) - for Bills only
+  const usedCategoryIds = useMemo(() => new Set(expenseCategoryItems.map(item => item.categoryId)), [expenseCategoryItems]);
+  const availableCategories = useMemo(() => {
+    if (type !== 'bill') return [];
+    return expenseCategories.filter(c => !usedCategoryIds.has(c.id));
+  }, [expenseCategories, usedCategoryIds, type]);
+
+  // Calculate total amount from expense category items - for Bills only
+  const totalAmountFromItems = useMemo(() => {
+    if (type !== 'bill') return 0;
+    return expenseCategoryItems.reduce((sum, item) => sum + (item.netValue || 0), 0);
+  }, [expenseCategoryItems, type]);
+
+  // Add new expense category item
+  const handleAddExpenseCategory = (category: { id: string; name: string } | null) => {
+    if (!category || type !== 'bill') return;
+    
+    const newItem: ContractExpenseCategoryItem = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      categoryId: category.id,
+      unit: 'quantity',
+      quantity: 1,
+      pricePerUnit: 0,
+      netValue: 0
+    };
+    
+    setExpenseCategoryItems(prev => [...prev, newItem]);
+  };
+
+  // Remove expense category item
+  const handleRemoveExpenseCategoryItem = (itemId: string) => {
+    setExpenseCategoryItems(prev => prev.filter(item => item.id !== itemId));
+  };
+
+  // Update expense category item
+  const updateExpenseCategoryItem = (itemId: string, updates: Partial<ContractExpenseCategoryItem>, isNetValueDirectEdit = false) => {
+    setExpenseCategoryItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item;
+      
+      const updated = { ...item, ...updates };
+      
+      if (isNetValueDirectEdit) {
+        // Reverse calculation: if net value is edited directly, calculate price per unit
+        const netValue = updated.netValue || 0;
+        const quantity = updated.quantity || 0;
+        if (quantity > 0) {
+          updated.pricePerUnit = netValue / quantity;
+        } else {
+          // If quantity is 0, set price per unit to net value (treat as single item)
+          updated.pricePerUnit = netValue;
+          updated.quantity = 1; // Auto-set quantity to 1 if it was 0
+        }
+      } else {
+        // Forward calculation: quantity × price per unit = net value
+        const quantity = updated.quantity || 0;
+        const pricePerUnit = updated.pricePerUnit || 0;
+        updated.netValue = quantity * pricePerUnit;
+      }
+      
+      return updated;
+    }));
+  };
 
   const handleContactSubmit = (contact: Omit<Contact, 'id'>) => {
     const newContact = { ...contact, id: Date.now().toString() };
@@ -526,7 +660,15 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   // Function to gather current form data
   const getFormData = () => {
-     const finalAmount = invoiceType === InvoiceType.RENTAL ? calculatedAmount : parseFloat(amount);
+     let finalAmount: number;
+     if (invoiceType === InvoiceType.RENTAL) {
+       finalAmount = calculatedAmount;
+     } else if (type === 'bill' && expenseCategoryItems.length > 0) {
+       finalAmount = totalAmountFromItems;
+     } else {
+       finalAmount = parseFloat(amount) || 0;
+     }
+     
      return {
         contactId, 
         propertyId: propertyId || undefined, 
@@ -539,7 +681,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         dueDate, 
         invoiceType: invoiceType!,
         buildingId: buildingId || undefined,
-        categoryId: categoryId || undefined,
+        categoryId: (type === 'bill' && expenseCategoryItems.length > 0) ? undefined : (categoryId || undefined), // Don't save categoryId if using expenseCategoryItems
         agreementId: agreementId || undefined, 
         securityDepositCharge: parseFloat(securityDepositCharge) || undefined, 
         unitId: unitId || undefined,
@@ -547,6 +689,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         staffId: staffId || undefined,
         contractId: contractId || undefined,
         rentalMonth: (invoiceType === InvoiceType.RENTAL) ? new Date(issueDate).toISOString().slice(0, 7) : undefined,
+        expenseCategoryItems: (type === 'bill' && expenseCategoryItems.length > 0) ? expenseCategoryItems : undefined,
      };
   };
 
@@ -558,9 +701,9 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         return;
     }
     
-    // Check if category is mandatory for Bills
-    if (type === 'bill' && !categoryId) {
-        await showAlert('Expense Category is required for Bills.');
+    // Check if expense category items are required for Bills
+    if (type === 'bill' && expenseCategoryItems.length === 0) {
+        await showAlert('Please add at least one expense category item.');
         return;
     }
 
@@ -594,11 +737,69 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         return;
     }
     
-    const finalAmount = invoiceType === InvoiceType.RENTAL ? calculatedAmount : parseFloat(amount);
+    let finalAmount: number;
+    if (invoiceType === InvoiceType.RENTAL) {
+      finalAmount = calculatedAmount;
+    } else if (type === 'bill' && expenseCategoryItems.length > 0) {
+      finalAmount = totalAmountFromItems;
+    } else {
+      finalAmount = parseFloat(amount) || 0;
+    }
     
     if (isPartiallyPaid && finalAmount < itemToEdit!.paidAmount) {
         await showAlert(`Cannot reduce amount below the already paid amount of ${CURRENCY} ${itemToEdit!.paidAmount.toLocaleString()}.`, { title: 'Invalid Amount' });
         return;
+    }
+
+    // Handle document upload for bills
+    let finalDocumentPath = documentPath;
+    if (type === 'bill' && documentFile && state.documentStoragePath) {
+        try {
+            // Convert file to base64
+            const reader = new FileReader();
+            const base64Data = await new Promise<string>((resolve, reject) => {
+                reader.onload = () => {
+                    const result = reader.result as string;
+                    const base64 = result.split(',')[1] || result;
+                    resolve(base64);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(documentFile);
+            });
+
+            // Generate file path
+            const fileExtension = documentFile.name.split('.').pop() || 'pdf';
+            const billNumber = number.trim().replace(/[^a-zA-Z0-9]/g, '_');
+            const fileName = `BILL-${billNumber}-${Date.now()}.${fileExtension}`;
+            const filePath = `${state.documentStoragePath}/${fileName}`;
+
+            // Save file via IPC
+            if (window.electronAPI && window.electronAPI.saveDocumentFile) {
+                const saveResult = await window.electronAPI.saveDocumentFile({
+                    filePath,
+                    fileData: base64Data,
+                    fileName: documentFile.name
+                });
+
+                if (saveResult.success) {
+                    finalDocumentPath = filePath;
+                } else {
+                    await showAlert(`Failed to save document: ${saveResult.error}`);
+                    return;
+                }
+            } else {
+                await showAlert('File system access not available. Please set document storage folder in settings.');
+                return;
+            }
+        } catch (error) {
+            await showAlert(`Error uploading document: ${error instanceof Error ? error.message : String(error)}`);
+            return;
+        }
+    } else if (type === 'bill' && documentFile && !state.documentStoragePath) {
+        // Document is optional - clear it and continue without blocking submission
+        await showAlert('Document storage folder is not set. The document will not be saved. You can set the storage folder in Settings > My Preferences and upload the document later.', { title: 'Document Not Saved' });
+        setDocumentFile(null);
+        // Continue without document - finalDocumentPath remains as existing documentPath
     }
 
     const formData = getFormData();
@@ -628,7 +829,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             const updatedBill: Bill = { 
                 ...(itemToEdit as Bill), 
                 ...formData, 
-                projectAgreementId: agreementId || undefined
+                projectAgreementId: agreementId || undefined,
+                documentPath: type === 'bill' ? (finalDocumentPath || undefined) : undefined
             };
             dispatch({ type: 'UPDATE_BILL', payload: updatedBill });
             showToast("Bill updated successfully");
@@ -685,7 +887,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         } else {
             const newBill: Bill = { 
                 ...newData, 
-                projectAgreementId: agreementId || undefined
+                projectAgreementId: agreementId || undefined,
+                documentPath: type === 'bill' ? (finalDocumentPath || undefined) : undefined
             };
             dispatch({ type: 'ADD_BILL', payload: newBill });
             showToast("Bill created successfully");
@@ -778,11 +981,25 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             <DatePicker 
                 label="Date" 
                 value={issueDate} 
-                onChange={d => setIssueDate(d.toISOString().split('T')[0])} 
+                onChange={handleIssueDateChange} 
                 required 
                 disabled={isAgreementCancelled} 
             />
-            <ComboBox label="Tenant" items={filteredContacts} selectedId={contactId} onSelect={handleContactSelect} placeholder="Search or add tenant..." required disabled={!!itemToEdit || isAgreementCancelled} />
+            <ComboBox 
+              label="Tenant" 
+              items={filteredContacts} 
+              selectedId={contactId} 
+              onSelect={(item) => setContactId(item?.id || '')} 
+              placeholder="Search or add tenant..." 
+              required 
+              disabled={!!itemToEdit || isAgreementCancelled}
+              entityType="contact"
+              onAddNew={(entityType, name) => {
+                entityFormModal.openForm('contact', name, fixedContactTypeForNew, undefined, (newId) => {
+                  setContactId(newId);
+                });
+              }}
+            />
             <ComboBox label="Agreement" items={agreementItems} selectedId={agreementId} onSelect={(item) => setAgreementId(item?.id || '')} placeholder="Search agreements..." required disabled={!contactId || !!itemToEdit || isAgreementCancelled} allowAddNew={false} />
             
             {showDetails ? (
@@ -848,119 +1065,256 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   const renderStandardForm = () => {
       return (
-     <div className="space-y-6">
+     <div className="space-y-4">
       {agreementForInvoice && (
-        <div className="p-3 bg-slate-50 rounded-lg border text-sm space-y-1">
-            <h4 className="font-semibold text-slate-800">From Agreement #{agreementForInvoice.agreementNumber}</h4>
-            <div className="flex justify-between"><span>Selling Price:</span> <span>{CURRENCY} {agreementForInvoice.sellingPrice.toLocaleString()}</span></div>
-            <div className="flex justify-between"><span>Already Invoiced:</span> <span>{CURRENCY} {amountAlreadyInvoiced.toLocaleString()}</span></div>
-            <div className="flex justify-between font-bold"><span>Remaining to Invoice:</span> <span>{CURRENCY} {agreementBalance.toLocaleString()}</span></div>
+        <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs">
+            <h4 className="font-semibold text-gray-800 mb-2">From Agreement #{agreementForInvoice.agreementNumber}</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="flex justify-between"><span className="text-gray-600">Selling Price:</span> <span className="font-medium text-gray-800">{CURRENCY} {agreementForInvoice.sellingPrice.toLocaleString()}</span></div>
+              <div className="flex justify-between"><span className="text-gray-600">Already Invoiced:</span> <span className="font-medium text-gray-800">{CURRENCY} {amountAlreadyInvoiced.toLocaleString()}</span></div>
+              <div className="flex justify-between font-bold"><span className="text-gray-600">Remaining:</span> <span className="text-gray-800">{CURRENCY} {agreementBalance.toLocaleString()}</span></div>
+            </div>
         </div>
       )}
 
-      {/* Header Fields Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="md:col-span-1">
-            <Input label={type === 'invoice' ? 'Invoice Number' : 'Bill Number'} value={number} onChange={e => setNumber(e.target.value)} required disabled={isAgreementCancelled} />
+      {/* Header Fields - 4 columns on large screens */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Supplier Field - First */}
+          <div className="flex flex-col">
+            {isPartiallyPaid && type === 'bill' ? (
+                <div>
+                    <Input label={contactLabel} value={state.contacts.find(c=>c.id===contactId)?.name || ''} disabled />
+                    <p className="text-xs text-amber-600 mt-1">Supplier cannot be changed. Please delete all payments first to edit the supplier.</p>
+                </div>
+            ) : (
+                <ComboBox 
+                  label={contactLabel} 
+                  items={filteredContacts} 
+                  selectedId={contactId} 
+                  onSelect={(item) => setContactId(item?.id || '')} 
+                  placeholder={`Select ${contactLabel}...`} 
+                  required 
+                  disabled={isContactLockedByUnit || !!agreementForInvoice || isAgreementCancelled} 
+                  entityType="contact"
+                  onAddNew={(entityType, name) => {
+                    entityFormModal.openForm('contact', name, fixedContactTypeForNew, undefined, (newId) => {
+                      setContactId(newId);
+                    });
+                  }}
+                />
+            )}
+          </div>
+
+          <div className="flex flex-col">
+            <Input label={type === 'invoice' ? 'Invoice #' : 'Bill #'} value={number} onChange={e => setNumber(e.target.value)} required disabled={isAgreementCancelled} />
             {numberError && <p className="text-danger text-xs mt-1">{numberError}</p>}
           </div>
           
-          <div className="md:col-span-1">
+          <div className="flex flex-col">
              <DatePicker 
                 label="Issue Date" 
                 value={issueDate} 
-                onChange={d => setIssueDate(d.toISOString().split('T')[0])} 
+                onChange={handleIssueDateChange} 
                 required 
-                disabled={isAgreementCancelled} 
+                disabled={isAgreementCancelled}
              />
           </div>
 
-           <div className="md:col-span-1">
+          <div className="flex flex-col">
               {(type === 'invoice' || type === 'bill') && (
                 <DatePicker 
                     label="Due Date" 
                     value={dueDate} 
                     onChange={d => setDueDate(d.toISOString().split('T')[0])} 
                     required 
-                    disabled={isAgreementCancelled} 
+                    disabled={isAgreementCancelled}
                 />
               )}
-           </div>
+          </div>
       </div>
       
-      {/* Amount & Contact Container */}
-      <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-                 <Input 
-                    label="Amount" 
-                    type="text" 
-                    inputMode="decimal" 
-                    value={amount} 
-                    onChange={e => setAmount(e.target.value)} 
-                    required 
-                    disabled={isAgreementCancelled} 
-                    className="text-lg font-semibold"
-                    placeholder="0.00"
-                />
-            </div>
-            
-            <div>
-              {isPartiallyPaid && type === 'bill' ? (
-                  <div className="mb-2">
-                      <Input label={contactLabel} value={state.contacts.find(c=>c.id===contactId)?.name || ''} disabled />
-                      <p className="text-xs text-amber-600 mt-1">Cannot change supplier on a paid bill.</p>
+      {/* Simplified Project Fields (Only for Bills from Project Management) */}
+      {type === 'bill' && projectContext && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <ComboBox 
+                label="Project" 
+                items={state.projects} 
+                selectedId={projectId || ''} 
+                onSelect={(item) => { setProjectId(item?.id || ''); setUnitId(''); }} 
+                placeholder="Search projects..." 
+                entityType="project"
+                onAddNew={(entityType, name) => {
+                  entityFormModal.openForm('project', name, undefined, undefined, (newId) => {
+                    setProjectId(newId);
+                    setUnitId('');
+                  });
+                }}
+              />
+              
+              {/* Amount Field - Aligned with Project */}
+              <div className="flex flex-col">
+                {expenseCategoryItems.length > 0 ? (
+                  <div className="flex flex-col">
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Total Amount</label>
+                    <div className="bg-gray-50 border border-gray-300 rounded-lg shadow-sm px-3 py-3 sm:py-2 flex items-center text-base sm:text-sm font-semibold text-gray-800">
+                      {CURRENCY} {totalAmountFromItems.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
                   </div>
-              ) : (
-                  <ComboBox label={contactLabel} items={filteredContacts} selectedId={contactId} onSelect={handleContactSelect} placeholder={`Select ${contactLabel}...`} required disabled={isContactLockedByUnit || !!agreementForInvoice || isAgreementCancelled} />
+                ) : (
+                  <Input
+                    label="Amount"
+                    type="text"
+                    inputMode="decimal"
+                    value={amount}
+                    onChange={e => setAmount(e.target.value)}
+                    required
+                    disabled={isAgreementCancelled}
+                    placeholder="0.00"
+                  />
+                )}
+              </div>
+              
+              {/* Contract Linking - Inline */}
+              {contactId && (
+                  <div className="flex flex-col">
+                     <ComboBox
+                        label="Contract (Optional)"
+                        items={availableContracts}
+                        selectedId={contractId}
+                        onSelect={item => {
+                            const selectedContractId = item?.id || '';
+                            if (selectedContractId) {
+                                const contract = state.contracts.find(c => c.id === selectedContractId);
+                                if (contract) {
+                                    // Validate: bill and contract must have the same projectId
+                                    // If either has a projectId, they must match exactly
+                                    if ((projectId || contract.projectId) && projectId !== contract.projectId) {
+                                        showAlert('This contract belongs to a different project. A bill can only be linked to a contract with the same project.');
+                                        return;
+                                    }
+                                    setContractId(selectedContractId);
+                                    // Auto-set projectId from contract if not already set
+                                    if (contract.projectId && !projectId) {
+                                        setProjectId(contract.projectId);
+                                    }
+                                } else {
+                                    setContractId('');
+                                }
+                            } else {
+                                setContractId('');
+                            }
+                        }}
+                        placeholder={availableContracts.length > 0 ? "Select contract..." : "No contracts"}
+                        allowAddNew={false}
+                     />
+                     {availableContracts.length > 0 && (
+                         <p className="text-xs text-indigo-600 mt-1">Tracked against contract budget</p>
+                     )}
+                 </div>
               )}
-           </div>
-        </div>
-      </div>
+          </div>
+      )}
       
       {/* Bill Allocation Context Selector (Only for Bills) */}
-      {type === 'bill' && (
+      {type === 'bill' && !projectContext && (
           <div className="space-y-3">
-              <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200 pb-2">Cost Allocation</h3>
-              
-              {/* Root Source Toggle Tabs */}
-              <div className="flex p-1 bg-slate-100 rounded-lg">
-                  {!rentalContext && (
-                    <button type="button" onClick={() => handleRootChange('project')} className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${rootAllocationType === 'project' ? 'bg-white shadow text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
-                        Project
+              <div className="flex items-center gap-3">
+                <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Cost Allocation</h3>
+                {/* Root Source Toggle Tabs */}
+                <div className="flex gap-2 flex-1">
+                    {!rentalContext && (
+                      <button type="button" onClick={() => handleRootChange('project')} className={`flex-1 py-2 px-3 text-xs font-medium rounded-lg border transition-all ${rootAllocationType === 'project' ? 'bg-indigo-50 text-indigo-700 border-indigo-300' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+                          Project
+                      </button>
+                    )}
+                    <button type="button" onClick={() => handleRootChange('building')} className={`flex-1 py-2 px-3 text-xs font-medium rounded-lg border transition-all ${rootAllocationType === 'building' ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+                        Building
                     </button>
-                  )}
-                  <button type="button" onClick={() => handleRootChange('building')} className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${rootAllocationType === 'building' ? 'bg-white shadow text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>
-                      Building / Property
-                  </button>
-                  {!rentalContext && (
-                    <button type="button" onClick={() => handleRootChange('staff')} className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${rootAllocationType === 'staff' ? 'bg-white shadow text-slate-700' : 'text-slate-500 hover:text-slate-700'}`}>
-                        Staff
-                    </button>
-                  )}
+                    {!rentalContext && (
+                      <button type="button" onClick={() => handleRootChange('staff')} className={`flex-1 py-2 px-3 text-xs font-medium rounded-lg border transition-all ${rootAllocationType === 'staff' ? 'bg-gray-100 text-gray-700 border-gray-400' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+                          Staff
+                      </button>
+                    )}
+                </div>
               </div>
 
-              <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-sm">
+              <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-sm">
                   {/* PROJECT FLOW */}
                   {rootAllocationType === 'project' && (
-                      <div className="space-y-4 animate-fade-in">
-                          <ComboBox label="Select Project" items={state.projects} selectedId={projectId || ''} onSelect={(item) => { setProjectId(item?.id || ''); setUnitId(''); }} placeholder="Search projects..." allowAddNew={false} />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 animate-fade-in">
+                          <ComboBox 
+                            label="Project" 
+                            items={state.projects} 
+                            selectedId={projectId || ''} 
+                            onSelect={(item) => { setProjectId(item?.id || ''); setUnitId(''); }} 
+                            placeholder="Search projects..." 
+                            entityType="project"
+                            onAddNew={(entityType, name) => {
+                              entityFormModal.openForm('project', name, undefined, undefined, (newId) => {
+                                setProjectId(newId);
+                                setUnitId('');
+                              });
+                            }}
+                          />
                           
-                          {/* Contract Linking - Show when vendor is selected, even if no contracts match */}
+                          {/* Amount Field */}
+                          <div className="flex flex-col">
+                            {type === 'bill' && expenseCategoryItems.length > 0 ? (
+                              <div className="flex flex-col">
+                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Total Amount</label>
+                                <div className="bg-gray-50 border border-gray-300 rounded-lg shadow-sm px-3 py-3 sm:py-2 flex items-center text-base sm:text-sm font-semibold text-gray-800">
+                                  {CURRENCY} {totalAmountFromItems.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </div>
+                              </div>
+                            ) : (
+                              <Input
+                                label="Amount"
+                                type="text"
+                                inputMode="decimal"
+                                value={amount}
+                                onChange={e => setAmount(e.target.value)}
+                                required
+                                disabled={isAgreementCancelled}
+                                placeholder="0.00"
+                              />
+                            )}
+                          </div>
+                          
+                          {/* Contract Linking */}
                           {contactId && (
-                              <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3">
+                              <div className="flex flex-col">
                                  <ComboBox
-                                    label="Link to Contract (Optional)"
+                                    label="Contract (Optional)"
                                     items={availableContracts}
                                     selectedId={contractId}
-                                    onSelect={item => setContractId(item?.id || '')}
-                                    placeholder={availableContracts.length > 0 ? "Select contract..." : "No contracts available for this vendor"}
+                                    onSelect={item => {
+                                        const selectedContractId = item?.id || '';
+                                        if (selectedContractId) {
+                                            const contract = state.contracts.find(c => c.id === selectedContractId);
+                                            if (contract) {
+                                                // Validate: bill and contract must have the same projectId
+                                                // If either has a projectId, they must match exactly
+                                                if ((projectId || contract.projectId) && projectId !== contract.projectId) {
+                                                    showAlert('This contract belongs to a different project. A bill can only be linked to a contract with the same project.');
+                                                    return;
+                                                }
+                                                setContractId(selectedContractId);
+                                                // Auto-set projectId from contract if not already set
+                                                if (contract.projectId && !projectId) {
+                                                    setProjectId(contract.projectId);
+                                                }
+                                            } else {
+                                                setContractId('');
+                                            }
+                                        } else {
+                                            setContractId('');
+                                        }
+                                    }}
+                                    placeholder={availableContracts.length > 0 ? "Select contract..." : "No contracts"}
                                     allowAddNew={false}
                                  />
-                                 {availableContracts.length > 0 ? (
-                                     <p className="text-xs text-indigo-600 mt-1">This bill will be tracked against the contract budget. Showing contracts for the same vendor.</p>
-                                 ) : (
-                                     <p className="text-xs text-slate-500 mt-1">No active contracts found for this vendor. Create a contract first to link bills.</p>
+                                 {availableContracts.length > 0 && (
+                                     <p className="text-xs text-indigo-600 mt-1">Tracked against contract budget</p>
                                  )}
                              </div>
                           )}
@@ -969,44 +1323,60 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
                   {/* BUILDING FLOW */}
                   {rootAllocationType === 'building' && (
-                      <div className="space-y-4 animate-fade-in">
-                          <ComboBox label="Select Building" items={state.buildings} selectedId={buildingId || ''} onSelect={(item) => { setBuildingId(item?.id || ''); setPropertyId(''); setTenantId(''); }} placeholder="Search buildings..." allowAddNew={false} />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 animate-fade-in">
+                          <ComboBox 
+                            label="Building" 
+                            items={state.buildings} 
+                            selectedId={buildingId || ''} 
+                            onSelect={(item) => { setBuildingId(item?.id || ''); setPropertyId(''); setTenantId(''); }} 
+                            placeholder="Search buildings..." 
+                            entityType="building"
+                            onAddNew={(entityType, name) => {
+                              entityFormModal.openForm('building', name, undefined, undefined, (newId) => {
+                                setBuildingId(newId);
+                                setPropertyId('');
+                                setTenantId('');
+                              });
+                            }}
+                          />
                           
                           {buildingId && (
-                            <div className="space-y-3 pt-2">
-                                <label className="block text-xs font-semibold text-slate-500 uppercase">Expense Type</label>
-                                <div className="flex flex-wrap gap-2">
-                                    <button type="button" onClick={() => setBillAllocationType('building')} className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${billAllocationType === 'building' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>Building Service (Common)</button>
-                                    <button type="button" onClick={() => setBillAllocationType('owner')} className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${billAllocationType === 'owner' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>Owner Unit Expense</button>
-                                    <button type="button" onClick={() => setBillAllocationType('tenant')} className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${billAllocationType === 'tenant' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>Tenant Specific (Recharge)</button>
+                            <>
+                              <div className="flex flex-col">
+                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Type</label>
+                                <div className="flex gap-2">
+                                    <button type="button" onClick={() => setBillAllocationType('building')} className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${billAllocationType === 'building' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}>Service</button>
+                                    <button type="button" onClick={() => setBillAllocationType('owner')} className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${billAllocationType === 'owner' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}>Owner</button>
+                                    <button type="button" onClick={() => setBillAllocationType('tenant')} className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${billAllocationType === 'tenant' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}>Tenant</button>
                                 </div>
+                              </div>
 
-                                {billAllocationType === 'owner' && (
-                                    <div className="animate-fade-in pt-2">
-                                        <ComboBox label="Select Property (Owner Expense)" items={propertyItems} selectedId={propertyId || ''} onSelect={(item) => setPropertyId(item?.id || '')} placeholder="Search properties..." allowAddNew={false} />
-                                    </div>
-                                )}
-                                
-                                {billAllocationType === 'tenant' && (
-                                    <div className="animate-fade-in pt-2">
-                                        <ComboBox label="Select Tenant" items={filteredTenants} selectedId={tenantId || ''} onSelect={(item) => handleTenantSelect(item)} placeholder="Search tenants..." allowAddNew={false} />
-                                    </div>
-                                )}
-                            </div>
+                              {billAllocationType === 'owner' && (
+                                  <div className="animate-fade-in">
+                                      <ComboBox label="Property" items={propertyItems} selectedId={propertyId || ''} onSelect={(item) => setPropertyId(item?.id || '')} placeholder="Search properties..." allowAddNew={false} />
+                                  </div>
+                              )}
+                              
+                              {billAllocationType === 'tenant' && (
+                                  <div className="animate-fade-in">
+                                      <ComboBox label="Tenant" items={filteredTenants} selectedId={tenantId || ''} onSelect={(item) => handleTenantSelect(item)} placeholder="Search tenants..." allowAddNew={false} />
+                                  </div>
+                              )}
+                            </>
                           )}
                       </div>
                   )}
 
                   {/* STAFF FLOW */}
                   {rootAllocationType === 'staff' && (
-                      <div className="animate-fade-in">
+                      <div className="animate-fade-in max-w-md">
                           <ComboBox 
-                            label="Select Staff Member" 
+                            label="Staff Member" 
                             items={staffList} 
                             selectedId={staffId || ''} 
                             onSelect={handleStaffSelect} 
                             placeholder="Search staff..." 
-                            allowAddNew={false} 
+                            allowAddNew={false}
                           />
                       </div>
                   )}
@@ -1016,24 +1386,182 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
       {/* Project Invoice Specifics */}
       {type === 'invoice' && invoiceType === InvoiceType.INSTALLMENT && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
-            <ComboBox label="Project" items={state.projects} selectedId={projectId || ''} onSelect={(item, newName) => { if (newName) showAlert("Please create new projects from Settings."); else setProjectId(item?.id || ''); }} placeholder="Select a project..." disabled={!!agreementForInvoice || isAgreementCancelled} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-gray-50 p-3 rounded-lg border border-gray-200">
+            <ComboBox 
+              label="Project" 
+              items={state.projects} 
+              selectedId={projectId || ''} 
+              onSelect={(item) => setProjectId(item?.id || '')} 
+              placeholder="Select a project..." 
+              disabled={!!agreementForInvoice || isAgreementCancelled}
+              entityType="project"
+              onAddNew={(entityType, name) => {
+                entityFormModal.openForm('project', name, undefined, undefined, (newId) => {
+                  setProjectId(newId);
+                });
+              }}
+            />
             {projectId && (<ComboBox label="Unit (Optional)" items={availableUnitsForProject} selectedId={unitId || ''} onSelect={(item) => setUnitId(item?.id || '')} placeholder="Select a unit" allowAddNew={false} disabled={!!agreementForInvoice || isAgreementCancelled} />)}
           </div>
       )}
 
-      {/* Category and Description */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Expense Category Items (for Bills) or Category (for Invoices) */}
+      {type === 'bill' ? (
+        <div className="border border-gray-200 rounded-lg p-3 bg-gray-50 flex flex-col flex-grow min-h-0">
+          <div className="flex items-center justify-between mb-3 flex-shrink-0">
+            <label className="block text-sm font-medium text-gray-700">Expense Categories</label>
+            <div className="w-48">
+              <ComboBox
+                items={availableCategories}
+                selectedId=""
+                onSelect={handleAddExpenseCategory}
+                placeholder="Add category..."
+                disabled={isAgreementCancelled}
+                entityType="category"
+                onAddNew={(entityType, name) => {
+                  entityFormModal.openForm('category', name, undefined, TransactionType.EXPENSE, (newId) => {
+                    handleAddExpenseCategory({ id: newId, name });
+                  });
+                }}
+              />
+            </div>
+          </div>
+
+          {expenseCategoryItems.length > 0 ? (
+            <>
+              {/* Data Grid */}
+              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden flex flex-col flex-grow min-h-0">
+                <div className="overflow-y-auto flex-grow" style={{ maxHeight: 'calc(100vh - 450px)', minHeight: '120px' }}>
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100 border-b border-gray-200 sticky top-0">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Category</th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700 w-28">Unit</th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700 w-24">Qty</th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700 w-28">Price</th>
+                        <th className="px-3 py-2 text-right font-semibold text-gray-700 w-32">Net</th>
+                        <th className="px-2 py-2 text-center font-semibold text-gray-700 w-10">X</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {expenseCategoryItems.map((item) => {
+                        const category = expenseCategories.find(c => c.id === item.categoryId);
+                        return (
+                          <tr key={item.id} className="hover:bg-gray-50">
+                            <td className="px-3 py-2">
+                              <span className="font-medium text-gray-800 truncate block max-w-[150px]">{category?.name || 'Unknown'}</span>
+                            </td>
+                            <td className="px-3 py-2">
+                              <Select
+                                value={item.unit}
+                                onChange={(e) => updateExpenseCategoryItem(item.id, { unit: e.target.value as ContractExpenseCategoryItem['unit'] })}
+                                className="text-sm border-gray-300 h-9 w-full"
+                                disabled={isAgreementCancelled}
+                                hideIcon={false}
+                              >
+                                <option value="Cubic Feet">Cubic Feet</option>
+                                <option value="Square feet">Square feet</option>
+                                <option value="feet">feet</option>
+                                <option value="quantity">quantity</option>
+                              </Select>
+                            </td>
+                            <td className="px-3 py-2 relative">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={item.quantity?.toString() || ''}
+                                onChange={(e) => {
+                                  const quantity = parseFloat(e.target.value) || 0;
+                                  updateExpenseCategoryItem(item.id, { quantity });
+                                }}
+                                className="w-full pr-8"
+                                disabled={isAgreementCancelled}
+                              />
+                              <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">▼</span>
+                            </td>
+                            <td className="px-3 py-2">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={item.pricePerUnit.toString() || ''}
+                                onChange={(e) => {
+                                  const pricePerUnit = parseFloat(e.target.value) || 0;
+                                  updateExpenseCategoryItem(item.id, { pricePerUnit });
+                                }}
+                                className="w-full"
+                                disabled={isAgreementCancelled}
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={item.netValue?.toString() || '0'}
+                                onChange={(e) => {
+                                  const netValue = parseFloat(e.target.value) || 0;
+                                  updateExpenseCategoryItem(item.id, { netValue }, true);
+                                }}
+                                className="w-full text-right font-semibold"
+                                disabled={isAgreementCancelled}
+                              />
+                            </td>
+                            <td className="px-2 py-2 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveExpenseCategoryItem(item.id)}
+                                className="text-gray-400 hover:text-rose-500 transition-colors"
+                                title="Remove"
+                                disabled={isAgreementCancelled}
+                              >
+                                <div className="w-4 h-4">{ICONS.x}</div>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="bg-gray-100 border-t-2 border-gray-300 sticky bottom-0">
+                      <tr>
+                        <td colSpan={4} className="px-3 py-2 text-right font-bold text-gray-700">
+                          Total:
+                        </td>
+                        <td className="px-3 py-2 text-right font-bold text-gray-800">
+                          {CURRENCY} {totalAmountFromItems.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-gray-400 italic py-3 text-center bg-white border border-gray-200 rounded-lg">
+              No expense categories added. Use the dropdown above to add categories.
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
            <div>
-                {(type === 'invoice' && invoiceType === InvoiceType.INSTALLMENT) || type === 'bill' ? (
+            {type === 'invoice' && invoiceType === InvoiceType.INSTALLMENT ? (
                     <ComboBox 
-                        label={type === 'bill' ? "Expense Category" : "Income Category"} 
-                        items={type === 'bill' ? expenseCategories : incomeCategories} 
+                        label="Income Category" 
+                        items={incomeCategories} 
                         selectedId={categoryId || ''} 
-                        onSelect={(item, newName) => { if (newName) showAlert("Please create new categories from Settings."); else setCategoryId(item?.id || ''); }} 
+                        onSelect={(item) => setCategoryId(item?.id || '')} 
                         placeholder="Select category..." 
                         required={true}
-                        disabled={isAgreementCancelled} 
+                        disabled={isAgreementCancelled}
+                        entityType="category"
+                        onAddNew={(entityType, name) => {
+                            entityFormModal.openForm('category', name, undefined, TransactionType.INCOME, (newId) => {
+                                setCategoryId(newId);
+                            });
+                        }}
                     />
                 ) : null}
            </div>
@@ -1041,27 +1569,136 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                 <Input label="Description (Optional)" value={description} onChange={e => setDescription(e.target.value)} disabled={isAgreementCancelled} placeholder="Add notes..." />
            </div>
       </div>
+      )}
+      
+      {/* Description field for Bills */}
+      {type === 'bill' && (
+        <Input label="Description (Optional)" value={description} onChange={e => setDescription(e.target.value)} disabled={isAgreementCancelled} placeholder="Add notes..." />
+      )}
+
+      {/* Document Upload Section for Bills */}
+      {type === 'bill' && (
+        <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Bill Document</label>
+          <p className="text-xs text-gray-500 mb-3">Upload a scanned copy of the bill document.</p>
+          
+          {documentPath && !documentFile && (
+            <div className="mb-3 p-3 bg-white border border-gray-200 rounded-lg flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-indigo-100 rounded flex items-center justify-center">
+                  <div className="w-4 h-4 text-indigo-600">{ICONS.file}</div>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-800">Document attached</p>
+                  <p className="text-xs text-gray-500">{documentPath.split('/').pop()}</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={async () => {
+                    if (window.electronAPI && window.electronAPI.openDocumentFile) {
+                      try {
+                        const result = await window.electronAPI.openDocumentFile({ filePath: documentPath });
+                        if (!result.success) {
+                          await showAlert(`Failed to open document: ${result.error}`);
+                        }
+                      } catch (error) {
+                        await showAlert(`Error opening document: ${error instanceof Error ? error.message : String(error)}`);
+                      }
+                    } else {
+                      await showAlert('File system access not available');
+                    }
+                  }}
+                >
+                  Open
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setDocumentPath('');
+                    setDocumentFile(null);
+                  }}
+                >
+                  Remove
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <label className="flex-1">
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setDocumentFile(file);
+                    setDocumentPath(''); // Clear old path when new file is selected
+                  }
+                }}
+                className="hidden"
+                disabled={isAgreementCancelled}
+              />
+              <div className={`cursor-pointer border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-indigo-400 hover:bg-indigo-50 transition-colors ${isAgreementCancelled ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                <div className="text-gray-600 text-sm">
+                  {documentFile ? documentFile.name : 'Click to upload document'}
+                </div>
+              </div>
+            </label>
+            {documentFile && (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setDocumentFile(null);
+                }}
+                disabled={isAgreementCancelled}
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+          {!state.documentStoragePath && (
+            <p className="text-xs text-amber-600 mt-2">
+              ⚠️ Please set document storage folder in Settings &gt; My Preferences
+            </p>
+          )}
+        </div>
+      )}
       
     </div>
   )};
 
   return (
     <>
-    <form onSubmit={handleSubmit} className="space-y-4" style={formStyle}>
-      {isPartiallyPaid && (
-          <div className="bg-amber-50 text-amber-800 p-3 rounded-md border border-amber-200 text-sm font-medium mb-4">
+    <form onSubmit={handleSubmit} className="flex flex-col h-full space-y-1" style={formStyle}>
+      {isPartiallyPaid && type === 'bill' && (
+          <div className="bg-amber-50 text-amber-800 p-1.5 rounded border border-amber-200 text-[10px] font-medium mb-1">
+              This bill has associated payments recorded. You can edit expense categories and amounts, but the supplier cannot be changed. To change the supplier, please delete all payments first.
+          </div>
+      )}
+      {isPartiallyPaid && type === 'invoice' && (
+          <div className="bg-amber-50 text-amber-800 p-1.5 rounded border border-amber-200 text-[10px] font-medium mb-1">
               This {type} has associated payments recorded. Editing critical details may affect your ledger consistency.
           </div>
       )}
       {isAgreementCancelled && (
-          <div className="bg-red-50 text-red-800 p-3 rounded-md border border-red-200 text-sm font-medium mb-4">
+          <div className="bg-red-50 text-red-800 p-1.5 rounded border border-red-200 text-[10px] font-medium mb-1">
               This invoice belongs to a cancelled agreement and cannot be updated.
           </div>
       )}
-      {invoiceType === InvoiceType.RENTAL ? renderRentalInvoiceForm()
-          : renderStandardForm()}
+      <div className="flex-grow min-h-0 overflow-y-auto">
+        {invoiceType === InvoiceType.RENTAL ? renderRentalInvoiceForm()
+            : renderStandardForm()}
+      </div>
       
-      <div className="flex justify-between pt-4 border-t border-slate-100 mt-6">
+      <div className="flex justify-between pt-4 border-t border-gray-200 mt-4 flex-shrink-0">
         <div className="flex gap-2">
             {itemToEdit && (
                 <Button type="button" variant="danger" onClick={handleDelete} disabled={isAgreementCancelled}>
@@ -1083,6 +1720,15 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     <Modal isOpen={isContactModalOpen} onClose={() => setIsContactModalOpen(false)} title={`Add New ${contactLabel}`}>
         <ContactForm onSubmit={handleContactSubmit} onCancel={() => setIsContactModalOpen(false)} existingContacts={state.contacts} fixedTypeForNew={fixedContactTypeForNew} initialName={newItemName} />
     </Modal>
+    <EntityFormModal
+      isOpen={entityFormModal.isFormOpen}
+      formType={entityFormModal.formType}
+      initialName={entityFormModal.initialName}
+      contactType={entityFormModal.contactType}
+      categoryType={entityFormModal.categoryType}
+      onClose={entityFormModal.closeForm}
+      onSubmit={entityFormModal.handleSubmit}
+    />
     </>
   );
 };

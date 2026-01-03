@@ -10,6 +10,14 @@
 import { getDatabaseService } from './database/databaseService';
 import { ErrorLogEntry } from '../types';
 
+interface ExtendedErrorLogEntry extends ErrorLogEntry {
+    id: string;
+    url?: string;
+    userAgent?: string;
+    errorType?: string;
+    additionalInfo?: any;
+}
+
 class ErrorLogger {
     private maxLogs = 1000; // Maximum number of logs to keep
     private logs: ExtendedErrorLogEntry[] = [];
@@ -65,7 +73,7 @@ class ErrorLogger {
                         if (seen.has(key)) return false;
                         seen.add(key);
                         return true;
-                    }).sort((a, b) => 
+                    }).sort((a, b) =>
                         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
                     ).slice(0, this.maxLogs);
                 }
@@ -93,7 +101,7 @@ class ErrorLogger {
         try {
             const errorMessage = error instanceof Error ? error.message : error;
             const errorStack = error instanceof Error ? error.stack : undefined;
-            
+
             const logEntry: ExtendedErrorLogEntry = {
                 id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 timestamp: new Date().toISOString(),
@@ -150,7 +158,7 @@ class ErrorLogger {
             const existing = localStorage.getItem('error_logs');
             const logs: ExtendedErrorLogEntry[] = existing ? JSON.parse(existing) : [];
             logs.unshift(entry);
-            
+
             // Keep only last 100 logs in localStorage
             const trimmedLogs = logs.slice(0, 100);
             localStorage.setItem('error_logs', JSON.stringify(trimmedLogs));
@@ -172,7 +180,7 @@ class ErrorLogger {
     async clearLogs(): Promise<void> {
         try {
             this.logs = [];
-            
+
             // Clear from database
             const dbService = getDatabaseService();
             if (dbService.isReady()) {
@@ -246,8 +254,8 @@ if (typeof window !== 'undefined') {
     // Unhandled promise rejections
     window.addEventListener('unhandledrejection', (event) => {
         getErrorLogger().logError(
-            event.reason instanceof Error 
-                ? event.reason 
+            event.reason instanceof Error
+                ? event.reason
                 : new Error(String(event.reason)),
             {
                 errorType: 'unhandled_promise_rejection'

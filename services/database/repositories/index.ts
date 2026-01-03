@@ -5,6 +5,8 @@
  */
 
 import { BaseRepository } from './baseRepository';
+import { getNativeDatabaseService } from '../nativeDatabaseService';
+import { getDatabaseService } from '../databaseService';
 export { BaseRepository } from './baseRepository';
 export { AppStateRepository } from './appStateRepository';
 
@@ -45,7 +47,150 @@ export class UnitsRepository extends BaseRepository<any> {
 }
 
 export class TransactionsRepository extends BaseRepository<any> {
-    constructor() { super('transactions'); }
+    private useNativeBackend: boolean = false;
+    private nativeService: any = null;
+
+    constructor() {
+        super('transactions');
+        // Check if native backend is available and enabled
+        try {
+            this.nativeService = getNativeDatabaseService();
+            const isAvailable = this.nativeService.isNativeAvailable();
+            console.log('🔍 TransactionsRepository: Native service available?', isAvailable);
+
+            // Enable native backend by default if available (can be disabled via feature flag)
+            // Check localStorage for feature flag
+            if (typeof window !== 'undefined') {
+                const flag = localStorage.getItem('useNativeDatabase');
+                console.log('🔍 TransactionsRepository: Feature flag value:', flag);
+                if (flag !== null) {
+                    this.useNativeBackend = flag === 'true' && isAvailable;
+                    console.log('🔍 TransactionsRepository: Using feature flag, useNativeBackend =', this.useNativeBackend);
+                } else {
+                    // No flag set, use default (enabled if available)
+                    this.useNativeBackend = isAvailable;
+                    console.log('🔍 TransactionsRepository: No feature flag, using default, useNativeBackend =', this.useNativeBackend);
+                }
+            } else {
+                this.useNativeBackend = isAvailable;
+                console.log('🔍 TransactionsRepository: Not in browser, useNativeBackend =', this.useNativeBackend);
+            }
+        } catch (e) {
+            // Native service not available, use sql.js
+            console.error('❌ TransactionsRepository: Failed to load native service:', e);
+            this.useNativeBackend = false;
+        }
+    }
+
+    /**
+     * Find all transactions (uses native backend if available, otherwise sql.js)
+     */
+    findAll(): any[] {
+        if (this.useNativeBackend && this.nativeService) {
+            // For native backend, we need to load in chunks
+            // But findAll() expects synchronous return, so we'll use sql.js for now
+            // Components should use findAllPaginated() instead
+            console.warn('⚠️ findAll() called - consider using findAllPaginated() for better performance with native backend');
+        }
+        return super.findAll();
+    }
+
+    /**
+     * Find transactions with pagination (native backend only)
+     * Returns empty array if native backend not available
+     */
+    async findAllPaginated(params: {
+        projectId?: string | null;
+        limit?: number;
+        offset?: number;
+    } = {}): Promise<any[]> {
+        if (this.useNativeBackend && this.nativeService) {
+            try {
+                return await this.nativeService.listTransactions({
+                    projectId: params.projectId,
+                    limit: params.limit || 100,
+                    offset: params.offset || 0,
+                });
+            } catch (error) {
+                console.error('❌ Native backend query failed, falling back to sql.js:', error);
+            }
+        }
+
+        // Fallback to sql.js with efficient SQL-level pagination
+        return super.findAll({
+            condition: params.projectId ? 'project_id = ?' : undefined,
+            params: params.projectId ? [params.projectId] : [],
+            limit: params.limit || 100,
+            offset: params.offset || 0,
+            orderBy: 'date',
+            orderDir: 'DESC'
+        });
+    }
+
+    /**
+     * Get transaction totals (native backend only)
+     */
+    async getTotals(params: { projectId?: string | null } = {}): Promise<{ totalIncome: number; totalExpense: number }> {
+        if (this.useNativeBackend && this.nativeService) {
+            try {
+                const result = await this.nativeService.getTotals(params);
+                return {
+                    totalIncome: result.totalIncome || 0,
+                    totalExpense: result.totalExpense || 0,
+                };
+            } catch (error) {
+                console.error('❌ Native backend totals query failed:', error);
+            }
+        }
+        // Fallback: calculate from sql.js using optimized query
+        const sql = `
+            SELECT 
+                SUM(CASE WHEN type = 'INCOME' THEN amount ELSE 0 END) as total_income,
+                SUM(CASE WHEN type = 'EXPENSE' THEN amount ELSE 0 END) as total_expense
+            FROM transactions
+            ${params.projectId ? 'WHERE project_id = ?' : ''}
+        `;
+        const results = this.db.query<{ total_income: number; total_expense: number }>(
+            sql,
+            params.projectId ? [params.projectId] : []
+        );
+
+        return {
+            totalIncome: results[0]?.total_income || 0,
+            totalExpense: results[0]?.total_expense || 0
+        };
+    }
+
+    /**
+     * Get transaction count
+     */
+    async getCount(params: { projectId?: string | null } = {}): Promise<number> {
+        if (this.useNativeBackend && this.nativeService) {
+            try {
+                return await this.nativeService.getTransactionCount(params.projectId);
+            } catch (error) {
+                console.error('❌ Native backend count query failed:', error);
+            }
+        }
+
+        // Fallback to sql.js
+        const sql = `SELECT COUNT(*) as count FROM transactions ${params.projectId ? 'WHERE project_id = ?' : ''}`;
+        const results = this.db.query<{ count: number }>(sql, params.projectId ? [params.projectId] : []);
+        return results[0]?.count || 0;
+    }
+
+    /**
+     * Check if native backend is enabled
+     */
+    isNativeEnabled(): boolean {
+        const result = this.useNativeBackend && this.nativeService?.isNativeAvailable() === true;
+        console.log('🔍 TransactionsRepository.isNativeEnabled():', result, {
+            useNativeBackend: this.useNativeBackend,
+            hasNativeService: !!this.nativeService,
+            serviceIsAvailable: this.nativeService?.isNativeAvailable()
+        });
+        return result;
+    }
 }
 
 export class InvoicesRepository extends BaseRepository<any> {
@@ -146,7 +291,7 @@ export class DocumentsRepository extends BaseRepository<any> {
 
 export class AppSettingsRepository {
     private db = getDatabaseService();
-    
+
     getSetting(key: string): any {
         const result = this.db.query<{ value: string }>(
             'SELECT value FROM app_settings WHERE key = ?',
@@ -189,12 +334,22 @@ export class AppSettingsRepository {
 
     saveAllSettings(settings: any): void {
         Object.entries(settings).forEach(([key, value]) => {
-            if (value !== null && value !== undefined) {
+            // Save all values including null/undefined to ensure settings are properly persisted
+            // For null/undefined/empty string, we'll delete the setting to clear it
+            if (value === null || value === undefined || value === '') {
+                // Delete the setting if it's null/undefined/empty (clear it)
+                this.db.execute('DELETE FROM app_settings WHERE key = ?', [key]);
+            } else {
+                // Always save the setting if it has a value
                 this.setSetting(key, value);
             }
         });
+        // Ensure database is saved after updating settings
+        if (!this.db.isInTransaction()) {
+            this.db.save();
+        }
     }
 }
 
 // Helper function to get database service
-import { getDatabaseService } from '../databaseService';
+// Moved to top

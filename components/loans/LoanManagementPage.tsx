@@ -10,6 +10,7 @@ import LoanAnalysisReport from '../reports/LoanAnalysisReport';
 import { formatDate } from '../../utils/dateUtils';
 import { exportJsonToExcel } from '../../services/exportService';
 import { useNotification } from '../../context/NotificationContext';
+import { WhatsAppService } from '../../services/whatsappService';
 
 interface LoanSummary {
     contactId: string;
@@ -178,24 +179,40 @@ const LoanManagementPage: React.FC = () => {
         }));
     };
 
-    const handleWhatsApp = () => {
+    const handleWhatsApp = async () => {
         if (!selectedSummary) return;
         if (!selectedSummary.contactNo) {
-            showAlert("This contact does not have a phone number saved.");
+            await showAlert("This contact does not have a phone number saved.");
             return;
         }
         
-        const balance = selectedSummary.netBalance;
-        const status = balance > 0 ? "You Owe" : balance < 0 ? "Owes You" : "Settled";
-        
-        let message = `*Loan Balance Statement*\n`;
-        message += `Contact: ${selectedSummary.contactName}\n`;
-        message += `Status: ${status}\n`;
-        message += `Net Balance: *${CURRENCY} ${Math.abs(balance).toLocaleString()}*\n\n`;
-        message += `This is an automated message from My Accountant.`;
+        try {
+            const balance = selectedSummary.netBalance;
+            const status = balance > 0 ? "You Owe" : balance < 0 ? "Owes You" : "Settled";
+            
+            let message = `*Loan Balance Statement*\n`;
+            message += `Contact: ${selectedSummary.contactName}\n`;
+            message += `Status: ${status}\n`;
+            message += `Net Balance: *${CURRENCY} ${Math.abs(balance).toLocaleString()}*\n\n`;
+            message += `This is an automated message from PBooksPro.`;
 
-        const phoneNumber = selectedSummary.contactNo.replace(/[^0-9]/g, '');
-        window.open(`https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`, '_blank');
+            // Find the contact to use WhatsAppService
+            const contact = state.contacts.find(c => c.name === selectedSummary.contactName && c.contactNo === selectedSummary.contactNo);
+            if (contact) {
+                WhatsAppService.sendMessage({ contact, message });
+            } else {
+                // Fallback: create a temporary contact object
+                const tempContact = {
+                    id: '',
+                    name: selectedSummary.contactName,
+                    type: state.contacts.find(c => c.name === selectedSummary.contactName)?.type || 'Friend & Family' as any,
+                    contactNo: selectedSummary.contactNo
+                };
+                WhatsAppService.sendMessage({ contact: tempContact, message });
+            }
+        } catch (error) {
+            await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
+        }
     };
 
     const handleExport = () => {

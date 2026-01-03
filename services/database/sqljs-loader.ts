@@ -20,6 +20,10 @@ export async function loadSqlJs(): Promise<any> {
         let module: any = null;
         let initSqlJs: any = null;
         
+        // Check if we're in Electron
+        const isElectron = typeof window !== 'undefined' && 
+            (window.location.protocol === 'file:' || !!(window as any).electronAPI);
+        
         // Strategy 1: Try importing from package root
         try {
             console.log('📦 Attempting to import sql.js from package...');
@@ -35,14 +39,25 @@ export async function loadSqlJs(): Promise<any> {
             
             console.log('Module check:', { keys: keys.length, hasDefault, hasInitSqlJs, isFunction });
             
-            // If module is empty or has no usable exports, fall back to CDN
+            // If module is empty or has no usable exports
             if (keys.length === 0 || (!hasDefault && !hasInitSqlJs && !isFunction)) {
+                if (isElectron) {
+                    // In Electron, CDN won't work - throw error immediately
+                    throw new Error('sql.js module is empty and CDN is not available in Electron. Ensure sql.js is properly bundled.');
+                } else {
+                    // In browser, try CDN fallback
                 console.warn('⚠️ Module appears empty or unusable, falling back to CDN...');
                 throw new Error('Module is empty - Vite CommonJS issue');
+                }
             }
         } catch (e1) {
+            if (isElectron) {
+                // In Electron, don't try CDN - it won't work
+                throw new Error(`Failed to import sql.js in Electron: ${e1 instanceof Error ? e1.message : String(e1)}. Ensure sql.js and sql-wasm.wasm are bundled correctly.`);
+            }
+            
             console.log('⚠️ Failed to import from package, trying CDN...', e1);
-            // Strategy 2: Try CDN as fallback
+            // Strategy 2: Try CDN as fallback (only in browser)
             try {
                 // Load from CDN using script tag
                 return await loadFromCDN();
@@ -114,8 +129,21 @@ export async function loadSqlJs(): Promise<any> {
             }
         }
         
-        // If we still haven't found it, fall back to CDN
+        // If we still haven't found it
         if (!initSqlJs || typeof initSqlJs !== 'function') {
+            if (isElectron) {
+                // In Electron, don't try CDN - it won't work
+                const errorDetails = {
+                    moduleType: typeof module,
+                    moduleKeys: module && typeof module === 'object' ? Object.keys(module) : [],
+                    hasDefault: !!(module as any)?.default,
+                    defaultType: typeof (module as any)?.default,
+                    defaultKeys: (module as any)?.default && typeof (module as any).default === 'object' ? Object.keys((module as any).default) : []
+                };
+                console.error('❌ Could not find initSqlJs function in Electron. Details:', errorDetails);
+                throw new Error(`Could not find initSqlJs function in Electron. Module type: ${typeof module}, Keys: ${errorDetails.moduleKeys.join(', ') || 'none'}, Default keys: ${errorDetails.defaultKeys.join(', ') || 'none'}. Ensure sql.js is properly bundled.`);
+            }
+            
             console.warn('⚠️ Could not find initSqlJs in module, falling back to CDN...');
             try {
                 return await loadFromCDN();

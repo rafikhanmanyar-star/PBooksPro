@@ -9,6 +9,7 @@ import { CURRENCY } from '../../constants';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { useNotification } from '../../context/NotificationContext';
+import { WhatsAppService } from '../../services/whatsappService';
 
 interface RentalPaymentModalProps {
     isOpen: boolean;
@@ -26,8 +27,8 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
     const [accountId, setAccountId] = useState('');
     const [error, setError] = useState('');
     
-    // Filter for Bank Accounts
-    const depositAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK), [state.accounts]);
+    // Filter for Bank Accounts (exclude Internal Clearing)
+    const depositAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
 
     const { rentRemaining, securityDepositRemaining, totalRemaining } = useMemo(() => {
         if (!invoice) return { rentRemaining: 0, securityDepositRemaining: 0, totalRemaining: 0 };
@@ -184,18 +185,22 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
                 if (building) subject += ` (${building.name})`;
 
                 const newBalance = Math.max(0, totalRemaining - totalPaidNow);
-                const { whatsAppTemplates } = state;
                 
-                const message = whatsAppTemplates.invoiceReceipt
-                    .replace(/{contactName}/g, contact.name)
-                    .replace(/{invoiceNumber}/g, invoice.invoiceNumber)
-                    .replace(/{subject}/g, subject)
-                    .replace(/{paidAmount}/g, `${CURRENCY} ${totalPaidNow.toLocaleString()}`)
-                    .replace(/{balance}/g, `${CURRENCY} ${newBalance.toLocaleString()}`)
-                    .replace(/{unitName}/g, property?.name || '');
-
-                const phoneNumber = contact.contactNo.replace(/[^0-9]/g, '');
-                window.open(`https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`, '_blank');
+                try {
+                    const { whatsAppTemplates } = state;
+                    const message = WhatsAppService.generateInvoiceReceipt(
+                        whatsAppTemplates.invoiceReceipt,
+                        contact,
+                        invoice.invoiceNumber,
+                        totalPaidNow,
+                        newBalance,
+                        subject,
+                        property?.name || ''
+                    );
+                    WhatsAppService.sendMessage({ contact, message });
+                } catch (error) {
+                    await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
+                }
             }
         }
 

@@ -27,9 +27,9 @@ type SortKey = 'buildingName' | 'collected' | 'receivable' | 'expenses' | 'net';
 
 const BMAnalysisReport: React.FC = () => {
     const { state } = useAppContext();
-    const [dateRange, setDateRange] = useState<DateRangeOption>('thisMonth');
-    const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]);
+    const [dateRange, setDateRange] = useState<DateRangeOption>('all');
+    const [startDate, setStartDate] = useState('2000-01-01');
+    const [endDate, setEndDate] = useState('2100-12-31');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
 
@@ -164,8 +164,20 @@ const BMAnalysisReport: React.FC = () => {
                 // Exclude Tenant Bills
                 if (isTenant(bill.contactId)) return;
 
-                if (!isOwnerExpense(bill.categoryId)) {
-                    buildingData[bill.buildingId].expenses += bill.amount;
+                // Handle expenseCategoryItems: process each category separately
+                if (bill.expenseCategoryItems && bill.expenseCategoryItems.length > 0) {
+                    bill.expenseCategoryItems.forEach(item => {
+                        if (!item.categoryId) return;
+                        // Only add if it's not an owner expense
+                        if (!isOwnerExpense(item.categoryId)) {
+                            buildingData[bill.buildingId].expenses += (item.netValue || 0);
+                        }
+                    });
+                } else {
+                    // Fallback to old categoryId logic
+                    if (!isOwnerExpense(bill.categoryId)) {
+                        buildingData[bill.buildingId].expenses += bill.amount;
+                    }
                 }
             }
         });
@@ -296,9 +308,11 @@ const BMAnalysisReport: React.FC = () => {
                     }
                 }
             `}</style>
-            {/* Custom Top Toolbar */}
+            {/* Custom Toolbar - All controls in first row */}
             <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm no-print">
-                <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+                {/* First Row: Dates, Filters, and Actions */}
+                <div className="flex flex-wrap items-center gap-3">
+                    {/* Date Range Pills */}
                     <div className="flex bg-slate-100 p-1 rounded-lg flex-shrink-0 overflow-x-auto">
                         {(['all', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
                             <button
@@ -310,30 +324,33 @@ const BMAnalysisReport: React.FC = () => {
                                     : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
                                 }`}
                             >
-                                {opt === 'all' ? 'All Time' : opt.replace(/([A-Z])/g, ' $1')}
+                                {opt === 'all' ? 'Total' : opt === 'thisMonth' ? 'This Month' : opt === 'lastMonth' ? 'Last Month' : 'Custom'}
                             </button>
                         ))}
                     </div>
 
+                    {/* Custom Date Pickers */}
                     {dateRange === 'custom' && (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 animate-fade-in">
                             <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(d.toISOString().split('T')[0], endDate)} />
                             <span className="text-slate-400">-</span>
                             <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, d.toISOString().split('T')[0])} />
                         </div>
                     )}
 
+                    {/* Building Filter */}
                     <div className="w-48 flex-shrink-0">
                         <ComboBox 
                             items={buildings} 
                             selectedId={selectedBuildingId} 
                             onSelect={(item) => setSelectedBuildingId(item?.id || 'all')} 
                             allowAddNew={false}
-                            placeholder="Select Building"
+                            placeholder="Filter Building"
                         />
                     </div>
 
-                    <div className="relative flex-grow min-w-[200px]">
+                    {/* Search Input */}
+                    <div className="relative flex-grow min-w-[180px]">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                             <span className="h-4 w-4">{ICONS.search}</span>
                         </div>
@@ -343,13 +360,22 @@ const BMAnalysisReport: React.FC = () => {
                             onChange={(e) => setSearchQuery(e.target.value)} 
                             className="pl-9 py-1.5 text-sm"
                         />
+                        {searchQuery && (
+                            <button 
+                                onClick={() => setSearchQuery('')} 
+                                className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
+                            >
+                                <div className="w-4 h-4">{ICONS.x}</div>
+                            </button>
+                        )}
                     </div>
 
+                    {/* Actions Group */}
                     <div className="flex items-center gap-2 ml-auto">
-                        <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap">
+                        <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
                             <div className="w-4 h-4 mr-1">{ICONS.export}</div> Export
                         </Button>
-                        <Button variant="secondary" size="sm" onClick={handlePrint} className="whitespace-nowrap">
+                        <Button variant="secondary" size="sm" onClick={handlePrint} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
                             <div className="w-4 h-4 mr-1">{ICONS.print}</div> Print
                         </Button>
                     </div>

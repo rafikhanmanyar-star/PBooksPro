@@ -12,10 +12,12 @@ import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { formatDate } from '../../utils/dateUtils';
 import { useNotification } from '../../context/NotificationContext';
+import { WhatsAppService } from '../../services/whatsappService';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import ResizeHandle from '../ui/ResizeHandle';
 import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarningModal';
 import { ImportType } from '../../services/importService';
+import BillBulkPaymentModal from '../bills/BillBulkPaymentModal';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 type SortKey = 'issueDate' | 'entityName' | 'dueDate' | 'amount' | 'status' | 'balance' | 'vendorName' | 'billNumber' | 'contract';
@@ -35,6 +37,8 @@ const RentalBillsPage: React.FC = () => {
     const [selectedNode, setSelectedNode] = useState<{ id: string; type: 'group' | 'vendor'; parentId?: string } | null>(null);
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'issueDate', direction: 'desc' });
     const [expandedBillIds, setExpandedBillIds] = useState<Set<string>>(new Set());
+    const [selectedBillIds, setSelectedBillIds] = useState<Set<string>>(new Set());
+    const [isBulkPayModalOpen, setIsBulkPayModalOpen] = useState(false);
 
     // --- State: Modals ---
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -356,6 +360,15 @@ const RentalBillsPage: React.FC = () => {
         setIsCreateModalOpen(true);
     };
 
+    const handleBulkPaymentComplete = () => {
+        setSelectedBillIds(new Set());
+        setIsBulkPayModalOpen(false);
+    };
+
+    const selectedBillsList = useMemo(() => 
+        state.bills.filter(b => selectedBillIds.has(b.id)), 
+    [state.bills, selectedBillIds]);
+
     const handleSendWhatsApp = (e: React.MouseEvent, bill: Bill) => {
         e.stopPropagation();
         const vendor = state.contacts.find(c => c.id === bill.contactId);
@@ -364,14 +377,18 @@ const RentalBillsPage: React.FC = () => {
             return;
         }
         
-        const { whatsAppTemplates } = state;
-        const message = whatsAppTemplates.billPayment
-            .replace(/{contactName}/g, vendor.name)
-            .replace(/{billNumber}/g, bill.billNumber)
-            .replace(/{paidAmount}/g, `${CURRENCY} ${bill.paidAmount.toLocaleString()}`);
-            
-        const phoneNumber = vendor.contactNo.replace(/[^0-9]/g, '');
-        window.open(`https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`, '_blank');
+        try {
+            const { whatsAppTemplates } = state;
+            const message = WhatsAppService.generateBillPayment(
+                whatsAppTemplates.billPayment,
+                vendor,
+                bill.billNumber,
+                bill.paidAmount
+            );
+            WhatsAppService.sendMessage({ contact: vendor, message });
+        } catch (error) {
+            showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
+        }
     };
 
     const getStatusBadge = (status: string) => {
@@ -437,12 +454,30 @@ const RentalBillsPage: React.FC = () => {
                             placeholder="Search bills..." 
                             value={searchQuery} 
                             onChange={(e) => setSearchQuery(e.target.value)} 
-                            className="pl-9 py-1.5 text-sm"
+                            className={`pl-9 py-1.5 text-sm ${searchQuery ? 'pr-9' : ''}`}
                         />
+                        {searchQuery && (
+                            <button 
+                                onClick={() => setSearchQuery('')} 
+                                className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600 transition-colors"
+                                type="button"
+                                aria-label="Clear search"
+                            >
+                                <div className="w-4 h-4">{ICONS.x}</div>
+                            </button>
+                        )}
                     </div>
                 </div>
 
                 <div className="flex gap-2 flex-wrap w-full lg:w-auto justify-end">
+                    {selectedBillIds.size > 0 && (
+                        <Button
+                            onClick={() => setIsBulkPayModalOpen(true)}
+                            className="animate-fade-in"
+                        >
+                            Pay ({selectedBillIds.size})
+                        </Button>
+                    )}
                     <Button
                         variant="secondary"
                         onClick={() => {
@@ -491,6 +526,7 @@ const RentalBillsPage: React.FC = () => {
                         <table className="min-w-full divide-y divide-slate-200 text-sm">
                             <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                                 <tr>
+                                    <th className="px-4 py-3 w-10"></th>
                                     <th onClick={() => handleSort('issueDate')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Date <SortIcon column="issueDate"/></th>
                                     <th onClick={() => handleSort('entityName')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Building <SortIcon column="entityName"/></th>
                                     <th onClick={() => handleSort('billNumber')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Bill No <SortIcon column="billNumber"/></th>
@@ -525,6 +561,22 @@ const RentalBillsPage: React.FC = () => {
                                                 className="hover:bg-slate-50 cursor-pointer transition-colors group"
                                                 onClick={() => handleEdit(bill)}
                                             >
+                                                <td className="px-4 py-3 w-10" onClick={(e) => e.stopPropagation()}>
+                                                    <input 
+                                                        type="checkbox" 
+                                                        className="rounded text-accent focus:ring-accent w-4 h-4 border-gray-300 cursor-pointer"
+                                                        checked={selectedBillIds.has(bill.id)}
+                                                        onChange={(e) => {
+                                                            e.stopPropagation();
+                                                            setSelectedBillIds(prev => {
+                                                                const next = new Set(prev);
+                                                                if (next.has(bill.id)) next.delete(bill.id);
+                                                                else next.add(bill.id);
+                                                                return next;
+                                                            });
+                                                        }}
+                                                    />
+                                                </td>
                                                 <td className="px-4 py-3 whitespace-nowrap text-slate-700 flex items-center gap-2">
                                                     {hasPayments && (
                                                         <button 
@@ -575,7 +627,7 @@ const RentalBillsPage: React.FC = () => {
                                             </tr>
                                             {isExpanded && hasPayments && (
                                                 <tr className="bg-slate-50/50">
-                                                    <td colSpan={9} className="p-0 border-b border-slate-100">
+                                                    <td colSpan={10} className="p-0 border-b border-slate-100">
                                                         <div className="border-l-4 border-indigo-200 ml-8 my-2 pl-4 py-2 space-y-1">
                                                             {payments.length > 0 ? payments.map((pay) => (
                                                                 <div 
@@ -600,7 +652,7 @@ const RentalBillsPage: React.FC = () => {
                                     )
                                 }) : (
                                     <tr>
-                                        <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
+                                        <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
                                             No bills found matching selected criteria.
                                         </td>
                                     </tr>
@@ -671,6 +723,13 @@ const RentalBillsPage: React.FC = () => {
                 }}
                 action="delete"
                 linkedItemName="this bill"
+            />
+
+            <BillBulkPaymentModal 
+                isOpen={isBulkPayModalOpen}
+                onClose={() => { setIsBulkPayModalOpen(false); }}
+                selectedBills={selectedBillsList}
+                onPaymentComplete={handleBulkPaymentComplete}
             />
         </div>
     );

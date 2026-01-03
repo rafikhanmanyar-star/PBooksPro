@@ -1,9 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Building } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import Textarea from '../ui/Textarea';
+import { useAppContext } from '../../context/AppContext';
+import { useNotification } from '../../context/NotificationContext';
 
 interface BuildingFormProps {
     onSubmit: (building: Omit<Building, 'id'>) => void;
@@ -14,12 +16,33 @@ interface BuildingFormProps {
 }
 
 const BuildingForm: React.FC<BuildingFormProps> = ({ onSubmit, onCancel, onDelete, buildingToEdit, initialName }) => {
+    const { state } = useAppContext();
+    const { showAlert } = useNotification();
     const [name, setName] = useState(buildingToEdit?.name || initialName || '');
     const [description, setDescription] = useState(buildingToEdit?.description || '');
     const [color, setColor] = useState(buildingToEdit?.color || '#10b981'); // Default emerald-500
+    const [nameError, setNameError] = useState('');
 
-    const handleSubmit = (e: React.FormEvent) => {
+    // Check for duplicate building names
+    useEffect(() => {
+        if (!name.trim()) {
+            setNameError('Building name is required.');
+            return;
+        }
+        const duplicate = state.buildings.find(b => b.name.toLowerCase().trim() === name.toLowerCase().trim() && b.id !== buildingToEdit?.id);
+        if (duplicate) {
+            setNameError('A building with this name already exists.');
+        } else {
+            setNameError('');
+        }
+    }, [name, state.buildings, buildingToEdit]);
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (nameError) {
+            await showAlert("Please fix the errors before submitting.");
+            return;
+        }
         onSubmit({ name, description, color });
     };
     return (
@@ -27,6 +50,7 @@ const BuildingForm: React.FC<BuildingFormProps> = ({ onSubmit, onCancel, onDelet
             <div className="flex gap-4">
                 <div className="flex-grow">
                     <Input label="Building Name" value={name} onChange={e => setName(e.target.value)} required autoFocus/>
+                    {nameError && <p className="text-red-500 text-xs mt-1">{nameError}</p>}
                 </div>
                 <div>
                     <label className="block text-sm font-medium text-slate-600 mb-1">Color</label>

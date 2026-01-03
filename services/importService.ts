@@ -1,49 +1,17 @@
 
 import type { Dispatch } from 'react';
-import { AppState, AppAction, ImportLogEntry, Account, Contact, Project, Category, Building, Property, Unit, Transaction, Invoice, Bill, RentalAgreement, ProjectAgreement, Budget, ContactType, TransactionType, RentalAgreementStatus, ProjectAgreementStatus, InvoiceStatus, InvoiceType, LoanSubtype, AccountType, Contract, ContractStatus, Staff, SalaryComponent, Payslip, RecurringInvoiceTemplate } from '../types';
+export { ImportType } from '../types';
+import { AppState, AppAction, ImportLogEntry, Account, Contact, Project, Category, Building, Property, Unit, Transaction, Invoice, Bill, RentalAgreement, ProjectAgreement, Budget, ContactType, TransactionType, RentalAgreementStatus, ProjectAgreementStatus, InvoiceStatus, InvoiceType, LoanSubtype, AccountType, Contract, ContractExpenseCategoryItem, ContractStatus, Staff, SalaryComponent, Payslip, RecurringInvoiceTemplate, ImportType } from '../types';
 import type { ProgressContextType } from '../context/ProgressContext';
 import * as XLSX from 'xlsx';
+import { IMPORT_SCHEMAS } from './importSchemas';
 import { AppStateRepository } from './database/repositories/appStateRepository';
 
 type ProgressReporter = ProgressContextType;
 type LogFunction = (entry: ImportLogEntry) => void;
 
-// Import Type Enum
-export enum ImportType {
-    FULL = 'full', // For backward compatibility
-    ACCOUNTS = 'accounts',
-    CONTACTS = 'contacts',
-    VENDORS = 'vendors', // Alias for contacts with vendor type
-    CATEGORIES = 'categories',
-    PROJECTS = 'projects',
-    BUILDINGS = 'buildings',
-    PROPERTIES = 'properties',
-    UNITS = 'units',
-    STAFF = 'staff',
-    // Combined agreements (backward compatibility)
-    AGREEMENTS = 'agreements',
-    // Split agreements
-    RENTAL_AGREEMENTS = 'rental_agreements',
-    PROJECT_AGREEMENTS = 'project_agreements',
-    CONTRACTS = 'contracts',
-    INVOICES = 'invoices',
-    BILLS = 'bills',
-    PROJECT_BILLS = 'project_bills',
-    RENTAL_BILLS = 'rental_bills',
-    PAYMENTS = 'payments',
-    // Split Transactions / Payments
-    RENTAL_INVOICE_PAYMENTS = 'rental_invoice_payments',
-    PROJECT_INVOICE_PAYMENTS = 'project_invoice_payments',
-    RENTAL_BILL_PAYMENTS = 'rental_bill_payments',
-    PROJECT_BILL_PAYMENTS = 'project_bill_payments',
-    LOAN_TRANSACTIONS = 'loan_transactions',
-    TRANSFER_TRANSACTIONS = 'transfer_transactions',
-    INCOME_TRANSACTIONS = 'income_transactions',   // standalone income (no invoice)
-    EXPENSE_TRANSACTIONS = 'expense_transactions', // standalone expense (no bill)
-    RECURRING_TEMPLATES = 'recurring_templates',
-    PAYSLIPS = 'payslips',
-    BUDGETS = 'budgets'
-}
+// ImportType moved to types.ts
+
 
 // Data Correction Interface (kept for backward compatibility, but no longer used)
 export interface CorrectionRequest {
@@ -73,15 +41,15 @@ const generateStandaloneTransactionId = (txType: string, transactionId: string):
 
 // Helper function to generate detailed error messages with correction suggestions
 const generateErrorWithSuggestions = (
-    sheet: string, 
-    row: number, 
-    data: any, 
-    missingFields: string[], 
+    sheet: string,
+    row: number,
+    data: any,
+    missingFields: string[],
     invalidRefs?: { field: string; value: string; suggestions?: string[] }[]
 ): string => {
     const rowNum = row + 2; // Excel row number (1-indexed + header)
     let message = `❌ Row ${rowNum} in "${sheet}" sheet has the following issues:\n\n`;
-    
+
     if (missingFields.length > 0) {
         message += `📋 MISSING REQUIRED FIELDS:\n`;
         missingFields.forEach(field => {
@@ -89,7 +57,7 @@ const generateErrorWithSuggestions = (
         });
         message += `\n   💡 SUGGESTION: Add the missing field(s) to row ${rowNum} in your Excel file.\n\n`;
     }
-    
+
     if (invalidRefs && invalidRefs.length > 0) {
         message += `🔗 INVALID REFERENCES:\n`;
         invalidRefs.forEach(ref => {
@@ -100,13 +68,13 @@ const generateErrorWithSuggestions = (
         });
         message += `\n   💡 SUGGESTION: Check the spelling or create the referenced item first.\n\n`;
     }
-    
+
     // Show available data for context
     const availableFields = Object.keys(data).filter(k => data[k] && String(data[k]).trim() !== '');
     if (availableFields.length > 0) {
         message += `📄 Available data in this row: ${availableFields.join(', ')}\n`;
     }
-    
+
     return message;
 };
 
@@ -114,7 +82,7 @@ const generateErrorWithSuggestions = (
 const normalizeContactType = (input: string): ContactType | null => {
     if (!input) return null;
     const lower = input.trim().toLowerCase();
-    
+
     if (Object.values(ContactType).map(t => t.toLowerCase()).includes(lower as any)) {
         const entry = Object.entries(ContactType).find(([_, val]) => val.toLowerCase() === lower);
         return entry ? entry[1] : null;
@@ -125,7 +93,7 @@ const normalizeContactType = (input: string): ContactType | null => {
     if (lower === 'friend') return ContactType.FRIEND_FAMILY;
     if (lower === 'family') return ContactType.FRIEND_FAMILY;
     if (lower === 'client') return ContactType.OWNER;
-    
+
     return null;
 };
 
@@ -139,17 +107,75 @@ const safeJsonParse = (str: any) => {
     }
 };
 
+// Helper to parse expense category items from separate columns (new format) or JSON (old format)
+const parseExpenseCategoryItems = (
+    row: any,
+    maps: { categories: Map<string, string> },
+    normalizeNameForComparison: (name: string) => string
+): ContractExpenseCategoryItem[] | undefined => {
+    const expenseCategoryNamesRaw = row.expenseCategoryNames || row.ExpenseCategoryNames || '';
+    const expenseQuantitiesRaw = row.expenseQuantities || row.ExpenseQuantities || '';
+    const expensePricePerUnitsRaw = row.expensePricePerUnits || row.ExpensePricePerUnits || '';
+    const expenseNetValuesRaw = row.expenseNetValues || row.ExpenseNetValues || '';
+    const expenseUnitsRaw = row.expenseUnits || row.ExpenseUnits || '';
+
+    // Also support old JSON format for backward compatibility
+    const expenseCategoryItemsRaw = row.expenseCategoryItems || row.ExpenseCategoryItems;
+
+    if (expenseCategoryNamesRaw && expenseCategoryNamesRaw.trim()) {
+        // New format: comma-separated columns
+        const categoryNames = String(expenseCategoryNamesRaw).split(',').map(s => s.trim()).filter(Boolean);
+        const quantities = String(expenseQuantitiesRaw || '').split(',').map(s => s.trim());
+        const pricePerUnits = String(expensePricePerUnitsRaw || '').split(',').map(s => s.trim());
+        const netValues = String(expenseNetValuesRaw || '').split(',').map(s => s.trim());
+        const units = String(expenseUnitsRaw || '').split(',').map(s => s.trim());
+
+        return categoryNames.map((categoryName, idx) => {
+            const categoryId = maps.categories.get(normalizeNameForComparison(categoryName));
+            if (!categoryId) return null;
+
+            return {
+                id: `item-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 9)}`,
+                categoryId,
+                unit: (units[idx] && ['Cubic Feet', 'Square feet', 'feet', 'quantity'].includes(units[idx])) ? units[idx] as 'Cubic Feet' | 'Square feet' | 'feet' | 'quantity' : 'quantity',
+                quantity: parseFloat(quantities[idx]) || 1,
+                pricePerUnit: parseFloat(pricePerUnits[idx]) || 0,
+                netValue: parseFloat(netValues[idx]) || 0
+            } as ContractExpenseCategoryItem;
+        }).filter((item): item is ContractExpenseCategoryItem => item !== null);
+    } else if (expenseCategoryItemsRaw) {
+        // Old format: JSON string (backward compatibility)
+        const parsed = safeJsonParse(expenseCategoryItemsRaw);
+        if (Array.isArray(parsed)) {
+            return parsed.map((item: any, idx: number) => {
+                const categoryId = item.categoryId || (item.categoryName ? maps.categories.get(normalizeNameForComparison(item.categoryName)) : '');
+                if (!categoryId) return null;
+
+                return {
+                    id: item.id || `item-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 9)}`,
+                    categoryId,
+                    unit: (item.unit && ['Cubic Feet', 'Square feet', 'feet', 'quantity'].includes(item.unit)) ? item.unit : 'quantity',
+                    quantity: typeof item.quantity === 'number' ? item.quantity : (item.quantity !== undefined && item.quantity !== null ? parseFloat(String(item.quantity)) || 1 : 1),
+                    pricePerUnit: typeof item.pricePerUnit === 'number' ? item.pricePerUnit : (item.pricePerUnit !== undefined && item.pricePerUnit !== null ? parseFloat(String(item.pricePerUnit)) || 0 : 0),
+                    netValue: typeof item.netValue === 'number' ? item.netValue : (item.netValue !== undefined && item.netValue !== null ? parseFloat(String(item.netValue)) || 0 : 0)
+                } as ContractExpenseCategoryItem;
+            }).filter((item): item is ContractExpenseCategoryItem => item !== null);
+        }
+    }
+    return undefined;
+};
+
 // Helper to format text data: trim and convert to Title Case
 const formatTextData = (value: any): string => {
     if (value === null || value === undefined || value === '') {
         return '';
     }
-    
+
     // Convert to string and trim leading/trailing spaces
     let text = String(value).trim();
-    
+
     if (!text) return '';
-    
+
     // Convert to Title Case: capitalize first character of each word
     // Preserve internal spacing and punctuation
     // Split by word boundaries (spaces, hyphens, etc.) and capitalize first letter of each word
@@ -157,7 +183,7 @@ const formatTextData = (value: any): string => {
         // Capitalize first character, lowercase the rest
         return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
     });
-    
+
     return text;
 };
 
@@ -167,7 +193,7 @@ const formatTextField = (value: any, fieldName: string, sheetName: string): any 
     if (value === null || value === undefined || value === '') {
         return value;
     }
-    
+
     // Skip formatting for non-text fields (numeric, dates, IDs, etc.)
     const skipFormattingFields = [
         'id', 'amount', 'balance', 'paidAmount', 'salePrice', 'monthlyRent', 'securityDeposit',
@@ -185,16 +211,16 @@ const formatTextField = (value: any, fieldName: string, sheetName: string): any 
         'ownerId', 'brokerId', 'rebateBrokerId', 'projectAgreementId', 'fromAccountId',
         'toAccountId', 'unitIds', 'Key', 'Value'
     ];
-    
+
     const fieldLower = fieldName.toLowerCase();
-    
+
     // Skip formatting for numeric/date/enum/ID fields
     if (skipFormattingFields.some(field => fieldLower === field.toLowerCase())) {
         return value;
     }
-    
+
     // Skip formatting for JSON/complex object fields
-    if (fieldLower.includes('config') || 
+    if (fieldLower.includes('config') ||
         fieldLower.includes('structure') ||
         fieldLower.includes('details') ||
         fieldLower.includes('history') ||
@@ -209,12 +235,12 @@ const formatTextField = (value: any, fieldName: string, sheetName: string): any 
         fieldLower.includes('cancellationdetails')) {
         return value;
     }
-    
+
     // Skip formatting if value looks like a number or date
     if (typeof value === 'number' || !isNaN(Number(value))) {
         return value;
     }
-    
+
     // Format text fields: trim and convert to Title Case
     return formatTextData(value);
 };
@@ -255,7 +281,7 @@ export const importFromExcel = (file: File): Promise<{ [key: string]: any[] }> =
 // Template generation function
 export const generateImportTemplate = (importType: ImportType): void => {
     const workbook = XLSX.utils.book_new();
-    
+
     // Get template data based on import type
     const getTemplateData = (): { sheetName: string; headers: string[]; exampleRows: any[] }[] => {
         switch (importType) {
@@ -268,7 +294,7 @@ export const generateImportTemplate = (importType: ImportType): void => {
                         { name: 'Bank Account', type: 'Asset', balance: '0', description: 'Primary bank account', parentAccountName: '' }
                     ]
                 }];
-            
+
             case ImportType.CONTACTS:
                 return [{
                     sheetName: 'Contacts',
@@ -278,7 +304,7 @@ export const generateImportTemplate = (importType: ImportType): void => {
                         { name: 'ABC Company', type: 'Vendor', description: 'Supplier', contactNo: '+1234567891', companyName: 'ABC Company', address: '456 Business Ave' }
                     ]
                 }];
-            
+
             case ImportType.VENDORS:
                 return [{
                     sheetName: 'Contacts',
@@ -288,7 +314,7 @@ export const generateImportTemplate = (importType: ImportType): void => {
                         { name: 'XYZ Services', type: 'Vendor', description: 'Service provider', contactNo: '+1234567892', companyName: 'XYZ Services', address: '789 Service Rd' }
                     ]
                 }];
-            
+
             case ImportType.CATEGORIES:
                 return [{
                     sheetName: 'Categories',
@@ -298,7 +324,7 @@ export const generateImportTemplate = (importType: ImportType): void => {
                         { name: 'Material Expense', type: 'Expense', description: 'Material costs', parentCategoryName: '' }
                     ]
                 }];
-            
+
             case ImportType.PROJECTS:
                 return [{
                     sheetName: 'Projects',
@@ -308,7 +334,7 @@ export const generateImportTemplate = (importType: ImportType): void => {
                         { name: 'Project Beta', description: 'Commercial project', color: '#10B981', status: 'Planning' }
                     ]
                 }];
-            
+
             case ImportType.BUILDINGS:
                 return [{
                     sheetName: 'Buildings',
@@ -318,7 +344,7 @@ export const generateImportTemplate = (importType: ImportType): void => {
                         { name: 'Building B', description: 'Secondary building', color: '#10B981' }
                     ]
                 }];
-            
+
             case ImportType.PROPERTIES:
                 return [{
                     sheetName: 'Properties',
@@ -328,7 +354,7 @@ export const generateImportTemplate = (importType: ImportType): void => {
                         { name: 'Property 102', ownerName: 'Jane Smith', buildingName: 'Building A', description: '3BHK apartment', monthlyServiceCharge: '750' }
                     ]
                 }];
-            
+
             case ImportType.UNITS:
                 return [{
                     sheetName: 'Units',
@@ -338,7 +364,7 @@ export const generateImportTemplate = (importType: ImportType): void => {
                         { name: 'Unit 202', projectName: 'Project Alpha', ownerName: 'Jane Smith', salePrice: '750000', description: '3BHK unit' }
                     ]
                 }];
-            
+
             case ImportType.STAFF:
                 return [{
                     sheetName: 'Staff',
@@ -348,7 +374,7 @@ export const generateImportTemplate = (importType: ImportType): void => {
                         { Name: 'Employee Two', employeeId: 'EMP002', designation: 'Engineer', basicSalary: '40000', joiningDate: '2024-01-15', status: 'Active', email: 'emp2@example.com', ProjectName: '', BuildingName: 'Building A' }
                     ]
                 }];
-            
+
             case ImportType.AGREEMENTS:
                 return [
                     {
@@ -486,7 +512,7 @@ export const generateImportTemplate = (importType: ImportType): void => {
                         }
                     ]
                 }];
-            
+
             case ImportType.CONTRACTS:
                 return [{
                     sheetName: 'Contracts',
@@ -495,7 +521,7 @@ export const generateImportTemplate = (importType: ImportType): void => {
                         { contractNumber: 'CNT-001', name: 'Construction Contract', projectName: 'Project Alpha', vendorName: 'ABC Company', totalAmount: '1000000', startDate: '2024-01-01', endDate: '2024-12-31', status: 'Active', description: 'Main construction contract' }
                     ]
                 }];
-            
+
             case ImportType.INVOICES:
                 return [{
                     sheetName: 'Invoices',
@@ -505,7 +531,7 @@ export const generateImportTemplate = (importType: ImportType): void => {
                         { invoiceNumber: 'INV-002', contactName: 'Client One', amount: '250000', issueDate: '2024-01-01', dueDate: '2024-01-31', invoiceType: 'Installment', description: 'Project installment', categoryName: 'Unit Selling Income', projectName: 'Project Alpha', buildingName: '', propertyName: '', unitName: 'Unit 201', agreementNumber: 'PA-001', securityDepositCharge: '0', serviceCharges: '0', rentalMonth: '' }
                     ]
                 }];
-            
+
             case ImportType.BILLS:
                 return [{
                     sheetName: 'Bills',
@@ -576,7 +602,7 @@ export const generateImportTemplate = (importType: ImportType): void => {
                         }
                     ]
                 }];
-            
+
             case ImportType.PAYMENTS:
                 return [{
                     sheetName: 'Transactions',
@@ -635,6 +661,15 @@ export const generateImportTemplate = (importType: ImportType): void => {
                     ]
                 }];
 
+            case ImportType.EQUITY_TRANSACTIONS:
+                return [{
+                    sheetName: 'EquityTransactions',
+                    headers: ['fromAccountName', 'toAccountName', 'amount', 'date', 'description', 'projectName', 'projectId'],
+                    exampleRows: [
+                        { fromAccountName: 'Investor Equity', toAccountName: 'Bank Account', amount: '50000', date: '2024-01-02', description: 'Investment', projectName: 'Project Alpha', projectId: '' }
+                    ]
+                }];
+
             case ImportType.TRANSFER_TRANSACTIONS:
                 return [{
                     sheetName: 'TransferTransactions',
@@ -649,7 +684,7 @@ export const generateImportTemplate = (importType: ImportType): void => {
                     sheetName: 'IncomeTransactions',
                     headers: ['accountName', 'amount', 'date', 'description', 'contactName', 'categoryName', 'projectName', 'buildingName', 'propertyName', 'unitName', 'contractNumber', 'agreementNumber'],
                     exampleRows: [
-                        { accountName: 'Cash Account', amount: '2000', date: '2024-01-15', description: 'Misc income (no invoice)', contactName: '', categoryName: 'Other Income', projectName: '', buildingName: '', propertyName: '', unitName: '', contractNumber: '', agreementNumber: '' }
+                        { accountName: 'Cash Account', amount: '2000', date: '2024-01-15', description: 'Misc income (no invoice)', contactName: '', categoryName: 'Other Income', projectName: 'Project Alpha', buildingName: '', propertyName: '', unitName: '', contractNumber: '', agreementNumber: '' }
                     ]
                 }];
 
@@ -661,7 +696,7 @@ export const generateImportTemplate = (importType: ImportType): void => {
                         { accountName: 'Cash Account', amount: '500', date: '2024-01-16', description: 'Misc expense (no bill)', contactName: '', categoryName: 'Other Expense', projectName: '', buildingName: '', propertyName: '', unitName: '', contractNumber: '', agreementNumber: '' }
                     ]
                 }];
-            
+
             case ImportType.RECURRING_TEMPLATES:
                 return [{
                     sheetName: 'RecurringTemplates',
@@ -670,7 +705,7 @@ export const generateImportTemplate = (importType: ImportType): void => {
                         { contactName: 'Tenant One', propertyName: 'Property 101', amount: '10000', descriptionTemplate: 'Monthly rent for {month}', dayOfMonth: '5', nextDueDate: '2024-02-05', active: 'true', agreementNumber: 'RA-001' }
                     ]
                 }];
-            
+
             case ImportType.PAYSLIPS:
                 return [{
                     sheetName: 'Payslips',
@@ -679,24 +714,24 @@ export const generateImportTemplate = (importType: ImportType): void => {
                         { staffName: 'Employee One', month: '2024-01', issueDate: '2024-01-31', basicSalary: '50000', totalAllowances: '5000', totalDeductions: '2000', grossSalary: '55000', netSalary: '53000', status: 'Paid' }
                     ]
                 }];
-            
+
             case ImportType.BUDGETS:
                 return [{
                     sheetName: 'Budgets',
-                    headers: ['categoryName', 'month', 'amount'],
+                    headers: ['categoryName', 'projectName', 'amount'],
                     exampleRows: [
-                        { categoryName: 'Material Expense', month: '2024-01', amount: '50000' },
-                        { categoryName: 'Labor Expense', month: '2024-01', amount: '30000' }
+                        { categoryName: 'Material Expense', projectName: '', amount: '50000' },
+                        { categoryName: 'Labor Expense', projectName: 'Project A', amount: '30000' }
                     ]
                 }];
-            
+
             default:
                 return [];
         }
     };
-    
+
     const templateData = getTemplateData();
-    
+
     if (templateData.length === 0) {
         // For full import, create a comprehensive template
         const allSheets = [
@@ -713,7 +748,7 @@ export const generateImportTemplate = (importType: ImportType): void => {
             { sheetName: 'Bills', headers: ['billNumber', 'contactName', 'amount', 'issueDate', 'dueDate', 'description'] },
             { sheetName: 'Transactions', headers: ['type', 'amount', 'date', 'description', 'accountName', 'invoiceNumber', 'billNumber'] }
         ];
-        
+
         allSheets.forEach(({ sheetName, headers }) => {
             const worksheet = XLSX.utils.aoa_to_sheet([headers]);
             XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
@@ -726,12 +761,12 @@ export const generateImportTemplate = (importType: ImportType): void => {
             XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
         });
     }
-    
+
     // Generate filename based on import type
-    const typeName = importType === ImportType.FULL ? 'Full' : 
-                     importType.charAt(0).toUpperCase() + importType.slice(1).replace(/_/g, '-');
+    const typeName = importType === ImportType.FULL ? 'Full' :
+        importType.charAt(0).toUpperCase() + importType.slice(1).replace(/_/g, '-');
     const filename = `import-template-${typeName.toLowerCase()}.xlsx`;
-    
+
     XLSX.writeFile(workbook, filename);
 };
 
@@ -1012,6 +1047,15 @@ export const runImportLoanTransactions = async (
 ): Promise<{ success: number; skipped: number; errors: number }> =>
     runImportProcess(sheets, originalState, dispatch, progress, onLog, ImportType.LOAN_TRANSACTIONS);
 
+export const runImportEquityTransactions = async (
+    sheets: { [key: string]: any[] },
+    originalState: AppState,
+    dispatch: Dispatch<AppAction>,
+    progress: ProgressReporter,
+    onLog: LogFunction
+): Promise<{ success: number; skipped: number; errors: number }> =>
+    runImportProcess(sheets, originalState, dispatch, progress, onLog, ImportType.EQUITY_TRANSACTIONS);
+
 export const runImportTransferTransactions = async (
     sheets: { [key: string]: any[] },
     originalState: AppState,
@@ -1090,8 +1134,8 @@ export const runImportProcess = async (
     const tempState: AppState = JSON.parse(JSON.stringify(originalState));
     let summary = { success: 0, skipped: 0, errors: 0, corrections: [] as CorrectionRequest[] }; // corrections kept for backward compatibility but not used
 
-    const log = (sheet: string, row: number, status: 'Success' | 'Skipped' | 'Error', message: string, data?: any) => {
-        const rowNum = (row || 0) + 2; 
+    const log = (sheet: string, row: number, status: 'Success' | 'Skipped' | 'Error' | 'Warning', message: string, data?: any) => {
+        const rowNum = (row || 0) + 2;
         onLog({ timestamp: new Date().toISOString(), sheet, row: rowNum, status, message, data });
         if (status === 'Success') summary.success++;
         else if (status === 'Skipped') summary.skipped++;
@@ -1132,7 +1176,7 @@ export const runImportProcess = async (
         }
         return suggestions;
     };
-    
+
     // Lookup Maps (Name -> ID)
     // Use normalizeNameForComparison to ensure consistent key formatting
     const maps = {
@@ -1151,7 +1195,7 @@ export const runImportProcess = async (
         salaryComponents: new Map(tempState.salaryComponents.map(i => [normalizeNameForComparison(i.name), i.id])),
         staff: new Map([...tempState.projectStaff, ...tempState.rentalStaff].map(i => [i.id, i.id])), // Use ID for staff as name duplicates are possible, fallback to Name map logic in loop
     };
-    
+
     // Track transaction IDs for duplicate detection
     const transactionIds = new Set<string>(
         tempState.transactions
@@ -1176,7 +1220,7 @@ export const runImportProcess = async (
                 return tx.id; // For other types like TRANSFER, LOAN, etc.
             })
     );
-    
+
     // Helper to resolve ID from multiple potential column names
     // Uses normalizeNameForComparison to ensure consistent case-insensitive matching with map keys
     const resolveId = (map: Map<string, string>, row: any, ...keys: string[]): string | undefined => {
@@ -1186,25 +1230,25 @@ export const runImportProcess = async (
             if (value === null || value === undefined || value === '') {
                 continue;
             }
-            
+
             // Convert to string and trim whitespace
             let rawValue = String(value);
             rawValue = rawValue.trim();
-            
+
             // Skip if empty after trimming
             if (!rawValue) {
                 continue;
             }
-            
+
             // Normalize the input value for case-insensitive comparison
             // This handles any case/spacing variations: "Abdul Haq", "abdul haq", "ABDUL HAQ" all become "abdul haq"
             const normalizedVal = normalizeNameForComparison(rawValue);
-            
+
             // Skip if normalization resulted in empty string
             if (!normalizedVal) {
                 continue;
             }
-            
+
             // First try: Direct map lookup - map keys are already normalized when map was created
             if (map.has(normalizedVal)) {
                 const foundId = map.get(normalizedVal);
@@ -1212,18 +1256,18 @@ export const runImportProcess = async (
                     return foundId;
                 }
             }
-            
+
             // Second try: Iterate through all map entries and compare
             // Map keys are already normalized, so we can compare directly
             for (const [mapKey, mapId] of map.entries()) {
                 if (!mapKey || !mapId) continue;
-                
+
                 // Map keys are already normalized when map was created
                 // So we can compare directly (both should be lowercase, trimmed, space-normalized)
                 if (String(mapKey) === normalizedVal) {
                     return mapId;
                 }
-                
+
                 // Fallback: Normalize both sides again just to be absolutely sure
                 // This handles any edge cases where normalization might differ
                 const normalizedMapKey = normalizeNameForComparison(String(mapKey));
@@ -1236,67 +1280,11 @@ export const runImportProcess = async (
     };
 
     // Allowed columns per sheet for schema compatibility checks (friendly headers used in import)
-    const allowedColumns: Record<string, Set<string>> = {
-        Accounts: new Set(['id', 'name', 'type', 'balance', 'isPermanent', 'description', 'parentAccount', 'parentAccountName', 'parentAccountId']),
-        Contacts: new Set(['id', 'name', 'type', 'description', 'contactNo', 'companyName', 'address']),
-        Categories: new Set(['id', 'name', 'type', 'description', 'parentCategory', 'parentCategoryName', 'isPermanent', 'isRental']),
-        Projects: new Set(['id', 'name', 'description', 'color', 'status', 'pmConfig', 'installmentConfig']),
-        Buildings: new Set(['id', 'name', 'description', 'color']),
-        Properties: new Set(['id', 'name', 'ownerName', 'owner', 'buildingName', 'building', 'description', 'monthlyServiceCharge']),
-        Units: new Set(['id', 'name', 'projectName', 'project', 'ownerName', 'clientName', 'owner', 'salePrice', 'description', 'tenantName', 'tenant']),
-        Staff: new Set(['id', 'Name', 'StaffName', 'employeeId', 'designation', 'basicSalary', 'joiningDate', 'status', 'email', 'ProjectName', 'Project', 'BuildingName', 'Building', 'salaryStructure', 'bankDetails', 'history', 'exitDetails', 'advanceBalance']),
-        RentalAgreements: new Set(['id', 'agreementNumber', 'tenantName', 'tenant', 'propertyName', 'property', 'startDate', 'endDate', 'monthlyRent', 'rentDueDate', 'status', 'description', 'securityDeposit', 'brokerName', 'broker', 'brokerFee']),
-        ProjectAgreements: new Set([
-            'id', 'agreementNumber',
-            'clientName', 'client', 'ownerName', 'owner',
-            'projectName', 'project',
-            'UnitNames',
-            'issueDate', 'status', 'description', 'cancellationDetails',
-            // Amount fields (ProjectAgreementForm)
-            'listPrice', 'customerDiscount', 'floorDiscount', 'lumpSumDiscount', 'miscDiscount', 'sellingPrice',
-            'rebateAmount', 'rebateBrokerName', 'rebate Broker',
-            // Category mappings (ProjectAgreementForm)
-            'listPriceCategoryName',
-            'customerDiscountCategoryName',
-            'floorDiscountCategoryName',
-            'lumpSumDiscountCategoryName',
-            'miscDiscountCategoryName',
-            'sellingPriceCategoryName',
-            'rebateCategoryName'
-        ]),
-        // categoryNames is supported by the importer logic (see Contracts handler) but must also be allowed here
-        Contracts: new Set(['id', 'contractNumber', 'name', 'projectName', 'project', 'vendorName', 'vendor', 'totalAmount', 'area', 'rate', 'startDate', 'endDate', 'status', 'categoryNames', 'CategoryNames', 'termsAndConditions', 'description']),
-        RecurringTemplates: new Set(['id', 'contactName', 'contact', 'propertyName', 'property', 'buildingName', 'building', 'agreementId', 'agreementNumber', 'AgreementNumber', 'amount', 'descriptionTemplate', 'dayOfMonth', 'nextDueDate', 'active']),
-        Invoices: new Set(['id', 'invoiceNumber', 'contactName', 'contact', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'invoiceType', 'description', 'projectName', 'project', 'buildingName', 'building', 'propertyName', 'property', 'unitName', 'unit', 'categoryName', 'agreementNumber', 'securityDepositCharge', 'serviceCharges', 'rentalMonth']),
-        // Legacy/combined bills sheet (kept for backward compatibility)
-        Bills: new Set(['id', 'billNumber', 'contactName', 'contact', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'description', 'categoryName', 'projectName', 'project', 'buildingName', 'building', 'propertyName', 'property', 'projectAgreementId', 'agreementId', 'agreementNumber', 'contractId', 'contractNumber', 'staffId', 'staff']),
-        // Split bills (project vs rental)
-        ProjectBills: new Set(['id', 'billNumber', 'contactName', 'contact', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'description', 'categoryName', 'projectName', 'project', 'contractNumber', 'contract', 'agreementNumber', 'projectAgreementId']),
-        RentalBills: new Set(['id', 'billNumber', 'contactName', 'contact', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'description', 'categoryName', 'buildingName', 'building', 'propertyName', 'property', 'staffName', 'staff', 'staffId']),
-        Budgets: new Set(['id', 'categoryId', 'categoryName', 'month', 'amount']),
-        SalaryComponents: new Set(['id', 'name', 'type', 'isTaxable', 'isSystem']),
-        Payslips: new Set(['id', 'staffName', 'staff', 'month', 'issueDate', 'basicSalary', 'allowances', 'deductions', 'bonuses', 'totalAllowances', 'totalDeductions', 'totalBonuses', 'grossSalary', 'netSalary', 'status']),
-        Transactions: new Set([
-            'id', 'type', 'subtype', 'amount', 'date', 'description',
-            // transactionId is used for duplicate detection; allow it on the combined sheet too
-            'transactionId', 'TransactionId',
-            'accountName', 'AccountName', 'fromAccountName', 'FromAccountName', 'toAccountName', 'ToAccountName',
-            'contactName', 'ContactName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName',
-            'propertyName', 'PropertyName', 'unitName', 'UnitName', 'categoryName', 'CategoryName',
-            'invoiceNumber', 'InvoiceNumber', 'billNumber', 'BillNumber', 'contractNumber', 'ContractNumber',
-            'agreementNumber', 'AgreementNumber', 'payslipId', 'batchId'
-        ]),
-        // Split transactions sheets (no cross-contamination of columns)
-        RentalInvoicePayments: new Set(['id', 'amount', 'date', 'description', 'accountName', 'AccountName', 'invoiceNumber', 'InvoiceNumber', 'transactionId']),
-        ProjectInvoicePayments: new Set(['id', 'amount', 'date', 'description', 'accountName', 'AccountName', 'invoiceNumber', 'InvoiceNumber', 'transactionId']),
-        RentalBillPayments: new Set(['id', 'amount', 'date', 'description', 'accountName', 'AccountName', 'billNumber', 'BillNumber', 'transactionId']),
-        ProjectBillPayments: new Set(['id', 'amount', 'date', 'description', 'accountName', 'AccountName', 'billNumber', 'BillNumber', 'transactionId']),
-        LoanTransactions: new Set(['id', 'subtype', 'amount', 'date', 'description', 'accountName', 'AccountName', 'contactName', 'ContactName', 'transactionId']),
-        TransferTransactions: new Set(['id', 'amount', 'date', 'description', 'fromAccountName', 'FromAccountName', 'toAccountName', 'ToAccountName', 'transactionId']),
-        IncomeTransactions: new Set(['id', 'amount', 'date', 'description', 'accountName', 'AccountName', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'transactionId']),
-        ExpenseTransactions: new Set(['id', 'amount', 'date', 'description', 'accountName', 'AccountName', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'transactionId']),
-        Settings: new Set(['Key', 'Value'])
-    };
+    // Use allowedColumns from import schemas - this ensures consistency between export and import
+    const allowedColumns: Record<string, Set<string>> = {};
+    Object.entries(IMPORT_SCHEMAS).forEach(([sheetName, schema]) => {
+        allowedColumns[sheetName] = schema.allowedFields;
+    });
 
     const normalizeKey = (key: string) => key.toString().trim().replace(/\s+/g, '').replace(/_/g, '').toLowerCase();
     const allowedNormalizedMap: Record<string, Map<string, string>> = {};
@@ -1399,6 +1387,9 @@ export const runImportProcess = async (
         case ImportType.LOAN_TRANSACTIONS:
             orderedSheets = ['LoanTransactions'];
             break;
+        case ImportType.EQUITY_TRANSACTIONS:
+            orderedSheets = ['EquityTransactions'];
+            break;
         case ImportType.TRANSFER_TRANSACTIONS:
             orderedSheets = ['TransferTransactions'];
             break;
@@ -1420,13 +1411,13 @@ export const runImportProcess = async (
         default:
             // Full import - all sheets in order
             orderedSheets = [
-                'Settings', 'SalaryComponents', 'Accounts', 'Contacts', 'Categories', 
+                'Settings', 'SalaryComponents', 'Accounts', 'Contacts', 'Categories',
                 'Projects', 'Buildings', 'Properties', 'Units', 'Staff',
                 'RentalAgreements', 'ProjectAgreements', 'Contracts', 'RecurringTemplates',
                 'Invoices',
                 'ProjectBills', 'RentalBills', 'Bills',
                 'RentalInvoicePayments', 'ProjectInvoicePayments', 'RentalBillPayments', 'ProjectBillPayments',
-                'LoanTransactions', 'TransferTransactions', 'IncomeTransactions', 'ExpenseTransactions',
+                'LoanTransactions', 'EquityTransactions', 'TransferTransactions', 'IncomeTransactions', 'ExpenseTransactions',
                 'Budgets', 'Payslips', 'Transactions'
             ];
     }
@@ -1440,7 +1431,7 @@ export const runImportProcess = async (
         const actualKey = sheetKeyByNormalizedName.get(normalizeSheetName(expectedSheetName));
         return actualKey ? sheets[actualKey] : undefined;
     };
-    
+
     for (const sheetName of orderedSheets) {
         const sheetRows = getSheetRows(sheetName);
         if (!sheetRows) {
@@ -1470,7 +1461,7 @@ export const runImportProcess = async (
             // Normalize row keys to canonical headers (trim/space/underscore/case-insensitive)
             // Note: normalizeRow also formats text fields to Title Case, but resolveId will normalize for comparison
             const row = normalizeRow(sheetName, rawRow);
-            
+
             // For reference fields (like ownerName, buildingName), ensure they're normalized for comparison
             // This is a safety measure to ensure consistent comparison
             if (sheetName === 'Properties') {
@@ -1490,7 +1481,7 @@ export const runImportProcess = async (
                             const val = safeJsonParse(row.Value);
                             // Only update if parsing was successful or it's a primitive
                             const payload = typeof val !== 'undefined' ? val : row.Value;
-                            
+
                             // Map keys to action types
                             const actionMap: Record<string, string> = {
                                 'AgreementSettings': 'UPDATE_AGREEMENT_SETTINGS',
@@ -1515,18 +1506,19 @@ export const runImportProcess = async (
                                 log(sheetName, rowNum, 'Success', `Updated setting: ${row.Key}`);
                             }
                         } catch (e) {
-                             log(sheetName, rowNum, 'Error', `Failed to parse setting: ${row.Key}`);
+                            log(sheetName, rowNum, 'Error', `Failed to parse setting: ${row.Key}`);
                         }
                     }
                 }
-                
+
                 // --- SALARY COMPONENTS ---
                 else if (sheetName === 'SalaryComponents') {
                     if (maps.salaryComponents.has(normalizeNameForComparison(row.name))) {
-                         log(sheetName, rowNum, 'Skipped', `Component "${row.name}" exists.`); continue; 
+                        log(sheetName, rowNum, 'Skipped', `Duplicate entry: A salary component with the name "${row.name}" already exists in the system.`, row);
+                        continue;
                     }
                     const missing = validateRecord(row, ['name', 'type']);
-                    if(missing.length > 0) {
+                    if (missing.length > 0) {
                         const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, missing);
                         log(sheetName, rowNum, 'Error', errorMsg, row);
                         continue;
@@ -1546,15 +1538,18 @@ export const runImportProcess = async (
 
                 // --- ACCOUNTS ---
                 else if (sheetName === 'Accounts') {
-                    if (maps.accounts.has(normalizeNameForComparison(row.name))) { log(sheetName, rowNum, 'Skipped', 'Exists'); continue; }
+                    if (maps.accounts.has(normalizeNameForComparison(row.name))) {
+                        log(sheetName, rowNum, 'Skipped', `Duplicate entry: An account with the name "${row.name}" already exists in the system.`, row);
+                        continue;
+                    }
                     const missing = validateRecord(row, ['name', 'type']);
-                    if(missing.length > 0) {
+                    if (missing.length > 0) {
                         const validTypes = Object.values(AccountType).join(', ');
                         const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, missing);
                         log(sheetName, rowNum, 'Error', errorMsg + (missing.includes('type') ? `\n   💡 Valid account types are: ${validTypes}` : ''), row);
                         continue;
                     }
-                    
+
                     // Accept both camelCase + TitleCase headers for parent reference
                     const parentId = resolveId(
                         maps.accounts,
@@ -1565,12 +1560,12 @@ export const runImportProcess = async (
                         'ParentAccount'
                     );
 
-                    const newAccount: Account = { 
-                        id: row.id || `imp-acc-${Date.now()}-${index}`, 
-                        name: row.name, 
+                    const newAccount: Account = {
+                        id: row.id || `imp-acc-${Date.now()}-${index}`,
+                        name: row.name,
                         type: row.type as AccountType,
-                        balance: parseFloat(row.balance) || 0, 
-                        isPermanent: false, 
+                        balance: parseFloat(row.balance) || 0,
+                        isPermanent: false,
                         description: row.description,
                         parentAccountId: parentId
                     };
@@ -1578,27 +1573,30 @@ export const runImportProcess = async (
                     maps.accounts.set(normalizeNameForComparison(newAccount.name), newAccount.id);
                     log(sheetName, rowNum, 'Success', `Added Account: ${newAccount.name}`);
                 }
-                
+
                 // --- CONTACTS ---
                 else if (sheetName === 'Contacts') {
                     const type = normalizeContactType(row.type);
-                    if (!type) { 
+                    if (!type) {
                         const validTypes = Object.values(ContactType).join(', ');
                         const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, ['type']);
                         log(sheetName, rowNum, 'Error', errorMsg + `\n   💡 Valid types are: ${validTypes}\n   Common alternatives: "Vendor" (for Supplier), "Friend" or "Family" (for Friend & Family), "Client" (for Owner)`, row);
-                        continue; 
+                        continue;
                     }
-                    
+
                     // Filter vendors if importType is VENDORS
                     if (importType === ImportType.VENDORS && type !== ContactType.VENDOR) {
                         log(sheetName, rowNum, 'Skipped', `Contact type "${type}" is not a vendor. Only vendors are imported when selecting "Vendors Only" import type.`, row);
                         continue;
                     }
-                    
-                    if (maps.contacts.has(normalizeNameForComparison(row.name))) { log(sheetName, rowNum, 'Skipped', 'Exists'); continue; }
-                    
+
+                    if (maps.contacts.has(normalizeNameForComparison(row.name))) {
+                        log(sheetName, rowNum, 'Skipped', `Duplicate entry: A contact with the name "${row.name}" already exists in the system.`, row);
+                        continue;
+                    }
+
                     const missing = validateRecord(row, ['name']);
-                    if(missing.length > 0) {
+                    if (missing.length > 0) {
                         const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, missing);
                         log(sheetName, rowNum, 'Error', errorMsg, row);
                         continue;
@@ -1617,16 +1615,19 @@ export const runImportProcess = async (
 
                 // --- CATEGORIES ---
                 else if (sheetName === 'Categories') {
-                    if (maps.categories.has(normalizeNameForComparison(row.name))) { log(sheetName, rowNum, 'Skipped', 'Exists'); continue; }
-                    
+                    if (maps.categories.has(normalizeNameForComparison(row.name))) {
+                        log(sheetName, rowNum, 'Skipped', `Duplicate entry: A category with the name "${row.name}" already exists in the system.`, row);
+                        continue;
+                    }
+
                     const missing = validateRecord(row, ['name', 'type']);
-                    if(missing.length > 0) {
+                    if (missing.length > 0) {
                         const validTypes = `${TransactionType.INCOME}, ${TransactionType.EXPENSE}`;
                         const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, missing);
                         log(sheetName, rowNum, 'Error', errorMsg + (missing.includes('type') ? `\n   💡 Valid category types are: ${validTypes}` : ''), row);
                         continue;
                     }
-                    
+
                     // Accept both camelCase + TitleCase headers for parent reference
                     const parentId = resolveId(
                         maps.categories,
@@ -1649,9 +1650,12 @@ export const runImportProcess = async (
 
                 // --- PROJECTS ---
                 else if (sheetName === 'Projects') {
-                    if (maps.projects.has(normalizeNameForComparison(row.name))) { log(sheetName, rowNum, 'Skipped', 'Exists'); continue; }
-                     const missing = validateRecord(row, ['name']);
-                    if(missing.length > 0) {
+                    if (maps.projects.has(normalizeNameForComparison(row.name))) {
+                        log(sheetName, rowNum, 'Skipped', `Duplicate entry: A project with the name "${row.name}" already exists in the system.`, row);
+                        continue;
+                    }
+                    const missing = validateRecord(row, ['name']);
+                    if (missing.length > 0) {
                         const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, missing);
                         log(sheetName, rowNum, 'Error', errorMsg, row);
                         continue;
@@ -1672,9 +1676,12 @@ export const runImportProcess = async (
 
                 // --- BUILDINGS ---
                 else if (sheetName === 'Buildings') {
-                    if (maps.buildings.has(normalizeNameForComparison(row.name))) { log(sheetName, rowNum, 'Skipped', 'Exists'); continue; }
+                    if (maps.buildings.has(normalizeNameForComparison(row.name))) {
+                        log(sheetName, rowNum, 'Skipped', `Duplicate entry: A building with the name "${row.name}" already exists in the system.`, row);
+                        continue;
+                    }
                     const missing = validateRecord(row, ['name']);
-                    if(missing.length > 0) {
+                    if (missing.length > 0) {
                         const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, missing);
                         log(sheetName, rowNum, 'Error', errorMsg, row);
                         continue;
@@ -1691,12 +1698,15 @@ export const runImportProcess = async (
 
                 // --- PROPERTIES ---
                 else if (sheetName === 'Properties') {
-                    if (maps.properties.has(normalizeNameForComparison(row.name))) { log(sheetName, rowNum, 'Skipped', 'Exists'); continue; }
+                    if (maps.properties.has(normalizeNameForComparison(row.name))) {
+                        log(sheetName, rowNum, 'Skipped', `Duplicate entry: A property with the name "${row.name}" already exists in the system.`, row);
+                        continue;
+                    }
                     // Excel templates/canonical headers use camelCase (ownerName/buildingName),
                     // but exports and user files may use Title Case (OwnerName/BuildingName) or short names.
                     const ownerId = resolveId(maps.contacts, row, 'ownerName', 'OwnerName', 'owner', 'Owner', 'clientName', 'ClientName');
                     const buildingId = resolveId(maps.buildings, row, 'buildingName', 'BuildingName', 'building', 'Building');
-                    
+
                     const invalidRefs: { field: string; value: string; suggestions?: string[] }[] = [];
                     if (!ownerId) {
                         const ownerValue = row.ownerName || row.OwnerName || row.owner || row.Owner || '';
@@ -1719,9 +1729,9 @@ export const runImportProcess = async (
                         log(sheetName, rowNum, 'Error', errorMsg, row);
                         continue;
                     }
-                    
+
                     const missing = validateRecord(row, ['name']);
-                    if(missing.length > 0) {
+                    if (missing.length > 0) {
                         const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, missing);
                         log(sheetName, rowNum, 'Error', errorMsg, row);
                         continue;
@@ -1740,11 +1750,14 @@ export const runImportProcess = async (
 
                 // --- UNITS ---
                 else if (sheetName === 'Units') {
-                    if (maps.units.has(normalizeNameForComparison(row.name))) { log(sheetName, rowNum, 'Skipped', 'Exists'); continue; }
+                    if (maps.units.has(normalizeNameForComparison(row.name))) {
+                        log(sheetName, rowNum, 'Skipped', `Duplicate entry: A unit with the name "${row.name}" already exists in the system.`, row);
+                        continue;
+                    }
                     // Units template uses camelCase (projectName). Also accept export-style headers.
                     const projectId = resolveId(maps.projects, row, 'projectName', 'ProjectName', 'project', 'Project');
                     const ownerId = resolveId(maps.contacts, row, 'ownerName', 'OwnerName', 'clientName', 'ClientName', 'owner', 'Owner', 'client', 'Client');
-                    
+
                     if (!projectId) {
                         const projectValue = row.projectName || row.ProjectName || row.project || row.Project || '';
                         const invalidRefs = [{
@@ -1756,9 +1769,9 @@ export const runImportProcess = async (
                         log(sheetName, rowNum, 'Error', errorMsg, row);
                         continue;
                     }
-                    
+
                     const missing = validateRecord(row, ['name']);
-                    if(missing.length > 0) {
+                    if (missing.length > 0) {
                         const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, missing);
                         log(sheetName, rowNum, 'Error', errorMsg, row);
                         continue;
@@ -1779,32 +1792,32 @@ export const runImportProcess = async (
                     // Try to match by Name since export doesn't guarantee ID stability
                     const contactId = resolveId(maps.contacts, row, 'Name', 'StaffName');
                     if (contactId) {
-                         const existingStaff = [...tempState.projectStaff, ...tempState.rentalStaff].find(s => s.id === contactId);
-                         if (existingStaff) { log(sheetName, rowNum, 'Skipped', 'Staff already exists'); continue; }
-                         
-                         const projectId = resolveId(maps.projects, row, 'projectName', 'ProjectName', 'project', 'Project');
-                         const buildingId = resolveId(maps.buildings, row, 'buildingName', 'BuildingName', 'building', 'Building');
-                         
-                         const newStaff: Staff = {
-                             id: contactId,
-                             employeeId: row.employeeId || `EMP-${index}`,
-                             designation: row.designation,
-                             basicSalary: parseFloat(row.basicSalary) || 0,
-                             joiningDate: row.joiningDate ? new Date(row.joiningDate).toISOString() : new Date().toISOString(),
-                             status: row.status,
-                             email: row.email,
-                             projectId, buildingId,
-                             salaryStructure: safeJsonParse(row.salaryStructure) || [],
-                             bankDetails: safeJsonParse(row.bankDetails),
-                             history: safeJsonParse(row.history) || [],
-                             exitDetails: safeJsonParse(row.exitDetails),
-                             advanceBalance: parseFloat(row.advanceBalance) || 0
-                         };
-                         
-                         if (projectId) tempState.projectStaff.push(newStaff);
-                         else tempState.rentalStaff.push(newStaff);
-                         
-                         log(sheetName, rowNum, 'Success', `Added Staff Record: ${row.Name}`);
+                        const existingStaff = [...tempState.projectStaff, ...tempState.rentalStaff].find(s => s.id === contactId);
+                        if (existingStaff) { log(sheetName, rowNum, 'Skipped', 'Staff already exists'); continue; }
+
+                        const projectId = resolveId(maps.projects, row, 'projectName', 'ProjectName', 'project', 'Project');
+                        const buildingId = resolveId(maps.buildings, row, 'buildingName', 'BuildingName', 'building', 'Building');
+
+                        const newStaff: Staff = {
+                            id: contactId,
+                            employeeId: row.employeeId || `EMP-${index}`,
+                            designation: row.designation,
+                            basicSalary: parseFloat(row.basicSalary) || 0,
+                            joiningDate: row.joiningDate ? new Date(row.joiningDate).toISOString() : new Date().toISOString(),
+                            status: row.status,
+                            email: row.email,
+                            projectId, buildingId,
+                            salaryStructure: safeJsonParse(row.salaryStructure) || [],
+                            bankDetails: safeJsonParse(row.bankDetails),
+                            history: safeJsonParse(row.history) || [],
+                            exitDetails: safeJsonParse(row.exitDetails),
+                            advanceBalance: parseFloat(row.advanceBalance) || 0
+                        };
+
+                        if (projectId) tempState.projectStaff.push(newStaff);
+                        else tempState.rentalStaff.push(newStaff);
+
+                        log(sheetName, rowNum, 'Success', `Added Staff Record: ${row.Name}`);
                     }
                 }
 
@@ -1816,12 +1829,12 @@ export const runImportProcess = async (
                     const brokerId = resolveId(maps.contacts, row, 'brokerName', 'BrokerName', 'broker', 'Broker');
 
                     if (tenantId && propertyId) {
-                         const missing = validateRecord(row, ['agreementNumber', 'startDate', 'endDate', 'monthlyRent']);
-                         if (missing.length > 0) {
-                             const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, missing);
-                             log(sheetName, rowNum, 'Error', errorMsg, row);
-                             continue;
-                         }
+                        const missing = validateRecord(row, ['agreementNumber', 'startDate', 'endDate', 'monthlyRent']);
+                        if (missing.length > 0) {
+                            const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, missing);
+                            log(sheetName, rowNum, 'Error', errorMsg, row);
+                            continue;
+                        }
 
                         const newAgr: RentalAgreement = {
                             id: row.id || `imp-ra-${Date.now()}-${index}`,
@@ -1840,77 +1853,77 @@ export const runImportProcess = async (
                         maps.rentalAgreements.set(normalizeNameForComparison(newAgr.agreementNumber), newAgr.id);
                         log(sheetName, rowNum, 'Success', `Added Agreement: ${newAgr.agreementNumber}`);
                     } else {
-                         const invalidRefs: { field: string; value: string; suggestions?: string[] }[] = [];
-                         if(!tenantId) {
-                             const tenantValue = row.tenantName || row.tenant || '';
-                             invalidRefs.push({
-                                 field: 'Tenant',
-                                 value: tenantValue,
-                                 suggestions: findSimilarNames(tenantValue, maps.contacts)
-                             });
-                         }
-                         if(!propertyId) {
-                             const propertyValue = row.propertyName || row.property || '';
-                             invalidRefs.push({
-                                 field: 'Property',
-                                 value: propertyValue,
-                                 suggestions: findSimilarNames(propertyValue, maps.properties)
-                             });
-                         }
-                         const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, [], invalidRefs);
-                         log(sheetName, rowNum, 'Error', errorMsg, row);
+                        const invalidRefs: { field: string; value: string; suggestions?: string[] }[] = [];
+                        if (!tenantId) {
+                            const tenantValue = row.tenantName || row.tenant || '';
+                            invalidRefs.push({
+                                field: 'Tenant',
+                                value: tenantValue,
+                                suggestions: findSimilarNames(tenantValue, maps.contacts)
+                            });
+                        }
+                        if (!propertyId) {
+                            const propertyValue = row.propertyName || row.property || '';
+                            invalidRefs.push({
+                                field: 'Property',
+                                value: propertyValue,
+                                suggestions: findSimilarNames(propertyValue, maps.properties)
+                            });
+                        }
+                        const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, [], invalidRefs);
+                        log(sheetName, rowNum, 'Error', errorMsg, row);
                     }
                 }
                 else if (sheetName === 'ProjectAgreements') {
-                     if (maps.projectAgreements.has(normalizeNameForComparison(row.agreementNumber))) continue;
-                     // Updated to look for OwnerName as well as ClientName
-                     const clientId = resolveId(maps.contacts, row, 'clientName', 'ClientName', 'ownerName', 'OwnerName', 'client', 'Client', 'owner', 'Owner');
-                     const projectId = resolveId(maps.projects, row, 'projectName', 'ProjectName', 'project', 'Project');
-                     const rebateBrokerId = resolveId(maps.contacts, row, 'rebateBrokerName', 'RebateBrokerName', 'rebateBroker', 'RebateBroker', 'Rebate Broker');
-                     
-                     // Resolve Units (comma separated names) - handle case variations
-                     const unitIds: string[] = [];
-                     const unitNamesValue = row.UnitNames || row.unitNames || row.Unitnames || row.unitnames || row['Unit Names'] || row['unit names'];
-                     if (unitNamesValue && String(unitNamesValue).trim()) {
-                         const names = String(unitNamesValue).split(',').map((s: string) => s.trim()).filter(s => s);
-                         const notFoundUnits: string[] = [];
-                         names.forEach((name: string) => {
-                             const normalizedName = normalizeNameForComparison(name);
-                             if (maps.units.has(normalizedName)) {
-                                 unitIds.push(maps.units.get(normalizedName)!);
-                             } else {
-                                 notFoundUnits.push(name);
-                             }
-                         });
-                         if (notFoundUnits.length > 0 && names.length > 0) {
-                             log(sheetName, rowNum, 'Warning', `Some units not found: ${notFoundUnits.join(', ')}. Make sure units are imported before agreements.`, row);
-                         }
-                     }
+                    if (maps.projectAgreements.has(normalizeNameForComparison(row.agreementNumber))) continue;
+                    // Updated to look for OwnerName as well as ClientName
+                    const clientId = resolveId(maps.contacts, row, 'clientName', 'ClientName', 'ownerName', 'OwnerName', 'client', 'Client', 'owner', 'Owner');
+                    const projectId = resolveId(maps.projects, row, 'projectName', 'ProjectName', 'project', 'Project');
+                    const rebateBrokerId = resolveId(maps.contacts, row, 'rebateBrokerName', 'RebateBrokerName', 'rebateBroker', 'RebateBroker', 'Rebate Broker');
 
-                     if (clientId && projectId) {
-                         const missing = validateRecord(row, ['agreementNumber', 'sellingPrice']);
-                         if (missing.length > 0) {
-                             const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, missing);
-                             log(sheetName, rowNum, 'Error', errorMsg, row);
-                             continue;
-                         }
+                    // Resolve Units (comma separated names) - handle case variations
+                    const unitIds: string[] = [];
+                    const unitNamesValue = row.UnitNames || row.unitNames || row.Unitnames || row.unitnames || row['Unit Names'] || row['unit names'];
+                    if (unitNamesValue && String(unitNamesValue).trim()) {
+                        const names = String(unitNamesValue).split(',').map((s: string) => s.trim()).filter(s => s);
+                        const notFoundUnits: string[] = [];
+                        names.forEach((name: string) => {
+                            const normalizedName = normalizeNameForComparison(name);
+                            if (maps.units.has(normalizedName)) {
+                                unitIds.push(maps.units.get(normalizedName)!);
+                            } else {
+                                notFoundUnits.push(name);
+                            }
+                        });
+                        if (notFoundUnits.length > 0 && names.length > 0) {
+                            log(sheetName, rowNum, 'Warning', `Some units not found: ${notFoundUnits.join(', ')}. Make sure units are imported before agreements.`, row);
+                        }
+                    }
 
-                         const newPa: ProjectAgreement = {
-                             id: row.id || `imp-pa-${Date.now()}-${index}`,
-                             agreementNumber: row.agreementNumber,
-                             clientId, projectId, unitIds,
-                             listPrice: parseFloat(row.listPrice),
-                             customerDiscount: parseFloat(row.customerDiscount),
-                             floorDiscount: parseFloat(row.floorDiscount),
-                             lumpSumDiscount: parseFloat(row.lumpSumDiscount),
-                             miscDiscount: parseFloat(row.miscDiscount),
-                             sellingPrice: parseFloat(row.sellingPrice),
-                             rebateAmount: parseFloat(row.rebateAmount),
-                             rebateBrokerId,
-                             issueDate: new Date(row.issueDate).toISOString(),
-                             status: row.status,
-                             description: row.description,
-                             cancellationDetails: safeJsonParse(row.cancellationDetails),
+                    if (clientId && projectId) {
+                        const missing = validateRecord(row, ['agreementNumber', 'sellingPrice']);
+                        if (missing.length > 0) {
+                            const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, missing);
+                            log(sheetName, rowNum, 'Error', errorMsg, row);
+                            continue;
+                        }
+
+                        const newPa: ProjectAgreement = {
+                            id: row.id || `imp-pa-${Date.now()}-${index}`,
+                            agreementNumber: row.agreementNumber,
+                            clientId, projectId, unitIds,
+                            listPrice: parseFloat(row.listPrice),
+                            customerDiscount: parseFloat(row.customerDiscount),
+                            floorDiscount: parseFloat(row.floorDiscount),
+                            lumpSumDiscount: parseFloat(row.lumpSumDiscount),
+                            miscDiscount: parseFloat(row.miscDiscount),
+                            sellingPrice: parseFloat(row.sellingPrice),
+                            rebateAmount: parseFloat(row.rebateAmount),
+                            rebateBrokerId,
+                            issueDate: new Date(row.issueDate).toISOString(),
+                            status: row.status,
+                            description: row.description,
+                            cancellationDetails: safeJsonParse(row.cancellationDetails),
                             // Category mappings (by category name) - matches ProjectAgreementForm fields
                             listPriceCategoryId: resolveId(maps.categories, row, 'listPriceCategoryName', 'ListPriceCategoryName'),
                             customerDiscountCategoryId: resolveId(maps.categories, row, 'customerDiscountCategoryName', 'CustomerDiscountCategoryName'),
@@ -1919,31 +1932,31 @@ export const runImportProcess = async (
                             miscDiscountCategoryId: resolveId(maps.categories, row, 'miscDiscountCategoryName', 'MiscDiscountCategoryName'),
                             sellingPriceCategoryId: resolveId(maps.categories, row, 'sellingPriceCategoryName', 'SellingPriceCategoryName'),
                             rebateCategoryId: resolveId(maps.categories, row, 'rebateCategoryName', 'RebateCategoryName')
-                         };
-                         tempState.projectAgreements.push(newPa);
-                         maps.projectAgreements.set(normalizeNameForComparison(newPa.agreementNumber), newPa.id);
-                         log(sheetName, rowNum, 'Success', `Added PA: ${newPa.agreementNumber}`);
-                     } else {
-                         const invalidRefs: { field: string; value: string; suggestions?: string[] }[] = [];
-                         if(!clientId) {
-                             const clientValue = row.ownerName || row.owner || row.clientName || row.client || '';
-                             invalidRefs.push({
-                                 field: 'Owner/Client',
-                                 value: clientValue,
-                                 suggestions: findSimilarNames(clientValue, maps.contacts)
-                             });
-                         }
-                         if(!projectId) {
-                             const projectValue = row.projectName || row.project || '';
-                             invalidRefs.push({
-                                 field: 'Project',
-                                 value: projectValue,
-                                 suggestions: findSimilarNames(projectValue, maps.projects)
-                             });
-                         }
-                         const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, [], invalidRefs);
-                         log(sheetName, rowNum, 'Error', errorMsg, row);
-                     }
+                        };
+                        tempState.projectAgreements.push(newPa);
+                        maps.projectAgreements.set(normalizeNameForComparison(newPa.agreementNumber), newPa.id);
+                        log(sheetName, rowNum, 'Success', `Added PA: ${newPa.agreementNumber}`);
+                    } else {
+                        const invalidRefs: { field: string; value: string; suggestions?: string[] }[] = [];
+                        if (!clientId) {
+                            const clientValue = row.ownerName || row.owner || row.clientName || row.client || '';
+                            invalidRefs.push({
+                                field: 'Owner/Client',
+                                value: clientValue,
+                                suggestions: findSimilarNames(clientValue, maps.contacts)
+                            });
+                        }
+                        if (!projectId) {
+                            const projectValue = row.projectName || row.project || '';
+                            invalidRefs.push({
+                                field: 'Project',
+                                value: projectValue,
+                                suggestions: findSimilarNames(projectValue, maps.projects)
+                            });
+                        }
+                        const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, [], invalidRefs);
+                        log(sheetName, rowNum, 'Error', errorMsg, row);
+                    }
                 }
 
                 // --- CONTRACTS ---
@@ -2012,6 +2025,9 @@ export const runImportProcess = async (
                             });
                     }
 
+                    // Parse expenseCategoryItems from separate columns (new format) or JSON (old format)
+                    const expenseCategoryItems = parseExpenseCategoryItems(row, maps, normalizeNameForComparison);
+
                     const contractId = row.id || `imp-ctr-${Date.now()}-${index}`;
                     const newContract: Contract = {
                         id: contractId,
@@ -2026,6 +2042,8 @@ export const runImportProcess = async (
                         endDate: new Date(row.endDate).toISOString(),
                         status,
                         categoryIds,
+                        expenseCategoryItems,
+                        paymentTerms: row.paymentTerms || row.PaymentTerms,
                         termsAndConditions: row.termsAndConditions,
                         description: row.description
                     };
@@ -2059,8 +2077,9 @@ export const runImportProcess = async (
                         }
 
                         const invoiceId = row.id || `imp-inv-${Date.now()}-${index}`;
-                        const transactionId = row.transactionId || generateTransactionId('invoice', row.invoiceNumber, invoiceId);
-                        
+                        // Transaction ID is system-generated only (used for logging)
+                        const transactionId = generateTransactionId('invoice', row.invoiceNumber, invoiceId);
+
                         const newInv: Invoice = {
                             id: invoiceId,
                             invoiceNumber: row.invoiceNumber,
@@ -2080,14 +2099,14 @@ export const runImportProcess = async (
                         maps.invoices.set(normalizeNameForComparison(newInv.invoiceNumber), newInv.id);
                         log(sheetName, rowNum, 'Success', `Added Invoice: ${newInv.invoiceNumber} (Transaction ID: ${transactionId})`);
                     } else {
-                         const contactValue = row.contactName || row.contact || '';
-                         const invalidRefs = [{
-                             field: 'Contact',
-                             value: contactValue,
-                             suggestions: findSimilarNames(contactValue, maps.contacts)
-                         }];
-                         const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, [], invalidRefs);
-                         log(sheetName, rowNum, 'Error', errorMsg, row);
+                        const contactValue = row.contactName || row.contact || '';
+                        const invalidRefs = [{
+                            field: 'Contact',
+                            value: contactValue,
+                            suggestions: findSimilarNames(contactValue, maps.contacts)
+                        }];
+                        const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, [], invalidRefs);
+                        log(sheetName, rowNum, 'Error', errorMsg, row);
                     }
                 }
                 else if (sheetName === 'Bills') {
@@ -2101,40 +2120,44 @@ export const runImportProcess = async (
                     const agreementId = resolveId(maps.projectAgreements, row, 'agreementNumber', 'AgreementNumber');
 
                     if (contactId) {
-                         const missing = validateRecord(row, ['billNumber', 'amount', 'issueDate']);
-                         if (missing.length > 0) {
-                             const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, missing);
-                             log(sheetName, rowNum, 'Error', errorMsg, row);
-                             continue;
-                         }
+                        const missing = validateRecord(row, ['billNumber', 'amount', 'issueDate']);
+                        if (missing.length > 0) {
+                            const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, missing);
+                            log(sheetName, rowNum, 'Error', errorMsg, row);
+                            continue;
+                        }
 
                         const billId = row.id || `imp-bill-${Date.now()}-${index}`;
-                        const transactionId = row.transactionId || generateTransactionId('bill', row.billNumber, billId);
-                        
+                        // Transaction ID is system-generated only (used for logging)
+                        const transactionId = generateTransactionId('bill', row.billNumber, billId);
+
+                        const expenseCategoryItems = parseExpenseCategoryItems(row, maps, normalizeNameForComparison);
+
                         const newBill: Bill = {
                             id: billId,
                             billNumber: row.billNumber,
-                            contactId, categoryId, projectId, buildingId, propertyId, contractId, 
+                            contactId, categoryId, projectId, buildingId, propertyId, contractId,
                             projectAgreementId: agreementId,
                             amount: parseFloat(row.amount),
                             paidAmount: 0,
                             status: InvoiceStatus.UNPAID,
                             issueDate: new Date(row.issueDate).toISOString(),
                             dueDate: row.dueDate ? new Date(row.dueDate).toISOString() : undefined,
-                            description: row.description
+                            description: row.description,
+                            expenseCategoryItems
                         };
                         tempState.bills.push(newBill);
                         maps.bills.set(normalizeNameForComparison(newBill.billNumber), newBill.id);
                         log(sheetName, rowNum, 'Success', `Added Bill: ${newBill.billNumber} (Transaction ID: ${transactionId})`);
                     } else {
-                         const contactValue = row.contactName || row.contact || '';
-                         const invalidRefs = [{
-                             field: 'Contact',
-                             value: contactValue,
-                             suggestions: findSimilarNames(contactValue, maps.contacts)
-                         }];
-                         const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, [], invalidRefs);
-                         log(sheetName, rowNum, 'Error', errorMsg, row);
+                        const contactValue = row.contactName || row.contact || '';
+                        const invalidRefs = [{
+                            field: 'Contact',
+                            value: contactValue,
+                            suggestions: findSimilarNames(contactValue, maps.contacts)
+                        }];
+                        const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, [], invalidRefs);
+                        log(sheetName, rowNum, 'Error', errorMsg, row);
                     }
                 }
 
@@ -2171,7 +2194,10 @@ export const runImportProcess = async (
                     }
 
                     const billId = row.id || `imp-pbill-${Date.now()}-${index}`;
-                    const transactionId = row.transactionId || generateTransactionId('bill', row.billNumber, billId);
+                    // Transaction ID is system-generated only (used for logging)
+                    const transactionId = generateTransactionId('bill', row.billNumber, billId);
+
+                    const expenseCategoryItems = parseExpenseCategoryItems(row, maps, normalizeNameForComparison);
 
                     const newBill: Bill = {
                         id: billId,
@@ -2186,7 +2212,8 @@ export const runImportProcess = async (
                         status: InvoiceStatus.UNPAID,
                         issueDate: new Date(row.issueDate).toISOString(),
                         dueDate: row.dueDate ? new Date(row.dueDate).toISOString() : undefined,
-                        description: row.description
+                        description: row.description,
+                        expenseCategoryItems
                     };
                     tempState.bills.push(newBill);
                     maps.bills.set(normalizeNameForComparison(newBill.billNumber), newBill.id);
@@ -2223,7 +2250,10 @@ export const runImportProcess = async (
                     }
 
                     const billId = row.id || `imp-rbill-${Date.now()}-${index}`;
-                    const transactionId = row.transactionId || generateTransactionId('bill', row.billNumber, billId);
+                    // Transaction ID is system-generated only (used for logging)
+                    const transactionId = generateTransactionId('bill', row.billNumber, billId);
+
+                    const expenseCategoryItems = parseExpenseCategoryItems(row, maps, normalizeNameForComparison);
 
                     const newBill: Bill = {
                         id: billId,
@@ -2238,7 +2268,8 @@ export const runImportProcess = async (
                         status: InvoiceStatus.UNPAID,
                         issueDate: new Date(row.issueDate).toISOString(),
                         dueDate: row.dueDate ? new Date(row.dueDate).toISOString() : undefined,
-                        description: row.description
+                        description: row.description,
+                        expenseCategoryItems
                     };
                     tempState.bills.push(newBill);
                     maps.bills.set(normalizeNameForComparison(newBill.billNumber), newBill.id);
@@ -2249,126 +2280,151 @@ export const runImportProcess = async (
                 else if (sheetName === 'RecurringTemplates') {
                     const contactId = resolveId(maps.contacts, row, 'contactName', 'ContactName', 'contact', 'Contact');
                     const propertyId = resolveId(maps.properties, row, 'propertyName', 'PropertyName', 'property', 'Property');
-                    
+
                     if (contactId && propertyId) {
-                         const t: RecurringInvoiceTemplate = {
-                             id: row.id || `imp-rec-${Date.now()}-${index}`,
-                             contactId, propertyId,
-                             buildingId: resolveId(maps.buildings, row, 'buildingName', 'BuildingName', 'building', 'Building') || '',
-                             amount: parseFloat(row.amount),
-                             descriptionTemplate: row.descriptionTemplate,
-                             dayOfMonth: parseInt(row.dayOfMonth),
-                             nextDueDate: new Date(row.nextDueDate).toISOString().split('T')[0],
-                             active: row.active === true || String(row.active).toLowerCase() === 'true',
-                             agreementId: resolveId(maps.rentalAgreements, row, 'agreementNumber', 'AgreementNumber', 'agreementId')
-                         };
-                         
-                         tempState.recurringInvoiceTemplates.push(t);
-                         log(sheetName, rowNum, 'Success', `Added Template`);
+                        const t: RecurringInvoiceTemplate = {
+                            id: row.id || `imp-rec-${Date.now()}-${index}`,
+                            contactId, propertyId,
+                            buildingId: resolveId(maps.buildings, row, 'buildingName', 'BuildingName', 'building', 'Building') || '',
+                            amount: parseFloat(row.amount),
+                            descriptionTemplate: row.descriptionTemplate,
+                            dayOfMonth: parseInt(row.dayOfMonth),
+                            nextDueDate: new Date(row.nextDueDate).toISOString().split('T')[0],
+                            active: row.active === true || String(row.active).toLowerCase() === 'true',
+                            agreementId: resolveId(maps.rentalAgreements, row, 'agreementNumber', 'AgreementNumber', 'agreementId')
+                        };
+
+                        tempState.recurringInvoiceTemplates.push(t);
+                        log(sheetName, rowNum, 'Success', `Added Template`);
                     }
                 }
 
                 // --- BUDGETS ---
                 else if (sheetName === 'Budgets') {
+                    // Check if budget ID already exists (prevents re-importing exported files)
+                    if (row.id && tempState.budgets.find(b => b.id === String(row.id).trim())) {
+                        log(sheetName, rowNum, 'Skipped', `Duplicate entry: Budget with ID "${row.id}" already exists in the system. This entry appears to be from an exported file.`, row);
+                        continue;
+                    }
+
                     // Support either categoryId (advanced) or categoryName (friendly)
                     const categoryId =
                         (row.categoryId && String(row.categoryId).trim()) ||
                         resolveId(maps.categories, row, 'categoryName', 'CategoryName');
 
+                    // Support either projectId (advanced) or projectName (friendly)
+                    const projectId =
+                        (row.projectId && String(row.projectId).trim()) ||
+                        resolveId(maps.projects, row, 'projectName', 'ProjectName', 'project', 'Project');
+
                     const missing: string[] = [];
                     if (!categoryId) missing.push('categoryName');
-                    missing.push(...validateRecord(row, ['month', 'amount']));
+                    missing.push(...validateRecord(row, ['amount']));
 
                     if (missing.length > 0) {
-                        const invalidRefs = !categoryId && (row.categoryName || row.CategoryName)
-                            ? [{
+                        const invalidRefs: { field: string; value: string; suggestions?: string[] }[] = [];
+                        if (!categoryId && (row.categoryName || row.CategoryName)) {
+                            invalidRefs.push({
                                 field: 'Category',
                                 value: String(row.categoryName || row.CategoryName),
                                 suggestions: findSimilarNames(String(row.categoryName || row.CategoryName), maps.categories)
-                            }]
-                            : [];
+                            });
+                        }
+                        if (projectId === undefined && (row.projectName || row.ProjectName)) {
+                            invalidRefs.push({
+                                field: 'Project',
+                                value: String(row.projectName || row.ProjectName),
+                                suggestions: findSimilarNames(String(row.projectName || row.ProjectName), maps.projects)
+                            });
+                        }
                         const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, missing, invalidRefs as any);
                         log(sheetName, rowNum, 'Error', errorMsg, row);
                         continue;
                     }
 
-                    // De-dupe by category + month
-                    const month = String(row.month).trim();
-                    const normKey = `${categoryId}::${month}`;
-                    const existing = tempState.budgets.find(b => `${b.categoryId}::${String(b.month).trim()}` === normKey);
+                    // De-dupe by category + projectId (projectId can be undefined for general budgets)
+                    const normKey = projectId ? `${categoryId}::${projectId}` : `${categoryId}::`;
+                    const existing = tempState.budgets.find(b => {
+                        const bKey = b.projectId ? `${b.categoryId}::${b.projectId}` : `${b.categoryId}::`;
+                        return bKey === normKey;
+                    });
                     if (existing) {
-                        log(sheetName, rowNum, 'Skipped', `Budget already exists for ${month}.`, row);
+                        const projectInfo = projectId ? ` for project` : '';
+                        log(sheetName, rowNum, 'Skipped', `Duplicate entry: Budget already exists for this category${projectInfo}.`, row);
                         continue;
                     }
 
                     const newBudget: Budget = {
                         id: row.id || `imp-bud-${Date.now()}-${index}`,
                         categoryId: String(categoryId),
-                        month,
-                        amount: parseFloat(row.amount) || 0
+                        amount: parseFloat(row.amount) || 0,
+                        projectId: projectId || undefined
                     };
                     tempState.budgets.push(newBudget);
-                    log(sheetName, rowNum, 'Success', `Added Budget: ${month}`, row);
+                    // Get project name for logging
+                    const projectName = projectId ? (tempState.projects.find(p => p.id === projectId)?.name || '') : '';
+                    const projectInfo = projectName ? ` (Project: ${projectName})` : '';
+                    log(sheetName, rowNum, 'Success', `Added Budget${projectInfo}`, row);
                 }
 
                 // --- PAYSLIPS ---
                 else if (sheetName === 'Payslips') {
-                     const staffId = resolveId(maps.contacts, row, 'staffName', 'StaffName', 'staff', 'Staff'); // link to Contact/Staff
-                     if (staffId) {
-                         // Derive pay period from month if provided as YYYY-MM
-                         const monthStr = String(row.month || '').trim();
-                         const startDate = monthStr && /^\d{4}-\d{2}$/.test(monthStr) ? new Date(`${monthStr}-01`) : new Date();
-                         const endDate = monthStr && /^\d{4}-\d{2}$/.test(monthStr)
-                             ? new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0)
-                             : new Date();
+                    const staffId = resolveId(maps.contacts, row, 'staffName', 'StaffName', 'staff', 'Staff'); // link to Contact/Staff
+                    if (staffId) {
+                        // Derive pay period from month if provided as YYYY-MM
+                        const monthStr = String(row.month || '').trim();
+                        const startDate = monthStr && /^\d{4}-\d{2}$/.test(monthStr) ? new Date(`${monthStr}-01`) : new Date();
+                        const endDate = monthStr && /^\d{4}-\d{2}$/.test(monthStr)
+                            ? new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0)
+                            : new Date();
 
-                         const allowances = safeJsonParse(row.allowances) || [];
-                         const deductions = safeJsonParse(row.deductions) || [];
-                         const bonuses = safeJsonParse(row.bonuses) || [];
-                         const totalAllowances = parseFloat(row.totalAllowances) || 0;
-                         const totalDeductions = parseFloat(row.totalDeductions) || 0;
-                         const totalBonuses = parseFloat(row.totalBonuses) || 0;
-                         const grossSalary = parseFloat(row.grossSalary) || 0;
-                         const netSalary = parseFloat(row.netSalary) || 0;
+                        const allowances = safeJsonParse(row.allowances) || [];
+                        const deductions = safeJsonParse(row.deductions) || [];
+                        const bonuses = safeJsonParse(row.bonuses) || [];
+                        const totalAllowances = parseFloat(row.totalAllowances) || 0;
+                        const totalDeductions = parseFloat(row.totalDeductions) || 0;
+                        const totalBonuses = parseFloat(row.totalBonuses) || 0;
+                        const grossSalary = parseFloat(row.grossSalary) || 0;
+                        const netSalary = parseFloat(row.netSalary) || 0;
 
-                         const newSlip: Payslip = {
-                             id: row.id || `imp-pay-${Date.now()}-${index}`,
-                             employeeId: staffId, // legacy payroll links staff to Contact id
-                             staffId,
-                             payrollCycleId: '',
-                             month: monthStr || String(row.month || ''),
-                             issueDate: row.issueDate ? new Date(row.issueDate).toISOString() : new Date().toISOString(),
-                             payPeriodStart: startDate.toISOString().split('T')[0],
-                             payPeriodEnd: endDate.toISOString().split('T')[0],
+                        const newSlip: Payslip = {
+                            id: row.id || `imp-pay-${Date.now()}-${index}`,
+                            employeeId: staffId, // legacy payroll links staff to Contact id
+                            staffId,
+                            payrollCycleId: '',
+                            month: monthStr || String(row.month || ''),
+                            issueDate: row.issueDate ? new Date(row.issueDate).toISOString() : new Date().toISOString(),
+                            payPeriodStart: startDate.toISOString().split('T')[0],
+                            payPeriodEnd: endDate.toISOString().split('T')[0],
 
-                             basicSalary: parseFloat(row.basicSalary) || 0,
-                             allowances,
-                             totalAllowances,
-                             bonuses,
-                             totalBonuses,
-                             deductions,
-                             totalDeductions,
-                             taxDeductions: [],
-                             totalTax: 0,
-                             statutoryDeductions: [],
-                             totalStatutory: 0,
-                             loanDeductions: [],
-                             totalLoanDeductions: 0,
-                             grossSalary,
-                             taxableIncome: grossSalary,
-                             netSalary,
-                             costAllocations: [],
-                             isProrated: false,
-                             status: row.status,
-                             paidAmount: 0,
-                             generatedAt: new Date().toISOString()
-                         };
-                         // Put into project or rental bucket based on provided project reference (if any)
-                         if (resolveId(maps.projects, row, 'projectId', 'projectName', 'ProjectName', 'project', 'Project')) tempState.projectPayslips.push(newSlip);
-                         else tempState.rentalPayslips.push(newSlip);
-                         
-                         log(sheetName, rowNum, 'Success', `Added Payslip for ${row.StaffName}`);
-                     }
+                            basicSalary: parseFloat(row.basicSalary) || 0,
+                            allowances,
+                            totalAllowances,
+                            bonuses,
+                            totalBonuses,
+                            deductions,
+                            totalDeductions,
+                            taxDeductions: [],
+                            totalTax: 0,
+                            statutoryDeductions: [],
+                            totalStatutory: 0,
+                            loanDeductions: [],
+                            totalLoanDeductions: 0,
+                            grossSalary,
+                            taxableIncome: grossSalary,
+                            netSalary,
+                            costAllocations: [],
+                            isProrated: false,
+                            status: row.status,
+                            paidAmount: 0,
+                            generatedAt: new Date().toISOString()
+                        };
+                        // Put into project or rental bucket based on provided project reference (if any)
+                        if (resolveId(maps.projects, row, 'projectId', 'projectName', 'ProjectName', 'project', 'Project')) tempState.projectPayslips.push(newSlip);
+                        else tempState.rentalPayslips.push(newSlip);
+
+                        log(sheetName, rowNum, 'Success', `Added Payslip for ${row.StaffName}`);
+                    }
                 }
 
                 // --- TRANSACTIONS ---
@@ -2379,6 +2435,7 @@ export const runImportProcess = async (
                     'RentalBillPayments',
                     'ProjectBillPayments',
                     'LoanTransactions',
+                    'EquityTransactions',
                     'TransferTransactions',
                     'IncomeTransactions',
                     'ExpenseTransactions'
@@ -2391,6 +2448,7 @@ export const runImportProcess = async (
                         RentalBillPayments: TransactionType.EXPENSE,
                         ProjectBillPayments: TransactionType.EXPENSE,
                         LoanTransactions: TransactionType.LOAN,
+                        EquityTransactions: TransactionType.TRANSFER,
                         TransferTransactions: TransactionType.TRANSFER,
                         IncomeTransactions: TransactionType.INCOME,
                         ExpenseTransactions: TransactionType.EXPENSE,
@@ -2457,8 +2515,12 @@ export const runImportProcess = async (
                                 return txType === TransactionType.EXPENSE && !!billId && billKind === 'project';
                             case ImportType.LOAN_TRANSACTIONS:
                                 return txType === TransactionType.LOAN;
+                            case ImportType.EQUITY_TRANSACTIONS:
+                                // Equity transactions are TRANSFER type from EquityTransactions sheet
+                                return txType === TransactionType.TRANSFER && sheetName === 'EquityTransactions';
                             case ImportType.TRANSFER_TRANSACTIONS:
-                                return txType === TransactionType.TRANSFER;
+                                // Regular transfers from TransferTransactions sheet (equity transactions are in separate sheet)
+                                return txType === TransactionType.TRANSFER && sheetName === 'TransferTransactions';
                             case ImportType.INCOME_TRANSACTIONS:
                                 return txType === TransactionType.INCOME && !invoiceId;
                             case ImportType.EXPENSE_TRANSACTIONS:
@@ -2522,14 +2584,10 @@ export const runImportProcess = async (
                             continue;
                         }
 
-                        // Generate unique transaction ID: use provided transactionId or generate one with unique suffix
-                        if (row.transactionId) {
-                            txId = row.transactionId;
-                        } else {
-                            // Append unique suffix to ensure each payment to the same invoice gets a unique transaction ID
-                            const baseTxId = generateTransactionId('invoice', invoice.invoiceNumber, invoice.id);
-                            txId = `${baseTxId}_${index}`;
-                        }
+                        // Generate unique transaction ID automatically (system-generated only)
+                        // Append unique suffix to ensure each payment to the same invoice gets a unique transaction ID
+                        const baseTxId = generateTransactionId('invoice', invoice.invoiceNumber, invoice.id);
+                        txId = `${baseTxId}_${index}`;
                         if (transactionIds.has(txId)) {
                             log(sheetName, rowNum, 'Skipped', `Duplicate transaction detected (Transaction ID: ${txId}). This payment was already imported.`, row);
                             continue;
@@ -2552,14 +2610,10 @@ export const runImportProcess = async (
                             continue;
                         }
 
-                        // Generate unique transaction ID: use provided transactionId or generate one with unique suffix
-                        if (row.transactionId) {
-                            txId = row.transactionId;
-                        } else {
-                            // Append unique suffix to ensure each payment to the same bill gets a unique transaction ID
-                            const baseTxId = generateTransactionId('bill', bill.billNumber, bill.id);
-                            txId = `${baseTxId}_${index}`;
-                        }
+                        // Generate unique transaction ID automatically (system-generated only)
+                        // Append unique suffix to ensure each payment to the same bill gets a unique transaction ID
+                        const baseTxId = generateTransactionId('bill', bill.billNumber, bill.id);
+                        txId = `${baseTxId}_${index}`;
                         if (transactionIds.has(txId)) {
                             log(sheetName, rowNum, 'Skipped', `Duplicate transaction detected (Transaction ID: ${txId}). This payment was already imported.`, row);
                             continue;
@@ -2575,7 +2629,8 @@ export const runImportProcess = async (
                         }
                         transactionIds.add(txId);
                     } else {
-                        txId = row.transactionId || generateStandaloneTransactionId(String(txType), transactionId);
+                        // Generate unique transaction ID automatically (system-generated only)
+                        txId = generateStandaloneTransactionId(String(txType), transactionId);
                         if (transactionIds.has(txId)) {
                             log(sheetName, rowNum, 'Skipped', `Duplicate transaction detected (Transaction ID: ${txId}). This transaction was already imported.`, row);
                             continue;
@@ -2614,7 +2669,13 @@ export const runImportProcess = async (
                         fromAccountId,
                         toAccountId,
                         contactId,
-                        projectId: resolveId(maps.projects, row, 'projectName', 'ProjectName', 'project', 'Project'),
+                        projectId: (() => {
+                            const directId = row.projectId && String(row.projectId).trim();
+                            if (directId && tempState.projects.find(p => p.id === directId)) {
+                                return directId;
+                            }
+                            return resolveId(maps.projects, row, 'projectName', 'ProjectName', 'project', 'Project');
+                        })(),
                         buildingId: resolveId(maps.buildings, row, 'buildingName', 'BuildingName', 'building', 'Building'),
                         propertyId: resolveId(maps.properties, row, 'propertyName', 'PropertyName', 'property', 'Property'),
                         categoryId,
@@ -2653,72 +2714,72 @@ export const runImportProcess = async (
     // --- RECALCULATE BALANCES ---
     progress.updateProgress(95, 'Recalculating balances...');
     await new Promise(res => setTimeout(res, 50));
-    
+
     // Reset
     tempState.accounts.forEach(a => a.balance = 0);
     tempState.invoices.forEach(i => { i.paidAmount = 0; i.status = InvoiceStatus.UNPAID; });
     tempState.bills.forEach(b => { b.paidAmount = 0; b.status = InvoiceStatus.UNPAID; });
-    
+
     const arAccount = tempState.accounts.find(a => a.name === 'Accounts Receivable');
     const apAccount = tempState.accounts.find(a => a.name === 'Accounts Payable');
-    
+
     // Initial AR/AP from Documents
     if (arAccount) arAccount.balance = tempState.invoices.reduce((sum, i) => sum + i.amount, 0);
     if (apAccount) apAccount.balance = tempState.bills.reduce((sum, b) => sum + b.amount, 0);
 
     // Apply Transactions
-    tempState.transactions.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()).forEach(tx => {
-         const { type, amount, accountId, fromAccountId, toAccountId, invoiceId, billId, contractId } = tx;
-         
-         if (type === TransactionType.INCOME) {
-             const acc = tempState.accounts.find(a => a.id === accountId);
-             if (acc) acc.balance += amount;
-             if (invoiceId && arAccount) arAccount.balance -= amount;
-             
-             if (invoiceId) {
-                 const inv = tempState.invoices.find(i => i.id === invoiceId);
-                 if (inv) {
-                     inv.paidAmount += amount;
-                     if (inv.paidAmount >= inv.amount - 0.1) inv.status = InvoiceStatus.PAID;
-                     else inv.status = InvoiceStatus.PARTIALLY_PAID;
-                 }
-             }
-         } else if (type === TransactionType.EXPENSE) {
-             const acc = tempState.accounts.find(a => a.id === accountId);
-             if (acc) acc.balance -= amount;
-             if (billId && apAccount) apAccount.balance -= amount;
+    tempState.transactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).forEach(tx => {
+        const { type, amount, accountId, fromAccountId, toAccountId, invoiceId, billId, contractId } = tx;
 
-             if (billId) {
-                 const bill = tempState.bills.find(b => b.id === billId);
-                 if (bill) {
-                     bill.paidAmount += amount;
-                     if (bill.paidAmount >= bill.amount - 0.1) bill.status = InvoiceStatus.PAID;
-                     else bill.status = InvoiceStatus.PARTIALLY_PAID;
-                 }
-             }
-         } else if (type === TransactionType.TRANSFER) {
-             const from = tempState.accounts.find(a => a.id === fromAccountId);
-             const to = tempState.accounts.find(a => a.id === toAccountId);
-             if (from) from.balance -= amount;
-             if (to) to.balance += amount;
-         } else if (type === TransactionType.LOAN) {
-             const acc = tempState.accounts.find(a => a.id === accountId);
-             if (acc) acc.balance += (tx.subtype === LoanSubtype.RECEIVE ? amount : -amount);
-         }
+        if (type === TransactionType.INCOME) {
+            const acc = tempState.accounts.find(a => a.id === accountId);
+            if (acc) acc.balance += amount;
+            if (invoiceId && arAccount) arAccount.balance -= amount;
+
+            if (invoiceId) {
+                const inv = tempState.invoices.find(i => i.id === invoiceId);
+                if (inv) {
+                    inv.paidAmount += amount;
+                    if (inv.paidAmount >= inv.amount - 0.1) inv.status = InvoiceStatus.PAID;
+                    else inv.status = InvoiceStatus.PARTIALLY_PAID;
+                }
+            }
+        } else if (type === TransactionType.EXPENSE) {
+            const acc = tempState.accounts.find(a => a.id === accountId);
+            if (acc) acc.balance -= amount;
+            if (billId && apAccount) apAccount.balance -= amount;
+
+            if (billId) {
+                const bill = tempState.bills.find(b => b.id === billId);
+                if (bill) {
+                    bill.paidAmount += amount;
+                    if (bill.paidAmount >= bill.amount - 0.1) bill.status = InvoiceStatus.PAID;
+                    else bill.status = InvoiceStatus.PARTIALLY_PAID;
+                }
+            }
+        } else if (type === TransactionType.TRANSFER) {
+            const from = tempState.accounts.find(a => a.id === fromAccountId);
+            const to = tempState.accounts.find(a => a.id === toAccountId);
+            if (from) from.balance -= amount;
+            if (to) to.balance += amount;
+        } else if (type === TransactionType.LOAN) {
+            const acc = tempState.accounts.find(a => a.id === accountId);
+            if (acc) acc.balance += (tx.subtype === LoanSubtype.RECEIVE ? amount : -amount);
+        }
     });
 
     // Update Contract Statuses based on transactions
     if (tempState.contracts && tempState.contracts.length > 0) {
         tempState.contracts.forEach(contract => {
             if (contract.status === ContractStatus.TERMINATED) return;
-            
+
             // Calculate total paid from transactions linked to this contract
             const totalPaid = tempState.transactions
                 .filter(t => t.contractId === contract.id)
                 .reduce((sum, t) => sum + t.amount, 0);
-            
+
             const isFullyPaid = totalPaid >= (contract.totalAmount - 1.0);
-            
+
             // Update contract status based on payment status
             if (isFullyPaid && contract.status === ContractStatus.ACTIVE) {
                 contract.status = ContractStatus.COMPLETED;
@@ -2731,7 +2792,7 @@ export const runImportProcess = async (
     // Save to database
     progress.updateProgress(96, 'Initializing database...');
     const { getDatabaseService } = await import('./database/databaseService');
-    
+
     // Ensure database is initialized before saving
     const dbService = getDatabaseService();
     try {
@@ -2740,11 +2801,11 @@ export const runImportProcess = async (
         const errorMsg = dbError instanceof Error ? dbError.message : String(dbError);
         throw new Error(`Failed to initialize database: ${errorMsg}`);
     }
-    
+
     progress.updateProgress(98, 'Saving to database...');
     const appStateRepo = new AppStateRepository();
     await appStateRepo.saveState(tempState);
-    
+
     // Also dispatch to update UI
     dispatch({ type: 'SET_STATE', payload: tempState });
     return summary;

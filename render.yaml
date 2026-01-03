@@ -1,0 +1,53 @@
+services:
+  # PostgreSQL Database
+  - type: pspg
+    name: pbookspro-database
+    plan: starter
+    databaseName: pbookspro
+    user: pbookspro_user
+
+  # Backend API Server
+  - type: web
+    name: pbookspro-api
+    env: node
+    plan: starter
+    buildCommand: cd server && npm install && npm run build
+    startCommand: cd server && npm start
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pbookspro-database
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: LICENSE_SECRET_SALT
+        value: PBOOKSPRO_SECURE_SALT_2024
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: CORS_ORIGIN
+        value: https://pbookspro-client.onrender.com,https://pbookspro-admin.onrender.com,http://localhost:5173,http://localhost:5174
+
+  # Client Application (Static Site)
+  - type: web
+    name: pbookspro-client
+    env: static
+    plan: free
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://pbookspro-api.onrender.com/api
+
+  # Admin Application (Static Site)
+  - type: web
+    name: pbookspro-admin
+    env: static
+    plan: free
+    buildCommand: cd admin && npm install && npm run build
+    staticPublishPath: ./admin/dist
+    envVars:
+      - key: VITE_ADMIN_API_URL
+        value: https://pbookspro-api.onrender.com/api/admin
+

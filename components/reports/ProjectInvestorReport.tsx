@@ -12,6 +12,7 @@ import ComboBox from '../ui/ComboBox';
 import { formatDate } from '../../utils/dateUtils';
 import { useNotification } from '../../context/NotificationContext';
 import InvestorHistoryModal from './InvestorHistoryModal';
+import { WhatsAppService } from '../../services/whatsappService';
 
 interface InvestorRow {
     accountId: string;
@@ -29,7 +30,7 @@ const ProjectInvestorReport: React.FC = () => {
     const [dateRange, setDateRange] = useState<ReportDateRange>('all');
     const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]); // Not used for calculation but for UI state
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
-    const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
+    const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || 'all');
     const [selectedInvestorId, setSelectedInvestorId] = useState<string>('all');
     
     // Modal State
@@ -95,6 +96,8 @@ const ProjectInvestorReport: React.FC = () => {
                 const fromAccount = state.accounts.find(a => a.id === tx.fromAccountId);
                 const isFromClearing = fromAccount?.name === 'Internal Clearing';
                 const isDivestment = tx.description && tx.description.includes('Equity Move out');
+                const isPMFeeTransfer = tx.description?.toLowerCase().includes('pm fee') || 
+                                      tx.description?.toLowerCase().includes('pm fee equity');
 
                 // Deposit: Investor Equity -> Bank (Investment)
                 // Flow FROM Equity Account signifies Investment into business
@@ -102,16 +105,21 @@ const ProjectInvestorReport: React.FC = () => {
                     investorMap[tx.fromAccountId!].invested += tx.amount;
                 }
                 
-                // Withdrawal OR Profit Distribution (if from Clearing)
+                // Withdrawal OR Profit Distribution OR PM Fee Deposit (if from Clearing)
                 // Flow TO Equity Account
                 if (toEquity && !fromEquity && investorMap[tx.toAccountId!]) {
-                    // Check if it's Profit Distribution
-                    if (isFromClearing && !isDivestment) {
-                         investorMap[tx.toAccountId!].profit += tx.amount;
+                    // Check if it's PM Fee Transfer (deposit/investment)
+                    if (isFromClearing && isPMFeeTransfer) {
+                        // PM Fee Transfer: Clearing -> PM Equity (deposit/investment)
+                        // This increases the PM project's equity balance
+                        investorMap[tx.toAccountId!].invested += tx.amount;
+                    } else if (isFromClearing && !isDivestment) {
+                        // Profit Distribution
+                        investorMap[tx.toAccountId!].profit += tx.amount;
                     } else {
-                         // Real Withdrawal: Bank -> Investor Equity (Payout/Capital Return)
-                         // OR Divestment: Clearing -> Investor Equity (Capital Return)
-                         investorMap[tx.toAccountId!].withdrawn += tx.amount;
+                        // Real Withdrawal: Bank -> Investor Equity (Payout/Capital Return)
+                        // OR Divestment: Clearing -> Investor Equity (Capital Return)
+                        investorMap[tx.toAccountId!].withdrawn += tx.amount;
                     }
                 }
             }
@@ -207,15 +215,17 @@ const ProjectInvestorReport: React.FC = () => {
         message += `--------------------\n`;
         message += `*Net Equity: ${CURRENCY} ${row.netBalance.toLocaleString()}*\n`;
         
-        const encodedMessage = encodeURIComponent(message);
-        let url = `https://wa.me/?text=${encodedMessage}`;
-        
-        if (matchingContact && matchingContact.contactNo) {
-             const phone = matchingContact.contactNo.replace(/[^0-9]/g, '');
-             url = `https://wa.me/${phone}?text=${encodedMessage}`;
+        try {
+            if (matchingContact && matchingContact.contactNo) {
+                WhatsAppService.sendMessage({ contact: matchingContact, message });
+            } else {
+                // If no contact found, open WhatsApp without phone number
+                const encodedMessage = encodeURIComponent(message);
+                window.open(`https://wa.me/?text=${encodedMessage}`, '_blank');
+            }
+        } catch (error) {
+            await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
         }
-        
-        window.open(url, '_blank');
     };
 
     const projectName = selectedProjectId === 'all' ? 'All Projects' : state.projects.find(p => p.id === selectedProjectId)?.name || 'Unknown Project';

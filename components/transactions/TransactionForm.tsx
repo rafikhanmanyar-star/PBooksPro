@@ -9,6 +9,8 @@ import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { useNotification } from '../../context/NotificationContext';
 import { CURRENCY } from '../../constants';
+import { WhatsAppService } from '../../services/whatsappService';
+import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
 
 interface TransactionFormProps {
     onClose: () => void;
@@ -22,11 +24,33 @@ type CostCenterType = 'project' | 'building' | 'general';
 const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionToEdit, transactionTypeForNew, onShowDeleteWarning }) => {
     const { state, dispatch } = useAppContext();
     const { showAlert, showConfirm } = useNotification();
+    const entityFormModal = useEntityFormModal();
 
     const [type, setType] = useState<TransactionType>(transactionToEdit?.type || transactionTypeForNew || TransactionType.EXPENSE);
     const [subtype, setSubtype] = useState<LoanSubtype | ''>(transactionToEdit?.subtype || '');
     const [amount, setAmount] = useState(transactionToEdit ? Math.abs(transactionToEdit.amount).toString() : '');
-    const [date, setDate] = useState(transactionToEdit ? new Date(transactionToEdit.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+    
+    // Get initial date: use preserved date if option is enabled and creating new transaction
+    const getInitialDate = () => {
+        if (transactionToEdit) {
+            return new Date(transactionToEdit.date).toISOString().split('T')[0];
+        }
+        if (state.enableDatePreservation && state.lastPreservedDate) {
+            return state.lastPreservedDate;
+        }
+        return new Date().toISOString().split('T')[0];
+    };
+    
+    const [date, setDate] = useState(getInitialDate());
+    
+    // Save date to preserved date when changed (if option is enabled)
+    const handleDateChange = (dateValue: Date) => {
+        const dateStr = dateValue.toISOString().split('T')[0];
+        setDate(dateStr);
+        if (state.enableDatePreservation && !transactionToEdit) {
+            dispatch({ type: 'UPDATE_PRESERVED_DATE', payload: dateStr });
+        }
+    };
     const [description, setDescription] = useState(transactionToEdit?.description || '');
     
     const [accountId, setAccountId] = useState(transactionToEdit?.accountId || '');
@@ -34,7 +58,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
     
     const [categoryId, setCategoryId] = useState(transactionToEdit?.categoryId || '');
     const [contactId, setContactId] = useState(transactionToEdit?.contactId || '');
-    const [projectId, setProjectId] = useState(transactionToEdit?.projectId || '');
+    const [projectId, setProjectId] = useState(transactionToEdit?.projectId || state.defaultProjectId || '');
     const [buildingId, setBuildingId] = useState(transactionToEdit?.buildingId || '');
     const [propertyId, setPropertyId] = useState(transactionToEdit?.propertyId || '');
     const [unitId, setUnitId] = useState(transactionToEdit?.unitId || '');
@@ -45,8 +69,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
     const billBeingPaid = useMemo(() => state.bills.find(b => b.id === linkedBillId), [state.bills, linkedBillId]);
     const isPayingBill = !!billBeingPaid;
 
-    // Filter for Bank Accounts Only
-    const bankAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK), [state.accounts]);
+    // Filter for Bank Accounts Only (exclude Internal Clearing)
+    const bankAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
 
     // Cost Center State Logic
     const [costCenterType, setCostCenterType] = useState<CostCenterType>(() => {
@@ -231,17 +255,21 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                         const totalPaid = (invoice.paidAmount || 0) + numAmount;
                         const remainingBalance = Math.max(0, invoice.amount - totalPaid);
 
-                        const { whatsAppTemplates } = state;
-                        const message = whatsAppTemplates.invoiceReceipt
-                            .replace(/{contactName}/g, contact.name)
-                            .replace(/{invoiceNumber}/g, invoice.invoiceNumber)
-                            .replace(/{subject}/g, subject)
-                            .replace(/{paidAmount}/g, `${CURRENCY} ${numAmount.toLocaleString()}`)
-                            .replace(/{balance}/g, `${CURRENCY} ${remainingBalance.toLocaleString()}`)
-                            .replace(/{unitName}/g, unitName);
-
-                        const phoneNumber = contact.contactNo.replace(/[^0-9]/g, '');
-                        window.open(`https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`, '_blank');
+                        try {
+                            const { whatsAppTemplates } = state;
+                            const message = WhatsAppService.generateInvoiceReceipt(
+                                whatsAppTemplates.invoiceReceipt,
+                                contact,
+                                invoice.invoiceNumber,
+                                numAmount,
+                                remainingBalance,
+                                subject,
+                                unitName
+                            );
+                            WhatsAppService.sendMessage({ contact, message });
+                        } catch (error) {
+                            await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
+                        }
                     }
                 }
             }
@@ -256,6 +284,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
     };
 
     return (
+        <>
         <form onSubmit={handleSubmit} className="space-y-4">
             
             {/* BILL PAYMENT CONTEXT BANNER */}
@@ -320,7 +349,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                             name="transaction-date"
                             label="Date" 
                             value={date} 
-                            onChange={d => setDate(d.toISOString().split('T')[0])} 
+                            onChange={handleDateChange} 
                             required 
                         />
                     )}
@@ -333,7 +362,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                     name="transaction-loan-date"
                     label="Date" 
                     value={date} 
-                    onChange={d => setDate(d.toISOString().split('T')[0])} 
+                    onChange={handleDateChange} 
                     required 
                  />
             )}
@@ -349,7 +378,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                 onChange={e => setAmount(e.target.value)} 
                 required 
                 autoFocus={!isPayingBill} 
-                className="text-lg font-bold" 
+                className="block w-full px-3 py-3 sm:py-2 border-2 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none text-base sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed focus:ring-2 focus:ring-green-500/50 focus:border-green-500 border-gray-300 transition-colors tabular-nums text-lg font-bold" 
             />
 
             {/* Account Selection */}
@@ -362,7 +391,12 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                     selectedId={accountId} 
                     onSelect={item => setAccountId(item?.id || '')} 
                     required 
-                    allowAddNew={false}
+                    entityType="account"
+                    onAddNew={(entityType, name) => {
+                        entityFormModal.openForm('account', name, undefined, undefined, (newId) => {
+                            setAccountId(newId);
+                        });
+                    }}
                 />
                 {type === TransactionType.TRANSFER && (
                     <ComboBox 
@@ -373,7 +407,12 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                         selectedId={toAccountId} 
                         onSelect={item => setToAccountId(item?.id || '')} 
                         required 
-                        allowAddNew={false}
+                        entityType="account"
+                        onAddNew={(entityType, name) => {
+                            entityFormModal.openForm('account', name, undefined, undefined, (newId) => {
+                                setToAccountId(newId);
+                            });
+                        }}
                     />
                 )}
             </div>
@@ -391,6 +430,12 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                             selectedId={categoryId} 
                             onSelect={item => setCategoryId(item?.id || '')} 
                             placeholder="Select Category"
+                            entityType="category"
+                            onAddNew={(entityType, name) => {
+                                entityFormModal.openForm('category', name, undefined, type, (newId) => {
+                                    setCategoryId(newId);
+                                });
+                            }}
                         />
                     )}
 
@@ -433,7 +478,12 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                                         selectedId={projectId} 
                                         onSelect={item => setProjectId(item?.id || '')} 
                                         placeholder="Search Projects..."
-                                        allowAddNew={false}
+                                        entityType="project"
+                                        onAddNew={(entityType, name) => {
+                                            entityFormModal.openForm('project', name, undefined, undefined, (newId) => {
+                                                setProjectId(newId);
+                                            });
+                                        }}
                                     />
                                 </div>
                             )}
@@ -448,7 +498,12 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                                         selectedId={buildingId} 
                                         onSelect={item => setBuildingId(item?.id || '')} 
                                         placeholder="Search Buildings..."
-                                        allowAddNew={false}
+                                        entityType="building"
+                                        onAddNew={(entityType, name) => {
+                                            entityFormModal.openForm('building', name, undefined, undefined, (newId) => {
+                                                setBuildingId(newId);
+                                            });
+                                        }}
                                     />
                                 </div>
                             )}
@@ -500,7 +555,20 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                             onSelect={item => { setContactId(item?.id || ''); setContractId(''); }} 
                             placeholder={type === TransactionType.LOAN ? "Select Friend & Family" : "Select Contact"} 
                             allowAddNew={type !== TransactionType.LOAN}
-                            required={type === TransactionType.LOAN} 
+                            required={type === TransactionType.LOAN}
+                            entityType={type !== TransactionType.LOAN ? "contact" : undefined}
+                            onAddNew={type !== TransactionType.LOAN ? ((entityType, name) => {
+                                // Determine contact type based on transaction type
+                                let contactType: ContactType | undefined = undefined;
+                                if (type === TransactionType.EXPENSE) {
+                                    contactType = ContactType.VENDOR;
+                                } else if (type === TransactionType.INCOME) {
+                                    contactType = ContactType.CLIENT;
+                                }
+                                entityFormModal.openForm('contact', name, contactType, undefined, (newId) => {
+                                    setContactId(newId);
+                                });
+                            }) : undefined}
                         />
                     )}
 
@@ -544,6 +612,16 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                 </div>
             </div>
         </form>
+        <EntityFormModal
+            isOpen={entityFormModal.isFormOpen}
+            formType={entityFormModal.formType}
+            initialName={entityFormModal.initialName}
+            contactType={entityFormModal.contactType}
+            categoryType={entityFormModal.categoryType}
+            onClose={entityFormModal.closeForm}
+            onSubmit={entityFormModal.handleSubmit}
+        />
+    </>
     );
 };
 

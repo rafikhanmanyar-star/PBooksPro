@@ -1,4 +1,4 @@
-// Service Worker for Finance Tracker Pro
+// Service Worker for PBooksPro
 const CACHE_NAME = 'finance-tracker-pro-v1.0.1';
 const urlsToCache = [
   './',
@@ -44,6 +44,12 @@ self.addEventListener('activate', (event) => {
 
 // Fetch event - serve from cache, fallback to network
 self.addEventListener('fetch', (event) => {
+  // Don't intercept requests from admin portal (port 5174)
+  const url = new URL(event.request.url);
+  if (url.port === '5174' || url.hostname.includes('admin')) {
+    return; // Let the request go through normally
+  }
+  
   event.respondWith(
     caches.match(event.request)
       .then((response) => {

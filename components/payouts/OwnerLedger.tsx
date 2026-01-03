@@ -4,16 +4,18 @@ import { useAppContext } from '../../context/AppContext';
 import { TransactionType, InvoiceType, ContactType } from '../../types';
 import { CURRENCY } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
+import { formatCurrency } from '../../utils/numberUtils';
 
 interface OwnerLedgerProps {
     ownerId: string | null;
     ledgerType?: 'Rent' | 'Security';
     buildingId?: string; // New Optional Prop
+    onPayoutClick?: (transaction: any) => void; // Callback when payout record is clicked
 }
 
 type SortKey = 'date' | 'particulars' | 'credit' | 'debit' | 'balance';
 
-const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent', buildingId }) => {
+const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent', buildingId, onPayoutClick }) => {
     const { state } = useAppContext();
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
 
@@ -42,20 +44,35 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
             
             // 1. Rental Income (Credit) - Must match filtered property list
+            // Include both positive (rent collected) and negative (service charge deductions) amounts
             const income = state.transactions
                 .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory.id && tx.propertyId && ownerPropertyIds.has(tx.propertyId));
 
             income.forEach(tx => {
                 const property = state.properties.find(p => p.id === tx.propertyId);
                 const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                items.push({
-                    id: `inc-${tx.id}`,
-                    date: tx.date,
-                    particulars: `Rent: ${property?.name || 'Unit'}`,
-                    debit: 0,
-                    credit: isNaN(amount) ? 0 : amount,
-                    type: 'Rent'
-                });
+                if (isNaN(amount)) return;
+                
+                // If negative (service charge deduction), show as debit; if positive (rent), show as credit
+                if (amount < 0) {
+                    items.push({
+                        id: `ded-${tx.id}`,
+                        date: tx.date,
+                        particulars: tx.description || `Service Charge: ${property?.name || 'Unit'}`,
+                        debit: Math.abs(amount),
+                        credit: 0,
+                        type: 'Service Charge'
+                    });
+                } else {
+                    items.push({
+                        id: `inc-${tx.id}`,
+                        date: tx.date,
+                        particulars: `Rent: ${property?.name || 'Unit'}`,
+                        debit: 0,
+                        credit: amount,
+                        type: 'Rent'
+                    });
+                }
             });
 
             // 2. Expenses (Debit)
@@ -75,7 +92,9 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                     particulars: tx.description || 'Owner Payout',
                     debit: isNaN(amount) ? 0 : amount,
                     credit: 0,
-                    type: 'Payout'
+                    type: 'Payout',
+                    transactionId: tx.id, // Store transaction ID for editing
+                    transaction: tx // Store full transaction for editing
                 });
             });
 
@@ -146,7 +165,9 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                          particulars: tx.description || 'Security Payout',
                          debit: tx.amount,
                          credit: 0,
-                         type: 'Payout'
+                         type: 'Payout',
+                         transactionId: tx.id, // Store transaction ID for editing
+                         transaction: tx // Store full transaction for editing
                     });
                 });
 
@@ -228,17 +249,37 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200">
-                            {ledgerItems.map((item) => (
-                                <tr key={item.id}>
-                                    <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-slate-700 sm:pl-0">{formatDate(item.date)}</td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-slate-500 max-w-xs truncate" title={item.particulars}>
-                                        {item.particulars}
-                                    </td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-success">{item.credit > 0 ? item.credit.toLocaleString() : '-'}</td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-danger">{item.debit > 0 ? item.debit.toLocaleString() : '-'}</td>
-                                    <td className={`relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-0 ${item.balance > 0 ? 'text-danger' : 'text-slate-800'}`}>{(item.balance || 0).toLocaleString()}</td>
-                                </tr>
-                            ))}
+                            {ledgerItems.map((item) => {
+                                const isPayoutClickable = item.type === 'Payout' && item.transaction && onPayoutClick;
+                                const handleRowClick = () => {
+                                    if (isPayoutClickable) {
+                                        onPayoutClick(item.transaction);
+                                    }
+                                };
+                                
+                                return (
+                                    <tr 
+                                        key={item.id}
+                                        onClick={handleRowClick}
+                                        className={isPayoutClickable ? 'cursor-pointer hover:bg-indigo-50 transition-colors group' : ''}
+                                    >
+                                        <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-slate-700 sm:pl-0">{formatDate(item.date)}</td>
+                                        <td className="whitespace-nowrap px-3 py-4 text-sm text-slate-500 max-w-xs truncate" title={item.particulars}>
+                                            <div className="flex items-center gap-2">
+                                                {item.particulars}
+                                                {isPayoutClickable && (
+                                                    <span className="text-xs text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity font-medium">
+                                                        (Click to edit)
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-success">{item.credit > 0 ? formatCurrency(item.credit) : '-'}</td>
+                                        <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-danger">{item.debit > 0 ? formatCurrency(item.debit) : '-'}</td>
+                                        <td className={`relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-0 ${item.balance > 0 ? 'text-danger' : 'text-slate-800'}`}>{formatCurrency(item.balance || 0)}</td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import InvoicesPage from '../invoices/InvoicesPage';
 import BillsPage from '../bills/BillsPage';
 import ProjectAgreementsPage from './ProjectAgreementsPage';
-import ProjectOwnerPayouts from './ProjectOwnerPayouts';
+import SalesReturnsPage from './SalesReturnsPage';
 import BrokerPayouts from '../payouts/BrokerPayouts';
 import { Page, InvoiceType, TransactionType } from '../../types';
 import { useAppContext } from '../../context/AppContext';
@@ -23,11 +23,11 @@ import ProjectPMPayouts from './ProjectPMPayouts';
 import ProjectProfitLossReport from '../reports/ProjectProfitLossReport';
 import ProjectBalanceSheetReport from '../reports/ProjectBalanceSheetReport';
 import ProjectInvestorReport from '../reports/ProjectInvestorReport';
-import ProjectEquityManagement from './ProjectEquityManagement';
 import ProjectContractsPage from './ProjectContractsPage';
 import ProjectContractReport from '../reports/ProjectContractReport';
-import ProjectCycleManager from './ProjectCycleManager'; 
-import ProjectPMManager from './ProjectPMManager'; // New Component
+import ProjectBudgetReport from '../reports/ProjectBudgetReport';
+import ProjectMaterialReport from '../reports/ProjectMaterialReport';
+import ProjectCashFlowReport from '../reports/ProjectCashFlowReport';
 
 interface ProjectManagementPageProps {
   initialPage: Page;
@@ -35,13 +35,13 @@ interface ProjectManagementPageProps {
 
 // Define all possible view keys
 type ProjectView = 
-    | 'Agreements' | 'Contracts' | 'Invoices' | 'Bills' | 'Investors' | 'Cycles' 
-    | 'Project Management' // New View
-    | 'Owner Payouts' | 'Broker Payouts' | 'PM Payouts'
+    | 'Agreements' | 'Contracts' | 'Invoices' | 'Bills' | 'Sales Returns'
+    | 'Broker Payouts' | 'PM Payouts'
     | 'Visual Layout' | 'Tabular View' 
     | 'Project Summary' | 'Revenue Analysis' | 'Owner Ledger' | 'Broker Report' 
-    | 'Income by Category' | 'Expense by Category' | 'Vendor Ledger'
-    | 'PM Cost Report' | 'Profit & Loss' | 'Balance Sheet' | 'Investor Distribution' | 'Contract Report';
+    | 'Income by Category' | 'Expense by Category' | 'Material Report' | 'Vendor Ledger'
+    | 'PM Cost Report' | 'Profit & Loss' | 'Balance Sheet' | 'Investor Distribution' | 'Contract Report'
+    | 'Budget vs Actual' | 'Cash Flows';
 
 const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPage }) => {
     const { state, dispatch } = useAppContext();
@@ -89,7 +89,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
 
     // Ensure we don't land on a hidden view on mobile
     useEffect(() => {
-        if (isMobile && ['Agreements', 'Contracts', 'Investors', 'Cycles', 'Project Management'].includes(activeView)) {
+        if (isMobile && ['Agreements', 'Contracts'].includes(activeView)) {
             setActiveView('Invoices');
         }
     }, [isMobile, activeView, setActiveView]);
@@ -102,8 +102,8 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                 else if (subTab === 'Project Units') setActiveView('Tabular View');
                 else if (subTab === 'PM Cost') setActiveView('PM Cost Report');
                 else setActiveView(subTab as ProjectView);
-            } else if (['Agreements', 'Contracts', 'Invoices', 'Bills', 'Investors', 'Cycles', 'Project Management'].includes(mainTab)) {
-                if (isMobile && ['Agreements', 'Contracts', 'Investors', 'Cycles', 'Project Management'].includes(mainTab)) {
+            } else if (['Agreements', 'Contracts', 'Invoices', 'Bills', 'Sales Returns'].includes(mainTab)) {
+                if (isMobile && ['Agreements', 'Contracts'].includes(mainTab)) {
                     setActiveView('Invoices');
                 } else {
                     setActiveView(mainTab as ProjectView);
@@ -119,13 +119,10 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             case 'Agreements': return !isMobile ? <ProjectAgreementsPage /> : null;
             case 'Contracts': return !isMobile ? <ProjectContractsPage /> : null;
             case 'Invoices': return <InvoicesPage invoiceTypeFilter={InvoiceType.INSTALLMENT} hideTitleAndGoBack={true} />;
-            case 'Bills': return <BillsPage />;
-            case 'Investors': return !isMobile ? <ProjectEquityManagement /> : null;
-            case 'Cycles': return !isMobile ? <ProjectCycleManager /> : null; 
-            case 'Project Management': return !isMobile ? <ProjectPMManager /> : null;
+            case 'Bills': return <BillsPage projectContext={true} />;
+            case 'Sales Returns': return <SalesReturnsPage />;
 
             // Payouts
-            case 'Owner Payouts': return <ProjectOwnerPayouts />;
             case 'Broker Payouts': return <BrokerPayouts context="Project" />;
             case 'PM Payouts': return <ProjectPMPayouts />; // Legacy / Simple View
             
@@ -137,15 +134,18 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             case 'Project Summary': return <ProjectSummaryReport />;
             case 'Profit & Loss': return isAdmin ? <ProjectProfitLossReport /> : null;
             case 'Balance Sheet': return isAdmin ? <ProjectBalanceSheetReport /> : null;
+            case 'Cash Flows': return isAdmin ? <ProjectCashFlowReport /> : null;
             case 'Investor Distribution': return isAdmin ? <ProjectInvestorReport /> : null;
             case 'Revenue Analysis': return <RevenueAnalysisReport />;
             case 'Owner Ledger': return <ClientLedgerReport />;
             case 'Broker Report': return <ProjectBrokerReport />;
             case 'Income by Category': return <ProjectCategoryReport type={TransactionType.INCOME} />;
             case 'Expense by Category': return <ProjectCategoryReport type={TransactionType.EXPENSE} />;
+            case 'Material Report': return <ProjectMaterialReport />;
             case 'Vendor Ledger': return <VendorLedgerReport context="Project" />;
             case 'PM Cost Report': return <ProjectPMCostReport />;
             case 'Contract Report': return <ProjectContractReport />;
+            case 'Budget vs Actual': return <ProjectBudgetReport />;
             
             default: return null;
         }
@@ -153,10 +153,10 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
 
     const isReportActive = [
         'Project Summary', 'Profit & Loss', 'Balance Sheet', 'Investor Distribution', 'Revenue Analysis', 'Owner Ledger', 'Broker Report', 
-        'Income by Category', 'Expense by Category', 'Vendor Ledger', 'PM Cost Report', 'Contract Report'
+        'Income by Category', 'Expense by Category', 'Material Report', 'Vendor Ledger', 'PM Cost Report', 'Contract Report', 'Budget vs Actual', 'Cash Flows'
     ].includes(activeView);
 
-    const isPayoutActive = ['Owner Payouts', 'Broker Payouts', 'PM Payouts'].includes(activeView);
+    const isPayoutActive = ['Broker Payouts', 'PM Payouts'].includes(activeView);
 
     const NavButton = ({ view, label }: { view: ProjectView, label: string }) => (
         <button
@@ -184,9 +184,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                         <NavButton view="Invoices" label="Invoices" />
                         {!isMobile && <NavButton view="Contracts" label="Contracts" />}
                         <NavButton view="Bills" label="Bills" />
-                        {!isMobile && <NavButton view="Project Management" label="Project Mgmt" />}
-                        {!isMobile && <NavButton view="Investors" label="Investors" />}
-                        {!isMobile && <NavButton view="Cycles" label="Cycles & Dist." />}
+                        <NavButton view="Sales Returns" label="Returns" />
                     </div>
 
                     {/* Vertical Divider */}
@@ -211,17 +209,6 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                             {isPayoutDropdownOpen && (
                                 <div className="absolute left-0 mt-2 w-48 bg-white border border-slate-200 rounded-lg shadow-xl z-[100] animate-fade-in-fast overflow-hidden">
                                     <div className="py-1">
-                                        <button
-                                            onClick={() => {
-                                                setActiveView('Owner Payouts');
-                                                setIsPayoutDropdownOpen(false);
-                                            }}
-                                            className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors border-b border-slate-50 ${
-                                                activeView === 'Owner Payouts' ? 'text-accent font-medium bg-indigo-50/50' : 'text-slate-700'
-                                            }`}
-                                        >
-                                            Refunds
-                                        </button>
                                         <button
                                             onClick={() => {
                                                 setActiveView('Broker Payouts');
@@ -281,6 +268,12 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                                                     Balance Sheet
                                                 </button>
                                                 <button
+                                                    onClick={() => { setActiveView('Cash Flows'); setIsReportDropdownOpen(false); }}
+                                                    className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors border-b border-slate-50 ${activeView === 'Cash Flows' ? 'text-accent font-medium' : 'text-slate-700'}`}
+                                                >
+                                                    Cash Flows
+                                                </button>
+                                                <button
                                                     onClick={() => { setActiveView('Investor Distribution'); setIsReportDropdownOpen(false); }}
                                                     className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors border-b border-slate-200 ${activeView === 'Investor Distribution' ? 'text-accent font-medium' : 'text-slate-700'}`}
                                                 >
@@ -292,6 +285,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                                         <div className="bg-slate-50 px-4 py-1 text-xs font-semibold text-slate-500 border-b border-slate-200">OPERATIONAL</div>
                                         {[
                                             'Project Summary',
+                                            'Budget vs Actual',
                                             'Contract Report',
                                             'PM Cost Report',
                                             'Revenue Analysis',
@@ -299,6 +293,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                                             'Broker Report',
                                             'Income by Category',
                                             'Expense by Category',
+                                            'Material Report',
                                             'Vendor Ledger'
                                         ].map((reportName) => (
                                             <button

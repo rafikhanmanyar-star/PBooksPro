@@ -1,0 +1,62 @@
+/**
+ * Accounts API Repository
+ * 
+ * Provides API-based access to accounts data.
+ * Replaces direct database access with API calls.
+ */
+
+import { apiClient } from '../client';
+import { Account } from '../../../types';
+
+export class AccountsApiRepository {
+  /**
+   * Get all accounts
+   */
+  async findAll(): Promise<Account[]> {
+    return apiClient.get<Account[]>('/api/accounts');
+  }
+
+  /**
+   * Get account by ID
+   */
+  async findById(id: string): Promise<Account | null> {
+    try {
+      return await apiClient.get<Account>(`/api/accounts/${id}`);
+    } catch (error: any) {
+      if (error.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new account
+   */
+  async create(account: Partial<Account>): Promise<Account> {
+    return apiClient.post<Account>('/api/accounts', account);
+  }
+
+  /**
+   * Update an existing account
+   */
+  async update(id: string, account: Partial<Account>): Promise<Account> {
+    return apiClient.put<Account>(`/api/accounts/${id}`, account);
+  }
+
+  /**
+   * Delete an account
+   */
+  async delete(id: string): Promise<void> {
+    await apiClient.delete(`/api/accounts/${id}`);
+  }
+
+  /**
+   * Check if account exists
+   */
+  async exists(id: string): Promise<boolean> {
+    const account = await this.findById(id);
+    return account !== null;
+  }
+}
+

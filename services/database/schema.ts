@@ -1,5 +1,5 @@
 /**
- * SQL Database Schema for Finance Tracker Pro
+ * SQL Database Schema for PBooksPro
  * 
  * This file defines the complete database schema that mirrors the AppState structure.
  * All tables are designed to maintain referential integrity and support the application's
@@ -208,6 +208,7 @@ CREATE TABLE IF NOT EXISTS bills (
     project_agreement_id TEXT,
     contract_id TEXT,
     staff_id TEXT,
+    expense_category_items TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE RESTRICT,
@@ -223,12 +224,13 @@ CREATE TABLE IF NOT EXISTS bills (
 CREATE TABLE IF NOT EXISTS budgets (
     id TEXT PRIMARY KEY,
     category_id TEXT NOT NULL,
-    month TEXT NOT NULL,
     amount REAL NOT NULL,
+    project_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
-    UNIQUE(category_id, month)
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    UNIQUE(category_id, project_id)
 );
 
 -- Quotations table
@@ -338,6 +340,8 @@ CREATE TABLE IF NOT EXISTS contracts (
     end_date TEXT NOT NULL,
     status TEXT NOT NULL,
     terms_and_conditions TEXT,
+    payment_terms TEXT,
+    expense_category_items TEXT,
     description TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -714,10 +718,17 @@ CREATE TABLE IF NOT EXISTS license_settings (
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type);
+CREATE INDEX IF NOT EXISTS idx_transactions_project_date ON transactions(project_id, date);
+CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status);
+CREATE INDEX IF NOT EXISTS idx_transactions_invoice ON transactions(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_bill ON transactions(bill_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_contact ON invoices(contact_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+CREATE INDEX IF NOT EXISTS idx_invoices_project_date ON invoices(project_id, issue_date);
 CREATE INDEX IF NOT EXISTS idx_bills_contact ON bills(contact_id);
 CREATE INDEX IF NOT EXISTS idx_bills_status ON bills(status);
+CREATE INDEX IF NOT EXISTS idx_bills_project_date ON bills(project_id, issue_date);
 CREATE INDEX IF NOT EXISTS idx_quotations_vendor ON quotations(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_quotations_date ON quotations(date);
 CREATE INDEX IF NOT EXISTS idx_documents_entity ON documents(entity_type, entity_id);

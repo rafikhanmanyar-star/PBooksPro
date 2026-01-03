@@ -3,12 +3,13 @@ import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { RentalAgreementStatus, Property, InvoiceType } from '../../types';
 import Card from '../ui/Card';
+import Button from '../ui/Button';
+import Input from '../ui/Input';
 import ComboBox from '../ui/ComboBox';
-import { exportJsonToExcel } from '../../services/exportService';
 import { ICONS } from '../../constants';
+import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
-import ReportToolbar from './ReportToolbar';
 import { formatDate } from '../../utils/dateUtils';
 
 interface ReportRow {
@@ -210,23 +211,65 @@ const UnitStatusReport: React.FC = () => {
                 }
             `}</style>
             <div className="flex flex-col h-full space-y-4">
-                <div className="flex-shrink-0">
-                    <ReportToolbar
-                        hideDate={true} // Snapshot report
-                        searchQuery={searchQuery}
-                        onSearchChange={setSearchQuery}
-                        onExport={handleExport}
-                        onPrint={handlePrint}
-                        groupBy={groupBy}
-                        onGroupByChange={setGroupBy}
-                        groupByOptions={[
-                            { label: 'Building (Default)', value: '' },
-                            { label: 'Status', value: 'status' },
-                            { label: 'Owner', value: 'owner' },
-                        ]}
-                    >
-                        <ComboBox label="Filter by Building" items={buildingItems} selectedId={selectedBuildingId} onSelect={(item) => setSelectedBuildingId(item?.id || 'all')} allowAddNew={false}/>
-                    </ReportToolbar>
+                {/* Custom Toolbar - All controls in first row */}
+                <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm no-print">
+                    {/* First Row: Filters and Actions */}
+                    <div className="flex flex-wrap items-center gap-3">
+                        {/* Building Filter */}
+                        <div className="w-48 flex-shrink-0">
+                            <ComboBox 
+                                items={buildingItems} 
+                                selectedId={selectedBuildingId} 
+                                onSelect={(item) => setSelectedBuildingId(item?.id || 'all')} 
+                                allowAddNew={false}
+                                placeholder="Filter Building"
+                            />
+                        </div>
+
+                        {/* Group By */}
+                        <div className="w-48 flex-shrink-0">
+                            <select
+                                value={groupBy}
+                                onChange={(e) => setGroupBy(e.target.value)}
+                                className="block w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
+                            >
+                                <option value="">No Grouping</option>
+                                <option value="status">Group by Status</option>
+                                <option value="owner">Group by Owner</option>
+                            </select>
+                        </div>
+
+                        {/* Search Input */}
+                        <div className="relative flex-grow min-w-[180px]">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                <span className="h-4 w-4">{ICONS.search}</span>
+                            </div>
+                            <Input 
+                                placeholder="Search report..." 
+                                value={searchQuery} 
+                                onChange={(e) => setSearchQuery(e.target.value)} 
+                                className="pl-9 py-1.5 text-sm"
+                            />
+                            {searchQuery && (
+                                <button 
+                                    onClick={() => setSearchQuery('')} 
+                                    className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
+                                >
+                                    <div className="w-4 h-4">{ICONS.x}</div>
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Actions Group */}
+                        <div className="flex items-center gap-2 ml-auto">
+                            <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
+                                <div className="w-4 h-4 mr-1">{ICONS.export}</div> Export
+                            </Button>
+                            <Button variant="secondary" size="sm" onClick={handlePrint} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
+                                <div className="w-4 h-4 mr-1">{ICONS.print}</div> Print
+                            </Button>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="flex-grow overflow-y-auto printable-area min-h-0">

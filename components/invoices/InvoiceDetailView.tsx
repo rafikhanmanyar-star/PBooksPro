@@ -8,6 +8,8 @@ import Card from '../ui/Card';
 import { useNotification } from '../../context/NotificationContext';
 import { formatDate } from '../../utils/dateUtils';
 import TransactionItem from '../transactions/TransactionItem';
+import { WhatsAppService } from '../../services/whatsappService';
+import { formatCurrency } from '../../utils/numberUtils';
 
 interface InvoiceDetailViewProps {
   invoice: Invoice;
@@ -99,9 +101,9 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
         let extraRows = '';
         if (isRental) {
             const rentVal = amount - (invoice.serviceCharges || 0) - (invoice.securityDepositCharge || 0);
-            extraRows += `<tr><td>Rent</td><td class="amount-col">${CURRENCY} ${rentVal.toLocaleString()}</td></tr>`;
-            if (invoice.serviceCharges) extraRows += `<tr><td>Service Charges</td><td class="amount-col">${CURRENCY} ${invoice.serviceCharges.toLocaleString()}</td></tr>`;
-            if (invoice.securityDepositCharge) extraRows += `<tr><td>Security Deposit</td><td class="amount-col">${CURRENCY} ${invoice.securityDepositCharge.toLocaleString()}</td></tr>`;
+            extraRows += `<tr><td>Rent</td><td class="amount-col">${CURRENCY} ${formatCurrency(rentVal)}</td></tr>`;
+            if (invoice.serviceCharges) extraRows += `<tr><td>Service Charges</td><td class="amount-col">${CURRENCY} ${formatCurrency(invoice.serviceCharges)}</td></tr>`;
+            if (invoice.securityDepositCharge) extraRows += `<tr><td>Security Deposit</td><td class="amount-col">${CURRENCY} ${formatCurrency(invoice.securityDepositCharge)}</td></tr>`;
         }
 
         // Status Stamp Logic
@@ -135,9 +137,9 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
             '{dueDate}': formatDate(dueDate),
             '{contactName}': contactName,
             '{invoiceType}': isRental ? 'Rental Invoice' : 'Project Installment',
-            '{amount}': `${CURRENCY} ${amount.toLocaleString()}`,
-            '{paidAmount}': `${CURRENCY} ${paidAmount.toLocaleString()}`,
-            '{balanceDue}': `${CURRENCY} ${balance.toLocaleString()}`,
+            '{amount}': `${CURRENCY} ${formatCurrency(amount)}`,
+            '{paidAmount}': `${CURRENCY} ${formatCurrency(paidAmount)}`,
+            '{balanceDue}': `${CURRENCY} ${formatCurrency(balance)}`,
             '{extraRows}': extraRows,
             '{statusStamp}': statusStamp,
             '{headerTextSection}': headerTextSection,
@@ -175,50 +177,48 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
             return;
         }
 
-        const contactName = contact.name;
-        let subject = property?.name || project?.name || 'your invoice';
-        const unitName = unit?.name || '';
-        
-        // Enhance subject with Unit Name for Project Invoices
-        if (project && unit) {
-            subject = `${project.name} - Unit ${unit.name}`;
+        try {
+            const contactName = contact.name;
+            let subject = property?.name || project?.name || 'your invoice';
+            const unitName = unit?.name || '';
+            
+            // Enhance subject with Unit Name for Project Invoices
+            if (project && unit) {
+                subject = `${project.name} - Unit ${unit.name}`;
+            }
+
+            let message = '';
+            const hasMadePayment = paidAmount > 0;
+            const { whatsAppTemplates } = state;
+
+            if (hasMadePayment) {
+                // Send Receipt
+                message = WhatsAppService.generateInvoiceReceipt(
+                    whatsAppTemplates.invoiceReceipt,
+                    contact,
+                    invoiceNumber,
+                    paidAmount,
+                    balance,
+                    subject,
+                    unitName
+                );
+            } else {
+                // Send Invoice Reminder
+                message = WhatsAppService.generateInvoiceReminder(
+                    whatsAppTemplates.invoiceReminder,
+                    contact,
+                    invoiceNumber,
+                    amount,
+                    formatDate(dueDate),
+                    subject,
+                    unitName
+                );
+            }
+
+            WhatsAppService.sendMessage({ contact, message });
+        } catch (error) {
+            await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
         }
-
-        const amountStr = `${CURRENCY} ${amount.toLocaleString()}`;
-        const paidAmountStr = `${CURRENCY} ${paidAmount.toLocaleString()}`;
-        const balanceStr = `${CURRENCY} ${balance.toLocaleString()}`;
-        const dueDateStr = formatDate(dueDate);
-
-        let message = '';
-        const hasMadePayment = paidAmount > 0;
-        
-        const { whatsAppTemplates } = state;
-
-        if (hasMadePayment) {
-            // Send Receipt
-            message = whatsAppTemplates.invoiceReceipt
-                .replace(/{contactName}/g, contactName)
-                .replace(/{invoiceNumber}/g, invoiceNumber)
-                .replace(/{subject}/g, subject)
-                .replace(/{paidAmount}/g, paidAmountStr)
-                .replace(/{balance}/g, balanceStr)
-                .replace(/{unitName}/g, unitName);
-        } else {
-            // Send Invoice Reminder
-            message = whatsAppTemplates.invoiceReminder
-                .replace(/{contactName}/g, contactName)
-                .replace(/{invoiceNumber}/g, invoiceNumber)
-                .replace(/{subject}/g, subject)
-                .replace(/{amount}/g, amountStr)
-                .replace(/{dueDate}/g, dueDateStr)
-                .replace(/{unitName}/g, unitName);
-        }
-
-        const phoneNumber = contact.contactNo.replace(/[^0-9]/g, ''); // Clean the number
-        const encodedMessage = encodeURIComponent(message);
-        const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodedMessage}`;
-
-        window.open(whatsappUrl, '_blank');
     };
     
     const hasMadePayment = paidAmount > 0;
@@ -325,22 +325,22 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
                 <div className="space-y-2 pt-4 border-t border-slate-200/60">
                     {isRental && (
                         <>
-                            <DetailRow label="Rent" value={`${CURRENCY} ${(amount - (invoice.serviceCharges || 0) - (invoice.securityDepositCharge || 0)).toLocaleString()}`} />
-                            {invoice.serviceCharges && invoice.serviceCharges > 0 && <DetailRow label="Services" value={`${CURRENCY} ${invoice.serviceCharges.toLocaleString()}`} />}
-                            {invoice.securityDepositCharge && invoice.securityDepositCharge > 0 && <DetailRow label="Security Deposit" value={`${CURRENCY} ${invoice.securityDepositCharge.toLocaleString()}`} />}
+                            <DetailRow label="Rent" value={`${CURRENCY} ${formatCurrency(amount - (invoice.serviceCharges || 0) - (invoice.securityDepositCharge || 0))}`} />
+                            {invoice.serviceCharges && invoice.serviceCharges > 0 && <DetailRow label="Services" value={`${CURRENCY} ${formatCurrency(invoice.serviceCharges)}`} />}
+                            {invoice.securityDepositCharge && invoice.securityDepositCharge > 0 && <DetailRow label="Security Deposit" value={`${CURRENCY} ${formatCurrency(invoice.securityDepositCharge)}`} />}
                         </>
                     )}
                     <div className="flex justify-between items-baseline text-lg font-bold border-t border-slate-200/60 pt-2">
                          <span>Total Amount</span>
-                         <span className="tabular-nums">{CURRENCY} {(amount || 0).toLocaleString()}</span>
+                         <span className="tabular-nums">{CURRENCY} {formatCurrency(amount || 0)}</span>
                     </div>
                     <div className="flex justify-between items-baseline text-success">
                          <span>Amount Paid</span>
-                         <span className="tabular-nums">{CURRENCY} {(paidAmount || 0).toLocaleString()}</span>
+                         <span className="tabular-nums">{CURRENCY} {formatCurrency(paidAmount || 0)}</span>
                     </div>
                     <div className="flex justify-between items-baseline text-danger text-lg font-bold">
                          <span>Balance Due</span>
-                         <span className="tabular-nums">{CURRENCY} {(balance || 0).toLocaleString()}</span>
+                         <span className="tabular-nums">{CURRENCY} {formatCurrency(balance || 0)}</span>
                     </div>
                 </div>
 

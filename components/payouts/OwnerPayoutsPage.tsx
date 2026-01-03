@@ -1,8 +1,9 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { ContactType, TransactionType, InvoiceType } from '../../types';
+import { ContactType, TransactionType, InvoiceType, Transaction } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
+import { formatCurrency } from '../../utils/numberUtils';
 import OwnerPayoutModal from './OwnerPayoutModal';
 import OwnerLedger from './OwnerLedger';
 import Card from '../ui/Card';
@@ -28,6 +29,7 @@ const OwnerPayoutsPage: React.FC = () => {
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [transactionToEdit, setTransactionToEdit] = useState<Transaction | undefined>(undefined);
 
     // Reset building filter when owner changes
     useEffect(() => {
@@ -66,7 +68,8 @@ const OwnerPayoutsPage: React.FC = () => {
                 const property = state.properties.find(p => p.id === tx.propertyId);
                 if (property && property.ownerId && ownerData[property.ownerId]) {
                     const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                    if (!isNaN(amount) && amount > 0) {
+                    if (!isNaN(amount)) {
+                        // Include both positive (rent collected) and negative (service charge deductions) amounts
                         ownerData[property.ownerId].collected += amount;
                     }
                 } else {
@@ -262,7 +265,8 @@ const OwnerPayoutsPage: React.FC = () => {
                      // Check ownership via property
                      if (tx.propertyId && ownerPropertiesInBuilding.has(tx.propertyId)) {
                          const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                         if (!isNaN(amount) && amount > 0) {
+                         if (!isNaN(amount)) {
+                             // Include both positive (rent collected) and negative (service charge deductions) amounts
                              collected += amount;
                          }
                      }
@@ -393,7 +397,7 @@ const OwnerPayoutsPage: React.FC = () => {
                                         {owner.ownerName}
                                     </span>
                                     <span className="text-sm text-slate-600 whitespace-nowrap">
-                                        {CURRENCY} {owner.balance.toLocaleString()}
+                                        {CURRENCY} {formatCurrency(owner.balance)}
                                     </span>
                                 </button>
                             ))}
@@ -430,22 +434,22 @@ const OwnerPayoutsPage: React.FC = () => {
                                         </Select>
                                     </div>
                                     {displayedOwnerData.balance > 0 && (
-                                        <Button onClick={() => setIsModalOpen(true)}>Pay Owner</Button>
+                                        <Button onClick={() => { setTransactionToEdit(undefined); setIsModalOpen(true); }}>Pay Owner</Button>
                                     )}
                                 </div>
                             </div>
                             <div className="mt-4 grid grid-cols-3 gap-4 text-center">
                                 <div>
                                     <p className="text-sm text-slate-500">Collected {selectedBuildingId !== 'all' ? '(Selected)' : ''}</p>
-                                    <p className="font-semibold text-lg text-success">{CURRENCY} {displayedOwnerData.collected.toLocaleString()}</p>
+                                    <p className="font-semibold text-lg text-success">{CURRENCY} {formatCurrency(displayedOwnerData.collected)}</p>
                                 </div>
                                 <div>
                                     <p className="text-sm text-slate-500">Paid/Expenses {selectedBuildingId !== 'all' ? '(Selected)' : ''}</p>
-                                    <p className="font-semibold text-lg text-slate-700">{CURRENCY} {displayedOwnerData.paid.toLocaleString()}</p>
+                                    <p className="font-semibold text-lg text-slate-700">{CURRENCY} {formatCurrency(displayedOwnerData.paid)}</p>
                                 </div>
                                 <div>
                                     <p className="text-sm text-slate-500">Balance Held {selectedBuildingId !== 'all' ? '(Selected)' : ''}</p>
-                                    <p className="font-bold text-xl text-danger">{CURRENCY} {displayedOwnerData.balance.toLocaleString()}</p>
+                                    <p className="font-bold text-xl text-danger">{CURRENCY} {formatCurrency(displayedOwnerData.balance)}</p>
                                 </div>
                             </div>
                         </Card>
@@ -455,6 +459,10 @@ const OwnerPayoutsPage: React.FC = () => {
                                 ownerId={selectedOwnerId} 
                                 ledgerType={payoutType} 
                                 buildingId={selectedBuildingId === 'all' ? undefined : selectedBuildingId}
+                                onPayoutClick={(transaction) => {
+                                    setTransactionToEdit(transaction);
+                                    setIsModalOpen(true);
+                                }}
                             />
                         </Card>
                     </>
@@ -470,11 +478,12 @@ const OwnerPayoutsPage: React.FC = () => {
             {displayedOwnerData && selectedOwnerContact && (
                  <OwnerPayoutModal
                     isOpen={isModalOpen}
-                    onClose={() => setIsModalOpen(false)}
+                    onClose={() => { setIsModalOpen(false); setTransactionToEdit(undefined); }}
                     owner={selectedOwnerContact}
                     balanceDue={displayedOwnerData.balance}
                     payoutType={payoutType}
                     preSelectedBuildingId={selectedBuildingId === 'all' ? undefined : selectedBuildingId}
+                    transactionToEdit={transactionToEdit}
                 />
             )}
         </div>

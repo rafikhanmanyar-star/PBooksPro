@@ -37,8 +37,8 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, 
     const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
     const [accountId, setAccountId] = useState('');
     
-    // Filter for Bank Accounts
-    const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK), [state.accounts]);
+    // Filter for Bank Accounts (exclude Internal Clearing)
+    const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
     
     useEffect(() => {
         if (isOpen && broker) {

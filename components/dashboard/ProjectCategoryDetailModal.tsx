@@ -4,6 +4,7 @@ import { TransactionType } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import { CURRENCY } from '../../constants';
 import Button from '../ui/Button';
+import { formatRoundedNumber } from '../../utils/numberUtils';
 
 interface ProjectCategoryDetailModalProps {
   isOpen: boolean;
@@ -55,7 +56,7 @@ const ProjectCategoryDetailModal: React.FC<ProjectCategoryDetailModalProps> = ({
                 <div className="flex justify-between items-center">
                     <span className="font-semibold text-slate-700">Total {data.type}:</span>
                     <span className={`font-bold text-lg ${data.type === 'Income' ? 'text-success' : 'text-danger'}`}>
-                        {CURRENCY} {totalAmount.toLocaleString()}
+                        {CURRENCY} {formatRoundedNumber(totalAmount)}
                     </span>
                 </div>
             </div>
@@ -67,7 +68,7 @@ const ProjectCategoryDetailModal: React.FC<ProjectCategoryDetailModalProps> = ({
                             <div key={item.name} className="flex justify-between items-center px-4 py-3">
                                 <span className="font-medium text-slate-800">{item.name}</span>
                                 <span className={`font-semibold ${data.type === 'Income' ? 'text-success' : 'text-danger'}`}>
-                                    {CURRENCY} {item.total.toLocaleString()}
+                                    {CURRENCY} {formatRoundedNumber(item.total)}
                                 </span>
                             </div>
                         ))}

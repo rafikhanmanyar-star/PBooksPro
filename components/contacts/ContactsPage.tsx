@@ -11,12 +11,14 @@ import Input from '../ui/Input';
 import SettingsLedgerModal from '../settings/SettingsLedgerModal';
 import Tabs from '../ui/Tabs';
 import { ImportType } from '../../services/importService';
+import WhatsAppMessageModal from './WhatsAppMessageModal';
+import { WhatsAppService } from '../../services/whatsappService';
 
 type SortKey = 'name' | 'type' | 'companyName' | 'contactNo' | 'address' | 'balance';
 
 const ContactsPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
-    const { showConfirm } = useNotification();
+    const { showConfirm, showAlert } = useNotification();
     
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<string>('All');
@@ -25,6 +27,7 @@ const ContactsPage: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [contactToEdit, setContactToEdit] = useState<Contact | null>(null);
     const [ledgerModal, setLedgerModal] = useState<{ isOpen: boolean; contact: Contact | null }>({ isOpen: false, contact: null });
+    const [whatsAppModal, setWhatsAppModal] = useState<{ isOpen: boolean; contact: Contact | null }>({ isOpen: false, contact: null });
 
     const TABS = ['All', 'Owners', 'Tenants', 'Brokers', 'Friends & Family'];
 
@@ -133,6 +136,11 @@ const ContactsPage: React.FC = () => {
 
     const openLedger = (contact: Contact) => {
         setLedgerModal({ isOpen: true, contact });
+    };
+
+    const handleSendWhatsApp = (contact: Contact, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setWhatsAppModal({ isOpen: true, contact });
     };
 
     // Determine default type for new contact based on active tab
@@ -249,13 +257,24 @@ const ContactsPage: React.FC = () => {
                                                 </span>
                                             </td>
                                             <td className="px-4 py-3 text-right">
-                                                <button 
-                                                    onClick={(e) => openEditModal(contact, e)}
-                                                    className="text-gray-400 hover:text-green-600 p-1.5 rounded-full hover:bg-green-50 transition-colors opacity-0 group-hover:opacity-100"
-                                                    title="Edit Contact"
-                                                >
-                                                    <div className="w-4 h-4">{ICONS.edit}</div>
-                                                </button>
+                                                <div className="flex justify-end gap-1">
+                                                    {contact.contactNo && WhatsAppService.isValidPhoneNumber(contact.contactNo) && (
+                                                        <button 
+                                                            onClick={(e) => handleSendWhatsApp(contact, e)}
+                                                            className="text-gray-400 hover:text-green-600 p-1.5 rounded-full hover:bg-green-50 transition-colors opacity-0 group-hover:opacity-100"
+                                                            title="Send WhatsApp Message"
+                                                        >
+                                                            <div className="w-4 h-4">{ICONS.whatsapp}</div>
+                                                        </button>
+                                                    )}
+                                                    <button 
+                                                        onClick={(e) => openEditModal(contact, e)}
+                                                        className="text-gray-400 hover:text-blue-600 p-1.5 rounded-full hover:bg-blue-50 transition-colors opacity-0 group-hover:opacity-100"
+                                                        title="Edit Contact"
+                                                    >
+                                                        <div className="w-4 h-4">{ICONS.edit}</div>
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     );
@@ -299,6 +318,13 @@ const ContactsPage: React.FC = () => {
                     entityName={ledgerModal.contact.name}
                 />
             )}
+
+            <WhatsAppMessageModal
+                isOpen={whatsAppModal.isOpen}
+                onClose={() => setWhatsAppModal({ isOpen: false, contact: null })}
+                contact={whatsAppModal.contact}
+                templateType="custom"
+            />
         </div>
     );
 };

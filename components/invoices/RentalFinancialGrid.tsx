@@ -27,14 +27,16 @@ interface RentalFinancialGridProps {
     onNewClick?: () => void;
     onBulkImportClick?: () => void;
     showButtons?: boolean;
+    onBulkPaymentClick?: () => void;
+    selectedCount?: number;
 }
 
 type SortKey = 'type' | 'reference' | 'date' | 'accountName' | 'amount' | 'remainingAmount' | 'description';
 
-const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onInvoiceClick, onPaymentClick, selectedIds, onToggleSelect, onNewClick, onBulkImportClick, showButtons }) => {
+const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onInvoiceClick, onPaymentClick, selectedIds, onToggleSelect, onNewClick, onBulkImportClick, showButtons, onBulkPaymentClick, selectedCount }) => {
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-    
+
     // Pagination State
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 50;
@@ -106,7 +108,7 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onIn
     const sortedRecords = useMemo(() => {
         // Reset page on filter/sort change
         setCurrentPage(1);
-        
+
         const sorted = [...filteredRecords];
         sorted.sort((a, b) => {
             let aVal: any;
@@ -127,14 +129,14 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onIn
                 aVal = aVal.toLowerCase();
                 bVal = bVal.toLowerCase();
             }
-            
+
             if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
             if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
         return sorted;
     }, [filteredRecords, sortConfig]);
-    
+
     const paginatedRecords = useMemo(() => {
         const startIndex = (currentPage - 1) * itemsPerPage;
         return sortedRecords.slice(startIndex, startIndex + itemsPerPage);
@@ -184,10 +186,10 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onIn
 
     // Helper for th style
     const thStyle = (widthKey: keyof typeof colWidths) => ({ width: colWidths[widthKey], position: 'relative' as const });
-    
+
     // Reusable resizer
     const Resizer = ({ col }: { col: string }) => (
-        <div 
+        <div
             className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-400 z-10"
             onMouseDown={startResizing(col)}
             onClick={e => e.stopPropagation()}
@@ -199,167 +201,184 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onIn
 
 
     return (
-        <div className="overflow-hidden border rounded-lg bg-white shadow-sm h-full flex flex-col">
-            {/* Filter Bar */}
-            <div className="p-2 sm:p-3 bg-slate-50 border-b border-slate-200 flex gap-2 sm:gap-3 items-center flex-wrap flex-shrink-0">
-                <div className="w-32 sm:w-40">
-                    <Select 
-                        value={typeFilter} 
-                        onChange={(e) => setTypeFilter(e.target.value)} 
-                        className={filterInputClass}
+        <div className="flex flex-col h-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            {/* Toolbar */}
+            <div className="p-3 bg-slate-50/80 border-b border-slate-100 flex flex-wrap gap-3 items-center justify-between backdrop-blur-sm">
+                <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+                    <Select
+                        value={typeFilter}
+                        onChange={(e) => setTypeFilter(e.target.value)}
+                        className="!w-32 !py-1.5 !text-xs !border-slate-200 !shadow-sm !font-medium"
                         hideIcon={true}
                     >
                         {availableTypes.map(t => (
                             <option key={t} value={t}>{t}</option>
                         ))}
                     </Select>
-                </div>
-                <div className="w-32 sm:w-40">
-                    <Select 
-                        value={dateFilter} 
-                        onChange={(e) => setDateFilter(e.target.value)} 
-                        className={filterInputClass}
+
+                    <Select
+                        value={dateFilter}
+                        onChange={(e) => setDateFilter(e.target.value)}
+                        className="!w-32 !py-1.5 !text-xs !border-slate-200 !shadow-sm !font-medium"
                         hideIcon={true}
                     >
                         <option value="All">All Dates</option>
                         <option value="This Month">This Month</option>
                         <option value="Last Month">Last Month</option>
                     </Select>
+
+                    {selectedCount && selectedCount > 0 && onBulkPaymentClick && (
+                        <div className="flex items-center gap-2 animate-fade-in pl-2 border-l border-slate-200">
+                            <span className="text-xs font-semibold text-slate-600">{selectedCount} selected</span>
+                            <Button
+                                onClick={onBulkPaymentClick}
+                                size="sm"
+                                className="!py-1 !px-3 !text-xs !bg-indigo-600 hover:!bg-indigo-700 !text-white !rounded-lg"
+                            >
+                                Receive Payment
+                            </Button>
+                        </div>
+                    )}
                 </div>
-                
-                {/* Add buttons here */}
-                {showButtons && (
-                    <>
-                        <Button
-                            variant="secondary"
-                            onClick={onBulkImportClick}
-                            size="sm"
-                            className="ml-auto"
-                        >
-                            <div className="w-4 h-4 mr-2">{ICONS.download}</div> Bulk Import
-                        </Button>
-                        <Button 
-                            onClick={onNewClick}
-                            size="sm"
-                        >
-                            <div className="w-4 h-4 mr-2">{ICONS.plus}</div> New
-                        </Button>
-                    </>
-                )}
+
+                <div className="flex items-center gap-2">
+                    {showButtons && (
+                        <>
+                            <Button
+                                variant="secondary"
+                                onClick={onBulkImportClick}
+                                size="sm"
+                                className="!py-1.5 !px-3 !text-xs !border-slate-200 hover:!border-indigo-300 hover:!text-indigo-600 !bg-white"
+                            >
+                                <div className="w-3.5 h-3.5 mr-1.5 opacity-70">{ICONS.download}</div> Import
+                            </Button>
+                            <Button
+                                onClick={onNewClick}
+                                size="sm"
+                                className="!py-1.5 !px-3 !text-xs !bg-slate-900 hover:!bg-slate-800 !text-white !shadow-sm"
+                            >
+                                <div className="w-3.5 h-3.5 mr-1.5">{ICONS.plus}</div> Create
+                            </Button>
+                        </>
+                    )}
+                </div>
             </div>
 
-            {/* Make table area scrollable and take remaining space */}
-            <div className="overflow-auto flex-grow min-h-0">
-                <table className="min-w-full divide-y divide-slate-200 text-sm relative border-collapse" style={{ tableLayout: 'fixed' }}>
-                    <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+            {/* Table Area */}
+            <div className="overflow-auto flex-grow min-h-0 bg-white">
+                <table className="min-w-full divide-y divide-slate-100 border-separate border-spacing-0" style={{ tableLayout: 'fixed' }}>
+                    <thead className="bg-slate-50 sticky top-0 z-20">
                         <tr>
-                            <th className="px-2 sm:px-4 py-2 sm:py-3 w-8 sm:w-10 bg-slate-50 border-b border-slate-200"></th>
-                            <th style={thStyle('type')} onClick={() => handleSort('type')} className="px-2 sm:px-4 py-2 sm:py-3 text-left font-semibold text-slate-600 cursor-pointer select-none whitespace-nowrap border-b border-slate-200">Type <SortIcon column="type"/><Resizer col="type"/></th>
-                            <th style={thStyle('reference')} onClick={() => handleSort('reference')} className="px-2 sm:px-4 py-2 sm:py-3 text-left font-semibold text-slate-600 cursor-pointer select-none whitespace-nowrap border-b border-slate-200">No <SortIcon column="reference"/><Resizer col="reference"/></th>
-                            <th style={thStyle('description')} onClick={() => handleSort('description')} className="px-2 sm:px-4 py-2 sm:py-3 text-left font-semibold text-slate-600 cursor-pointer select-none whitespace-nowrap border-b border-slate-200">Description <SortIcon column="description"/><Resizer col="description"/></th>
-                            <th style={thStyle('date')} onClick={() => handleSort('date')} className="px-2 sm:px-4 py-2 sm:py-3 text-left font-semibold text-slate-600 cursor-pointer select-none whitespace-nowrap border-b border-slate-200">Date <SortIcon column="date"/><Resizer col="date"/></th>
-                            <th style={thStyle('accountName')} onClick={() => handleSort('accountName')} className="px-2 sm:px-4 py-2 sm:py-3 text-left font-semibold text-slate-600 cursor-pointer select-none whitespace-nowrap border-b border-slate-200">Account <SortIcon column="accountName"/><Resizer col="accountName"/></th>
-                            <th style={thStyle('amount')} onClick={() => handleSort('amount')} className="px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold text-slate-600 cursor-pointer select-none whitespace-nowrap border-b border-slate-200">Amount <SortIcon column="amount"/><Resizer col="amount"/></th>
-                            <th style={thStyle('remainingAmount')} onClick={() => handleSort('remainingAmount')} className="px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold text-slate-600 cursor-pointer select-none whitespace-nowrap border-b border-slate-200">Due <SortIcon column="remainingAmount"/><Resizer col="remainingAmount"/></th>
+                            <th className="px-3 py-2.5 w-10 text-center border-b border-slate-200 bg-slate-50">
+                                {/* Optional: Master checkbox could go here */}
+                            </th>
+                            <th style={thStyle('type')} onClick={() => handleSort('type')} className="group px-3 py-2.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Type <SortIcon column="type" /><Resizer col="type" /></th>
+                            <th style={thStyle('reference')} onClick={() => handleSort('reference')} className="group px-3 py-2.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Reference <SortIcon column="reference" /><Resizer col="reference" /></th>
+                            <th style={thStyle('description')} onClick={() => handleSort('description')} className="group px-3 py-2.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Description <SortIcon column="description" /><Resizer col="description" /></th>
+                            <th style={thStyle('date')} onClick={() => handleSort('date')} className="group px-3 py-2.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Date <SortIcon column="date" /><Resizer col="date" /></th>
+                            <th style={thStyle('accountName')} onClick={() => handleSort('accountName')} className="group px-3 py-2.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Account <SortIcon column="accountName" /><Resizer col="accountName" /></th>
+                            <th style={thStyle('amount')} onClick={() => handleSort('amount')} className="group px-3 py-2.5 text-right text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Amount <SortIcon column="amount" /><Resizer col="amount" /></th>
+                            <th style={thStyle('remainingAmount')} onClick={() => handleSort('remainingAmount')} className="group px-3 py-2.5 text-right text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Due <SortIcon column="remainingAmount" /><Resizer col="remainingAmount" /></th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200 bg-white">
+                    <tbody className="divide-y divide-slate-100 bg-white">
                         {paginatedRecords.map(record => {
                             const isPayment = record.type.includes('Payment');
                             const isBulk = record.type.includes('Bulk');
                             const isPaid = record.remainingAmount !== undefined && record.remainingAmount <= 0.01;
                             const canSelect = !isPayment && !isPaid;
-                            
+
                             const rawTx = record.raw as Transaction;
                             const hasChildren = isBulk && rawTx.children && rawTx.children.length > 0;
                             const isExpanded = expandedIds.has(record.id);
                             const description = record.raw.description || '-';
 
                             let displayType: string = record.type;
-                            let typeClasses = 'bg-slate-100 text-slate-600 border-slate-200';
+                            let typeStyle = 'bg-slate-100 text-slate-600 border-slate-200';
 
                             if (record.type === 'Invoice') {
                                 const inv = record.raw as Invoice;
                                 const isSecurity = (inv.securityDepositCharge || 0) > 0 || (inv.description || '').toLowerCase().includes('security');
-                                
+
                                 if (inv.invoiceType === InvoiceType.RENTAL) {
                                     displayType = isSecurity ? 'Security' : 'Rent';
-                                    typeClasses = isSecurity 
-                                        ? 'bg-amber-100 text-amber-800 border-amber-200' 
-                                        : 'bg-sky-100 text-sky-700 border-sky-200';
+                                    typeStyle = isSecurity
+                                        ? 'bg-amber-50 text-amber-700 border-amber-100'
+                                        : 'bg-sky-50 text-sky-700 border-sky-100';
                                 } else if (inv.invoiceType === InvoiceType.INSTALLMENT) {
                                     displayType = 'Installment';
-                                    typeClasses = 'bg-indigo-100 text-indigo-700 border-indigo-200';
+                                    typeStyle = 'bg-indigo-50 text-indigo-700 border-indigo-100';
                                 }
                             } else if (isPayment) {
                                 const descLower = description.toLowerCase();
                                 if (descLower.includes('security')) {
                                     displayType = 'Sec Pmt';
-                                    typeClasses = 'bg-amber-50 text-amber-700 border-amber-200';
+                                    typeStyle = 'bg-amber-50 text-amber-700 border-amber-100/50';
                                 } else if (descLower.includes('rent') || descLower.includes('rental')) {
                                     displayType = 'Rent Pmt';
-                                    typeClasses = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                                    typeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-100/50';
                                 } else if (isBulk) {
                                     displayType = 'Bulk Pmt';
-                                    typeClasses = 'bg-purple-100 text-purple-700 border-purple-200';
+                                    typeStyle = 'bg-purple-50 text-purple-700 border-purple-100/50';
                                 } else {
                                     displayType = 'Payment';
-                                    typeClasses = 'bg-emerald-100 text-emerald-700 border-emerald-200';
+                                    typeStyle = 'bg-emerald-50 text-emerald-700 border-emerald-100/50';
                                 }
                             }
 
                             return (
                                 <React.Fragment key={`${record.type}-${record.id}`}>
-                                    <tr 
+                                    <tr
                                         onClick={() => {
-                                            if (hasChildren) toggleExpand({ stopPropagation: () => {} } as any, record.id);
+                                            if (hasChildren) toggleExpand({ stopPropagation: () => { } } as any, record.id);
                                             else if (record.type === 'Invoice') onInvoiceClick(record.raw as Invoice);
                                             else onPaymentClick(record.raw as Transaction);
                                         }}
-                                        className={`cursor-pointer transition-colors group border-b border-slate-100 last:border-0 ${
-                                            isExpanded ? 'bg-indigo-50/50' : isPayment ? 'bg-emerald-50/40 hover:bg-emerald-100/50' : 'bg-white hover:bg-indigo-50/30'
-                                        }`}
+                                        className={`cursor-pointer transition-all duration-150 group border-b border-slate-50 last:border-0 ${isExpanded ? 'bg-indigo-50/30' :
+                                                isPayment ? 'bg-emerald-50/10 hover:bg-emerald-50/30' :
+                                                    'hover:bg-slate-50'
+                                            }`}
                                     >
-                                        <td className="px-2 sm:px-4 py-2.5 text-center w-8 sm:w-10 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                                        <td className="px-3 py-2 text-center w-10 overflow-hidden" onClick={(e) => e.stopPropagation()}>
                                             {hasChildren ? (
-                                                <button onClick={(e) => toggleExpand(e, record.id)} className="p-1 rounded hover:bg-slate-200 text-slate-400">
-                                                    <div className={`w-3 h-3 sm:w-4 sm:h-4 transform transition-transform ${isExpanded ? 'rotate-90' : ''}`}>{ICONS.chevronRight}</div>
+                                                <button onClick={(e) => toggleExpand(e, record.id)} className="p-0.5 rounded hover:bg-slate-200 text-slate-400 transition-colors">
+                                                    <div className={`w-3 h-3 transform transition-transform duration-200 ${isExpanded ? 'rotate-90 text-indigo-500' : ''}`}>{ICONS.chevronRight}</div>
                                                 </button>
-                                            ) : canSelect && onToggleSelect && (
-                                                <input 
-                                                    type="checkbox" 
-                                                    className="rounded text-accent focus:ring-accent w-4 h-4 border-gray-300 cursor-pointer"
+                                            ) : canSelect && onToggleSelect ? (
+                                                <input
+                                                    type="checkbox"
+                                                    className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 w-3.5 h-3.5 cursor-pointer transition-all"
                                                     checked={selectedIds?.has(record.id)}
                                                     onChange={() => onToggleSelect(record.id)}
                                                 />
-                                            )}
+                                            ) : null}
                                         </td>
-                                        <td className="px-2 sm:px-4 py-2.5 whitespace-nowrap overflow-hidden text-ellipsis">
-                                            <span className={`px-1.5 py-0.5 rounded text-xs font-bold border ${typeClasses}`}>
+                                        <td className="px-3 py-2 whitespace-nowrap">
+                                            <span className={`inline-flex px-1.5 py-0.5 rounded-[6px] text-[10px] font-bold uppercase tracking-tight border ${typeStyle}`}>
                                                 {displayType}
                                             </span>
                                         </td>
-                                        <td className="px-2 sm:px-4 py-2.5 font-medium text-slate-800 group-hover:text-indigo-700 whitespace-nowrap overflow-hidden text-ellipsis tabular-nums">{record.reference}</td>
-                                        <td className="px-2 sm:px-4 py-2.5 text-slate-600 truncate max-w-xs overflow-hidden text-ellipsis" title={description}>{description}</td>
-                                        <td className="px-2 sm:px-4 py-2.5 text-slate-600 whitespace-nowrap overflow-hidden text-ellipsis">{formatDate(record.date)}</td>
-                                        <td className="px-2 sm:px-4 py-2.5 text-slate-600 truncate overflow-hidden text-ellipsis" title={record.accountName}>{record.accountName}</td>
-                                        <td className={`px-2 sm:px-4 py-2.5 text-right font-bold whitespace-nowrap overflow-hidden text-ellipsis tabular-nums ${isPayment ? 'text-emerald-700' : 'text-slate-700'}`}>
+                                        <td className="px-3 py-2 font-mono text-xs font-medium text-slate-700 group-hover:text-indigo-600 whitespace-nowrap overflow-hidden text-ellipsis tabular-nums transition-colors">{record.reference}</td>
+                                        <td className="px-3 py-2 text-xs text-slate-600 truncate max-w-xs overflow-hidden text-ellipsis" title={description}>{description}</td>
+                                        <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap overflow-hidden text-ellipsis">{formatDate(record.date)}</td>
+                                        <td className="px-3 py-2 text-xs text-slate-700 font-medium truncate overflow-hidden text-ellipsis" title={record.accountName}>{record.accountName}</td>
+                                        <td className={`px-3 py-2 text-right text-xs font-bold whitespace-nowrap overflow-hidden text-ellipsis tabular-nums ${isPayment ? 'text-emerald-600' : 'text-slate-700'}`}>
                                             {CURRENCY} {record.amount.toLocaleString()}
                                         </td>
-                                        <td className="px-2 sm:px-4 py-2.5 text-right whitespace-nowrap overflow-hidden text-ellipsis tabular-nums">
-                                            {record.remainingAmount !== undefined && record.remainingAmount > 0 ? (
-                                                <span className="text-rose-600 font-bold">{CURRENCY} {record.remainingAmount.toLocaleString()}</span>
+                                        <td className="px-3 py-2 text-right text-xs whitespace-nowrap overflow-hidden text-ellipsis tabular-nums font-medium">
+                                            {record.remainingAmount !== undefined && record.remainingAmount > 0.01 ? (
+                                                <span className="text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded">{CURRENCY} {record.remainingAmount.toLocaleString()}</span>
                                             ) : (
-                                                <span className="text-slate-300">-</span>
+                                                <span className="text-slate-300 font-normal">-</span>
                                             )}
                                         </td>
                                     </tr>
                                     {isExpanded && hasChildren && (
-                                        <tr className="bg-slate-50/50">
+                                        <tr className="bg-slate-50/50 shadow-inner">
                                             <td colSpan={8} className="p-0">
-                                                <div className="border-l-4 border-indigo-200 ml-6 sm:ml-8 my-2 pl-2 sm:pl-4 py-2 space-y-2">
+                                                <div className="border-l-2 border-indigo-200 ml-8 my-1 pl-4 py-1 space-y-1">
                                                     {rawTx.children!.map((child, idx) => (
-                                                        <div key={child.id} className="flex items-center text-xs text-slate-600 hover:bg-slate-100 p-1 rounded cursor-pointer" onClick={() => onPaymentClick(child)}>
+                                                        <div key={child.id} className="flex items-center text-[11px] text-slate-500 hover:bg-white hover:shadow-sm p-1.5 rounded-md cursor-pointer transition-all border border-transparent hover:border-slate-100" onClick={() => onPaymentClick(child)}>
                                                             <div className="w-20 sm:w-24 flex-shrink-0">{formatDate(child.date)}</div>
                                                             <div className="flex-grow truncate font-medium text-slate-700">{child.description}</div>
                                                             <div className="w-24 sm:w-32 text-right font-mono text-emerald-600 tabular-nums">{CURRENCY} {child.amount.toLocaleString()}</div>
@@ -372,40 +391,47 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onIn
                                 </React.Fragment>
                             );
                         })}
-                         {sortedRecords.length === 0 && (
+                        {sortedRecords.length === 0 && (
                             <tr>
-                                <td colSpan={8} className="text-center py-8 sm:py-12 text-slate-500">
-                                    No records found for selected filter.
+                                <td colSpan={8} className="text-center py-16 text-slate-400">
+                                    <div className="flex flex-col items-center justify-center opacity-60">
+                                        <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-3">
+                                            <div className="w-6 h-6 text-slate-400">{ICONS.search}</div>
+                                        </div>
+                                        <p className="text-sm font-medium">No records found</p>
+                                        <p className="text-xs text-slate-400 mt-1">Try changing your filters</p>
+                                    </div>
                                 </td>
                             </tr>
                         )}
                     </tbody>
                 </table>
             </div>
+
             {/* Pagination Footer */}
-            <div className="p-2 sm:p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
-                 <div className="text-xs text-slate-500">
-                    Showing {paginatedRecords.length} / {sortedRecords.length}
-                 </div>
-                 <div className="flex items-center gap-1 sm:gap-2">
-                     <button 
-                         onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                         disabled={currentPage === 1}
-                         className="p-1 rounded hover:bg-slate-200 disabled:opacity-50"
-                     >
-                         {ICONS.chevronLeft}
-                     </button>
-                     <span className="text-sm font-medium text-slate-700">
-                         {currentPage}
-                     </span>
-                     <button 
-                         onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                         disabled={currentPage === totalPages || totalPages === 0}
-                         className="p-1 rounded hover:bg-slate-200 disabled:opacity-50"
-                     >
-                         {ICONS.chevronRight}
-                     </button>
-                 </div>
+            <div className="px-4 py-2 border-t border-slate-200 bg-slate-50/80 backdrop-blur-sm flex items-center justify-between">
+                <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
+                    Showing {paginatedRecords.length} of {sortedRecords.length} records
+                </div>
+                <div className="flex items-center gap-1">
+                    <button
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="p-1 rounded-md hover:bg-white hover:shadow-sm text-slate-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                    >
+                        <div className="w-4 h-4">{ICONS.chevronLeft}</div>
+                    </button>
+                    <span className="text-xs font-semibold text-slate-700 min-w-[20px] text-center">
+                        {currentPage}
+                    </span>
+                    <button
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages || totalPages === 0}
+                        className="p-1 rounded-md hover:bg-white hover:shadow-sm text-slate-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                    >
+                        <div className="w-4 h-4">{ICONS.chevronRight}</div>
+                    </button>
+                </div>
             </div>
         </div>
     );

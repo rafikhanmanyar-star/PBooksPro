@@ -6,7 +6,7 @@ import KPICard from './KPICard';
 import { ICONS } from '../../constants';
 import Button from '../ui/Button';
 import KPISelector from './KPISelector';
-import { AccountType } from '../../types';
+import { AccountType, TransactionType, LoanSubtype } from '../../types';
 import { ReportDefinition } from '../reports/reportDefinitions';
 
 // Reusable Expandable Card Component
@@ -104,6 +104,8 @@ const KPIPanel: React.FC = () => {
     const [isARExpanded, setIsARExpanded] = useState(false);
     const [isAPExpanded, setIsAPExpanded] = useState(false);
     const [isBMFundsExpanded, setIsBMFundsExpanded] = useState(false);
+    const [isProjectFundsExpanded, setIsProjectFundsExpanded] = useState(false);
+    const [isBuildingFundsExpanded, setIsBuildingFundsExpanded] = useState(false);
 
     const startResizing = useCallback((e: React.MouseEvent) => {
         e.preventDefault();
@@ -151,10 +153,154 @@ const KPIPanel: React.FC = () => {
         }).filter((kpi): kpi is Exclude<typeof kpi, null> => kpi !== null);
     }, [visibleKpiIds, allKpis, state]);
 
-    // ... [Breakdown calculations code remains same as previous, omitted for brevity but assumed present] ...
-    // Re-implementing basic breakdown getters to ensure it works
+    // Breakdown calculations
     const accountBreakdown = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK).map(acc => ({ name: acc.name, amount: acc.balance, type: '' })), [state.accounts]);
-    // (Simplified for brevity in this change block, keeping structure)
+    
+    const projectFundsBreakdown = useMemo(() => {
+        // Calculate net balance per project using the same formula as Funds Availability Report
+        // netBalance = (income - expense) + (investment - equityOut) + loanNetBalance
+        
+        const equityCategoryNames = ['Owner Equity', 'Share Capital', 'Investment', 'Capital Injection'];
+        const withdrawalCategoryNames = ['Owner Withdrawn', 'Drawings', 'Dividends', 'Profit Share', 'Owner Payout', 'Owner Security Payout', 'Security Deposit Refund'];
+        
+        const isEquityIncome = (catId?: string) => {
+            if (!catId) return false;
+            const c = state.categories.find(cat => cat.id === catId);
+            return c && equityCategoryNames.includes(c.name);
+        };
+        
+        const isEquityExpense = (catId?: string) => {
+            if (!catId) return false;
+            const c = state.categories.find(cat => cat.id === catId);
+            return c && withdrawalCategoryNames.includes(c.name);
+        };
+        
+        const equityAccountIds = new Set(state.accounts.filter(a => a.type === AccountType.EQUITY).map(a => a.id));
+        
+        const breakdown: { name: string; amount: number }[] = [];
+        
+        state.projects.forEach(project => {
+            let income = 0;
+            let expense = 0;
+            let investment = 0;
+            let equityOut = 0;
+            let loanNetBalance = 0;
+            
+            state.transactions.forEach(tx => {
+                // Resolve projectId from transaction, bill, or invoice
+                let txProjectId = tx.projectId;
+                
+                if (!txProjectId && tx.billId) {
+                    const bill = state.bills.find(b => b.id === tx.billId);
+                    if (bill) txProjectId = bill.projectId;
+                }
+                
+                if (!txProjectId && tx.invoiceId) {
+                    const invoice = state.invoices.find(i => i.id === tx.invoiceId);
+                    if (invoice) txProjectId = invoice.projectId;
+                }
+                
+                if (txProjectId !== project.id) return;
+                
+                if (tx.type === TransactionType.INCOME) {
+                    if (isEquityIncome(tx.categoryId)) {
+                        investment += tx.amount;
+                    } else {
+                        income += tx.amount;
+                    }
+                } else if (tx.type === TransactionType.EXPENSE) {
+                    if (isEquityExpense(tx.categoryId)) {
+                        equityOut += tx.amount;
+                    } else {
+                        expense += tx.amount;
+                    }
+                } else if (tx.type === TransactionType.TRANSFER) {
+                    const isFromEquity = tx.fromAccountId && equityAccountIds.has(tx.fromAccountId);
+                    const isToEquity = tx.toAccountId && equityAccountIds.has(tx.toAccountId);
+                    const isMoveIn = tx.description?.toLowerCase().includes('equity move in');
+                    const isMoveOut = tx.description?.toLowerCase().includes('equity move out');
+                    
+                    const fromAccount = state.accounts.find(a => a.id === tx.fromAccountId);
+                    const isFromClearing = fromAccount?.name === 'Internal Clearing';
+                    const isPMFeeTransfer = tx.description?.toLowerCase().includes('pm fee') || 
+                                           tx.description?.toLowerCase().includes('pm fee equity');
+                    
+                    if (isFromEquity || isMoveIn) {
+                        investment += tx.amount;
+                    } else if (isToEquity || isMoveOut) {
+                        if (isFromClearing && isPMFeeTransfer) {
+                            investment += tx.amount;
+                        } else {
+                            equityOut += tx.amount;
+                        }
+                    }
+                } else if (tx.type === TransactionType.LOAN) {
+                    if (tx.subtype === LoanSubtype.RECEIVE || tx.subtype === LoanSubtype.COLLECT) {
+                        loanNetBalance += tx.amount;
+                    } else if (tx.subtype === LoanSubtype.GIVE || tx.subtype === LoanSubtype.REPAY) {
+                        loanNetBalance -= tx.amount;
+                    }
+                }
+            });
+            
+            const netBalance = (income - expense) + (investment - equityOut) + loanNetBalance;
+            
+            // Only include projects with non-zero balance (or very small balance to handle floating point)
+            if (Math.abs(netBalance) > 0.01) {
+                breakdown.push({ name: project.name, amount: netBalance });
+            }
+        });
+        
+        return breakdown;
+    }, [state.projects, state.transactions, state.categories, state.accounts, state.bills, state.invoices]);
+    
+    const buildingFundsBreakdown = useMemo(() => {
+        // Calculate net balance per building using the same formula as Funds Availability Report
+        // netBalance = (income - expense) + loanNetBalance
+        
+        const breakdown: { name: string; amount: number }[] = [];
+        
+        state.buildings.forEach(building => {
+            let income = 0;
+            let expense = 0;
+            let loanNetBalance = 0;
+            
+            state.transactions.forEach(tx => {
+                let txBuildingId = tx.buildingId;
+                if (!txBuildingId && tx.propertyId) {
+                    const prop = state.properties.find(p => p.id === tx.propertyId);
+                    if (prop) txBuildingId = prop.buildingId;
+                }
+                
+                if (txBuildingId !== building.id) return;
+                
+                if (tx.type === TransactionType.INCOME) {
+                    income += tx.amount;
+                } else if (tx.type === TransactionType.EXPENSE) {
+                    expense += tx.amount;
+                } else if (tx.type === TransactionType.LOAN) {
+                    // Calculate loan net balance
+                    // RECEIVE and COLLECT increase available funds (positive)
+                    // GIVE and REPAY decrease available funds (negative)
+                    if (tx.subtype === LoanSubtype.RECEIVE || tx.subtype === LoanSubtype.COLLECT) {
+                        loanNetBalance += tx.amount;
+                    } else if (tx.subtype === LoanSubtype.GIVE || tx.subtype === LoanSubtype.REPAY) {
+                        loanNetBalance -= tx.amount;
+                    }
+                }
+            });
+            
+            const netBalance = (income - expense) + loanNetBalance;
+            
+            // Only include buildings with non-zero balance (or very small balance to handle floating point)
+            if (Math.abs(netBalance) > 0.01) {
+                breakdown.push({ name: building.name, amount: netBalance });
+            }
+        });
+        
+        return breakdown;
+    }, [state.buildings, state.transactions, state.properties]);
+    
     const arBreakdown = useMemo(() => [], []); 
     const apBreakdown = useMemo(() => [], []);
     const bmFundsBreakdown = useMemo(() => [], []);
@@ -218,6 +364,12 @@ const KPIPanel: React.FC = () => {
                                 {kpisToDisplay.length > 0 ? kpisToDisplay.map(kpi => {
                                     if (kpi.id === 'totalBalance') {
                                         return <ExpandableKPICard key={kpi.id} kpi={kpi} value={kpi.value} isExpanded={isTotalBalanceExpanded} onToggle={() => setIsTotalBalanceExpanded(!isTotalBalanceExpanded)} onDrilldown={() => openDrilldown(kpi)} isActive={activeDrilldownKpi?.id === kpi.id} items={accountBreakdown} />;
+                                    }
+                                    if (kpi.id === 'projectFunds') {
+                                        return <ExpandableKPICard key={kpi.id} kpi={kpi} value={kpi.value} isExpanded={isProjectFundsExpanded} onToggle={() => setIsProjectFundsExpanded(!isProjectFundsExpanded)} onDrilldown={() => openDrilldown(kpi)} isActive={activeDrilldownKpi?.id === kpi.id} items={projectFundsBreakdown} />;
+                                    }
+                                    if (kpi.id === 'buildingFunds') {
+                                        return <ExpandableKPICard key={kpi.id} kpi={kpi} value={kpi.value} isExpanded={isBuildingFundsExpanded} onToggle={() => setIsBuildingFundsExpanded(!isBuildingFundsExpanded)} onDrilldown={() => openDrilldown(kpi)} isActive={activeDrilldownKpi?.id === kpi.id} items={buildingFundsBreakdown} />;
                                     }
                                     // ... other specific expandables ...
                                     return <KPICard key={kpi.id} title={kpi.title} value={kpi.value} onClick={() => openDrilldown(kpi)} isActive={activeDrilldownKpi?.id === kpi.id} />;

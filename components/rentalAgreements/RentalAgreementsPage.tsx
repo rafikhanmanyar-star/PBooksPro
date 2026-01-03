@@ -114,6 +114,18 @@ const RentalAgreementsPage: React.FC = () => {
         }
     }, []);
 
+    // Check if we need to open an agreement from search
+    useEffect(() => {
+        const agreementId = sessionStorage.getItem('openRentalAgreementId');
+        if (agreementId) {
+            sessionStorage.removeItem('openRentalAgreementId');
+            const agreement = state.rentalAgreements.find(a => a.id === agreementId);
+            if (agreement) {
+                openModal(agreement);
+            }
+        }
+    }, [state.rentalAgreements]);
+
     // Filter agreements by date first
     const dateFilteredAgreements = useMemo(() => {
         let agreements = state.rentalAgreements;
@@ -212,7 +224,9 @@ const RentalAgreementsPage: React.FC = () => {
         let agreements = dateFilteredAgreements.map(ra => {
             const property = state.properties.find(p => p.id === ra.propertyId);
             const tenant = state.contacts.find(c => c.id === ra.tenantId);
-            const owner = property ? state.contacts.find(c => c.id === property.ownerId) : null;
+            // Use agreement's ownerId if available (for historical accuracy after property transfer), otherwise use property's ownerId
+            const ownerId = ra.ownerId || property?.ownerId;
+            const owner = ownerId ? state.contacts.find(c => c.id === ownerId) : null;
             const buildingId = property?.buildingId || 'unassigned';
 
             return {
@@ -221,8 +235,8 @@ const RentalAgreementsPage: React.FC = () => {
                 tenantName: tenant?.name || 'Unknown',
                 ownerName: owner?.name || 'Unknown',
                 buildingId: buildingId,
-                // For filter matching
-                ownerId: property?.ownerId
+                // For filter matching - use agreement's ownerId if available, otherwise property's ownerId
+                ownerId: ownerId
             };
         });
 

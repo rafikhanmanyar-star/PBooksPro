@@ -160,7 +160,9 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
             size="md"
           >
               <div className="space-y-6">
-                  <p className="text-slate-600 text-base leading-relaxed whitespace-pre-wrap">{dialogState.message}</p>
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                      <p className="text-slate-700 text-base leading-relaxed whitespace-pre-wrap">{dialogState.message}</p>
+                  </div>
                   
                   <div className="flex justify-end gap-3">
                       {dialogState.type === 'confirm' && (

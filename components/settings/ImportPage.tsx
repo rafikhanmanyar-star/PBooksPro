@@ -8,6 +8,7 @@ import Button from '../ui/Button';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import { useProgress } from '../../context/ProgressContext';
+import { useImportValidation } from '../../hooks/useImportValidation';
 import { 
     runImportProcess, 
     importFromExcel, 
@@ -36,6 +37,7 @@ import {
     runImportRentalBillPayments,
     runImportProjectBillPayments,
     runImportLoanTransactions,
+    runImportEquityTransactions,
     runImportTransferTransactions,
     runImportIncomeTransactions,
     runImportExpenseTransactions,
@@ -86,9 +88,13 @@ const ImportPage: React.FC<ImportPageProps> = () => {
     const [importType, setImportType] = useState<ImportType>(
         (state.initialImportType as ImportType) || ImportType.FULL
     );
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [copyLogButtonText, setCopyLogButtonText] = useState<string>('Copy Log');
+    const [copyEntryButtonText, setCopyEntryButtonText] = useState<string>('Copy Entry');
     
     const fileInputRef = useRef<HTMLInputElement>(null);
     const progress = useProgress();
+    const { validationResult, isValidating, validateFile, clearValidation } = useImportValidation(state);
 
     const goBack = () => dispatch({ type: 'SET_PAGE', payload: 'settings' });
 
@@ -108,7 +114,9 @@ const ImportPage: React.FC<ImportPageProps> = () => {
         setStatus('idle');
         setFileName(null);
         setLog([]);
+        setSelectedFile(null);
         setImportType(ImportType.FULL);
+        clearValidation();
         if (fileInputRef.current) {
             fileInputRef.current.value = "";
         }
@@ -196,6 +204,9 @@ const ImportPage: React.FC<ImportPageProps> = () => {
                 case ImportType.LOAN_TRANSACTIONS:
                     summary = await runImportLoanTransactions(data, state, dispatch, progress, handleLogEntry);
                     break;
+                case ImportType.EQUITY_TRANSACTIONS:
+                    summary = await runImportEquityTransactions(data, state, dispatch, progress, handleLogEntry);
+                    break;
                 case ImportType.TRANSFER_TRANSACTIONS:
                     summary = await runImportTransferTransactions(data, state, dispatch, progress, handleLogEntry);
                     break;
@@ -238,11 +249,25 @@ const ImportPage: React.FC<ImportPageProps> = () => {
         if (!file) return;
 
         setFileName(file.name);
+        setSelectedFile(file);
+        setStatus('idle');
+        setLog([]);
+        clearValidation();
+    };
+
+    const handleValidate = async () => {
+        if (!selectedFile) return;
+        await validateFile(selectedFile);
+    };
+
+    const handleImportAfterValidation = async () => {
+        if (!selectedFile) return;
+
         setStatus('reading');
         setLog([]);
 
         try {
-            const importedData = await importFromExcel(file);
+            const importedData = await importFromExcel(selectedFile);
             await processData(importedData);
 
         } catch (error) {
@@ -259,12 +284,14 @@ const ImportPage: React.FC<ImportPageProps> = () => {
         event.stopPropagation();
         const files = event.dataTransfer.files;
         if (files && files.length > 0) {
-            if (fileInputRef.current) {
-                fileInputRef.current.files = files;
-                handleFileChange({ target: fileInputRef.current } as any);
-            }
+            const file = files[0];
+            setFileName(file.name);
+            setSelectedFile(file);
+            setStatus('idle');
+            setLog([]);
+            clearValidation();
         }
-    }, [handleFileChange]);
+    }, [clearValidation]);
 
     const onDragOver = (event: React.DragEvent<HTMLDivElement>) => {
         event.preventDefault();
@@ -274,6 +301,51 @@ const ImportPage: React.FC<ImportPageProps> = () => {
     const handleExportLog = () => {
         const date = new Date().toISOString().split('T')[0];
         exportLogToExcel(log, `import-log-${date}.xlsx`);
+    };
+
+    const handleCopyLog = async () => {
+        try {
+            const logText = log.map(entry => {
+                const timestamp = new Date(entry.timestamp).toLocaleString();
+                const rowInfo = entry.row > 0 ? `Row ${entry.row}` : 'N/A';
+                let text = `[${timestamp}] ${entry.status} - ${entry.sheet} ${rowInfo}\n${entry.message}`;
+                if (entry.data) {
+                    text += `\nData: ${JSON.stringify(entry.data, null, 2)}`;
+                }
+                return text;
+            }).join('\n\n');
+            
+            await navigator.clipboard.writeText(logText);
+            // Show a brief success message
+            setCopyLogButtonText('Copied!');
+            setTimeout(() => {
+                setCopyLogButtonText('Copy Log');
+            }, 2000);
+        } catch (error) {
+            console.error('Failed to copy log:', error);
+            dispatch({ type: 'ADD_ERROR_LOG', payload: { message: 'Failed to copy log to clipboard', stack: '' } });
+        }
+    };
+
+    const handleCopyLogEntry = async (entry: ImportLogEntry) => {
+        try {
+            const timestamp = new Date(entry.timestamp).toLocaleString();
+            const rowInfo = entry.row > 0 ? `Row ${entry.row}` : 'N/A';
+            let text = `[${timestamp}] ${entry.status} - ${entry.sheet} ${rowInfo}\n${entry.message}`;
+            if (entry.data) {
+                text += `\n\nRow Data:\n${JSON.stringify(entry.data, null, 2)}`;
+            }
+            
+            await navigator.clipboard.writeText(text);
+            // Show a brief success message
+            setCopyEntryButtonText('Copied!');
+            setTimeout(() => {
+                setCopyEntryButtonText('Copy Entry');
+            }, 2000);
+        } catch (error) {
+            console.error('Failed to copy log entry:', error);
+            dispatch({ type: 'ADD_ERROR_LOG', payload: { message: 'Failed to copy log entry to clipboard', stack: '' } });
+        }
     };
 
     const summary = {
@@ -346,6 +418,7 @@ const ImportPage: React.FC<ImportPageProps> = () => {
                                     <option value={ImportType.RENTAL_BILL_PAYMENTS}>Rental Bill Payments</option>
                                     <option value={ImportType.PROJECT_BILL_PAYMENTS}>Project Bill Payments</option>
                                     <option value={ImportType.TRANSFER_TRANSACTIONS}>Transfer Transactions</option>
+                                    <option value={ImportType.EQUITY_TRANSACTIONS}>Equity Transactions</option>
                                     <option value={ImportType.LOAN_TRANSACTIONS}>Loan Transactions</option>
                                     <option value={ImportType.INCOME_TRANSACTIONS}>Income Transactions (No Invoice)</option>
                                     <option value={ImportType.EXPENSE_TRANSACTIONS}>Expense Transactions (No Bill)</option>
@@ -365,6 +438,7 @@ const ImportPage: React.FC<ImportPageProps> = () => {
                                 {importType === ImportType.RENTAL_BILL_PAYMENTS && "⚠️ Import rental bills first"}
                                 {importType === ImportType.PROJECT_BILL_PAYMENTS && "⚠️ Import project bills first"}
                                 {importType === ImportType.TRANSFER_TRANSACTIONS && "💡 Requires FromAccountName and ToAccountName"}
+                                {importType === ImportType.EQUITY_TRANSACTIONS && "💡 Investment management transactions with project"}
                                 {importType === ImportType.LOAN_TRANSACTIONS && "💡 Requires subtype (Give/Receive/Repay/Collect Loan)"}
                                 {importType === ImportType.INCOME_TRANSACTIONS && "💡 Standalone income (no invoiceNumber)"}
                                 {importType === ImportType.EXPENSE_TRANSACTIONS && "💡 Standalone expense (no billNumber)"}
@@ -389,7 +463,102 @@ const ImportPage: React.FC<ImportPageProps> = () => {
                             <div className="w-16 h-16 text-slate-400">{ICONS.download}</div>
                             <p className="mt-2 font-semibold text-slate-700">Click to select or drag & drop your file</p>
                             <p className="text-sm text-slate-500">Excel file (.xlsx) format</p>
+                            {fileName && (
+                                <p className="mt-2 text-sm font-medium text-accent">{fileName}</p>
+                            )}
                         </div>
+                        
+                        {fileName && selectedFile && (
+                            <div className="mt-4 flex gap-2">
+                                <Button
+                                    onClick={handleValidate}
+                                    disabled={isValidating}
+                                    variant="secondary"
+                                >
+                                    {isValidating ? 'Validating...' : 'Validate Import'}
+                                </Button>
+                                {validationResult && validationResult.valid && (
+                                    <Button
+                                        onClick={handleImportAfterValidation}
+                                        variant="primary"
+                                    >
+                                        Import Validated Data
+                                    </Button>
+                                )}
+                            </div>
+                        )}
+                        
+                        {validationResult && (
+                            <div className="mt-4 p-4 border rounded-lg bg-white">
+                                <h3 className="font-semibold mb-3 text-lg">Validation Results</h3>
+                                <div className="grid grid-cols-4 gap-4 mb-4">
+                                    <div className="text-center p-2 bg-slate-50 rounded">
+                                        <div className="text-lg font-bold text-slate-700">{validationResult.stats.totalRows}</div>
+                                        <div className="text-xs text-slate-600">Total Rows</div>
+                                    </div>
+                                    <div className="text-center p-2 bg-emerald-50 rounded">
+                                        <div className="text-lg font-bold text-emerald-700">{validationResult.stats.validRows}</div>
+                                        <div className="text-xs text-emerald-600">Valid</div>
+                                    </div>
+                                    <div className="text-center p-2 bg-rose-50 rounded">
+                                        <div className="text-lg font-bold text-rose-700">{validationResult.stats.invalidRows}</div>
+                                        <div className="text-xs text-rose-600">Errors</div>
+                                    </div>
+                                    <div className="text-center p-2 bg-amber-50 rounded">
+                                        <div className="text-lg font-bold text-amber-700">{validationResult.warnings.length}</div>
+                                        <div className="text-xs text-amber-600">Warnings</div>
+                                    </div>
+                                </div>
+                                
+                                {validationResult.errors.length > 0 && (
+                                    <div className="mb-4">
+                                        <h4 className="font-semibold text-rose-600 mb-2">Errors (must be fixed before import):</h4>
+                                        <div className="max-h-40 overflow-y-auto border border-rose-200 rounded p-2 bg-rose-50">
+                                            <ul className="list-disc list-inside space-y-1 text-sm">
+                                                {validationResult.errors.slice(0, 20).map((error, idx) => (
+                                                    <li key={idx} className="text-rose-800">
+                                                        <span className="font-medium">{error.sheet}</span> Row {error.row}: {error.message}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                            {validationResult.errors.length > 20 && (
+                                                <p className="text-xs text-rose-600 mt-2">... and {validationResult.errors.length - 20} more errors</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                {validationResult.warnings.length > 0 && validationResult.errors.length === 0 && (
+                                    <div className="mb-4">
+                                        <h4 className="font-semibold text-amber-600 mb-2">Warnings (import will continue):</h4>
+                                        <div className="max-h-40 overflow-y-auto border border-amber-200 rounded p-2 bg-amber-50">
+                                            <ul className="list-disc list-inside space-y-1 text-sm">
+                                                {validationResult.warnings.slice(0, 10).map((warning, idx) => (
+                                                    <li key={idx} className="text-amber-800">
+                                                        <span className="font-medium">{warning.sheet}</span> Row {warning.row}: {warning.message}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                            {validationResult.warnings.length > 10 && (
+                                                <p className="text-xs text-amber-600 mt-2">... and {validationResult.warnings.length - 10} more warnings</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                {validationResult.valid && (
+                                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded text-emerald-800 text-sm">
+                                        ✓ All validations passed! Ready to import.
+                                    </div>
+                                )}
+                                
+                                {!validationResult.valid && (
+                                    <div className="p-3 bg-rose-50 border border-rose-200 rounded text-rose-800 text-sm">
+                                        ✗ Please fix the errors above before importing.
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -434,7 +603,13 @@ const ImportPage: React.FC<ImportPageProps> = () => {
                 <div className="mt-6">
                     <div className="flex justify-between items-center mb-2">
                         <h4 className="font-semibold">Import Log</h4>
-                        <Button variant="secondary" size="sm" onClick={handleExportLog}>Export Log</Button>
+                        <div className="flex gap-2">
+                            <Button variant="secondary" size="sm" onClick={handleCopyLog}>
+                                <div className="w-4 h-4 mr-1 inline-block">{ICONS.clipboard}</div>
+                                {copyLogButtonText}
+                            </Button>
+                            <Button variant="secondary" size="sm" onClick={handleExportLog}>Export Log</Button>
+                        </div>
                     </div>
                     <div className="bg-white rounded-lg shadow-sm border border-slate-200/80 max-h-96 overflow-y-auto">
                         <table className="min-w-full divide-y divide-slate-200">
@@ -500,7 +675,11 @@ const ImportPage: React.FC<ImportPageProps> = () => {
                                 </div>
                             </div>
                         )}
-                        <div className="flex justify-end pt-2">
+                        <div className="flex justify-end gap-2 pt-2">
+                            <Button variant="secondary" size="sm" onClick={() => handleCopyLogEntry(selectedLogEntry)}>
+                                <div className="w-4 h-4 mr-1 inline-block">{ICONS.clipboard}</div>
+                                {copyEntryButtonText}
+                            </Button>
                             <Button variant="secondary" onClick={() => setSelectedLogEntry(null)}>Close</Button>
                         </div>
                     </div>

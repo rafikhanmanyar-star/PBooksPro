@@ -6,6 +6,7 @@ import { useAppContext } from '../../context/AppContext';
 import TransactionItem from '../transactions/TransactionItem';
 import { ICONS, CURRENCY } from '../../constants';
 import Button from '../ui/Button';
+import { formatRoundedNumber } from '../../utils/numberUtils';
 
 interface ProjectTransactionModalProps {
   isOpen: boolean;
@@ -101,7 +102,7 @@ const ProjectTransactionModal: React.FC<ProjectTransactionModalProps> = ({ isOpe
                         </span>
                     </div>
                     <span className={`font-bold text-lg ${data.type === 'Income' ? 'text-success' : 'text-danger'}`}>
-                        {CURRENCY} {totalAmount.toLocaleString()}
+                        {CURRENCY} {formatRoundedNumber(totalAmount)}
                     </span>
                 </div>
             </div>

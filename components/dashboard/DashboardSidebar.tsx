@@ -2,6 +2,7 @@ import React, { useState, ReactNode } from 'react';
 import { ICONS, CURRENCY } from '../../constants';
 import Button from '../ui/Button';
 import { Page } from '../../types';
+import { formatRoundedNumber } from '../../utils/numberUtils';
 
 // New interfaces for items
 interface DashboardItem {
@@ -52,12 +53,12 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ items, onConfigure,
                                 {item.onClick ? (
                                     <button onClick={item.onClick} className="w-full text-left p-2 rounded-md hover:bg-sky-100 transition-colors">
                                         <p className="text-sm text-sky-700">{item.title}</p>
-                                        <p className="font-bold text-xl text-sky-900 truncate">{CURRENCY} {(item.amount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                                        <p className="font-bold text-xl text-sky-900 truncate">{CURRENCY} {formatRoundedNumber(item.amount || 0)}</p>
                                     </button>
                                 ) : (
                                     <div className="p-2">
                                         <p className="text-sm text-sky-700">{item.title}</p>
-                                        <p className="font-bold text-xl text-sky-900 truncate">{CURRENCY} {(item.amount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                                        <p className="font-bold text-xl text-sky-900 truncate">{CURRENCY} {formatRoundedNumber(item.amount || 0)}</p>
                                     </div>
                                 )}
                             </div>

@@ -323,7 +323,7 @@ const PayslipDetailModal: React.FC<PayslipDetailModalProps> = ({ isOpen, onClose
                                                     <input 
                                                         placeholder="Amt" 
                                                         type="number"
-                                                        className="w-20 px-2 py-1 text-xs border rounded"
+                                                        className="w-20 px-2 py-1 text-xs border rounded [appearance:textfield] [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                         value={newBonusAmount}
                                                         onChange={e => setNewBonusAmount(e.target.value)}
                                                     />
@@ -374,7 +374,7 @@ const PayslipDetailModal: React.FC<PayslipDetailModalProps> = ({ isOpen, onClose
                                                     <div className="flex items-center gap-1">
                                                         <input 
                                                             type="number"
-                                                            className="w-20 px-1 py-0.5 text-right border rounded text-xs no-print"
+                                                            className="w-20 px-1 py-0.5 text-right border rounded text-xs no-print [appearance:textfield] [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                             value={d.amount}
                                                             onChange={e => handleDeductionChange(idx, e.target.value)}
                                                         />
@@ -397,7 +397,7 @@ const PayslipDetailModal: React.FC<PayslipDetailModalProps> = ({ isOpen, onClose
                                                         <input 
                                                             placeholder="Amt" 
                                                             type="number"
-                                                            className="flex-1 px-2 py-1 text-xs border rounded"
+                                                            className="flex-1 px-2 py-1 text-xs border rounded [appearance:textfield] [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                             value={newDeductionAmount}
                                                             onChange={e => setNewDeductionAmount(e.target.value)}
                                                         />

@@ -7,6 +7,7 @@ import { formatDate } from '../../utils/dateUtils';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 import { useNotification } from '../../context/NotificationContext';
+import { WhatsAppService } from '../../services/whatsappService';
 
 interface VendorBillsProps {
     vendorId: string;
@@ -71,14 +72,18 @@ const VendorBills: React.FC<VendorBillsProps> = ({ vendorId, onEditBill }) => {
             return;
         }
         
-        const { whatsAppTemplates } = state;
-        const message = whatsAppTemplates.billPayment
-            .replace(/{contactName}/g, vendor.name)
-            .replace(/{billNumber}/g, bill.billNumber)
-            .replace(/{paidAmount}/g, `${CURRENCY} ${bill.paidAmount.toLocaleString()}`);
-            
-        const phoneNumber = vendor.contactNo.replace(/[^0-9]/g, '');
-        window.open(`https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`, '_blank');
+        try {
+            const { whatsAppTemplates } = state;
+            const message = WhatsAppService.generateBillPayment(
+                whatsAppTemplates.billPayment,
+                vendor,
+                bill.billNumber,
+                bill.paidAmount
+            );
+            WhatsAppService.sendMessage({ contact: vendor, message });
+        } catch (error) {
+            showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
+        }
     };
 
     const SortIcon = ({ column }: { column: SortKey }) => {

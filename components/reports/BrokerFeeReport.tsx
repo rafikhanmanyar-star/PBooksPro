@@ -3,14 +3,19 @@ import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { ContactType, TransactionType } from '../../types';
 import Card from '../ui/Card';
+import Button from '../ui/Button';
+import Input from '../ui/Input';
 import ComboBox from '../ui/ComboBox';
-import { CURRENCY } from '../../constants';
+import DatePicker from '../ui/DatePicker';
+import { CURRENCY, ICONS } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import { useNotification } from '../../context/NotificationContext';
-import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import { formatDate } from '../../utils/dateUtils';
+import { WhatsAppService } from '../../services/whatsappService';
+
+type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 
 interface ReportRow {
     id: string;
@@ -26,16 +31,16 @@ const BrokerFeeReport: React.FC = () => {
     const { state } = useAppContext();
     const { showAlert } = useNotification();
     
-    const [dateRangeType, setDateRangeType] = useState<ReportDateRange>('thisMonth');
-    const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+    const [dateRangeType, setDateRangeType] = useState<DateRangeOption>('all');
+    const [startDate, setStartDate] = useState('2000-01-01');
+    const [endDate, setEndDate] = useState('2100-12-31');
     
     const [selectedBrokerId, setSelectedBrokerId] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [groupBy, setGroupBy] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
 
-    const handleRangeChange = (type: ReportDateRange) => {
+    const handleRangeChange = (type: DateRangeOption) => {
         setDateRangeType(type);
         const now = new Date();
         if (type === 'all') {
@@ -210,20 +215,23 @@ const BrokerFeeReport: React.FC = () => {
             return;
         }
 
-        const finalBalance = reportData.length > 0 ? reportData[reportData.length - 1].balance : 0;
-        const totalBilled = reportData.reduce((sum, item) => sum + item.feeAmount, 0);
-        const totalPaid = reportData.reduce((sum, item) => sum + item.paidAmount, 0);
+        try {
+            const finalBalance = reportData.length > 0 ? reportData[reportData.length - 1].balance : 0;
+            const totalBilled = reportData.reduce((sum, item) => sum + item.feeAmount, 0);
+            const totalPaid = reportData.reduce((sum, item) => sum + item.paidAmount, 0);
+            
+            let message = `*Broker Statement for ${selectedBroker.name}*\n`;
+            message += `Period: ${formatDate(startDate)} to ${formatDate(endDate)}\n\n`;
+            message += `Total Fees: ${CURRENCY} ${totalBilled.toLocaleString()}\n`;
+            message += `Total Paid: ${CURRENCY} ${totalPaid.toLocaleString()}\n`;
+            message += `--------------------\n`;
+            message += `Balance Due: *${CURRENCY} ${finalBalance.toLocaleString()}*\n\n`;
+            message += `This is an automated summary from PBooksPro.`;
         
-        let message = `*Broker Statement for ${selectedBroker.name}*\n`;
-        message += `Period: ${formatDate(startDate)} to ${formatDate(endDate)}\n\n`;
-        message += `Total Fees: ${CURRENCY} ${totalBilled.toLocaleString()}\n`;
-        message += `Total Paid: ${CURRENCY} ${totalPaid.toLocaleString()}\n`;
-        message += `--------------------\n`;
-        message += `Balance Due: *${CURRENCY} ${finalBalance.toLocaleString()}*\n\n`;
-        message += `This is an automated summary from My Accountant.`;
-    
-        const phoneNumber = selectedBroker.contactNo.replace(/[^0-9]/g, '');
-        window.open(`https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`, '_blank');
+            WhatsAppService.sendMessage({ contact: selectedBroker, message });
+        } catch (error) {
+            await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
+        }
     };
     
     const finalBalance = reportData.length > 0 ? reportData[reportData.length - 1].balance : 0;
@@ -287,28 +295,100 @@ const BrokerFeeReport: React.FC = () => {
             `}</style>
             <div className="flex flex-col h-full space-y-4">
                 <div className="flex-shrink-0">
-                    <ReportToolbar
-                        startDate={startDate}
-                        endDate={endDate}
-                        onDateChange={handleDateChange}
-                        searchQuery={searchQuery}
-                        onSearchChange={setSearchQuery}
-                        onExport={handleExport}
-                        onPrint={handlePrint}
-                        onWhatsApp={handleWhatsApp}
-                        disableWhatsApp={!selectedBrokerId || selectedBrokerId === 'all'}
-                        hideGroup={true}
-                        groupBy={groupBy}
-                        onGroupByChange={setGroupBy}
-                        groupByOptions={[{ label: 'Broker', value: 'broker' }]}
-                        showDateFilterPills={true}
-                        activeDateRange={dateRangeType}
-                        onRangeChange={handleRangeChange}
-                    >
-                        <div className="w-48 flex-shrink-0">
-                            <ComboBox label="Broker" items={brokerItems} selectedId={selectedBrokerId} onSelect={(item) => setSelectedBrokerId(item?.id || 'all')} allowAddNew={false} />
+                {/* Custom Toolbar - All controls in first row */}
+                <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm no-print">
+                    {/* First Row: Dates, Filters, and Actions */}
+                    <div className="flex flex-wrap items-center gap-3">
+                        {/* Date Range Pills */}
+                        <div className="flex bg-slate-100 p-1 rounded-lg flex-shrink-0 overflow-x-auto">
+                            {(['all', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
+                                <button
+                                    key={opt}
+                                    onClick={() => handleRangeChange(opt)}
+                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap capitalize ${
+                                        dateRangeType === opt 
+                                        ? 'bg-white text-accent shadow-sm font-bold' 
+                                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
+                                    }`}
+                                >
+                                    {opt === 'all' ? 'Total' : opt === 'thisMonth' ? 'This Month' : opt === 'lastMonth' ? 'Last Month' : 'Custom'}
+                                </button>
+                            ))}
                         </div>
-                    </ReportToolbar>
+
+                        {/* Custom Date Pickers */}
+                        {dateRangeType === 'custom' && (
+                            <div className="flex items-center gap-2 animate-fade-in">
+                                <DatePicker value={startDate} onChange={(d) => handleDateChange(d.toISOString().split('T')[0], endDate)} />
+                                <span className="text-slate-400">-</span>
+                                <DatePicker value={endDate} onChange={(d) => handleDateChange(startDate, d.toISOString().split('T')[0])} />
+                            </div>
+                        )}
+
+                        {/* Broker Filter */}
+                        <div className="w-48 flex-shrink-0">
+                            <ComboBox 
+                                items={brokerItems} 
+                                selectedId={selectedBrokerId} 
+                                onSelect={(item) => setSelectedBrokerId(item?.id || 'all')} 
+                                allowAddNew={false}
+                                placeholder="Filter Broker"
+                            />
+                        </div>
+
+                        {/* Group By */}
+                        <div className="w-40 flex-shrink-0">
+                            <select
+                                value={groupBy}
+                                onChange={(e) => setGroupBy(e.target.value)}
+                                className="block w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
+                            >
+                                <option value="">No Grouping</option>
+                                <option value="broker">Group by Broker</option>
+                            </select>
+                        </div>
+
+                        {/* Search Input */}
+                        <div className="relative flex-grow min-w-[180px]">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                <span className="h-4 w-4">{ICONS.search}</span>
+                            </div>
+                            <Input 
+                                placeholder="Search report..." 
+                                value={searchQuery} 
+                                onChange={(e) => setSearchQuery(e.target.value)} 
+                                className="pl-9 py-1.5 text-sm"
+                            />
+                            {searchQuery && (
+                                <button 
+                                    onClick={() => setSearchQuery('')} 
+                                    className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
+                                >
+                                    <div className="w-4 h-4">{ICONS.x}</div>
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Actions Group */}
+                        <div className="flex items-center gap-2 ml-auto">
+                            <Button 
+                                variant="secondary" 
+                                size="sm" 
+                                onClick={handleWhatsApp} 
+                                disabled={!selectedBrokerId || selectedBrokerId === 'all'}
+                                className="text-green-600 bg-green-50 hover:bg-green-100 border-green-200 whitespace-nowrap"
+                            >
+                                <div className="w-4 h-4 mr-1">{ICONS.whatsapp}</div> Share
+                            </Button>
+                            <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
+                                <div className="w-4 h-4 mr-1">{ICONS.export}</div> Export
+                            </Button>
+                            <Button variant="secondary" size="sm" onClick={handlePrint} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
+                                <div className="w-4 h-4 mr-1">{ICONS.print}</div> Print
+                            </Button>
+                        </div>
+                    </div>
+                </div>
                 </div>
 
                  <div className="flex-grow overflow-y-auto printable-area min-h-0">

@@ -33,7 +33,10 @@ export function objectToDbFormat<T extends Record<string, any>>(obj: T): Record<
         } else if (value === null || value === undefined) {
             // Skip null/undefined values
             continue;
-        } else if (typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+        } else if (Array.isArray(value)) {
+            // Convert arrays to JSON strings
+            result[dbKey] = JSON.stringify(value);
+        } else if (typeof value === 'object' && !(value instanceof Date)) {
             // Convert nested objects to JSON strings
             result[dbKey] = JSON.stringify(value);
         } else if (value instanceof Date) {
@@ -58,11 +61,27 @@ export function dbToObjectFormat<T extends Record<string, any>>(obj: Record<stri
         if ((key.startsWith('is_') || key.startsWith('has_') || key.endsWith('_flag')) && 
             (value === 0 || value === 1)) {
             result[camelKey] = value === 1;
-        } else if (typeof value === 'string' && value.startsWith('{') && value.endsWith('}')) {
-            // Try to parse JSON strings
+        } else if (key === 'expense_category_items' && typeof value === 'string' && value.trim().length > 0) {
+            // Explicitly handle expense_category_items - always try to parse as JSON
             try {
                 result[camelKey] = JSON.parse(value);
             } catch {
+                // If parsing fails, keep the original string value
+                result[camelKey] = value;
+            }
+        } else if (typeof value === 'string' && value.trim().length > 0) {
+            // Try to parse JSON strings (objects or arrays)
+            // Check if it looks like JSON (starts with { or [ and ends with } or ])
+            const trimmed = value.trim();
+            if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || 
+                (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+                try {
+                    result[camelKey] = JSON.parse(value);
+                } catch {
+                    // If parsing fails, keep the original string value
+                    result[camelKey] = value;
+                }
+            } else {
                 result[camelKey] = value;
             }
         } else {

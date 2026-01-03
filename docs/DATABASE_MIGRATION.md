@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Finance Tracker Pro application has been migrated from a localStorage-based data persistence system to a SQL-based database architecture using SQLite (via sql.js). This migration provides better data integrity, query capabilities, and scalability.
+The PBooksPro application has been migrated from a localStorage-based data persistence system to a SQL-based database architecture using SQLite (via sql.js). This migration provides better data integrity, query capabilities, and scalability.
 
 ## Architecture
 

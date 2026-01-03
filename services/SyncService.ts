@@ -1,7 +1,10 @@
 
 import React from 'react';
-import { Peer } from 'peerjs';
+// import { Peer } from 'peerjs';
 import { AppState, AppAction, TransactionLogEntry } from '../types';
+
+// Temporary type placeholder for Peer until peerjs is installed
+type Peer = any;
 
 type SyncStatus = 'disconnected' | 'connecting' | 'connected' | 'syncing' | 'error';
 type SyncRole = 'host' | 'client' | null;
@@ -50,9 +53,9 @@ class SyncService {
     }
 
     private updateProgress(message: string, percentage: number) {
-        this.updateState({ 
+        this.updateState({
             status: percentage < 100 ? 'syncing' : 'connected',
-            progress: percentage < 100 ? { message, percentage } : null 
+            progress: percentage < 100 ? { message, percentage } : null
         });
     }
 
@@ -97,7 +100,7 @@ class SyncService {
                         reject(err);
                     }
                 });
-                
+
                 this.peer.on('disconnected', () => {
                     console.log('Peer disconnected from server, attempting reconnect...');
                     this.attemptReconnect();
@@ -117,7 +120,7 @@ class SyncService {
                 if (this.peer && !this.peer.destroyed) {
                     this.peer.reconnect();
                 }
-            }, 2000 * this.reconnectAttempts); 
+            }, 2000 * this.reconnectAttempts);
         } else if (this.state.status !== 'disconnected') {
             this.updateState({ status: 'error', error: 'Connection lost. Please restart sync.' });
         }
@@ -142,18 +145,18 @@ class SyncService {
                 });
 
                 this.peer.on('error', (err) => {
-                     console.error('Peer join error:', err);
-                     this.updateState({ status: 'error', error: 'Could not connect to host. Check ID.' });
-                     reject(err);
+                    console.error('Peer join error:', err);
+                    this.updateState({ status: 'error', error: 'Could not connect to host. Check ID.' });
+                    reject(err);
                 });
-                
+
                 this.peer.on('disconnected', () => {
-                     this.peer?.reconnect();
+                    this.peer?.reconnect();
                 });
 
             } catch (err) {
-                 this.updateState({ status: 'error', error: String(err) });
-                 reject(err);
+                this.updateState({ status: 'error', error: String(err) });
+                reject(err);
             }
         });
     }
@@ -177,7 +180,7 @@ class SyncService {
         this.conn.on('open', () => {
             this.updateState({ status: 'connected', connectedPeerId: this.conn.peer });
             console.log(`Connected to ${this.conn.peer} as ${role}`);
-            this.reconnectAttempts = 0; 
+            this.reconnectAttempts = 0;
             this.lastHeartbeat = Date.now();
 
             this.startHeartbeat();
@@ -199,12 +202,12 @@ class SyncService {
             this.stopHeartbeat();
             this.updateState({ status: 'disconnected', connectedPeerId: null });
         });
-        
+
         this.conn.on('error', (err: any) => {
             console.error("Connection error", err);
         });
     }
-    
+
     private startHeartbeat() {
         this.stopHeartbeat();
         this.heartbeatInterval = setInterval(() => {
@@ -220,7 +223,7 @@ class SyncService {
         this.heartbeatCheckInterval = setInterval(() => {
             if (this.state.status === 'connected') {
                 const timeSinceLastHeartbeat = Date.now() - this.lastHeartbeat;
-                if (timeSinceLastHeartbeat > 15000) { 
+                if (timeSinceLastHeartbeat > 15000) {
                     console.warn("Heartbeat timeout. Peer might be disconnected.");
                     this.updateState({ status: 'error', error: 'Connection unstable' });
                 }
@@ -258,36 +261,36 @@ class SyncService {
         ];
 
         if (this.state.status === 'connected' && !LOCAL_ACTIONS.includes(action.type)) {
-             // CRITICAL: If this is a State Restore or Reset, we must trigger a full SYNC_REQUEST
-             // This ensures the receiver enters the "Syncing..." state and runs the merge logic
-             // rather than just replacing state blindly without UI feedback.
-             if (action.type === 'SET_STATE' || action.type === 'LOAD_SAMPLE_DATA') {
-                 // For SET_STATE, the payload is the new state. For LOAD_SAMPLE_DATA, we need the resulting state.
-                 // Note: Since we are in the middleware, for LOAD_SAMPLE_DATA we might be sending the action before the state updates locally.
-                 // However, SET_STATE (Restore) comes with the full payload.
-                 
-                 let payloadToSync;
-                 if (action.type === 'SET_STATE') {
-                     payloadToSync = action.payload;
-                 } else {
-                     // For RESET/LOAD_SAMPLE, we send the action, but also force a sync shortly after?
-                     // Actually, just sending the action is fine for simple resets, but for Restore (SET_STATE), 
-                     // we MUST send SYNC_REQUEST because the payload is the Data.
-                     // Here we'll rely on the receiver to handle LOAD_SAMPLE_DATA action if we send it as action,
-                     // but for robustness with Restore (SET_STATE), we send SYNC_REQUEST.
-                     payloadToSync = null; 
-                 }
+            // CRITICAL: If this is a State Restore or Reset, we must trigger a full SYNC_REQUEST
+            // This ensures the receiver enters the "Syncing..." state and runs the merge logic
+            // rather than just replacing state blindly without UI feedback.
+            if (action.type === 'SET_STATE' || action.type === 'LOAD_SAMPLE_DATA') {
+                // For SET_STATE, the payload is the new state. For LOAD_SAMPLE_DATA, we need the resulting state.
+                // Note: Since we are in the middleware, for LOAD_SAMPLE_DATA we might be sending the action before the state updates locally.
+                // However, SET_STATE (Restore) comes with the full payload.
 
-                 if (payloadToSync) {
-                     const cleanPayload = this.prepareSyncPayload(payloadToSync);
-                     this.sendData({ type: 'SYNC_REQUEST', payload: cleanPayload });
-                 } else {
-                     // For non-payload resets, standard action broadcast is okay
-                     this.sendData({ type: 'ACTION', payload: action });
-                 }
-             } else {
-                 this.sendData({ type: 'ACTION', payload: action });
-             }
+                let payloadToSync;
+                if (action.type === 'SET_STATE') {
+                    payloadToSync = action.payload;
+                } else {
+                    // For RESET/LOAD_SAMPLE, we send the action, but also force a sync shortly after?
+                    // Actually, just sending the action is fine for simple resets, but for Restore (SET_STATE), 
+                    // we MUST send SYNC_REQUEST because the payload is the Data.
+                    // Here we'll rely on the receiver to handle LOAD_SAMPLE_DATA action if we send it as action,
+                    // but for robustness with Restore (SET_STATE), we send SYNC_REQUEST.
+                    payloadToSync = null;
+                }
+
+                if (payloadToSync) {
+                    const cleanPayload = this.prepareSyncPayload(payloadToSync);
+                    this.sendData({ type: 'SYNC_REQUEST', payload: cleanPayload });
+                } else {
+                    // For non-payload resets, standard action broadcast is okay
+                    this.sendData({ type: 'ACTION', payload: action });
+                }
+            } else {
+                this.sendData({ type: 'ACTION', payload: action });
+            }
         }
     }
 
@@ -305,24 +308,24 @@ class SyncService {
             this.updateState({ status: 'syncing' });
             const remoteState = data.payload;
             const localState = this.getState();
-            
+
             // Perform async merge
             const mergedState = await this.mergeStates(localState, remoteState);
-            
-            (mergedState as any)._isRemote = true; 
+
+            (mergedState as any)._isRemote = true;
             mergedState.currentPage = localState.currentPage;
             mergedState.editingEntity = localState.editingEntity;
-            
+
             this.dispatch({ type: 'SET_STATE', payload: mergedState });
-            
+
             // Small delay to let UI show 100% before switching state back to connected
             setTimeout(() => {
                 this.updateState({ status: 'connected', progress: null });
             }, 500);
-        } 
+        }
         else if (data.type === 'ACTION') {
             const action = data.payload;
-            (action as any)._isRemote = true; 
+            (action as any)._isRemote = true;
             this.dispatch(action);
         }
     }
@@ -334,9 +337,9 @@ class SyncService {
         // 1. Merge Logs & Determine Deletions
         // We combine both logs to find items that have been deleted on either side.
         const combinedLogs = [...(local.transactionLog || []), ...(remote.transactionLog || [])];
-        
+
         // Map most recent action timestamp for every entityID
-        const deletionMap = new Map<string, number>(); 
+        const deletionMap = new Map<string, number>();
         const restoreMap = new Map<string, number>();
 
         combinedLogs.forEach((log: TransactionLogEntry) => {
@@ -368,15 +371,15 @@ class SyncService {
         const mergeArrays = (localArr: any[], remoteArr: any[], entityName: string) => {
             currentStep++;
             this.updateProgress(`Syncing ${entityName}...`, 10 + (currentStep / totalSteps * 80));
-            
+
             if (!Array.isArray(localArr)) localArr = [];
             if (!Array.isArray(remoteArr)) remoteArr = [];
-            
+
             const map = new Map();
-            
+
             // Add local items
             localArr.forEach(item => map.set(item.id, item));
-            
+
             // Add/Overwrite with remote items
             remoteArr.forEach(item => {
                 if (!map.has(item.id)) {
@@ -417,24 +420,24 @@ class SyncService {
 
         merged.invoices = mergeArrays(local.invoices, remote.invoices, 'Invoices');
         merged.bills = mergeArrays(local.bills, remote.bills, 'Bills');
-        
+
         merged.projectStaff = mergeArrays(local.projectStaff, remote.projectStaff, 'Staff');
         merged.rentalStaff = mergeArrays(local.rentalStaff, remote.rentalStaff, 'Staff');
-        
+
         merged.projectPayslips = mergeArrays(local.projectPayslips, remote.projectPayslips, 'Payslips');
         merged.rentalPayslips = mergeArrays(local.rentalPayslips, remote.rentalPayslips, 'Payslips');
 
         merged.transactions = mergeArrays(local.transactions, remote.transactions, 'Transactions');
-        
+
         merged.budgets = mergeArrays(local.budgets, remote.budgets, 'Budgets');
         merged.recurringInvoiceTemplates = mergeArrays(local.recurringInvoiceTemplates, remote.recurringInvoiceTemplates, 'Recurring Templates');
 
         // --- Merge Configs ---
         this.updateProgress('Finalizing Configuration...', 95);
-        
+
         if (remote.printSettings) merged.printSettings = { ...local.printSettings, ...remote.printSettings };
         if (remote.whatsAppTemplates) merged.whatsAppTemplates = { ...local.whatsAppTemplates, ...remote.whatsAppTemplates };
-        
+
         const mergeSeq = (loc: any, rem: any) => (!rem ? loc : { ...loc, ...rem, nextNumber: Math.max(loc?.nextNumber || 1, rem?.nextNumber || 1) });
         merged.agreementSettings = mergeSeq(local.agreementSettings, remote.agreementSettings);
         merged.projectAgreementSettings = mergeSeq(local.projectAgreementSettings, remote.projectAgreementSettings);
@@ -443,7 +446,7 @@ class SyncService {
 
         if (remote.pmCostPercentage !== undefined) merged.pmCostPercentage = remote.pmCostPercentage;
         if (remote.invoiceHtmlTemplate && remote.invoiceHtmlTemplate.length > (local.invoiceHtmlTemplate?.length || 0)) {
-             merged.invoiceHtmlTemplate = remote.invoiceHtmlTemplate;
+            merged.invoiceHtmlTemplate = remote.invoiceHtmlTemplate;
         }
 
         // Merge Logs (Union + Sort)

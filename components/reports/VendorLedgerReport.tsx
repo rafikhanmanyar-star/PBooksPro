@@ -1,16 +1,22 @@
 
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { ContactType, TransactionType, InvoiceStatus } from '../../types';
+import { ContactType, TransactionType, InvoiceStatus, Bill, Transaction } from '../../types';
 import Card from '../ui/Card';
+import Button from '../ui/Button';
+import Input from '../ui/Input';
 import ComboBox from '../ui/ComboBox';
+import DatePicker from '../ui/DatePicker';
+import Modal from '../ui/Modal';
+import InvoiceBillForm from '../invoices/InvoiceBillForm';
+import TransactionForm from '../transactions/TransactionForm';
 import { CURRENCY, ICONS } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
-import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import { formatDate } from '../../utils/dateUtils';
-import Button from '../ui/Button';
+
+type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 
 interface VendorLedgerRow {
     id: string;
@@ -21,6 +27,8 @@ interface VendorLedgerRow {
     billAmount: number; // Credit (Payable increases)
     paidAmount: number; // Debit (Payable decreases)
     balance: number;
+    billId?: string; // Bill ID if this row represents a bill
+    transactionId?: string; // Transaction ID if this row represents a payment
 }
 
 interface VendorLedgerReportProps {
@@ -33,15 +41,9 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
     const { state } = useAppContext();
     
     // Filters
-    const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
-    const [startDate, setStartDate] = useState(() => {
-        const now = new Date();
-        return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    });
-    const [endDate, setEndDate] = useState(() => {
-        const now = new Date();
-        return new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-    });
+    const [dateRange, setDateRange] = useState<DateRangeOption>('all');
+    const [startDate, setStartDate] = useState('2000-01-01');
+    const [endDate, setEndDate] = useState('2100-12-31');
     
     const [selectedVendorId, setSelectedVendorId] = useState<string>('all');
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
@@ -50,12 +52,16 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
     // Sorting
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
 
+    // Editing state
+    const [billToEdit, setBillToEdit] = useState<Bill | null>(null);
+    const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
+
     // Select Lists
     const vendors = useMemo(() => state.contacts.filter(c => c.type === ContactType.VENDOR), [state.contacts]);
     const vendorItems = useMemo(() => [{ id: 'all', name: 'All Vendors' }, ...vendors], [vendors]);
     const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
 
-    const handleRangeChange = (option: ReportDateRange) => {
+    const handleRangeChange = (option: DateRangeOption) => {
         setDateRange(option);
         const now = new Date();
         
@@ -90,7 +96,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
 
-        const items: { date: string, vendorId: string, particulars: string, bill: number, paid: number, buildingName: string }[] = [];
+        const items: { date: string, vendorId: string, particulars: string, bill: number, paid: number, buildingName: string, billId?: string, transactionId?: string }[] = [];
 
         // Helper to resolve building
         const getBuildingName = (buildingId?: string, propertyId?: string) => {
@@ -112,7 +118,22 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
         };
 
         // 1. Bills (Credit - Liability Increases)
+        // First, create a map of bills by ID to ensure we only process the latest version of each bill
+        // This prevents duplicates when bills are edited (updated bills should replace old entries, not create new ones)
+        const billsMap = new Map<string, typeof state.bills[0]>();
         state.bills.forEach(bill => {
+            // If bill ID already exists, keep the latest one (assuming later in array = more recent)
+            // In practice, UPDATE_BILL should replace the old bill, but this ensures we handle edge cases
+            if (!billsMap.has(bill.id)) {
+                billsMap.set(bill.id, bill);
+            } else {
+                // If duplicate exists, use the one that appears later (more recent)
+                billsMap.set(bill.id, bill);
+            }
+        });
+
+        // Process unique bills only
+        billsMap.forEach(bill => {
             const date = new Date(bill.issueDate);
             if (date >= start && date <= end) {
                 // Filter by context
@@ -129,7 +150,8 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                     particulars: `Bill #${bill.billNumber} (${bill.description || '-'})`,
                     bill: bill.amount,
                     paid: 0,
-                    buildingName: getBuildingName(bill.buildingId, bill.propertyId)
+                    buildingName: getBuildingName(bill.buildingId, bill.propertyId),
+                    billId: bill.id // Store bill ID for reference
                 });
             }
         });
@@ -155,7 +177,8 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                             particulars: tx.description || 'Payment',
                             bill: 0,
                             paid: tx.amount,
-                            buildingName: getBuildingName(tx.buildingId, tx.propertyId)
+                            buildingName: getBuildingName(tx.buildingId, tx.propertyId),
+                            transactionId: tx.id // Store transaction ID for reference
                         });
                     }
                 }
@@ -192,7 +215,9 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                 billAmount: item.bill,
                 paidAmount: item.paid,
                 balance: runningBalance,
-                buildingName: item.buildingName
+                buildingName: item.buildingName,
+                billId: item.billId,
+                transactionId: item.transactionId
             };
         }).filter((r): r is VendorLedgerRow => r !== null);
 
@@ -308,43 +333,92 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
             `}</style>
             {/* Custom Toolbar */}
             <div className="flex-shrink-0">
-                <ReportToolbar
-                    startDate={startDate}
-                    endDate={endDate}
-                    onDateChange={handleCustomDateChange}
-                    searchQuery={searchQuery}
-                    onSearchChange={setSearchQuery}
-                    onExport={handleExport}
-                    onPrint={handlePrint}
-                    showDateFilterPills={true}
-                    activeDateRange={dateRange}
-                    onRangeChange={handleRangeChange}
-                >
-                    {/* Show Building Filter only for Rental or General context */}
-                    {context !== 'Project' && (
+                {/* Custom Toolbar - All controls in first row */}
+                <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm no-print">
+                    {/* First Row: Dates, Filters, and Actions */}
+                    <div className="flex flex-wrap items-center gap-3">
+                        {/* Date Range Pills */}
+                        <div className="flex bg-slate-100 p-1 rounded-lg flex-shrink-0 overflow-x-auto">
+                            {(['all', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
+                                <button
+                                    key={opt}
+                                    onClick={() => handleRangeChange(opt)}
+                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap capitalize ${
+                                        dateRange === opt 
+                                        ? 'bg-white text-accent shadow-sm font-bold' 
+                                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
+                                    }`}
+                                >
+                                    {opt === 'all' ? 'Total' : opt === 'thisMonth' ? 'This Month' : opt === 'lastMonth' ? 'Last Month' : 'Custom'}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Custom Date Pickers */}
+                        {dateRange === 'custom' && (
+                            <div className="flex items-center gap-2 animate-fade-in">
+                                <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(d.toISOString().split('T')[0], endDate)} />
+                                <span className="text-slate-400">-</span>
+                                <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, d.toISOString().split('T')[0])} />
+                            </div>
+                        )}
+
+                        {/* Show Building Filter only for Rental or General context */}
+                        {context !== 'Project' && (
+                            <div className="w-48 flex-shrink-0">
+                                <ComboBox 
+                                    items={buildings} 
+                                    selectedId={selectedBuildingId} 
+                                    onSelect={(item) => setSelectedBuildingId(item?.id || 'all')} 
+                                    allowAddNew={false}
+                                    placeholder="Filter Building"
+                                />
+                            </div>
+                        )}
+                        
+                        {/* Vendor Filter */}
                         <div className="w-48 flex-shrink-0">
                             <ComboBox 
-                                label="Building"
-                                items={buildings} 
-                                selectedId={selectedBuildingId} 
-                                onSelect={(item) => setSelectedBuildingId(item?.id || 'all')} 
+                                items={vendorItems} 
+                                selectedId={selectedVendorId} 
+                                onSelect={(item) => setSelectedVendorId(item?.id || 'all')} 
                                 allowAddNew={false}
-                                placeholder="All Buildings"
+                                placeholder="Filter Vendor"
                             />
                         </div>
-                    )}
-                    
-                    <div className="w-48 flex-shrink-0">
-                        <ComboBox 
-                            label="Vendor"
-                            items={vendorItems} 
-                            selectedId={selectedVendorId} 
-                            onSelect={(item) => setSelectedVendorId(item?.id || 'all')} 
-                            allowAddNew={false}
-                            placeholder="All Vendors"
-                        />
+
+                        {/* Search Input */}
+                        <div className="relative flex-grow min-w-[180px]">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                <span className="h-4 w-4">{ICONS.search}</span>
+                            </div>
+                            <Input 
+                                placeholder="Search report..." 
+                                value={searchQuery} 
+                                onChange={(e) => setSearchQuery(e.target.value)} 
+                                className="pl-9 py-1.5 text-sm"
+                            />
+                            {searchQuery && (
+                                <button 
+                                    onClick={() => setSearchQuery('')} 
+                                    className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
+                                >
+                                    <div className="w-4 h-4">{ICONS.x}</div>
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Actions Group */}
+                        <div className="flex items-center gap-2 ml-auto">
+                            <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
+                                <div className="w-4 h-4 mr-1">{ICONS.export}</div> Export
+                            </Button>
+                            <Button variant="secondary" size="sm" onClick={handlePrint} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
+                                <div className="w-4 h-4 mr-1">{ICONS.print}</div> Print
+                            </Button>
+                        </div>
                     </div>
-                </ReportToolbar>
+                </div>
             </div>
 
             <div className="flex-grow overflow-y-auto printable-area min-h-0">
@@ -372,17 +446,32 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
-                                {reportData.map(item => (
-                                    <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                                        <td className="px-3 py-2 whitespace-nowrap text-slate-700">{formatDate(item.date)}</td>
-                                        <td className="px-3 py-2 whitespace-normal break-words text-slate-800">{item.vendorName}</td>
-                                        {context !== 'Project' && <td className="px-3 py-2 whitespace-normal break-words text-slate-600 text-xs">{item.buildingName || '-'}</td>}
-                                        <td className="px-3 py-2 max-w-xs whitespace-normal break-words text-slate-500">{item.particulars}</td>
-                                        <td className="px-3 py-2 text-right text-slate-700 whitespace-nowrap">{item.billAmount > 0 ? `${CURRENCY} ${item.billAmount.toLocaleString()}` : '-'}</td>
-                                        <td className="px-3 py-2 text-right text-success whitespace-nowrap">{item.paidAmount > 0 ? `${CURRENCY} ${item.paidAmount.toLocaleString()}` : '-'}</td>
-                                        <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${item.balance > 0 ? 'text-danger' : 'text-slate-700'}`}>{CURRENCY} {item.balance.toLocaleString()}</td>
-                                    </tr>
-                                ))}
+                                {reportData.map(item => {
+                                    const isClickable = !!(item.billId || item.transactionId);
+                                    return (
+                                        <tr 
+                                            key={item.id} 
+                                            className={`transition-colors ${isClickable ? 'cursor-pointer hover:bg-slate-100' : 'hover:bg-slate-50'}`}
+                                            onClick={() => {
+                                                if (item.billId) {
+                                                    const bill = state.bills.find(b => b.id === item.billId);
+                                                    if (bill) setBillToEdit(bill);
+                                                } else if (item.transactionId) {
+                                                    const transaction = state.transactions.find(t => t.id === item.transactionId);
+                                                    if (transaction) setTransactionToEdit(transaction);
+                                                }
+                                            }}
+                                        >
+                                            <td className="px-3 py-2 whitespace-nowrap text-slate-700">{formatDate(item.date)}</td>
+                                            <td className="px-3 py-2 whitespace-normal break-words text-slate-800">{item.vendorName}</td>
+                                            {context !== 'Project' && <td className="px-3 py-2 whitespace-normal break-words text-slate-600 text-xs">{item.buildingName || '-'}</td>}
+                                            <td className="px-3 py-2 max-w-xs whitespace-normal break-words text-slate-500">{item.particulars}</td>
+                                            <td className="px-3 py-2 text-right text-slate-700 whitespace-nowrap">{item.billAmount > 0 ? `${CURRENCY} ${item.billAmount.toLocaleString()}` : '-'}</td>
+                                            <td className="px-3 py-2 text-right text-success whitespace-nowrap">{item.paidAmount > 0 ? `${CURRENCY} ${item.paidAmount.toLocaleString()}` : '-'}</td>
+                                            <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${item.balance > 0 ? 'text-danger' : 'text-slate-700'}`}>{CURRENCY} {item.balance.toLocaleString()}</td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                             <tfoot className="bg-slate-50 font-bold sticky bottom-0 shadow-[0_-1px_3px_rgba(0,0,0,0.1)]">
                                 <tr>
@@ -404,6 +493,39 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                     <ReportFooter />
                 </Card>
             </div>
+
+            {/* Edit Bill Modal */}
+            <Modal 
+                isOpen={!!billToEdit} 
+                onClose={() => setBillToEdit(null)} 
+                title={billToEdit ? `Edit Bill #${billToEdit.billNumber}` : "Edit Bill"}
+            >
+                {billToEdit && (
+                    <InvoiceBillForm
+                        type="bill"
+                        itemToEdit={billToEdit}
+                        onClose={() => setBillToEdit(null)}
+                        projectContext={context === 'Project'}
+                        rentalContext={context === 'Rental'}
+                    />
+                )}
+            </Modal>
+
+            {/* Edit Transaction Modal */}
+            <Modal 
+                isOpen={!!transactionToEdit} 
+                onClose={() => setTransactionToEdit(null)} 
+                title="Edit Payment"
+            >
+                {transactionToEdit && (
+                    <TransactionForm
+                        transactionToEdit={transactionToEdit}
+                        transactionTypeForNew={null}
+                        onClose={() => setTransactionToEdit(null)}
+                        onShowDeleteWarning={() => {}}
+                    />
+                )}
+            </Modal>
         </div>
     );
 };

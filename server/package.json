@@ -1,0 +1,36 @@
+{
+  "name": "pbookspro-api",
+  "version": "1.0.0",
+  "description": "PBooksPro Backend API Server",
+  "type": "module",
+  "main": "api/index.js",
+  "scripts": {
+    "dev": "tsx watch api/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node api/index.js",
+    "migrate": "tsx migrations/migrate-to-postgresql.ts",
+    "check-db": "tsx scripts/check-database-connection.ts",
+    "create-admin": "tsx scripts/create-admin-user.ts",
+    "reset-admin": "tsx scripts/reset-admin-password.ts",
+    "test-admin": "tsx scripts/test-admin-login.ts"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "pg": "^8.11.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "@types/pg": "^8.10.9",
+    "@types/cors": "^2.8.17",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.5",
+    "tsx": "^4.7.0",
+    "typescript": "~5.8.2"
+  }
+}
+

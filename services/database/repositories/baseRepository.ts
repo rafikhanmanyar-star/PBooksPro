@@ -22,10 +22,33 @@ export abstract class BaseRepository<T> {
     }
 
     /**
-     * Find all records
+     * Find all records with options
      */
-    findAll(): T[] {
-        const results = this.db.query<Record<string, any>>(`SELECT * FROM ${this.tableName}`);
+    findAll(options: {
+        limit?: number;
+        offset?: number;
+        orderBy?: string;
+        orderDir?: 'ASC' | 'DESC';
+        condition?: string;
+        params?: any[];
+    } = {}): T[] {
+        const { limit, offset, orderBy, orderDir = 'DESC', condition, params = [] } = options;
+
+        let sql = `SELECT * FROM ${this.tableName}`;
+        if (condition) {
+            sql += ` WHERE ${condition}`;
+        }
+        if (orderBy) {
+            sql += ` ORDER BY ${camelToSnake(orderBy)} ${orderDir}`;
+        }
+        if (limit !== undefined) {
+            sql += ` LIMIT ${limit}`;
+        }
+        if (offset !== undefined) {
+            sql += ` OFFSET ${offset}`;
+        }
+
+        const results = this.db.query<Record<string, any>>(sql, params);
         return results.map(row => dbToObjectFormat<T>(row));
     }
 
@@ -55,10 +78,18 @@ export abstract class BaseRepository<T> {
      * Lazily load table columns to filter out non-existent fields
      */
     private ensureTableColumns(): Set<string> {
-        if (this.tableColumns) return this.tableColumns;
+        // Always refresh column cache to ensure we have latest columns after schema changes
+        // This is critical - if columns are added after cache is created, we need fresh data
         const rows = this.db.query<{ name: string }>(`PRAGMA table_info(${this.tableName})`);
         this.tableColumns = new Set(rows.map(r => r.name));
         return this.tableColumns;
+    }
+
+    /**
+     * Clear column cache (useful after schema changes)
+     */
+    clearColumnCache(): void {
+        this.tableColumns = null;
     }
 
     /**
@@ -68,7 +99,7 @@ export abstract class BaseRepository<T> {
         try {
             const dbData = objectToDbFormat(data as Record<string, any>);
             const columnsSet = this.ensureTableColumns();
-            
+
             // Debug logging for contacts to diagnose column mapping issues
             if (this.tableName === 'contacts') {
                 console.log('🔍 Inserting contact:', {
@@ -78,7 +109,7 @@ export abstract class BaseRepository<T> {
                     dbDataKeys: Object.keys(dbData)
                 });
             }
-            
+
             const keys = Object.keys(dbData)
                 .filter(k => dbData[k] !== undefined && columnsSet.has(k));
             const values = keys.map(k => dbData[k]);
@@ -104,14 +135,14 @@ export abstract class BaseRepository<T> {
                     `INSERT INTO ${this.tableName} (${columns}) VALUES (${placeholders})`,
                     values
                 );
-                
+
                 // Debug logging for contacts
                 if (this.tableName === 'contacts') {
                     console.log('✅ Contact insert SQL executed successfully');
                     // Don't verify inside transaction - it might cause issues
                     // Verification will happen after transaction commits
                 }
-                
+
                 if (!this.db.isInTransaction()) {
                     this.db.save();
                 }
@@ -121,12 +152,12 @@ export abstract class BaseRepository<T> {
                 console.error(`❌ SQL execution error for ${this.tableName}:`, executeError);
                 console.error(`SQL: INSERT INTO ${this.tableName} (${columns}) VALUES (${placeholders})`);
                 console.error(`Values:`, values);
-                
+
                 // If it's a transaction error, the transaction might already be rolled back
                 if (errorMsg.includes('no transaction') || errorMsg.includes('transaction')) {
                     console.error('⚠️ Transaction may have been auto-rolled back by sql.js');
                 }
-                
+
                 throw executeError; // Re-throw so transaction can handle rollback
             }
         } catch (error) {
@@ -211,11 +242,11 @@ export abstract class BaseRepository<T> {
     saveAll(records: T[]): void {
         try {
             console.log(`🔄 saveAll called for ${this.tableName} with ${records.length} records`);
-            
+
             // Delete all existing records
             this.db.execute(`DELETE FROM ${this.tableName}`);
             console.log(`🗑️ Deleted all existing records from ${this.tableName}`);
-            
+
             // Insert all new records
             if (records.length > 0) {
                 console.log(`📥 Starting to insert ${records.length} records into ${this.tableName}`);
@@ -230,10 +261,10 @@ export abstract class BaseRepository<T> {
                         throw insertError; // Re-throw to stop the process and rollback transaction
                     }
                 });
-                
+
                 // Log successful save (for debugging)
                 console.log(`✅ Completed inserting ${records.length} records to ${this.tableName}`);
-                
+
                 // Verify the save for contacts (after transaction commits)
                 if (this.tableName === 'contacts' && records.length > 0) {
                     // Note: Verification happens after transaction commits in appStateRepository

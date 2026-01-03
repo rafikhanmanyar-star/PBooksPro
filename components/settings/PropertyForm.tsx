@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Property, Contact, ContactType, Building, InvoiceType } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -10,6 +10,7 @@ import ContactForm from './ContactForm';
 import BuildingForm from './BuildingForm';
 import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
+import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
 
 interface PropertyFormProps {
     onSubmit: (property: Omit<Property, 'id'>) => void;
@@ -21,14 +22,16 @@ interface PropertyFormProps {
     properties: Property[];
 }
 
-const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelete, propertyToEdit, contacts, buildings }) => {
+const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelete, propertyToEdit, contacts, buildings, properties }) => {
     const { state, dispatch } = useAppContext();
     const { showAlert } = useNotification();
+    const entityFormModal = useEntityFormModal();
     const [name, setName] = useState(propertyToEdit?.name || '');
     const [ownerId, setOwnerId] = useState(propertyToEdit?.ownerId || '');
     const [buildingId, setBuildingId] = useState(propertyToEdit?.buildingId || '');
     const [description, setDescription] = useState(propertyToEdit?.description || '');
     const [monthlyServiceCharge, setMonthlyServiceCharge] = useState(propertyToEdit?.monthlyServiceCharge?.toString() || '');
+    const [nameError, setNameError] = useState('');
 
     const [addModalType, setAddModalType] = useState<string | null>(null);
     const [newItemName, setNewItemName] = useState('');
@@ -36,8 +39,26 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelet
     // Allow both Owner and Client types for the "Global Owner" concept
     const owners = contacts.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
     
+    // Check for duplicate property names
+    useEffect(() => {
+        if (!name.trim()) {
+            setNameError('Property name is required.');
+            return;
+        }
+        const duplicate = properties.find(p => p.name.toLowerCase().trim() === name.toLowerCase().trim() && p.id !== propertyToEdit?.id);
+        if (duplicate) {
+            setNameError('A property with this name already exists.');
+        } else {
+            setNameError('');
+        }
+    }, [name, properties, propertyToEdit]);
+    
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (nameError) {
+            await showAlert("Please fix the errors before submitting.");
+            return;
+        }
         if (!ownerId) { await showAlert("Owner is required."); return; }
         if (!buildingId) { await showAlert("Building is required."); return; }
         onSubmit({ 
@@ -76,20 +97,35 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelet
     return (
         <>
             <form onSubmit={handleSubmit} className="space-y-4">
-                <Input label="Property Name (e.g., Unit 101)" value={name} onChange={e => setName(e.target.value)} required autoFocus/>
+                <div>
+                    <Input label="Property Name (e.g., Unit 101)" value={name} onChange={e => setName(e.target.value)} required autoFocus/>
+                    {nameError && <p className="text-red-500 text-xs mt-1">{nameError}</p>}
+                </div>
                 <ComboBox 
                     label="Owner" 
                     items={owners} 
                     selectedId={ownerId} 
-                    onSelect={(item, newName) => newName ? handleCreateNew('OWNER', newName) : setOwnerId(item?.id || '')}
+                    onSelect={(item) => setOwnerId(item?.id || '')}
                     placeholder="Search or add new owner..."
+                    entityType="contact"
+                    onAddNew={(entityType, name) => {
+                        entityFormModal.openForm('contact', name, ContactType.OWNER, undefined, (newId) => {
+                            setOwnerId(newId);
+                        });
+                    }}
                 />
                 <ComboBox 
                     label="Building" 
                     items={buildings} 
                     selectedId={buildingId} 
-                    onSelect={(item, newName) => newName ? handleCreateNew('BUILDING', newName) : setBuildingId(item?.id || '')}
+                    onSelect={(item) => setBuildingId(item?.id || '')}
                     placeholder="Search or add new building..."
+                    entityType="building"
+                    onAddNew={(entityType, name) => {
+                        entityFormModal.openForm('building', name, undefined, undefined, (newId) => {
+                            setBuildingId(newId);
+                        });
+                    }}
                 />
                 <Input 
                     label="Monthly Service Charge (for Rental Auto-Run)" 
@@ -131,6 +167,15 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelet
                     initialName={newItemName}
                 />
             </Modal>
+            <EntityFormModal
+                isOpen={entityFormModal.isFormOpen}
+                formType={entityFormModal.formType}
+                initialName={entityFormModal.initialName}
+                contactType={entityFormModal.contactType}
+                categoryType={entityFormModal.categoryType}
+                onClose={entityFormModal.closeForm}
+                onSubmit={entityFormModal.handleSubmit}
+            />
         </>
     );
 };

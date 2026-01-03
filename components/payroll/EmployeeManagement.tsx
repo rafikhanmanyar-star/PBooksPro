@@ -17,7 +17,7 @@ const EmployeeManagement: React.FC = () => {
     const { showToast, showConfirm } = useNotification();
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<EmployeeStatus | 'All'>('All');
-    const [projectFilter, setProjectFilter] = useState<string>('all');
+    const [projectFilter, setProjectFilter] = useState<string>(state.defaultProjectId || 'all');
     const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
     const [isFormModalOpen, setIsFormModalOpen] = useState(false);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);

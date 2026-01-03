@@ -47,7 +47,7 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
                             ✓
                         </div>
                         <h3 className="text-xl font-bold">Registration Successful!</h3>
-                        <p className="text-slate-600 mt-2">Thank you for purchasing My Accountant.</p>
+                        <p className="text-slate-600 mt-2">Thank you for purchasing PBooksPro.</p>
                     </div>
                 ) : (
                     <form onSubmit={handleSubmit} className="space-y-6">

@@ -10,13 +10,15 @@ import { useNotification } from '../../context/NotificationContext';
 import InstallmentConfigForm from '../settings/InstallmentConfigForm';
 import Modal from '../ui/Modal';
 import { ICONS } from '../../constants';
+import { getFormBackgroundColorStyle } from '../../utils/formColorUtils';
 
 interface ProjectAgreementFormProps {
     onClose: () => void;
     agreementToEdit?: ProjectAgreement | null;
+    onCancelRequest?: (agreement: ProjectAgreement) => void;
 }
 
-const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, agreementToEdit }) => {
+const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, agreementToEdit, onCancelRequest }) => {
     const { state, dispatch } = useAppContext();
     const { showConfirm, showToast, showAlert } = useNotification();
     const { projectAgreementSettings, projectInvoiceSettings } = state;
@@ -50,9 +52,30 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
 
     const [agreementNumber, setAgreementNumber] = useState(agreementToEdit?.agreementNumber || generateNextAgreementNumber());
     const [clientId, setClientId] = useState(agreementToEdit?.clientId || '');
-    const [projectId, setProjectId] = useState(agreementToEdit?.projectId || '');
+    const [projectId, setProjectId] = useState(agreementToEdit?.projectId || state.defaultProjectId || '');
     const [unitIds, setUnitIds] = useState<string[]>(agreementToEdit?.unitIds || []);
-    const [issueDate, setIssueDate] = useState(agreementToEdit?.issueDate ? new Date(agreementToEdit.issueDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+    
+    // Get initial date: use preserved date if option is enabled and creating new agreement
+    const getInitialIssueDate = () => {
+        if (agreementToEdit?.issueDate) {
+            return new Date(agreementToEdit.issueDate).toISOString().split('T')[0];
+        }
+        if (state.enableDatePreservation && state.lastPreservedDate && !agreementToEdit) {
+            return state.lastPreservedDate;
+        }
+        return new Date().toISOString().split('T')[0];
+    };
+    
+    const [issueDate, setIssueDate] = useState(getInitialIssueDate());
+    
+    // Save date to preserved date when changed (if option is enabled)
+    const handleIssueDateChange = (date: Date) => {
+        const dateStr = date.toISOString().split('T')[0];
+        setIssueDate(dateStr);
+        if (state.enableDatePreservation && !agreementToEdit) {
+            dispatch({ type: 'UPDATE_PRESERVED_DATE', payload: dateStr });
+        }
+    };
     
     const [listPrice, setListPrice] = useState(agreementToEdit?.listPrice?.toString() || '0');
     const [customerDiscount, setCustomerDiscount] = useState(agreementToEdit?.customerDiscount?.toString() || '0');
@@ -65,6 +88,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
 
     const [description, setDescription] = useState(agreementToEdit?.description || '');
     const [agreementNumberError, setAgreementNumberError] = useState('');
+    const [status, setStatus] = useState<ProjectAgreementStatus>(agreementToEdit?.status || ProjectAgreementStatus.ACTIVE);
 
     // Category Mapping State
     const [listPriceCatId, setListPriceCatId] = useState(agreementToEdit?.listPriceCategoryId || '');
@@ -341,6 +365,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
             miscDiscountCategoryId: miscDiscCatId,
             sellingPriceCategoryId: sellingPriceCatId,
             rebateCategoryId: rebateCatId,
+            status: status,
         };
 
         if (agreementToEdit) {
@@ -577,16 +602,20 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
         );
     }
 
+    const formBackgroundStyle = useMemo(() => {
+        return getFormBackgroundColorStyle(projectId, undefined, state);
+    }, [projectId, state]);
+
     return (
         <>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4" style={formBackgroundStyle}>
                 {/* Top Row: Agreement ID, Date, Owner, Project - 4 cols on lg */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
                         <Input label="Agreement ID" value={agreementNumber} onChange={e => setAgreementNumber(e.target.value)} required autoFocus/>
                         {agreementNumberError && <p className="text-red-500 text-xs mt-1">{agreementNumberError}</p>}
                     </div>
-                    <DatePicker label="Date" value={issueDate} onChange={d => setIssueDate(d.toISOString().split('T')[0])} required />
+                    <DatePicker label="Date" value={issueDate} onChange={handleIssueDateChange} required />
                     <ComboBox label="Owner" items={clients} selectedId={clientId} onSelect={item => setClientId(item?.id || '')} placeholder="Select an owner" required allowAddNew={false} />
                     <ComboBox label="Project" items={state.projects} selectedId={projectId} onSelect={item => { setProjectId(item?.id || ''); setUnitIds([]); }} placeholder="Select a project" required allowAddNew={false}/>
                 </div>
@@ -661,12 +690,45 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                      </div>
                 </div>
 
+                {/* Status Field - Only for editing existing agreements */}
+                {agreementToEdit && (
+                    <div className="p-3 border rounded-lg bg-slate-50">
+                        <label className="block text-sm font-medium text-slate-600 mb-2">Agreement Status</label>
+                        <select
+                            value={status}
+                            onChange={(e) => setStatus(e.target.value as ProjectAgreementStatus)}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        >
+                            <option value={ProjectAgreementStatus.ACTIVE}>Active</option>
+                            <option value={ProjectAgreementStatus.CANCELLED}>Cancelled</option>
+                            <option value={ProjectAgreementStatus.COMPLETED}>Completed</option>
+                        </select>
+                        {status === ProjectAgreementStatus.CANCELLED && agreementToEdit.status !== ProjectAgreementStatus.CANCELLED && (
+                            <p className="text-xs text-amber-600 mt-2">
+                                ⚠️ Changing status to Cancelled will require cancellation details. Use the "Cancel Agreement" button below for proper cancellation processing.
+                            </p>
+                        )}
+                    </div>
+                )}
+
                 {/* Actions */}
                 <div className="flex justify-between items-center pt-2">
                     <div>
                         {agreementToEdit && <Button type="button" variant="danger" onClick={handleDelete}>Delete</Button>}
                     </div>
                     <div className="flex gap-2">
+                        {agreementToEdit && agreementToEdit.status === ProjectAgreementStatus.ACTIVE && onCancelRequest && (
+                            <Button 
+                                type="button" 
+                                variant="danger" 
+                                onClick={() => {
+                                    onCancelRequest(agreementToEdit);
+                                }}
+                                className="bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
+                            >
+                                Cancel Agreement
+                            </Button>
+                        )}
                         {agreementToEdit && (
                             <Button type="button" variant="secondary" onClick={handleManualGenerate} className="bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100">
                                 Create Installments

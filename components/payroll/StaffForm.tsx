@@ -27,9 +27,9 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, staffToEdit }) => {
     const [email, setEmail] = useState('');
     const [joiningDate, setJoiningDate] = useState(new Date().toISOString().split('T')[0]);
     const [status, setStatus] = useState<'Active' | 'Inactive' | 'Resigned' | 'Terminated'>('Active');
-    
+
     // --- Assignment State ---
-    const [projectId, setProjectId] = useState('');
+    const [projectId, setProjectId] = useState(staffToEdit?.projectId || state.defaultProjectId || '');
     const [buildingId, setBuildingId] = useState('');
 
     // --- Salary State ---
@@ -54,7 +54,7 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, staffToEdit }) => {
             setProjectId(staffToEdit.projectId || '');
             setBuildingId(staffToEdit.buildingId || '');
             setBasicSalary(staffToEdit.basicSalary.toString());
-            
+
             if (staffToEdit.salaryStructure) {
                 setSalaryStructure(staffToEdit.salaryStructure.map(s => ({
                     id: s.componentId,
@@ -82,14 +82,14 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, staffToEdit }) => {
             }
         });
     };
-    
+
     const removeComponent = (id: string) => {
         setSalaryStructure(prev => prev.filter(p => p.id !== id));
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        
+
         if (!projectId && !buildingId) {
             await showAlert('Please assign the staff member to either a Project or a Building.');
             setActiveTab('Assignment');
@@ -100,7 +100,7 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, staffToEdit }) => {
             name,
             type: ContactType.STAFF,
             description: `Staff - ${designation}`,
-            contactNo: '' // TODO: Add phone field
+            contactNo: ''
         };
 
         let staffId = staffToEdit?.id;
@@ -139,14 +139,14 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, staffToEdit }) => {
         };
 
         const isProject = !!projectId;
-        const action = staffToEdit 
-            ? (isProject ? 'UPDATE_PROJECT_STAFF' : 'UPDATE_RENTAL_STAFF') 
+        const action = staffToEdit
+            ? (isProject ? 'UPDATE_PROJECT_STAFF' : 'UPDATE_RENTAL_STAFF')
             : (isProject ? 'ADD_PROJECT_STAFF' : 'ADD_RENTAL_STAFF');
-            
+
         // If moved, delete from old
         if (staffToEdit) {
-             if (staffToEdit.projectId && !projectId) dispatch({ type: 'DELETE_PROJECT_STAFF', payload: staffId });
-             if (staffToEdit.buildingId && !buildingId) dispatch({ type: 'DELETE_RENTAL_STAFF', payload: staffId });
+            if (staffToEdit.projectId && !projectId) dispatch({ type: 'DELETE_PROJECT_STAFF', payload: staffId });
+            if (staffToEdit.buildingId && !buildingId) dispatch({ type: 'DELETE_RENTAL_STAFF', payload: staffId });
         }
 
         dispatch({ type: action, payload: staffPayload });
@@ -171,7 +171,7 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, staffToEdit }) => {
     return (
         <form onSubmit={handleSubmit} className="flex flex-col h-[80vh]">
             <div className="flex-shrink-0 mb-4">
-                 <Tabs tabs={['Profile', 'Assignment', 'Salary', 'Bank']} activeTab={activeTab} onTabClick={setActiveTab} />
+                <Tabs tabs={['Profile', 'Assignment', 'Salary', 'Bank']} activeTab={activeTab} onTabClick={setActiveTab} />
             </div>
 
             <div className="flex-grow overflow-y-auto p-1">
@@ -197,23 +197,23 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, staffToEdit }) => {
                 {activeTab === 'Assignment' && (
                     <div className="space-y-6">
                         <div className="p-4 bg-blue-50 rounded border border-blue-100">
-                             <p className="text-sm text-blue-800 mb-4">Assign staff to a cost center. This determines where payroll costs are allocated.</p>
-                             <div className="space-y-4">
-                                <ComboBox 
-                                    label="Project" 
-                                    items={state.projects} 
-                                    selectedId={projectId} 
-                                    onSelect={item => { setProjectId(item?.id || ''); setBuildingId(''); }} 
+                            <p className="text-sm text-blue-800 mb-4">Assign staff to a cost center. This determines where payroll costs are allocated.</p>
+                            <div className="space-y-4">
+                                <ComboBox
+                                    label="Project"
+                                    items={state.projects}
+                                    selectedId={projectId}
+                                    onSelect={item => { setProjectId(item?.id || ''); setBuildingId(''); }}
                                     placeholder="Select Project"
                                     allowAddNew={false}
                                     disabled={!!buildingId}
                                 />
                                 <div className="text-center text-xs text-slate-400 uppercase font-bold">- OR -</div>
-                                <ComboBox 
-                                    label="Building" 
-                                    items={state.buildings} 
-                                    selectedId={buildingId} 
-                                    onSelect={item => { setBuildingId(item?.id || ''); setProjectId(''); }} 
+                                <ComboBox
+                                    label="Building"
+                                    items={state.buildings}
+                                    selectedId={buildingId}
+                                    onSelect={item => { setBuildingId(item?.id || ''); setProjectId(''); }}
                                     placeholder="Select Building"
                                     allowAddNew={false}
                                     disabled={!!projectId}
@@ -225,42 +225,42 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, staffToEdit }) => {
 
                 {activeTab === 'Salary' && (
                     <div className="space-y-6">
-                         <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg flex justify-between items-center">
-                             <div>
-                                 <span className="text-sm text-slate-500 block">Gross Salary (Est)</span>
-                                 <span className="text-2xl font-bold text-slate-800">{CURRENCY} {grossSalary.toLocaleString()}</span>
-                             </div>
-                         </div>
-                         
-                         <Input label="Basic Salary" type="number" value={basicSalary} onChange={e => setBasicSalary(e.target.value)} required />
-                         
-                         <div className="space-y-3">
-                             <div className="flex justify-between items-center border-b pb-2">
-                                 <h4 className="font-bold text-slate-700">Components</h4>
-                             </div>
-                             {state.salaryComponents.filter(c => !c.isSystem).map(comp => {
-                                 const current = salaryStructure.find(s => s.id === comp.id) || { id: comp.id, amount: '', calcType: 'Fixed' };
-                                 return (
-                                     <div key={comp.id} className="grid grid-cols-12 gap-2 items-center">
-                                         <div className="col-span-4 text-sm font-medium text-slate-700">{comp.name}</div>
-                                         <div className="col-span-4">
-                                             <Select value={current.calcType} onChange={(e) => handleComponentChange(comp.id, 'calcType', e.target.value)} className="py-1 text-xs">
-                                                 <option value="Fixed">Fixed Amount</option>
-                                                 <option value="Percentage of Basic">% of Basic</option>
-                                             </Select>
-                                         </div>
-                                         <div className="col-span-4">
-                                              <Input 
-                                                value={current.amount} 
-                                                onChange={e => handleComponentChange(comp.id, 'amount', e.target.value)} 
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg flex justify-between items-center">
+                            <div>
+                                <span className="text-sm text-slate-500 block">Gross Salary (Est)</span>
+                                <span className="text-2xl font-bold text-slate-800">{CURRENCY} {grossSalary.toLocaleString()}</span>
+                            </div>
+                        </div>
+
+                        <Input label="Basic Salary" type="number" value={basicSalary} onChange={e => setBasicSalary(e.target.value)} required />
+
+                        <div className="space-y-3">
+                            <div className="flex justify-between items-center border-b pb-2">
+                                <h4 className="font-bold text-slate-700">Components</h4>
+                            </div>
+                            {state.salaryComponents.filter(c => !c.isSystem).map(comp => {
+                                const current = salaryStructure.find(s => s.id === comp.id) || { id: comp.id, amount: '', calcType: 'Fixed' };
+                                return (
+                                    <div key={comp.id} className="grid grid-cols-12 gap-2 items-center">
+                                        <div className="col-span-4 text-sm font-medium text-slate-700">{comp.name}</div>
+                                        <div className="col-span-4">
+                                            <Select value={current.calcType} onChange={(e) => handleComponentChange(comp.id, 'calcType', e.target.value)} className="py-1 text-xs">
+                                                <option value="Fixed">Fixed Amount</option>
+                                                <option value="Percentage of Basic">% of Basic</option>
+                                            </Select>
+                                        </div>
+                                        <div className="col-span-4">
+                                            <Input
+                                                value={current.amount}
+                                                onChange={e => handleComponentChange(comp.id, 'amount', e.target.value)}
                                                 placeholder="0"
                                                 className="py-1 text-right"
-                                              />
-                                         </div>
-                                     </div>
-                                 );
-                             })}
-                         </div>
+                                            />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
                 )}
 

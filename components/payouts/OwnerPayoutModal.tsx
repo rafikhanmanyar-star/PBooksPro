@@ -16,11 +16,14 @@ interface OwnerPayoutModalProps {
     balanceDue: number;
     payoutType?: 'Rent' | 'Security';
     preSelectedBuildingId?: string;
+    transactionToEdit?: Transaction; // Transaction to edit (if provided, modal is in edit mode)
 }
 
-const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, owner, balanceDue, payoutType = 'Rent', preSelectedBuildingId }) => {
+const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, owner, balanceDue, payoutType = 'Rent', preSelectedBuildingId, transactionToEdit }) => {
     const { state, dispatch } = useAppContext();
     const { showAlert, showToast } = useNotification();
+
+    const isEditMode = !!transactionToEdit;
 
     const [amount, setAmount] = useState('0');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -30,8 +33,8 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
     const [notes, setNotes] = useState('');
     const [error, setError] = useState('');
     
-    // Filter for Bank Accounts
-    const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK), [state.accounts]);
+    // Filter for Bank Accounts (exclude Internal Clearing)
+    const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
     
     const buildingsForOwner = useMemo(() => {
         if (!owner) return [];
@@ -44,28 +47,60 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
 
     useEffect(() => {
         if (isOpen) {
-            setAmount(String(balanceDue));
-            setDate(new Date().toISOString().split('T')[0]);
-            const cashAccount = userSelectableAccounts.find(a => a.name === 'Cash');
-            setAccountId(cashAccount?.id || userSelectableAccounts[0]?.id || '');
-            // If preSelectedBuildingId is provided, use it.
-            setBuildingId(preSelectedBuildingId || '');
-            setReference('');
-            setNotes('');
+            if (isEditMode && transactionToEdit) {
+                // Edit mode: pre-fill with transaction data
+                setAmount(String(transactionToEdit.amount));
+                setDate(new Date(transactionToEdit.date).toISOString().split('T')[0]);
+                setAccountId(transactionToEdit.accountId || '');
+                setBuildingId(transactionToEdit.buildingId || preSelectedBuildingId || '');
+                
+                // Extract reference and notes from description
+                const desc = transactionToEdit.description || '';
+                // Try to extract reference (Ref: ...)
+                const refMatch = desc.match(/\(Ref:\s*([^)]+)\)/);
+                if (refMatch) {
+                    setReference(refMatch[1].trim());
+                }
+                // Extract notes (everything after " - " and before " (Ref:" or " [")
+                // Format: "Owner Payout to Name - notes (Ref: ref) [Building]"
+                const notesMatch = desc.match(/-\s*([^-]+?)(?:\s*\(Ref:|$)/);
+                if (notesMatch) {
+                    setNotes(notesMatch[1].trim());
+                } else {
+                    // If no notes pattern, try to extract anything after the main prefix
+                    const prefixMatch = desc.match(/^(?:Owner Payout|Security Deposit Payout)\s+to\s+[^-]+/);
+                    if (prefixMatch) {
+                        const remaining = desc.substring(prefixMatch[0].length).trim();
+                        if (remaining && !remaining.startsWith('(') && !remaining.startsWith('[')) {
+                            setNotes(remaining);
+                        }
+                    }
+                }
+            } else {
+                // Create mode: use defaults
+                setAmount(String(balanceDue));
+                setDate(new Date().toISOString().split('T')[0]);
+                const cashAccount = userSelectableAccounts.find(a => a.name === 'Cash');
+                setAccountId(cashAccount?.id || userSelectableAccounts[0]?.id || '');
+                setBuildingId(preSelectedBuildingId || '');
+                setReference('');
+                setNotes('');
+            }
             setError('');
         }
-    }, [isOpen, balanceDue, userSelectableAccounts, preSelectedBuildingId]);
+    }, [isOpen, balanceDue, userSelectableAccounts, preSelectedBuildingId, isEditMode, transactionToEdit]);
 
     useEffect(() => {
         const numericAmount = parseFloat(amount) || 0;
-        if (numericAmount > balanceDue + 0.01) {
+        // In edit mode, don't validate against balanceDue since we're modifying an existing transaction
+        if (!isEditMode && numericAmount > balanceDue + 0.01) {
             setError(`Amount cannot exceed the balance of ${CURRENCY} ${balanceDue.toLocaleString()}.`);
         } else if (numericAmount <= 0) {
             setError('Amount must be positive.');
         } else {
             setError('');
         }
-    }, [amount, balanceDue]);
+    }, [amount, balanceDue, isEditMode]);
 
     const handleSubmit = async () => {
         if (error || !owner) return;
@@ -111,7 +146,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
              if (bName) description += ` [${bName}]`;
         }
 
-        const payoutTransaction: Omit<Transaction, 'id'> = {
+        const payoutTransaction: Transaction = {
             type: TransactionType.EXPENSE,
             amount: parseFloat(amount),
             date,
@@ -120,10 +155,17 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
             contactId: owner.id,
             categoryId: payoutCategory.id,
             buildingId: buildingId || undefined,
+            propertyId: isEditMode && transactionToEdit ? transactionToEdit.propertyId : undefined, // Preserve propertyId if editing
+            id: isEditMode && transactionToEdit ? transactionToEdit.id : Date.now().toString(),
         };
 
-        dispatch({ type: 'ADD_TRANSACTION', payload: { ...payoutTransaction, id: Date.now().toString() } });
-        showToast(`${payoutType} payout recorded successfully.`, 'success');
+        if (isEditMode) {
+            dispatch({ type: 'UPDATE_TRANSACTION', payload: payoutTransaction });
+            showToast(`${payoutType} payout updated successfully.`, 'success');
+        } else {
+            dispatch({ type: 'ADD_TRANSACTION', payload: payoutTransaction });
+            showToast(`${payoutType} payout recorded successfully.`, 'success');
+        }
         onClose();
     };
     
@@ -135,7 +177,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
     }));
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`Pay ${owner.name} (${payoutType})`}>
+        <Modal isOpen={isOpen} onClose={onClose} title={isEditMode ? `Edit Payout - ${owner.name} (${payoutType})` : `Pay ${owner.name} (${payoutType})`}>
             <div className="space-y-4">
                 <div className="p-4 bg-slate-50 rounded-lg">
                     <div className="flex justify-between font-bold text-lg">
@@ -217,7 +259,7 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                 
                 <div className="flex justify-end gap-2 pt-4">
                     <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button type="button" onClick={handleSubmit} disabled={!!error}>Confirm Payment</Button>
+                    <Button type="button" onClick={handleSubmit} disabled={!!error}>{isEditMode ? 'Update Payment' : 'Confirm Payment'}</Button>
                 </div>
             </div>
         </Modal>

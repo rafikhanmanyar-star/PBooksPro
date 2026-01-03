@@ -15,6 +15,7 @@ import Tabs from '../ui/Tabs';
 import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from '../reports/ReportHeader';
 import ReportFooter from '../reports/ReportFooter';
+import ProjectInvestorReport from '../reports/ProjectInvestorReport';
 
 interface InvestorDistribution {
     investorId: string;
@@ -76,7 +77,7 @@ const ProjectEquityManagement: React.FC = () => {
     
     // Action Form
     const [formInvestorId, setFormInvestorId] = useState('');
-    const [formProjectId, setFormProjectId] = useState('');
+    const [formProjectId, setFormProjectId] = useState(state.defaultProjectId || '');
     const [formBankAccountId, setFormBankAccountId] = useState('');
     const [formAmount, setFormAmount] = useState('');
     const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
@@ -98,7 +99,7 @@ const ProjectEquityManagement: React.FC = () => {
     } | null>(null);
 
     // --- PROFIT DISTRIBUTION STATE ---
-    const [distProjectId, setDistProjectId] = useState<string>('');
+    const [distProjectId, setDistProjectId] = useState<string>(state.defaultProjectId || '');
     const [distProfit, setDistProfit] = useState<string>('');
     const [cycleName, setCycleName] = useState<string>(`Cycle ${new Date().getFullYear()}`);
     const [distributions, setDistributions] = useState<InvestorDistribution[]>([]);
@@ -114,7 +115,7 @@ const ProjectEquityManagement: React.FC = () => {
 
 
     const equityAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.EQUITY), [state.accounts]);
-    const bankAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK), [state.accounts]);
+    const bankAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
 
     // Resizing Logic
     const isResizing = useRef(false);
@@ -327,21 +328,39 @@ const ProjectEquityManagement: React.FC = () => {
                 const isTargetInvestor = selectedTreeType === 'staff' ? (tx.toAccountId === selectedTreeId) : isToEquity;
                 const isSourceInvestor = selectedTreeType === 'staff' ? (tx.fromAccountId === selectedTreeId) : isFromEquity;
 
-                if (isTargetInvestor && !isSourceInvestor) {
-                    // Money IN to Equity (Deposit)
+                // Check if this is a PM fee transfer (from Clearing to PM equity)
+                const fromAccount = state.accounts.find(a => a.id === tx.fromAccountId);
+                const isFromClearing = fromAccount?.name === 'Internal Clearing';
+                const isPMFeeTransfer = tx.description?.toLowerCase().includes('pm fee') || 
+                                       tx.description?.toLowerCase().includes('pm fee equity');
+
+                if (isSourceInvestor && !isTargetInvestor) {
+                    // Investment: Money flows FROM investor (equity) TO bank
+                    // This increases the investor's equity balance (investment recorded)
                     isDeposit = true;
-                    if (tx.description?.toLowerCase().includes('profit')) {
+                    paymentType = 'Investment';
+                    paymentTypeColor = 'text-blue-600';
+                } else if (isTargetInvestor && !isSourceInvestor) {
+                    // Check if this is a PM fee transfer (deposit) or withdrawal
+                    if (isFromClearing && isPMFeeTransfer) {
+                        // PM Fee Transfer: Clearing -> PM Equity (deposit/investment)
+                        // This increases the PM project's equity balance
+                        isDeposit = true;
+                        paymentType = 'PM Fee Deposit';
+                        paymentTypeColor = 'text-emerald-600';
+                    } else if (tx.description?.toLowerCase().includes('profit')) {
+                        // Profit Share: Increases equity
                         paymentType = 'Profit Share';
                         paymentTypeColor = 'text-emerald-600';
+                        isDeposit = true;
+                        isWithdrawal = false;
                     } else {
-                        paymentType = 'Investment';
-                        paymentTypeColor = 'text-blue-600';
+                        // Withdrawal: Money flows FROM bank TO investor (equity)
+                        // This decreases the investor's equity balance (capital returned)
+                        isWithdrawal = true;
+                        paymentType = 'Withdrawal';
+                        paymentTypeColor = 'text-rose-600';
                     }
-                } else if (isSourceInvestor && !isTargetInvestor) {
-                    // Money OUT from Equity (Withdrawal)
-                    isWithdrawal = true;
-                    paymentType = 'Withdrawal';
-                    paymentTypeColor = 'text-rose-600';
                 } else if (isSourceInvestor && isTargetInvestor) {
                     // Equity to Equity (Transfer)
                     paymentType = 'Equity Transfer';
@@ -415,12 +434,12 @@ const ProjectEquityManagement: React.FC = () => {
         // Determine IDs based on Mode
         if (mode === 'SIMPLE') {
             // Investment or Withdrawal
-            if (txItem.isDeposit) { // Investment
-                investorId = mainTx.toAccountId!;
-                bankAccountId = mainTx.fromAccountId!;
-            } else { // Withdrawal
+            if (txItem.isDeposit) { // Investment: from=investor, to=bank
                 investorId = mainTx.fromAccountId!;
                 bankAccountId = mainTx.toAccountId!;
+            } else { // Withdrawal: from=bank, to=investor
+                investorId = mainTx.toAccountId!;
+                bankAccountId = mainTx.fromAccountId!;
             }
         } else if (mode === 'BATCH_MOVE') {
             // Find the Divest (Source) and Invest (Target) transactions
@@ -476,19 +495,32 @@ const ProjectEquityManagement: React.FC = () => {
 
         if (mode === 'SIMPLE') {
             // Simple Transfer update
+            // Determine if this is an investment or withdrawal based on original transaction
+            const originalIsInvestment = equityAccounts.some(a => a.id === mainTx.fromAccountId) && 
+                                        bankAccounts.some(a => a.id === mainTx.toAccountId);
+            const originalIsWithdrawal = bankAccounts.some(a => a.id === mainTx.fromAccountId) && 
+                                         equityAccounts.some(a => a.id === mainTx.toAccountId);
+            
+            let fromId, toId;
+            if (originalIsInvestment || (!originalIsWithdrawal && equityAccounts.some(a => a.id === investorId))) {
+                // Investment: from=investor, to=bank
+                fromId = investorId;
+                toId = bankAccountId;
+            } else {
+                // Withdrawal: from=bank, to=investor
+                fromId = bankAccountId;
+                toId = investorId;
+            }
+            
             const updatedTx: Transaction = {
                 ...mainTx,
                 amount: numAmount,
                 date,
                 description,
                 projectId: projectId || undefined,
-                // Assuming from/to update logic:
-                // If it was Deposit: From=Bank, To=Investor
-                // If Withdrawal: From=Investor, To=Bank
-                // We trust the original flow direction but update IDs if changed
-                fromAccountId: mainTx.fromAccountId === bankAccountId ? bankAccountId : investorId,
-                toAccountId: mainTx.toAccountId === investorId ? investorId : bankAccountId,
-                accountId: mainTx.accountId === investorId ? investorId : bankAccountId // Primary account usually matches
+                fromAccountId: fromId,
+                toAccountId: toId,
+                accountId: fromId // Primary account is the source
             };
             txsToUpdate.push(updatedTx);
         } else if (mode === 'BATCH_MOVE') {
@@ -564,10 +596,18 @@ const ProjectEquityManagement: React.FC = () => {
         setFormDescription('');
         setFormDate(new Date().toISOString().split('T')[0]);
         
-        if (selectedTreeType === 'project') setFormProjectId(selectedTreeId || '');
-        if (selectedTreeType === 'staff') {
+        // Clear investor selection when opening from project context
+        // Only set investor if explicitly selected from staff/investor tree
+        if (selectedTreeType === 'project') {
+            setFormProjectId(selectedTreeId || '');
+            setFormInvestorId(''); // Clear investor selection for project context
+        } else if (selectedTreeType === 'staff') {
              setFormInvestorId(selectedTreeId || '');
              if (selectedParentId && selectedParentId !== 'root-investors') setFormProjectId(selectedParentId);
+        } else {
+            // No specific selection - clear both
+            setFormProjectId('');
+            setFormInvestorId('');
         }
         
         const cash = bankAccounts.find(a => a.name === 'Cash');
@@ -590,12 +630,15 @@ const ProjectEquityManagement: React.FC = () => {
 
         let fromId, toId, desc;
         if (actionType === 'INVEST') {
-            fromId = formBankAccountId;
-            toId = formInvestorId;
-            desc = `Investment in ${state.projects.find(p=>p.id===formProjectId)?.name}`;
-        } else {
+            // Investment: Money flows FROM investor (equity) TO bank account
+            // This increases bank account (money received) and increases equity balance (investment recorded)
             fromId = formInvestorId;
             toId = formBankAccountId;
+            desc = `Investment in ${state.projects.find(p=>p.id===formProjectId)?.name}`;
+        } else {
+            // Withdrawal: Money flows FROM bank account TO investor (equity)
+            fromId = formBankAccountId;
+            toId = formInvestorId;
             desc = `Capital Withdrawal from ${state.projects.find(p=>p.id===formProjectId)?.name}`;
         }
 
@@ -785,15 +828,8 @@ const ProjectEquityManagement: React.FC = () => {
 
     return (
         <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-4 h-full flex flex-col">
-            <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                    <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600">{ICONS.repeat}</div>
-                    Project Cycle Manager
-                </h2>
-            </div>
-            
-            <div className="mb-6">
-                <Tabs tabs={['Ledger', 'Profit Distribution', 'Equity Transfer']} activeTab={activeTab} onTabClick={setActiveTab} />
+            <div className="mb-4">
+                <Tabs tabs={['Ledger', 'Profit Distribution', 'Equity Transfer', 'Investor Distribution']} activeTab={activeTab} onTabClick={setActiveTab} />
             </div>
 
             {activeTab === 'Ledger' && (
@@ -923,6 +959,11 @@ const ProjectEquityManagement: React.FC = () => {
                             <Button onClick={handleTransferCommit}>Confirm</Button>
                         </div>
                     )}
+                </div>
+            )}
+            {activeTab === 'Investor Distribution' && (
+                <div className="flex-grow overflow-hidden">
+                    <ProjectInvestorReport />
                 </div>
             )}
 

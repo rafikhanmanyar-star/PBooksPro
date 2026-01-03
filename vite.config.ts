@@ -56,6 +56,8 @@ export default defineConfig({
   },
   // Handle CommonJS modules
   build: {
+    // Inline CSS with JS to avoid missing stylesheet issues in file:// Electron
+    cssCodeSplit: false,
     commonjsOptions: {
       include: [/sql\.js/, /node_modules/],
       transformMixedEsModules: true,
@@ -69,64 +71,8 @@ export default defineConfig({
         warn(warning)
       },
       output: {
-        manualChunks: (id) => {
-          // Split node_modules into separate chunks
-          if (id.includes('node_modules')) {
-            // React and React-DOM in their own chunk - ensure they're together
-            // Match exact package names to avoid matching @react-pdf, @react-icons, react-router, etc.
-            // Use regex to match exact package paths: node_modules/react/ or node_modules/react-dom/
-            // This avoids false positives from packages like react-router, react-icons, @react-pdf, etc.
-            if (/node_modules[\/\\]react[\/\\]/.test(id) && !/node_modules[\/\\]react-dom[\/\\]/.test(id) && !id.includes('@react')) {
-              return 'react-vendor';
-            }
-            if (/node_modules[\/\\]react-dom[\/\\]/.test(id)) {
-              return 'react-vendor'; // Keep react-dom with react
-            }
-            
-            // SQL.js (WASM) in its own chunk - can be large
-            if (id.includes('sql.js')) {
-              return 'sqljs-vendor';
-            }
-            
-            // Recharts (charting library) in its own chunk
-            if (id.includes('recharts')) {
-              return 'recharts-vendor';
-            }
-            
-            // Excel handling library
-            if (id.includes('xlsx')) {
-              return 'xlsx-vendor';
-            }
-            
-            // Google GenAI (AI library) - can be large
-            if (id.includes('@google/genai')) {
-              return 'genai-vendor';
-            }
-            
-            // QR Code libraries
-            if (id.includes('qrcode') || id.includes('html5-qrcode')) {
-              return 'qrcode-vendor';
-            }
-            
-            // Electron updater (only needed in Electron builds)
-            if (id.includes('electron-updater')) {
-              return 'electron-vendor';
-            }
-            
-            // PeerJS (P2P library)
-            if (id.includes('peerjs')) {
-              return 'peerjs-vendor';
-            }
-            
-            // Lucide React (icons) - can be large if tree-shaking isn't optimal
-            if (id.includes('lucide-react')) {
-              return 'icons-vendor';
-            }
-            
-            // All other node_modules go into a vendor chunk
-            return 'vendor';
-          }
-        }
+        // Use Vite/Rollup defaults for chunking to avoid any custom split edge cases
+        manualChunks: undefined
       }
     },
     // Increase chunk size warning limit if needed (optional)
@@ -139,32 +85,12 @@ export default defineConfig({
     {
       name: 'remove-external-resources',
       transformIndexHtml(html) {
-        // Remove importmap from production build - dependencies are bundled by Vite
-        // Importmap is only needed for development with CDN imports
-        let result = html.replace(
+        // Keep Tailwind CDN in production (Electron file:// needs runtime styles)
+        // Only strip importmap since dependencies are bundled by Vite
+        const result = html.replace(
           /<script type="importmap">[\s\S]*?<\/script>/g,
           '<!-- Importmap removed in production build - dependencies are bundled -->'
         )
-        
-        // Remove Tailwind CDN script - Tailwind is bundled in index.css
-        result = result.replace(
-          /<script src="https:\/\/cdn\.tailwindcss\.com"><\/script>/g,
-          '<!-- Tailwind CDN removed in production build - bundled in CSS -->'
-        )
-        
-        // Remove Tailwind config script (not needed in production)
-        // Match multiline script with tailwind.config - use non-greedy match
-        result = result.replace(
-          /<script>[\s\S]*?tailwind\.config[\s\S]*?<\/script>/g,
-          '<!-- Tailwind config removed in production build -->'
-        )
-        
-        // Service worker registration is kept in the HTML for browser PWA support
-        // PWAContext.tsx handles Electron detection at runtime and skips service worker logic in Electron
-        // In Electron (file:// protocol), service worker registration will fail gracefully
-        // In browsers (http/https), service worker will register successfully for PWA functionality
-        // This allows the same build to work in both Electron and browser environments
-        
         return result
       }
     },
@@ -181,6 +107,24 @@ export default defineConfig({
           } catch (error) {
             console.warn('⚠️ Failed to copy icon.ico:', error)
           }
+        }
+      }
+    },
+    {
+      name: 'copy-sqljs-wasm',
+      closeBundle() {
+        // Copy sql.js WASM files to dist folder for Electron
+        const sqlJsWasmSource = join(process.cwd(), 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm')
+        const sqlJsWasmDest = join(process.cwd(), 'dist', 'sql-wasm.wasm')
+        if (existsSync(sqlJsWasmSource)) {
+          try {
+            copyFileSync(sqlJsWasmSource, sqlJsWasmDest)
+            console.log('✅ Copied sql-wasm.wasm to dist folder')
+          } catch (error) {
+            console.warn('⚠️ Failed to copy sql-wasm.wasm:', error)
+          }
+        } else {
+          console.warn('⚠️ sql-wasm.wasm not found in node_modules, Electron build may fail')
         }
       }
     }

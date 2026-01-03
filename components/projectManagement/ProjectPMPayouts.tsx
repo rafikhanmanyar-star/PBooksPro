@@ -21,7 +21,7 @@ interface PMProjectBalance {
 const ProjectPMPayouts: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { showAlert, showToast } = useNotification();
-    const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+    const [selectedProjectId, setSelectedProjectId] = useState<string | null>(state.defaultProjectId || null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [paymentAmount, setPaymentAmount] = useState('');
     const [paymentAccount, setPaymentAccount] = useState('');
@@ -92,8 +92,8 @@ const ProjectPMPayouts: React.FC = () => {
     }, [state.transactions, state.projects, state.categories, state.pmCostPercentage]);
 
     const selectedBalance = useMemo(() => balances.find(b => b.projectId === selectedProjectId), [balances, selectedProjectId]);
-    // Filter for Bank Accounts
-    const accounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK), [state.accounts]);
+    // Filter for Bank Accounts (exclude Internal Clearing)
+    const accounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
 
     const handleOpenModal = (projectId: string) => {
         setSelectedProjectId(projectId);

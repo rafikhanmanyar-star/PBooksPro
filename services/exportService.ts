@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { AppState, AppAction, ImportLogEntry, TransactionType, LoanSubtype, InvoiceType } from '../types';
+import { AppState, AppAction, ImportLogEntry, TransactionType, LoanSubtype, InvoiceType, AccountType } from '../types';
 import * as XLSX from 'xlsx';
 import { useProgress } from '../context/ProgressContext';
 
@@ -221,22 +221,47 @@ export async function exportToExcel(state: AppState, filename: string, progress:
             rebateCategoryName: getName(categoriesById, a.rebateCategoryId),
         }));
 
-        const contractsRows = (s.contracts || []).map(c => ({
-            id: c.id,
-            contractNumber: c.contractNumber,
-            name: c.name,
-            projectName: getName(projectsById, c.projectId),
-            vendorName: getName(contactsById, c.vendorId),
-            totalAmount: c.totalAmount,
-            area: c.area ?? '',
-            rate: c.rate ?? '',
-            startDate: c.startDate,
-            endDate: c.endDate,
-            status: c.status,
-            categoryNames: (c.categoryIds || []).map(cid => getName(categoriesById, cid)).filter(Boolean).join(', '),
-            termsAndConditions: c.termsAndConditions ?? '',
-            description: c.description ?? '',
-        }));
+        const contractsRows = (s.contracts || []).map(c => {
+            // Export expense category items as separate comma-separated columns
+            const expenseCategoryNames: string[] = [];
+            const expenseQuantities: string[] = [];
+            const expensePricePerUnits: string[] = [];
+            const expenseNetValues: string[] = [];
+            const expenseUnits: string[] = [];
+            
+            if (c.expenseCategoryItems && c.expenseCategoryItems.length > 0) {
+                c.expenseCategoryItems.forEach(item => {
+                    expenseCategoryNames.push(getName(categoriesById, item.categoryId));
+                    expenseQuantities.push(String(item.quantity ?? 1));
+                    expensePricePerUnits.push(String(item.pricePerUnit ?? 0));
+                    expenseNetValues.push(String(item.netValue ?? 0));
+                    expenseUnits.push(item.unit || 'quantity');
+                });
+            }
+            
+            return {
+                id: c.id,
+                contractNumber: c.contractNumber,
+                name: c.name,
+                projectName: getName(projectsById, c.projectId),
+                vendorName: getName(contactsById, c.vendorId),
+                totalAmount: c.totalAmount,
+                area: c.area ?? '',
+                rate: c.rate ?? '',
+                startDate: c.startDate,
+                endDate: c.endDate,
+                status: c.status,
+                categoryNames: (c.categoryIds || []).map(cid => getName(categoriesById, cid)).filter(Boolean).join(', '),
+                expenseCategoryNames: expenseCategoryNames.join(', '),
+                expenseQuantities: expenseQuantities.join(', '),
+                expensePricePerUnits: expensePricePerUnits.join(', '),
+                expenseNetValues: expenseNetValues.join(', '),
+                expenseUnits: expenseUnits.join(', '),
+                paymentTerms: c.paymentTerms ?? '',
+                termsAndConditions: c.termsAndConditions ?? '',
+                description: c.description ?? '',
+            };
+        });
 
         // --- Recurring Templates ---
         const recurringRows = s.recurringInvoiceTemplates.map(t => ({
@@ -286,70 +311,145 @@ export async function exportToExcel(state: AppState, filename: string, progress:
 
         const projectBillsRows = s.bills
             .filter(b => getBillKind(b.id) === 'project')
-            .map(b => ({
-                id: b.id,
-                billNumber: b.billNumber,
-                contactName: getName(contactsById, b.contactId),
-                amount: b.amount,
-                paidAmount: b.paidAmount ?? 0,
-                status: b.status,
-                issueDate: b.issueDate,
-                dueDate: b.dueDate ?? '',
-                description: b.description ?? '',
-                categoryName: getName(categoriesById, b.categoryId),
-                projectName: getName(projectsById, b.projectId),
-                contractNumber: getName(contractNoById, b.contractId),
-                agreementNumber: getName(projectAgreementNoById, b.projectAgreementId),
-                projectAgreementId: b.projectAgreementId ?? '',
-            }));
+            .map(b => {
+                // Export expense category items as separate comma-separated columns
+                const expenseCategoryNames: string[] = [];
+                const expenseQuantities: string[] = [];
+                const expensePricePerUnits: string[] = [];
+                const expenseNetValues: string[] = [];
+                const expenseUnits: string[] = [];
+                
+                if (b.expenseCategoryItems && b.expenseCategoryItems.length > 0) {
+                    b.expenseCategoryItems.forEach(item => {
+                        expenseCategoryNames.push(getName(categoriesById, item.categoryId));
+                        expenseQuantities.push(String(item.quantity ?? 1));
+                        expensePricePerUnits.push(String(item.pricePerUnit ?? 0));
+                        expenseNetValues.push(String(item.netValue ?? 0));
+                        expenseUnits.push(item.unit || 'quantity');
+                    });
+                }
+                
+                return {
+                    id: b.id,
+                    billNumber: b.billNumber,
+                    contactName: getName(contactsById, b.contactId),
+                    amount: b.amount,
+                    paidAmount: b.paidAmount ?? 0,
+                    status: b.status,
+                    issueDate: b.issueDate,
+                    dueDate: b.dueDate ?? '',
+                    description: b.description ?? '',
+                    categoryName: getName(categoriesById, b.categoryId),
+                    projectName: getName(projectsById, b.projectId),
+                    contractNumber: getName(contractNoById, b.contractId),
+                    agreementNumber: getName(projectAgreementNoById, b.projectAgreementId),
+                    projectAgreementId: b.projectAgreementId ?? '',
+                    expenseCategoryNames: expenseCategoryNames.join(', '),
+                    expenseQuantities: expenseQuantities.join(', '),
+                    expensePricePerUnits: expensePricePerUnits.join(', '),
+                    expenseNetValues: expenseNetValues.join(', '),
+                    expenseUnits: expenseUnits.join(', '),
+                };
+            });
 
         const rentalBillsRows = s.bills
             .filter(b => getBillKind(b.id) === 'rental')
-            .map(b => ({
-                id: b.id,
-                billNumber: b.billNumber,
-                contactName: getName(contactsById, b.contactId),
-                amount: b.amount,
-                paidAmount: b.paidAmount ?? 0,
-                status: b.status,
-                issueDate: b.issueDate,
-                dueDate: b.dueDate ?? '',
-                description: b.description ?? '',
-                categoryName: getName(categoriesById, b.categoryId),
-                buildingName: getName(buildingsById, b.buildingId),
-                propertyName: getName(propertiesById, b.propertyId),
-                staffName: getName(contactsById, b.staffId),
-                staffId: b.staffId ?? '',
-            }));
+            .map(b => {
+                // Export expense category items as separate comma-separated columns
+                const expenseCategoryNames: string[] = [];
+                const expenseQuantities: string[] = [];
+                const expensePricePerUnits: string[] = [];
+                const expenseNetValues: string[] = [];
+                const expenseUnits: string[] = [];
+                
+                if (b.expenseCategoryItems && b.expenseCategoryItems.length > 0) {
+                    b.expenseCategoryItems.forEach(item => {
+                        expenseCategoryNames.push(getName(categoriesById, item.categoryId));
+                        expenseQuantities.push(String(item.quantity ?? 1));
+                        expensePricePerUnits.push(String(item.pricePerUnit ?? 0));
+                        expenseNetValues.push(String(item.netValue ?? 0));
+                        expenseUnits.push(item.unit || 'quantity');
+                    });
+                }
+                
+                return {
+                    id: b.id,
+                    billNumber: b.billNumber,
+                    contactName: getName(contactsById, b.contactId),
+                    amount: b.amount,
+                    paidAmount: b.paidAmount ?? 0,
+                    status: b.status,
+                    issueDate: b.issueDate,
+                    dueDate: b.dueDate ?? '',
+                    description: b.description ?? '',
+                    categoryName: getName(categoriesById, b.categoryId),
+                    buildingName: getName(buildingsById, b.buildingId),
+                    propertyName: getName(propertiesById, b.propertyId),
+                    staffName: getName(contactsById, b.staffId),
+                    staffId: b.staffId ?? '',
+                    expenseCategoryNames: expenseCategoryNames.join(', '),
+                    expenseQuantities: expenseQuantities.join(', '),
+                    expensePricePerUnits: expensePricePerUnits.join(', '),
+                    expenseNetValues: expenseNetValues.join(', '),
+                    expenseUnits: expenseUnits.join(', '),
+                };
+            });
 
-        // Legacy/combined bills sheet (kept for compatibility)
-        const billsRows = s.bills.map(b => ({
-            id: b.id,
-            billNumber: b.billNumber,
-            contactName: getName(contactsById, b.contactId),
-            amount: b.amount,
-            paidAmount: b.paidAmount ?? 0,
-            status: b.status,
-            issueDate: b.issueDate,
-            dueDate: b.dueDate ?? '',
-            description: b.description ?? '',
-            categoryName: getName(categoriesById, b.categoryId),
-            projectName: getName(projectsById, b.projectId),
-            buildingName: getName(buildingsById, b.buildingId),
-            propertyName: getName(propertiesById, b.propertyId),
-            contractNumber: getName(contractNoById, b.contractId),
-            agreementNumber: getName(projectAgreementNoById, b.projectAgreementId),
-            projectAgreementId: b.projectAgreementId ?? '',
-            contractId: b.contractId ?? '',
-            staffId: b.staffId ?? '',
-        }));
+        // Legacy/combined bills sheet (kept for compatibility) - only rental bills to avoid duplication with ProjectBills
+        const billsRows = s.bills
+            .filter(b => getBillKind(b.id) === 'rental') // Exclude project bills to avoid duplication
+            .map(b => {
+                // Export expense category items as separate comma-separated columns
+                const expenseCategoryNames: string[] = [];
+                const expenseQuantities: string[] = [];
+                const expensePricePerUnits: string[] = [];
+                const expenseNetValues: string[] = [];
+                const expenseUnits: string[] = [];
+                
+                if (b.expenseCategoryItems && b.expenseCategoryItems.length > 0) {
+                    b.expenseCategoryItems.forEach(item => {
+                        expenseCategoryNames.push(getName(categoriesById, item.categoryId));
+                        expenseQuantities.push(String(item.quantity ?? 1));
+                        expensePricePerUnits.push(String(item.pricePerUnit ?? 0));
+                        expenseNetValues.push(String(item.netValue ?? 0));
+                        expenseUnits.push(item.unit || 'quantity');
+                    });
+                }
+                
+                return {
+                    id: b.id,
+                    billNumber: b.billNumber,
+                    contactName: getName(contactsById, b.contactId),
+                    amount: b.amount,
+                    paidAmount: b.paidAmount ?? 0,
+                    status: b.status,
+                    issueDate: b.issueDate,
+                    dueDate: b.dueDate ?? '',
+                    description: b.description ?? '',
+                    categoryName: getName(categoriesById, b.categoryId),
+                    projectName: getName(projectsById, b.projectId),
+                    buildingName: getName(buildingsById, b.buildingId),
+                    propertyName: getName(propertiesById, b.propertyId),
+                    contractNumber: getName(contractNoById, b.contractId),
+                    agreementNumber: getName(projectAgreementNoById, b.projectAgreementId),
+                    projectAgreementId: b.projectAgreementId ?? '',
+                    contractId: b.contractId ?? '',
+                    staffId: b.staffId ?? '',
+                    expenseCategoryNames: expenseCategoryNames.join(', '),
+                    expenseQuantities: expenseQuantities.join(', '),
+                    expensePricePerUnits: expensePricePerUnits.join(', '),
+                    expenseNetValues: expenseNetValues.join(', '),
+                    expenseUnits: expenseUnits.join(', '),
+                };
+            });
 
         // --- Budgets ---
         const budgetsRows = s.budgets.map(b => ({
             id: b.id,
             categoryId: b.categoryId,
             categoryName: getName(categoriesById, b.categoryId),
-            month: b.month,
+            projectId: b.projectId || '',
+            projectName: b.projectId ? getName(projectsById, b.projectId) : '',
             amount: b.amount,
         }));
 
@@ -390,36 +490,38 @@ export async function exportToExcel(state: AppState, filename: string, progress:
             return 'unknown';
         };
 
-        const txRows = s.transactions.map(tx => ({
-            id: tx.id,
-            transactionId: tx.id,
-            type: tx.type,
-            subtype: tx.subtype ?? '',
-            amount: tx.amount,
-            date: tx.date,
-            description: tx.description ?? '',
-            accountName: getName(accountsById, tx.accountId),
-            fromAccountName: getName(accountsById, tx.fromAccountId),
-            toAccountName: getName(accountsById, tx.toAccountId),
-            contactName: getName(contactsById, tx.contactId),
-            projectName: getName(projectsById, tx.projectId),
-            buildingName: getName(buildingsById, tx.buildingId),
-            propertyName: getName(propertiesById, tx.propertyId),
-            unitName: getName(unitsById, tx.unitId),
-            categoryName: getName(categoriesById, tx.categoryId),
-            invoiceNumber: getName(invoiceNoById, tx.invoiceId),
-            billNumber: getName(billNoById, tx.billId),
-            contractNumber: getName(contractNoById, tx.contractId),
-            agreementNumber: getAgreementNumber(tx.agreementId),
-            payslipId: tx.payslipId ?? '',
-            batchId: tx.batchId ?? '',
-        }));
+        // Filter out bill payments, invoice payments, loan transactions, and transfer transactions
+        // from the main Transactions sheet since they are exported separately in their respective sheets
+        const txRows = s.transactions
+            .filter(tx => !tx.billId && !tx.invoiceId && tx.type !== TransactionType.LOAN && tx.type !== TransactionType.TRANSFER) // Exclude bill payments, invoice payments, loans, and transfers
+            .map(tx => ({
+                id: tx.id,
+                type: tx.type,
+                subtype: tx.subtype ?? '',
+                amount: tx.amount,
+                date: tx.date,
+                description: tx.description ?? '',
+                accountName: getName(accountsById, tx.accountId),
+                fromAccountName: getName(accountsById, tx.fromAccountId),
+                toAccountName: getName(accountsById, tx.toAccountId),
+                contactName: getName(contactsById, tx.contactId),
+                projectName: getName(projectsById, tx.projectId),
+                buildingName: getName(buildingsById, tx.buildingId),
+                propertyName: getName(propertiesById, tx.propertyId),
+                unitName: getName(unitsById, tx.unitId),
+                categoryName: getName(categoriesById, tx.categoryId),
+                invoiceNumber: getName(invoiceNoById, tx.invoiceId),
+                billNumber: getName(billNoById, tx.billId),
+                contractNumber: getName(contractNoById, tx.contractId),
+                agreementNumber: getAgreementNumber(tx.agreementId),
+                payslipId: tx.payslipId ?? '',
+                batchId: tx.batchId ?? '',
+            }));
 
         const rentalInvoicePaymentsRows = s.transactions
             .filter(tx => tx.type === TransactionType.INCOME && !!tx.invoiceId && getInvoiceKind(tx.invoiceId) === 'rental')
             .map(tx => ({
                 id: tx.id,
-                transactionId: tx.id,
                 amount: tx.amount,
                 date: tx.date,
                 description: tx.description ?? '',
@@ -431,7 +533,6 @@ export async function exportToExcel(state: AppState, filename: string, progress:
             .filter(tx => tx.type === TransactionType.INCOME && !!tx.invoiceId && getInvoiceKind(tx.invoiceId) === 'project')
             .map(tx => ({
                 id: tx.id,
-                transactionId: tx.id,
                 amount: tx.amount,
                 date: tx.date,
                 description: tx.description ?? '',
@@ -443,7 +544,6 @@ export async function exportToExcel(state: AppState, filename: string, progress:
             .filter(tx => tx.type === TransactionType.EXPENSE && !!tx.billId && getBillKind(tx.billId) === 'rental')
             .map(tx => ({
                 id: tx.id,
-                transactionId: tx.id,
                 amount: tx.amount,
                 date: tx.date,
                 description: tx.description ?? '',
@@ -455,7 +555,6 @@ export async function exportToExcel(state: AppState, filename: string, progress:
             .filter(tx => tx.type === TransactionType.EXPENSE && !!tx.billId && getBillKind(tx.billId) === 'project')
             .map(tx => ({
                 id: tx.id,
-                transactionId: tx.id,
                 amount: tx.amount,
                 date: tx.date,
                 description: tx.description ?? '',
@@ -467,7 +566,6 @@ export async function exportToExcel(state: AppState, filename: string, progress:
             .filter(tx => tx.type === TransactionType.LOAN)
             .map(tx => ({
                 id: tx.id,
-                transactionId: tx.id,
                 subtype: tx.subtype ?? LoanSubtype.RECEIVE,
                 amount: tx.amount,
                 date: tx.date,
@@ -476,11 +574,31 @@ export async function exportToExcel(state: AppState, filename: string, progress:
                 contactName: getName(contactsById, tx.contactId),
             }));
 
-        const transferTxRows = s.transactions
-            .filter(tx => tx.type === TransactionType.TRANSFER)
+        // Identify equity accounts
+        const equityAccountIds = new Set(s.accounts.filter(a => a.type === AccountType.EQUITY).map(a => a.id));
+        
+        // Equity transactions: TRANSFER transactions involving equity accounts
+        const equityTransactionsRows = s.transactions
+            .filter(tx => tx.type === TransactionType.TRANSFER && 
+                         (equityAccountIds.has(tx.fromAccountId || '') || equityAccountIds.has(tx.toAccountId || '')))
             .map(tx => ({
                 id: tx.id,
-                transactionId: tx.id,
+                amount: tx.amount,
+                date: tx.date,
+                description: tx.description ?? '',
+                fromAccountName: getName(accountsById, tx.fromAccountId),
+                toAccountName: getName(accountsById, tx.toAccountId),
+                projectName: getName(projectsById, tx.projectId),
+                projectId: tx.projectId ?? '',
+            }));
+
+        // Regular transfer transactions (excluding equity transactions)
+        const transferTxRows = s.transactions
+            .filter(tx => tx.type === TransactionType.TRANSFER && 
+                         !equityAccountIds.has(tx.fromAccountId || '') && 
+                         !equityAccountIds.has(tx.toAccountId || ''))
+            .map(tx => ({
+                id: tx.id,
                 amount: tx.amount,
                 date: tx.date,
                 description: tx.description ?? '',
@@ -492,20 +610,19 @@ export async function exportToExcel(state: AppState, filename: string, progress:
             .filter(tx => tx.type === TransactionType.INCOME && !tx.invoiceId)
             .map(tx => ({
                 id: tx.id,
-                transactionId: tx.id,
                 amount: tx.amount,
                 date: tx.date,
                 description: tx.description ?? '',
                 accountName: getName(accountsById, tx.accountId),
                 contactName: getName(contactsById, tx.contactId),
                 categoryName: getName(categoriesById, tx.categoryId),
+                projectName: getName(projectsById, tx.projectId),
             }));
 
         const standaloneExpenseRows = s.transactions
             .filter(tx => tx.type === TransactionType.EXPENSE && !tx.billId)
             .map(tx => ({
                 id: tx.id,
-                transactionId: tx.id,
                 amount: tx.amount,
                 date: tx.date,
                 description: tx.description ?? '',
@@ -530,23 +647,24 @@ export async function exportToExcel(state: AppState, filename: string, progress:
             { name: 'Staff', headers: ['id', 'Name', 'employeeId', 'designation', 'basicSalary', 'joiningDate', 'status', 'email', 'ProjectName', 'BuildingName', 'salaryStructure', 'bankDetails', 'history', 'exitDetails', 'advanceBalance'], rows: staffRows },
             { name: 'RentalAgreements', headers: ['id', 'agreementNumber', 'tenantName', 'propertyName', 'startDate', 'endDate', 'monthlyRent', 'rentDueDate', 'status', 'description', 'securityDeposit', 'brokerName', 'brokerFee'], rows: rentalAgreementsRows },
             { name: 'ProjectAgreements', headers: ['id', 'agreementNumber', 'clientName', 'projectName', 'UnitNames', 'issueDate', 'status', 'description', 'cancellationDetails', 'listPrice', 'customerDiscount', 'floorDiscount', 'lumpSumDiscount', 'miscDiscount', 'sellingPrice', 'rebateAmount', 'rebateBrokerName', 'listPriceCategoryName', 'customerDiscountCategoryName', 'floorDiscountCategoryName', 'lumpSumDiscountCategoryName', 'miscDiscountCategoryName', 'sellingPriceCategoryName', 'rebateCategoryName'], rows: projectAgreementsRows },
-            { name: 'Contracts', headers: ['id', 'contractNumber', 'name', 'projectName', 'vendorName', 'totalAmount', 'area', 'rate', 'startDate', 'endDate', 'status', 'categoryNames', 'termsAndConditions', 'description'], rows: contractsRows },
+            { name: 'Contracts', headers: ['id', 'contractNumber', 'name', 'projectName', 'vendorName', 'totalAmount', 'area', 'rate', 'startDate', 'endDate', 'status', 'categoryNames', 'expenseCategoryNames', 'expenseQuantities', 'expensePricePerUnits', 'expenseNetValues', 'expenseUnits', 'paymentTerms', 'termsAndConditions', 'description'], rows: contractsRows },
             { name: 'RecurringTemplates', headers: ['id', 'contactName', 'propertyName', 'buildingName', 'agreementNumber', 'amount', 'descriptionTemplate', 'dayOfMonth', 'nextDueDate', 'active'], rows: recurringRows },
             { name: 'Invoices', headers: ['id', 'invoiceNumber', 'contactName', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'invoiceType', 'description', 'projectName', 'buildingName', 'propertyName', 'unitName', 'categoryName', 'agreementNumber', 'securityDepositCharge', 'serviceCharges', 'rentalMonth'], rows: invoicesRows },
-            { name: 'ProjectBills', headers: ['id', 'billNumber', 'contactName', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'description', 'categoryName', 'projectName', 'contractNumber', 'agreementNumber', 'projectAgreementId'], rows: projectBillsRows },
-            { name: 'RentalBills', headers: ['id', 'billNumber', 'contactName', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'description', 'categoryName', 'buildingName', 'propertyName', 'staffName', 'staffId'], rows: rentalBillsRows },
-            { name: 'Bills', headers: ['id', 'billNumber', 'contactName', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'description', 'categoryName', 'projectName', 'buildingName', 'propertyName', 'projectAgreementId', 'agreementNumber', 'contractId', 'contractNumber', 'staffId'], rows: billsRows },
-            { name: 'RentalInvoicePayments', headers: ['id', 'transactionId', 'amount', 'date', 'description', 'accountName', 'invoiceNumber'], rows: rentalInvoicePaymentsRows },
-            { name: 'ProjectInvoicePayments', headers: ['id', 'transactionId', 'amount', 'date', 'description', 'accountName', 'invoiceNumber'], rows: projectInvoicePaymentsRows },
-            { name: 'RentalBillPayments', headers: ['id', 'transactionId', 'amount', 'date', 'description', 'accountName', 'billNumber'], rows: rentalBillPaymentsRows },
-            { name: 'ProjectBillPayments', headers: ['id', 'transactionId', 'amount', 'date', 'description', 'accountName', 'billNumber'], rows: projectBillPaymentsRows },
-            { name: 'LoanTransactions', headers: ['id', 'transactionId', 'subtype', 'amount', 'date', 'description', 'accountName', 'contactName'], rows: loanTxRows },
-            { name: 'TransferTransactions', headers: ['id', 'transactionId', 'amount', 'date', 'description', 'fromAccountName', 'toAccountName'], rows: transferTxRows },
-            { name: 'IncomeTransactions', headers: ['id', 'transactionId', 'amount', 'date', 'description', 'accountName', 'contactName', 'categoryName'], rows: standaloneIncomeRows },
-            { name: 'ExpenseTransactions', headers: ['id', 'transactionId', 'amount', 'date', 'description', 'accountName', 'contactName', 'categoryName'], rows: standaloneExpenseRows },
-            { name: 'Budgets', headers: ['id', 'categoryId', 'categoryName', 'month', 'amount'], rows: budgetsRows },
+            { name: 'ProjectBills', headers: ['id', 'billNumber', 'contactName', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'description', 'categoryName', 'projectName', 'contractNumber', 'agreementNumber', 'projectAgreementId', 'expenseCategoryNames', 'expenseQuantities', 'expensePricePerUnits', 'expenseNetValues', 'expenseUnits'], rows: projectBillsRows },
+            { name: 'RentalBills', headers: ['id', 'billNumber', 'contactName', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'description', 'categoryName', 'buildingName', 'propertyName', 'staffName', 'staffId', 'expenseCategoryNames', 'expenseQuantities', 'expensePricePerUnits', 'expenseNetValues', 'expenseUnits'], rows: rentalBillsRows },
+            { name: 'Bills', headers: ['id', 'billNumber', 'contactName', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'description', 'categoryName', 'projectName', 'buildingName', 'propertyName', 'projectAgreementId', 'agreementNumber', 'contractId', 'contractNumber', 'staffId', 'expenseCategoryNames', 'expenseQuantities', 'expensePricePerUnits', 'expenseNetValues', 'expenseUnits'], rows: billsRows },
+            { name: 'RentalInvoicePayments', headers: ['id', 'amount', 'date', 'description', 'accountName', 'invoiceNumber'], rows: rentalInvoicePaymentsRows },
+            { name: 'ProjectInvoicePayments', headers: ['id', 'amount', 'date', 'description', 'accountName', 'invoiceNumber'], rows: projectInvoicePaymentsRows },
+            { name: 'RentalBillPayments', headers: ['id', 'amount', 'date', 'description', 'accountName', 'billNumber'], rows: rentalBillPaymentsRows },
+            { name: 'ProjectBillPayments', headers: ['id', 'amount', 'date', 'description', 'accountName', 'billNumber'], rows: projectBillPaymentsRows },
+            { name: 'LoanTransactions', headers: ['id', 'subtype', 'amount', 'date', 'description', 'accountName', 'contactName'], rows: loanTxRows },
+            { name: 'EquityTransactions', headers: ['id', 'amount', 'date', 'description', 'fromAccountName', 'toAccountName', 'projectName', 'projectId'], rows: equityTransactionsRows },
+            { name: 'TransferTransactions', headers: ['id', 'amount', 'date', 'description', 'fromAccountName', 'toAccountName'], rows: transferTxRows },
+            { name: 'IncomeTransactions', headers: ['id', 'amount', 'date', 'description', 'accountName', 'contactName', 'categoryName', 'projectName'], rows: standaloneIncomeRows },
+            { name: 'ExpenseTransactions', headers: ['id', 'amount', 'date', 'description', 'accountName', 'contactName', 'categoryName'], rows: standaloneExpenseRows },
+            { name: 'Budgets', headers: ['id', 'categoryId', 'categoryName', 'projectId', 'projectName', 'amount'], rows: budgetsRows },
             { name: 'Payslips', headers: ['id', 'staffName', 'month', 'issueDate', 'basicSalary', 'allowances', 'deductions', 'bonuses', 'totalAllowances', 'totalDeductions', 'totalBonuses', 'grossSalary', 'netSalary', 'status'], rows: payslipsRows },
-            { name: 'Transactions', headers: ['id', 'transactionId', 'type', 'subtype', 'amount', 'date', 'description', 'accountName', 'fromAccountName', 'toAccountName', 'contactName', 'projectName', 'buildingName', 'propertyName', 'unitName', 'categoryName', 'invoiceNumber', 'billNumber', 'contractNumber', 'agreementNumber', 'payslipId', 'batchId'], rows: txRows },
+            { name: 'Transactions', headers: ['id', 'type', 'subtype', 'amount', 'date', 'description', 'accountName', 'fromAccountName', 'toAccountName', 'contactName', 'projectName', 'buildingName', 'propertyName', 'unitName', 'categoryName', 'invoiceNumber', 'billNumber', 'contractNumber', 'agreementNumber', 'payslipId', 'batchId'], rows: txRows },
         ];
 
         sheets.forEach(sh => appendSheet(workbook, sh.name, sh.headers, sh.rows));

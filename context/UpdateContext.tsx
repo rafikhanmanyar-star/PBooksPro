@@ -4,6 +4,7 @@ interface UpdateInfo {
   version: string;
   releaseDate?: string;
   releaseNotes?: string;
+  isIncremental?: boolean;
 }
 
 interface DownloadProgress {
@@ -19,6 +20,7 @@ interface UpdateContextType {
   updateDownloaded: boolean;
   updateInfo: UpdateInfo | null;
   downloadProgress: DownloadProgress | null;
+  smoothedProgress: number;
   error: string | null;
   checkForUpdates: () => Promise<void>;
   downloadUpdate: () => Promise<void>;
@@ -35,6 +37,7 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [smoothedProgress, setSmoothedProgress] = useState<number>(0);
 
   // Check if running in Electron
   const isElectron = typeof window !== 'undefined' && (window as any).electronAPI?.isElectron;
@@ -60,6 +63,7 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       setUpdateAvailable(true);
       setUpdateInfo(info);
       setError(null);
+      setSmoothedProgress(0); // Reset progress when new update is available
       console.log('Update available:', info.version);
     });
     unsubscribers.push(unsubAvailable);
@@ -72,10 +76,27 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     });
     unsubscribers.push(unsubNotAvailable);
 
-    // Download progress
+    // Download progress - with smoothing to prevent jumping
     const unsubProgress = electronAPI.onDownloadProgress((progress: DownloadProgress) => {
       setDownloadProgress(progress);
       setError(null);
+      
+      // Smooth the progress to prevent jumping backward/forward
+      setSmoothedProgress(prev => {
+        const current = progress.percent;
+        // Never go backward - always move forward or stay the same
+        if (current <= prev) {
+          return prev; // Keep current value if progress goes backward
+        }
+        // If progress jumps significantly forward (likely a reset or correction), use new value
+        if (current - prev > 10) {
+          return current;
+        }
+        // Smooth transition: move towards current value gradually (max 3% per update)
+        const diff = current - prev;
+        const step = Math.min(diff, 3); // Only move forward, max 3% per update
+        return prev + step;
+      });
     });
     unsubscribers.push(unsubProgress);
 
@@ -84,6 +105,7 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       setUpdateDownloaded(true);
       setUpdateInfo(info);
       setDownloadProgress(null);
+      setSmoothedProgress(100); // Ensure progress shows 100%
       setError(null);
       console.log('Update downloaded:', info.version);
     });
@@ -124,11 +146,22 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     try {
       setIsChecking(true);
       setError(null);
-      const result = await (window as any).electronAPI.checkForUpdates();
+      
+      // Add timeout wrapper (30 seconds)
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('Update check timed out after 30 seconds. The update server may be unreachable.'));
+        }, 30000);
+      });
+      
+      const checkPromise = (window as any).electronAPI.checkForUpdates();
+      const result = await Promise.race([checkPromise, timeoutPromise]) as any;
+      
       if (!result.success) {
         setError(result.error || 'Failed to check for updates');
       }
     } catch (err: any) {
+      console.error('Update check error:', err);
       setError(err.message || 'Failed to check for updates');
     } finally {
       setIsChecking(false);
@@ -185,6 +218,7 @@ export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         updateDownloaded,
         updateInfo,
         downloadProgress,
+        smoothedProgress,
         error,
         checkForUpdates,
         downloadUpdate,

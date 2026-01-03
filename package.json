@@ -1,9 +1,9 @@
 {
-  "name": "my-projects-pro",
+  "name": "pbooks-pro",
   "private": true,
-  "version": "1.0.8",
-  "description": "My Projects Pro - Finance and Project Management Application",
-  "author": "My Projects Pro",
+  "version": "1.1.2",
+  "description": "PBooks Pro - Finance and Project Management Application",
+  "author": "PBooks Pro",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -12,20 +12,23 @@
     "preview": "vite preview",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "npm run build && electron-builder",
-    "electron:build:win": "npm run build && electron-builder --win",
-    "electron:build:win:portable": "npm run build && electron-builder --win portable",
-    "electron:build:win:publish": "npm run build && electron-builder --win --publish always",
+    "electron:build:win": "set CSC_IDENTITY_AUTO_DISCOVERY=false&& set WIN_CSC_LINK=&& npm run build && electron-builder --win",
+    "electron:build:win:portable": "set CSC_IDENTITY_AUTO_DISCOVERY=false&& set WIN_CSC_LINK=&& npm run build && electron-builder --win portable",
+    "electron:build:win:publish": "set CSC_IDENTITY_AUTO_DISCOVERY=false&& set WIN_CSC_LINK=&& npm run build && electron-builder --win --publish always",
     "update-server": "node update-server/server.cjs"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
+    "@types/react-window": "^1.8.8",
+    "better-sqlite3": "^12.5.0",
     "electron-updater": "^6.6.2",
     "html5-qrcode": "2.3.8",
     "lucide-react": "^0.555.0",
-    "peerjs": "1.5.2",
     "qrcode": "1.5.3",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-is": "^18.3.1",
+    "react-window": "^2.2.3",
     "recharts": "^3.3.0",
     "sql.js": "^1.13.0",
     "xlsx": "^0.18.5"
@@ -34,24 +37,28 @@
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.1.1",
     "concurrently": "^8.2.2",
-    "electron": "^28.0.0",
+    "electron": "^39.2.7",
     "electron-builder": "^24.9.1",
     "typescript": "~5.8.2",
     "vite": "^7.2.4",
     "wait-on": "^7.2.0"
   },
   "build": {
-    "appId": "com.myprojects.pro",
-    "productName": "My Projects Pro",
+    "appId": "com.pbooks.pro",
+    "productName": "PBooks Pro",
     "directories": {
-      "output": "C:/MyProjectsProBuild/release",
+      "output": "C:/PBooksProBuild/release",
       "buildResources": "build"
     },
     "files": [
       "dist/**/*",
       "electron/**/*",
       "node_modules/**/*",
-      "package.json"
+      "package.json",
+      "!node_modules/sql.js/dist/sql-wasm.wasm"
+    ],
+    "asarUnpack": [
+      "node_modules/sql.js/dist/sql-wasm.wasm"
     ],
     "extraFiles": [
       {
@@ -63,9 +70,9 @@
       }
     ],
     "publish": {
-        "provider": "generic",
-        "url": "https://update-server-y6ps.onrender.com/",
-        "channel": "latest"
+      "provider": "generic",
+      "url": "https://update-server-y6ps.onrender.com/",
+      "channel": "latest"
     },
     "win": {
       "target": [
@@ -76,23 +83,20 @@
           ]
         }
       ],
-      "icon": "icon.ico",
+      "icon": "build/icon.ico",
       "requestedExecutionLevel": "asInvoker",
+      "sign": false,
       "signAndEditExecutable": false,
-      "sign": null,
-      "signDlls": false,
-      "signingHashAlgorithms": null,
-      "publisherName": "My Projects Pro",
+      "signingHashAlgorithms": [],
       "verifyUpdateCodeSignature": false
     },
-    "forceCodeSigning": false,
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "allowElevation": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "My Projects Pro",
+      "shortcutName": "PBooks Pro",
       "deleteAppDataOnUninstall": false,
       "differentialPackage": true,
       "installerIcon": "icon.ico",

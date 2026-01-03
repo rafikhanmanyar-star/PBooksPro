@@ -47,7 +47,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
     const { state } = useAppContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('all');
     const [asOfDate, setAsOfDate] = useState(new Date().toISOString().split('T')[0]);
-    const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
+    const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || 'all');
 
     const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...state.projects], [state.projects]);
 
@@ -115,10 +115,22 @@ const ProjectBalanceSheetReport: React.FC = () => {
             const txDate = new Date(tx.date);
             if (txDate > dateLimit) return;
             
-            // Check if transaction matches project filter
-            const matchesProject = selectedProjectId === 'all' || (tx.projectId === selectedProjectId);
-            if (!matchesProject) return;
-            if (selectedProjectId !== 'all' && !tx.projectId) return; 
+            // Resolve projectId from linked entities if missing
+            let projectId = tx.projectId;
+            if (!projectId && tx.billId) {
+                const bill = state.bills.find(b => b.id === tx.billId);
+                if (bill) projectId = bill.projectId;
+            }
+            if (!projectId && tx.invoiceId) {
+                const inv = state.invoices.find(i => i.id === tx.invoiceId);
+                if (inv) projectId = inv.projectId;
+            }
+            
+            // Strictly filter by selected project
+            if (selectedProjectId !== 'all') {
+                if (projectId !== selectedProjectId) return;
+                if (!projectId) return; // Exclude transactions without projectId when specific project selected
+            } 
 
             // Track all accounts involved in transactions for the selected project
             // For 'all' projects, track all accounts with any transactions
@@ -184,6 +196,13 @@ const ProjectBalanceSheetReport: React.FC = () => {
             } 
             // EXPENSE
             else if (tx.type === TransactionType.EXPENSE) {
+                // Exclude Internal Clearing account transactions (internal adjustments)
+                const clearingAccount = state.accounts.find(a => a.name === 'Internal Clearing');
+                if (clearingAccount && tx.accountId === clearingAccount.id) {
+                    // Skip Internal Clearing transactions - they're internal adjustments
+                    return;
+                }
+                
                 if (tx.categoryId && drawingsCats.has(tx.categoryId)) {
                     ownerContribution -= tx.amount;
                 } else if (tx.categoryId && secDepOut.has(tx.categoryId)) {
@@ -191,6 +210,16 @@ const ProjectBalanceSheetReport: React.FC = () => {
                 } else if (tx.categoryId && rentalOut.has(tx.categoryId)) {
                     ownerFundsHeld -= tx.amount; // Liability decreases (Paid to owner)
                 } else {
+                    // Check if this expense is reducing income (expense with income category)
+                    // This happens for sales return refunds - they reduce income, not add to expenses
+                    const category = categories.find(c => c.id === tx.categoryId);
+                    if (category && category.type === TransactionType.INCOME) {
+                        // This is an expense that reduces income (like refund reduction)
+                        // Subtract from revenue instead of adding to expenses
+                        companyRevenue -= tx.amount;
+                        return; // Skip further processing
+                    }
+                    
                     // Determine if expense is Company Expense or Pass-through (Owner's Expense)
                     // Heuristic: If expense is linked to a Rental Property, it reduces Owner Funds Held
                     // UNLESS it's specifically a "Tenant Deduction" which reduces Security Deposit Liability
@@ -224,32 +253,60 @@ const ProjectBalanceSheetReport: React.FC = () => {
 
         // 2. Accruals (AR & AP)
         let accountsReceivable = 0;
-        (state.invoices || []).forEach(inv => {
-            if (inv.invoiceType !== InvoiceType.INSTALLMENT) return; // Project invoices only for Company AR
-            if (selectedProjectId !== 'all' && inv.projectId !== selectedProjectId) return;
-            
-            if (new Date(inv.issueDate) <= dateLimit) {
-                const paidHistoric = (state.transactions || [])
-                    .filter(tx => tx.invoiceId === inv.id && tx.type === TransactionType.INCOME && new Date(tx.date) <= dateLimit)
-                    .reduce((sum, tx) => sum + tx.amount, 0);
-                const due = Math.max(0, inv.amount - paidHistoric);
-                accountsReceivable += due;
+        const installmentInvoices = (state.invoices || []).filter(inv => inv.invoiceType === InvoiceType.INSTALLMENT);
+        
+        installmentInvoices.forEach(inv => {
+            // Filter by project if a specific project is selected
+            if (selectedProjectId !== 'all') {
+                // Exclude invoices that have a different projectId
+                // Note: Invoices without projectId are excluded when a specific project is selected
+                if (inv.projectId !== selectedProjectId) return;
             }
+            
+            // Exclude invoices from cancelled agreements (they are voided)
+            if (inv.agreementId) {
+                const agreement = state.projectAgreements.find(pa => pa.id === inv.agreementId);
+                if (agreement && agreement.status === 'Cancelled') {
+                    // Skip invoices from cancelled agreements - they are voided
+                    return;
+                }
+            }
+            
+            // Exclude voided invoices (marked with VOIDED in description)
+            if (inv.description?.includes('VOIDED')) {
+                return;
+            }
+            
+            // For Accounts Receivable, include all unpaid invoices regardless of issue date
+            // A/R represents money owed to the company, so we include all outstanding invoices
+            // that exist as of the balance sheet date, even if their issue date is in the future
+            // (e.g., installment invoices scheduled for future payment)
+            
+            // Use the invoice's paidAmount field directly (maintained by system)
+            const paidAmount = inv.paidAmount || 0;
+            const due = Math.max(0, inv.amount - paidAmount);
+            
+            // Add to A/R - include all invoices with any outstanding balance
+            // This ensures both down payment and installment invoices are included
+            accountsReceivable += due;
         });
 
         let accountsPayable = 0;
-        // Include ALL accounts payable as per accounting rules (not filtered by project)
+        // Filter accounts payable by project when a specific project is selected
         (state.bills || []).forEach(bill => {
-            // Exclude rental bills (owner liability) for 'all' projects view
-            if (selectedProjectId === 'all' && bill.propertyId) return; 
-            // For specific project, still include ALL accounts payable (not just project-specific)
-            // This follows the requirement: "all account payable"
+            // Exclude rental bills (owner liability) - these are not project-related
+            if (bill.propertyId) return;
+            
+            // For specific project, only include bills related to that project
+            if (selectedProjectId !== 'all') {
+                if (bill.projectId !== selectedProjectId) return;
+            }
 
             if (new Date(bill.issueDate) <= dateLimit) {
-                const paidHistoric = (state.transactions || [])
-                    .filter(tx => tx.billId === bill.id && tx.type === TransactionType.EXPENSE && new Date(tx.date) <= dateLimit)
-                    .reduce((sum, tx) => sum + tx.amount, 0);
-                const due = Math.max(0, bill.amount - paidHistoric);
+                // Use the bill's paidAmount field directly (maintained by system via applyTransactionEffect)
+                // This is more reliable than recalculating from transactions and ensures consistency
+                const paidAmount = bill.paidAmount || 0;
+                const due = Math.max(0, bill.amount - paidAmount);
                 accountsPayable += due;
             }
         });
@@ -294,8 +351,9 @@ const ProjectBalanceSheetReport: React.FC = () => {
             
             if (acc.type === AccountType.EQUITY) {
                 // For equity accounts, only include if has transactions AND non-zero balance
+                // Invert balance for equity accounts (credit-based accounting) so investments show as positive
                 if (hasTransactions && hasBalance) {
-                    equityArr.push({ id: acc.id, name: acc.name, balance: balance, type: acc.type });
+                    equityArr.push({ id: acc.id, name: acc.name, balance: -balance, type: acc.type });
                 }
             } else if (acc.type === AccountType.LIABILITY) {
                 // For liability accounts, only include if has transactions AND (non-zero balance OR is a linked account)

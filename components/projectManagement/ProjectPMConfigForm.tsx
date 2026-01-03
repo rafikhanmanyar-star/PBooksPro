@@ -6,6 +6,7 @@ import Input from '../ui/Input';
 import Button from '../ui/Button';
 import Select from '../ui/Select';
 import { useAppContext } from '../../context/AppContext';
+import { useNotification } from '../../context/NotificationContext';
 import { ICONS } from '../../constants';
 
 interface ProjectPMConfigFormProps {
@@ -17,10 +18,38 @@ interface ProjectPMConfigFormProps {
 
 const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClose, project, onSave }) => {
     const { state } = useAppContext();
+    const { showConfirm } = useNotification();
     const [rate, setRate] = useState(project.pmConfig?.rate?.toString() || '0');
     const [frequency, setFrequency] = useState<'Monthly' | 'Weekly' | 'Yearly'>(project.pmConfig?.frequency || 'Monthly');
     const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set(project.pmConfig?.excludedCategoryIds || []));
     const [searchQuery, setSearchQuery] = useState('');
+
+    // Check if there are existing PM allocations or payments for this project
+    const hasExistingData = useMemo(() => {
+        const pmCostCategory = state.categories.find(c => c.name === 'Project Management Cost');
+        if (!pmCostCategory) return false;
+
+        // Check for allocation transactions (system transactions with PM allocation markers)
+        const hasAllocations = state.transactions.some(tx => {
+            if (tx.projectId !== project.id) return false;
+            if (!tx.isSystem) return false;
+            if (!tx.description) return false;
+            return tx.description.includes('[PM-ALLOC-') || tx.description.includes('PM Fee Allocation');
+        });
+
+        // Check for payment transactions
+        const hasPayments = state.transactions.some(tx => {
+            if (tx.projectId !== project.id) return false;
+            if (tx.type === TransactionType.EXPENSE && tx.categoryId === pmCostCategory.id) return true;
+            if (tx.type === TransactionType.TRANSFER && 
+                (tx.description?.toLowerCase().includes('pm fee') || tx.description?.toLowerCase().includes('pm payout'))) {
+                return true;
+            }
+            return false;
+        });
+
+        return hasAllocations || hasPayments;
+    }, [state.transactions, state.categories, project.id]);
 
     // Categories available for exclusion (Expenses only)
     const expenseCategories = useMemo(() => {
@@ -51,10 +80,48 @@ const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClo
         setExcludedIds(newSet);
     };
 
-    const handleSubmit = () => {
-        const numRate = parseFloat(rate);
-        if (isNaN(numRate) || numRate < 0) return;
+    const handleSubmit = async (e?: React.MouseEvent) => {
+        // Prevent any default form submission
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
 
+        const numRate = parseFloat(rate);
+        if (isNaN(numRate) || numRate < 0) {
+            return;
+        }
+
+        // Check if configuration has changed
+        const rateChanged = project.pmConfig?.rate !== numRate;
+        const frequencyChanged = project.pmConfig?.frequency !== frequency;
+        const excludedChanged = JSON.stringify(Array.from(excludedIds).sort()) !== 
+                                JSON.stringify((project.pmConfig?.excludedCategoryIds || []).sort());
+
+        // If there's existing data and config changed, show warning
+        if (hasExistingData && (rateChanged || frequencyChanged || excludedChanged)) {
+            const message = `Data has been recorded in the past using the current configuration.\n\n` +
+                          `Changing the configuration will:\n` +
+                          `• Affect future calculations\n` +
+                          `• May cause inconsistencies with historical data\n\n` +
+                          `Are you sure you want to change the configuration?`;
+            
+            const confirmResult = await showConfirm(
+                message,
+                { 
+                    title: "⚠️ Configuration Change Warning", 
+                    confirmLabel: "Yes, Change Configuration", 
+                    cancelLabel: "Cancel" 
+                }
+            );
+            
+            // If user cancels (false or undefined), do not proceed with save
+            if (confirmResult !== true) {
+                return; // Exit early, do not save
+            }
+        }
+
+        // Only save if user confirmed or no warning was needed
         const updatedProject: Project = {
             ...project,
             pmConfig: {
@@ -145,8 +212,8 @@ const ProjectPMConfigForm: React.FC<ProjectPMConfigFormProps> = ({ isOpen, onClo
                 </div>
 
                 <div className="flex justify-end gap-2 border-t pt-4">
-                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button onClick={handleSubmit}>Save Configuration</Button>
+                    <Button variant="secondary" onClick={onClose} type="button">Cancel</Button>
+                    <Button onClick={handleSubmit} type="button">Save Configuration</Button>
                 </div>
             </div>
         </Modal>

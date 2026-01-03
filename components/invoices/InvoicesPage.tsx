@@ -30,16 +30,16 @@ interface InvoicesPageProps {
 const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitleAndGoBack, showCreateButton = true }) => {
     const { state, dispatch } = useAppContext();
     const { showConfirm, showToast, showAlert } = useNotification();
-    
+
     // Persistent View Settings
     const storageKeyPrefix = invoiceTypeFilter ? `invoices_${invoiceTypeFilter}` : 'invoices_all';
-    
+
     const [statusFilter, setStatusFilter] = useLocalStorage<string>(`${storageKeyPrefix}_statusFilter`, 'All');
     const [groupBy, setGroupBy] = useLocalStorage<'tenant' | 'owner' | 'property'>(`${storageKeyPrefix}_groupBy`, invoiceTypeFilter === InvoiceType.RENTAL ? 'tenant' : 'owner');
     const [buildingFilter, setBuildingFilter] = useState<string>('all');
-    const [projectFilter, setProjectFilter] = useState<string>('all');
+    const [projectFilter, setProjectFilter] = useState<string>(state.defaultProjectId || 'all');
     const [searchQuery, setSearchQuery] = useState('');
-    
+
     // Sidebar Resizing State
     const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>(`${storageKeyPrefix}_sidebarWidth`, 300);
     const isResizingSidebar = useRef(false);
@@ -49,11 +49,11 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isBulkPayModalOpen, setIsBulkPayModalOpen] = useState(false);
     const [bulkPaymentInvoices, setBulkPaymentInvoices] = useState<Invoice[]>([]);
-    
+
     // Payment Modal State
     const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-    
+
     // Invoice History & Detail View State
     const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null);
     const [invoiceToEdit, setInvoiceToEdit] = useState<Invoice | null>(null);
@@ -94,7 +94,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
             };
         }
     }, [contextMenu]);
-    
+
     // --- Sidebar Resize Handlers ---
     const startResizingSidebar = useCallback((e: React.MouseEvent) => {
         e.preventDefault();
@@ -132,7 +132,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
     const baseInvoices = useMemo(() => {
         try {
             let invoices = state.invoices;
-            
+
             if (invoiceTypeFilter) {
                 invoices = invoices.filter(inv => inv.invoiceType === invoiceTypeFilter);
             }
@@ -142,14 +142,14 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
             }
 
             if (invoiceTypeFilter === InvoiceType.RENTAL && buildingFilter !== 'all') {
-                 invoices = invoices.filter(inv => {
-                     if (inv.buildingId === buildingFilter) return true;
-                     if (inv.propertyId) {
-                         const prop = state.properties.find(p => p.id === inv.propertyId);
-                         return prop && prop.buildingId === buildingFilter;
-                     }
-                     return false;
-                 });
+                invoices = invoices.filter(inv => {
+                    if (inv.buildingId === buildingFilter) return true;
+                    if (inv.propertyId) {
+                        const prop = state.properties.find(p => p.id === inv.propertyId);
+                        return prop && prop.buildingId === buildingFilter;
+                    }
+                    return false;
+                });
             } else if (invoiceTypeFilter === InvoiceType.INSTALLMENT && projectFilter !== 'all') {
                 invoices = invoices.filter(inv => inv.projectId === projectFilter);
             }
@@ -171,7 +171,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                     return false;
                 });
             }
-            
+
             return invoices;
         } catch (error) {
             console.error("Error filtering invoices:", error);
@@ -208,17 +208,17 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                         invoices = invoices.filter(inv => inv.propertyId === treeFilter.id);
                     }
                 } else if (invoiceTypeFilter === InvoiceType.INSTALLMENT) {
-                     if (groupBy === 'owner') {
+                    if (groupBy === 'owner') {
                         invoices = invoices.filter(inv => inv.contactId === treeFilter.id);
-                     } else if (groupBy === 'property') {
+                    } else if (groupBy === 'property') {
                         invoices = invoices.filter(inv => inv.unitId === treeFilter.id);
-                     }
+                    }
                 }
             } else if (treeFilter.type === 'invoice') {
                 invoices = invoices.filter(inv => inv.id === treeFilter.id);
             }
         }
-        
+
         return invoices.sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime());
     }, [baseInvoices, treeFilter, invoiceTypeFilter, groupBy, state.properties, state.projectAgreements]);
 
@@ -230,7 +230,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
 
             if (!isProjectContext && !isRentalContext) return [];
 
-            const sourceInvoices = baseInvoices; 
+            const sourceInvoices = baseInvoices;
 
             if (isRentalContext) {
                 const hierarchy: Record<string, { name: string, balance: number, count: number, subgroups: Record<string, { name: string, invoices: Invoice[], balance: number, count: number }> }> = {};
@@ -242,9 +242,9 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                         if (prop) buildingId = prop.buildingId;
                     }
                     if (!buildingId) buildingId = 'Unassigned';
-                    
-                    const buildingName = buildingId === 'Unassigned' 
-                        ? 'Unassigned' 
+
+                    const buildingName = buildingId === 'Unassigned'
+                        ? 'Unassigned'
                         : state.buildings.find(b => b.id === buildingId)?.name || 'Unknown Building';
 
                     let subgroupId = 'Unassigned';
@@ -270,7 +270,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                     if (!hierarchy[buildingId].subgroups[subgroupId]) {
                         hierarchy[buildingId].subgroups[subgroupId] = { name: subgroupName, invoices: [], balance: 0, count: 0 };
                     }
-                    
+
                     hierarchy[buildingId].subgroups[subgroupId].invoices.push(inv);
                     hierarchy[buildingId].balance += due;
                     hierarchy[buildingId].count += 1;
@@ -294,7 +294,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                         name: bData.name,
                         type: 'group' as const,
                         children: children,
-                        invoices: [], 
+                        invoices: [],
                         count: bData.count,
                         balance: bData.balance
                     };
@@ -302,12 +302,12 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
 
             } else {
                 const hierarchy: Record<string, { name: string, balance: number, count: number, subgroups: Record<string, { name: string, invoices: Invoice[], balance: number, count: number }> }> = {};
-                
+
                 sourceInvoices.forEach(inv => {
                     const projectId = inv.projectId || 'Unassigned';
                     const projectName = projectId === 'Unassigned' ? 'Unassigned' : state.projects.find(p => p.id === projectId)?.name || 'Unknown Project';
                     const due = Math.max(0, inv.amount - inv.paidAmount);
-                    
+
                     let subgroupId = 'Unassigned';
                     let subgroupName = 'Unassigned';
 
@@ -318,18 +318,18 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                         subgroupId = inv.unitId || 'No-Unit';
                         subgroupName = state.units.find(u => u.id === subgroupId)?.name || 'General Project Invoice';
                     } else {
-                         subgroupId = inv.contactId || 'No-Client';
-                         subgroupName = state.contacts.find(c => c.id === subgroupId)?.name || 'Unknown Client';
+                        subgroupId = inv.contactId || 'No-Client';
+                        subgroupName = state.contacts.find(c => c.id === subgroupId)?.name || 'Unknown Client';
                     }
 
                     if (!hierarchy[projectId]) {
                         hierarchy[projectId] = { name: projectName, subgroups: {}, balance: 0, count: 0 };
                     }
-                    
+
                     if (!hierarchy[projectId].subgroups[subgroupId]) {
                         hierarchy[projectId].subgroups[subgroupId] = { name: subgroupName, invoices: [], balance: 0, count: 0 };
                     }
-                    
+
                     hierarchy[projectId].subgroups[subgroupId].invoices.push(inv);
                     hierarchy[projectId].balance += due;
                     hierarchy[projectId].count += 1;
@@ -394,10 +394,10 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
 
         state.transactions.forEach(tx => {
             if (tx.type !== TransactionType.INCOME) return;
-            
+
             // If it's an invoice payment, check if it's relevant to current view
             const isInvoicePayment = tx.invoiceId && invoiceIdSet.has(tx.invoiceId);
-            
+
             if (!isInvoicePayment) return;
 
             if (tx.batchId) {
@@ -407,7 +407,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                 const batchTxs = state.transactions.filter(t => t.batchId === tx.batchId);
                 const totalAmount = batchTxs.reduce((sum, t) => sum + t.amount, 0);
                 const account = state.accounts.find(a => a.id === tx.accountId);
-                
+
                 records.push({
                     id: `batch-${tx.batchId}`,
                     type: 'Payment (Bulk)',
@@ -415,21 +415,21 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                     date: tx.date,
                     accountName: account?.name || 'Unknown Account',
                     amount: totalAmount,
-                    remainingAmount: 0, 
-                    raw: { 
-                        ...tx, 
-                        amount: totalAmount, 
-                        description: `Bulk Payment (${batchTxs.length})`, 
+                    remainingAmount: 0,
+                    raw: {
+                        ...tx,
+                        amount: totalAmount,
+                        description: `Bulk Payment (${batchTxs.length})`,
                         children: batchTxs // Pass children for expansion
                     } as Transaction,
                     status: 'Paid'
                 });
-                
+
                 processedBatchIds.add(tx.batchId);
             } else {
                 const inv = state.invoices.find(i => i.id === tx.invoiceId);
                 const account = state.accounts.find(a => a.id === tx.accountId);
-                
+
                 records.push({
                     id: tx.id,
                     type: 'Payment',
@@ -437,7 +437,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                     date: tx.date,
                     accountName: account?.name || 'Unknown Account',
                     amount: tx.amount,
-                    remainingAmount: 0, 
+                    remainingAmount: 0,
                     raw: tx,
                     status: 'Paid'
                 });
@@ -527,14 +527,14 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
 
     const handleReceivePayment = useCallback(() => {
         if (!contextMenu) return;
-        
+
         const { node } = contextMenu;
-        
+
         // Start with all invoices of the current type (don't use baseInvoices as it may have status filter applied)
-        let candidateInvoices = invoiceTypeFilter 
+        let candidateInvoices = invoiceTypeFilter
             ? state.invoices.filter(inv => inv.invoiceType === invoiceTypeFilter)
             : state.invoices;
-        
+
         // Apply building/project filter if applicable
         if (invoiceTypeFilter === InvoiceType.RENTAL && buildingFilter !== 'all') {
             candidateInvoices = candidateInvoices.filter(inv => {
@@ -548,53 +548,53 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
         } else if (invoiceTypeFilter === InvoiceType.INSTALLMENT && projectFilter !== 'all') {
             candidateInvoices = candidateInvoices.filter(inv => inv.projectId === projectFilter);
         }
-        
+
         // Find all open invoices for this owner/tenant (filter by node ID based on groupBy)
         let openInvoices: Invoice[] = [];
-        
+
         if (invoiceTypeFilter === InvoiceType.RENTAL) {
             if (groupBy === 'tenant') {
-                openInvoices = candidateInvoices.filter(inv => 
-                    inv.contactId === node.id && 
+                openInvoices = candidateInvoices.filter(inv =>
+                    inv.contactId === node.id &&
                     (inv.status === InvoiceStatus.UNPAID || inv.status === InvoiceStatus.PARTIALLY_PAID || inv.status === InvoiceStatus.OVERDUE) &&
                     (inv.amount - inv.paidAmount) > 0
                 );
             } else if (groupBy === 'owner') {
                 openInvoices = candidateInvoices.filter(inv => {
                     const prop = state.properties.find(p => p.id === inv.propertyId);
-                    return prop && prop.ownerId === node.id && 
+                    return prop && prop.ownerId === node.id &&
                         (inv.status === InvoiceStatus.UNPAID || inv.status === InvoiceStatus.PARTIALLY_PAID || inv.status === InvoiceStatus.OVERDUE) &&
                         (inv.amount - inv.paidAmount) > 0;
                 });
             } else if (groupBy === 'property') {
-                openInvoices = candidateInvoices.filter(inv => 
-                    inv.propertyId === node.id && 
+                openInvoices = candidateInvoices.filter(inv =>
+                    inv.propertyId === node.id &&
                     (inv.status === InvoiceStatus.UNPAID || inv.status === InvoiceStatus.PARTIALLY_PAID || inv.status === InvoiceStatus.OVERDUE) &&
                     (inv.amount - inv.paidAmount) > 0
                 );
             }
         } else if (invoiceTypeFilter === InvoiceType.INSTALLMENT) {
             if (groupBy === 'owner') {
-                openInvoices = candidateInvoices.filter(inv => 
-                    inv.contactId === node.id && 
+                openInvoices = candidateInvoices.filter(inv =>
+                    inv.contactId === node.id &&
                     (inv.status === InvoiceStatus.UNPAID || inv.status === InvoiceStatus.PARTIALLY_PAID || inv.status === InvoiceStatus.OVERDUE) &&
                     (inv.amount - inv.paidAmount) > 0
                 );
             } else if (groupBy === 'property') {
-                openInvoices = candidateInvoices.filter(inv => 
-                    inv.unitId === node.id && 
+                openInvoices = candidateInvoices.filter(inv =>
+                    inv.unitId === node.id &&
                     (inv.status === InvoiceStatus.UNPAID || inv.status === InvoiceStatus.PARTIALLY_PAID || inv.status === InvoiceStatus.OVERDUE) &&
                     (inv.amount - inv.paidAmount) > 0
                 );
             }
         }
-        
+
         if (openInvoices.length === 0) {
             showAlert(`No open invoices found for ${node.name}.`, { title: 'No Invoices' });
             setContextMenu(null);
             return;
         }
-        
+
         // Open bulk payment modal with these invoices
         setBulkPaymentInvoices(openInvoices);
         setIsBulkPayModalOpen(true);
@@ -603,7 +603,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
 
     const handleCreateInvoice = useCallback(() => {
         if (!contextMenu) return;
-        
+
         const { node } = contextMenu;
         // Open create invoice modal with prepopulated contact
         setPrepopulatedContactId(node.id);
@@ -614,9 +614,9 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
     // State for prepopulated contact when creating invoice from context menu
     const [prepopulatedContactId, setPrepopulatedContactId] = useState<string | undefined>(undefined);
 
-    const selectedInvoicesList = useMemo(() => 
-        state.invoices.filter(inv => selectedInvoiceIds.has(inv.id)), 
-    [state.invoices, selectedInvoiceIds]);
+    const selectedInvoicesList = useMemo(() =>
+        state.invoices.filter(inv => selectedInvoiceIds.has(inv.id)),
+        [state.invoices, selectedInvoiceIds]);
 
     const supportsTreeView = invoiceTypeFilter === InvoiceType.INSTALLMENT || invoiceTypeFilter === InvoiceType.RENTAL;
     const isRental = invoiceTypeFilter === InvoiceType.RENTAL;
@@ -625,134 +625,143 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
     const filterInputClass = "w-full pl-3 py-2 text-sm border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-accent/50 focus:border-accent bg-white";
 
     return (
-        <div className="space-y-4 h-full flex flex-col gap-2">
+        <div className="flex flex-col h-full bg-slate-50/50 p-4 sm:p-6 gap-4 sm:gap-6">
             {!hideTitleAndGoBack && (
-                <div className="flex justify-between items-center mb-2">
-                    <h2 className="text-2xl font-bold text-slate-800">Invoices</h2>
+                <div className="flex flex-col gap-4 flex-shrink-0">
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Invoices & Payments</h1>
+                            <p className="text-xs sm:text-sm text-slate-500 mt-1">Track billings, payments, and financial status across projects</p>
+                        </div>
+                    </div>
+
+                    {/* Top Control Bar */}
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
+                        <div className="flex items-center gap-3 flex-1 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+                            {/* Search */}
+                            <div className="relative min-w-[200px]">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                    <div className="w-4 h-4">{ICONS.search}</div>
+                                </div>
+                                <input
+                                    type="text"
+                                    placeholder="Search references..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="pl-9 pr-4 py-1.5 w-full text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:text-slate-400"
+                                />
+                                {searchQuery && (
+                                    <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-rose-500">
+                                        <div className="w-4 h-4">{ICONS.x}</div>
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="w-px h-6 bg-slate-200 hidden md:block"></div>
+
+                            {/* Filters based on Context */}
+                            {isRental && (
+                                <Select
+                                    value={buildingFilter}
+                                    onChange={(e) => setBuildingFilter(e.target.value)}
+                                    className="!w-40 !py-1.5 !text-sm !border-slate-200 !bg-slate-50/50"
+                                    hideIcon={true}
+                                >
+                                    <option value="all">All Buildings</option>
+                                    {buildings.map(b => (
+                                        <option key={b.id} value={b.id}>{b.name}</option>
+                                    ))}
+                                </Select>
+                            )}
+
+                            {isProject && (
+                                <Select
+                                    value={projectFilter}
+                                    onChange={(e) => setProjectFilter(e.target.value)}
+                                    className="!w-40 !py-1.5 !text-sm !border-slate-200 !bg-slate-50/50"
+                                    hideIcon={true}
+                                >
+                                    <option value="all">All Projects</option>
+                                    {projects.map(p => (
+                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                    ))}
+                                </Select>
+                            )}
+
+                            <Select
+                                value={statusFilter}
+                                onChange={(e) => setStatusFilter(e.target.value)}
+                                className="!w-32 !py-1.5 !text-sm !border-slate-200 !bg-slate-50/50"
+                                hideIcon={true}
+                            >
+                                <option value="All">All Status</option>
+                                <option value={InvoiceStatus.UNPAID}>Unpaid</option>
+                                <option value={InvoiceStatus.PARTIALLY_PAID}>Partially</option>
+                                <option value={InvoiceStatus.PAID}>Paid</option>
+                                <option value={InvoiceStatus.OVERDUE}>Overdue</option>
+                                <option value={InvoiceStatus.DRAFT}>Draft</option>
+                            </Select>
+                        </div>
+
+                        <div className="flex items-center gap-3 w-full md:w-auto border-t md:border-t-0 md:border-l border-slate-100 pt-3 md:pt-0 pl-0 md:pl-3">
+                            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Group By:</span>
+                            <div className="flex bg-slate-100 p-1 rounded-lg">
+                                {(isRental ? ['tenant', 'owner', 'property'] : ['owner', 'property']).map((opt) => (
+                                    <button
+                                        key={opt}
+                                        onClick={() => setGroupBy(opt as any)}
+                                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all capitalize ${groupBy === opt
+                                                ? 'bg-white text-indigo-600 shadow-sm font-bold ring-1 ring-black/5'
+                                                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                                            }`}
+                                    >
+                                        {opt}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
 
-            {/* Actions Bar - Only show bulk payment button */}
-            {selectedInvoiceIds.size > 0 && (
-                <div className="flex justify-end items-center gap-2 bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex-shrink-0">
-                    <Button onClick={() => setIsBulkPayModalOpen(true)} className="animate-fade-in">
-                        Receive ({selectedInvoiceIds.size})
-                    </Button>
-                </div>
-            )}
-
-            <div className="flex-grow overflow-hidden flex gap-0 h-full">
+            <div className={`flex-grow flex flex-col md:flex-row gap-4 sm:gap-6 overflow-hidden min-h-0 ${hideTitleAndGoBack ? 'pt-2' : ''}`}>
                 {/* Sidebar Control Panel */}
                 {supportsTreeView && (
-                <div 
-                    className="flex-shrink-0 flex-col h-full gap-3 hidden md:flex"
-                    style={{ width: sidebarWidth }}
-                >
-                    <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 space-y-3 flex-shrink-0">
-                        {/* Search */}
-                        <div className="relative">
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                                <span className="h-4 w-4">{ICONS.search}</span>
-                            </div>
-                            <Input 
-                                placeholder="Search..." 
-                                value={searchQuery} 
-                                onChange={(e) => setSearchQuery(e.target.value)} 
-                                className={`${filterInputClass} pl-9`}
-                            />
-                            {searchQuery && (
-                                <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600">
-                                    <div className="w-4 h-4">{ICONS.x}</div>
+                    <div
+                        className="flex-shrink-0 flex flex-col h-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden hidden md:flex"
+                        style={{ width: sidebarWidth }}
+                    >
+                        <div className="p-3 bg-slate-50/50 border-b border-slate-100 flex justify-between items-center">
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Hierarchy</span>
+                            {treeFilter && (
+                                <button
+                                    onClick={() => setTreeFilter(null)}
+                                    className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full hover:bg-indigo-100 font-medium transition-colors"
+                                >
+                                    Clear Filter
                                 </button>
                             )}
                         </div>
-
-                        {/* Filters based on Context */}
-                        {isRental && (
-                            <Select 
-                                value={buildingFilter} 
-                                onChange={(e) => setBuildingFilter(e.target.value)} 
-                                className={filterInputClass}
-                                hideIcon={true}
-                            >
-                                <option value="all">All Buildings</option>
-                                {buildings.map(b => (
-                                    <option key={b.id} value={b.id}>{b.name}</option>
-                                ))}
-                            </Select>
-                        )}
-                        
-                        {isProject && (
-                            <Select 
-                                value={projectFilter} 
-                                onChange={(e) => setProjectFilter(e.target.value)} 
-                                className={filterInputClass}
-                                hideIcon={true}
-                            >
-                                <option value="all">All Projects</option>
-                                {projects.map(p => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                            </Select>
-                        )}
-
-                        {/* Group By */}
-                         <Select
-                            value={groupBy}
-                            onChange={(e) => setGroupBy(e.target.value as any)}
-                            className={filterInputClass}
-                            hideIcon={true}
-                        >
-                            {isRental ? (
-                                <>
-                                    <option value="tenant">Group by Tenant</option>
-                                    <option value="owner">Group by Owner</option>
-                                    <option value="property">Group by Property</option>
-                                </>
-                            ) : (
-                                <>
-                                    <option value="owner">Group by Owner</option>
-                                    <option value="property">Group by Unit</option>
-                                </>
-                            )}
-                        </Select>
-
-                        {/* Status Filter */}
-                         <Select 
-                            value={statusFilter} 
-                            onChange={(e) => setStatusFilter(e.target.value)}
-                            className={filterInputClass}
-                            hideIcon={true}
-                        >
-                            <option value="All">All Status</option>
-                            <option value={InvoiceStatus.UNPAID}>Unpaid</option>
-                            <option value={InvoiceStatus.PARTIALLY_PAID}>Partially Paid</option>
-                            <option value={InvoiceStatus.PAID}>Paid</option>
-                            <option value={InvoiceStatus.OVERDUE}>Overdue</option>
-                            <option value={InvoiceStatus.DRAFT}>Draft</option>
-                        </Select>
+                        {/* Tree View Component */}
+                        <div className="flex-grow overflow-y-auto p-2">
+                            <InvoiceTreeView
+                                treeData={treeData}
+                                selectedNodeId={treeFilter?.id || null}
+                                onNodeSelect={(id, type) => setTreeFilter(treeFilter?.id === id && treeFilter.type === type ? null : { id, type })}
+                                onContextMenu={handleContextMenu}
+                            />
+                        </div>
                     </div>
-
-                    {/* Tree View Component - Make it stretch */}
-                    <div className="flex-grow overflow-hidden min-h-0">
-                        <InvoiceTreeView 
-                            treeData={treeData} 
-                            selectedNodeId={treeFilter?.id || null} 
-                            onNodeSelect={(id, type) => setTreeFilter(treeFilter?.id === id && treeFilter.type === type ? null : { id, type })} 
-                            onContextMenu={handleContextMenu}
-                        />
-                    </div>
-                </div>
                 )}
-                
+
                 {/* Drag Handle */}
                 {supportsTreeView && (
-                    <div className="hidden md:block h-full">
-                        <ResizeHandle onMouseDown={startResizingSidebar} />
+                    <div className="hidden md:flex items-center justify-center w-2 hover:w-3 -ml-3 -mr-3 z-10 cursor-col-resize group transition-all" onMouseDown={startResizingSidebar}>
+                        <div className="w-1 h-8 rounded-full bg-slate-200 group-hover:bg-indigo-400 transition-colors"></div>
                     </div>
                 )}
 
-                {/* List Area - Make it stretch */}
+                {/* List Area */}
                 <div className="flex-grow overflow-hidden min-h-0 flex-1 flex flex-col">
                     <RentalFinancialGrid
                         records={financialRecords}
@@ -766,20 +775,22 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                             dispatch({ type: 'SET_PAGE', payload: 'import' });
                         }}
                         showButtons={showCreateButton}
+                        onBulkPaymentClick={() => setIsBulkPayModalOpen(true)}
+                        selectedCount={selectedInvoiceIds.size}
                     />
                 </div>
             </div>
 
             <Modal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setPrepopulatedContactId(undefined); }} title="Create New Invoice">
-                <InvoiceBillForm 
-                    onClose={() => { setIsCreateModalOpen(false); setPrepopulatedContactId(undefined); }} 
-                    type="invoice" 
+                <InvoiceBillForm
+                    onClose={() => { setIsCreateModalOpen(false); setPrepopulatedContactId(undefined); }}
+                    type="invoice"
                     invoiceTypeForNew={invoiceTypeFilter}
                     initialContactId={prepopulatedContactId}
                 />
             </Modal>
 
-            <BulkPaymentModal 
+            <BulkPaymentModal
                 isOpen={isBulkPayModalOpen}
                 onClose={() => { setIsBulkPayModalOpen(false); setBulkPaymentInvoices([]); }}
                 selectedInvoices={bulkPaymentInvoices.length > 0 ? bulkPaymentInvoices : selectedInvoicesList}
@@ -791,14 +802,14 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
 
             {/* Individual Payment Modals */}
             {paymentInvoice?.invoiceType === InvoiceType.RENTAL ? (
-                <RentalPaymentModal 
-                    isOpen={isPaymentModalOpen} 
-                    onClose={() => { setIsPaymentModalOpen(false); setPaymentInvoice(null); }} 
-                    invoice={paymentInvoice} 
+                <RentalPaymentModal
+                    isOpen={isPaymentModalOpen}
+                    onClose={() => { setIsPaymentModalOpen(false); setPaymentInvoice(null); }}
+                    invoice={paymentInvoice}
                 />
             ) : (
                 <Modal isOpen={isPaymentModalOpen} onClose={() => { setIsPaymentModalOpen(false); setPaymentInvoice(null); }} title="Receive Payment">
-                    <TransactionForm 
+                    <TransactionForm
                         onClose={() => { setIsPaymentModalOpen(false); setPaymentInvoice(null); }}
                         transactionTypeForNew={TransactionType.INCOME}
                         transactionToEdit={{
@@ -816,7 +827,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                             categoryId: paymentInvoice?.categoryId,
                             description: paymentInvoice ? `Payment for Invoice #${paymentInvoice.invoiceNumber}` : ''
                         } as Transaction}
-                        onShowDeleteWarning={() => {}}
+                        onShowDeleteWarning={() => { }}
                     />
                 </Modal>
             )}
@@ -824,7 +835,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
             {/* Invoice History / Detail Modal */}
             <Modal isOpen={!!viewInvoice} onClose={() => setViewInvoice(null)} title={`Invoice #${viewInvoice?.invoiceNumber}`}>
                 {viewInvoice && (
-                    <InvoiceDetailView 
+                    <InvoiceDetailView
                         invoice={viewInvoice}
                         onRecordPayment={(inv) => handleRecordPayment(inv)}
                         onEdit={(inv) => handleEditInvoiceFromDetail(inv)}
@@ -834,16 +845,16 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
             </Modal>
 
             <Modal isOpen={!!transactionToEdit} onClose={() => setTransactionToEdit(null)} title="Edit Transaction">
-                <TransactionForm 
-                    onClose={() => setTransactionToEdit(null)} 
+                <TransactionForm
+                    onClose={() => setTransactionToEdit(null)}
                     transactionToEdit={transactionToEdit}
                     onShowDeleteWarning={handleShowDeleteWarning}
                 />
             </Modal>
 
             <Modal isOpen={!!invoiceToEdit} onClose={() => setInvoiceToEdit(null)} title="Edit Invoice">
-                <InvoiceBillForm 
-                    onClose={() => setInvoiceToEdit(null)} 
+                <InvoiceBillForm
+                    onClose={() => setInvoiceToEdit(null)}
                     type="invoice"
                     itemToEdit={invoiceToEdit || undefined}
                 />

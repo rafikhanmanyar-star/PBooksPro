@@ -14,8 +14,10 @@ import PropertyLayoutReport from '../reports/PropertyLayoutReport';
 import ServiceChargesDeductionReport from '../reports/ServiceChargesDeductionReport';
 import BMAnalysisReport from '../reports/BMAnalysisReport';
 
-const PRIMARY_REPORTS = ['Building Analysis', 'Visual Layout', 'Property Status', 'BM Analysis'];
-const SECONDARY_REPORTS = [
+const PRIMARY_REPORTS = ['Visual Layout', 'Tabular Layout'];
+const REPORT_MENU_OPTIONS = [
+    'Building Analysis',
+    'BM Analysis',
     'Owner Income',
     'Service Charges Deduction',
     'Tenant Ledger',
@@ -30,7 +32,7 @@ interface RentalReportsPageProps {
 }
 
 const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => {
-    const [activeReport, setActiveReport] = useState(initialTab || 'Building Analysis');
+    const [activeReport, setActiveReport] = useState(initialTab || 'Visual Layout');
 
     useEffect(() => {
         if (initialTab) {
@@ -41,12 +43,12 @@ const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => 
 
     const renderReport = () => {
         switch (activeReport) {
-            case 'Building Analysis':
-                return <BuildingAccountsReport />;
             case 'Visual Layout':
                 return <PropertyLayoutReport />;
-            case 'Property Status':
+            case 'Tabular Layout':
                 return <UnitStatusReport />;
+            case 'Building Analysis':
+                return <BuildingAccountsReport />;
             case 'BM Analysis':
                 return <BMAnalysisReport />;
             case 'Owner Income':
@@ -70,18 +72,17 @@ const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => 
 
     return (
         <div className="flex flex-col h-full space-y-4">
-             <div className="no-print flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-2 rounded-lg border border-slate-200 shadow-sm flex-shrink-0">
-                
-                {/* Primary Report Toggles - Capsule/Pill Style */}
-                <div className="flex items-center bg-slate-100 rounded-full p-1 self-start overflow-x-auto no-scrollbar max-w-full">
+            <div className="no-print flex flex-wrap items-center gap-3 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+                {/* Primary Report Toggles */}
+                <div className="flex bg-slate-100 p-1 rounded-md border border-slate-200">
                     {PRIMARY_REPORTS.map(reportName => (
                         <button
                             key={reportName}
                             onClick={() => setActiveReport(reportName)}
-                            className={`px-4 py-1.5 text-xs sm:text-sm font-medium rounded-full transition-all duration-200 whitespace-nowrap focus:outline-none ${
+                            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-md transition-all duration-200 whitespace-nowrap focus:outline-none ${
                                 activeReport === reportName
-                                ? 'bg-white text-accent shadow-[0_1px_2px_rgba(0,0,0,0.1)]'
-                                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
+                                ? 'bg-white text-accent shadow-sm ring-1 ring-slate-200'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
                             }`}
                         >
                             {reportName}
@@ -89,31 +90,29 @@ const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => 
                     ))}
                 </div>
 
-                <div className="flex items-center gap-3 w-full md:w-auto">
-                    <div className="hidden md:block w-px h-6 bg-slate-200"></div>
+                <div className="w-px h-6 bg-slate-200 hidden sm:block"></div>
 
-                    {/* Secondary Report Selector */}
-                    <div className="flex-grow min-w-[200px] max-w-sm">
-                        <Select
-                            value={SECONDARY_REPORTS.includes(activeReport) ? activeReport : ''}
-                            onChange={(e) => setActiveReport(e.target.value)}
-                        >
-                            <option value="" disabled>More Reports...</option>
-                            {SECONDARY_REPORTS.map((report) => (
-                                <option key={report} value={report}>
-                                    {report}
-                                </option>
-                            ))}
-                        </Select>
-                    </div>
-
-                    {/* Active Report Badge (for secondary reports) */}
-                    {SECONDARY_REPORTS.includes(activeReport) && (
-                        <div className="hidden md:block px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs sm:text-sm font-bold rounded-full border border-indigo-100 whitespace-nowrap">
-                            {activeReport}
-                        </div>
-                    )}
+                {/* Report Menu Selector */}
+                <div className="flex-grow min-w-[200px] max-w-sm">
+                    <Select
+                        value={REPORT_MENU_OPTIONS.includes(activeReport) ? activeReport : ''}
+                        onChange={(e) => setActiveReport(e.target.value)}
+                    >
+                        <option value="" disabled>More Reports...</option>
+                        {REPORT_MENU_OPTIONS.map((report) => (
+                            <option key={report} value={report}>
+                                {report}
+                            </option>
+                        ))}
+                    </Select>
                 </div>
+
+                {/* Active Report Badge (for menu reports) */}
+                {REPORT_MENU_OPTIONS.includes(activeReport) && (
+                    <div className="ml-auto px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs sm:text-sm font-bold rounded-full border border-indigo-100 whitespace-nowrap">
+                        {activeReport}
+                    </div>
+                )}
             </div>
             <div className="flex-grow overflow-y-auto animate-fade-in-fast pb-4">
                 {renderReport()}

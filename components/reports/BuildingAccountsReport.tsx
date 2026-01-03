@@ -3,13 +3,17 @@ import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { TransactionType, InvoiceType, InvoiceStatus } from '../../types';
 import Card from '../ui/Card';
+import Button from '../ui/Button';
+import Input from '../ui/Input';
 import ComboBox from '../ui/ComboBox';
-import { CURRENCY } from '../../constants';
+import DatePicker from '../ui/DatePicker';
+import { CURRENCY, ICONS } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
-import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import { formatDate } from '../../utils/dateUtils';
+
+type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 
 interface BuildingAnalysisRow {
     buildingId: string;
@@ -37,9 +41,9 @@ type SortKey = 'buildingName' | 'rentCollected' | 'rentArrears' | 'securityColle
 
 const BuildingAccountsReport: React.FC = () => {
     const { state } = useAppContext();
-    const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
-    const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]);
+    const [dateRange, setDateRange] = useState<DateRangeOption>('all');
+    const [startDate, setStartDate] = useState('2000-01-01');
+    const [endDate, setEndDate] = useState('2100-12-31');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     
@@ -48,7 +52,7 @@ const BuildingAccountsReport: React.FC = () => {
 
     const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
 
-    const handleRangeChange = (option: ReportDateRange) => {
+    const handleRangeChange = (option: DateRangeOption) => {
         setDateRange(option);
         const now = new Date();
         
@@ -314,30 +318,78 @@ const BuildingAccountsReport: React.FC = () => {
                 }
             `}</style>
 
-            <div className="flex-shrink-0">
-                <ReportToolbar
-                    startDate={startDate}
-                    endDate={endDate}
-                    onDateChange={handleCustomDateChange}
-                    searchQuery={searchQuery}
-                    onSearchChange={setSearchQuery}
-                    onExport={handleExport}
-                    onPrint={handlePrint}
-                    showDateFilterPills={true}
-                    activeDateRange={dateRange}
-                    onRangeChange={handleRangeChange}
-                >
+            {/* Custom Toolbar - All controls in first row */}
+            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm no-print">
+                {/* First Row: Dates, Filters, and Actions */}
+                <div className="flex flex-wrap items-center gap-3">
+                    {/* Date Range Pills */}
+                    <div className="flex bg-slate-100 p-1 rounded-lg flex-shrink-0 overflow-x-auto">
+                        {(['all', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
+                            <button
+                                key={opt}
+                                onClick={() => handleRangeChange(opt)}
+                                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap capitalize ${
+                                    dateRange === opt 
+                                    ? 'bg-white text-accent shadow-sm font-bold' 
+                                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
+                                }`}
+                            >
+                                {opt === 'all' ? 'Total' : opt === 'thisMonth' ? 'This Month' : opt === 'lastMonth' ? 'Last Month' : 'Custom'}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Custom Date Pickers */}
+                    {dateRange === 'custom' && (
+                        <div className="flex items-center gap-2 animate-fade-in">
+                            <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(d.toISOString().split('T')[0], endDate)} />
+                            <span className="text-slate-400">-</span>
+                            <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, d.toISOString().split('T')[0])} />
+                        </div>
+                    )}
+
+                    {/* Building Filter */}
                     <div className="w-48 flex-shrink-0">
                         <ComboBox 
-                            label="Building"
                             items={buildings} 
                             selectedId={selectedBuildingId} 
                             onSelect={(item) => setSelectedBuildingId(item?.id || 'all')} 
                             allowAddNew={false}
-                            placeholder="All Buildings"
+                            placeholder="Filter Building"
                         />
                     </div>
-                </ReportToolbar>
+
+                    {/* Search Input */}
+                    <div className="relative flex-grow min-w-[180px]">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <span className="h-4 w-4">{ICONS.search}</span>
+                        </div>
+                        <Input 
+                            placeholder="Search report..." 
+                            value={searchQuery} 
+                            onChange={(e) => setSearchQuery(e.target.value)} 
+                            className="pl-9 py-1.5 text-sm"
+                        />
+                        {searchQuery && (
+                            <button 
+                                onClick={() => setSearchQuery('')} 
+                                className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
+                            >
+                                <div className="w-4 h-4">{ICONS.x}</div>
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Actions Group */}
+                    <div className="flex items-center gap-2 ml-auto">
+                        <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
+                            <div className="w-4 h-4 mr-1">{ICONS.export}</div> Export
+                        </Button>
+                        <Button variant="secondary" size="sm" onClick={handlePrint} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
+                            <div className="w-4 h-4 mr-1">{ICONS.print}</div> Print
+                        </Button>
+                    </div>
+                </div>
             </div>
 
             {/* Report Content */}

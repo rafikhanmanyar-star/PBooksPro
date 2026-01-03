@@ -118,7 +118,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
           alignItems: 'center',
           justifyContent: 'center',
           padding: '2rem',
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          background: '#ffffff',
           fontFamily: 'system-ui, -apple-system, sans-serif'
         }}>
           <div style={{
@@ -231,7 +231,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
               <button 
                 style={{ 
                   padding: '0.75rem 1.5rem', 
-                  backgroundColor: '#4f46e5', 
+                  backgroundColor: '#16a34a', 
                   color: 'white', 
                   border: 'none', 
                   borderRadius: '0.5rem', 
@@ -241,8 +241,8 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
                   transition: 'background-color 0.2s'
                 }}
                 onClick={this.handleReset}
-                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#4338ca'}
-                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#4f46e5'}
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#15803d'}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#16a34a'}
               >
                 Try Again
               </button>

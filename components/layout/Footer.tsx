@@ -6,16 +6,22 @@ import { useAppContext } from '../../context/AppContext';
 
 interface FooterProps {
   isPanelOpen: boolean;
+  onNavigate?: (page: Page) => void;
 }
 
-const Footer: React.FC<FooterProps> = ({ isPanelOpen }) => {
+const Footer: React.FC<FooterProps> = ({ isPanelOpen, onNavigate }) => {
   const { state, dispatch } = useAppContext();
   const { currentPage } = state;
   
-  // Direct navigation - no transition overhead
+  // Use optimized navigation handler if provided, otherwise fallback to direct dispatch
   const handleNavigate = useCallback((page: Page) => {
-    dispatch({ type: 'SET_PAGE', payload: page });
-  }, [dispatch]);
+    if (onNavigate) {
+      onNavigate(page);
+    } else {
+      // Fallback for backward compatibility
+      dispatch({ type: 'SET_PAGE', payload: page });
+    }
+  }, [onNavigate, dispatch]);
 
   // Optimized for mobile day-to-day operations
   const navItems = [

@@ -16,6 +16,8 @@ export type Page =
   | 'projectManagement'
   | 'projectInvoices'
   | 'bills'
+  | 'investmentManagement'
+  | 'pmConfig'
   | 'payroll'
   | 'settings'
   | 'import';
@@ -80,11 +82,79 @@ export enum ProjectAgreementStatus {
   COMPLETED = 'Completed',
 }
 
+export enum SalesReturnStatus {
+  PENDING = 'Pending',
+  PROCESSED = 'Processed',
+  REFUNDED = 'Refunded',
+  CANCELLED = 'Cancelled',
+}
+
+export enum SalesReturnReason {
+  CUSTOMER_REQUEST = 'Customer Request',
+  DEFECT_QUALITY = 'Defect/Quality Issue',
+  CONTRACT_BREACH = 'Contract Breach',
+  MUTUAL_AGREEMENT = 'Mutual Agreement',
+  OTHER = 'Other',
+}
+
 export enum ContractStatus {
   ACTIVE = 'Active',
   COMPLETED = 'Completed',
   TERMINATED = 'Terminated',
 }
+
+export type LedgerSortKey = 'date' | 'type' | 'description' | 'amount' | 'account' | 'category' | 'contact' | 'balance';
+export type SortDirection = 'asc' | 'desc';
+
+export interface FilterCriteria {
+  searchQuery: string;
+  startDate: string;
+  endDate: string;
+  type: string;
+  accountId: string;
+  categoryId: string;
+  contactId: string;
+  projectId: string;
+  buildingId: string;
+  minAmount: string;
+  maxAmount: string;
+  groupBy: 'none' | 'date' | 'type' | 'account' | 'category' | 'contact';
+}
+
+export enum ImportType {
+  FULL = 'full',
+  ACCOUNTS = 'accounts',
+  CONTACTS = 'contacts',
+  VENDORS = 'vendors',
+  CATEGORIES = 'categories',
+  PROJECTS = 'projects',
+  BUILDINGS = 'buildings',
+  PROPERTIES = 'properties',
+  UNITS = 'units',
+  STAFF = 'staff',
+  AGREEMENTS = 'agreements',
+  RENTAL_AGREEMENTS = 'rental_agreements',
+  PROJECT_AGREEMENTS = 'project_agreements',
+  CONTRACTS = 'contracts',
+  INVOICES = 'invoices',
+  BILLS = 'bills',
+  PROJECT_BILLS = 'project_bills',
+  RENTAL_BILLS = 'rental_bills',
+  PAYMENTS = 'payments',
+  RENTAL_INVOICE_PAYMENTS = 'rental_invoice_payments',
+  PROJECT_INVOICE_PAYMENTS = 'project_invoice_payments',
+  RENTAL_BILL_PAYMENTS = 'rental_bill_payments',
+  PROJECT_BILL_PAYMENTS = 'project_bill_payments',
+  LOAN_TRANSACTIONS = 'loan_transactions',
+  EQUITY_TRANSACTIONS = 'equity_transactions',
+  TRANSFER_TRANSACTIONS = 'transfer_transactions',
+  INCOME_TRANSACTIONS = 'income_transactions',
+  EXPENSE_TRANSACTIONS = 'expense_transactions',
+  RECURRING_TEMPLATES = 'recurring_templates',
+  PAYSLIPS = 'payslips',
+  BUDGETS = 'budgets'
+}
+
 
 export enum PayslipStatus {
   PENDING = 'Pending',
@@ -155,24 +225,24 @@ export type ProjectStatus = 'Active' | 'Completed' | 'On Hold';
 export type InstallmentFrequency = 'Monthly' | 'Quarterly' | 'Yearly';
 
 export interface PMConfig {
-    rate: number;
-    frequency: 'Monthly' | 'Weekly' | 'Yearly';
-    lastCalculationDate?: string;
-    excludedCategoryIds?: string[];
+  rate: number;
+  frequency: 'Monthly' | 'Weekly' | 'Yearly';
+  lastCalculationDate?: string;
+  excludedCategoryIds?: string[];
 }
 
 export interface Project {
-    id: string;
-    name: string;
-    description?: string;
-    color?: string;
-    status?: ProjectStatus;
-    installmentConfig?: {
-        durationYears: number;
-        downPaymentPercentage: number;
-        frequency: InstallmentFrequency;
-    };
-    pmConfig?: PMConfig;
+  id: string;
+  name: string;
+  description?: string;
+  color?: string;
+  status?: ProjectStatus;
+  installmentConfig?: {
+    durationYears: number;
+    downPaymentPercentage: number;
+    frequency: InstallmentFrequency;
+  };
+  pmConfig?: PMConfig;
 }
 
 export interface Unit {
@@ -249,6 +319,8 @@ export interface Bill {
   projectAgreementId?: string;
   contractId?: string;
   staffId?: string;
+  expenseCategoryItems?: ContractExpenseCategoryItem[]; // New: expense category tracking with units and prices
+  documentPath?: string; // Path to uploaded document file
 }
 
 export interface QuotationItem {
@@ -299,6 +371,7 @@ export interface RentalAgreement {
   securityDeposit?: number;
   brokerId?: string;
   brokerFee?: number;
+  ownerId?: string; // Optional: stores owner at time of agreement (for historical accuracy after property transfer)
 }
 
 export interface ProjectAgreement {
@@ -319,10 +392,10 @@ export interface ProjectAgreement {
   description?: string;
   status: ProjectAgreementStatus;
   cancellationDetails?: {
-      date: string;
-      penaltyAmount: number;
-      penaltyPercentage?: number;
-      refundAmount: number;
+    date: string;
+    penaltyAmount: number;
+    penaltyPercentage?: number;
+    refundAmount: number;
   };
   listPriceCategoryId?: string;
   customerDiscountCategoryId?: string;
@@ -333,6 +406,33 @@ export interface ProjectAgreement {
   rebateCategoryId?: string;
 }
 
+export interface SalesReturn {
+  id: string;
+  returnNumber: string;
+  agreementId: string;
+  returnDate: string;
+  reason: SalesReturnReason;
+  reasonNotes?: string;
+  penaltyPercentage: number;
+  penaltyAmount: number;
+  refundAmount: number;
+  status: SalesReturnStatus;
+  processedDate?: string;
+  refundedDate?: string;
+  refundBillId?: string; // Link to Accounts Payable bill
+  createdBy?: string;
+  notes?: string;
+}
+
+export interface ContractExpenseCategoryItem {
+  id: string;
+  categoryId: string;
+  unit: 'Cubic Feet' | 'Square feet' | 'feet' | 'quantity';
+  quantity?: number;
+  pricePerUnit: number;
+  netValue: number;
+}
+
 export interface Contract {
   id: string;
   contractNumber: string;
@@ -340,21 +440,24 @@ export interface Contract {
   projectId: string;
   vendorId: string;
   totalAmount: number;
-  area?: number;
-  rate?: number;
+  area?: number; // Keep for backward compatibility
+  rate?: number; // Keep for backward compatibility
   startDate: string;
   endDate: string;
   status: ContractStatus;
-  categoryIds: string[];
+  categoryIds: string[]; // Keep for backward compatibility
+  expenseCategoryItems?: ContractExpenseCategoryItem[]; // New: expense category tracking with units and prices
   termsAndConditions?: string;
+  paymentTerms?: string; // New: payment terms field
   description?: string;
+  documentPath?: string; // Path to uploaded document file
 }
 
 export interface Budget {
   id: string;
   categoryId: string;
-  month: string;
   amount: number;
+  projectId?: string; // Optional project ID for project-specific budgets (required for project budgets)
 }
 
 export type RecurringFrequency = 'Daily' | 'Weekly' | 'Monthly' | 'Yearly';
@@ -651,7 +754,7 @@ export interface Payslip {
   issueDate: string;
   payPeriodStart: string;
   payPeriodEnd: string;
-  
+
   // Salary Breakdown
   basicSalary: number;
   allowances: PayslipItem[];
@@ -662,7 +765,7 @@ export interface Payslip {
   totalOvertime?: number;
   commissions?: PayslipItem[];
   totalCommissions?: number;
-  
+
   // Deductions
   deductions: PayslipItem[];
   totalDeductions: number;
@@ -672,20 +775,20 @@ export interface Payslip {
   totalStatutory: number;
   loanDeductions: PayslipItem[];
   totalLoanDeductions: number;
-  
+
   // Totals
   grossSalary: number;
   taxableIncome: number;
   netSalary: number;
-  
+
   // Cost Allocation (Multi-project)
   costAllocations: PayrollCostAllocation[];
-  
+
   // Proration Info
   isProrated: boolean;
   prorationDays?: number;
   prorationReason?: string; // Join, Leave, Transfer, Promotion
-  
+
   // Status & Payment
   status: PayslipStatus;
   paidAmount: number;
@@ -695,14 +798,14 @@ export interface Payslip {
   // Legacy allocation fields used by older payroll pages
   projectId?: string;
   buildingId?: string;
-  
+
   // Metadata
   generatedAt: string;
   generatedBy?: string;
   approvedAt?: string;
   approvedBy?: string;
   notes?: string;
-  
+
   // Snapshot (Immutable payroll data)
   snapshot?: {
     salaryStructure: EmployeeSalaryComponent[];
@@ -820,31 +923,31 @@ export interface DashboardConfig {
 }
 
 export interface TransactionLogEntry {
-    id: string;
-    timestamp: string;
-    action: 'CREATE' | 'UPDATE' | 'DELETE' | 'RESTORE' | 'CLEAR_ALL';
-    entityType: string;
-    entityId?: string;
-    description: string;
-    userId?: string;
-    userLabel?: string;
-    data?: any;
+  id: string;
+  timestamp: string;
+  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'RESTORE' | 'CLEAR_ALL';
+  entityType: string;
+  entityId?: string;
+  description: string;
+  userId?: string;
+  userLabel?: string;
+  data?: any;
 }
 
 export interface ErrorLogEntry {
-    message: string;
-    stack?: string;
-    componentStack?: string;
-    timestamp: string;
+  message: string;
+  stack?: string;
+  componentStack?: string;
+  timestamp: string;
 }
 
 export interface ImportLogEntry {
-    timestamp: string;
-    sheet: string;
-    row: number;
-    status: 'Success' | 'Error' | 'Skipped';
-    message: string;
-    data?: any;
+  timestamp: string;
+  sheet: string;
+  row: number;
+  status: 'Success' | 'Error' | 'Skipped' | 'Warning';
+  message: string;
+  data?: any;
 }
 
 export interface Task {
@@ -859,31 +962,32 @@ export interface AppState {
   version?: number;
   users: User[];
   currentUser: User | null;
-  
+
   accounts: Account[];
   contacts: Contact[];
   categories: Category[];
-  
+
   projects: Project[];
   buildings: Building[];
   properties: Property[];
   units: Unit[];
-  
+
   transactions: Transaction[];
   invoices: Invoice[];
   bills: Bill[];
   quotations: Quotation[];
   documents: Document[];
   budgets: Budget[];
-  
+
   rentalAgreements: RentalAgreement[];
   projectAgreements: ProjectAgreement[];
+  salesReturns: SalesReturn[];
   contracts: Contract[];
-  
+
   // Legacy staff (for backward compatibility)
   projectStaff: Staff[];
   rentalStaff: Staff[];
-  
+
   // New Enterprise Payroll System
   employees: Employee[];
   salaryComponents: SalaryComponent[];
@@ -895,13 +999,13 @@ export interface AppState {
   attendanceRecords: AttendanceRecord[];
   taxConfigurations: TaxConfiguration[];
   statutoryConfigurations: StatutoryConfiguration[];
-  
+
   // Legacy payslips (for backward compatibility)
   projectPayslips: Payslip[];
   rentalPayslips: Payslip[];
-  
+
   recurringInvoiceTemplates: RecurringInvoiceTemplate[];
-  
+
   agreementSettings: AgreementSettings;
   projectAgreementSettings: AgreementSettings;
   rentalInvoiceSettings: InvoiceSettings;
@@ -910,14 +1014,18 @@ export interface AppState {
   whatsAppTemplates: WhatsAppTemplates;
   dashboardConfig: DashboardConfig;
   invoiceHtmlTemplate?: string;
-  
+
   showSystemTransactions: boolean;
   enableColorCoding: boolean;
   enableBeepOnSave: boolean;
+  enableDatePreservation: boolean; // If enabled, save and reuse the last entered date in forms
+  lastPreservedDate?: string; // Last date entered in any form (ISO date string)
   pmCostPercentage: number;
-  
+  defaultProjectId?: string; // Default project to use in all forms and reports
+  documentStoragePath?: string; // Path to folder where documents are stored
+
   lastServiceChargeRun?: string;
-  
+
   transactionLog: TransactionLogEntry[];
   errorLog: ErrorLogEntry[];
 
@@ -931,7 +1039,7 @@ export interface AppState {
   initialImportType?: string | null;
 }
 
-export type AppAction = 
+export type AppAction =
   | { type: 'SET_STATE'; payload: AppState }
   | { type: 'SET_PAGE'; payload: Page }
   | { type: 'LOGIN'; payload: User }
@@ -986,7 +1094,12 @@ export type AppAction =
   | { type: 'ADD_PROJECT_AGREEMENT'; payload: ProjectAgreement }
   | { type: 'UPDATE_PROJECT_AGREEMENT'; payload: ProjectAgreement }
   | { type: 'DELETE_PROJECT_AGREEMENT'; payload: string }
-  | { type: 'CANCEL_PROJECT_AGREEMENT'; payload: { agreementId: string; penaltyPercentage: number; penaltyAmount: number; refundAmount: number; refundAccountId?: string } }
+  | { type: 'CANCEL_PROJECT_AGREEMENT'; payload: { agreementId: string; penaltyPercentage: number; penaltyAmount: number; refundAmount: number; refundAccountId?: string; salesReturnId?: string } }
+  | { type: 'ADD_SALES_RETURN'; payload: SalesReturn }
+  | { type: 'UPDATE_SALES_RETURN'; payload: SalesReturn }
+  | { type: 'DELETE_SALES_RETURN'; payload: string }
+  | { type: 'PROCESS_SALES_RETURN'; payload: { returnId: string } }
+  | { type: 'MARK_RETURN_REFUNDED'; payload: { returnId: string; refundDate: string } }
   | { type: 'ADD_CONTRACT'; payload: Contract }
   | { type: 'UPDATE_CONTRACT'; payload: Contract }
   | { type: 'DELETE_CONTRACT'; payload: string }
@@ -1022,10 +1135,14 @@ export type AppAction =
   | { type: 'UPDATE_WHATSAPP_TEMPLATES'; payload: WhatsAppTemplates }
   | { type: 'UPDATE_INVOICE_TEMPLATE'; payload: string }
   | { type: 'UPDATE_PM_COST_PERCENTAGE'; payload: number }
+  | { type: 'UPDATE_DEFAULT_PROJECT'; payload: string | undefined }
+  | { type: 'UPDATE_DOCUMENT_STORAGE_PATH'; payload: string | undefined }
   | { type: 'SET_LAST_SERVICE_CHARGE_RUN'; payload: string }
   | { type: 'TOGGLE_SYSTEM_TRANSACTIONS'; payload: boolean }
   | { type: 'TOGGLE_COLOR_CODING'; payload: boolean }
   | { type: 'TOGGLE_BEEP_ON_SAVE'; payload: boolean }
+  | { type: 'TOGGLE_DATE_PRESERVATION'; payload: boolean }
+  | { type: 'UPDATE_PRESERVED_DATE'; payload: string }
   | { type: 'ADD_ERROR_LOG'; payload: any }
   | { type: 'CLEAR_ERROR_LOG' }
   | { type: 'RESET_TRANSACTIONS' }
@@ -1085,4 +1202,4 @@ export interface KpiDefinition {
   getData?: (state: AppState) => number;
 }
 
-export const LATEST_DATA_VERSION = 4;
+export const LATEST_DATA_VERSION = 5;

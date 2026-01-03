@@ -1,6 +1,7 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import './index.css';
 
 // Show immediate loading screen before anything else loads
 const rootElement = document.getElementById('root');
@@ -13,28 +14,28 @@ if (rootElement) {
       justify-content: center;
       padding: 2rem;
       font-family: system-ui, -apple-system, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
+      background: #ffffff;
+      color: #1f2937;
     ">
       <div style="
-        background: rgba(255, 255, 255, 0.1);
-        backdrop-filter: blur(10px);
+        background: #ffffff;
         padding: 2rem 3rem;
         border-radius: 1rem;
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        border: 1px solid #e5e7eb;
         text-align: center;
       ">
-        <div style="font-size: 2rem; font-weight: bold; margin-bottom: 1rem;">
-          Finance Tracker Pro
+        <div style="font-size: 2rem; font-weight: bold; margin-bottom: 1rem; color: #16a34a;">
+          PBooksPro
         </div>
-        <div style="font-size: 1rem; margin-bottom: 1.5rem; opacity: 0.9;">
+        <div style="font-size: 1rem; margin-bottom: 1.5rem; color: #6b7280;">
           Loading application...
         </div>
         <div style="
           width: 40px;
           height: 40px;
-          border: 4px solid rgba(255, 255, 255, 0.3);
-          border-top: 4px solid white;
+          border: 4px solid #e5e7eb;
+          border-top: 4px solid #16a34a;
           border-radius: 50%;
           animation: spin 1s linear infinite;
           margin: 0 auto;
@@ -145,10 +146,14 @@ try {
     throw new Error("Could not find root element to mount to");
   }
 
-  // Import and render app
-  Promise.all([
+  // Ensure DOM is fully ready before loading React
+  // This helps prevent React 19.2.x Activity initialization errors
+  const initApp = () => {
+    // Import and render app
+    Promise.all([
     import('./App'),
     import('./context/AppContext'),
+    import('./context/AuthContext'),
     import('./context/ProgressContext'),
     import('./context/KeyboardContext'),
     import('./context/KPIContext'),
@@ -160,6 +165,7 @@ try {
   ]).then(([
     { default: App },
     { AppProvider },
+    { AuthProvider },
     { ProgressProvider },
     { KeyboardProvider },
     { KPIProvider },
@@ -187,23 +193,25 @@ try {
     root.render(
       <React.StrictMode>
         <TopLevelErrorBoundary>
-          <AppProvider>
-            <PWAProvider>
-              <UpdateProvider>
-                <LicenseProvider>
-                  <ProgressProvider>
-                    <KeyboardProvider>
-                      <KPIProvider>
-                        <NotificationProvider>
-                          <App />
-                        </NotificationProvider>
-                      </KPIProvider>
-                    </KeyboardProvider>
-                  </ProgressProvider>
-                </LicenseProvider>
-              </UpdateProvider>
-            </PWAProvider>
-          </AppProvider>
+          <AuthProvider>
+            <AppProvider>
+              <PWAProvider>
+                <UpdateProvider>
+                  <LicenseProvider>
+                    <ProgressProvider>
+                      <KeyboardProvider>
+                        <KPIProvider>
+                          <NotificationProvider>
+                            <App />
+                          </NotificationProvider>
+                        </KPIProvider>
+                      </KeyboardProvider>
+                    </ProgressProvider>
+                  </LicenseProvider>
+                </UpdateProvider>
+              </PWAProvider>
+            </AppProvider>
+          </AuthProvider>
         </TopLevelErrorBoundary>
       </React.StrictMode>
     );
@@ -221,7 +229,7 @@ try {
           justify-content: center;
           padding: 2rem;
           font-family: system-ui, -apple-system, sans-serif;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: #ffffff;
         ">
           <div style="
             background: white;
@@ -272,6 +280,16 @@ try {
       `;
     }
   });
+  };
+
+  // Wait for DOM to be fully ready before initializing React
+  // This helps prevent React 19.2.x Activity initialization errors in Electron
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+  } else {
+    // DOM is already ready, but add a small delay to ensure everything is initialized
+    setTimeout(initApp, 0);
+  }
 } catch (error) {
   appLoadError = error instanceof Error ? error : new Error(String(error));
   console.error('❌ Critical error during initialization:', appLoadError);
@@ -286,7 +304,7 @@ try {
         justify-content: center;
         padding: 2rem;
         font-family: system-ui, -apple-system, sans-serif;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: #ffffff;
       ">
         <div style="
           background: white;

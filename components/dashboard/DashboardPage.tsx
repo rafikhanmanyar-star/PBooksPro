@@ -1,11 +1,13 @@
 
 import React, { useMemo, useState, useEffect, useCallback, memo } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { useLookupMaps } from '../../hooks/useLookupMaps';
 import { Page, Project, TransactionType, InvoiceStatus, RentalAgreementStatus } from '../../types';
 import { useKpis } from '../../context/KPIContext';
 import KPICard from './KPI_Card';
 import Button from '../ui/Button';
 import { ICONS, CURRENCY } from '../../constants';
+import { formatRoundedNumber } from '../../utils/numberUtils';
 import DashboardConfigModal from './DashboardConfigModal';
 import Card from '../ui/Card';
 import SimpleInvoiceBillItem from './SimpleInvoiceBillItem';
@@ -13,423 +15,225 @@ import ProjectCategoryDetailModal from '../reports/ProjectCategoryDetailModal';
 import Modal from '../ui/Modal';
 import TransferStatisticsReport from '../reports/TransferStatisticsReport';
 import ProjectBuildingFundsReport from './ProjectBuildingFundsReport';
+import BankAccountsReport from './BankAccountsReport';
+import Tabs from '../ui/Tabs';
 import { formatDate } from '../../utils/dateUtils';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 
 const DashboardPage: React.FC = () => {
-  const { state, dispatch } = useAppContext();
-  const { allKpis, openDrilldown } = useKpis();
-  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
-  const [isTransferReportOpen, setIsTransferReportOpen] = useState(false);
-  const [greeting, setGreeting] = useState('Good morning');
-  const [detailModalData, setDetailModalData] = useState<{
-    isOpen: boolean;
-    project: Project | null;
-    startDate: Date;
-    endDate: Date;
-  }>({ isOpen: false, project: null, startDate: new Date(), endDate: new Date() });
-  
-  const isAdmin = state.currentUser?.role === 'Admin';
-  
-  useEffect(() => {
-      const hour = new Date().getHours();
-      if (hour < 12) setGreeting('Good morning');
-      else if (hour < 18) setGreeting('Good afternoon');
-      else setGreeting('Good evening');
-  }, []);
-  
-  const navigate = (page: Page) => dispatch({ type: 'SET_PAGE', payload: page });
+    const { state, dispatch } = useAppContext();
+    const lookupMaps = useLookupMaps();
+    const { allKpis, openDrilldown } = useKpis();
+    const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+    const [isTransferReportOpen, setIsTransferReportOpen] = useState(false);
+    const [greeting, setGreeting] = useState('');
+    const [activeReportTab, setActiveReportTab] = useState('Overview');
 
-  const handleQuickExpense = () => {
-      dispatch({ type: 'SET_PAGE', payload: 'transactions' });
-      dispatch({ type: 'SET_INITIAL_TRANSACTION_TYPE', payload: TransactionType.EXPENSE });
-  };
+    const [detailModalData, setDetailModalData] = useState<{
+        isOpen: boolean;
+        project: Project | null;
+        startDate: Date;
+        endDate: Date;
+    }>({ isOpen: false, project: null, startDate: new Date(), endDate: new Date() });
 
-  const handleQuickIncome = () => {
-      dispatch({ type: 'SET_PAGE', payload: 'transactions' });
-      dispatch({ type: 'SET_INITIAL_TRANSACTION_TYPE', payload: TransactionType.INCOME });
-  };
+    const isAdmin = state.currentUser?.role === 'Admin';
 
-  const kpiColorClasses = [
-    'bg-indigo-50 text-indigo-800 hover:bg-indigo-100',
-    'bg-emerald-50 text-emerald-800 hover:bg-emerald-100',
-    'bg-amber-50 text-amber-800 hover:bg-amber-100',
-    'bg-rose-50 text-rose-800 hover:bg-rose-100',
-    'bg-sky-50 text-sky-800 hover:bg-sky-100',
-    'bg-violet-50 text-violet-800 hover:bg-violet-100',
-  ];
+    useEffect(() => {
+        const h = new Date().getHours();
+        setGreeting(h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening');
+    }, []);
 
-  const kpisToDisplay = useMemo(() => {
-    const visibleKpiIds = Array.isArray(state.dashboardConfig?.visibleKpis) ? state.dashboardConfig.visibleKpis : [];
-    return visibleKpiIds.map(id => {
-      const kpiDef = allKpis.find(k => k.id === id);
-      if (!kpiDef) return null;
-      
-      const amount = kpiDef.getData ? kpiDef.getData(state) : 0;
-      
-      return { ...kpiDef, amount, onClick: () => openDrilldown(kpiDef) };
-    }).filter((kpi): kpi is Exclude<typeof kpi, null> => kpi !== null);
-  }, [state.dashboardConfig, state, allKpis, openDrilldown]);
+    const navigate = (page: Page) => dispatch({ type: 'SET_PAGE', payload: page });
 
-  // --- Chart Data Preparation ---
+    const kpisToDisplay = useMemo(() => {
+        const visibleKpiIds = Array.isArray(state.dashboardConfig?.visibleKpis) ? state.dashboardConfig.visibleKpis : [];
+        // If no config, show defaults
+        const idsToShow = visibleKpiIds.length > 0 ? visibleKpiIds : ['total_income', 'total_expenses', 'net_profit', 'total_balance'];
 
-  const excludedCategoryIds = useMemo(() => {
-      return state.categories
-        .filter(c => c.name === 'Owner Equity' || c.name === 'Owner Withdrawn')
-        .map(c => c.id);
-  }, [state.categories]);
+        return idsToShow.map(id => {
+            const kpiDef = allKpis.find(k => k.id === id);
+            if (!kpiDef) return null;
+            const amount = kpiDef.getData ? kpiDef.getData(state) : 0;
+            return { ...kpiDef, amount, onClick: () => openDrilldown(kpiDef) };
+        }).filter((k): k is Exclude<typeof k, null> => k !== null);
+    }, [state.dashboardConfig, state, allKpis, openDrilldown]);
 
-  const cashFlowData = useMemo(() => {
-      if (!isAdmin) return []; // Hide from non-admins
+    // --- Chart Data ---
+    const excludedCategoryIds = useMemo(() => state.categories.filter(c => c.name === 'Owner Equity' || c.name === 'Owner Withdrawn').map(c => c.id), [state.categories]);
 
-      const months: Record<string, { income: number, expense: number, name: string }> = {};
-      // Get last 6 months
-      for(let i=5; i>=0; i--) {
-          const d = new Date();
-          d.setMonth(d.getMonth() - i);
-          const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-          const name = d.toLocaleString('default', { month: 'short' });
-          months[key] = { income: 0, expense: 0, name };
-      }
+    const cashFlowData = useMemo(() => {
+        if (!isAdmin) return [];
+        const months: Record<string, { income: number, expense: number, name: string }> = {};
+        for (let i = 5; i >= 0; i--) {
+            const d = new Date();
+            d.setMonth(d.getMonth() - i);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            months[key] = { income: 0, expense: 0, name: d.toLocaleString('default', { month: 'short' }) };
+        }
+        state.transactions.forEach(tx => {
+            if (tx.categoryId && excludedCategoryIds.includes(tx.categoryId)) return;
+            const key = tx.date.slice(0, 7);
+            if (months[key]) {
+                if (tx.type === TransactionType.INCOME) months[key].income += tx.amount;
+                else if (tx.type === TransactionType.EXPENSE) months[key].expense += tx.amount;
+            }
+        });
+        return Object.values(months);
+    }, [state.transactions, excludedCategoryIds, isAdmin]);
 
-      state.transactions.forEach(tx => {
-          if (tx.categoryId && excludedCategoryIds.includes(tx.categoryId)) return;
+    const recentActivity = useMemo(() => {
+        // Combine recent invoices and payments
+        const invoices = state.invoices.slice(-3).map(i => ({
+            id: i.id, type: 'Invoice', title: `Invoice #${i.invoiceNumber}`, amount: i.totalAmount, date: i.date, status: i.status
+        }));
+        const txs = state.transactions.slice(-3).map(t => ({
+            id: t.id, type: t.type === TransactionType.INCOME ? 'Income' : 'Expense', title: t.description || 'Transaction', amount: t.amount, date: t.date, status: 'Completed'
+        }));
+        return [...invoices, ...txs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+    }, [state.invoices, state.transactions]);
 
-          const key = tx.date.slice(0, 7);
-          if (months[key]) {
-              if (tx.type === TransactionType.INCOME) months[key].income += tx.amount;
-              else if (tx.type === TransactionType.EXPENSE) months[key].expense += tx.amount;
-          }
-      });
+    return (
+        <div className="space-y-6 max-w-7xl mx-auto">
 
-      return Object.values(months);
-  }, [state.transactions, excludedCategoryIds, isAdmin]);
-
-  const expenseBreakdownData = useMemo(() => {
-      const categories: Record<string, number> = {};
-      let total = 0;
-      
-      state.transactions.forEach(tx => {
-          if (tx.type === TransactionType.EXPENSE && tx.categoryId) {
-              if (excludedCategoryIds.includes(tx.categoryId)) return; // Exclude Drawings
-
-              const cat = state.categories.find(c => c.id === tx.categoryId);
-              const name = cat?.name || 'Uncategorized';
-              categories[name] = (categories[name] || 0) + tx.amount;
-              total += tx.amount;
-          }
-      });
-
-      const sorted = Object.entries(categories)
-          .map(([name, value]) => ({ name, value }))
-          .sort((a, b) => b.value - a.value);
-      
-      const top5 = sorted.slice(0, 5);
-      const others = sorted.slice(5).reduce((sum, item) => sum + item.value, 0);
-      
-      if (others > 0) top5.push({ name: 'Others', value: others });
-      
-      return top5.filter(i => i.value > 0);
-  }, [state.transactions, state.categories, excludedCategoryIds]);
-
-  const buildingChartData = useMemo(() => {
-      if (!isAdmin) return []; // Hide from non-admins
-
-      return state.buildings.map(b => {
-          const propIds = new Set(state.properties.filter(p => p.buildingId === b.id).map(p => p.id));
-          const income = state.transactions.filter(tx => 
-              tx.type === TransactionType.INCOME && 
-              (!tx.categoryId || !excludedCategoryIds.includes(tx.categoryId)) &&
-              (tx.buildingId === b.id || (tx.propertyId && propIds.has(tx.propertyId)))
-          ).reduce((s, t) => s + t.amount, 0);
-          
-          const expense = state.transactions.filter(tx => 
-              tx.type === TransactionType.EXPENSE && 
-              (!tx.categoryId || !excludedCategoryIds.includes(tx.categoryId)) &&
-              (tx.buildingId === b.id || (tx.propertyId && propIds.has(tx.propertyId)))
-          ).reduce((s, t) => s + t.amount, 0);
-          
-          return { name: b.name, Revenue: income, Expenses: expense };
-      }).filter(d => d.Revenue > 0 || d.Expenses > 0).sort((a,b) => b.Revenue - a.Revenue).slice(0, 5);
-  }, [state.buildings, state.properties, state.transactions, excludedCategoryIds, isAdmin]);
-
-  const occupancyData = useMemo(() => {
-      const totalUnits = state.properties.length;
-      const occupied = state.rentalAgreements.filter(ra => ra.status === RentalAgreementStatus.ACTIVE).length;
-      const vacant = totalUnits - occupied;
-      
-      if(totalUnits === 0) return [];
-      return [
-          { name: 'Occupied', value: occupied, color: '#10b981' },
-          { name: 'Vacant', value: vacant, color: '#f43f5e' }
-      ];
-  }, [state.properties, state.rentalAgreements]);
-
-  const { overdueInvoices, upcomingBills } = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const overdue = state.invoices
-        .filter(inv => inv.status !== InvoiceStatus.PAID && new Date(inv.dueDate) < today)
-        .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
-
-    const thirtyDaysFromNow = new Date();
-    thirtyDaysFromNow.setDate(today.getDate() + 30);
-    
-    const upcoming = state.bills
-        .filter(bill => 
-            bill.status !== InvoiceStatus.PAID && 
-            bill.dueDate &&
-            new Date(bill.dueDate) >= today && 
-            new Date(bill.dueDate) <= thirtyDaysFromNow
-        )
-        .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime());
-
-    return { overdueInvoices: overdue.slice(0, 5), upcomingBills: upcoming.slice(0, 5) };
-  }, [state.invoices, state.bills]);
-
-  const EXPENSE_COLORS = ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#10b981', '#64748b'];
-
-  return (
-    <div className="space-y-4 sm:space-y-6">
-        {/* Dashboard Banner */}
-        <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-xl p-4 sm:p-6 text-white shadow-lg relative overflow-hidden">
-            <div className="relative z-10 flex justify-between items-center">
+            {/* Welcome Banner */}
+            <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4">
                 <div>
-                    <h2 className="text-2xl sm:text-3xl font-bold mb-1">{greeting}, {state.currentUser?.name}!</h2>
-                    <p className="text-slate-300 opacity-90 font-medium text-xs sm:text-sm">
-                        Overview for {formatDate(new Date())}
-                    </p>
+                    <h1 className="text-2xl font-bold text-slate-900">{greeting}, {state.currentUser?.name?.split(' ')[0]}</h1>
+                    <p className="text-slate-500 text-sm mt-1">Here's what's happening with your projects today.</p>
                 </div>
-                <button 
-                    onClick={() => setIsConfigModalOpen(true)}
-                    className="flex items-center gap-2 px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors backdrop-blur-sm text-xs sm:text-sm font-medium"
-                >
-                     <div className="w-4 h-4">{ICONS.settings}</div>
-                     <span className="hidden sm:inline">Customize</span>
-                </button>
-            </div>
-            <div className="absolute top-0 right-0 -mt-6 -mr-6 w-24 h-24 sm:w-32 sm:h-32 bg-white opacity-5 rounded-full blur-2xl"></div>
-        </div>
-
-        {/* Project Funds Report - High Priority View */}
-        <ProjectBuildingFundsReport />
-
-        {/* KPI Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          {kpisToDisplay.map((kpi, index) => (
-            kpi && <KPICard
-              key={kpi.id}
-              title={kpi.title}
-              amount={kpi.amount}
-              icon={kpi.icon || ICONS.barChart}
-              colorClass={kpiColorClasses[index % kpiColorClasses.length]}
-              onClick={kpi.onClick}
-            />
-          ))}
-        </div>
-
-        {/* Quick Actions */}
-        <Card className="bg-white border-slate-200">
-             <h3 className="text-xs sm:text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">Quick Actions</h3>
-             <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3">
-                <Button onClick={handleQuickIncome} className="bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm justify-center px-2">
-                    <div className="w-4 h-4 mr-1">{ICONS.plus}</div> Income
-                </Button>
-                <Button onClick={handleQuickExpense} className="bg-rose-600 hover:bg-rose-700 text-white border-none shadow-sm justify-center px-2">
-                    <div className="w-4 h-4 mr-1">{ICONS.plus}</div> Expense
-                </Button>
-                <Button onClick={() => navigate('transactions')} variant="secondary" className="justify-center px-2">
-                     <div className="w-4 h-4 mr-1">{ICONS.trendingUp}</div> Ledger
-                </Button>
-                <Button onClick={() => navigate('loans')} variant="secondary" className="justify-center px-2">
-                     <div className="w-4 h-4 mr-1">{ICONS.loan}</div> Loans
-                </Button>
-                <Button onClick={() => setIsTransferReportOpen(true)} variant="secondary" className="justify-center px-2 col-span-2 sm:col-span-1">
-                     <div className="w-4 h-4 mr-1">{ICONS.repeat}</div> Transfers
-                </Button>
-             </div>
-        </Card>
-
-        {/* Primary Charts - Restricted for non-admins */}
-        {isAdmin && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-                {/* Cash Flow Trend */}
-                <Card className="lg:col-span-2">
-                    <h3 className="text-base sm:text-lg font-semibold text-slate-800 mb-4">Cash Flow Trend</h3>
-                    <div className="h-64 sm:h-72 w-full" style={{ minWidth: 0, minHeight: 256 }}>
-                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={256}>
-                            <AreaChart data={cashFlowData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                                <defs>
-                                    <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
-                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                                    </linearGradient>
-                                    <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.1}/>
-                                        <stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/>
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
-                                <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} tickFormatter={(value) => `${value/1000}k`} />
-                                <RechartsTooltip 
-                                    formatter={(val: number) => [`${CURRENCY} ${val.toLocaleString()}`, '']}
-                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                />
-                                <Legend verticalAlign="top" height={36} iconType="circle" />
-                                <Area type="monotone" dataKey="income" name="Income" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorIncome)" />
-                                <Area type="monotone" dataKey="expense" name="Expense" stroke="#f43f5e" strokeWidth={2} fillOpacity={1} fill="url(#colorExpense)" />
-                            </AreaChart>
-                        </ResponsiveContainer>
-                    </div>
-                </Card>
-
-                {/* Expense Breakdown */}
-                <Card>
-                    <h3 className="text-base sm:text-lg font-semibold text-slate-800 mb-4">Top Expenses</h3>
-                    <div className="h-64 sm:h-72 w-full" style={{ minWidth: 0, minHeight: 256 }}>
-                        {expenseBreakdownData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={256}>
-                                <PieChart>
-                                    <Pie
-                                        data={expenseBreakdownData}
-                                        cx="50%"
-                                        cy="50%"
-                                        innerRadius={60}
-                                        outerRadius={80}
-                                        paddingAngle={5}
-                                        dataKey="value"
-                                    >
-                                        {expenseBreakdownData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={EXPENSE_COLORS[index % EXPENSE_COLORS.length]} />
-                                        ))}
-                                    </Pie>
-                                    <RechartsTooltip formatter={(val: number) => `${CURRENCY} ${val.toLocaleString()}`} />
-                                    <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: '11px' }} />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <div className="flex items-center justify-center h-full text-slate-400">No expense data available.</div>
-                        )}
-                    </div>
-                </Card>
-            </div>
-        )}
-
-        {/* Secondary Charts & Info */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-            {isAdmin && buildingChartData.length > 0 && (
-                <Card className="lg:col-span-2">
-                    <h3 className="text-base sm:text-lg font-semibold text-slate-800 mb-4">Building Performance</h3>
-                    <div className="h-64 w-full" style={{ minWidth: 0, minHeight: 256 }}>
-                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={256}>
-                            <BarChart data={buildingChartData}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                <XAxis dataKey="name" hide />
-                                <YAxis axisLine={false} tickLine={false} tickFormatter={(value) => `${value/1000}k`} />
-                                <RechartsTooltip 
-                                    formatter={(val: number) => `${CURRENCY} ${val.toLocaleString()}`} 
-                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                />
-                                <Legend />
-                                <Bar dataKey="Revenue" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                                <Bar dataKey="Expenses" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                </Card>
-            )}
-
-            {occupancyData.length > 0 && (
-                <Card>
-                    <h3 className="text-base sm:text-lg font-semibold text-slate-800 mb-4">Occupancy Rate</h3>
-                    <div className="h-64 w-full" style={{ minWidth: 0, minHeight: 256 }}>
-                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={256}>
-                            <PieChart>
-                                <Pie
-                                    data={occupancyData}
-                                    cx="50%"
-                                    cy="50%"
-                                    startAngle={180}
-                                    endAngle={0}
-                                    innerRadius={60}
-                                    outerRadius={80}
-                                    paddingAngle={5}
-                                    dataKey="value"
-                                >
-                                    {occupancyData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={entry.color} />
-                                    ))}
-                                </Pie>
-                                <RechartsTooltip />
-                                <Legend verticalAlign="bottom" height={36}/>
-                            </PieChart>
-                        </ResponsiveContainer>
-                    </div>
-                </Card>
-            )}
-        </div>
-
-        {/* Lists Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-            <Card className="flex flex-col h-full">
-                <div className="flex justify-between items-center mb-3">
-                    <h3 className="text-base sm:text-lg font-semibold text-slate-800">Overdue Invoices</h3>
-                    <Button variant="ghost" size="sm" onClick={() => navigate('projectInvoices')}>View All</Button>
+                <div className="flex items-center gap-3">
+                    <Button variant="secondary" onClick={() => setIsConfigModalOpen(true)} className="text-slate-600 border-slate-200 hover:bg-white text-sm">
+                        Customize
+                    </Button>
+                    <Button onClick={() => navigate('transactions')} className="bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-900/20 text-sm">
+                        + New Entry
+                    </Button>
                 </div>
-                {overdueInvoices.length > 0 ? (
-                    <div className="space-y-3 overflow-y-auto max-h-64 pr-1">
-                        {overdueInvoices.map(inv => (
-                            <SimpleInvoiceBillItem key={inv.id} item={inv} type="invoice" />
-                        ))}
+            </div>
+
+            {/* Bento Grid Layout */}
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+
+                {/* KPI Cards Row */}
+                {kpisToDisplay.slice(0, 4).map((kpi, idx) => (
+                    <div key={kpi.id} className="col-span-1">
+                        <KPICard
+                            title={kpi.title}
+                            amount={kpi.amount}
+                            icon={kpi.icon || ICONS.barChart}
+                            onClick={kpi.onClick}
+                            // Add dummy trend data for visual richness (in real app, calculate this)
+                            trend={idx === 0 ? { value: 12, isPositive: true } : idx === 1 ? { value: 4, isPositive: false } : undefined}
+                        />
                     </div>
-                ) : (
-                    <div className="flex-grow flex items-center justify-center py-8 text-slate-500 bg-slate-50/50 rounded-lg">
-                        <div className="text-center">
-                            <div className="text-emerald-500 mb-2 text-xl">✓</div>
-                            <p>No overdue invoices.</p>
+                ))}
+
+                {/* Main Chart Section (Span 2 or 3 cols) */}
+                <div className="col-span-1 md:col-span-2 lg:col-span-3 bg-white p-6 rounded-2xl border border-slate-200/60 shadow-sm relative overflow-hidden">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-lg font-bold text-slate-800">Cash Flow</h3>
+                        <div className="flex gap-2">
+                            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Income
+                            </div>
+                            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                                <span className="w-2 h-2 rounded-full bg-rose-500"></span> Expense
+                            </div>
                         </div>
                     </div>
-                )}
-            </Card>
-            
-            <Card className="flex flex-col h-full">
-                <div className="flex justify-between items-center mb-3">
-                    <h3 className="text-base sm:text-lg font-semibold text-slate-800">Upcoming Bills</h3>
-                    <Button variant="ghost" size="sm" onClick={() => navigate('bills')}>View All</Button>
+
+                    {isAdmin ? (
+                        <div className="h-72 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={cashFlowData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                    <defs>
+                                        <linearGradient id="gIncome" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
+                                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                        </linearGradient>
+                                        <linearGradient id="gExpense" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.2} />
+                                            <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} dy={10} />
+                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                                    <RechartsTooltip
+                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                        formatter={(value: number) => [CURRENCY + ' ' + formatRoundedNumber(value), '']}
+                                    />
+                                    <Area type="monotone" dataKey="income" stroke="#10b981" strokeWidth={3} fillUrl="url(#gIncome)" />
+                                    <Area type="monotone" dataKey="expense" stroke="#f43f5e" strokeWidth={3} fillUrl="url(#gExpense)" />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        </div>
+                    ) : (
+                        <div className="h-72 flex items-center justify-center text-slate-400">Access Restricted</div>
+                    )}
                 </div>
-                {upcomingBills.length > 0 ? (
-                    <div className="space-y-3 overflow-y-auto max-h-64 pr-1">
-                        {upcomingBills.map(bill => (
-                            <SimpleInvoiceBillItem key={bill.id} item={bill} type="bill" />
-                        ))}
+
+                {/* Quick Actions / Activity (Sidebar Col) */}
+                <div className="col-span-1 md:col-span-1 lg:col-span-1 space-y-6">
+
+                    {/* Actions Card */}
+                    <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-lg relative overflow-hidden group hover:shadow-xl transition-all">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500 rounded-full blur-3xl opacity-20 -mr-10 -mt-10"></div>
+                        <h3 className="font-bold mb-4 relative z-10">Quick Actions</h3>
+                        <div className="space-y-3 relative z-10">
+                            <button onClick={() => { navigate('transactions'); dispatch({ type: 'SET_INITIAL_TRANSACTION_TYPE', payload: TransactionType.INCOME }); }} className="w-full flex items-center gap-3 p-3 rounded-xl bg-white/10 hover:bg-white/20 transition-colors text-sm font-medium border border-white/5">
+                                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400"><div className="w-4 h-4">{ICONS.plus}</div></div>
+                                Record Income
+                            </button>
+                            <button onClick={() => { navigate('transactions'); dispatch({ type: 'SET_INITIAL_TRANSACTION_TYPE', payload: TransactionType.EXPENSE }); }} className="w-full flex items-center gap-3 p-3 rounded-xl bg-white/10 hover:bg-white/20 transition-colors text-sm font-medium border border-white/5">
+                                <div className="w-8 h-8 rounded-lg bg-rose-500/20 flex items-center justify-center text-rose-400"><div className="w-4 h-4">{ICONS.minus}</div></div>
+                                Record Expense
+                            </button>
+                        </div>
                     </div>
-                ) : (
-                    <div className="flex-grow flex items-center justify-center py-8 text-slate-500 bg-slate-50/50 rounded-lg">
-                        <p>No upcoming bills in the next 30 days.</p>
+
+                    {/* Recent Activity Mini List */}
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200/60 shadow-sm">
+                        <h3 className="text-sm font-bold text-slate-800 mb-4 uppercase tracking-wide">Recent Activity</h3>
+                        <div className="space-y-4">
+                            {recentActivity.map((item, i) => (
+                                <div key={i} className="flex items-center gap-3">
+                                    <div className={`w-2 h-2 rounded-full ${item.type === 'Income' ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-sm font-medium text-slate-900 truncate">{item.title}</div>
+                                        <div className="text-xs text-slate-500">{formatDate(new Date(item.date))}</div>
+                                    </div>
+                                    <div className="text-sm font-bold text-slate-700">{formatRoundedNumber(item.amount)}</div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                )}
-            </Card>
+
+                </div>
+
+                {/* Reports Tabs Row */}
+                <div className="col-span-1 md:col-span-3 lg:col-span-4">
+                    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                        <Tabs
+                            tabs={['Overview Reports', 'Bank Accounts']}
+                            activeTab={activeReportTab}
+                            onTabClick={setActiveReportTab}
+                            className="border-b border-slate-100 px-4 pt-2"
+                        />
+                        <div className="p-4">
+                            {activeReportTab === 'Overview Reports' ? <ProjectBuildingFundsReport /> : <BankAccountsReport />}
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <DashboardConfigModal isOpen={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} />
+            <Modal isOpen={isTransferReportOpen} onClose={() => setIsTransferReportOpen(false)} title="Transfer Statistics">
+                <TransferStatisticsReport />
+            </Modal>
         </div>
-      
-      <DashboardConfigModal isOpen={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} />
-      <ProjectCategoryDetailModal 
-        isOpen={detailModalData.isOpen}
-        onClose={() => setDetailModalData({ ...detailModalData, isOpen: false, project: null })}
-        project={detailModalData.project}
-        startDate={detailModalData.startDate}
-        endDate={detailModalData.endDate}
-      />
-      
-      <Modal isOpen={isTransferReportOpen} onClose={() => setIsTransferReportOpen(false)} title="Transfer Statistics" size="xl">
-          <TransferStatisticsReport />
-          <div className="flex justify-end mt-4 border-t pt-4">
-              <Button variant="secondary" onClick={() => setIsTransferReportOpen(false)}>Close</Button>
-          </div>
-      </Modal>
-    </div>
-  );
+    );
 };
 
 export default memo(DashboardPage);

@@ -43,7 +43,7 @@ const ProjectProfitLossReport: React.FC = () => {
         return new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
     });
     
-    const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
+    const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || 'all');
     
     // Drilldown State
     const [drilldownData, setDrilldownData] = useState<{
@@ -100,7 +100,71 @@ const ProjectProfitLossReport: React.FC = () => {
         let totalIncome = 0;
         let totalExpense = 0;
 
+        // Track which bills have been processed to avoid double-counting
+        const processedBills = new Set<string>();
+
+        // 1. Process Bills directly (Accrual Basis - show expense when bill is created)
+        state.bills.forEach(bill => {
+            // Filter by project
+            if (!bill.projectId) return;
+            if (selectedProjectId !== 'all' && bill.projectId !== selectedProjectId) return;
+
+            // Check date range using bill issue date
+            const billDate = new Date(bill.issueDate);
+            if (billDate < start || billDate > end) return;
+
+            // Skip if bill has no expense categories
+            if (!bill.expenseCategoryItems || bill.expenseCategoryItems.length === 0) {
+                // Fallback to old categoryId if no expenseCategoryItems
+                if (!bill.categoryId) return;
+                const categoryId = bill.categoryId;
+                if (excludedCats.has(categoryId) || rentalCats.has(categoryId)) return;
+                
+                const category = state.categories.find(c => c.id === categoryId);
+                if (category && category.type === TransactionType.EXPENSE) {
+                    categoryAmounts[categoryId] = (categoryAmounts[categoryId] || 0) + bill.amount;
+                    totalExpense += bill.amount;
+                }
+                processedBills.add(bill.id);
+                return;
+            }
+
+            // Process expenseCategoryItems - distribute full bill amount across categories
+            const totalBillAmount = bill.expenseCategoryItems.reduce((sum, item) => sum + (item.netValue || 0), 0);
+            if (totalBillAmount > 0) {
+                bill.expenseCategoryItems.forEach(item => {
+                    if (!item.categoryId) return;
+                    const itemCategoryId = item.categoryId;
+                    
+                    // Exclude equity and rental categories
+                    if (excludedCats.has(itemCategoryId) || rentalCats.has(itemCategoryId)) return;
+                    
+                    // Use the netValue from the expense category item (proportional amount)
+                    const allocatedAmount = item.netValue || 0;
+                    
+                    const category = state.categories.find(c => c.id === itemCategoryId);
+                    if (category && category.type === TransactionType.INCOME) {
+                        // Expense category marked as income type (shouldn't happen, but handle it)
+                        categoryAmounts[itemCategoryId] = (categoryAmounts[itemCategoryId] || 0) - allocatedAmount;
+                        totalIncome -= allocatedAmount;
+                    } else {
+                        // Regular expense
+                        categoryAmounts[itemCategoryId] = (categoryAmounts[itemCategoryId] || 0) + allocatedAmount;
+                        totalExpense += allocatedAmount;
+                    }
+                });
+                processedBills.add(bill.id);
+            }
+        });
+
+        // 2. Process Transactions (for income and non-bill expenses)
         state.transactions.forEach(tx => {
+            // Skip transactions that are payments for bills we've already processed
+            if (tx.billId && processedBills.has(tx.billId)) {
+                // This is a payment for a bill we already processed - skip to avoid double counting
+                return;
+            }
+
             let projectId = tx.projectId;
             let categoryId = tx.categoryId;
 
@@ -113,12 +177,15 @@ const ProjectProfitLossReport: React.FC = () => {
                 }
             }
             
-            // Resolve details from linked Bill if fields missing
-            if (tx.billId) {
+            // Resolve details from linked Bill if fields missing (for bills without expenseCategoryItems)
+            if (tx.billId && !processedBills.has(tx.billId)) {
                 const bill = state.bills.find(b => b.id === tx.billId);
                 if (bill) {
                     if (!projectId) projectId = bill.projectId;
-                    if (!categoryId) categoryId = bill.categoryId;
+                    // Only use bill category if bill doesn't have expenseCategoryItems
+                    if (!bill.expenseCategoryItems && !categoryId) {
+                        categoryId = bill.categoryId;
+                    }
                 }
             }
 
@@ -130,6 +197,13 @@ const ProjectProfitLossReport: React.FC = () => {
             // Exclude Equity and Rental categories
             if (categoryId && (excludedCats.has(categoryId) || rentalCats.has(categoryId))) return;
             
+            // Exclude transactions using Internal Clearing account (these are internal adjustments, not real P&L items)
+            const clearingAccount = state.accounts.find(a => a.name === 'Internal Clearing');
+            if (clearingAccount && tx.accountId === clearingAccount.id) {
+                // Skip Internal Clearing transactions - they're internal adjustments
+                return;
+            }
+            
             const date = new Date(tx.date);
             if (date < start || date > end) return;
 
@@ -139,8 +213,19 @@ const ProjectProfitLossReport: React.FC = () => {
                 categoryAmounts[catId] = (categoryAmounts[catId] || 0) + tx.amount;
                 totalIncome += tx.amount;
             } else if (tx.type === TransactionType.EXPENSE) {
-                categoryAmounts[catId] = (categoryAmounts[catId] || 0) + tx.amount;
-                totalExpense += tx.amount;
+                // For expenses, check if it's reducing income (expense with income category)
+                // This should reduce income, not add to expenses
+                const category = categoryId ? state.categories.find(c => c.id === categoryId) : null;
+                if (category && category.type === TransactionType.INCOME) {
+                    // This is an expense that reduces income (like refund reduction)
+                    // Subtract from income instead of adding to expenses
+                    categoryAmounts[catId] = (categoryAmounts[catId] || 0) - tx.amount;
+                    totalIncome -= tx.amount;
+                } else {
+                    // Regular expense - add to expenses
+                    categoryAmounts[catId] = (categoryAmounts[catId] || 0) + tx.amount;
+                    totalExpense += tx.amount;
+                }
             }
         });
 

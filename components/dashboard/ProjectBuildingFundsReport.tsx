@@ -4,6 +4,7 @@ import { useAppContext } from '../../context/AppContext';
 import { TransactionType, AccountType, ContactType, LoanSubtype } from '../../types';
 import Card from '../ui/Card';
 import { CURRENCY, ICONS } from '../../constants';
+import { formatRoundedNumber } from '../../utils/numberUtils';
 
 interface FundReportRow {
     id: string;
@@ -14,6 +15,8 @@ interface FundReportRow {
     investment: number;
     equityOut: number;
     loanNetBalance: number;
+    loanGiven?: number;
+    loanTaken?: number;
     netBalance: number;
 }
 
@@ -35,15 +38,10 @@ const ProjectBuildingFundsReport: React.FC = () => {
         return Math.round(num);
     };
 
-    // Helper function to format rounded number with locale string
-    const formatRoundedNumber = (num: number): string => {
-        return roundNumber(num).toLocaleString();
-    };
-
     // Helper function to get dynamic font size based on number length
     const getFontSize = (num: number): string => {
         const rounded = roundNumber(num);
-        const numStr = Math.abs(rounded).toLocaleString();
+        const numStr = formatRoundedNumber(Math.abs(rounded));
         const length = numStr.length;
         
         // Adjust font size based on number of digits
@@ -122,11 +120,26 @@ const ProjectBuildingFundsReport: React.FC = () => {
                     const isMoveIn = tx.description?.toLowerCase().includes('equity move in');
                     const isMoveOut = tx.description?.toLowerCase().includes('equity move out');
                     
+                    // Check if this is a PM fee transfer (deposit from another project)
+                    const fromAccount = state.accounts.find(a => a.id === tx.fromAccountId);
+                    const isFromClearing = fromAccount?.name === 'Internal Clearing';
+                    const isPMFeeTransfer = tx.description?.toLowerCase().includes('pm fee') || 
+                                           tx.description?.toLowerCase().includes('pm fee equity');
+                    
                     // Logic for Project Investment vs Equity Out
                     if (isFromEquity || isMoveIn) {
+                         // Investment: Money FROM equity account (investor putting money in)
                          investment += tx.amount;
                     } else if (isToEquity || isMoveOut) {
-                         equityOut += tx.amount;
+                         // Check if this is a PM fee transfer (deposit) or actual equity withdrawal
+                         if (isFromClearing && isPMFeeTransfer) {
+                             // PM Fee Transfer: This is a deposit (investment) from another project
+                             // It increases the PM project's funds, so count as investment
+                             investment += tx.amount;
+                         } else {
+                             // Equity Out: Money TO equity account (withdrawal/payout)
+                             equityOut += tx.amount;
+                         }
                     }
                 } else if (tx.type === TransactionType.LOAN) {
                     // Calculate loan net balance
@@ -201,53 +214,44 @@ const ProjectBuildingFundsReport: React.FC = () => {
             });
         });
 
-        // 3. Process General Loans (loans not associated with projects/buildings)
-        const generalLoanSummary: Record<string, { contactId: string; contactName: string; loanNetBalance: number }> = {};
+        // 3. Process General Loans (loans not associated with projects/buildings) - Aggregate into single summary
+        let totalLoanGiven = 0;
+        let totalLoanTaken = 0;
         
         state.transactions
             .filter(tx => 
                 tx.type === TransactionType.LOAN && 
                 !tx.projectId && 
-                !tx.buildingId &&
-                tx.contactId
+                !tx.buildingId
             )
             .forEach(tx => {
-                const contactId = tx.contactId!;
-                if (!generalLoanSummary[contactId]) {
-                    const contact = state.contacts.find(c => c.id === contactId);
-                    generalLoanSummary[contactId] = {
-                        contactId,
-                        contactName: contact?.name || 'Unknown',
-                        loanNetBalance: 0
-                    };
+                // Calculate loan given (money going out)
+                if (tx.subtype === LoanSubtype.GIVE || tx.subtype === LoanSubtype.REPAY) {
+                    totalLoanGiven += tx.amount;
                 }
-                
-                // Calculate loan net balance
-                // RECEIVE and COLLECT increase available funds (positive)
-                // GIVE and REPAY decrease available funds (negative)
-                if (tx.subtype === LoanSubtype.RECEIVE || tx.subtype === LoanSubtype.COLLECT) {
-                    generalLoanSummary[contactId].loanNetBalance += tx.amount;
-                } else if (tx.subtype === LoanSubtype.GIVE || tx.subtype === LoanSubtype.REPAY) {
-                    generalLoanSummary[contactId].loanNetBalance -= tx.amount;
+                // Calculate loan taken (money coming in)
+                else if (tx.subtype === LoanSubtype.RECEIVE || tx.subtype === LoanSubtype.COLLECT) {
+                    totalLoanTaken += tx.amount;
                 }
             });
         
-        const generalLoanSummaries = Object.values(generalLoanSummary).filter(s => Math.abs(s.loanNetBalance) > 0.01);
-
-        // Add general loans to rows
-        generalLoanSummaries.forEach(loanSummary => {
+        // Add single loan summary row if there are any loan transactions
+        const loanNetBalance = totalLoanTaken - totalLoanGiven;
+        if (Math.abs(totalLoanGiven) > 0.01 || Math.abs(totalLoanTaken) > 0.01) {
             rows.push({
-                id: `loan-${loanSummary.contactId}`,
-                name: loanSummary.contactName,
+                id: 'loan-summary',
+                name: 'Loan Summary',
                 type: 'Loan',
                 income: 0,
                 expense: 0,
                 investment: 0,
                 equityOut: 0,
-                loanNetBalance: roundNumber(loanSummary.loanNetBalance),
-                netBalance: roundNumber(loanSummary.loanNetBalance)
+                loanNetBalance: roundNumber(loanNetBalance),
+                loanGiven: roundNumber(totalLoanGiven),
+                loanTaken: roundNumber(totalLoanTaken),
+                netBalance: roundNumber(loanNetBalance)
             });
-        });
+        }
 
         // Filter out empty projects/buildings/loans (no financial data)
         // Use a small epsilon to handle floating point precision issues
@@ -291,6 +295,8 @@ const ProjectBuildingFundsReport: React.FC = () => {
             totalInvestment: acc.totalInvestment + row.investment,
             totalEquityOut: acc.totalEquityOut + row.equityOut,
             totalLoanNetBalance: acc.totalLoanNetBalance + row.loanNetBalance,
+            totalLoanGiven: acc.totalLoanGiven + (row.loanGiven || 0),
+            totalLoanTaken: acc.totalLoanTaken + (row.loanTaken || 0),
             totalNetBalance: acc.totalNetBalance + row.netBalance,
             totalProjects: acc.totalProjects + (row.type === 'Project' ? 1 : 0),
             totalBuildings: acc.totalBuildings + (row.type === 'Building' ? 1 : 0),
@@ -301,6 +307,8 @@ const ProjectBuildingFundsReport: React.FC = () => {
             totalInvestment: 0,
             totalEquityOut: 0,
             totalLoanNetBalance: 0,
+            totalLoanGiven: 0,
+            totalLoanTaken: 0,
             totalNetBalance: 0,
             totalProjects: 0,
             totalBuildings: 0,
@@ -367,6 +375,12 @@ const ProjectBuildingFundsReport: React.FC = () => {
                             <th onClick={() => handleSort('expense')} className="px-4 py-3 text-right font-semibold text-rose-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Expense <SortIcon column="expense"/></th>
                             <th onClick={() => handleSort('investment')} className="px-4 py-3 text-right font-semibold text-blue-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Total Investment <SortIcon column="investment"/></th>
                             <th onClick={() => handleSort('equityOut')} className="px-4 py-3 text-right font-semibold text-amber-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Equity Moved Out <SortIcon column="equityOut"/></th>
+                            {reportData.some(row => row.type === 'Loan') && (
+                                <>
+                                    <th className="px-4 py-3 text-right font-semibold text-purple-600 whitespace-nowrap">Loan Given</th>
+                                    <th className="px-4 py-3 text-right font-semibold text-purple-600 whitespace-nowrap">Loan Taken</th>
+                                </>
+                            )}
                             <th onClick={() => handleSort('loanNetBalance')} className="px-4 py-3 text-right font-semibold text-purple-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Loan Net Balance <SortIcon column="loanNetBalance"/></th>
                             <th onClick={() => handleSort('netBalance')} className="px-4 py-3 text-right font-bold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap bg-slate-100">Net Balance <SortIcon column="netBalance"/></th>
                         </tr>
@@ -386,6 +400,24 @@ const ProjectBuildingFundsReport: React.FC = () => {
                                 <td className="px-4 py-3 text-right text-rose-600 tabular-nums">{CURRENCY} {formatRoundedNumber(row.expense)}</td>
                                 <td className="px-4 py-3 text-right text-blue-600 tabular-nums">{CURRENCY} {formatRoundedNumber(row.investment)}</td>
                                 <td className="px-4 py-3 text-right text-amber-600 tabular-nums">{CURRENCY} {formatRoundedNumber(row.equityOut)}</td>
+                                {reportData.some(r => r.type === 'Loan') && (
+                                    <>
+                                        <td className="px-4 py-3 text-right text-purple-600 tabular-nums">
+                                            {row.type === 'Loan' && row.loanGiven !== undefined ? (
+                                                <>{CURRENCY} {formatRoundedNumber(row.loanGiven)}</>
+                                            ) : (
+                                                <span className="text-slate-300">-</span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3 text-right text-purple-600 tabular-nums">
+                                            {row.type === 'Loan' && row.loanTaken !== undefined ? (
+                                                <>{CURRENCY} {formatRoundedNumber(row.loanTaken)}</>
+                                            ) : (
+                                                <span className="text-slate-300">-</span>
+                                            )}
+                                        </td>
+                                    </>
+                                )}
                                 <td className={`px-4 py-3 text-right tabular-nums ${row.loanNetBalance >= 0 ? 'text-purple-600' : 'text-purple-700'}`}>
                                     {CURRENCY} {formatRoundedNumber(row.loanNetBalance)}
                                 </td>
@@ -396,7 +428,7 @@ const ProjectBuildingFundsReport: React.FC = () => {
                         ))}
                         {reportData.length === 0 && (
                             <tr>
-                                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">No projects or buildings found.</td>
+                                <td colSpan={reportData.some(row => row.type === 'Loan') ? 9 : 7} className="px-4 py-8 text-center text-slate-500">No projects or buildings found.</td>
                             </tr>
                         )}
                     </tbody>

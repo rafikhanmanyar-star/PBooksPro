@@ -2,9 +2,10 @@ import React from 'react';
 
 interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   label: string;
+  enableSpellCheck?: boolean;
 }
 
-const Textarea: React.FC<TextareaProps> = ({ label, id, name, ...props }) => {
+const Textarea: React.FC<TextareaProps> = ({ label, id, name, enableSpellCheck = true, ...props }) => {
   const finalClassName = `block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed focus:ring-2 focus:ring-green-500/50 focus:border-green-500 border-gray-300`;
 
   // Generate an id if not provided (for accessibility)
@@ -22,8 +23,8 @@ const Textarea: React.FC<TextareaProps> = ({ label, id, name, ...props }) => {
         rows={3}
         className={finalClassName}
         autoComplete={props.autoComplete || "off"}
-        autoCorrect="off"
-        spellCheck={false}
+        autoCorrect={enableSpellCheck ? "on" : "off"}
+        spellCheck={enableSpellCheck}
       />
     </div>
   );

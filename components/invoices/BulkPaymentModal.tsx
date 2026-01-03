@@ -28,8 +28,8 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
     const [accountId, setAccountId] = useState('');
     const [reference, setReference] = useState('');
 
-    // Filter for Bank Accounts Only
-    const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK), [state.accounts]);
+    // Filter for Bank Accounts Only (exclude Internal Clearing)
+    const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
 
     // Sort invoices by Due Date for display order
     const sortedInvoices = useMemo(() => {

@@ -23,7 +23,7 @@ interface ReportRow {
 
 const ProjectUnitReport: React.FC = () => {
     const { state } = useAppContext();
-    const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
+    const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || 'all');
     const [searchQuery, setSearchQuery] = useState('');
     const [groupBy, setGroupBy] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: keyof ReportRow; direction: 'asc' | 'desc' } | null>(null);

@@ -85,8 +85,34 @@ export const ALL_KPIS: KpiDefinition[] = [
       icon: ICONS.arrowUpCircle,
       getData: (state) => {
           const excludedIds = new Set(getExcludedCategoryIds(state));
+          
+          // Exclude transactions using Internal Clearing account (internal adjustments)
+          const clearingAccount = state.accounts.find(a => a.name === 'Internal Clearing');
+          
           return state.transactions
-            .filter(t => t.type === TransactionType.EXPENSE && (!t.categoryId || !excludedIds.has(t.categoryId)))
+            .filter(t => {
+                // Must be EXPENSE type
+                if (t.type !== TransactionType.EXPENSE) return false;
+                
+                // Exclude excluded categories (liability outflows, equity adjustments)
+                if (t.categoryId && excludedIds.has(t.categoryId)) return false;
+                
+                // Exclude Internal Clearing account transactions (internal adjustments)
+                if (clearingAccount && t.accountId === clearingAccount.id) return false;
+                
+                // Exclude EXPENSE transactions with INCOME categories (refunds and penalty reductions)
+                // These reduce income, not expenses (same logic as P&L)
+                if (t.categoryId) {
+                    const category = state.categories.find(c => c.id === t.categoryId);
+                    if (category && category.type === TransactionType.INCOME) {
+                        // This is an expense that reduces income (like refund reduction or penalty reduction)
+                        // Exclude from expenses - it's a revenue reduction, not an expense
+                        return false;
+                    }
+                }
+                
+                return true;
+            })
             .reduce((acc, t) => acc + t.amount, 0);
       }
   },
@@ -97,9 +123,21 @@ export const ALL_KPIS: KpiDefinition[] = [
     icon: ICONS.download,
     getData: (state) => {
         // Calculate A/R from invoices instead of relying solely on system account balance for accuracy
+        // Exclude invoices from cancelled agreements (voided)
         return state.invoices
-            .filter(inv => inv.status !== InvoiceStatus.PAID)
-            .reduce((sum, inv) => sum + (inv.amount - inv.paidAmount), 0);
+            .filter(inv => {
+                // Exclude paid invoices
+                if (inv.status === InvoiceStatus.PAID) return false;
+                // Exclude voided invoices (from cancelled agreements)
+                if (inv.description?.includes('VOIDED')) return false;
+                // Exclude invoices from cancelled agreements
+                if (inv.agreementId) {
+                    const agreement = state.projectAgreements.find(pa => pa.id === inv.agreementId);
+                    if (agreement && agreement.status === 'Cancelled') return false;
+                }
+                return true;
+            })
+            .reduce((sum, inv) => sum + (inv.amount - (inv.paidAmount || 0)), 0);
     },
   },
   {
@@ -109,9 +147,17 @@ export const ALL_KPIS: KpiDefinition[] = [
     icon: ICONS.fileText,
     getData: (state) => {
         // Calculate A/P from bills
+        // Use bill's paidAmount field directly (maintained by system)
         const billsDue = state.bills
-            .filter(b => b.status !== InvoiceStatus.PAID)
-            .reduce((sum, b) => sum + (b.amount - b.paidAmount), 0);
+            .filter(b => {
+                // Only include unpaid bills
+                const paidAmount = b.paidAmount || 0;
+                return paidAmount < b.amount - 0.01; // Allow small rounding differences
+            })
+            .reduce((sum, b) => {
+                const paidAmount = b.paidAmount || 0;
+                return sum + (b.amount - paidAmount);
+            }, 0);
             
         return billsDue;
     },
@@ -334,49 +380,110 @@ export const ALL_KPIS: KpiDefinition[] = [
   // Project KPIs
   {
       id: 'projectFunds',
-      title: 'Projects Funds',
+      title: 'Project Funds',
       group: 'Project',
       icon: ICONS.briefcase,
       getData: (state) => {
-          let income = 0;
-          let expense = 0;
-          const excludedIds = new Set(getExcludedCategoryIds(state));
-
-          state.transactions.forEach(tx => {
-              if (tx.projectId) {
-                  if (tx.type === TransactionType.INCOME && (!tx.categoryId || !excludedIds.has(tx.categoryId))) {
-                      income += tx.amount;
-                  }
-                  if (tx.type === TransactionType.EXPENSE && (!tx.categoryId || !excludedIds.has(tx.categoryId))) {
-                      expense += tx.amount;
-                  }
-              }
-          });
-          return income - expense;
-      }
-  },
-  {
-      id: 'totalProjectNet',
-      title: 'Total Project Net',
-      group: 'Project',
-      icon: ICONS.dollarSign,
-      getData: (state) => {
-          let income = 0;
-          let expense = 0;
+          // Calculate net balance using the same formula as Funds Availability Report
+          // netBalance = (income - expense) + (investment - equityOut) + loanNetBalance
           
-          const excludedIds = new Set(getExcludedCategoryIds(state));
-
-          state.transactions.forEach(tx => {
-              if (tx.projectId) {
-                  if (tx.type === TransactionType.INCOME && (!tx.categoryId || !excludedIds.has(tx.categoryId))) {
-                      income += tx.amount;
+          // Helper to check for Equity/Capital categories
+          const equityCategoryNames = ['Owner Equity', 'Share Capital', 'Investment', 'Capital Injection'];
+          const withdrawalCategoryNames = ['Owner Withdrawn', 'Drawings', 'Dividends', 'Profit Share', 'Owner Payout', 'Owner Security Payout', 'Security Deposit Refund'];
+          
+          const isEquityIncome = (catId?: string) => {
+              if (!catId) return false;
+              const c = state.categories.find(cat => cat.id === catId);
+              return c && equityCategoryNames.includes(c.name);
+          };
+          
+          const isEquityExpense = (catId?: string) => {
+              if (!catId) return false;
+              const c = state.categories.find(cat => cat.id === catId);
+              return c && withdrawalCategoryNames.includes(c.name);
+          };
+          
+          const equityAccountIds = new Set(state.accounts.filter(a => a.type === AccountType.EQUITY).map(a => a.id));
+          
+          let totalIncome = 0;
+          let totalExpense = 0;
+          let totalInvestment = 0;
+          let totalEquityOut = 0;
+          let totalLoanNetBalance = 0;
+          
+          state.projects.forEach(project => {
+              let income = 0;
+              let expense = 0;
+              let investment = 0;
+              let equityOut = 0;
+              let loanNetBalance = 0;
+              
+              state.transactions.forEach(tx => {
+                  // Resolve projectId from transaction, bill, or invoice
+                  let txProjectId = tx.projectId;
+                  
+                  if (!txProjectId && tx.billId) {
+                      const bill = state.bills.find(b => b.id === tx.billId);
+                      if (bill) txProjectId = bill.projectId;
                   }
-                  if (tx.type === TransactionType.EXPENSE && (!tx.categoryId || !excludedIds.has(tx.categoryId))) {
-                      expense += tx.amount;
+                  
+                  if (!txProjectId && tx.invoiceId) {
+                      const invoice = state.invoices.find(i => i.id === tx.invoiceId);
+                      if (invoice) txProjectId = invoice.projectId;
                   }
-              }
+                  
+                  if (txProjectId !== project.id) return;
+                  
+                  if (tx.type === TransactionType.INCOME) {
+                      if (isEquityIncome(tx.categoryId)) {
+                          investment += tx.amount;
+                      } else {
+                          income += tx.amount;
+                      }
+                  } else if (tx.type === TransactionType.EXPENSE) {
+                      if (isEquityExpense(tx.categoryId)) {
+                          equityOut += tx.amount;
+                      } else {
+                          expense += tx.amount;
+                      }
+                  } else if (tx.type === TransactionType.TRANSFER) {
+                      const isFromEquity = tx.fromAccountId && equityAccountIds.has(tx.fromAccountId);
+                      const isToEquity = tx.toAccountId && equityAccountIds.has(tx.toAccountId);
+                      const isMoveIn = tx.description?.toLowerCase().includes('equity move in');
+                      const isMoveOut = tx.description?.toLowerCase().includes('equity move out');
+                      
+                      const fromAccount = state.accounts.find(a => a.id === tx.fromAccountId);
+                      const isFromClearing = fromAccount?.name === 'Internal Clearing';
+                      const isPMFeeTransfer = tx.description?.toLowerCase().includes('pm fee') || 
+                                             tx.description?.toLowerCase().includes('pm fee equity');
+                      
+                      if (isFromEquity || isMoveIn) {
+                          investment += tx.amount;
+                      } else if (isToEquity || isMoveOut) {
+                          if (isFromClearing && isPMFeeTransfer) {
+                              investment += tx.amount;
+                          } else {
+                              equityOut += tx.amount;
+                          }
+                      }
+                  } else if (tx.type === TransactionType.LOAN) {
+                      if (tx.subtype === LoanSubtype.RECEIVE || tx.subtype === LoanSubtype.COLLECT) {
+                          loanNetBalance += tx.amount;
+                      } else if (tx.subtype === LoanSubtype.GIVE || tx.subtype === LoanSubtype.REPAY) {
+                          loanNetBalance -= tx.amount;
+                      }
+                  }
+              });
+              
+              totalIncome += income;
+              totalExpense += expense;
+              totalInvestment += investment;
+              totalEquityOut += equityOut;
+              totalLoanNetBalance += loanNetBalance;
           });
-          return income - expense;
+          
+          // Calculate total net balance: (income - expense) + (investment - equityOut) + loanNetBalance
+          return (totalIncome - totalExpense) + (totalInvestment - totalEquityOut) + totalLoanNetBalance;
       }
   },
   {
@@ -387,5 +494,58 @@ export const ALL_KPIS: KpiDefinition[] = [
       getData: (state) => state.invoices
         .filter(inv => inv.invoiceType === InvoiceType.INSTALLMENT && inv.status !== InvoiceStatus.PAID)
         .reduce((sum, inv) => sum + (inv.amount - inv.paidAmount), 0)
+  },
+  // Building KPIs
+  {
+      id: 'buildingFunds',
+      title: 'Building Funds',
+      group: 'Rental',
+      icon: ICONS.building,
+      getData: (state) => {
+          // Calculate net balance using the same formula as Funds Availability Report for buildings
+          // netBalance = (income - expense) + loanNetBalance
+          
+          let totalIncome = 0;
+          let totalExpense = 0;
+          let totalLoanNetBalance = 0;
+          
+          state.buildings.forEach(building => {
+              let income = 0;
+              let expense = 0;
+              let loanNetBalance = 0;
+              
+              state.transactions.forEach(tx => {
+                  let txBuildingId = tx.buildingId;
+                  if (!txBuildingId && tx.propertyId) {
+                      const prop = state.properties.find(p => p.id === tx.propertyId);
+                      if (prop) txBuildingId = prop.buildingId;
+                  }
+                  
+                  if (txBuildingId !== building.id) return;
+                  
+                  if (tx.type === TransactionType.INCOME) {
+                      income += tx.amount;
+                  } else if (tx.type === TransactionType.EXPENSE) {
+                      expense += tx.amount;
+                  } else if (tx.type === TransactionType.LOAN) {
+                      // Calculate loan net balance
+                      // RECEIVE and COLLECT increase available funds (positive)
+                      // GIVE and REPAY decrease available funds (negative)
+                      if (tx.subtype === LoanSubtype.RECEIVE || tx.subtype === LoanSubtype.COLLECT) {
+                          loanNetBalance += tx.amount;
+                      } else if (tx.subtype === LoanSubtype.GIVE || tx.subtype === LoanSubtype.REPAY) {
+                          loanNetBalance -= tx.amount;
+                      }
+                  }
+              });
+              
+              totalIncome += income;
+              totalExpense += expense;
+              totalLoanNetBalance += loanNetBalance;
+          });
+          
+          // Calculate total net balance: (income - expense) + loanNetBalance
+          return (totalIncome - totalExpense) + totalLoanNetBalance;
+      }
   },
 ];

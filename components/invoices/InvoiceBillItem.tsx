@@ -9,6 +9,8 @@ import InvoiceBillForm from './InvoiceBillForm';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
 import { formatDate } from '../../utils/dateUtils';
+import { WhatsAppService } from '../../services/whatsappService';
+import { formatCurrency } from '../../utils/numberUtils';
 
 interface InvoiceBillItemProps {
   item: Invoice | Bill;
@@ -62,7 +64,7 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
 
   const handleDelete = async () => {
     if (paidAmount > 0) {
-      await showAlert(`Cannot delete this ${type} because it has associated payments (${CURRENCY} ${paidAmount.toLocaleString()}).\n\nPlease delete the payment transactions from the ledger first.`, { title: 'Deletion Blocked' });
+      await showAlert(`Cannot delete this ${type} because it has associated payments (${CURRENCY} ${formatCurrency(paidAmount)}).\n\nPlease delete the payment transactions from the ledger first.`, { title: 'Deletion Blocked' });
     } else {
       const confirmed = await showConfirm(`Are you sure you want to delete this ${type}?`, { title: `Delete ${type === 'invoice' ? 'Invoice' : 'Bill'}`, confirmLabel: 'Delete', cancelLabel: 'Cancel' });
       if (confirmed) {
@@ -85,41 +87,57 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
   const staff = staffId ? state.contacts.find(c => c.id === staffId) : null;
 
   const handleSendWhatsApp = () => {
-    if (!contact?.contactNo) { showAlert("This contact does not have a phone number saved."); return; }
-    const { whatsAppTemplates } = state;
-    let message = '';
-    const hasMadePayment = paidAmount > 0;
-    
-    if (type === 'invoice') {
+    if (!contact?.contactNo) { 
+      showAlert("This contact does not have a phone number saved."); 
+      return; 
+    }
+
+    try {
+      const { whatsAppTemplates } = state;
+      let message = '';
+      const hasMadePayment = paidAmount > 0;
+      
+      if (type === 'invoice') {
         let subject = property?.name || project?.name || 'your invoice';
         if (project && unit) {
-            subject = `${project.name} - Unit ${unit.name}`;
+          subject = `${project.name} - Unit ${unit.name}`;
         }
         const unitName = unit?.name || '';
 
         if (hasMadePayment) {
-            message = whatsAppTemplates.invoiceReceipt
-                .replace(/{contactName}/g, contactName)
-                .replace(/{invoiceNumber}/g, number)
-                .replace(/{subject}/g, subject)
-                .replace(/{paidAmount}/g, `${CURRENCY} ${paidAmount.toLocaleString()}`)
-                .replace(/{balance}/g, `${CURRENCY} ${balance.toLocaleString()}`)
-                .replace(/{unitName}/g, unitName);
+          message = WhatsAppService.generateInvoiceReceipt(
+            whatsAppTemplates.invoiceReceipt,
+            contact,
+            number,
+            paidAmount,
+            balance,
+            subject,
+            unitName
+          );
         } else {
-            message = whatsAppTemplates.invoiceReminder
-                .replace(/{contactName}/g, contactName)
-                .replace(/{invoiceNumber}/g, number)
-                .replace(/{subject}/g, subject)
-                .replace(/{amount}/g, `${CURRENCY} ${amount.toLocaleString()}`)
-                .replace(/{dueDate}/g, dueDate ? formatDate(dueDate) : '')
-                .replace(/{unitName}/g, unitName);
+          message = WhatsAppService.generateInvoiceReminder(
+            whatsAppTemplates.invoiceReminder,
+            contact,
+            number,
+            amount,
+            dueDate ? formatDate(dueDate) : undefined,
+            subject,
+            unitName
+          );
         }
-    } else { // type === 'bill'
-        message = whatsAppTemplates.billPayment
-            .replace(/{contactName}/g, contactName).replace(/{billNumber}/g, number).replace(/{paidAmount}/g, `${CURRENCY} ${paidAmount.toLocaleString()}`);
+      } else { // type === 'bill'
+        message = WhatsAppService.generateBillPayment(
+          whatsAppTemplates.billPayment,
+          contact,
+          number,
+          paidAmount
+        );
+      }
+
+      WhatsAppService.sendMessage({ contact, message });
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
     }
-    const phoneNumber = contact.contactNo.replace(/[^0-9]/g, '');
-    window.open(`https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
   // Color Logic
@@ -210,7 +228,7 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
                         {/* Line 3: Balance - Status */}
                         <div className="flex justify-between items-center">
                             <span className={`font-bold text-sm ${balance > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                Due: {CURRENCY} {balance.toLocaleString()}
+                                Due: {CURRENCY} {formatCurrency(balance)}
                             </span>
                             <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${getStatusClasses(status)}`}>
                                 {status}
@@ -298,15 +316,15 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
                         <div className="mt-4 flex flex-wrap sm:flex-nowrap justify-between gap-y-4 text-sm text-center border-t border-b border-slate-50/50 py-3 bg-slate-50/50 rounded-md">
                             <div className="w-1/2 sm:w-1/3 px-1 border-b sm:border-b-0 sm:border-r border-slate-200 pb-2 sm:pb-0">
                                 <p className="text-slate-500 text-xs uppercase tracking-wide">Amount</p>
-                                <p className="font-semibold text-slate-700 truncate">{CURRENCY} {(amount || 0).toLocaleString()}</p>
+                                <p className="font-semibold text-slate-700 truncate">{CURRENCY} {formatCurrency(amount || 0)}</p>
                             </div>
                             <div className="w-1/2 sm:w-1/3 px-1 border-b sm:border-b-0 sm:border-r border-slate-200 pb-2 sm:pb-0">
                                 <p className="text-slate-500 text-xs uppercase tracking-wide">Paid</p>
-                                <p className="font-semibold text-success truncate">{CURRENCY} {(paidAmount || 0).toLocaleString()}</p>
+                                <p className="font-semibold text-success truncate">{CURRENCY} {formatCurrency(paidAmount || 0)}</p>
                             </div>
                             <div className="w-full sm:w-1/3 px-1 pt-2 sm:pt-0">
                                 <p className="text-slate-500 text-xs uppercase tracking-wide">Balance</p>
-                                <p className="font-bold text-danger truncate">{CURRENCY} {(balance || 0).toLocaleString()}</p>
+                                <p className="font-bold text-danger truncate">{CURRENCY} {formatCurrency(balance || 0)}</p>
                             </div>
                         </div>
 

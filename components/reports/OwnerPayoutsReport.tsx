@@ -1,15 +1,24 @@
 
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { TransactionType, ContactType } from '../../types';
+import { TransactionType, ContactType, Transaction } from '../../types';
 import Card from '../ui/Card';
+import Button from '../ui/Button';
+import Input from '../ui/Input';
 import ComboBox from '../ui/ComboBox';
-import { CURRENCY } from '../../constants';
+import DatePicker from '../ui/DatePicker';
+import Modal from '../ui/Modal';
+import TransactionForm from '../transactions/TransactionForm';
+import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarningModal';
+import { useNotification } from '../../context/NotificationContext';
+import { CURRENCY, ICONS } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
-import ReportToolbar, { ReportDateRange } from './ReportToolbar';
+import { formatCurrency } from '../../utils/numberUtils';
 import { formatDate } from '../../utils/dateUtils';
+
+type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 
 interface ReportRow {
     id: string;
@@ -20,21 +29,34 @@ interface ReportRow {
     rentIn: number;
     paidOut: number;
     balance: number;
+    entityType: 'transaction';
+    entityId: string;
 }
 
 type SortKey = 'date' | 'ownerName' | 'propertyName' | 'particulars' | 'rentIn' | 'paidOut' | 'balance';
 
 const OwnerPayoutsReport: React.FC = () => {
-    const { state } = useAppContext();
-    const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
-    const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]);
+    const { state, dispatch } = useAppContext();
+    const { showToast, showAlert } = useNotification();
+    const [dateRange, setDateRange] = useState<DateRangeOption>('all');
+    const [startDate, setStartDate] = useState('2000-01-01');
+    const [endDate, setEndDate] = useState('2100-12-31');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [selectedOwnerId, setSelectedOwnerId] = useState<string>('all');
     
     // Sorting State
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'asc' });
+    
+    // Edit Modal State
+    const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
+    
+    // Warning Modal State
+    const [warningModalState, setWarningModalState] = useState<{ isOpen: boolean; transaction: Transaction | null; action: 'delete' | 'update' | null }>({
+        isOpen: false,
+        transaction: null,
+        action: null
+    });
 
     const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
     
@@ -43,7 +65,7 @@ const OwnerPayoutsReport: React.FC = () => {
         return [{ id: 'all', name: 'All Owners' }, ...relevantContacts];
     }, [state.contacts]);
 
-    const handleRangeChange = (option: ReportDateRange) => {
+    const handleRangeChange = (option: DateRangeOption) => {
         setDateRange(option);
         const now = new Date();
         
@@ -85,7 +107,7 @@ const OwnerPayoutsReport: React.FC = () => {
 
         const items: any[] = [];
 
-        // 1. Rental Income
+        // 1. Rental Income (including negative amounts for service charge deductions)
         state.transactions
             .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory.id)
             .forEach(tx => {
@@ -99,15 +121,35 @@ const OwnerPayoutsReport: React.FC = () => {
                     if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
                     if (selectedOwnerId !== 'all' && owner?.id !== selectedOwnerId) return;
                     
-                    items.push({
-                        id: tx.id,
-                        date: tx.date,
-                        ownerName: owner?.name || 'Unknown',
-                        propertyName: property?.name || 'Unknown',
-                        particulars: tx.description || 'Rent Collected',
-                        rentIn: tx.amount,
-                        paidOut: 0
-                    });
+                    const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    if (isNaN(amount)) return;
+                    
+                    // If negative (service charge deduction), show as paidOut; if positive (rent), show as rentIn
+                    if (amount < 0) {
+                        items.push({
+                            id: tx.id,
+                            date: tx.date,
+                            ownerName: owner?.name || 'Unknown',
+                            propertyName: property?.name || 'Unknown',
+                            particulars: tx.description || 'Service Charge Deduction',
+                            rentIn: 0,
+                            paidOut: Math.abs(amount),
+                            entityType: 'transaction' as const,
+                            entityId: tx.id
+                        });
+                    } else {
+                        items.push({
+                            id: tx.id,
+                            date: tx.date,
+                            ownerName: owner?.name || 'Unknown',
+                            propertyName: property?.name || 'Unknown',
+                            particulars: tx.description || 'Rent Collected',
+                            rentIn: amount,
+                            paidOut: 0,
+                            entityType: 'transaction' as const,
+                            entityId: tx.id
+                        });
+                    }
                 }
             });
 
@@ -169,7 +211,9 @@ const OwnerPayoutsReport: React.FC = () => {
                             propertyName: propertyName,
                             particulars: tx.description || 'Expense/Payout',
                             rentIn: 0,
-                            paidOut: tx.amount
+                            paidOut: tx.amount,
+                            entityType: 'transaction' as const,
+                            entityId: tx.id
                         });
                     }
                 }
@@ -233,6 +277,52 @@ const OwnerPayoutsReport: React.FC = () => {
 
     const handlePrint = () => window.print();
 
+    const getLinkedItemName = (tx: Transaction | null): string => {
+        if (!tx) return '';
+        if (tx.invoiceId) {
+            const invoice = state.invoices.find(i => i.id === tx.invoiceId);
+            return invoice ? `Invoice #${invoice.invoiceNumber}` : 'an Invoice';
+        }
+        if (tx.billId) {
+            const bill = state.bills.find(b => b.id === tx.billId);
+            return bill ? `Bill #${bill.billNumber}` : 'a Bill';
+        }
+        if (tx.payslipId) {
+            return 'a Payslip';
+        }
+        return 'a linked item';
+    };
+
+    const handleShowDeleteWarning = (tx: Transaction) => {
+        setTransactionToEdit(null);
+        setWarningModalState({ isOpen: true, transaction: tx, action: 'delete' });
+    };
+
+    const handleConfirmWarning = () => {
+        const { transaction, action } = warningModalState;
+        if (transaction && action === 'delete') {
+            const linkedItemName = getLinkedItemName(transaction);
+            dispatch({ type: 'DELETE_TRANSACTION', payload: transaction.id });
+            showToast(`Transaction deleted successfully. ${linkedItemName && linkedItemName !== 'a linked item' ? `The linked ${linkedItemName} has been updated.` : ''}`, 'info');
+        }
+        setWarningModalState({ isOpen: false, transaction: null, action: null });
+    };
+
+    const handleCloseWarning = () => {
+        setWarningModalState({ isOpen: false, transaction: null, action: null });
+    };
+
+    const handleTransactionUpdated = () => {
+        if (transactionToEdit) {
+            const linkedItemName = getLinkedItemName(transactionToEdit);
+            if (linkedItemName && linkedItemName !== 'a linked item') {
+                showAlert(`Transaction updated successfully. The linked ${linkedItemName} has been updated to reflect the changes.`, { title: 'Transaction Updated' });
+            } else {
+                showToast('Transaction updated successfully', 'success');
+            }
+        }
+    };
+
     const SortIcon = ({ column }: { column: SortKey }) => (
         <span className="ml-1 text-[10px] text-slate-400">
             {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
@@ -291,40 +381,89 @@ const OwnerPayoutsReport: React.FC = () => {
                 }
             `}</style>
             
-            <div className="flex-shrink-0">
-                <ReportToolbar
-                    startDate={startDate}
-                    endDate={endDate}
-                    onDateChange={handleCustomDateChange}
-                    searchQuery={searchQuery}
-                    onSearchChange={setSearchQuery}
-                    onExport={handleExport}
-                    onPrint={handlePrint}
-                    showDateFilterPills={true}
-                    activeDateRange={dateRange}
-                    onRangeChange={handleRangeChange}
-                >
+            {/* Custom Toolbar - All controls in first row */}
+            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm no-print">
+                {/* First Row: Dates, Filters, and Actions */}
+                <div className="flex flex-wrap items-center gap-3">
+                    {/* Date Range Pills */}
+                    <div className="flex bg-slate-100 p-1 rounded-lg flex-shrink-0 overflow-x-auto">
+                        {(['all', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
+                            <button
+                                key={opt}
+                                onClick={() => handleRangeChange(opt)}
+                                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap capitalize ${
+                                    dateRange === opt 
+                                    ? 'bg-white text-accent shadow-sm font-bold' 
+                                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
+                                }`}
+                            >
+                                {opt === 'all' ? 'Total' : opt === 'thisMonth' ? 'This Month' : opt === 'lastMonth' ? 'Last Month' : 'Custom'}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Custom Date Pickers */}
+                    {dateRange === 'custom' && (
+                        <div className="flex items-center gap-2 animate-fade-in">
+                            <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(d.toISOString().split('T')[0], endDate)} />
+                            <span className="text-slate-400">-</span>
+                            <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, d.toISOString().split('T')[0])} />
+                        </div>
+                    )}
+
+                    {/* Building Filter */}
                     <div className="w-48 flex-shrink-0">
                         <ComboBox 
-                            label="Building"
                             items={buildings} 
                             selectedId={selectedBuildingId} 
                             onSelect={(item) => setSelectedBuildingId(item?.id || 'all')} 
                             allowAddNew={false}
-                            placeholder="All Buildings"
+                            placeholder="Filter Building"
                         />
                     </div>
+
+                    {/* Owner Filter */}
                     <div className="w-48 flex-shrink-0">
                         <ComboBox 
-                            label="Owner"
                             items={owners} 
                             selectedId={selectedOwnerId} 
                             onSelect={(item) => setSelectedOwnerId(item?.id || 'all')} 
                             allowAddNew={false}
-                            placeholder="All Owners"
+                            placeholder="Filter Owner"
                         />
                     </div>
-                </ReportToolbar>
+
+                    {/* Search Input */}
+                    <div className="relative flex-grow min-w-[180px]">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <span className="h-4 w-4">{ICONS.search}</span>
+                        </div>
+                        <Input 
+                            placeholder="Search report..." 
+                            value={searchQuery} 
+                            onChange={(e) => setSearchQuery(e.target.value)} 
+                            className="pl-9 py-1.5 text-sm"
+                        />
+                        {searchQuery && (
+                            <button 
+                                onClick={() => setSearchQuery('')} 
+                                className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
+                            >
+                                <div className="w-4 h-4">{ICONS.x}</div>
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Actions Group */}
+                    <div className="flex items-center gap-2 ml-auto">
+                        <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
+                            <div className="w-4 h-4 mr-1">{ICONS.export}</div> Export
+                        </Button>
+                        <Button variant="secondary" size="sm" onClick={handlePrint} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
+                            <div className="w-4 h-4 mr-1">{ICONS.print}</div> Print
+                        </Button>
+                    </div>
+                </div>
             </div>
 
             <div className="flex-grow overflow-y-auto printable-area min-h-0">
@@ -358,17 +497,25 @@ const OwnerPayoutsReport: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
-                                {reportData.map(item => (
-                                    <tr key={item.id} className="hover:bg-slate-50">
-                                        <td className="px-3 py-2 whitespace-nowrap text-slate-700">{formatDate(item.date)}</td>
-                                        <td className="px-3 py-2 whitespace-normal break-words text-slate-700 max-w-[150px]">{item.ownerName}</td>
-                                        <td className="px-3 py-2 whitespace-normal break-words text-slate-700 max-w-[150px]">{item.propertyName}</td>
-                                        <td className="px-3 py-2 whitespace-normal break-words text-slate-600 max-w-xs" title={item.particulars}>{item.particulars}</td>
-                                        <td className="px-3 py-2 text-right text-success whitespace-nowrap">{item.rentIn > 0 ? `${CURRENCY} ${(item.rentIn || 0).toLocaleString()}` : '-'}</td>
-                                        <td className="px-3 py-2 text-right text-danger whitespace-nowrap">{item.paidOut > 0 ? `${CURRENCY} ${(item.paidOut || 0).toLocaleString()}` : '-'}</td>
-                                        <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${item.balance >= 0 ? 'text-slate-800' : 'text-danger'}`}>{CURRENCY} {(item.balance || 0).toLocaleString()}</td>
-                                    </tr>
-                                ))}
+                                {reportData.map(item => {
+                                    const transaction = state.transactions.find(t => t.id === item.entityId);
+                                    return (
+                                        <tr 
+                                            key={item.id} 
+                                            className="hover:bg-slate-50 cursor-pointer transition-colors"
+                                            onClick={() => transaction && setTransactionToEdit(transaction)}
+                                            title="Click to edit"
+                                        >
+                                            <td className="px-3 py-2 whitespace-nowrap text-slate-700">{formatDate(item.date)}</td>
+                                            <td className="px-3 py-2 whitespace-normal break-words text-slate-700 max-w-[150px]">{item.ownerName}</td>
+                                            <td className="px-3 py-2 whitespace-normal break-words text-slate-700 max-w-[150px]">{item.propertyName}</td>
+                                            <td className="px-3 py-2 whitespace-normal break-words text-slate-600 max-w-xs" title={item.particulars}>{item.particulars}</td>
+                                            <td className="px-3 py-2 text-right text-success whitespace-nowrap">{item.rentIn > 0 ? `${CURRENCY} ${formatCurrency(item.rentIn || 0)}` : '-'}</td>
+                                            <td className="px-3 py-2 text-right text-danger whitespace-nowrap">{item.paidOut > 0 ? `${CURRENCY} ${formatCurrency(item.paidOut || 0)}` : '-'}</td>
+                                            <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${item.balance >= 0 ? 'text-slate-800' : 'text-danger'}`}>{CURRENCY} {formatCurrency(item.balance || 0)}</td>
+                                        </tr>
+                                    );
+                                })}
                                 {reportData.length === 0 && (
                                     <tr>
                                         <td colSpan={7} className="px-3 py-8 text-center text-slate-500">No records found for the selected period.</td>
@@ -378,8 +525,8 @@ const OwnerPayoutsReport: React.FC = () => {
                             <tfoot className="bg-slate-50 font-bold border-t border-slate-300 sticky bottom-0">
                                 <tr>
                                     <td colSpan={4} className="px-3 py-2 text-right">Totals (Period)</td>
-                                    <td className="px-3 py-2 text-right text-success whitespace-nowrap">{CURRENCY} {(totals.totalIn || 0).toLocaleString()}</td>
-                                    <td className="px-3 py-2 text-right text-danger whitespace-nowrap">{CURRENCY} {(totals.totalOut || 0).toLocaleString()}</td>
+                                    <td className="px-3 py-2 text-right text-success whitespace-nowrap">{CURRENCY} {formatCurrency(totals.totalIn || 0)}</td>
+                                    <td className="px-3 py-2 text-right text-danger whitespace-nowrap">{CURRENCY} {formatCurrency(totals.totalOut || 0)}</td>
                                     <td className="px-3 py-2 text-right"></td>
                                 </tr>
                             </tfoot>
@@ -388,6 +535,26 @@ const OwnerPayoutsReport: React.FC = () => {
                     <ReportFooter />
                 </Card>
             </div>
+
+            {/* Edit Transaction Modal */}
+            <Modal isOpen={!!transactionToEdit} onClose={() => setTransactionToEdit(null)} title="Edit Transaction">
+                {transactionToEdit && (
+                    <TransactionForm
+                        transactionToEdit={transactionToEdit}
+                        onClose={() => setTransactionToEdit(null)}
+                        onShowDeleteWarning={handleShowDeleteWarning}
+                    />
+                )}
+            </Modal>
+
+            {/* Linked Transaction Warning Modal */}
+            <LinkedTransactionWarningModal
+                isOpen={warningModalState.isOpen}
+                onClose={handleCloseWarning}
+                onConfirm={handleConfirmWarning}
+                action={warningModalState.action as 'delete' | 'update'}
+                linkedItemName={getLinkedItemName(warningModalState.transaction)}
+            />
         </div>
     );
 };

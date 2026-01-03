@@ -11,6 +11,7 @@ import ReportFooter from './ReportFooter';
 import { useNotification } from '../../context/NotificationContext';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import { formatDate } from '../../utils/dateUtils';
+import { WhatsAppService } from '../../services/whatsappService';
 
 interface LedgerItem {
     id: string;
@@ -384,15 +385,18 @@ const ClientLedgerReport: React.FC = () => {
             return;
         }
 
-        const finalBalance = reportData.length > 0 ? reportData[reportData.length - 1].balance : 0;
+        try {
+            const finalBalance = reportData.length > 0 ? reportData[reportData.length - 1].balance : 0;
+            
+            let message = `*Statement for ${selectedOwner.name}*\n`;
+            message += `Period: ${formatDate(startDate)} to ${formatDate(endDate)}\n\n`;
+            message += `Final Balance Due: *${CURRENCY} ${finalBalance.toLocaleString()}*\n\n`;
+            message += `This is an automated summary from PBooksPro.`;
         
-        let message = `*Statement for ${selectedOwner.name}*\n`;
-        message += `Period: ${formatDate(startDate)} to ${formatDate(endDate)}\n\n`;
-        message += `Final Balance Due: *${CURRENCY} ${finalBalance.toLocaleString()}*\n\n`;
-        message += `This is an automated summary from My Accountant.`;
-    
-        const phoneNumber = selectedOwner.contactNo.replace(/[^0-9]/g, '');
-        window.open(`https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`, '_blank');
+            WhatsAppService.sendMessage({ contact: selectedOwner, message });
+        } catch (error) {
+            await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
+        }
     };
     
     const finalBalance = reportData.length > 0 ? reportData[reportData.length - 1].balance : 0;

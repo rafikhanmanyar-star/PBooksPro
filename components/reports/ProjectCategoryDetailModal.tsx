@@ -65,7 +65,30 @@ const ProjectCategoryDetailModal: React.FC<ProjectCategoryDetailModalProps> = ({
         let categoryId = tx.categoryId;
         if (tx.billId && !categoryId) {
              const bill = state.bills.find(b => b.id === tx.billId);
-             if (bill) categoryId = bill.categoryId;
+             if (bill) {
+                 // Handle expenseCategoryItems: if bill has multiple categories, distribute transaction amount proportionally
+                 if (bill.expenseCategoryItems && bill.expenseCategoryItems.length > 0) {
+                     const totalBillAmount = bill.expenseCategoryItems.reduce((sum, item) => sum + (item.netValue || 0), 0);
+                     if (totalBillAmount > 0) {
+                         // Distribute transaction amount across categories proportionally
+                         bill.expenseCategoryItems.forEach(item => {
+                             if (!item.categoryId) return;
+                             const proportion = (item.netValue || 0) / totalBillAmount;
+                             const allocatedAmount = tx.amount * proportion;
+                             
+                             const safeCategoryId = item.categoryId;
+                             if (!summary[safeCategoryId]) {
+                                 const category = state.categories.find(c => c.id === safeCategoryId);
+                                 summary[safeCategoryId] = { name: category?.name || 'Uncategorized', total: 0 };
+                             }
+                             summary[safeCategoryId].total += allocatedAmount;
+                         });
+                         return; // Skip single category processing for this transaction
+                     }
+                 } else {
+                     categoryId = bill.categoryId;
+                 }
+             }
         }
         if (tx.invoiceId && !categoryId) {
              const inv = state.invoices.find(i => i.id === tx.invoiceId);

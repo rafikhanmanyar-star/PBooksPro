@@ -35,8 +35,8 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
             .sort((a, b) => new Date(a.issueDate).getTime() - new Date(b.issueDate).getTime());
     }, [state.bills, vendor.id]);
 
-    // Filter Selectable Accounts (Bank Accounts Only)
-    const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK), [state.accounts]);
+    // Filter Selectable Accounts (Bank Accounts Only, exclude Internal Clearing)
+    const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
 
     // Update total amount based on selection
     useEffect(() => {

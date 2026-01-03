@@ -4,14 +4,25 @@ import React from 'react';
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   helperText?: string;
+  enableSpellCheck?: boolean;
+  icon?: React.ReactNode;
 }
 
-const Input: React.FC<InputProps> = ({ label, id, helperText, onKeyDown, name, ...props }) => {
+const Input: React.FC<InputProps> = ({ label, id, helperText, onKeyDown, name, enableSpellCheck = true, icon, ...props }) => {
   // Mobile: py-3 and text-base to prevent zoom and increase touch area
   // Desktop: py-2 and text-sm for compactness
   // Added tabular-nums for consistent number width
-  // Added appearance-none classes to hide spin buttons
-  const finalClassName = props.className || `block w-full px-3 py-3 sm:py-2 border rounded-lg shadow-sm placeholder-gray-400 focus:outline-none text-base sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed focus:ring-2 focus:ring-green-500/50 focus:border-green-500 border-gray-300 transition-colors tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`;
+  // Spinner removal classes for number inputs
+  const spinnerRemovalClasses = `[appearance:textfield] [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`;
+
+  const isNumberInput = props.type === 'number';
+  const baseClassName = `block w-full px-3 py-3 sm:py-2 border rounded-lg shadow-sm placeholder-gray-400 focus:outline-none text-base sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed focus:ring-2 focus:ring-green-500/50 focus:border-green-500 border-gray-300 transition-colors tabular-nums`;
+
+  // If custom className is provided, append spinner removal classes for number inputs
+  // Otherwise use the default className with spinner removal classes
+  const finalClassName = props.className
+    ? (isNumberInput ? `${props.className} ${spinnerRemovalClasses}` : props.className)
+    : (isNumberInput ? `${baseClassName} ${spinnerRemovalClasses}` : baseClassName);
 
   // Generate an id if not provided but label exists (for accessibility)
   const inputId = id || (label ? `input-${name || label.toLowerCase().replace(/\s+/g, '-')}` : undefined);
@@ -25,18 +36,29 @@ const Input: React.FC<InputProps> = ({ label, id, helperText, onKeyDown, name, .
     }
   };
 
+  // Determine if spell check should be enabled
+  // Disable for number, email, password, tel, url input types
+  const shouldEnableSpellCheck = enableSpellCheck && !['number', 'email', 'password', 'tel', 'url'].includes(props.type || 'text');
+
   const inputElement = (
+    <div className="relative w-full">
+      {icon && (
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          {icon}
+        </div>
+      )}
       <input
         {...props}
         id={inputId}
         name={name || inputId}
         onKeyDown={handleKeyDown}
-        className={finalClassName}
+        className={`${finalClassName} ${icon ? 'pl-10' : ''}`}
         autoComplete={props.autoComplete || "off"}
-        autoCorrect="off"
-        spellCheck={false}
+        autoCorrect={shouldEnableSpellCheck ? "on" : "off"}
+        spellCheck={shouldEnableSpellCheck}
         aria-describedby={helperText && inputId ? `${inputId}-helper-text` : undefined}
       />
+    </div>
   );
 
   const helperTextElement = helperText ? (
@@ -44,7 +66,12 @@ const Input: React.FC<InputProps> = ({ label, id, helperText, onKeyDown, name, .
   ) : null;
 
   if (!label) {
-      return inputElement;
+    return (
+      <div>
+        {inputElement}
+        {helperTextElement}
+      </div>
+    );
   }
 
   return (

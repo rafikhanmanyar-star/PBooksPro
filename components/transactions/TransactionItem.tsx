@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Transaction, TransactionType, LoanSubtype, AppState } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { useAppContext } from '../../context/AppContext';
+import { formatCurrency } from '../../utils/numberUtils';
 
 interface TransactionItemProps {
   transaction: Transaction;
@@ -105,7 +106,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onEdit }
                         </div>
                     </div>
                     <p className={`font-bold text-right ml-2 tabular-nums ${iconColorClass}`}>
-                        {Math.abs(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {formatCurrency(Math.abs(amount || 0))}
                     </p>
                 </div>
             </div>
@@ -153,7 +154,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onEdit }
             {/* Col 5: Amount */}
             <div className="col-span-12 sm:col-span-2 flex justify-end items-center mt-2 sm:mt-0">
                 <span className={`text-sm font-bold tabular-nums ${iconColorClass}`}>
-                    {Math.abs(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {formatCurrency(Math.abs(amount || 0))}
                 </span>
             </div>
 

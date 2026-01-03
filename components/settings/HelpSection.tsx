@@ -48,7 +48,7 @@ interface HelpTopic {
 
 // Get app version from package.json
 const APP_VERSION = packageJson.version;
-const APP_NAME = 'My Projects Pro';
+const APP_NAME = 'PBooks Pro';
 
 const HELP_TOPICS: HelpTopic[] = [
     // --- Getting Started ---
@@ -75,7 +75,7 @@ const HELP_TOPICS: HelpTopic[] = [
             <MockWindow title="About">
                 <div className="flex flex-col items-center justify-center h-32 text-center bg-slate-50/50">
                     <div className="w-12 h-12 bg-indigo-600 rounded-lg flex items-center justify-center text-white text-2xl font-bold mb-2 shadow-lg transform -rotate-3">
-                        MPP
+                        PBP
                     </div>
                     <div className="font-bold text-slate-800 text-sm">{APP_NAME}</div>
                     <div className="text-[9px] text-slate-500 font-mono bg-slate-200 px-2 py-0.5 rounded mt-1">v{APP_VERSION}</div>
@@ -925,10 +925,10 @@ const HelpSection: React.FC = () => {
         return HELP_TOPICS.filter(topic => {
             const matchesCategory = activeCategory === 'All' || topic.category === activeCategory;
             const searchLower = searchQuery.toLowerCase();
-            const matchesSearch = !searchQuery || 
-                topic.title.toLowerCase().includes(searchLower) || 
+            const matchesSearch = !searchQuery ||
+                topic.title.toLowerCase().includes(searchLower) ||
                 topic.keywords.some(k => k.includes(searchLower));
-            
+
             return matchesCategory && matchesSearch;
         });
     }, [activeCategory, searchQuery]);
@@ -942,8 +942,8 @@ const HelpSection: React.FC = () => {
             {/* Sidebar Navigation */}
             <div className="lg:w-64 flex-shrink-0 space-y-2">
                 <div className="lg:hidden mb-4">
-                    <select 
-                        value={activeCategory} 
+                    <select
+                        value={activeCategory}
                         onChange={(e) => setActiveCategory(e.target.value as any)}
                         className="w-full p-2 border rounded-lg bg-slate-50 text-slate-700 font-medium"
                     >
@@ -956,11 +956,10 @@ const HelpSection: React.FC = () => {
                         <button
                             key={cat}
                             onClick={() => setActiveCategory(cat)}
-                            className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                                activeCategory === cat 
-                                ? 'bg-indigo-50 text-indigo-700' 
-                                : 'text-slate-600 hover:bg-slate-50'
-                            }`}
+                            className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeCategory === cat
+                                    ? 'bg-indigo-50 text-indigo-700'
+                                    : 'text-slate-600 hover:bg-slate-50'
+                                }`}
                         >
                             {cat}
                         </button>
@@ -976,9 +975,9 @@ const HelpSection: React.FC = () => {
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                             <div className="w-5 h-5">{ICONS.search}</div>
                         </div>
-                        <Input 
-                            placeholder="Search help topics (e.g., 'invoice', 'backup')..." 
-                            value={searchQuery} 
+                        <Input
+                            placeholder="Search help topics (e.g., 'invoice', 'backup')..."
+                            value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="pl-10"
                         />
@@ -990,7 +989,7 @@ const HelpSection: React.FC = () => {
                     {filteredTopics.length > 0 ? (
                         filteredTopics.map(topic => (
                             <div key={topic.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden scroll-mt-24" id={topic.id}>
-                                <button 
+                                <button
                                     onClick={() => handleTopicClick(topic.id)}
                                     className="w-full flex items-center justify-between p-4 text-left hover:bg-slate-50 transition-colors"
                                 >
@@ -1009,7 +1008,7 @@ const HelpSection: React.FC = () => {
                                         {ICONS.chevronDown}
                                     </div>
                                 </button>
-                                
+
                                 {expandedTopicId === topic.id && (
                                     <div className="p-4 sm:p-6 border-t border-slate-100 bg-slate-50/30 flex flex-col lg:flex-row gap-6 animate-fade-in-fast">
                                         <div className="flex-1 order-2 lg:order-1">

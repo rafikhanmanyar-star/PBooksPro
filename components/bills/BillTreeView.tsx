@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { ICONS, CURRENCY } from '../../constants';
 
 export interface BillTreeNode {
@@ -11,6 +11,9 @@ export interface BillTreeNode {
     amount: number;
     balance: number;
 }
+
+type SortKey = 'name' | 'balance' | 'count';
+type SortDirection = 'asc' | 'desc';
 
 interface BillTreeViewProps {
     treeData: BillTreeNode[];
@@ -113,19 +116,88 @@ const TreeItem: React.FC<{
 };
 
 const BillTreeView: React.FC<BillTreeViewProps> = ({ treeData, selectedNodeId, selectedParentId, onNodeSelect }) => {
+    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'balance', direction: 'desc' });
+
+    const handleSort = (key: SortKey) => {
+        setSortConfig(current => ({
+            key,
+            direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+        }));
+    };
+
+    // Recursive sort function
+    const sortNodes = useCallback((nodes: BillTreeNode[]): BillTreeNode[] => {
+        const sorted = [...nodes].sort((a, b) => {
+            let aVal: any = a[sortConfig.key];
+            let bVal: any = b[sortConfig.key];
+
+            if (sortConfig.key === 'name') {
+                aVal = aVal.toLowerCase();
+                bVal = bVal.toLowerCase();
+            }
+
+            if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        return sorted.map(node => ({
+            ...node,
+            children: sortNodes(node.children)
+        }));
+    }, [sortConfig]);
+
+    const sortedTreeData = useMemo(() => sortNodes(treeData), [treeData, sortNodes]);
+
+    const SortIcon = ({ column }: { column: SortKey }) => {
+        if (sortConfig.key !== column) return <span className="text-slate-300 opacity-50 ml-1 text-[10px]">↕</span>;
+        return <span className="text-indigo-600 ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
+    };
+
     return (
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200/80 p-2 h-full overflow-y-auto">
-            <ul className="space-y-1">
-                {treeData.map(node => (
-                    <TreeItem 
-                        key={node.id} 
-                        node={node} 
-                        selectedNodeId={selectedNodeId} 
-                        selectedParentId={selectedParentId}
-                        onNodeSelect={onNodeSelect} 
-                    />
-                ))}
-            </ul>
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200/80 h-full flex flex-col overflow-hidden">
+            {/* Sort Header */}
+            <div className="px-2 py-2 border-b border-slate-200 flex-shrink-0 bg-slate-50">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                    <button
+                        onClick={() => handleSort('name')}
+                        className="flex items-center gap-1 hover:text-slate-900 cursor-pointer"
+                        title="Sort by Name"
+                    >
+                        Name <SortIcon column="name" />
+                    </button>
+                    <div className="flex-1"></div>
+                    <button
+                        onClick={() => handleSort('balance')}
+                        className="flex items-center gap-1 hover:text-slate-900 cursor-pointer"
+                        title="Sort by Account Payable (Balance)"
+                    >
+                        Payable <SortIcon column="balance" />
+                    </button>
+                    <button
+                        onClick={() => handleSort('count')}
+                        className="flex items-center gap-1 hover:text-slate-900 cursor-pointer ml-2"
+                        title="Sort by Count"
+                    >
+                        Count <SortIcon column="count" />
+                    </button>
+                </div>
+            </div>
+            
+            {/* Tree Content */}
+            <div className="flex-1 overflow-y-auto p-2">
+                <ul className="space-y-1">
+                    {sortedTreeData.map(node => (
+                        <TreeItem 
+                            key={node.id} 
+                            node={node} 
+                            selectedNodeId={selectedNodeId} 
+                            selectedParentId={selectedParentId}
+                            onNodeSelect={onNodeSelect} 
+                        />
+                    ))}
+                </ul>
+            </div>
         </div>
     );
 };

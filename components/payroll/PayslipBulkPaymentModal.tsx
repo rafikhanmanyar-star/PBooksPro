@@ -25,8 +25,8 @@ const PayslipBulkPaymentModal: React.FC<PayslipBulkPaymentModalProps> = ({ isOpe
     const [accountId, setAccountId] = useState('');
     const [paymentAmounts, setPaymentAmounts] = useState<Record<string, string>>({});
 
-    // Filter for Bank Accounts
-    const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK), [state.accounts]);
+    // Filter for Bank Accounts (exclude Internal Clearing)
+    const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
 
     // Calculate pending amounts and initialize state
     const pendingDetails = useMemo(() => {

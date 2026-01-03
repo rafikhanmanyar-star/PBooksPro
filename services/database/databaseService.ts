@@ -158,7 +158,7 @@ class DatabaseService {
     constructor(config: DatabaseConfig = {}) {
         this.config = {
                 autoSave: config.autoSave ?? true,
-                saveInterval: config.saveInterval ?? 5000, // 5 seconds default
+                saveInterval: config.saveInterval ?? 10000, // 10 seconds default - reduced IPC overhead
             };
         }
 
@@ -209,10 +209,23 @@ class DatabaseService {
                 // Load sql.js with timeout
                 const initPromise = initFunction({
                     locateFile: (file: string) => {
-                        // Prefer local node_modules asset (faster, avoids CDN); fall back to CDN if needed
+                        // In Electron, use local file from dist folder
+                        // Check if we're in Electron (file:// protocol)
+                        const isElectron = typeof window !== 'undefined' && 
+                            (window.location.protocol === 'file:' || !!(window as any).electronAPI);
+                        
+                        if (isElectron) {
+                            // In Electron, use relative path from dist folder
+                            return `./${file}`;
+                        }
+                        
+                        // In browser, try local first, then CDN
                         try {
-                            return new URL(`../../node_modules/sql.js/dist/${file}`, import.meta.url).href;
+                            // Try to use local file from node_modules (for dev) or dist (for build)
+                            const localPath = new URL(`../../node_modules/sql.js/dist/${file}`, import.meta.url).href;
+                            return localPath;
                         } catch {
+                            // Fallback to CDN only in browser (not Electron)
                             return `https://sql.js.org/dist/${file}`;
                         }
                     },
@@ -288,6 +301,8 @@ class DatabaseService {
                 await this.checkAndMigrateSchema();
                 // Ensure all tables are present (for existing databases)
                 this.ensureAllTablesExist();
+                // Ensure contracts table has new columns
+                this.ensureContractColumnsExist();
             }
 
             // CRITICAL: Migrate database to Electron storage if available
@@ -807,6 +822,9 @@ class DatabaseService {
                 // Ensure all tables exist (this will create any missing tables)
                 this.ensureAllTablesExist();
                 
+                // Ensure contract and bill columns exist (for expense_category_items)
+                this.ensureContractColumnsExist();
+                
                 // Update schema version
                 this.setMetadata('schema_version', latestVersion.toString());
                 
@@ -822,6 +840,80 @@ class DatabaseService {
         } catch (error) {
             console.error('❌ Error during schema migration check:', error);
             // Don't throw - allow app to continue with existing schema
+        }
+    }
+
+    /**
+     * Ensure contracts table has the new columns (expense_category_items, payment_terms, status)
+     * Also ensure bills table has expense_category_items and status columns
+     */
+    ensureContractColumnsExist(): void {
+        if (!this.db || !this.isInitialized) return;
+        
+        try {
+            // Check if contracts table exists
+            const contractsTableExists = this.query<{ name: string }>(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='contracts'"
+            ).length > 0;
+            
+            if (contractsTableExists) {
+                // Check existing columns
+                const contractColumns = this.query<{ name: string }>('PRAGMA table_info(contracts)');
+                const contractColumnNames = new Set(contractColumns.map(col => col.name));
+                
+                // Add expense_category_items column if missing
+                if (!contractColumnNames.has('expense_category_items')) {
+                    console.log('🔄 Adding expense_category_items column to contracts table...');
+                    this.execute('ALTER TABLE contracts ADD COLUMN expense_category_items TEXT');
+                }
+                
+                // Add payment_terms column if missing
+                if (!contractColumnNames.has('payment_terms')) {
+                    console.log('🔄 Adding payment_terms column to contracts table...');
+                    this.execute('ALTER TABLE contracts ADD COLUMN payment_terms TEXT');
+                }
+                
+                // Add status column if missing (required for old backups)
+                if (!contractColumnNames.has('status')) {
+                    console.log('🔄 Adding status column to contracts table...');
+                    this.execute('ALTER TABLE contracts ADD COLUMN status TEXT DEFAULT \'Active\'');
+                    // Update existing rows to have a status if they don't have one
+                    this.execute('UPDATE contracts SET status = \'Active\' WHERE status IS NULL');
+                }
+            }
+            
+            // Check if bills table exists
+            const billsTableExists = this.query<{ name: string }>(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='bills'"
+            ).length > 0;
+            
+            if (billsTableExists) {
+                // Check existing columns
+                const billColumns = this.query<{ name: string }>('PRAGMA table_info(bills)');
+                const billColumnNames = new Set(billColumns.map(col => col.name));
+                
+                // Add expense_category_items column if missing
+                if (!billColumnNames.has('expense_category_items')) {
+                    console.log('🔄 Adding expense_category_items column to bills table...');
+                    this.execute('ALTER TABLE bills ADD COLUMN expense_category_items TEXT');
+                }
+                
+                // Add status column if missing (required for old backups)
+                if (!billColumnNames.has('status')) {
+                    console.log('🔄 Adding status column to bills table...');
+                    this.execute('ALTER TABLE bills ADD COLUMN status TEXT DEFAULT \'Unpaid\'');
+                    // Update existing rows to have a status if they don't have one
+                    // Calculate status based on paid_amount vs amount
+                    this.execute(`UPDATE bills SET status = CASE 
+                        WHEN paid_amount = 0 THEN 'Unpaid'
+                        WHEN paid_amount >= amount THEN 'Paid'
+                        WHEN paid_amount > 0 THEN 'Partially Paid'
+                        ELSE 'Unpaid'
+                    END WHERE status IS NULL`);
+                }
+            }
+        } catch (error) {
+            console.error('❌ Error ensuring contract/bill columns exist:', error);
         }
     }
 
@@ -882,6 +974,36 @@ class DatabaseService {
      */
     restoreBackup(data: Uint8Array): void {
         this.import(data);
+        // After importing, ensure schema is up to date
+        // This adds missing columns like expense_category_items
+        this.ensureAllTablesExist();
+        this.ensureContractColumnsExist();
+        
+        // Clear repository column caches so they pick up the new columns
+        // This is critical - otherwise repositories will filter out new columns when saving
+        this.clearRepositoryColumnCaches();
+    }
+    
+    /**
+     * Clear column caches in all repositories after schema changes
+     */
+    private clearRepositoryColumnCaches(): void {
+        // Import repositories dynamically to avoid circular dependencies
+        try {
+            const { ContractsRepository, BillsRepository } = require('./repositories/index');
+            const contractsRepo = new ContractsRepository();
+            const billsRepo = new BillsRepository();
+            
+            // Clear caches if the method exists
+            if (typeof contractsRepo.clearColumnCache === 'function') {
+                contractsRepo.clearColumnCache();
+            }
+            if (typeof billsRepo.clearColumnCache === 'function') {
+                billsRepo.clearColumnCache();
+            }
+        } catch (e) {
+            console.warn('Could not clear repository column caches:', e);
+        }
     }
 
     /**
