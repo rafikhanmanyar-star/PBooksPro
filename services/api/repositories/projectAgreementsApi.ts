@@ -19,7 +19,7 @@ export class ProjectAgreementsApiRepository {
     if (filters?.clientId) params.append('clientId', filters.clientId);
     
     const query = params.toString();
-    return apiClient.get<ProjectAgreement[]>(`/api/project-agreements${query ? `?${query}` : ''}`);
+    return apiClient.get<ProjectAgreement[]>(`/project-agreements${query ? `?${query}` : ''}`);
   }
 
   /**
@@ -27,7 +27,7 @@ export class ProjectAgreementsApiRepository {
    */
   async findById(id: string): Promise<ProjectAgreement | null> {
     try {
-      return await apiClient.get<ProjectAgreement>(`/api/project-agreements/${id}`);
+      return await apiClient.get<ProjectAgreement>(`/project-agreements/${id}`);
     } catch (error: any) {
       if (error.status === 404) {
         return null;
@@ -40,21 +40,21 @@ export class ProjectAgreementsApiRepository {
    * Create a new project agreement
    */
   async create(agreement: Partial<ProjectAgreement>): Promise<ProjectAgreement> {
-    return apiClient.post<ProjectAgreement>('/api/project-agreements', agreement);
+    return apiClient.post<ProjectAgreement>('/project-agreements', agreement);
   }
 
   /**
    * Update an existing project agreement
    */
   async update(id: string, agreement: Partial<ProjectAgreement>): Promise<ProjectAgreement> {
-    return apiClient.put<ProjectAgreement>(`/api/project-agreements/${id}`, agreement);
+    return apiClient.put<ProjectAgreement>(`/project-agreements/${id}`, agreement);
   }
 
   /**
    * Delete a project agreement
    */
   async delete(id: string): Promise<void> {
-    await apiClient.delete(`/api/project-agreements/${id}`);
+    await apiClient.delete(`/project-agreements/${id}`);
   }
 
   /**

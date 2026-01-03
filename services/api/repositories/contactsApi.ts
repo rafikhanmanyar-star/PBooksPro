@@ -13,7 +13,7 @@ export class ContactsApiRepository {
    * Get all contacts
    */
   async findAll(): Promise<Contact[]> {
-    return apiClient.get<Contact[]>('/api/contacts');
+    return apiClient.get<Contact[]>('/contacts');
   }
 
   /**
@@ -21,7 +21,7 @@ export class ContactsApiRepository {
    */
   async findById(id: string): Promise<Contact | null> {
     try {
-      return await apiClient.get<Contact>(`/api/contacts/${id}`);
+      return await apiClient.get<Contact>(`/contacts/${id}`);
     } catch (error: any) {
       if (error.status === 404) {
         return null;
@@ -34,21 +34,21 @@ export class ContactsApiRepository {
    * Create a new contact
    */
   async create(contact: Partial<Contact>): Promise<Contact> {
-    return apiClient.post<Contact>('/api/contacts', contact);
+    return apiClient.post<Contact>('/contacts', contact);
   }
 
   /**
    * Update an existing contact
    */
   async update(id: string, contact: Partial<Contact>): Promise<Contact> {
-    return apiClient.put<Contact>(`/api/contacts/${id}`, contact);
+    return apiClient.put<Contact>(`/contacts/${id}`, contact);
   }
 
   /**
    * Delete a contact
    */
   async delete(id: string): Promise<void> {
-    await apiClient.delete(`/api/contacts/${id}`);
+    await apiClient.delete(`/contacts/${id}`);
   }
 
   /**

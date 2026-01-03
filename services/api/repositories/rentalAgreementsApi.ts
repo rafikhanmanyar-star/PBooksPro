@@ -18,7 +18,7 @@ export class RentalAgreementsApiRepository {
     if (filters?.propertyId) params.append('propertyId', filters.propertyId);
     
     const query = params.toString();
-    return apiClient.get<RentalAgreement[]>(`/api/rental-agreements${query ? `?${query}` : ''}`);
+    return apiClient.get<RentalAgreement[]>(`/rental-agreements${query ? `?${query}` : ''}`);
   }
 
   /**
@@ -26,7 +26,7 @@ export class RentalAgreementsApiRepository {
    */
   async findById(id: string): Promise<RentalAgreement | null> {
     try {
-      return await apiClient.get<RentalAgreement>(`/api/rental-agreements/${id}`);
+      return await apiClient.get<RentalAgreement>(`/rental-agreements/${id}`);
     } catch (error: any) {
       if (error.status === 404) {
         return null;
@@ -39,21 +39,21 @@ export class RentalAgreementsApiRepository {
    * Create a new rental agreement
    */
   async create(agreement: Partial<RentalAgreement>): Promise<RentalAgreement> {
-    return apiClient.post<RentalAgreement>('/api/rental-agreements', agreement);
+    return apiClient.post<RentalAgreement>('/rental-agreements', agreement);
   }
 
   /**
    * Update an existing rental agreement
    */
   async update(id: string, agreement: Partial<RentalAgreement>): Promise<RentalAgreement> {
-    return apiClient.put<RentalAgreement>(`/api/rental-agreements/${id}`, agreement);
+    return apiClient.put<RentalAgreement>(`/rental-agreements/${id}`, agreement);
   }
 
   /**
    * Delete a rental agreement
    */
   async delete(id: string): Promise<void> {
-    await apiClient.delete(`/api/rental-agreements/${id}`);
+    await apiClient.delete(`/rental-agreements/${id}`);
   }
 
   /**

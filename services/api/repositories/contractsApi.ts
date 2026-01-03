@@ -19,7 +19,7 @@ export class ContractsApiRepository {
     if (filters?.vendorId) params.append('vendorId', filters.vendorId);
     
     const query = params.toString();
-    return apiClient.get<Contract[]>(`/api/contracts${query ? `?${query}` : ''}`);
+    return apiClient.get<Contract[]>(`/contracts${query ? `?${query}` : ''}`);
   }
 
   /**
@@ -27,7 +27,7 @@ export class ContractsApiRepository {
    */
   async findById(id: string): Promise<Contract | null> {
     try {
-      return await apiClient.get<Contract>(`/api/contracts/${id}`);
+      return await apiClient.get<Contract>(`/contracts/${id}`);
     } catch (error: any) {
       if (error.status === 404) {
         return null;
@@ -40,21 +40,21 @@ export class ContractsApiRepository {
    * Create a new contract
    */
   async create(contract: Partial<Contract>): Promise<Contract> {
-    return apiClient.post<Contract>('/api/contracts', contract);
+    return apiClient.post<Contract>('/contracts', contract);
   }
 
   /**
    * Update an existing contract
    */
   async update(id: string, contract: Partial<Contract>): Promise<Contract> {
-    return apiClient.put<Contract>(`/api/contracts/${id}`, contract);
+    return apiClient.put<Contract>(`/contracts/${id}`, contract);
   }
 
   /**
    * Delete a contract
    */
   async delete(id: string): Promise<void> {
-    await apiClient.delete(`/api/contracts/${id}`);
+    await apiClient.delete(`/contracts/${id}`);
   }
 
   /**

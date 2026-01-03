@@ -19,7 +19,7 @@ export class InvoicesApiRepository {
     if (filters?.projectId) params.append('projectId', filters.projectId);
     
     const query = params.toString();
-    return apiClient.get<Invoice[]>(`/api/invoices${query ? `?${query}` : ''}`);
+    return apiClient.get<Invoice[]>(`/invoices${query ? `?${query}` : ''}`);
   }
 
   /**
@@ -27,7 +27,7 @@ export class InvoicesApiRepository {
    */
   async findById(id: string): Promise<Invoice | null> {
     try {
-      return await apiClient.get<Invoice>(`/api/invoices/${id}`);
+      return await apiClient.get<Invoice>(`/invoices/${id}`);
     } catch (error: any) {
       if (error.status === 404) {
         return null;
@@ -40,21 +40,21 @@ export class InvoicesApiRepository {
    * Create a new invoice
    */
   async create(invoice: Partial<Invoice>): Promise<Invoice> {
-    return apiClient.post<Invoice>('/api/invoices', invoice);
+    return apiClient.post<Invoice>('/invoices', invoice);
   }
 
   /**
    * Update an existing invoice
    */
   async update(id: string, invoice: Partial<Invoice>): Promise<Invoice> {
-    return apiClient.put<Invoice>(`/api/invoices/${id}`, invoice);
+    return apiClient.put<Invoice>(`/invoices/${id}`, invoice);
   }
 
   /**
    * Delete an invoice
    */
   async delete(id: string): Promise<void> {
-    await apiClient.delete(`/api/invoices/${id}`);
+    await apiClient.delete(`/invoices/${id}`);
   }
 
   /**

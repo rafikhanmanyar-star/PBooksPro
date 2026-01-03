@@ -13,7 +13,7 @@ export class AccountsApiRepository {
    * Get all accounts
    */
   async findAll(): Promise<Account[]> {
-    return apiClient.get<Account[]>('/api/accounts');
+    return apiClient.get<Account[]>('/accounts');
   }
 
   /**
@@ -21,7 +21,7 @@ export class AccountsApiRepository {
    */
   async findById(id: string): Promise<Account | null> {
     try {
-      return await apiClient.get<Account>(`/api/accounts/${id}`);
+      return await apiClient.get<Account>(`/accounts/${id}`);
     } catch (error: any) {
       if (error.status === 404) {
         return null;
@@ -34,21 +34,21 @@ export class AccountsApiRepository {
    * Create a new account
    */
   async create(account: Partial<Account>): Promise<Account> {
-    return apiClient.post<Account>('/api/accounts', account);
+    return apiClient.post<Account>('/accounts', account);
   }
 
   /**
    * Update an existing account
    */
   async update(id: string, account: Partial<Account>): Promise<Account> {
-    return apiClient.put<Account>(`/api/accounts/${id}`, account);
+    return apiClient.put<Account>(`/accounts/${id}`, account);
   }
 
   /**
    * Delete an account
    */
   async delete(id: string): Promise<void> {
-    await apiClient.delete(`/api/accounts/${id}`);
+    await apiClient.delete(`/accounts/${id}`);
   }
 
   /**

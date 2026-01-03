@@ -13,7 +13,7 @@ export class PropertiesApiRepository {
    * Get all properties
    */
   async findAll(): Promise<Property[]> {
-    return apiClient.get<Property[]>('/api/properties');
+    return apiClient.get<Property[]>('/properties');
   }
 
   /**
@@ -21,7 +21,7 @@ export class PropertiesApiRepository {
    */
   async findById(id: string): Promise<Property | null> {
     try {
-      return await apiClient.get<Property>(`/api/properties/${id}`);
+      return await apiClient.get<Property>(`/properties/${id}`);
     } catch (error: any) {
       if (error.status === 404) {
         return null;
@@ -34,21 +34,21 @@ export class PropertiesApiRepository {
    * Create a new property
    */
   async create(property: Partial<Property>): Promise<Property> {
-    return apiClient.post<Property>('/api/properties', property);
+    return apiClient.post<Property>('/properties', property);
   }
 
   /**
    * Update an existing property
    */
   async update(id: string, property: Partial<Property>): Promise<Property> {
-    return apiClient.put<Property>(`/api/properties/${id}`, property);
+    return apiClient.put<Property>(`/properties/${id}`, property);
   }
 
   /**
    * Delete a property
    */
   async delete(id: string): Promise<void> {
-    await apiClient.delete(`/api/properties/${id}`);
+    await apiClient.delete(`/properties/${id}`);
   }
 
   /**

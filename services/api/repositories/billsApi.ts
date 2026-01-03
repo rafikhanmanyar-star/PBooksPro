@@ -19,7 +19,7 @@ export class BillsApiRepository {
     if (filters?.categoryId) params.append('categoryId', filters.categoryId);
     
     const query = params.toString();
-    return apiClient.get<Bill[]>(`/api/bills${query ? `?${query}` : ''}`);
+    return apiClient.get<Bill[]>(`/bills${query ? `?${query}` : ''}`);
   }
 
   /**
@@ -27,7 +27,7 @@ export class BillsApiRepository {
    */
   async findById(id: string): Promise<Bill | null> {
     try {
-      return await apiClient.get<Bill>(`/api/bills/${id}`);
+      return await apiClient.get<Bill>(`/bills/${id}`);
     } catch (error: any) {
       if (error.status === 404) {
         return null;
@@ -40,21 +40,21 @@ export class BillsApiRepository {
    * Create a new bill
    */
   async create(bill: Partial<Bill>): Promise<Bill> {
-    return apiClient.post<Bill>('/api/bills', bill);
+    return apiClient.post<Bill>('/bills', bill);
   }
 
   /**
    * Update an existing bill
    */
   async update(id: string, bill: Partial<Bill>): Promise<Bill> {
-    return apiClient.put<Bill>(`/api/bills/${id}`, bill);
+    return apiClient.put<Bill>(`/bills/${id}`, bill);
   }
 
   /**
    * Delete a bill
    */
   async delete(id: string): Promise<void> {
-    await apiClient.delete(`/api/bills/${id}`);
+    await apiClient.delete(`/bills/${id}`);
   }
 
   /**

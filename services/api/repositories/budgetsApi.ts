@@ -17,7 +17,7 @@ export class BudgetsApiRepository {
     if (filters?.projectId) params.append('projectId', filters.projectId);
     
     const query = params.toString();
-    return apiClient.get<Budget[]>(`/api/budgets${query ? `?${query}` : ''}`);
+    return apiClient.get<Budget[]>(`/budgets${query ? `?${query}` : ''}`);
   }
 
   /**
@@ -25,7 +25,7 @@ export class BudgetsApiRepository {
    */
   async findById(id: string): Promise<Budget | null> {
     try {
-      return await apiClient.get<Budget>(`/api/budgets/${id}`);
+      return await apiClient.get<Budget>(`/budgets/${id}`);
     } catch (error: any) {
       if (error.status === 404) {
         return null;
@@ -38,21 +38,21 @@ export class BudgetsApiRepository {
    * Create a new budget
    */
   async create(budget: Partial<Budget>): Promise<Budget> {
-    return apiClient.post<Budget>('/api/budgets', budget);
+    return apiClient.post<Budget>('/budgets', budget);
   }
 
   /**
    * Update an existing budget
    */
   async update(id: string, budget: Partial<Budget>): Promise<Budget> {
-    return apiClient.put<Budget>(`/api/budgets/${id}`, budget);
+    return apiClient.put<Budget>(`/budgets/${id}`, budget);
   }
 
   /**
    * Delete a budget
    */
   async delete(id: string): Promise<void> {
-    await apiClient.delete(`/api/budgets/${id}`);
+    await apiClient.delete(`/budgets/${id}`);
   }
 
   /**

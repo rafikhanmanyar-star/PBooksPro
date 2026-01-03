@@ -13,7 +13,7 @@ export class BuildingsApiRepository {
    * Get all buildings
    */
   async findAll(): Promise<Building[]> {
-    return apiClient.get<Building[]>('/api/buildings');
+    return apiClient.get<Building[]>('/buildings');
   }
 
   /**
@@ -21,7 +21,7 @@ export class BuildingsApiRepository {
    */
   async findById(id: string): Promise<Building | null> {
     try {
-      return await apiClient.get<Building>(`/api/buildings/${id}`);
+      return await apiClient.get<Building>(`/buildings/${id}`);
     } catch (error: any) {
       if (error.status === 404) {
         return null;
@@ -34,21 +34,21 @@ export class BuildingsApiRepository {
    * Create a new building
    */
   async create(building: Partial<Building>): Promise<Building> {
-    return apiClient.post<Building>('/api/buildings', building);
+    return apiClient.post<Building>('/buildings', building);
   }
 
   /**
    * Update an existing building
    */
   async update(id: string, building: Partial<Building>): Promise<Building> {
-    return apiClient.put<Building>(`/api/buildings/${id}`, building);
+    return apiClient.put<Building>(`/buildings/${id}`, building);
   }
 
   /**
    * Delete a building
    */
   async delete(id: string): Promise<void> {
-    await apiClient.delete(`/api/buildings/${id}`);
+    await apiClient.delete(`/buildings/${id}`);
   }
 
   /**

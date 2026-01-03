@@ -31,7 +31,7 @@ export class TransactionsApiRepository {
     if (filters.offset) params.append('offset', filters.offset.toString());
 
     const queryString = params.toString();
-    const endpoint = queryString ? `/api/transactions?${queryString}` : '/api/transactions';
+    const endpoint = queryString ? `/transactions?${queryString}` : '/transactions';
     
     return apiClient.get<Transaction[]>(endpoint);
   }
@@ -41,7 +41,7 @@ export class TransactionsApiRepository {
    */
   async findById(id: string): Promise<Transaction | null> {
     try {
-      return await apiClient.get<Transaction>(`/api/transactions/${id}`);
+      return await apiClient.get<Transaction>(`/transactions/${id}`);
     } catch (error: any) {
       if (error.status === 404) {
         return null;
@@ -54,21 +54,21 @@ export class TransactionsApiRepository {
    * Create a new transaction
    */
   async create(transaction: Partial<Transaction>): Promise<Transaction> {
-    return apiClient.post<Transaction>('/api/transactions', transaction);
+    return apiClient.post<Transaction>('/transactions', transaction);
   }
 
   /**
    * Update an existing transaction
    */
   async update(id: string, transaction: Partial<Transaction>): Promise<Transaction> {
-    return apiClient.put<Transaction>(`/api/transactions/${id}`, transaction);
+    return apiClient.put<Transaction>(`/transactions/${id}`, transaction);
   }
 
   /**
    * Delete a transaction
    */
   async delete(id: string): Promise<void> {
-    await apiClient.delete(`/api/transactions/${id}`);
+    await apiClient.delete(`/transactions/${id}`);
   }
 
   /**

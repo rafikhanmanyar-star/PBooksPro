@@ -71,7 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (token && tenantId) {
           // Verify token is still valid by checking license status
           try {
-            const licenseStatus = await apiClient.get<{ isValid: boolean }>('/api/tenants/license-status');
+            const licenseStatus = await apiClient.get<{ isValid: boolean }>('/tenants/license-status');
             if (licenseStatus.isValid) {
               // Token is valid, restore session
               // Fetch user and tenant info from API
@@ -80,7 +80,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   id: string;
                   name: string;
                   company_name: string;
-                }>('/api/tenants/me');
+                }>('/tenants/me');
                 
                 setState({
                   isAuthenticated: true,
@@ -167,7 +167,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         token: string;
         user: User;
         tenant: Tenant;
-      }>('/api/auth/login', {
+      }>('/auth/login', {
         username,
         password,
         tenantId,
@@ -208,7 +208,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         tenantId: string;
         message: string;
         trialDaysRemaining: number;
-      }>('/api/auth/register-tenant', data);
+      }>('/auth/register-tenant', data);
 
       setState(prev => ({ ...prev, isLoading: false }));
 
@@ -256,7 +256,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setState(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      await apiClient.post('/api/tenants/activate-license', {
+      await apiClient.post('/tenants/activate-license', {
         licenseKey,
       });
 
@@ -282,7 +282,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         daysRemaining?: number;
         type?: string;
         status?: string;
-      }>('/api/tenants/license-status');
+      }>('/tenants/license-status');
 
       return response;
     } catch (error: any) {

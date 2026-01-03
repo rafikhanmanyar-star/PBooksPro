@@ -13,7 +13,7 @@ export class UnitsApiRepository {
    * Get all units
    */
   async findAll(): Promise<Unit[]> {
-    return apiClient.get<Unit[]>('/api/units');
+    return apiClient.get<Unit[]>('/units');
   }
 
   /**
@@ -21,7 +21,7 @@ export class UnitsApiRepository {
    */
   async findById(id: string): Promise<Unit | null> {
     try {
-      return await apiClient.get<Unit>(`/api/units/${id}`);
+      return await apiClient.get<Unit>(`/units/${id}`);
     } catch (error: any) {
       if (error.status === 404) {
         return null;
@@ -34,21 +34,21 @@ export class UnitsApiRepository {
    * Create a new unit
    */
   async create(unit: Partial<Unit>): Promise<Unit> {
-    return apiClient.post<Unit>('/api/units', unit);
+    return apiClient.post<Unit>('/units', unit);
   }
 
   /**
    * Update an existing unit
    */
   async update(id: string, unit: Partial<Unit>): Promise<Unit> {
-    return apiClient.put<Unit>(`/api/units/${id}`, unit);
+    return apiClient.put<Unit>(`/units/${id}`, unit);
   }
 
   /**
    * Delete a unit
    */
   async delete(id: string): Promise<void> {
-    await apiClient.delete(`/api/units/${id}`);
+    await apiClient.delete(`/units/${id}`);
   }
 
   /**

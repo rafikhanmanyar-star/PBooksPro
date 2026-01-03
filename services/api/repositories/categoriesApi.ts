@@ -13,7 +13,7 @@ export class CategoriesApiRepository {
    * Get all categories
    */
   async findAll(): Promise<Category[]> {
-    return apiClient.get<Category[]>('/api/categories');
+    return apiClient.get<Category[]>('/categories');
   }
 
   /**
@@ -21,7 +21,7 @@ export class CategoriesApiRepository {
    */
   async findById(id: string): Promise<Category | null> {
     try {
-      return await apiClient.get<Category>(`/api/categories/${id}`);
+      return await apiClient.get<Category>(`/categories/${id}`);
     } catch (error: any) {
       if (error.status === 404) {
         return null;
@@ -34,21 +34,21 @@ export class CategoriesApiRepository {
    * Create a new category
    */
   async create(category: Partial<Category>): Promise<Category> {
-    return apiClient.post<Category>('/api/categories', category);
+    return apiClient.post<Category>('/categories', category);
   }
 
   /**
    * Update an existing category
    */
   async update(id: string, category: Partial<Category>): Promise<Category> {
-    return apiClient.put<Category>(`/api/categories/${id}`, category);
+    return apiClient.put<Category>(`/categories/${id}`, category);
   }
 
   /**
    * Delete a category
    */
   async delete(id: string): Promise<void> {
-    await apiClient.delete(`/api/categories/${id}`);
+    await apiClient.delete(`/categories/${id}`);
   }
 
   /**
