@@ -5,8 +5,14 @@ import licenseRoutes from './licenses.js';
 import authRoutes from './auth.js';
 import statsRoutes from './stats.js';
 import userRoutes from './users.js';
+import createAdminRoutes from './create-admin.js';
 
 const router = Router();
+
+// Temporary endpoint to create admin user (NO AUTH REQUIRED)
+// SECURITY: Remove this after creating admin user
+// MUST be before adminAuthMiddleware() to be accessible without auth
+router.use('/create-admin', createAdminRoutes);
 
 // Auth routes (login) should NOT require authentication
 router.use('/auth', authRoutes);
