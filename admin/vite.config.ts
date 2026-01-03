@@ -2,6 +2,10 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
+// Log environment variable during build (for debugging)
+const adminApiUrl = process.env.VITE_ADMIN_API_URL || 'http://localhost:3000/api/admin';
+console.log('🔧 Building with VITE_ADMIN_API_URL:', adminApiUrl);
+
 export default defineConfig({
   plugins: [react()],
   root: __dirname, // Use admin directory as root
@@ -26,6 +30,10 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: true,
     emptyOutDir: true
+  },
+  // Explicitly define environment variables
+  define: {
+    'import.meta.env.VITE_ADMIN_API_URL': JSON.stringify(adminApiUrl)
   }
 });
 
