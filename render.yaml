@@ -28,8 +28,7 @@ services:
   # Client Application (Static Site)
   - type: web
     name: pbookspro-client
-    env: static
-    plan: free
+    runtime: static
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
     envVars:
@@ -39,8 +38,7 @@ services:
   # Admin Application (Static Site)
   - type: web
     name: pbookspro-admin
-    env: static
-    plan: free
+    runtime: static
     buildCommand: cd admin && npm install && npm run build
     staticPublishPath: ./admin/dist
     envVars:
