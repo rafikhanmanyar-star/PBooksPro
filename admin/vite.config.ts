@@ -29,7 +29,15 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
-    emptyOutDir: true
+    emptyOutDir: true,
+    // Add hash to filenames for cache busting
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]'
+      }
+    }
   },
   // Explicitly define environment variables
   define: {
