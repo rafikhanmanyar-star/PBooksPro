@@ -7,13 +7,14 @@ services:
     buildCommand: cd server && npm install && npm run build
     startCommand: cd server && npm start
     envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: pbookspro-database
-          property: connectionString
-        # NOTE: Create PostgreSQL database manually first in Render Dashboard
-        # Name it exactly: pbookspro-database
-        # Then this will automatically link to it
+      # DATABASE_URL will be set manually after database is created
+      # Step 1: Create PostgreSQL database in Render Dashboard (name: pbookspro-database)
+      # Step 2: Go to this service's Environment tab and link the database
+      # Or uncomment and update the fromDatabase reference after creating the database:
+      # - key: DATABASE_URL
+      #   fromDatabase:
+      #     name: pbookspro-database
+      #     property: connectionString
       - key: JWT_SECRET
         generateValue: true
       - key: LICENSE_SECRET_SALT
