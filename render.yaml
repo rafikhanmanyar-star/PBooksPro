@@ -4,7 +4,7 @@ services:
     name: pbookspro-api
     env: node
     plan: starter
-    buildCommand: cd server && npm install && npm run build
+    buildCommand: cd server && npm install --include=dev && npm run build
     startCommand: cd server && npm start
     envVars:
       - key: DATABASE_URL

@@ -14,8 +14,7 @@
     "forceConsistentCasingInFileNames": true,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true,
-    "types": ["node"]
+    "sourceMap": true
   },
   "include": ["**/*.ts"],
   "exclude": ["node_modules", "dist"]
