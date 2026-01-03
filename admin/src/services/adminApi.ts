@@ -1,10 +1,13 @@
-// Get API URL from environment variable (set at build time)
-const ADMIN_API_URL = import.meta.env.VITE_ADMIN_API_URL || 'http://localhost:3000/api/admin';
+// Get API URL - use production URL if in production, otherwise use env var or localhost
+// This ensures production always uses the correct URL even if env var fails
+const ADMIN_API_URL = import.meta.env.PROD
+  ? 'https://pbookspro-api.onrender.com/api/admin'
+  : ((import.meta.env.VITE_ADMIN_API_URL as string) || 'http://localhost:3000/api/admin');
 
-// Debug: Log the API URL being used (only in development)
-if (import.meta.env.DEV) {
-  console.log('🔧 Admin API URL:', ADMIN_API_URL);
-}
+// Debug: Always log the API URL being used (helps debug production issues)
+console.log('🔧 Admin API URL:', ADMIN_API_URL);
+console.log('🔧 Environment:', import.meta.env.MODE);
+console.log('🔧 VITE_ADMIN_API_URL env var:', import.meta.env.VITE_ADMIN_API_URL);
 
 class AdminApi {
   private getAuthHeaders(): HeadersInit {

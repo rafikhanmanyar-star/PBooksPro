@@ -2,9 +2,11 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
-// Log environment variable during build (for debugging)
+// Get environment variable during build
+// This will be replaced by Vite's built-in env variable replacement
 const adminApiUrl = process.env.VITE_ADMIN_API_URL || 'http://localhost:3000/api/admin';
 console.log('🔧 Building with VITE_ADMIN_API_URL:', adminApiUrl);
+console.log('🔧 All env vars:', Object.keys(process.env).filter(k => k.startsWith('VITE_')));
 
 export default defineConfig({
   plugins: [react()],
@@ -39,9 +41,12 @@ export default defineConfig({
       }
     }
   },
-  // Explicitly define environment variables
+  // Vite automatically replaces import.meta.env.VITE_* variables
+  // But we'll also explicitly define it to ensure it works
   define: {
-    'import.meta.env.VITE_ADMIN_API_URL': JSON.stringify(adminApiUrl)
+    'import.meta.env.VITE_ADMIN_API_URL': JSON.stringify(adminApiUrl),
+    // Also try without the import.meta.env prefix (some Vite versions need this)
+    'process.env.VITE_ADMIN_API_URL': JSON.stringify(adminApiUrl)
   }
 });
 
