@@ -5,7 +5,12 @@
  * Handles authentication, error handling, and request/response transformation.
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+// HARDCODED: Always use production API URL
+// This ensures the deployed version always uses the correct URL
+const API_BASE_URL = 'https://pbookspro-api.onrender.com/api';
+
+// Debug: Log the API URL being used
+console.log('🔧 Client API URL:', API_BASE_URL);
 
 export interface ApiError {
   error: string;
