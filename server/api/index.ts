@@ -75,10 +75,37 @@ pool.on('error', (err) => {
   console.error('❌ Database connection error:', err);
 });
 
-// Middleware
+// Middleware - CORS configuration
+const corsOrigins = process.env.CORS_ORIGIN 
+  ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
+  : ['*'];
+
+console.log('🌐 CORS Origins:', corsOrigins);
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN?.split(',') || '*',
-  credentials: true
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) {
+      console.log('✅ CORS: Allowing request with no origin');
+      return callback(null, true);
+    }
+    
+    // Check if origin is in allowed list
+    const isAllowed = corsOrigins.includes('*') || corsOrigins.includes(origin);
+    
+    if (isAllowed) {
+      console.log(`✅ CORS: Allowing origin: ${origin}`);
+      callback(null, true);
+    } else {
+      console.log(`❌ CORS: Blocking origin: ${origin} (allowed: ${corsOrigins.join(', ')})`);
+      callback(new Error(`Not allowed by CORS: ${origin}`));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID'],
+  exposedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 86400 // 24 hours
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
