@@ -60,9 +60,20 @@ router.post('/login', async (req, res) => {
         role: admin.role
       }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Admin login error:', error);
-    res.status(500).json({ error: 'Login failed' });
+    console.error('Error details:', {
+      message: error?.message,
+      stack: error?.stack,
+      code: error?.code,
+      detail: error?.detail
+    });
+    res.status(500).json({ 
+      error: 'Login failed',
+      message: error?.message || 'Unknown error',
+      // Only include details in development
+      ...(process.env.NODE_ENV !== 'production' && { details: error?.stack })
+    });
   }
 });
 
