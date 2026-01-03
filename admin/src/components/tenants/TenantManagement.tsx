@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '../../services/adminApi';
-import { Users, Search, Eye, Ban, CheckCircle } from 'lucide-react';
+import { Search, Eye, Ban, CheckCircle } from 'lucide-react';
 
 interface Tenant {
   id: string;
@@ -223,7 +223,6 @@ const TenantManagement: React.FC = () => {
 
 const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void }> = ({ tenant, onClose }) => {
   const [stats, setStats] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadStats();
@@ -235,8 +234,6 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void }> = ({
       setStats(data);
     } catch (error) {
       console.error('Failed to load tenant stats:', error);
-    } finally {
-      setLoading(false);
     }
   };
 

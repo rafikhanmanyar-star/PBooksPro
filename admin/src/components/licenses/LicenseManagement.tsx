@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '../../services/adminApi';
-import { Key, Plus, Search, Copy, Check } from 'lucide-react';
+import { Plus, Search, Copy, Check } from 'lucide-react';
 
 interface License {
   id: string;
