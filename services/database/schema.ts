@@ -720,7 +720,6 @@ CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type);
 CREATE INDEX IF NOT EXISTS idx_transactions_project_date ON transactions(project_id, date);
 CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status);
 CREATE INDEX IF NOT EXISTS idx_transactions_invoice ON transactions(invoice_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_bill ON transactions(bill_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_contact ON invoices(contact_id);
