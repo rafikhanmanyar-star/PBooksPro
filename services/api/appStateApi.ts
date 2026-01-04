@@ -229,23 +229,20 @@ export class AppStateApiService {
         id: contact.id || `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
       };
       
-      // Check if contact exists in the API before deciding to create or update
-      // New contacts created locally have an ID but don't exist in the database yet
-      const contactExists = await this.contactsRepo.exists(contactWithId.id);
+      // Always use POST endpoint for contacts - it handles upserts automatically
+      // The server-side POST endpoint checks if contact exists and updates it, or creates it if new
+      // This avoids the "Contact not found" error when syncing new contacts that have IDs but don't exist in DB yet
+      logger.logCategory('sync', `💾 Syncing contact (POST upsert): ${contactWithId.id} - ${contactWithId.name}`);
+      const result = await this.contactsRepo.create(contactWithId);
       
-      if (contactExists) {
-        // Update existing contact
-        logger.logCategory('sync', `🔄 Updating existing contact: ${contactWithId.id}`);
-        const result = await this.contactsRepo.update(contactWithId.id, contactWithId);
-        logger.logCategory('sync', `✅ Contact updated successfully: ${result.name} (${result.id})`);
-        return result;
+      // Log whether it was created or updated based on whether we had an existing ID
+      if (contact.id) {
+        logger.logCategory('sync', `✅ Contact synced (upsert) successfully: ${result.name} (${result.id})`);
       } else {
-        // Create new contact (POST endpoint handles upserts, so this is safe)
-        logger.logCategory('sync', `➕ Creating new contact: ${contactWithId.id}`);
-        const result = await this.contactsRepo.create(contactWithId);
         logger.logCategory('sync', `✅ Contact created successfully: ${result.name} (${result.id})`);
-        return result;
       }
+      
+      return result;
     } catch (error: any) {
       logger.errorCategory('sync', '❌ AppStateApiService.saveContact failed:', {
         error: error,
