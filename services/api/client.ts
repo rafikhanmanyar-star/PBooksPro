@@ -140,7 +140,22 @@ export class ApiClient {
 
     // Add auth token if available
     if (this.token) {
+      // Validate token format before sending
+      const tokenParts = this.token.split('.');
+      if (tokenParts.length !== 3) {
+        console.error('❌ Invalid token format - expected 3 parts, got:', tokenParts.length);
+        console.error('Token preview:', this.token.substring(0, 50) + '...');
+        throw {
+          error: 'Invalid token format',
+          message: 'Token format is invalid. Please login again.',
+          status: 401
+        };
+      }
+      
       headers['Authorization'] = `Bearer ${this.token}`;
+      // Log token info for debugging (first 20 chars only)
+      const tokenPreview = this.token.length > 20 ? this.token.substring(0, 20) + '...' : this.token;
+      console.log(`🔑 Sending request with token: ${tokenPreview} (length: ${this.token.length}) to ${endpoint}`);
     } else {
       // Log when token is missing for authenticated endpoints
       if (!endpoint.includes('/register-tenant') && !endpoint.includes('/auth/')) {

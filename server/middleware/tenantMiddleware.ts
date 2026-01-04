@@ -23,27 +23,64 @@ export function tenantMiddleware(pool: Pool) {
         return res.status(401).json({ error: 'No authentication token' });
       }
 
+      // Check if JWT_SECRET is configured
+      if (!process.env.JWT_SECRET) {
+        console.error('❌ JWT_SECRET is not configured in environment variables!');
+        return res.status(500).json({ 
+          error: 'Server configuration error',
+          message: 'JWT_SECRET is not configured. Please contact administrator.',
+          code: 'JWT_SECRET_MISSING'
+        });
+      }
+
+      // Log token info for debugging (first 20 chars only for security)
+      const tokenPreview = token.length > 20 ? token.substring(0, 20) + '...' : token;
+      console.log(`🔍 Verifying token: ${tokenPreview} (length: ${token.length})`);
+
       // Decode JWT to get tenant_id and user_id
       let decoded: any;
       try {
         decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+        console.log(`✅ Token verified successfully. User: ${decoded.userId}, Tenant: ${decoded.tenantId}`);
       } catch (jwtError: any) {
+        // Log detailed error information
+        console.error('❌ JWT verification failed:', {
+          errorName: jwtError.name,
+          errorMessage: jwtError.message,
+          tokenLength: token.length,
+          tokenPreview: tokenPreview,
+          hasJWTSecret: !!process.env.JWT_SECRET,
+          jwtSecretLength: process.env.JWT_SECRET?.length || 0
+        });
+
         // Check if it's a token expiration error
         if (jwtError.name === 'TokenExpiredError') {
-          console.error('Token expired:', jwtError.expiredAt);
+          console.error('Token expired at:', jwtError.expiredAt);
           return res.status(401).json({ 
             error: 'Token expired',
             message: 'Your session has expired. Please login again.',
-            code: 'TOKEN_EXPIRED'
+            code: 'TOKEN_EXPIRED',
+            expiredAt: jwtError.expiredAt
           });
         }
         // Check if it's an invalid token error
         if (jwtError.name === 'JsonWebTokenError') {
-          console.error('Invalid token format:', jwtError.message);
+          console.error('Invalid token format. Error:', jwtError.message);
+          // Check if it's a signature mismatch (JWT_SECRET issue)
+          if (jwtError.message.includes('signature') || jwtError.message.includes('invalid signature')) {
+            console.error('⚠️ Token signature mismatch - JWT_SECRET may be incorrect!');
+            return res.status(401).json({ 
+              error: 'Invalid token',
+              message: 'Token signature is invalid. This may indicate a server configuration issue. Please login again.',
+              code: 'INVALID_TOKEN_SIGNATURE',
+              details: 'JWT_SECRET mismatch detected'
+            });
+          }
           return res.status(401).json({ 
             error: 'Invalid token',
             message: 'Authentication token is invalid. Please login again.',
-            code: 'INVALID_TOKEN'
+            code: 'INVALID_TOKEN',
+            details: jwtError.message
           });
         }
         // Other JWT errors
@@ -51,7 +88,8 @@ export function tenantMiddleware(pool: Pool) {
         return res.status(401).json({ 
           error: 'Invalid token',
           message: 'Token verification failed. Please login again.',
-          code: 'TOKEN_VERIFICATION_FAILED'
+          code: 'TOKEN_VERIFICATION_FAILED',
+          details: jwtError.message
         });
       }
 
