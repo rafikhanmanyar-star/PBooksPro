@@ -1341,6 +1341,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Get auth status - must be called unconditionally at top level
     // AuthProvider wraps AppProvider in index.tsx, so this should work
     const auth = useAuth();
+    
+    // Track previous auth state to detect when user re-authenticates
+    const prevAuthRef = React.useRef<boolean>(false);
     const isAuthenticated = auth.isAuthenticated;
     
     const [isInitializing, setIsInitializing] = useState(true);
@@ -2198,6 +2201,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return () => clearTimeout(saveTimer);
         }
     }, [state.currentUser, isInitializing, state]);
+
+    // Auto-sync local data to API when user re-authenticates
+    const prevAuthRef = React.useRef<boolean>(false);
+    useEffect(() => {
+        // Detect when user transitions from not authenticated to authenticated
+        if (isAuthenticated && !prevAuthRef.current && !isInitializing) {
+            const syncAllLocalData = async () => {
+                try {
+                    const apiService = getAppStateApiService();
+                    console.log('🔄 User re-authenticated, syncing local data to API...');
+                    
+                    // Sync contacts
+                    for (const contact of state.contacts) {
+                        try {
+                            await apiService.saveContact(contact);
+                            console.log('✅ Synced contact to API:', contact.name);
+                        } catch (err: any) {
+                            // Only log if it's not a 401 (which would mean token is still invalid)
+                            if (err?.status !== 401) {
+                                console.warn(`⚠️ Failed to sync contact ${contact.name}:`, err);
+                            }
+                        }
+                    }
+                    
+                    // Sync accounts (non-permanent)
+                    for (const account of state.accounts) {
+                        if (!account.isPermanent) {
+                            try {
+                                await apiService.saveAccount(account);
+                                console.log('✅ Synced account to API:', account.name);
+                            } catch (err: any) {
+                                if (err?.status !== 401) {
+                                    console.warn(`⚠️ Failed to sync account ${account.name}:`, err);
+                                }
+                            }
+                        }
+                    }
+                    
+                    console.log('✅ Finished syncing local data to API');
+                } catch (error) {
+                    console.error('⚠️ Error syncing local data after re-authentication:', error);
+                }
+            };
+            
+            // Delay sync slightly to ensure token is fully set
+            setTimeout(syncAllLocalData, 1000);
+        }
+        
+        // Update previous auth state
+        prevAuthRef.current = isAuthenticated;
+    }, [isAuthenticated, isInitializing, state.contacts, state.accounts]);
 
     // Show loading/initialization state
     if (isInitializing) {
