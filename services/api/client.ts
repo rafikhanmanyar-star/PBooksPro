@@ -142,8 +142,8 @@ export class ApiClient {
       
       if (error instanceof Error) {
         // Check if it's a network error
-        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('Network request failed')) {
-          throw new Error('Network error: Unable to connect to server. Please check your connection and ensure the backend is running on port 3000.');
+          if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('Network request failed') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+          throw new Error('Network error: Unable to connect to server. Please check your connection.');
         }
         // If it's already an ApiError, throw it as-is
         if ('error' in error && 'status' in error) {
