@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import ComboBox from '../ui/ComboBox';
@@ -44,6 +45,7 @@ interface ColumnDef {
 
 const SettingsPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
+    const { user: authUser } = useAuth();
     const { showConfirm, showToast, showAlert } = useNotification();
     const { setVisibleKpiIds } = useKpis();
 
@@ -87,7 +89,8 @@ const SettingsPage: React.FC = () => {
     const [propertyToTransfer, setPropertyToTransfer] = useState<Property | null>(null);
     const [isMigrationWizardOpen, setIsMigrationWizardOpen] = useState(false);
 
-    const isAdmin = state.currentUser?.role === 'Admin';
+    // Check if user is admin - use AuthContext user (cloud auth) or fallback to AppContext currentUser (local)
+    const isAdmin = authUser?.role === 'Admin' || state.currentUser?.role === 'Admin';
 
     // Grouped Categories for Sidebar
     const categoryGroups = [
