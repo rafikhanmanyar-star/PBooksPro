@@ -1,5 +1,5 @@
 // Service Worker for PBooksPro
-const CACHE_NAME = 'finance-tracker-pro-v1.0.1';
+const CACHE_NAME = 'finance-tracker-pro-v1.0.2';
 const urlsToCache = [
   './',
   './index.html',
