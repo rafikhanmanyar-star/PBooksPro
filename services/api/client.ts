@@ -55,6 +55,7 @@ export class ApiClient {
     if (typeof window !== 'undefined') {
       localStorage.setItem('auth_token', token);
       localStorage.setItem('tenant_id', tenantId);
+      console.log('🔑 Auth token saved to localStorage and ApiClient instance');
     }
   }
 

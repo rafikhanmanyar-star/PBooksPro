@@ -2224,6 +2224,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (isAuthenticated && !prevAuthRef.current && !isInitializing) {
             const syncAllLocalData = async () => {
                 try {
+                    // Verify token is actually available before syncing
+                    const token = localStorage.getItem('auth_token');
+                    if (!token) {
+                        console.warn('⚠️ No token found in localStorage, skipping auto-sync');
+                        return;
+                    }
+                    
+                    // Verify token is not expired (client-side check)
+                    try {
+                        const parts = token.split('.');
+                        if (parts.length === 3) {
+                            const payload = JSON.parse(atob(parts[1]));
+                            const exp = payload.exp * 1000; // Convert to milliseconds
+                            if (Date.now() >= exp) {
+                                console.warn('⚠️ Token is expired, skipping auto-sync');
+                                return;
+                            }
+                        }
+                    } catch (tokenCheckError) {
+                        console.warn('⚠️ Could not verify token, skipping auto-sync:', tokenCheckError);
+                        return;
+                    }
+                    
                     const apiService = getAppStateApiService();
                     console.log('🔄 User re-authenticated, syncing local data to API...');
                     
@@ -2236,6 +2259,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             // Only log if it's not a 401 (which would mean token is still invalid)
                             if (err?.status !== 401) {
                                 console.warn(`⚠️ Failed to sync contact ${contact.name}:`, err);
+                            } else {
+                                console.warn(`⚠️ Token invalid during contact sync, stopping auto-sync`);
+                                // Stop syncing if token is invalid
+                                return;
                             }
                         }
                     }
@@ -2249,6 +2276,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             } catch (err: any) {
                                 if (err?.status !== 401) {
                                     console.warn(`⚠️ Failed to sync account ${account.name}:`, err);
+                                } else {
+                                    console.warn(`⚠️ Token invalid during account sync, stopping auto-sync`);
+                                    return;
                                 }
                             }
                         }
@@ -2260,8 +2290,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }
             };
             
-            // Delay sync slightly to ensure token is fully set
-            setTimeout(syncAllLocalData, 1000);
+            // Delay sync to ensure token is fully set and ApiClient singleton is updated
+            // Increased delay to 2 seconds to ensure everything is ready
+            setTimeout(syncAllLocalData, 2000);
         }
         
         // Update previous auth state

@@ -237,6 +237,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Set authentication
         apiClient.setAuth(response.token, response.tenant.id);
+        
+        // Verify token is valid by checking it can be decoded
+        try {
+          const parts = response.token.split('.');
+          if (parts.length === 3) {
+            const payload = JSON.parse(atob(parts[1]));
+            const exp = payload.exp * 1000;
+            if (Date.now() >= exp) {
+              console.error('❌ Token received from server is already expired!');
+              throw new Error('Token is expired');
+            }
+            console.log('✅ Token validated - expires at:', new Date(exp).toISOString());
+          }
+        } catch (tokenError) {
+          console.error('❌ Invalid token format received from server:', tokenError);
+          throw new Error('Invalid token received from server');
+        }
 
         setState({
           isAuthenticated: true,

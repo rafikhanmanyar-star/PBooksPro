@@ -36,23 +36,26 @@ export function usePagePreloader() {
   }, []);
 
   // Preload critical pages after initial load
-  useEffect(() => {
-    // Wait for initial render to complete
-    const timer = setTimeout(() => {
-      // Preload most commonly used pages
-      const criticalPages = [
-        '../components/dashboard/DashboardPage',
-        '../components/transactions/EnhancedLedgerPage',
-        '../components/settings/SettingsPage',
-      ];
+  // DISABLED: Preloader was causing 404 errors due to path resolution issues
+  // Components will load on-demand via React.lazy which works correctly
+  // useEffect(() => {
+  //   // Wait for initial render to complete
+  //   const timer = setTimeout(() => {
+  //     // Preload most commonly used pages
+  //     // Use same paths as lazy imports in App.tsx (relative to src/)
+  //     const criticalPages = [
+  //       './components/dashboard/DashboardPage',
+  //       './components/transactions/EnhancedLedgerPage',
+  //       './components/settings/SettingsPage',
+  //     ];
 
-      criticalPages.forEach((page) => {
-        preloadPage(page);
-      });
-    }, 2000); // Wait 2 seconds after initial load
+  //     criticalPages.forEach((page) => {
+  //       preloadPage(page);
+  //     });
+  //   }, 2000); // Wait 2 seconds after initial load
 
-    return () => clearTimeout(timer);
-  }, [preloadPage]);
+  //   return () => clearTimeout(timer);
+  // }, [preloadPage]);
 
   return { preloadPage };
 }
