@@ -1688,6 +1688,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (!NAVIGATION_ACTIONS.includes(action.type)) {
                 // Sync to API asynchronously (don't block UI)
                 const syncToApi = async () => {
+                    logger.logCategory('sync', `🚀 syncToApi called for action: ${action.type}`, {
+                        actionType: action.type,
+                        isAuthenticated: isAuthenticated,
+                        hasToken: !!localStorage.getItem('auth_token')
+                    });
+                    
                     try {
                         // Check if user is authenticated before syncing
                         if (!isAuthenticated) {
@@ -1701,6 +1707,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             logger.warnCategory('sync', '⚠️ No token found, skipping API sync');
                             return;
                         }
+                        
+                        logger.logCategory('sync', `✅ Authentication check passed, proceeding with sync for action: ${action.type}`);
                         
                         // Check token expiration using ApiClient
                         try {
@@ -1743,32 +1751,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         // Handle contact changes
                         if (action.type === 'ADD_CONTACT') {
                             const contact = action.payload;
+                            logger.logCategory('sync', `🔄 Starting sync for ADD_CONTACT: ${contact.name} (${contact.id})`);
                             try {
-                                await apiService.saveContact(contact);
-                                logger.logCategory('sync', '✅ Synced contact to API:', contact.name);
+                                logger.logCategory('sync', `📤 Calling apiService.saveContact for: ${contact.name}`);
+                                const savedContact = await apiService.saveContact(contact);
+                                logger.logCategory('sync', `✅ Successfully synced contact to API: ${savedContact.name} (${savedContact.id})`);
                             } catch (err: any) {
-                                logger.errorCategory('sync', `⚠️ Failed to sync contact ${contact.name} to API:`, {
+                                logger.errorCategory('sync', `❌ FAILED to sync contact ${contact.name} to API:`, {
                                     error: err,
-                                    contact: contact,
                                     errorMessage: err?.message || err?.error || 'Unknown error',
-                                    status: err?.status
+                                    status: err?.status,
+                                    statusText: err?.statusText,
+                                    contact: {
+                                        id: contact.id,
+                                        name: contact.name,
+                                        type: contact.type
+                                    },
+                                    fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
                                 });
-                                // Re-throw to be caught by outer catch
-                                throw err;
+                                // Don't re-throw - log and continue, data is saved locally
+                                // This allows user to continue working even if sync fails
                             }
                         } else if (action.type === 'UPDATE_CONTACT') {
                             const contact = action.payload;
+                            logger.logCategory('sync', `🔄 Starting sync for UPDATE_CONTACT: ${contact.name} (${contact.id})`);
                             try {
-                                await apiService.saveContact(contact);
-                                logger.logCategory('sync', '✅ Synced contact update to API:', contact.name);
+                                logger.logCategory('sync', `📤 Calling apiService.saveContact for update: ${contact.name}`);
+                                const savedContact = await apiService.saveContact(contact);
+                                logger.logCategory('sync', `✅ Successfully synced contact update to API: ${savedContact.name} (${savedContact.id})`);
                             } catch (err: any) {
-                                console.error(`⚠️ Failed to sync contact update ${contact.name} to API:`, {
+                                logger.errorCategory('sync', `❌ FAILED to sync contact update ${contact.name} to API:`, {
                                     error: err,
-                                    contact: contact,
                                     errorMessage: err?.message || err?.error || 'Unknown error',
-                                    status: err?.status
+                                    status: err?.status,
+                                    statusText: err?.statusText,
+                                    contact: {
+                                        id: contact.id,
+                                        name: contact.name,
+                                        type: contact.type
+                                    },
+                                    fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
                                 });
-                                throw err;
+                                // Don't re-throw - log and continue
                             }
                         } else if (action.type === 'DELETE_CONTACT') {
                             const contactId = action.payload as string;
@@ -1982,7 +2006,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         }
                     } catch (error: any) {
                         // Log error but don't block UI - state is already updated locally
-                        logger.errorCategory('sync', '⚠️ Failed to sync to API:', error);
+                        logger.errorCategory('sync', '❌ CRITICAL: Failed to sync to API in syncToApi:', {
+                            actionType: action.type,
+                            error: error,
+                            errorMessage: error?.message || error?.error || 'Unknown error',
+                            status: error?.status,
+                            statusText: error?.statusText,
+                            stack: error?.stack,
+                            fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)),
+                            payload: action.payload ? {
+                                ...(typeof action.payload === 'object' && action.payload !== null 
+                                    ? { id: (action.payload as any).id, name: (action.payload as any).name }
+                                    : action.payload)
+                            } : undefined
+                        });
                         
                         // Show user-friendly notification for expired token
                         if (error?.status === 401) {

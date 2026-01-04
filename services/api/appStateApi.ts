@@ -203,25 +203,56 @@ export class AppStateApiService {
    * Save contact to API
    */
   async saveContact(contact: Partial<AppState['contacts'][0]>): Promise<AppState['contacts'][0]> {
+    logger.logCategory('sync', '💾 AppStateApiService.saveContact called:', {
+      id: contact.id,
+      name: contact.name,
+      type: contact.type,
+      isUpdate: !!contact.id
+    });
+    
     // Validate required fields
     if (!contact.name) {
-      throw new Error('Contact name is required');
+      const error = new Error('Contact name is required');
+      logger.errorCategory('sync', '❌ AppStateApiService.saveContact validation failed: name missing');
+      throw error;
     }
     if (!contact.type) {
-      throw new Error('Contact type is required');
+      const error = new Error('Contact type is required');
+      logger.errorCategory('sync', '❌ AppStateApiService.saveContact validation failed: type missing');
+      throw error;
     }
     
-    // Ensure contact has an ID (for updates)
-    if (contact.id) {
-      // Update existing
-      return this.contactsRepo.update(contact.id, contact);
-    } else {
-      // Create new - generate ID if missing
-      const contactWithId = {
-        ...contact,
-        id: contact.id || `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      };
-      return this.contactsRepo.create(contactWithId);
+    try {
+      // Ensure contact has an ID (for updates)
+      if (contact.id) {
+        // Update existing
+        logger.logCategory('sync', `🔄 Updating existing contact: ${contact.id}`);
+        const result = await this.contactsRepo.update(contact.id, contact);
+        logger.logCategory('sync', `✅ Contact updated successfully: ${result.name} (${result.id})`);
+        return result;
+      } else {
+        // Create new - generate ID if missing
+        const contactWithId = {
+          ...contact,
+          id: contact.id || `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+        };
+        logger.logCategory('sync', `➕ Creating new contact: ${contactWithId.id}`);
+        const result = await this.contactsRepo.create(contactWithId);
+        logger.logCategory('sync', `✅ Contact created successfully: ${result.name} (${result.id})`);
+        return result;
+      }
+    } catch (error: any) {
+      logger.errorCategory('sync', '❌ AppStateApiService.saveContact failed:', {
+        error: error,
+        errorMessage: error?.message || error?.error || 'Unknown error',
+        status: error?.status,
+        contact: {
+          id: contact.id,
+          name: contact.name,
+          type: contact.type
+        }
+      });
+      throw error;
     }
   }
 

@@ -23,11 +23,29 @@ router.get('/', async (req: TenantRequest, res) => {
 // POST create contact
 router.post('/', async (req: TenantRequest, res) => {
   try {
+    console.log('📥 POST /contacts - Request received:', {
+      tenantId: req.tenantId,
+      userId: req.user?.userId,
+      contactData: {
+        id: req.body.id,
+        name: req.body.name,
+        type: req.body.type,
+        hasDescription: !!req.body.description,
+        hasContactNo: !!req.body.contactNo,
+        hasCompanyName: !!req.body.companyName,
+        hasAddress: !!req.body.address
+      }
+    });
+    
     const db = getDb();
     const contact = req.body;
     
     // Validate required fields
     if (!contact.name || !contact.type) {
+      console.error('❌ POST /contacts - Validation failed: missing name or type', {
+        hasName: !!contact.name,
+        hasType: !!contact.type
+      });
       return res.status(400).json({ 
         error: 'Validation error',
         message: 'Name and type are required fields'
@@ -36,6 +54,7 @@ router.post('/', async (req: TenantRequest, res) => {
     
     // Generate ID if not provided
     const contactId = contact.id || `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    console.log('📝 POST /contacts - Using contact ID:', contactId);
     
     // Use transaction for data integrity
     const result = await db.transaction(async (client) => {
@@ -88,15 +107,31 @@ router.post('/', async (req: TenantRequest, res) => {
     });
     
     if (!result) {
+      console.error('❌ POST /contacts - Transaction returned no result');
       return res.status(500).json({ error: 'Failed to create contact' });
     }
     
+    console.log('✅ POST /contacts - Contact saved successfully:', {
+      id: result.id,
+      name: result.name,
+      type: result.type,
+      tenantId: req.tenantId
+    });
+    
     res.status(201).json(result);
   } catch (error: any) {
-    console.error('Error creating contact:', error);
+    console.error('❌ POST /contacts - Error creating contact:', {
+      error: error,
+      errorMessage: error.message,
+      errorCode: error.code,
+      errorStack: error.stack,
+      tenantId: req.tenantId,
+      contactId: req.body?.id
+    });
     
     // Handle specific database errors
     if (error.code === '23505') { // Unique violation
+      console.error('❌ POST /contacts - Unique constraint violation');
       return res.status(409).json({ 
         error: 'Duplicate contact',
         message: 'A contact with this ID already exists'
@@ -104,6 +139,7 @@ router.post('/', async (req: TenantRequest, res) => {
     }
     
     if (error.code === '23503') { // Foreign key violation
+      console.error('❌ POST /contacts - Foreign key constraint violation');
       return res.status(400).json({ 
         error: 'Invalid reference',
         message: 'One or more referenced records do not exist'
@@ -120,11 +156,23 @@ router.post('/', async (req: TenantRequest, res) => {
 // PUT update contact
 router.put('/:id', async (req: TenantRequest, res) => {
   try {
+    console.log('📥 PUT /contacts/:id - Request received:', {
+      contactId: req.params.id,
+      tenantId: req.tenantId,
+      userId: req.user?.userId,
+      contactData: {
+        name: req.body.name,
+        type: req.body.type,
+        hasDescription: !!req.body.description
+      }
+    });
+    
     const db = getDb();
     const contact = req.body;
     
     // Validate required fields
     if (!contact.name || !contact.type) {
+      console.error('❌ PUT /contacts/:id - Validation failed: missing name or type');
       return res.status(400).json({ 
         error: 'Validation error',
         message: 'Name and type are required fields'
@@ -150,15 +198,28 @@ router.put('/:id', async (req: TenantRequest, res) => {
     );
     
     if (result.length === 0) {
+      console.error('❌ PUT /contacts/:id - Contact not found:', req.params.id);
       return res.status(404).json({ 
         error: 'Contact not found',
         message: `Contact with ID ${req.params.id} not found or does not belong to your tenant`
       });
     }
     
+    console.log('✅ PUT /contacts/:id - Contact updated successfully:', {
+      id: result[0].id,
+      name: result[0].name,
+      tenantId: req.tenantId
+    });
+    
     res.json(result[0]);
   } catch (error: any) {
-    console.error('Error updating contact:', error);
+    console.error('❌ PUT /contacts/:id - Error updating contact:', {
+      error: error,
+      errorMessage: error.message,
+      errorCode: error.code,
+      contactId: req.params.id,
+      tenantId: req.tenantId
+    });
     res.status(500).json({ 
       error: 'Failed to update contact',
       message: error.message || 'Internal server error'

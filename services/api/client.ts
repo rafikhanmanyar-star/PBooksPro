@@ -171,15 +171,34 @@ export class ApiClient {
     }
 
     try {
+      logger.logCategory('api', `📤 API Request: ${options.method || 'GET'} ${endpoint}`);
+      if (options.body && typeof options.body === 'string') {
+        try {
+          const bodyData = JSON.parse(options.body);
+          logger.logCategory('api', `📤 Request body:`, { 
+            ...bodyData, 
+            // Truncate large fields for logging
+            ...(bodyData.description && { description: bodyData.description.substring(0, 50) + '...' })
+          });
+        } catch (e) {
+          // Body might not be JSON, log as-is
+          logger.logCategory('api', `📤 Request body length: ${options.body.length} bytes`);
+        }
+      }
+      
       const response = await fetch(url, {
         ...options,
         headers,
       });
 
+      logger.logCategory('api', `📥 API Response: ${response.status} ${response.statusText} for ${endpoint}`);
+
       // Handle non-JSON responses
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
         if (!response.ok) {
+          const text = await response.text();
+          logger.errorCategory('api', `❌ Non-JSON error response for ${endpoint}:`, text);
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         return {} as T;
@@ -188,9 +207,15 @@ export class ApiClient {
       let data: any;
       try {
         data = await response.json();
+        if (response.ok) {
+          logger.logCategory('api', `✅ Success response for ${endpoint}`);
+        } else {
+          logger.errorCategory('api', `❌ Error response for ${endpoint}:`, data);
+        }
       } catch (jsonError) {
         // If JSON parsing fails, create error from response text
         const text = await response.text();
+        logger.errorCategory('api', `❌ Failed to parse JSON response for ${endpoint}:`, text);
         throw new Error(`Server error (${response.status}): ${text || response.statusText}`);
       }
 
