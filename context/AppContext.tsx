@@ -2203,7 +2203,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, [state.currentUser, isInitializing, state]);
 
     // Auto-sync local data to API when user re-authenticates
-    const prevAuthRef = React.useRef<boolean>(false);
     useEffect(() => {
         // Detect when user transitions from not authenticated to authenticated
         if (isAuthenticated && !prevAuthRef.current && !isInitializing) {
