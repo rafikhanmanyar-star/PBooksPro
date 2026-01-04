@@ -202,12 +202,25 @@ export class AppStateApiService {
    * Save contact to API
    */
   async saveContact(contact: Partial<AppState['contacts'][0]>): Promise<AppState['contacts'][0]> {
+    // Validate required fields
+    if (!contact.name) {
+      throw new Error('Contact name is required');
+    }
+    if (!contact.type) {
+      throw new Error('Contact type is required');
+    }
+    
+    // Ensure contact has an ID (for updates)
     if (contact.id) {
       // Update existing
       return this.contactsRepo.update(contact.id, contact);
     } else {
-      // Create new
-      return this.contactsRepo.create(contact);
+      // Create new - generate ID if missing
+      const contactWithId = {
+        ...contact,
+        id: contact.id || `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      };
+      return this.contactsRepo.create(contactWithId);
     }
   }
 

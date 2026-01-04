@@ -1714,16 +1714,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         // Handle contact changes
                         if (action.type === 'ADD_CONTACT') {
                             const contact = action.payload;
-                            await apiService.saveContact(contact);
-                            console.log('✅ Synced contact to API:', contact.name);
+                            try {
+                                await apiService.saveContact(contact);
+                                console.log('✅ Synced contact to API:', contact.name);
+                            } catch (err: any) {
+                                console.error(`⚠️ Failed to sync contact ${contact.name} to API:`, {
+                                    error: err,
+                                    contact: contact,
+                                    errorMessage: err?.message || err?.error || 'Unknown error',
+                                    status: err?.status
+                                });
+                                // Re-throw to be caught by outer catch
+                                throw err;
+                            }
                         } else if (action.type === 'UPDATE_CONTACT') {
                             const contact = action.payload;
-                            await apiService.saveContact(contact);
-                            console.log('✅ Synced contact update to API:', contact.name);
+                            try {
+                                await apiService.saveContact(contact);
+                                console.log('✅ Synced contact update to API:', contact.name);
+                            } catch (err: any) {
+                                console.error(`⚠️ Failed to sync contact update ${contact.name} to API:`, {
+                                    error: err,
+                                    contact: contact,
+                                    errorMessage: err?.message || err?.error || 'Unknown error',
+                                    status: err?.status
+                                });
+                                throw err;
+                            }
                         } else if (action.type === 'DELETE_CONTACT') {
                             const contactId = action.payload as string;
-                            await apiService.deleteContact(contactId);
-                            console.log('✅ Synced contact deletion to API:', contactId);
+                            try {
+                                await apiService.deleteContact(contactId);
+                                console.log('✅ Synced contact deletion to API:', contactId);
+                            } catch (err: any) {
+                                console.error(`⚠️ Failed to sync contact deletion ${contactId} to API:`, {
+                                    error: err,
+                                    contactId: contactId,
+                                    errorMessage: err?.message || err?.error || 'Unknown error',
+                                    status: err?.status
+                                });
+                                throw err;
+                            }
                         }
 
                         // Handle transaction changes
