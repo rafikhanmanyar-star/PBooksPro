@@ -168,9 +168,11 @@ export function tenantMiddleware(pool: Pool) {
         return res.status(403).json({ error: 'Invalid tenant' });
       }
 
-      // Set tenant context for RLS (Row Level Security)
-      // This ensures all queries are automatically filtered by tenant_id
-      await pool.query(`SET app.current_tenant_id = $1`, [req.tenantId]);
+      // Note: We don't set the session variable because:
+      // 1. PostgreSQL SET doesn't support parameterized queries
+      // 2. All queries already explicitly filter by tenant_id in WHERE clauses
+      // 3. Connection pooling makes session variables unreliable
+      // Tenant isolation is ensured by explicit tenant_id filtering in all queries
 
       next();
     } catch (error) {
