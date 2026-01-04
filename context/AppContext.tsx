@@ -1954,11 +1954,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             await apiService.deleteContract(contractId);
                             console.log('✅ Synced contract deletion to API:', contractId);
                         }
-                    } catch (error) {
+                    } catch (error: any) {
                         // Log error but don't block UI - state is already updated locally
                         console.error('⚠️ Failed to sync to API:', error);
-                        // Optionally show a toast notification to user
-                        // For now, just log - user can retry by refreshing
+                        
+                        // Show user-friendly notification for expired token
+                        if (error?.status === 401) {
+                            // Only show notification once per session to avoid spam
+                            const hasShownTokenWarning = sessionStorage.getItem('token_expired_warning_shown');
+                            if (!hasShownTokenWarning) {
+                                sessionStorage.setItem('token_expired_warning_shown', 'true');
+                                // Dispatch custom event to show notification
+                                if (typeof window !== 'undefined') {
+                                    window.dispatchEvent(new CustomEvent('show-sync-warning', {
+                                        detail: {
+                                            message: 'Your session has expired. Data is saved locally. Please re-login to sync to the cloud.',
+                                            type: 'info'
+                                        }
+                                    }));
+                                }
+                            }
+                        }
                     }
                 };
 
