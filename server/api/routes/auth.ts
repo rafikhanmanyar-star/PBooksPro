@@ -157,18 +157,26 @@ router.post('/smart-login', async (req, res) => {
     }
 
     // Check for existing active sessions for this user
+    // NOTE: We no longer delete existing sessions on login to prevent premature expiration
+    // Multiple devices can have active sessions simultaneously
+    // Sessions will expire naturally based on their expiration time
+    // This prevents issues where a user logs in from one device and loses session on another
     const existingSessions = await db.query(
       `SELECT id FROM user_sessions 
        WHERE user_id = $1 AND tenant_id = $2 AND expires_at > NOW()`,
       [user.id, user.tenant_id]
     );
 
-    if (existingSessions.length > 0) {
-      // Invalidate existing sessions (logout from other devices)
+    // Optional: Clean up only expired sessions (not active ones)
+    // This allows multiple active sessions but removes old expired ones
+    try {
       await db.query(
-        'DELETE FROM user_sessions WHERE user_id = $1 AND tenant_id = $2',
+        'DELETE FROM user_sessions WHERE user_id = $1 AND tenant_id = $2 AND expires_at <= NOW()',
         [user.id, user.tenant_id]
       );
+    } catch (cleanupError) {
+      // Non-critical - just log
+      console.warn('Failed to cleanup expired sessions:', cleanupError);
     }
 
     // Update last login
@@ -178,7 +186,8 @@ router.post('/smart-login', async (req, res) => {
     );
 
     // Generate JWT with tenant context
-    const expiresIn = '7d';
+    // Increased expiration to 30 days to prevent premature expiration
+    const expiresIn = '30d';
     const token = jwt.sign(
       { 
         userId: user.id, 
@@ -191,9 +200,10 @@ router.post('/smart-login', async (req, res) => {
     );
 
     // Create session record
+    // Session expiration matches JWT expiration (30 days)
     const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
+    expiresAt.setDate(expiresAt.getDate() + 30); // 30 days to match JWT expiration
 
     await db.query(
       `INSERT INTO user_sessions (id, user_id, tenant_id, token, ip_address, user_agent, expires_at)
@@ -270,18 +280,26 @@ router.post('/login', async (req, res) => {
     }
 
     // Check for existing active sessions for this user
+    // NOTE: We no longer delete existing sessions on login to prevent premature expiration
+    // Multiple devices can have active sessions simultaneously
+    // Sessions will expire naturally based on their expiration time
+    // This prevents issues where a user logs in from one device and loses session on another
     const existingSessions = await db.query(
       `SELECT id FROM user_sessions 
        WHERE user_id = $1 AND tenant_id = $2 AND expires_at > NOW()`,
       [user.id, user.tenant_id]
     );
 
-    if (existingSessions.length > 0) {
-      // Invalidate existing sessions (logout from other devices)
+    // Optional: Clean up only expired sessions (not active ones)
+    // This allows multiple active sessions but removes old expired ones
+    try {
       await db.query(
-        'DELETE FROM user_sessions WHERE user_id = $1 AND tenant_id = $2',
+        'DELETE FROM user_sessions WHERE user_id = $1 AND tenant_id = $2 AND expires_at <= NOW()',
         [user.id, user.tenant_id]
       );
+    } catch (cleanupError) {
+      // Non-critical - just log
+      console.warn('Failed to cleanup expired sessions:', cleanupError);
     }
 
     // Update last login
@@ -291,7 +309,8 @@ router.post('/login', async (req, res) => {
     );
 
     // Generate JWT with tenant context
-    const expiresIn = '7d';
+    // Increased expiration to 30 days to prevent premature expiration
+    const expiresIn = '30d';
     const token = jwt.sign(
       { 
         userId: user.id, 
@@ -304,9 +323,10 @@ router.post('/login', async (req, res) => {
     );
 
     // Create session record
+    // Session expiration matches JWT expiration (30 days)
     const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
+    expiresAt.setDate(expiresAt.getDate() + 30); // 30 days to match JWT expiration
 
     await db.query(
       `INSERT INTO user_sessions (id, user_id, tenant_id, token, ip_address, user_agent, expires_at)
