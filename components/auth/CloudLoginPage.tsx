@@ -17,65 +17,65 @@ import LicenseActivation from './LicenseActivation';
 type View = 'login' | 'register' | 'activate-license';
 
 const CloudLoginPage: React.FC = () => {
-  const { login, isLoading, error } = useAuth();
+  const { smartLogin, isLoading, error } = useAuth();
   const [view, setView] = useState<View>('login');
-  const [tenantId, setTenantId] = useState('');
-  const [tenantSearch, setTenantSearch] = useState('');
-  const [username, setUsername] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
-  const [lookupError, setLookupError] = useState('');
-  const [lookupResults, setLookupResults] = useState<Array<{ id: string; name: string; company_name: string; email: string }>>([]);
-  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [availableTenants, setAvailableTenants] = useState<Array<{ id: string; name: string; company_name: string; email: string }>>([]);
+  const [selectedTenantId, setSelectedTenantId] = useState<string>('');
 
-  const handleLookupTenant = async () => {
-    if (!tenantSearch.trim()) {
-      setLookupError('Please enter email or company name');
-      return;
+  // Load last used tenant/identifier from localStorage
+  React.useEffect(() => {
+    const lastTenantId = localStorage.getItem('last_tenant_id');
+    const lastIdentifier = localStorage.getItem('last_identifier');
+    if (lastTenantId) {
+      setSelectedTenantId(lastTenantId);
     }
-
-    setIsLookingUp(true);
-    setLookupError('');
-    setLookupResults([]);
-
-    try {
-      const response = await apiClient.post<{ tenants: Array<{ id: string; name: string; company_name: string; email: string }> }>('/auth/lookup-tenant', {
-        email: tenantSearch.includes('@') ? tenantSearch : undefined,
-        companyName: tenantSearch.includes('@') ? undefined : tenantSearch,
-      });
-
-      if (response.tenants && response.tenants.length > 0) {
-        setLookupResults(response.tenants);
-        if (response.tenants.length === 1) {
-          // Auto-select if only one result
-          setTenantId(response.tenants[0].id);
-        }
-      } else {
-        setLookupError('No tenant found. Please check your email or company name.');
-      }
-    } catch (err: any) {
-      setLookupError(err.error || err.message || 'Lookup failed');
-    } finally {
-      setIsLookingUp(false);
+    if (lastIdentifier) {
+      setIdentifier(lastIdentifier);
     }
-  };
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
+    setAvailableTenants([]);
 
-    if (!tenantId) {
-      setLoginError('Please select or enter a tenant ID');
+    if (!identifier.trim()) {
+      setLoginError('Email or username is required');
       return;
     }
 
-    if (!username.trim()) {
-      setLoginError('Username is required');
+    if (!password.trim()) {
+      setLoginError('Password is required');
       return;
     }
 
     try {
-      await login(username, password, tenantId);
+      const result = await smartLogin(identifier, password, selectedTenantId || undefined);
+      
+      if (result.requiresTenantSelection && result.tenants) {
+        // Multiple tenants found - show selection
+        setAvailableTenants(result.tenants);
+        if (result.tenants.length === 1) {
+          // Auto-select if only one
+          setSelectedTenantId(result.tenants[0].id);
+        }
+      }
+      // If login successful, smartLogin will handle navigation
+    } catch (err: any) {
+      setLoginError(err.error || err.message || 'Login failed');
+    }
+  };
+
+  const handleTenantSelection = async (tenantId: string) => {
+    setSelectedTenantId(tenantId);
+    setLoginError('');
+    
+    // Retry login with selected tenant
+    try {
+      await smartLogin(identifier, password, tenantId);
     } catch (err: any) {
       setLoginError(err.error || err.message || 'Login failed');
     }
@@ -104,84 +104,16 @@ const CloudLoginPage: React.FC = () => {
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
-          {/* Tenant Lookup */}
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-slate-700">
-              Find Your Organization
-            </label>
-            <div className="flex gap-2">
-              <Input
-                id="tenantSearch"
-                name="tenantSearch"
-                placeholder="Email or company name"
-                value={tenantSearch}
-                onChange={e => setTenantSearch(e.target.value)}
-                onKeyPress={e => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleLookupTenant();
-                  }
-                }}
-              />
-              <Button
-                type="button"
-                onClick={handleLookupTenant}
-                disabled={isLookingUp || !tenantSearch.trim()}
-                className="whitespace-nowrap"
-              >
-                {isLookingUp ? 'Searching...' : 'Search'}
-              </Button>
-            </div>
-            {lookupError && (
-              <p className="text-sm text-rose-600">{lookupError}</p>
-            )}
-            {lookupResults.length > 0 && (
-              <div className="mt-2 space-y-1">
-                <p className="text-xs text-slate-500">Select your organization:</p>
-                {lookupResults.map(tenant => (
-                  <button
-                    key={tenant.id}
-                    type="button"
-                    onClick={() => {
-                      setTenantId(tenant.id);
-                      setTenantSearch(tenant.company_name || tenant.name);
-                      setLookupResults([]);
-                    }}
-                    className={`w-full text-left p-2 rounded border ${
-                      tenantId === tenant.id
-                        ? 'border-green-500 bg-green-50'
-                        : 'border-slate-200 hover:border-slate-300'
-                    }`}
-                  >
-                    <div className="font-medium text-sm">{tenant.company_name || tenant.name}</div>
-                    <div className="text-xs text-slate-500">{tenant.email}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Direct Tenant ID Input (Alternative) */}
-          <div className="border-t pt-4">
-            <Input
-              id="tenantId"
-              name="tenantId"
-              label="Or enter Tenant ID directly"
-              value={tenantId}
-              onChange={e => setTenantId(e.target.value)}
-              placeholder="tenant_xxxxx"
-            />
-          </div>
-
           <Input
-            id="username"
-            name="username"
-            label="Username"
-            value={username}
-            onChange={e => setUsername(e.target.value)}
-            autoFocus={!!tenantId}
+            id="identifier"
+            name="identifier"
+            label="Email or Username"
+            value={identifier}
+            onChange={e => setIdentifier(e.target.value)}
+            autoFocus
             required
             autoComplete="username"
+            placeholder="your.email@company.com or username"
           />
 
           <Input
@@ -194,6 +126,34 @@ const CloudLoginPage: React.FC = () => {
             required
             autoComplete="current-password"
           />
+
+          {/* Show tenant selection if multiple tenants found */}
+          {availableTenants.length > 1 && (
+            <div className="space-y-2 p-4 bg-slate-50 rounded-lg border border-slate-200">
+              <p className="text-sm font-medium text-slate-700 mb-2">
+                Select your organization:
+              </p>
+              <div className="space-y-2">
+                {availableTenants.map(tenant => (
+                  <button
+                    key={tenant.id}
+                    type="button"
+                    onClick={() => handleTenantSelection(tenant.id)}
+                    className={`w-full text-left p-3 rounded border transition-colors ${
+                      selectedTenantId === tenant.id
+                        ? 'border-green-500 bg-green-50'
+                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                    }`}
+                  >
+                    <div className="font-medium text-sm text-slate-800">
+                      {tenant.company_name || tenant.name}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1">{tenant.email}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {(loginError || error) && (
             <div className="p-3 bg-rose-50 text-rose-700 text-sm rounded border border-rose-200">

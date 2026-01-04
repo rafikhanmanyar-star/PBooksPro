@@ -65,15 +65,20 @@ router.get('/:id/stats', async (req: AdminRequest, res) => {
     const db = getDb();
     const tenantId = req.params.id;
     
-    const [userCount, transactionCount, accountCount, contactCount] = await Promise.all([
+    const [tenantInfo, userCount, transactionCount, accountCount, contactCount] = await Promise.all([
+      db.query('SELECT max_users FROM tenants WHERE id = $1', [tenantId]),
       db.query('SELECT COUNT(*) as count FROM users WHERE tenant_id = $1', [tenantId]),
       db.query('SELECT COUNT(*) as count FROM transactions WHERE tenant_id = $1', [tenantId]),
       db.query('SELECT COUNT(*) as count FROM accounts WHERE tenant_id = $1', [tenantId]),
       db.query('SELECT COUNT(*) as count FROM contacts WHERE tenant_id = $1', [tenantId])
     ]);
 
+    const maxUsers = tenantInfo[0]?.max_users || 5;
+    const currentUserCount = parseInt(userCount[0].count);
+
     res.json({
-      userCount: parseInt(userCount[0].count),
+      userCount: currentUserCount,
+      maxUsers: maxUsers,
       transactionCount: parseInt(transactionCount[0].count),
       accountCount: parseInt(accountCount[0].count),
       contactCount: parseInt(contactCount[0].count)

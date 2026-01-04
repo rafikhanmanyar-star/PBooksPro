@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '../../services/adminApi';
-import { Search, Eye, Ban, CheckCircle } from 'lucide-react';
+import { Search, Eye, Ban, CheckCircle, Edit2, Save, X } from 'lucide-react';
 
 interface Tenant {
   id: string;
@@ -12,6 +12,7 @@ interface Tenant {
   trial_start_date: string;
   license_expiry_date: string | null;
   created_at: string;
+  max_users?: number;
 }
 
 const TenantManagement: React.FC = () => {
@@ -223,10 +224,26 @@ const TenantManagement: React.FC = () => {
 
 const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void }> = ({ tenant, onClose }) => {
   const [stats, setStats] = useState<any>(null);
+  const [tenantDetails, setTenantDetails] = useState<Tenant>(tenant);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [maxUsers, setMaxUsers] = useState<number>(tenant.max_users || 5);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     loadStats();
+    loadTenantDetails();
   }, [tenant.id]);
+
+  const loadTenantDetails = async () => {
+    try {
+      const data = await adminApi.getTenant(tenant.id);
+      setTenantDetails(data);
+      setMaxUsers(data.max_users || 5);
+    } catch (error) {
+      console.error('Failed to load tenant details:', error);
+    }
+  };
 
   const loadStats = async () => {
     try {
@@ -234,6 +251,33 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void }> = ({
       setStats(data);
     } catch (error) {
       console.error('Failed to load tenant stats:', error);
+    }
+  };
+
+  const handleSave = async () => {
+    if (maxUsers < 1) {
+      setError('Maximum users must be at least 1');
+      return;
+    }
+
+    if (maxUsers < (stats?.userCount || 0)) {
+      setError(`Maximum users cannot be less than current user count (${stats?.userCount || 0})`);
+      return;
+    }
+
+    setIsSaving(true);
+    setError('');
+    try {
+      await adminApi.updateTenant(tenant.id, {
+        maxUsers: maxUsers
+      });
+      await loadTenantDetails();
+      await loadStats();
+      setIsEditing(false);
+    } catch (err: any) {
+      setError(err.message || 'Failed to update tenant');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -256,27 +300,102 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void }> = ({
         <div style={{ display: 'grid', gap: '1rem' }}>
           <div>
             <label style={{ fontSize: '0.875rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>Company Name</label>
-            <div style={{ fontWeight: 500 }}>{tenant.company_name || tenant.name}</div>
+            <div style={{ fontWeight: 500 }}>{tenantDetails.company_name || tenantDetails.name}</div>
           </div>
           <div>
             <label style={{ fontSize: '0.875rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>Email</label>
-            <div>{tenant.email}</div>
+            <div>{tenantDetails.email}</div>
           </div>
           <div>
             <label style={{ fontSize: '0.875rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>License Type</label>
-            <div>{tenant.license_type}</div>
+            <div>{tenantDetails.license_type}</div>
           </div>
           <div>
             <label style={{ fontSize: '0.875rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>Status</label>
-            <div>{tenant.license_status}</div>
+            <div>{tenantDetails.license_status}</div>
           </div>
+          
+          {/* Max Users Configuration */}
+          <div style={{ marginTop: '0.5rem', paddingTop: '1rem', borderTop: '1px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <label style={{ fontSize: '0.875rem', color: '#6b7280', display: 'block' }}>Maximum Users per Organization</label>
+              {!isEditing && (
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setIsEditing(true)}
+                  style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                >
+                  <Edit2 size={14} style={{ marginRight: '0.25rem' }} />
+                  Edit
+                </button>
+              )}
+            </div>
+            {isEditing ? (
+              <div>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <input
+                    type="number"
+                    min="1"
+                    value={maxUsers}
+                    onChange={(e) => setMaxUsers(parseInt(e.target.value) || 1)}
+                    className="input"
+                    style={{ width: '120px' }}
+                  />
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}
+                  >
+                    <Save size={14} style={{ marginRight: '0.25rem' }} />
+                    {isSaving ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setIsEditing(false);
+                      setMaxUsers(tenantDetails.max_users || 5);
+                      setError('');
+                    }}
+                    style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}
+                  >
+                    <X size={14} style={{ marginRight: '0.25rem' }} />
+                    Cancel
+                  </button>
+                </div>
+                {error && (
+                  <div style={{ marginTop: '0.5rem', padding: '0.5rem', backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: '0.25rem', fontSize: '0.875rem' }}>
+                    {error}
+                  </div>
+                )}
+                <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#6b7280' }}>
+                  Current users: {stats?.userCount || 0} / {maxUsers}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>{tenantDetails.max_users || 5}</div>
+                {stats && (
+                  <div style={{ marginTop: '0.25rem', fontSize: '0.875rem', color: '#6b7280' }}>
+                    Current: {stats.userCount} / {tenantDetails.max_users || 5}
+                    {stats.userCount >= (tenantDetails.max_users || 5) && (
+                      <span style={{ marginLeft: '0.5rem', color: '#dc2626', fontWeight: 'bold' }}>• Limit Reached</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {stats && (
             <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #e5e7eb' }}>
               <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '0.75rem' }}>Statistics</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
                 <div>
                   <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Users</div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>{stats.userCount}</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>
+                    {stats.userCount} / {tenantDetails.max_users || 5}
+                  </div>
                 </div>
                 <div>
                   <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Transactions</div>

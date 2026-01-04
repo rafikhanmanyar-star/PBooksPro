@@ -80,6 +80,19 @@ class AdminApi {
     return response.json();
   }
 
+  async updateTenant(tenantId: string, data: { maxUsers?: number; name?: string; companyName?: string; email?: string; phone?: string; address?: string; subscriptionTier?: string }) {
+    const response = await fetch(`${ADMIN_API_URL}/tenants/${tenantId}`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to update tenant');
+    }
+    return response.json();
+  }
+
   // License Management
   async generateLicense(data: { tenantId: string; licenseType: string; deviceId?: string }) {
     const response = await fetch(`${ADMIN_API_URL}/licenses/generate`, {

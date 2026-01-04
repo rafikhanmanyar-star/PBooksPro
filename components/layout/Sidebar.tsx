@@ -5,6 +5,7 @@ import { ICONS, APP_LOGO } from '../../constants';
 import { useLicense } from '../../context/LicenseContext';
 import RegistrationModal from '../license/RegistrationModal';
 import { useAppContext } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import packageJson from '../../package.json';
 
 interface SidebarProps {
@@ -15,6 +16,7 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const { state, dispatch } = useAppContext();
     const { isRegistered, daysRemaining } = useLicense();
+    const { logout, tenant } = useAuth();
     const { currentUser } = state;
     const [isRegModalOpen, setIsRegModalOpen] = useState(false);
 
@@ -73,9 +75,24 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
         return false;
     };
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
         if (confirm('Are you sure you want to logout?')) {
-            dispatch({ type: 'LOGOUT' });
+            try {
+                // Call logout API to clear session
+                await logout();
+                // Clear local state
+                dispatch({ type: 'LOGOUT' });
+                // Clear localStorage
+                localStorage.removeItem('last_tenant_id');
+                localStorage.removeItem('last_identifier');
+                // Redirect to login - will be handled by AuthContext
+                window.location.href = '/';
+            } catch (error) {
+                console.error('Logout error:', error);
+                // Still clear local state even if API call fails
+                dispatch({ type: 'LOGOUT' });
+                window.location.href = '/';
+            }
         }
     };
 
@@ -154,17 +171,31 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                         </button>
                     )}
 
-                    <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer group" onClick={handleLogout}>
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-[10px] shadow-inner">
-                            {currentUser?.name?.charAt(0) || 'U'}
+                    <div className="space-y-2">
+                        {/* User Info */}
+                        <div className="flex items-center gap-3 p-2 rounded-lg bg-slate-800/50">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-[10px] shadow-inner">
+                                {currentUser?.name?.charAt(0) || 'U'}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-white truncate leading-tight">{currentUser?.name}</div>
+                                <div className="text-[10px] text-slate-400 truncate capitalize">{currentUser?.role}</div>
+                                {tenant && (
+                                    <div className="text-[10px] text-slate-500 truncate mt-0.5" title={tenant.companyName || tenant.name}>
+                                        {tenant.companyName || tenant.name}
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-white truncate leading-tight">{currentUser?.name}</div>
-                            <div className="text-[10px] text-slate-500 truncate capitalize">{currentUser?.role}</div>
-                        </div>
-                        <div className="text-slate-500 group-hover:text-white transition-colors">
+                        
+                        {/* Logout Button */}
+                        <button
+                            onClick={handleLogout}
+                            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors text-slate-400 hover:text-white group"
+                        >
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
-                        </div>
+                            <span className="text-xs font-medium">Logout</span>
+                        </button>
                     </div>
                 </div>
             </aside>

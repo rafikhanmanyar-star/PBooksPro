@@ -7,7 +7,230 @@ const router = Router();
 // Lazy initialization - get database service when needed, not at module load
 const getDb = () => getDatabaseService();
 
-// Login with tenant context
+// Smart login - auto-resolves tenant from email/username
+router.post('/smart-login', async (req, res) => {
+  try {
+    const db = getDb();
+    const { identifier, password, tenantId } = req.body; // identifier can be email or username
+    
+    if (!identifier || !password) {
+      return res.status(400).json({ error: 'Email/username and password are required' });
+    }
+
+    const isEmail = identifier.includes('@');
+    let matchedTenants: any[] = [];
+    let matchedUsers: any[] = [];
+
+    if (tenantId) {
+      // If tenantId is provided, use the existing login flow
+      const tenants = await db.query(
+        'SELECT * FROM tenants WHERE id = $1',
+        [tenantId]
+      );
+      
+      if (tenants.length === 0) {
+        return res.status(403).json({ error: 'Invalid tenant' });
+      }
+
+      const tenant = tenants[0];
+      const users = await db.query(
+        'SELECT * FROM users WHERE username = $1 AND tenant_id = $2 AND is_active = TRUE',
+        [identifier, tenantId]
+      );
+      
+      if (users.length === 0) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      matchedTenants = [tenant];
+      matchedUsers = users;
+    } else {
+      // Auto-resolve tenant
+      if (isEmail) {
+        // Search by email - check tenant email first, then user emails
+        const tenantsByEmail = await db.query(
+          'SELECT * FROM tenants WHERE email = $1',
+          [identifier]
+        );
+        
+        if (tenantsByEmail.length > 0) {
+          // Found tenant by email, now find user by email in that tenant
+          for (const tenant of tenantsByEmail) {
+            const users = await db.query(
+              'SELECT * FROM users WHERE email = $1 AND tenant_id = $2 AND is_active = TRUE',
+              [identifier, tenant.id]
+            );
+            if (users.length > 0) {
+              matchedTenants.push(tenant);
+              matchedUsers.push(...users);
+            }
+          }
+        } else {
+          // Check if email matches any user email
+          const usersByEmail = await db.query(
+            'SELECT u.*, t.* FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = $1 AND u.is_active = TRUE',
+            [identifier]
+          );
+          
+          if (usersByEmail.length > 0) {
+            matchedUsers = usersByEmail.map((row: any) => ({
+              id: row.id,
+              username: row.username,
+              name: row.name,
+              role: row.role,
+              email: row.email,
+              password: row.password,
+              tenant_id: row.tenant_id
+            }));
+            matchedTenants = usersByEmail.map((row: any) => ({
+              id: row.tenant_id,
+              name: row.name,
+              company_name: row.company_name,
+              email: row.email
+            }));
+          }
+        }
+      } else {
+        // Search by username across all tenants
+        const usersByUsername = await db.query(
+          `SELECT u.id, u.username, u.name, u.role, u.email, u.password, u.tenant_id,
+                  t.id as t_id, t.name as tenant_name, t.company_name, t.email as tenant_email 
+           FROM users u 
+           JOIN tenants t ON u.tenant_id = t.id 
+           WHERE u.username = $1 AND u.is_active = TRUE`,
+          [identifier]
+        );
+        
+        if (usersByUsername.length > 0) {
+          matchedUsers = usersByUsername.map((row: any) => ({
+            id: row.id,
+            username: row.username,
+            name: row.name,
+            role: row.role,
+            email: row.email,
+            password: row.password,
+            tenant_id: row.tenant_id
+          }));
+          
+          // Group by tenant to avoid duplicates
+          const tenantMap = new Map();
+          usersByUsername.forEach((row: any) => {
+            if (!tenantMap.has(row.tenant_id)) {
+              tenantMap.set(row.tenant_id, {
+                id: row.t_id,
+                name: row.tenant_name,
+                company_name: row.company_name,
+                email: row.tenant_email
+              });
+            }
+          });
+          matchedTenants = Array.from(tenantMap.values());
+        }
+      }
+    }
+
+    // If no matches found
+    if (matchedUsers.length === 0) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // If multiple tenants found, return them for selection
+    if (matchedTenants.length > 1) {
+      return res.status(200).json({
+        requiresTenantSelection: true,
+        tenants: matchedTenants.map(t => ({
+          id: t.id,
+          name: t.name,
+          company_name: t.company_name,
+          email: t.email
+        }))
+      });
+    }
+
+    // Single tenant found - verify password
+    const user = matchedUsers[0];
+    const tenant = matchedTenants[0];
+
+    // Verify password
+    if (!user.password || !await bcrypt.compare(password, user.password)) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Check for existing active sessions for this user
+    const existingSessions = await db.query(
+      `SELECT id FROM user_sessions 
+       WHERE user_id = $1 AND tenant_id = $2 AND expires_at > NOW()`,
+      [user.id, user.tenant_id]
+    );
+
+    if (existingSessions.length > 0) {
+      // Invalidate existing sessions (logout from other devices)
+      await db.query(
+        'DELETE FROM user_sessions WHERE user_id = $1 AND tenant_id = $2',
+        [user.id, user.tenant_id]
+      );
+    }
+
+    // Update last login
+    await db.query(
+      'UPDATE users SET last_login = NOW() WHERE id = $1',
+      [user.id]
+    );
+
+    // Generate JWT with tenant context
+    const expiresIn = '7d';
+    const token = jwt.sign(
+      { 
+        userId: user.id, 
+        username: user.username,
+        tenantId: user.tenant_id,
+        role: user.role
+      },
+      process.env.JWT_SECRET!,
+      { expiresIn }
+    );
+
+    // Create session record
+    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
+
+    await db.query(
+      `INSERT INTO user_sessions (id, user_id, tenant_id, token, ip_address, user_agent, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        sessionId,
+        user.id,
+        user.tenant_id,
+        token,
+        req.ip || req.headers['x-forwarded-for'] || 'unknown',
+        req.headers['user-agent'] || 'unknown',
+        expiresAt
+      ]
+    );
+
+    res.json({ 
+      token, 
+      user: { 
+        id: user.id, 
+        username: user.username, 
+        name: user.name, 
+        role: user.role,
+        tenantId: user.tenant_id
+      },
+      tenant: {
+        id: tenant.id,
+        name: tenant.name,
+        companyName: tenant.company_name
+      }
+    });
+  } catch (error) {
+    console.error('Smart login error:', error);
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+// Login with tenant context (legacy - kept for backward compatibility)
 router.post('/login', async (req, res) => {
   try {
     const db = getDb();
@@ -46,13 +269,29 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    // Check for existing active sessions for this user
+    const existingSessions = await db.query(
+      `SELECT id FROM user_sessions 
+       WHERE user_id = $1 AND tenant_id = $2 AND expires_at > NOW()`,
+      [user.id, user.tenant_id]
+    );
+
+    if (existingSessions.length > 0) {
+      // Invalidate existing sessions (logout from other devices)
+      await db.query(
+        'DELETE FROM user_sessions WHERE user_id = $1 AND tenant_id = $2',
+        [user.id, user.tenant_id]
+      );
+    }
+
     // Update last login
-    await getDb().query(
+    await db.query(
       'UPDATE users SET last_login = NOW() WHERE id = $1',
       [user.id]
     );
 
     // Generate JWT with tenant context
+    const expiresIn = '7d';
     const token = jwt.sign(
       { 
         userId: user.id, 
@@ -61,7 +300,26 @@ router.post('/login', async (req, res) => {
         role: user.role
       },
       process.env.JWT_SECRET!,
-      { expiresIn: '7d' }
+      { expiresIn }
+    );
+
+    // Create session record
+    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
+
+    await db.query(
+      `INSERT INTO user_sessions (id, user_id, tenant_id, token, ip_address, user_agent, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        sessionId,
+        user.id,
+        user.tenant_id,
+        token,
+        req.ip || req.headers['x-forwarded-for'] || 'unknown',
+        req.headers['user-agent'] || 'unknown',
+        expiresAt
+      ]
     );
 
     res.json({ 
@@ -82,6 +340,38 @@ router.post('/login', async (req, res) => {
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+// Logout endpoint
+router.post('/logout', async (req, res) => {
+  try {
+    const db = getDb();
+    const authHeader = req.headers.authorization;
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+        
+        // Delete session
+        await db.query(
+          'DELETE FROM user_sessions WHERE token = $1',
+          [token]
+        );
+        
+        res.json({ success: true, message: 'Logged out successfully' });
+      } catch (jwtError) {
+        // Token invalid, but still return success
+        res.json({ success: true, message: 'Logged out successfully' });
+      }
+    } else {
+      res.json({ success: true, message: 'Logged out successfully' });
+    }
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({ error: 'Logout failed' });
   }
 });
 
@@ -194,6 +484,28 @@ router.post('/register-tenant', async (req, res) => {
 
     // Create admin user
     try {
+      // Check user limit (skip for first user during registration)
+      const tenantInfo = await db.query(
+        'SELECT max_users FROM tenants WHERE id = $1',
+        [tenantId]
+      );
+      const maxUsers = tenantInfo[0]?.max_users || 5;
+      
+      const userCountResult = await db.query(
+        'SELECT COUNT(*) as count FROM users WHERE tenant_id = $1',
+        [tenantId]
+      );
+      const currentUserCount = parseInt(userCountResult[0]?.count || '0');
+      
+      // During registration, we're creating the first user, so this should always pass
+      // But we check anyway for safety
+      if (currentUserCount >= maxUsers) {
+        return res.status(403).json({
+          error: 'User limit reached',
+          message: `This organization has reached its maximum user limit of ${maxUsers}. Please contact support to increase the limit.`
+        });
+      }
+      
       const hashedPassword = await bcrypt.hash(adminPassword, 10);
       const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       

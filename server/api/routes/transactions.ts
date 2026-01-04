@@ -5,6 +5,49 @@ import { getDatabaseService } from '../../services/databaseService.js';
 const router = Router();
 const getDb = () => getDatabaseService();
 
+// Helper function to log transaction audit
+async function logTransactionAudit(
+  db: any,
+  tenantId: string,
+  userId: string,
+  userName: string,
+  userRole: string,
+  action: string,
+  transactionId: string | null,
+  transactionData: any,
+  oldValues: any = null,
+  req: any
+) {
+  try {
+    const auditId = `audit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    await db.query(
+      `INSERT INTO transaction_audit_log (
+        id, tenant_id, transaction_id, user_id, user_name, user_role, action,
+        transaction_type, amount, description, old_values, new_values, ip_address, user_agent
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+      [
+        auditId,
+        tenantId,
+        transactionId,
+        userId,
+        userName,
+        userRole,
+        action,
+        transactionData?.type || null,
+        transactionData?.amount || null,
+        transactionData?.description || null,
+        oldValues ? JSON.stringify(oldValues) : null,
+        transactionData ? JSON.stringify(transactionData) : null,
+        req.ip || req.headers['x-forwarded-for'] || 'unknown',
+        req.headers['user-agent'] || 'unknown'
+      ]
+    );
+  } catch (error) {
+    console.error('Error logging transaction audit:', error);
+    // Don't throw - audit logging should not break the main operation
+  }
+}
+
 // GET all transactions (automatically filtered by tenant via RLS)
 router.get('/', async (req: TenantRequest, res) => {
   try {
@@ -44,6 +87,23 @@ router.get('/', async (req: TenantRequest, res) => {
     }
 
     const transactions = await db.query(query, params);
+    
+    // Log view action for audit (optional - can be disabled for performance)
+    // if (req.user && transactions.length > 0) {
+    //   await logTransactionAudit(
+    //     db,
+    //     req.tenantId!,
+    //     req.user.userId,
+    //     req.user.username || 'Unknown',
+    //     req.user.role || 'Unknown',
+    //     'VIEW',
+    //     null,
+    //     { count: transactions.length },
+    //     null,
+    //     req
+    //   );
+    // }
+    
     res.json(transactions);
   } catch (error) {
     console.error('Error fetching transactions:', error);
@@ -94,6 +154,23 @@ router.post('/', async (req: TenantRequest, res) => {
       transaction.contactId,
       transaction.projectId,
     ]);
+    
+    // Log audit entry
+    if (req.user) {
+      await logTransactionAudit(
+        db,
+        req.tenantId!,
+        req.user.userId,
+        req.user.username || 'Unknown',
+        req.user.role || 'Unknown',
+        'CREATE',
+        result[0].id,
+        result[0],
+        null,
+        req
+      );
+    }
+    
     res.json(result[0]);
   } catch (error) {
     console.error('Error creating transaction:', error);
@@ -105,6 +182,17 @@ router.post('/', async (req: TenantRequest, res) => {
 router.put('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
+    
+    // Get old values for audit log
+    const oldTransaction = await db.query(
+      'SELECT * FROM transactions WHERE id = $1 AND tenant_id = $2',
+      [req.params.id, req.tenantId]
+    );
+    
+    if (oldTransaction.length === 0) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+    
     const transaction = req.body;
     const query = `
       UPDATE transactions 
@@ -127,8 +215,20 @@ router.put('/:id', async (req: TenantRequest, res) => {
       req.tenantId
     ]);
     
-    if (result.length === 0) {
-      return res.status(404).json({ error: 'Transaction not found' });
+    // Log audit entry
+    if (req.user) {
+      await logTransactionAudit(
+        db,
+        req.tenantId!,
+        req.user.userId,
+        req.user.username || 'Unknown',
+        req.user.role || 'Unknown',
+        'UPDATE',
+        req.params.id,
+        result[0],
+        oldTransaction[0],
+        req
+      );
     }
     
     res.json(result[0]);
@@ -142,13 +242,36 @@ router.put('/:id', async (req: TenantRequest, res) => {
 router.delete('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
+    
+    // Get transaction data for audit log before deletion
+    const oldTransaction = await db.query(
+      'SELECT * FROM transactions WHERE id = $1 AND tenant_id = $2',
+      [req.params.id, req.tenantId]
+    );
+    
+    if (oldTransaction.length === 0) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+    
     const result = await db.query(
       'DELETE FROM transactions WHERE id = $1 AND tenant_id = $2 RETURNING id',
       [req.params.id, req.tenantId]
     );
     
-    if (result.length === 0) {
-      return res.status(404).json({ error: 'Transaction not found' });
+    // Log audit entry
+    if (req.user) {
+      await logTransactionAudit(
+        db,
+        req.tenantId!,
+        req.user.userId,
+        req.user.username || 'Unknown',
+        req.user.role || 'Unknown',
+        'DELETE',
+        req.params.id,
+        null,
+        oldTransaction[0],
+        req
+      );
     }
     
     res.json({ success: true });

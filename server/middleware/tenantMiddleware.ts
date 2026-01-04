@@ -6,6 +6,11 @@ export interface TenantRequest extends Request {
   tenantId?: string;
   userId?: string;
   userRole?: string;
+  user?: {
+    userId: string;
+    username: string;
+    role: string;
+  };
 }
 
 export function tenantMiddleware(pool: Pool) {
@@ -23,10 +28,35 @@ export function tenantMiddleware(pool: Pool) {
       req.tenantId = decoded.tenantId;
       req.userId = decoded.userId;
       req.userRole = decoded.role;
+      
+      // Set user info for audit logging
+      req.user = {
+        userId: decoded.userId,
+        username: decoded.username,
+        role: decoded.role
+      };
 
       if (!req.tenantId) {
         return res.status(403).json({ error: 'No tenant context' });
       }
+
+      // Verify session is still valid
+      const { getDatabaseService } = await import('../services/databaseService.js');
+      const db = getDatabaseService();
+      const sessions = await db.query(
+        'SELECT id FROM user_sessions WHERE token = $1 AND expires_at > NOW()',
+        [token]
+      );
+
+      if (sessions.length === 0) {
+        return res.status(401).json({ error: 'Session expired or invalid' });
+      }
+
+      // Update last activity
+      await db.query(
+        'UPDATE user_sessions SET last_activity = NOW() WHERE token = $1',
+        [token]
+      );
 
       // Verify tenant exists and is active
       const tenants = await pool.query(

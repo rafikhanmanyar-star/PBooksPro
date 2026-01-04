@@ -32,6 +32,11 @@ export interface AuthState {
 
 interface AuthContextType extends AuthState {
   login: (username: string, password: string, tenantId: string) => Promise<void>;
+  smartLogin: (identifier: string, password: string, tenantId?: string) => Promise<{
+    requiresTenantSelection: boolean;
+    tenants?: Array<{ id: string; name: string; company_name: string; email: string }>;
+    success?: boolean;
+  }>;
   registerTenant: (data: TenantRegistrationData) => Promise<{ tenantId: string; trialDaysRemaining: number }>;
   logout: () => void;
   activateLicense: (licenseKey: string) => Promise<void>;
@@ -157,7 +162,72 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   /**
-   * Login with username, password, and tenant ID
+   * Smart login - auto-resolves tenant from email/username
+   */
+  const smartLogin = useCallback(async (identifier: string, password: string, tenantId?: string) => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+
+    try {
+      const response = await apiClient.post<{
+        token?: string;
+        user?: User;
+        tenant?: Tenant;
+        requiresTenantSelection?: boolean;
+        tenants?: Array<{ id: string; name: string; company_name: string; email: string }>;
+      }>('/auth/smart-login', {
+        identifier,
+        password,
+        tenantId,
+      });
+
+      // If multiple tenants found, return them for selection
+      if (response.requiresTenantSelection && response.tenants) {
+        setState(prev => ({ ...prev, isLoading: false }));
+        return {
+          requiresTenantSelection: true,
+          tenants: response.tenants,
+        };
+      }
+
+      // Single tenant - proceed with login
+      if (response.token && response.user && response.tenant) {
+        // Store last used tenant in localStorage
+        localStorage.setItem('last_tenant_id', response.tenant.id);
+        localStorage.setItem('last_identifier', identifier);
+
+        // Set authentication
+        apiClient.setAuth(response.token, response.tenant.id);
+
+        setState({
+          isAuthenticated: true,
+          user: response.user,
+          tenant: response.tenant,
+          isLoading: false,
+          error: null,
+        });
+
+        return {
+          requiresTenantSelection: false,
+          success: true,
+        };
+      }
+
+      throw new Error('Invalid response from server');
+    } catch (error: any) {
+      const errorMessage = error.error || error.message || 'Login failed';
+      setState({
+        isAuthenticated: false,
+        user: null,
+        tenant: null,
+        isLoading: false,
+        error: errorMessage,
+      });
+      throw error;
+    }
+  }, []);
+
+  /**
+   * Login with username, password, and tenant ID (legacy - kept for backward compatibility)
    */
   const login = useCallback(async (username: string, password: string, tenantId: string) => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
@@ -172,6 +242,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         password,
         tenantId,
       });
+
+      // Store last used tenant in localStorage
+      localStorage.setItem('last_tenant_id', response.tenant.id);
+      localStorage.setItem('last_identifier', username);
 
       // Set authentication
       apiClient.setAuth(response.token, response.tenant.id);
@@ -294,15 +368,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   /**
    * Logout
    */
-  const logout = useCallback(() => {
-    apiClient.clearAuth();
-    setState({
-      isAuthenticated: false,
-      user: null,
-      tenant: null,
-      isLoading: false,
-      error: null,
-    });
+  const logout = useCallback(async () => {
+    try {
+      // Call logout API to clear session on server
+      await apiClient.post('/auth/logout', {});
+    } catch (error) {
+      console.error('Logout API error:', error);
+      // Continue with local logout even if API fails
+    } finally {
+      // Clear local auth
+      apiClient.clearAuth();
+      setState({
+        isAuthenticated: false,
+        user: null,
+        tenant: null,
+        isLoading: false,
+        error: null,
+      });
+    }
   }, []);
 
   return (
@@ -310,6 +393,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         ...state,
         login,
+        smartLogin,
         registerTenant,
         logout,
         activateLicense,
