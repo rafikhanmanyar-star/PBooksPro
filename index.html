@@ -110,9 +110,7 @@
   <body class="bg-background">
     <div id="root"></div>
     <script>
-      // Skip service workers inside Electron (file:// doesn't support SW)
-      const isElectron = typeof window !== 'undefined' && !!(window).electronAPI;
-      if ('serviceWorker' in navigator && !isElectron) {
+      if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('./sw.js', { scope: './' })
             .then(() => {

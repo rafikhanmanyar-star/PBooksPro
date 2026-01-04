@@ -24,8 +24,6 @@ import { useProgress } from './context/ProgressContext';
 import { usePagePreloader } from './hooks/usePagePreloader';
 import Loading from './components/ui/Loading';
 
-// Note: electronAPI type declarations are in other files (UpdateCheck.tsx, UpdateNotification.tsx)
-// Using type assertion (window as any).electronAPI to avoid type conflicts
 
 // Lazy Load Components
 const DashboardPage = React.lazy(() => import('./components/dashboard/DashboardPage'));
@@ -138,96 +136,6 @@ const App: React.FC = () => {
   }, [dispatch, startNavTransition]);
 
 
-  // Listen for menu actions (Electron only)
-  useEffect(() => {
-    const electronAPI = (window as any).electronAPI;
-    if (typeof window !== 'undefined' && electronAPI?.onOpenUpdateSettings) {
-      const cleanup = electronAPI.onOpenUpdateSettings(() => {
-        // Navigate to settings page and ensure data management section is visible
-        dispatch({ type: 'SET_PAGE', payload: 'settings' });
-        // Dispatch custom event to set active category to 'data' (Data Management)
-        window.dispatchEvent(new CustomEvent('open-data-management-section'));
-        // Scroll to update section after a brief delay to allow page to render
-        setTimeout(() => {
-          const updateSection = document.querySelector('[data-update-section]');
-          if (updateSection) {
-            updateSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }
-        }, 200);
-      });
-      return cleanup;
-    }
-  }, [dispatch]);
-
-  // Listen for create backup menu action
-  useEffect(() => {
-    const electronAPI = (window as any).electronAPI;
-    if (typeof window !== 'undefined' && electronAPI?.onMenuCreateBackup) {
-      const cleanup = electronAPI.onMenuCreateBackup(() => {
-        createBackup(progress, dispatch);
-      });
-      return cleanup;
-    }
-  }, [dispatch, progress]);
-
-  // Listen for restore backup menu action
-  useEffect(() => {
-    const electronAPI = (window as any).electronAPI;
-    if (typeof window !== 'undefined' && electronAPI?.onMenuRestoreBackup) {
-      const cleanup = electronAPI.onMenuRestoreBackup((data: { fileName: string; fileData: number[] }) => {
-        // Convert the array back to a File object
-        const uint8Array = new Uint8Array(data.fileData);
-        const blob = new Blob([uint8Array], { type: 'application/octet-stream' });
-        const file = new File([blob], data.fileName, { type: 'application/octet-stream' });
-        restoreBackup(file, dispatch, progress);
-      });
-      return cleanup;
-    }
-  }, [dispatch, progress]);
-
-  // Listen for open help section menu action
-  useEffect(() => {
-    const electronAPI = (window as any).electronAPI;
-    if (typeof window !== 'undefined' && electronAPI?.onOpenHelpSection) {
-      const cleanup = electronAPI.onOpenHelpSection(() => {
-        // Navigate to settings page
-        dispatch({ type: 'SET_PAGE', payload: 'settings' });
-        // Scroll to help section after a brief delay to allow page to render
-        setTimeout(() => {
-          const helpButton = document.querySelector('[data-help-section]');
-          if (helpButton) {
-            helpButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            // Click the help button to activate it
-            (helpButton as HTMLElement).click();
-          }
-        }, 100);
-      });
-      return cleanup;
-    }
-  }, [dispatch]);
-
-  // Listen for open backup & restore page menu action
-  useEffect(() => {
-    const electronAPI = (window as any).electronAPI;
-    if (typeof window !== 'undefined' && electronAPI?.onOpenBackupRestore) {
-      const cleanup = electronAPI.onOpenBackupRestore(() => {
-        // Navigate to settings page
-        dispatch({ type: 'SET_PAGE', payload: 'settings' });
-        // Dispatch custom event to set active category to 'backup'
-        window.dispatchEvent(new CustomEvent('open-backup-restore-section'));
-        // Scroll to backup section after a brief delay to allow page to render
-        setTimeout(() => {
-          const backupButton = document.querySelector('[data-backup-section]');
-          if (backupButton) {
-            backupButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            // Click the backup button to activate it
-            (backupButton as HTMLElement).click();
-          }
-        }, 100);
-      });
-      return cleanup;
-    }
-  }, [dispatch]);
 
   // Handle URL shortcuts (PWA actions)
   useEffect(() => {
@@ -473,7 +381,6 @@ const App: React.FC = () => {
       <KPIDrilldown />
       <ProgressDisplay />
 
-      {/* Auto-Update Notification (Electron only) */}
       <UpdateNotification />
 
       {isCustomKeyboardOpen && (

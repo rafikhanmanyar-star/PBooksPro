@@ -1,70 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Download, RefreshCw, X, CheckCircle, AlertCircle, ArrowDownToLine, Clock } from 'lucide-react';
-import { useUpdate } from '../../context/UpdateContext';
-import { useAppContext } from '../../context/AppContext';
-
-// TypeScript declarations for the Electron API
-declare global {
-  interface Window {
-    electronAPI?: {
-      isElectron: boolean;
-      getAppVersion: () => Promise<string>;
-      getPlatform: () => string;
-    };
-  }
-}
+import React from 'react';
 
 const UpdateNotification: React.FC = () => {
-  const {
-    isChecking,
-    updateAvailable,
-    updateDownloaded,
-    updateInfo,
-    downloadProgress,
-    smoothedProgress,
-    error,
-    checkForUpdates,
-    downloadUpdate,
-    installUpdate,
-  } = useUpdate();
-
-  const { state } = useAppContext();
-  const isOnSettingsPage = state.currentPage === 'settings';
-
-  const [currentVersion, setCurrentVersion] = useState<string>('');
-  const [isVisible, setIsVisible] = useState(false);
-  const [isDismissed, setIsDismissed] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
-
-  // Check if running in Electron
-  const isElectron = typeof window !== 'undefined' && window.electronAPI?.isElectron;
-
-  // Format bytes to human readable
-  const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  };
-
-  // Get current app version
-  useEffect(() => {
-    if (isElectron && window.electronAPI) {
-      window.electronAPI.getAppVersion().then(setCurrentVersion);
-    }
-  }, [isElectron]);
-
-  // Show notification when updates are available or downloaded
-  useEffect(() => {
-    if (updateAvailable || updateDownloaded || error) {
-      setIsVisible(true);
-      setIsDismissed(false);
-    }
-  }, [updateAvailable, updateDownloaded, error]);
-
-  // Don't render if not in Electron
-  if (!isElectron) return null;
+  // Electron support removed - component no longer needed
+  return null;
 
   // Don't render if on settings page (UpdateCheck component handles it there)
   if (isOnSettingsPage) return null;

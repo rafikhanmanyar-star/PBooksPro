@@ -12,64 +12,6 @@ import { loadSqlJs } from './sqljs-loader';
 type Database = any;
 type SqlJsStatic = any;
 
-/**
- * Electron storage adapter for persistent database storage
- * Uses Electron's userData directory which persists across app updates
- */
-class ElectronStorage {
-    async isSupported(): Promise<boolean> {
-        return typeof window !== 'undefined' && 
-               !!(window as any).electronAPI && 
-               typeof (window as any).electronAPI.readDatabaseFile === 'function';
-    }
-
-    async load(): Promise<Uint8Array | null> {
-        if (!(await this.isSupported())) return null;
-        try {
-            const result = await (window as any).electronAPI.readDatabaseFile();
-            if (result.success && result.data) {
-                const data = new Uint8Array(result.data);
-                // Validate data is not empty
-                if (data.length === 0) {
-                    console.warn('Electron storage: loaded empty database');
-                    return null;
-                }
-                return data;
-            }
-            // If main file failed but backup exists, try backup
-            if (result.fromBackup) {
-                console.warn('⚠️ Using backup database file');
-            }
-            return null;
-        } catch (error) {
-            console.warn('Electron storage load failed:', error);
-            // Try to log error
-            try {
-                const { getErrorLogger } = await import('../errorLogger');
-                await getErrorLogger().logError(error instanceof Error ? error : new Error(String(error)), {
-                    errorType: 'filesystem_error',
-                    operation: 'electron_storage_load'
-                });
-            } catch (logError) {
-                // Ignore logging errors
-            }
-            return null;
-        }
-    }
-
-    async save(data: Uint8Array): Promise<void> {
-        if (!(await this.isSupported())) return;
-        try {
-            const result = await (window as any).electronAPI.writeDatabaseFile(Array.from(data));
-            if (!result.success) {
-                throw new Error(result.error || 'Failed to save database file');
-            }
-        } catch (error) {
-            console.warn('Electron storage save failed:', error);
-            throw error;
-        }
-    }
-}
 
 /**
  * Simple OPFS (Origin Private File System) adapter.
@@ -150,9 +92,8 @@ class DatabaseService {
     private initializationPromise: Promise<void> | null = null;
     private inTransaction = false;
     private sqlJsModule: any = null;
-    private electronStorage = new ElectronStorage();
     private opfs = new OpfsStorage();
-    private storageMode: 'electron' | 'opfs' | 'localStorage' = 'localStorage';
+    private storageMode: 'opfs' | 'localStorage' = 'localStorage';
     private saveLock: Promise<void> = Promise.resolve(); // Lock to prevent concurrent saves
 
     constructor(config: DatabaseConfig = {}) {
@@ -209,23 +150,13 @@ class DatabaseService {
                 // Load sql.js with timeout
                 const initPromise = initFunction({
                     locateFile: (file: string) => {
-                        // In Electron, use local file from dist folder
-                        // Check if we're in Electron (file:// protocol)
-                        const isElectron = typeof window !== 'undefined' && 
-                            (window.location.protocol === 'file:' || !!(window as any).electronAPI);
-                        
-                        if (isElectron) {
-                            // In Electron, use relative path from dist folder
-                            return `./${file}`;
-                        }
-                        
                         // In browser, try local first, then CDN
                         try {
                             // Try to use local file from node_modules (for dev) or dist (for build)
                             const localPath = new URL(`../../node_modules/sql.js/dist/${file}`, import.meta.url).href;
                             return localPath;
                         } catch {
-                            // Fallback to CDN only in browser (not Electron)
+                            // Fallback to CDN
                             return `https://sql.js.org/dist/${file}`;
                         }
                     },
@@ -240,23 +171,10 @@ class DatabaseService {
                 this.sqlJs = SQL;
                 console.log('✅ SQL.js loaded successfully');
 
-                // Priority order: Electron userData (most persistent) > OPFS > localStorage
+                // Priority order: OPFS > localStorage
                 let loadedData: Uint8Array | null = null;
                 
-                // 1. Try Electron storage first (persists across updates)
-                const electronData = await this.electronStorage.load();
-                if (electronData) {
-                    try {
-                        this.db = new SQL.Database(electronData);
-                        this.storageMode = 'electron';
-                        console.log('✅ Loaded existing database from Electron userData');
-                        loadedData = electronData;
-                    } catch (parseError) {
-                        console.warn('⚠️ Failed to parse Electron database, trying other sources:', parseError);
-                    }
-                }
-
-                // 2. Try OPFS if Electron didn't work
+                // 1. Try OPFS first
                 if (!this.db) {
                     const opfsData = await this.opfs.load();
                     if (opfsData) {
@@ -271,7 +189,7 @@ class DatabaseService {
                     }
                 }
 
-                // 3. Fallback to localStorage
+                // 2. Fallback to localStorage
                 if (!this.db) {
                     const savedDb = localStorage.getItem('finance_db');
                     if (typeof savedDb === 'string') {
@@ -305,33 +223,7 @@ class DatabaseService {
                 this.ensureContractColumnsExist();
             }
 
-            // CRITICAL: Migrate database to Electron storage if available
-            // This ensures data persists across app updates
-            if (this.storageMode !== 'electron' && (await this.electronStorage.isSupported())) {
-                try {
-                    const dbData = this.db.export();
-                    await this.electronStorage.save(dbData);
-                    const oldMode = this.storageMode;
-                    this.storageMode = 'electron';
-                    console.log(`✅ Migrated database from ${oldMode} to Electron userData - data will persist across updates`);
-                    
-                    // If we migrated from localStorage, keep a backup there too (for safety)
-                    if (oldMode === 'localStorage') {
-                        try {
-                            const buffer = Array.from(dbData);
-                            localStorage.setItem('finance_db', JSON.stringify(buffer));
-                            console.log('✅ Kept localStorage backup for safety');
-                        } catch (backupError) {
-                            console.warn('⚠️ Could not create localStorage backup:', backupError);
-                        }
-                    }
-                } catch (copyError) {
-                    console.warn('⚠️ Failed to migrate to Electron storage, trying OPFS:', copyError);
-                    // Continue with current storage mode
-                }
-            }
-            
-            // If Electron not available, try OPFS
+            // Migrate to OPFS if available
             if (this.storageMode === 'localStorage' && (await this.opfs.isSupported())) {
                 try {
                     await this.opfs.save(this.db.export());
@@ -801,7 +693,7 @@ class DatabaseService {
     /**
      * Get current storage mode
      */
-    getStorageMode(): 'electron' | 'opfs' | 'localStorage' {
+    getStorageMode(): 'opfs' | 'localStorage' {
         return this.storageMode;
     }
 
@@ -1007,7 +899,7 @@ class DatabaseService {
     }
 
     /**
-     * Persist the database to storage (Electron > OPFS > localStorage)
+     * Persist the database to storage (OPFS > localStorage)
      * Uses a lock to prevent concurrent saves that could cause corruption
      */
     private async persistToStorage(): Promise<void> {
@@ -1046,19 +938,6 @@ class DatabaseService {
                     testDb.close();
                 } catch (validationError) {
                     throw new Error(`Database validation failed: exported data is corrupted - ${validationError instanceof Error ? validationError.message : String(validationError)}`);
-                }
-            }
-
-            // Priority: Electron (most persistent) > OPFS > localStorage
-            if (await this.electronStorage.isSupported()) {
-                try {
-                    await this.electronStorage.save(data);
-                    this.storageMode = 'electron';
-                    console.log('✅ Database saved to Electron storage');
-                    resolveLock!();
-                    return;
-                } catch (electronError) {
-                    console.warn('Electron persistence failed, trying OPFS:', electronError);
                 }
             }
 

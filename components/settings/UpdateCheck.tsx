@@ -5,25 +5,6 @@ import Button from '../ui/Button';
 import { RefreshCw, CheckCircle, AlertCircle, Download, ArrowDownToLine, Copy } from 'lucide-react';
 import packageJson from '../../package.json';
 
-// TypeScript declarations for the Electron API
-declare global {
-  interface Window {
-    electronAPI?: {
-      isElectron: boolean;
-      getAppVersion: () => Promise<string>;
-      checkForUpdates: () => Promise<{ success: boolean; updateAvailable?: boolean; version?: string; error?: string }>;
-      downloadUpdate: () => Promise<{ success: boolean; error?: string }>;
-      installUpdate: (immediate?: boolean) => Promise<{ success: boolean; error?: string }>;
-      onUpdateChecking: (callback: () => void) => () => void;
-      onUpdateAvailable: (callback: (info: { version: string }) => void) => () => void;
-      onUpdateNotAvailable: (callback: (info: { version: string }) => void) => () => void;
-      onUpdateError: (callback: (error: { message: string }) => void) => () => void;
-      onDownloadProgress: (callback: (progress: { bytesPerSecond: number; percent: number; transferred: number; total: number }) => void) => () => void;
-      onUpdateDownloaded: (callback: (info: { version: string }) => void) => () => void;
-      onOpenUpdateSettings: (callback: () => void) => () => void;
-    };
-  }
-}
 
 interface UpdateInfo {
   version: string;
@@ -42,183 +23,58 @@ const UpdateCheck: React.FC = () => {
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [currentVersion, setCurrentVersion] = useState<string>('');
   
-  // Check if running in Electron
-  const isElectron = typeof window !== 'undefined' && window.electronAPI?.isElectron;
-
   // Get current app version
   useEffect(() => {
-    if (isElectron && window.electronAPI) {
-      window.electronAPI.getAppVersion().then(setCurrentVersion);
-    } else {
-      // For PWA, use version from package.json
-      setCurrentVersion(packageJson.version);
-    }
-  }, [isElectron]);
+    // Use version from package.json
+    setCurrentVersion(packageJson.version);
+  }, []);
 
-  // Set up event listeners for Electron update events
-  useEffect(() => {
-    if (!isElectron || !window.electronAPI) return;
+  // Electron update events removed - only PWA updates supported
 
-    const cleanupFns: (() => void)[] = [];
-
-    cleanupFns.push(
-      window.electronAPI.onUpdateChecking(() => {
-        setStatus('checking');
-        setError(null);
-        setErrorDetails(null);
-      })
-    );
-
-    cleanupFns.push(
-      window.electronAPI.onUpdateAvailable((info) => {
-        setStatus('available');
-        setUpdateInfo(info);
-      })
-    );
-
-    cleanupFns.push(
-      window.electronAPI.onUpdateNotAvailable(() => {
-        setStatus('not-available');
-        setTimeout(() => {
-          if (status === 'not-available') setStatus('idle');
-        }, 3000);
-      })
-    );
-
-    cleanupFns.push(
-      window.electronAPI.onUpdateError((err) => {
-        setStatus('error');
-        setError(err.message);
-        setErrorDetails(err.stack || err.message || JSON.stringify(err, null, 2));
-      })
-    );
-
-    cleanupFns.push(
-      window.electronAPI.onDownloadProgress((progress) => {
-        setStatus('downloading');
-        setDownloadProgress({ percent: progress.percent });
-      })
-    );
-
-    cleanupFns.push(
-      window.electronAPI.onUpdateDownloaded((info) => {
-        setStatus('downloaded');
-        setUpdateInfo(info);
-      })
-    );
-
-    return () => {
-      cleanupFns.forEach(cleanup => cleanup());
-    };
-  }, [isElectron, status]);
-
-  // Manual check for updates
+  // Manual check for updates (PWA only)
   const handleCheckForUpdates = useCallback(async () => {
-    if (isElectron && window.electronAPI) {
-      // Electron update check
-      setStatus('checking');
-      setError(null);
-      setErrorDetails(null);
-      try {
-        await window.electronAPI.checkForUpdates();
-      } catch (err) {
-        setStatus('error');
-        const errorMessage = err instanceof Error ? err.message : 'Failed to check for updates';
-        setError(errorMessage);
-        setErrorDetails(err instanceof Error ? (err.stack || err.message) : String(err));
-      }
-    } else {
-      // PWA update check
-      setStatus('checking');
-      setError(null);
-      setErrorDetails(null);
-      showToast("Checking for updates...", "info");
-      try {
-        await checkForUpdates();
-        // Wait a moment for service worker to detect updates
-        setTimeout(() => {
-          if (isUpdateAvailable) {
-            setStatus('available');
-            setUpdateInfo({ version: 'Latest' });
-          } else {
-            setStatus('not-available');
-            setTimeout(() => setStatus('idle'), 3000);
-          }
-        }, 1500);
-      } catch (err) {
-        setStatus('error');
-        const errorMessage = err instanceof Error ? err.message : 'Failed to check for updates';
-        setError(errorMessage);
-        setErrorDetails(err instanceof Error ? (err.stack || err.message) : String(err));
-      }
-    }
-  }, [isElectron, checkForUpdates, isUpdateAvailable, showToast]);
-
-  // Monitor PWA update availability
-  useEffect(() => {
-    if (!isElectron && isUpdateAvailable && status === 'idle') {
-      setStatus('available');
-      setUpdateInfo({ version: 'Latest' });
-    }
-  }, [isElectron, isUpdateAvailable, status]);
-
-  // Download update (Electron only)
-  const handleDownload = useCallback(async () => {
-    if (!isElectron || !window.electronAPI) return;
-    
-    setStatus('downloading');
-    setDownloadProgress({ percent: 0 });
-    
+    setStatus('checking');
+    setError(null);
+    setErrorDetails(null);
+    showToast("Checking for updates...", "info");
     try {
-      await window.electronAPI.downloadUpdate();
+      await checkForUpdates();
+      // Wait a moment for service worker to detect updates
+      setTimeout(() => {
+        if (isUpdateAvailable) {
+          setStatus('available');
+          setUpdateInfo({ version: 'Latest' });
+        } else {
+          setStatus('not-available');
+          setTimeout(() => setStatus('idle'), 3000);
+        }
+      }, 1500);
     } catch (err) {
       setStatus('error');
-      const errorMessage = err instanceof Error ? err.message : 'Failed to download update';
+      const errorMessage = err instanceof Error ? err.message : 'Failed to check for updates';
       setError(errorMessage);
       setErrorDetails(err instanceof Error ? (err.stack || err.message) : String(err));
     }
-  }, [isElectron]);
+  }, [checkForUpdates, isUpdateAvailable, showToast]);
 
-  // Install update
-  const handleInstall = useCallback(async () => {
-    if (isElectron && window.electronAPI) {
-      // Electron install - show confirmation with data consistency info
-      const confirmed = await showConfirm(
-        `Ready to install version ${updateInfo?.version || 'new version'}.\n\n` +
-        `✅ Your data and settings will be preserved\n` +
-        `✅ All accounts, transactions, and configurations will remain intact\n` +
-        `✅ The application will restart automatically\n\n` +
-        `Would you like to install the update now?`,
-        {
-          title: 'Install Update',
-          confirmLabel: 'Install Now',
-          cancelLabel: 'Cancel'
-        }
-      );
-      
-      if (!confirmed) {
-        return; // User cancelled
-      }
-
-      try {
-        await window.electronAPI.installUpdate(true); // Pass true for immediate install
-      } catch (err) {
-        setStatus('error');
-        const errorMessage = err instanceof Error ? err.message : 'Failed to install update';
-        setError(errorMessage);
-        setErrorDetails(err instanceof Error ? (err.stack || err.message) : String(err));
-      }
-    } else {
-      // PWA install (apply update)
-      const confirm = await showConfirm("A new version of the app is available. Update now?", { 
-        title: "Update Available", 
-        confirmLabel: "Update & Reload" 
-      });
-      if (confirm) {
-        applyUpdate();
-      }
+  // Monitor PWA update availability
+  useEffect(() => {
+    if (isUpdateAvailable && status === 'idle') {
+      setStatus('available');
+      setUpdateInfo({ version: 'Latest' });
     }
-  }, [isElectron, showConfirm, applyUpdate]);
+  }, [isUpdateAvailable, status]);
+
+  // Install update (PWA only)
+  const handleInstall = useCallback(async () => {
+    const confirm = await showConfirm("A new version of the app is available. Update now?", { 
+      title: "Update Available", 
+      confirmLabel: "Update & Reload" 
+    });
+    if (confirm) {
+      applyUpdate();
+    }
+  }, [showConfirm, applyUpdate]);
 
   // Format bytes to human readable
   const formatBytes = (bytes: number): string => {
@@ -292,17 +148,10 @@ const UpdateCheck: React.FC = () => {
                 {updateInfo ? `Version ${updateInfo.version} is available` : 'An update is available'}
               </span>
             </div>
-            {isElectron ? (
-              <Button onClick={handleDownload} className="w-full sm:w-auto">
-                <Download className="w-4 h-4 mr-2" />
-                Download Update
-              </Button>
-            ) : (
-              <Button onClick={handleInstall} className="w-full sm:w-auto">
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Update & Reload
-              </Button>
-            )}
+            <Button onClick={handleInstall} className="w-full sm:w-auto">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Update & Reload
+            </Button>
           </div>
         )}
 
@@ -339,21 +188,6 @@ const UpdateCheck: React.FC = () => {
           </div>
         )}
         
-        {/* Show available state if downloaded but not yet in downloaded status */}
-        {status === 'available' && updateInfo && isElectron && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm">
-              <Download className="w-4 h-4 text-emerald-600" />
-              <span className="font-medium text-emerald-700">
-                Version {updateInfo.version} is available
-              </span>
-            </div>
-            <Button onClick={handleDownload} className="w-full sm:w-auto">
-              <Download className="w-4 h-4 mr-2" />
-              Download Update
-            </Button>
-          </div>
-        )}
 
         {status === 'not-available' && (
           <div className="flex items-center gap-2 text-sm text-slate-600">

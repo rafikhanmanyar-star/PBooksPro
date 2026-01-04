@@ -32,7 +32,7 @@ const suppressSqlJsWarnings = () => {
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: './', // CRITICAL: This ensures assets load correctly in Electron (file:// protocol)
+  base: './',
   define: {
     // Expose environment variables to the client
     'process.env.API_KEY': JSON.stringify(process.env.API_KEY || process.env.VITE_API_KEY || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || ''),
@@ -42,8 +42,7 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['sql.js'], // Exclude sql.js from pre-bundling
     include: ['react', 'react-dom'], // Ensure React is pre-bundled and deduplicated
-    esbuildOptions: {
-      // Fix for React 19.2.x Activity error in Electron
+      esbuildOptions: {
       define: {
         global: 'globalThis',
       },
@@ -56,7 +55,6 @@ export default defineConfig({
   },
   // Handle CommonJS modules
   build: {
-    // Inline CSS with JS to avoid missing stylesheet issues in file:// Electron
     cssCodeSplit: false,
     commonjsOptions: {
       include: [/sql\.js/, /node_modules/],
@@ -85,7 +83,6 @@ export default defineConfig({
     {
       name: 'remove-external-resources',
       transformIndexHtml(html) {
-        // Keep Tailwind CDN in production (Electron file:// needs runtime styles)
         // Only strip importmap since dependencies are bundled by Vite
         const result = html.replace(
           /<script type="importmap">[\s\S]*?<\/script>/g,
@@ -110,24 +107,6 @@ export default defineConfig({
         }
       }
     },
-    {
-      name: 'copy-sqljs-wasm',
-      closeBundle() {
-        // Copy sql.js WASM files to dist folder for Electron
-        const sqlJsWasmSource = join(process.cwd(), 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm')
-        const sqlJsWasmDest = join(process.cwd(), 'dist', 'sql-wasm.wasm')
-        if (existsSync(sqlJsWasmSource)) {
-          try {
-            copyFileSync(sqlJsWasmSource, sqlJsWasmDest)
-            console.log('✅ Copied sql-wasm.wasm to dist folder')
-          } catch (error) {
-            console.warn('⚠️ Failed to copy sql-wasm.wasm:', error)
-          }
-        } else {
-          console.warn('⚠️ sql-wasm.wasm not found in node_modules, Electron build may fail')
-        }
-      }
-    }
   ],
   server: {
     fs: {

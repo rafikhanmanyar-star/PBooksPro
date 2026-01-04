@@ -283,7 +283,6 @@ try {
   };
 
   // Wait for DOM to be fully ready before initializing React
-  // This helps prevent React 19.2.x Activity initialization errors in Electron
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initApp);
   } else {
