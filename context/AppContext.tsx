@@ -1688,6 +1688,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 // Sync to API asynchronously (don't block UI)
                 const syncToApi = async () => {
                     try {
+                        // Check if user is authenticated before syncing
+                        if (!isAuthenticated) {
+                            console.log('⏭️ Skipping API sync - user not authenticated');
+                            return;
+                        }
+                        
+                        // Verify token is valid before attempting sync
+                        const token = localStorage.getItem('auth_token');
+                        if (!token) {
+                            console.warn('⚠️ No token found, skipping API sync');
+                            return;
+                        }
+                        
+                        // Check token expiration using ApiClient
+                        try {
+                            const { apiClient } = await import('../services/api/client');
+                            if (apiClient.isTokenExpired()) {
+                                console.warn('⚠️ Token is expired, skipping API sync. Data saved locally.');
+                                return;
+                            }
+                        } catch (tokenCheckError) {
+                            console.warn('⚠️ Could not verify token, skipping API sync:', tokenCheckError);
+                            return;
+                        }
+                        
                         const apiService = getAppStateApiService();
 
                         // Handle account changes
@@ -2231,68 +2256,115 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         return;
                     }
                     
-                    // Verify token is not expired (client-side check)
+                    // Verify token is not expired and has valid format (client-side check)
                     try {
                         const parts = token.split('.');
-                        if (parts.length === 3) {
-                            const payload = JSON.parse(atob(parts[1]));
-                            const exp = payload.exp * 1000; // Convert to milliseconds
-                            if (Date.now() >= exp) {
-                                console.warn('⚠️ Token is expired, skipping auto-sync');
-                                return;
-                            }
+                        if (parts.length !== 3) {
+                            console.warn('⚠️ Invalid token format, skipping auto-sync');
+                            return;
                         }
+                        
+                        const payload = JSON.parse(atob(parts[1]));
+                        const exp = payload.exp * 1000; // Convert to milliseconds
+                        const now = Date.now();
+                        
+                        if (now >= exp) {
+                            console.warn('⚠️ Token is expired, skipping auto-sync. Expired at:', new Date(exp).toISOString());
+                            return;
+                        }
+                        
+                        // Check if token expires soon (within 1 hour) - might be close to expiration
+                        const timeUntilExpiry = exp - now;
+                        const oneHour = 60 * 60 * 1000;
+                        if (timeUntilExpiry < oneHour) {
+                            console.warn('⚠️ Token expires soon, but proceeding with sync. Expires at:', new Date(exp).toISOString());
+                        }
+                        
+                        console.log('✅ Token validated - expires at:', new Date(exp).toISOString());
                     } catch (tokenCheckError) {
-                        console.warn('⚠️ Could not verify token, skipping auto-sync:', tokenCheckError);
+                        console.warn('⚠️ Could not verify token format, skipping auto-sync:', tokenCheckError);
                         return;
+                    }
+                    
+                    // Verify token is actually valid by making a test API call
+                    try {
+                        const { apiClient } = await import('../services/api/client');
+                        // Check if token is expired using ApiClient singleton
+                        if (apiClient.isTokenExpired()) {
+                            console.warn('⚠️ Token is expired (ApiClient check), skipping auto-sync');
+                            return;
+                        }
+                        // Test token with a lightweight endpoint to verify it's valid on server
+                        await apiClient.get('/tenants/me');
+                        console.log('✅ Token verified with server, proceeding with sync');
+                    } catch (testError: any) {
+                        if (testError?.status === 401) {
+                            console.warn('⚠️ Token validation failed with server (401), skipping auto-sync. Please re-login.');
+                            return;
+                        }
+                        // Other errors might be network issues, proceed anyway
+                        console.warn('⚠️ Token test failed but proceeding (might be network issue):', testError);
                     }
                     
                     const apiService = getAppStateApiService();
                     console.log('🔄 User re-authenticated, syncing local data to API...');
                     
                     // Sync contacts
+                    let syncFailed = false;
                     for (const contact of state.contacts) {
+                        if (syncFailed) break;
+                        
                         try {
                             await apiService.saveContact(contact);
                             console.log('✅ Synced contact to API:', contact.name);
                         } catch (err: any) {
-                            // Only log if it's not a 401 (which would mean token is still invalid)
-                            if (err?.status !== 401) {
-                                console.warn(`⚠️ Failed to sync contact ${contact.name}:`, err);
-                            } else {
+                            if (err?.status === 401) {
                                 console.warn(`⚠️ Token invalid during contact sync, stopping auto-sync`);
-                                // Stop syncing if token is invalid
-                                return;
+                                syncFailed = true;
+                                break;
+                            } else {
+                                console.warn(`⚠️ Failed to sync contact ${contact.name}:`, err);
+                                // Continue with other contacts
                             }
                         }
                     }
                     
+                    if (syncFailed) {
+                        console.warn('⚠️ Auto-sync stopped due to authentication failure');
+                        return;
+                    }
+                    
                     // Sync accounts (non-permanent)
                     for (const account of state.accounts) {
+                        if (syncFailed) break;
+                        
                         if (!account.isPermanent) {
                             try {
                                 await apiService.saveAccount(account);
                                 console.log('✅ Synced account to API:', account.name);
                             } catch (err: any) {
-                                if (err?.status !== 401) {
-                                    console.warn(`⚠️ Failed to sync account ${account.name}:`, err);
-                                } else {
+                                if (err?.status === 401) {
                                     console.warn(`⚠️ Token invalid during account sync, stopping auto-sync`);
-                                    return;
+                                    syncFailed = true;
+                                    break;
+                                } else {
+                                    console.warn(`⚠️ Failed to sync account ${account.name}:`, err);
                                 }
                             }
                         }
                     }
                     
-                    console.log('✅ Finished syncing local data to API');
+                    if (!syncFailed) {
+                        console.log('✅ Finished syncing local data to API');
+                    }
                 } catch (error) {
                     console.error('⚠️ Error syncing local data after re-authentication:', error);
                 }
             };
             
             // Delay sync to ensure token is fully set and ApiClient singleton is updated
-            // Increased delay to 2 seconds to ensure everything is ready
-            setTimeout(syncAllLocalData, 2000);
+            // Increased delay to 3 seconds to ensure everything is ready
+            setTimeout(syncAllLocalData, 3000);
         }
         
         // Update previous auth state
