@@ -65,6 +65,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   /**
+   * Logout
+   */
+  const logout = useCallback(async () => {
+    try {
+      // Call logout API to clear session on server
+      await apiClient.post('/auth/logout', {});
+    } catch (error) {
+      console.error('Logout API error:', error);
+      // Continue with local logout even if API fails
+    } finally {
+      // Clear local auth
+      apiClient.clearAuth();
+      setState({
+        isAuthenticated: false,
+        user: null,
+        tenant: null,
+        isLoading: false,
+        error: null,
+      });
+    }
+  }, []);
+
+  /**
    * Check if user is already authenticated (from localStorage)
    */
   useEffect(() => {
@@ -379,29 +402,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error: any) {
       console.error('License check error:', error);
       return { isValid: false };
-    }
-  }, []);
-
-  /**
-   * Logout
-   */
-  const logout = useCallback(async () => {
-    try {
-      // Call logout API to clear session on server
-      await apiClient.post('/auth/logout', {});
-    } catch (error) {
-      console.error('Logout API error:', error);
-      // Continue with local logout even if API fails
-    } finally {
-      // Clear local auth
-      apiClient.clearAuth();
-      setState({
-        isAuthenticated: false,
-        user: null,
-        tenant: null,
-        isLoading: false,
-        error: null,
-      });
     }
   }, []);
 
