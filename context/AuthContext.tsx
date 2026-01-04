@@ -236,8 +236,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const smartLogin = useCallback(async (identifier: string, password: string, tenantId?: string) => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
+    logger.logCategory('auth', '🔐 Starting smart login:', { identifier: identifier.substring(0, 10) + '...', hasPassword: !!password, tenantId });
 
     try {
+      logger.logCategory('auth', '📤 Sending login request to server...');
       const response = await apiClient.post<{
         token?: string;
         user?: User;
@@ -250,8 +252,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         tenantId,
       });
 
+      logger.logCategory('auth', '📥 Received login response:', {
+        hasToken: !!response.token,
+        hasUser: !!response.user,
+        hasTenant: !!response.tenant,
+        requiresTenantSelection: response.requiresTenantSelection,
+        tenantsCount: response.tenants?.length || 0
+      });
+
       // If multiple tenants found, return them for selection
       if (response.requiresTenantSelection && response.tenants) {
+        logger.logCategory('auth', '✅ Multiple tenants found, showing selection');
         setState(prev => ({ ...prev, isLoading: false }));
         return {
           requiresTenantSelection: true,
@@ -261,6 +272,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Single tenant - proceed with login
       if (response.token && response.user && response.tenant) {
+        logger.logCategory('auth', '✅ Login successful, processing response...');
         // Store last used tenant in localStorage
         localStorage.setItem('last_tenant_id', response.tenant.id);
         localStorage.setItem('last_identifier', identifier);
@@ -293,15 +305,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           error: null,
         });
 
+        logger.logCategory('auth', '✅ Login completed successfully');
         return {
           requiresTenantSelection: false,
           success: true,
         };
       }
 
-      throw new Error('Invalid response from server');
+      logger.errorCategory('auth', '❌ Invalid response from server:', { response });
+      throw new Error('Invalid response from server - missing token, user, or tenant');
     } catch (error: any) {
-      const errorMessage = error.error || error.message || 'Login failed';
+      logger.errorCategory('auth', '❌ Login error caught:', {
+        error: error,
+        message: error?.message,
+        status: error?.status,
+        errorProperty: error?.error
+      });
+      const errorMessage = error?.error || error?.message || 'Login failed';
       setState({
         isAuthenticated: false,
         user: null,

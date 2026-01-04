@@ -53,10 +53,13 @@ const CloudLoginPage: React.FC = () => {
     }
 
     try {
+      console.log('🔐 CloudLoginPage: Starting login...');
       const result = await smartLogin(identifier, password, selectedTenantId || undefined);
+      console.log('✅ CloudLoginPage: Login result:', result);
       
       if (result.requiresTenantSelection && result.tenants) {
         // Multiple tenants found - show selection
+        console.log('📋 CloudLoginPage: Showing tenant selection');
         setAvailableTenants(result.tenants);
         if (result.tenants.length === 1) {
           // Auto-select if only one
@@ -65,7 +68,10 @@ const CloudLoginPage: React.FC = () => {
       }
       // If login successful, smartLogin will handle navigation
     } catch (err: any) {
-      setLoginError(err.error || err.message || 'Login failed');
+      console.error('❌ CloudLoginPage: Login error:', err);
+      const errorMessage = err?.error || err?.message || 'Login failed';
+      console.error('❌ CloudLoginPage: Setting error message:', errorMessage);
+      setLoginError(errorMessage);
     }
   };
 
