@@ -58,21 +58,6 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
   const { state } = useAppContext();
   // --- Toast State ---
   const [toasts, setToasts] = useState<Toast[]>([]);
-  
-  // Listen for sync warning events
-  useEffect(() => {
-    const handleSyncWarning = (event: CustomEvent) => {
-      const { message, type } = event.detail;
-      showToast(message, type || 'info');
-    };
-    
-    if (typeof window !== 'undefined') {
-      window.addEventListener('show-sync-warning', handleSyncWarning as EventListener);
-      return () => {
-        window.removeEventListener('show-sync-warning', handleSyncWarning as EventListener);
-      };
-    }
-  }, [showToast]);
 
   // --- Dialog State ---
   const [dialogState, setDialogState] = useState<{
@@ -97,6 +82,21 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 3000);
   }, [state.enableBeepOnSave]);
+  
+  // Listen for sync warning events
+  useEffect(() => {
+    const handleSyncWarning = (event: CustomEvent) => {
+      const { message, type } = event.detail;
+      showToast(message, type || 'info');
+    };
+    
+    if (typeof window !== 'undefined') {
+      window.addEventListener('show-sync-warning', handleSyncWarning as EventListener);
+      return () => {
+        window.removeEventListener('show-sync-warning', handleSyncWarning as EventListener);
+      };
+    }
+  }, [showToast]);
 
   const removeToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
