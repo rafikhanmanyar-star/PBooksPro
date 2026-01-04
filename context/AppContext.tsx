@@ -1532,24 +1532,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             const apiService = getAppStateApiService();
                             const apiState = await apiService.loadState();
                             
-                            // Merge API data with current state
+                            // Replace state with fresh API data (don't merge - ensure all users see same data)
                             if (isMounted) {
                                 setStoredState(prev => ({
                                     ...prev,
-                                    accounts: apiState.accounts || prev.accounts,
-                                    contacts: apiState.contacts || prev.contacts,
-                                    transactions: apiState.transactions || prev.transactions,
-                                    categories: apiState.categories || prev.categories,
-                                    projects: apiState.projects || prev.projects,
-                                    buildings: apiState.buildings || prev.buildings,
-                                    properties: apiState.properties || prev.properties,
-                                    units: apiState.units || prev.units,
-                                    invoices: apiState.invoices || prev.invoices,
-                                    bills: apiState.bills || prev.bills,
-                                    budgets: apiState.budgets || prev.budgets,
-                                    rentalAgreements: apiState.rentalAgreements || prev.rentalAgreements,
-                                    projectAgreements: apiState.projectAgreements || prev.projectAgreements,
-                                    contracts: apiState.contracts || prev.contracts,
+                                    // Replace with API data to ensure synchronization across users
+                                    accounts: apiState.accounts || [],
+                                    contacts: apiState.contacts || [],
+                                    transactions: apiState.transactions || [],
+                                    categories: apiState.categories || [],
+                                    projects: apiState.projects || [],
+                                    buildings: apiState.buildings || [],
+                                    properties: apiState.properties || [],
+                                    units: apiState.units || [],
+                                    invoices: apiState.invoices || [],
+                                    bills: apiState.bills || [],
+                                    budgets: apiState.budgets || [],
+                                    rentalAgreements: apiState.rentalAgreements || [],
+                                    projectAgreements: apiState.projectAgreements || [],
+                                    contracts: apiState.contracts || [],
                                 }));
                                 console.log('✅ Loaded data from API:', {
                                     accounts: apiState.accounts?.length || 0,
@@ -2408,6 +2409,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // Update previous auth state
         prevAuthRef.current = isAuthenticated;
     }, [isAuthenticated, isInitializing, state.contacts, state.accounts]);
+
+    // Reload data from API when user becomes authenticated (to ensure synchronization)
+    useEffect(() => {
+        // When user becomes authenticated, reload data from API to ensure all users see same data
+        if (isAuthenticated && !prevAuthRef.current && !isInitializing) {
+            const reloadDataFromApi = async () => {
+                try {
+                    logger.logCategory('sync', '🔄 User authenticated, reloading data from API for synchronization...');
+                    const apiService = getAppStateApiService();
+                    const apiState = await apiService.loadState();
+                    
+                    // Replace state with fresh API data to ensure all users see the same data
+                    setStoredState(prev => ({
+                        ...prev,
+                        accounts: apiState.accounts || [],
+                        contacts: apiState.contacts || [],
+                        transactions: apiState.transactions || [],
+                        categories: apiState.categories || [],
+                        projects: apiState.projects || [],
+                        buildings: apiState.buildings || [],
+                        properties: apiState.properties || [],
+                        units: apiState.units || [],
+                        invoices: apiState.invoices || [],
+                        bills: apiState.bills || [],
+                        budgets: apiState.budgets || [],
+                        rentalAgreements: apiState.rentalAgreements || [],
+                        projectAgreements: apiState.projectAgreements || [],
+                        contracts: apiState.contracts || [],
+                    }));
+                    
+                    logger.logCategory('sync', '✅ Reloaded data from API:', {
+                        contacts: apiState.contacts?.length || 0,
+                        projects: apiState.projects?.length || 0,
+                        transactions: apiState.transactions?.length || 0,
+                    });
+                } catch (error) {
+                    logger.errorCategory('sync', '⚠️ Failed to reload data from API:', error);
+                }
+            };
+            
+            // Delay reload slightly to ensure token is fully set
+            setTimeout(reloadDataFromApi, 1000);
+        }
+    }, [isAuthenticated, isInitializing]);
 
     // Show loading/initialization state
     if (isInitializing) {

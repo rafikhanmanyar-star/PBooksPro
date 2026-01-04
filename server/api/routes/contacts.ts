@@ -56,69 +56,50 @@ router.post('/', async (req: TenantRequest, res) => {
     const contactId = contact.id || `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     console.log('📝 POST /contacts - Using contact ID:', contactId);
     
-    // Use transaction for data integrity
-    const result = await db.transaction(async (client) => {
-      // Check if contact with this ID already exists (upsert behavior)
-      const existing = await client.query(
-        'SELECT * FROM contacts WHERE id = $1 AND tenant_id = $2',
-        [contactId, req.tenantId]
-      );
-      
-      if (existing.rows.length > 0) {
-        // Update existing contact
-        const updateResult = await client.query(
-          `UPDATE contacts 
-           SET name = $1, type = $2, description = $3, contact_no = $4, 
-               company_name = $5, address = $6, updated_at = NOW()
-           WHERE id = $7 AND tenant_id = $8
-           RETURNING *`,
-          [
-            contact.name,
-            contact.type,
-            contact.description || null,
-            contact.contactNo || null,
-            contact.companyName || null,
-            contact.address || null,
-            contactId,
-            req.tenantId
-          ]
-        );
-        return updateResult.rows[0];
-      } else {
-        // Create new contact
-        const insertResult = await client.query(
-          `INSERT INTO contacts (
-            id, tenant_id, name, type, description, contact_no, company_name, address, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
-          RETURNING *`,
-          [
-            contactId,
-            req.tenantId,
-            contact.name,
-            contact.type,
-            contact.description || null,
-            contact.contactNo || null,
-            contact.companyName || null,
-            contact.address || null
-          ]
-        );
-        return insertResult.rows[0];
-      }
-    });
+    // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
+    // This prevents unique constraint violations when multiple requests come in simultaneously
+    const result = await db.query(
+      `INSERT INTO contacts (
+        id, tenant_id, name, type, description, contact_no, company_name, address, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+      ON CONFLICT (id) 
+      DO UPDATE SET
+        name = EXCLUDED.name,
+        type = EXCLUDED.type,
+        description = EXCLUDED.description,
+        contact_no = EXCLUDED.contact_no,
+        company_name = EXCLUDED.company_name,
+        address = EXCLUDED.address,
+        updated_at = NOW()
+      WHERE contacts.tenant_id = $2
+      RETURNING *`,
+      [
+        contactId,
+        req.tenantId,
+        contact.name,
+        contact.type,
+        contact.description || null,
+        contact.contactNo || null,
+        contact.companyName || null,
+        contact.address || null
+      ]
+    );
     
-    if (!result) {
-      console.error('❌ POST /contacts - Transaction returned no result');
+    if (!result || result.length === 0) {
+      console.error('❌ POST /contacts - Query returned no result');
       return res.status(500).json({ error: 'Failed to create contact' });
     }
     
+    const savedContact = result[0]; // db.query returns array
+    
     console.log('✅ POST /contacts - Contact saved successfully:', {
-      id: result.id,
-      name: result.name,
-      type: result.type,
+      id: savedContact.id,
+      name: savedContact.name,
+      type: savedContact.type,
       tenantId: req.tenantId
     });
     
-    res.status(201).json(result);
+    res.status(201).json(savedContact);
   } catch (error: any) {
     console.error('❌ POST /contacts - Error creating contact:', {
       error: error,
