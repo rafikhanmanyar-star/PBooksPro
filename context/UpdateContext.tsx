@@ -31,6 +31,15 @@ interface UpdateContextType {
 const UpdateContext = createContext<UpdateContextType | undefined>(undefined);
 
 export const UpdateProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  // State variables (no longer used for Electron, but kept for API compatibility)
+  const [isChecking] = useState(false);
+  const [updateAvailable] = useState(false);
+  const [updateDownloaded] = useState(false);
+  const [updateInfo] = useState<UpdateInfo | null>(null);
+  const [downloadProgress] = useState<DownloadProgress | null>(null);
+  const [smoothedProgress] = useState<number>(0);
+  const [error] = useState<string | null>(null);
+
   // Electron support removed - all update methods are no-ops
   const checkForUpdates = async () => {
     // No-op: Electron updates removed
