@@ -85,6 +85,34 @@ export class ApiClient {
   }
 
   /**
+   * Check if token is expired (client-side check)
+   * Note: This is a basic check - server validation is authoritative
+   */
+  isTokenExpired(): boolean {
+    if (!this.token) return true;
+    
+    try {
+      // JWT tokens have 3 parts separated by dots: header.payload.signature
+      const parts = this.token.split('.');
+      if (parts.length !== 3) return true;
+      
+      // Decode the payload (second part)
+      const payload = JSON.parse(atob(parts[1]));
+      
+      // Check expiration (exp is in seconds, Date.now() is in milliseconds)
+      if (payload.exp && payload.exp * 1000 < Date.now()) {
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      // If we can't decode the token, consider it invalid
+      console.error('Error checking token expiration:', error);
+      return true;
+    }
+  }
+
+  /**
    * Make an API request
    */
   private async request<T>(
@@ -94,6 +122,13 @@ export class ApiClient {
     // Reload auth from localStorage before each request to ensure we have the latest token
     // This is important because the token might be updated after the singleton is created
     this.loadAuth();
+    
+    // Check if token is expired before making the request
+    if (this.token && this.isTokenExpired()) {
+      console.warn('⚠️ Token is expired, clearing auth before request');
+      this.clearAuth();
+      // Don't dispatch event here - let the 401 response handle it
+    }
     
     const url = `${this.baseUrl}${endpoint}`;
     
@@ -105,6 +140,11 @@ export class ApiClient {
     // Add auth token if available
     if (this.token) {
       headers['Authorization'] = `Bearer ${this.token}`;
+    } else {
+      // Log when token is missing for authenticated endpoints
+      if (!endpoint.includes('/register-tenant') && !endpoint.includes('/auth/')) {
+        console.warn(`⚠️ No token available for request to ${endpoint}`);
+      }
     }
 
     // Add tenant ID if available
@@ -144,15 +184,28 @@ export class ApiClient {
           status: 401,
         };
         
-        // Clear invalid auth
-        this.clearAuth();
+        // Only clear auth and dispatch event if we actually had a token
+        // This prevents clearing auth on requests that were never authenticated
+        const hadToken = !!this.token;
         
-        // Dispatch custom event for auth context to handle
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('auth:expired', { detail: error }));
+        if (hadToken) {
+          console.error('API Error (401 Unauthorized) - Token was present but invalid:', {
+            error: data.error,
+            code: data.code,
+            endpoint
+          });
+          
+          // Clear invalid auth
+          this.clearAuth();
+          
+          // Dispatch custom event for auth context to handle
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('auth:expired', { detail: error }));
+          }
+        } else {
+          console.warn('API Error (401 Unauthorized) - No token was present for request:', endpoint);
         }
         
-        console.error('API Error (401 Unauthorized):', error);
         throw error;
       }
 
