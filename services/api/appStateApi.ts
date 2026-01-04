@@ -20,6 +20,7 @@ import { BudgetsApiRepository } from './repositories/budgetsApi';
 import { RentalAgreementsApiRepository } from './repositories/rentalAgreementsApi';
 import { ProjectAgreementsApiRepository } from './repositories/projectAgreementsApi';
 import { ContractsApiRepository } from './repositories/contractsApi';
+import { logger } from '../logger';
 
 export class AppStateApiService {
   private accountsRepo: AccountsApiRepository;
@@ -60,7 +61,7 @@ export class AppStateApiService {
    */
   async loadState(): Promise<Partial<AppState>> {
     try {
-      console.log('📡 Loading state from API...');
+      logger.logCategory('sync', '📡 Loading state from API...');
 
       // Load entities in parallel for better performance
       const [
@@ -80,7 +81,7 @@ export class AppStateApiService {
         contracts
       ] = await Promise.all([
         this.accountsRepo.findAll().catch(err => {
-          console.error('Error loading accounts from API:', err);
+          logger.errorCategory('sync', 'Error loading accounts from API:', err);
           return [];
         }),
         this.contactsRepo.findAll().catch(err => {
@@ -137,7 +138,7 @@ export class AppStateApiService {
         }),
       ]);
 
-      console.log('✅ Loaded from API:', {
+      logger.logCategory('sync', '✅ Loaded from API:', {
         accounts: accounts.length,
         contacts: contacts.length,
         transactions: transactions.length,
@@ -173,7 +174,7 @@ export class AppStateApiService {
         contracts,
       };
     } catch (error) {
-      console.error('❌ Error loading state from API:', error);
+      logger.errorCategory('sync', '❌ Error loading state from API:', error);
       throw error;
     }
   }

@@ -9,6 +9,7 @@ import { getDatabaseService } from '../services/database/databaseService';
 import { AppStateRepository } from '../services/database/repositories/appStateRepository';
 import { useAuth } from './AuthContext';
 import { getAppStateApiService } from '../services/api/appStateApi';
+import { logger } from '../services/logger';
 import packageJson from '../package.json';
 
 const SYSTEM_ACCOUNTS: Account[] = [
@@ -1416,11 +1417,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         if (currentState.currentUser) {
                             currentState.currentUser = null;
                             await appStateRepo.saveState(currentState);
-                            console.log('✅ Cleared user from database');
+                            logger.logCategory('database', '✅ Cleared user from database');
                         }
                     }
                 } catch (error) {
-                    console.warn('⚠️ Could not clear user from database:', error);
+                    logger.warnCategory('database', '⚠️ Could not clear user from database:', error);
                 }
             })();
         }
@@ -1582,10 +1583,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 setInitMessage('Initializing database...');
                                 setInitProgress(60);
                                 await dbService.initialize();
-                                console.log('✅ Database ready');
+                                logger.logCategory('database', '✅ Database ready');
                             }
                         } catch (dbError) {
-                            console.warn('⚠️ Database initialization failed, using localStorage fallback:', dbError);
+                            logger.warnCategory('database', '⚠️ Database initialization failed, using localStorage fallback:', dbError);
                             setUseFallback(true);
                             setInitMessage('Using localStorage (database unavailable)...');
                             // Continue anyway - app can work without database
@@ -1615,7 +1616,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             await new Promise(resolve => setTimeout(resolve, pollInterval));
                             if (checkStateLoaded()) {
                                 stateLoaded = true;
-                                console.log('✅ Database state loaded');
+                                logger.logCategory('database', '✅ Database state loaded');
                                 break;
                             }
                         }
@@ -1690,14 +1691,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     try {
                         // Check if user is authenticated before syncing
                         if (!isAuthenticated) {
-                            console.log('⏭️ Skipping API sync - user not authenticated');
+                            logger.logCategory('sync', '⏭️ Skipping API sync - user not authenticated');
                             return;
                         }
                         
                         // Verify token is valid before attempting sync
                         const token = localStorage.getItem('auth_token');
                         if (!token) {
-                            console.warn('⚠️ No token found, skipping API sync');
+                            logger.warnCategory('sync', '⚠️ No token found, skipping API sync');
                             return;
                         }
                         
@@ -1705,11 +1706,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         try {
                             const { apiClient } = await import('../services/api/client');
                             if (apiClient.isTokenExpired()) {
-                                console.warn('⚠️ Token is expired, skipping API sync. Data saved locally.');
+                                logger.warnCategory('sync', '⚠️ Token is expired, skipping API sync. Data saved locally.');
                                 return;
                             }
                         } catch (tokenCheckError) {
-                            console.warn('⚠️ Could not verify token, skipping API sync:', tokenCheckError);
+                            logger.warnCategory('sync', '⚠️ Could not verify token, skipping API sync:', tokenCheckError);
                             return;
                         }
                         
@@ -1721,13 +1722,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             // Skip system accounts (they're permanent)
                             if (!account.isPermanent) {
                                 await apiService.saveAccount(account);
-                                console.log('✅ Synced account to API:', account.name);
+                                logger.logCategory('sync', '✅ Synced account to API:', account.name);
                             }
                         } else if (action.type === 'UPDATE_ACCOUNT') {
                             const account = action.payload as Account;
                             if (!account.isPermanent) {
                                 await apiService.saveAccount(account);
-                                console.log('✅ Synced account update to API:', account.name);
+                                logger.logCategory('sync', '✅ Synced account update to API:', account.name);
                             }
                         } else if (action.type === 'DELETE_ACCOUNT') {
                             const accountId = action.payload as string;
@@ -1735,7 +1736,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             const account = state.accounts.find(a => a.id === accountId);
                             if (account && !account.isPermanent) {
                                 await apiService.deleteAccount(accountId);
-                                console.log('✅ Synced account deletion to API:', accountId);
+                                logger.logCategory('sync', '✅ Synced account deletion to API:', accountId);
                             }
                         }
 
@@ -1744,9 +1745,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             const contact = action.payload;
                             try {
                                 await apiService.saveContact(contact);
-                                console.log('✅ Synced contact to API:', contact.name);
+                                logger.logCategory('sync', '✅ Synced contact to API:', contact.name);
                             } catch (err: any) {
-                                console.error(`⚠️ Failed to sync contact ${contact.name} to API:`, {
+                                logger.errorCategory('sync', `⚠️ Failed to sync contact ${contact.name} to API:`, {
                                     error: err,
                                     contact: contact,
                                     errorMessage: err?.message || err?.error || 'Unknown error',
@@ -1759,7 +1760,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             const contact = action.payload;
                             try {
                                 await apiService.saveContact(contact);
-                                console.log('✅ Synced contact update to API:', contact.name);
+                                logger.logCategory('sync', '✅ Synced contact update to API:', contact.name);
                             } catch (err: any) {
                                 console.error(`⚠️ Failed to sync contact update ${contact.name} to API:`, {
                                     error: err,
@@ -1773,7 +1774,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             const contactId = action.payload as string;
                             try {
                                 await apiService.deleteContact(contactId);
-                                console.log('✅ Synced contact deletion to API:', contactId);
+                                logger.logCategory('sync', '✅ Synced contact deletion to API:', contactId);
                             } catch (err: any) {
                                 console.error(`⚠️ Failed to sync contact deletion ${contactId} to API:`, {
                                     error: err,
@@ -1789,199 +1790,199 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         if (action.type === 'ADD_TRANSACTION') {
                             const transaction = action.payload as Transaction;
                             await apiService.saveTransaction(transaction);
-                            console.log('✅ Synced transaction to API:', transaction.id);
+                            logger.logCategory('sync', '✅ Synced transaction to API:', transaction.id);
                         } else if (action.type === 'UPDATE_TRANSACTION') {
                             const transaction = action.payload as Transaction;
                             await apiService.saveTransaction(transaction);
-                            console.log('✅ Synced transaction update to API:', transaction.id);
+                            logger.logCategory('sync', '✅ Synced transaction update to API:', transaction.id);
                         } else if (action.type === 'DELETE_TRANSACTION') {
                             const transactionId = action.payload as string;
                             await apiService.deleteTransaction(transactionId);
-                            console.log('✅ Synced transaction deletion to API:', transactionId);
+                            logger.logCategory('sync', '✅ Synced transaction deletion to API:', transactionId);
                         } else if (action.type === 'BATCH_ADD_TRANSACTIONS') {
                             // Sync batch transactions
                             const transactions = action.payload as Transaction[];
                             const syncPromises = transactions.map(tx => 
                                 apiService.saveTransaction(tx).catch(err => {
-                                    console.error(`⚠️ Failed to sync transaction ${tx.id}:`, err);
+                                    logger.errorCategory('sync', `⚠️ Failed to sync transaction ${tx.id}:`, err);
                                     return null;
                                 })
                             );
                             await Promise.all(syncPromises);
-                            console.log(`✅ Synced ${transactions.length} transactions to API (batch)`);
+                            logger.logCategory('sync', `✅ Synced ${transactions.length} transactions to API (batch)`);
                         } else if (action.type === 'RESTORE_TRANSACTION') {
                             const transaction = action.payload as Transaction;
                             await apiService.saveTransaction(transaction);
-                            console.log('✅ Synced restored transaction to API:', transaction.id);
+                            logger.logCategory('sync', '✅ Synced restored transaction to API:', transaction.id);
                         }
 
                         // Handle category changes
                         if (action.type === 'ADD_CATEGORY') {
                             const category = action.payload;
                             await apiService.saveCategory(category);
-                            console.log('✅ Synced category to API:', category.name);
+                            logger.logCategory('sync', '✅ Synced category to API:', category.name);
                         } else if (action.type === 'UPDATE_CATEGORY') {
                             const category = action.payload;
                             await apiService.saveCategory(category);
-                            console.log('✅ Synced category update to API:', category.name);
+                            logger.logCategory('sync', '✅ Synced category update to API:', category.name);
                         } else if (action.type === 'DELETE_CATEGORY') {
                             const categoryId = action.payload as string;
                             await apiService.deleteCategory(categoryId);
-                            console.log('✅ Synced category deletion to API:', categoryId);
+                            logger.logCategory('sync', '✅ Synced category deletion to API:', categoryId);
                         }
 
                         // Handle project changes
                         if (action.type === 'ADD_PROJECT') {
                             const project = action.payload;
                             await apiService.saveProject(project);
-                            console.log('✅ Synced project to API:', project.name);
+                            logger.logCategory('sync', '✅ Synced project to API:', project.name);
                         } else if (action.type === 'UPDATE_PROJECT') {
                             const project = action.payload;
                             await apiService.saveProject(project);
-                            console.log('✅ Synced project update to API:', project.name);
+                            logger.logCategory('sync', '✅ Synced project update to API:', project.name);
                         } else if (action.type === 'DELETE_PROJECT') {
                             const projectId = action.payload as string;
                             await apiService.deleteProject(projectId);
-                            console.log('✅ Synced project deletion to API:', projectId);
+                            logger.logCategory('sync', '✅ Synced project deletion to API:', projectId);
                         }
 
                         // Handle building changes
                         if (action.type === 'ADD_BUILDING') {
                             const building = action.payload;
                             await apiService.saveBuilding(building);
-                            console.log('✅ Synced building to API:', building.name);
+                            logger.logCategory('sync', '✅ Synced building to API:', building.name);
                         } else if (action.type === 'UPDATE_BUILDING') {
                             const building = action.payload;
                             await apiService.saveBuilding(building);
-                            console.log('✅ Synced building update to API:', building.name);
+                            logger.logCategory('sync', '✅ Synced building update to API:', building.name);
                         } else if (action.type === 'DELETE_BUILDING') {
                             const buildingId = action.payload as string;
                             await apiService.deleteBuilding(buildingId);
-                            console.log('✅ Synced building deletion to API:', buildingId);
+                            logger.logCategory('sync', '✅ Synced building deletion to API:', buildingId);
                         }
 
                         // Handle property changes
                         if (action.type === 'ADD_PROPERTY') {
                             const property = action.payload;
                             await apiService.saveProperty(property);
-                            console.log('✅ Synced property to API:', property.name);
+                            logger.logCategory('sync', '✅ Synced property to API:', property.name);
                         } else if (action.type === 'UPDATE_PROPERTY') {
                             const property = action.payload;
                             await apiService.saveProperty(property);
-                            console.log('✅ Synced property update to API:', property.name);
+                            logger.logCategory('sync', '✅ Synced property update to API:', property.name);
                         } else if (action.type === 'DELETE_PROPERTY') {
                             const propertyId = action.payload as string;
                             await apiService.deleteProperty(propertyId);
-                            console.log('✅ Synced property deletion to API:', propertyId);
+                            logger.logCategory('sync', '✅ Synced property deletion to API:', propertyId);
                         }
 
                         // Handle unit changes
                         if (action.type === 'ADD_UNIT') {
                             const unit = action.payload;
                             await apiService.saveUnit(unit);
-                            console.log('✅ Synced unit to API:', unit.name);
+                            logger.logCategory('sync', '✅ Synced unit to API:', unit.name);
                         } else if (action.type === 'UPDATE_UNIT') {
                             const unit = action.payload;
                             await apiService.saveUnit(unit);
-                            console.log('✅ Synced unit update to API:', unit.name);
+                            logger.logCategory('sync', '✅ Synced unit update to API:', unit.name);
                         } else if (action.type === 'DELETE_UNIT') {
                             const unitId = action.payload as string;
                             await apiService.deleteUnit(unitId);
-                            console.log('✅ Synced unit deletion to API:', unitId);
+                            logger.logCategory('sync', '✅ Synced unit deletion to API:', unitId);
                         }
 
                         // Handle invoice changes
                         if (action.type === 'ADD_INVOICE') {
                             const invoice = action.payload;
                             await apiService.saveInvoice(invoice);
-                            console.log('✅ Synced invoice to API:', invoice.invoiceNumber);
+                            logger.logCategory('sync', '✅ Synced invoice to API:', invoice.invoiceNumber);
                         } else if (action.type === 'UPDATE_INVOICE') {
                             const invoice = action.payload;
                             await apiService.saveInvoice(invoice);
-                            console.log('✅ Synced invoice update to API:', invoice.invoiceNumber);
+                            logger.logCategory('sync', '✅ Synced invoice update to API:', invoice.invoiceNumber);
                         } else if (action.type === 'DELETE_INVOICE') {
                             const invoiceId = action.payload as string;
                             await apiService.deleteInvoice(invoiceId);
-                            console.log('✅ Synced invoice deletion to API:', invoiceId);
+                            logger.logCategory('sync', '✅ Synced invoice deletion to API:', invoiceId);
                         }
 
                         // Handle bill changes
                         if (action.type === 'ADD_BILL') {
                             const bill = action.payload;
                             await apiService.saveBill(bill);
-                            console.log('✅ Synced bill to API:', bill.billNumber);
+                            logger.logCategory('sync', '✅ Synced bill to API:', bill.billNumber);
                         } else if (action.type === 'UPDATE_BILL') {
                             const bill = action.payload;
                             await apiService.saveBill(bill);
-                            console.log('✅ Synced bill update to API:', bill.billNumber);
+                            logger.logCategory('sync', '✅ Synced bill update to API:', bill.billNumber);
                         } else if (action.type === 'DELETE_BILL') {
                             const billId = action.payload as string;
                             await apiService.deleteBill(billId);
-                            console.log('✅ Synced bill deletion to API:', billId);
+                            logger.logCategory('sync', '✅ Synced bill deletion to API:', billId);
                         }
 
                         // Handle budget changes
                         if (action.type === 'ADD_BUDGET') {
                             const budget = action.payload;
                             await apiService.saveBudget(budget);
-                            console.log('✅ Synced budget to API:', budget.id);
+                            logger.logCategory('sync', '✅ Synced budget to API:', budget.id);
                         } else if (action.type === 'UPDATE_BUDGET') {
                             const budget = action.payload;
                             await apiService.saveBudget(budget);
-                            console.log('✅ Synced budget update to API:', budget.id);
+                            logger.logCategory('sync', '✅ Synced budget update to API:', budget.id);
                         } else if (action.type === 'DELETE_BUDGET') {
                             const budgetId = action.payload as string;
                             await apiService.deleteBudget(budgetId);
-                            console.log('✅ Synced budget deletion to API:', budgetId);
+                            logger.logCategory('sync', '✅ Synced budget deletion to API:', budgetId);
                         }
 
                         // Handle rental agreement changes
                         if (action.type === 'ADD_RENTAL_AGREEMENT') {
                             const agreement = action.payload;
                             await apiService.saveRentalAgreement(agreement);
-                            console.log('✅ Synced rental agreement to API:', agreement.agreementNumber);
+                            logger.logCategory('sync', '✅ Synced rental agreement to API:', agreement.agreementNumber);
                         } else if (action.type === 'UPDATE_RENTAL_AGREEMENT') {
                             const agreement = action.payload;
                             await apiService.saveRentalAgreement(agreement);
-                            console.log('✅ Synced rental agreement update to API:', agreement.agreementNumber);
+                            logger.logCategory('sync', '✅ Synced rental agreement update to API:', agreement.agreementNumber);
                         } else if (action.type === 'DELETE_RENTAL_AGREEMENT') {
                             const agreementId = action.payload as string;
                             await apiService.deleteRentalAgreement(agreementId);
-                            console.log('✅ Synced rental agreement deletion to API:', agreementId);
+                            logger.logCategory('sync', '✅ Synced rental agreement deletion to API:', agreementId);
                         }
 
                         // Handle project agreement changes
                         if (action.type === 'ADD_PROJECT_AGREEMENT') {
                             const agreement = action.payload;
                             await apiService.saveProjectAgreement(agreement);
-                            console.log('✅ Synced project agreement to API:', agreement.agreementNumber);
+                            logger.logCategory('sync', '✅ Synced project agreement to API:', agreement.agreementNumber);
                         } else if (action.type === 'UPDATE_PROJECT_AGREEMENT') {
                             const agreement = action.payload;
                             await apiService.saveProjectAgreement(agreement);
-                            console.log('✅ Synced project agreement update to API:', agreement.agreementNumber);
+                            logger.logCategory('sync', '✅ Synced project agreement update to API:', agreement.agreementNumber);
                         } else if (action.type === 'DELETE_PROJECT_AGREEMENT') {
                             const agreementId = action.payload as string;
                             await apiService.deleteProjectAgreement(agreementId);
-                            console.log('✅ Synced project agreement deletion to API:', agreementId);
+                            logger.logCategory('sync', '✅ Synced project agreement deletion to API:', agreementId);
                         }
 
                         // Handle contract changes
                         if (action.type === 'ADD_CONTRACT') {
                             const contract = action.payload;
                             await apiService.saveContract(contract);
-                            console.log('✅ Synced contract to API:', contract.contractNumber);
+                            logger.logCategory('sync', '✅ Synced contract to API:', contract.contractNumber);
                         } else if (action.type === 'UPDATE_CONTRACT') {
                             const contract = action.payload;
                             await apiService.saveContract(contract);
-                            console.log('✅ Synced contract update to API:', contract.contractNumber);
+                            logger.logCategory('sync', '✅ Synced contract update to API:', contract.contractNumber);
                         } else if (action.type === 'DELETE_CONTRACT') {
                             const contractId = action.payload as string;
                             await apiService.deleteContract(contractId);
-                            console.log('✅ Synced contract deletion to API:', contractId);
+                            logger.logCategory('sync', '✅ Synced contract deletion to API:', contractId);
                         }
                     } catch (error: any) {
                         // Log error but don't block UI - state is already updated locally
-                        console.error('⚠️ Failed to sync to API:', error);
+                        logger.errorCategory('sync', '⚠️ Failed to sync to API:', error);
                         
                         // Show user-friendly notification for expired token
                         if (error?.status === 401) {
@@ -2252,7 +2253,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     // Verify token is actually available before syncing
                     const token = localStorage.getItem('auth_token');
                     if (!token) {
-                        console.warn('⚠️ No token found in localStorage, skipping auto-sync');
+                        logger.warnCategory('sync', '⚠️ No token found in localStorage, skipping auto-sync');
                         return;
                     }
                     
@@ -2260,7 +2261,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     try {
                         const parts = token.split('.');
                         if (parts.length !== 3) {
-                            console.warn('⚠️ Invalid token format, skipping auto-sync');
+                            logger.warnCategory('sync', '⚠️ Invalid token format, skipping auto-sync');
                             return;
                         }
                         
@@ -2269,7 +2270,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         const now = Date.now();
                         
                         if (now >= exp) {
-                            console.warn('⚠️ Token is expired, skipping auto-sync. Expired at:', new Date(exp).toISOString());
+                            logger.warnCategory('sync', '⚠️ Token is expired, skipping auto-sync. Expired at:', new Date(exp).toISOString());
                             return;
                         }
                         
@@ -2277,12 +2278,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         const timeUntilExpiry = exp - now;
                         const oneHour = 60 * 60 * 1000;
                         if (timeUntilExpiry < oneHour) {
-                            console.warn('⚠️ Token expires soon, but proceeding with sync. Expires at:', new Date(exp).toISOString());
+                            logger.warnCategory('sync', '⚠️ Token expires soon, but proceeding with sync. Expires at:', new Date(exp).toISOString());
                         }
                         
-                        console.log('✅ Token validated - expires at:', new Date(exp).toISOString());
+                        logger.logCategory('auth', '✅ Token validated - expires at:', new Date(exp).toISOString());
                     } catch (tokenCheckError) {
-                        console.warn('⚠️ Could not verify token format, skipping auto-sync:', tokenCheckError);
+                        logger.warnCategory('sync', '⚠️ Could not verify token format, skipping auto-sync:', tokenCheckError);
                         return;
                     }
                     
@@ -2291,23 +2292,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         const { apiClient } = await import('../services/api/client');
                         // Check if token is expired using ApiClient singleton
                         if (apiClient.isTokenExpired()) {
-                            console.warn('⚠️ Token is expired (ApiClient check), skipping auto-sync');
+                            logger.warnCategory('sync', '⚠️ Token is expired (ApiClient check), skipping auto-sync');
                             return;
                         }
                         // Test token with a lightweight endpoint to verify it's valid on server
                         await apiClient.get('/tenants/me');
-                        console.log('✅ Token verified with server, proceeding with sync');
+                        logger.logCategory('auth', '✅ Token verified with server, proceeding with sync');
                     } catch (testError: any) {
                         if (testError?.status === 401) {
-                            console.warn('⚠️ Token validation failed with server (401), skipping auto-sync. Please re-login.');
+                            logger.warnCategory('auth', '⚠️ Token validation failed with server (401), skipping auto-sync. Please re-login.');
                             return;
                         }
                         // Other errors might be network issues, proceed anyway
-                        console.warn('⚠️ Token test failed but proceeding (might be network issue):', testError);
+                        logger.warnCategory('sync', '⚠️ Token test failed but proceeding (might be network issue):', testError);
                     }
                     
                     const apiService = getAppStateApiService();
-                    console.log('🔄 User re-authenticated, syncing local data to API...');
+                    logger.logCategory('sync', '🔄 User re-authenticated, syncing local data to API...');
                     
                     // Sync contacts
                     let syncFailed = false;
@@ -2316,21 +2317,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         
                         try {
                             await apiService.saveContact(contact);
-                            console.log('✅ Synced contact to API:', contact.name);
+                            logger.logCategory('sync', '✅ Synced contact to API:', contact.name);
                         } catch (err: any) {
                             if (err?.status === 401) {
-                                console.warn(`⚠️ Token invalid during contact sync, stopping auto-sync`);
+                                logger.warnCategory('sync', `⚠️ Token invalid during contact sync, stopping auto-sync`);
                                 syncFailed = true;
                                 break;
                             } else {
-                                console.warn(`⚠️ Failed to sync contact ${contact.name}:`, err);
+                                logger.warnCategory('sync', `⚠️ Failed to sync contact ${contact.name}:`, err);
                                 // Continue with other contacts
                             }
                         }
                     }
                     
                     if (syncFailed) {
-                        console.warn('⚠️ Auto-sync stopped due to authentication failure');
+                        logger.warnCategory('sync', '⚠️ Auto-sync stopped due to authentication failure');
                         return;
                     }
                     
@@ -2341,24 +2342,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         if (!account.isPermanent) {
                             try {
                                 await apiService.saveAccount(account);
-                                console.log('✅ Synced account to API:', account.name);
+                                logger.logCategory('sync', '✅ Synced account to API:', account.name);
                             } catch (err: any) {
                                 if (err?.status === 401) {
-                                    console.warn(`⚠️ Token invalid during account sync, stopping auto-sync`);
+                                    logger.warnCategory('sync', `⚠️ Token invalid during account sync, stopping auto-sync`);
                                     syncFailed = true;
                                     break;
                                 } else {
-                                    console.warn(`⚠️ Failed to sync account ${account.name}:`, err);
+                                    logger.warnCategory('sync', `⚠️ Failed to sync account ${account.name}:`, err);
                                 }
                             }
                         }
                     }
                     
                     if (!syncFailed) {
-                        console.log('✅ Finished syncing local data to API');
+                        logger.logCategory('sync', '✅ Finished syncing local data to API');
                     }
                 } catch (error) {
-                    console.error('⚠️ Error syncing local data after re-authentication:', error);
+                    logger.errorCategory('sync', '⚠️ Error syncing local data after re-authentication:', error);
                 }
             };
             

@@ -9,8 +9,10 @@
 // This ensures the deployed version always uses the correct URL
 const API_BASE_URL = 'https://pbookspro-api.onrender.com/api';
 
-// Debug: Log the API URL being used
-console.log('🔧 Client API URL:', API_BASE_URL);
+import { logger } from '../logger';
+
+// Debug: Log the API URL being used (filtered)
+logger.logCategory('api', '🔧 Client API URL:', API_BASE_URL);
 
 export interface ApiError {
   error: string;
@@ -37,11 +39,11 @@ export class ApiClient {
       this.token = localStorage.getItem('auth_token');
       this.tenantId = localStorage.getItem('tenant_id');
       
-      // Log for debugging (remove in production if needed)
+      // Log for debugging (filtered)
       if (this.token) {
-        console.log('🔑 Loaded auth token from localStorage:', this.token.substring(0, 20) + '...');
+        logger.logCategory('auth', '🔑 Loaded auth token from localStorage:', this.token.substring(0, 20) + '...');
       } else {
-        console.warn('⚠️ No auth token found in localStorage');
+        logger.warnCategory('auth', '⚠️ No auth token found in localStorage');
       }
     }
   }
@@ -55,7 +57,7 @@ export class ApiClient {
     if (typeof window !== 'undefined') {
       localStorage.setItem('auth_token', token);
       localStorage.setItem('tenant_id', tenantId);
-      console.log('🔑 Auth token saved to localStorage and ApiClient instance');
+      logger.logCategory('auth', '🔑 Auth token saved to localStorage and ApiClient instance');
     }
   }
 
@@ -108,7 +110,7 @@ export class ApiClient {
       return false;
     } catch (error) {
       // If we can't decode the token, consider it invalid
-      console.error('Error checking token expiration:', error);
+      logger.errorCategory('auth', 'Error checking token expiration:', error);
       return true;
     }
   }
@@ -126,7 +128,7 @@ export class ApiClient {
     
     // Check if token is expired before making the request
     if (this.token && this.isTokenExpired()) {
-      console.warn('⚠️ Token is expired, clearing auth before request');
+      logger.warnCategory('auth', '⚠️ Token is expired, clearing auth before request');
       this.clearAuth();
       // Don't dispatch event here - let the 401 response handle it
     }
@@ -143,8 +145,8 @@ export class ApiClient {
       // Validate token format before sending
       const tokenParts = this.token.split('.');
       if (tokenParts.length !== 3) {
-        console.error('❌ Invalid token format - expected 3 parts, got:', tokenParts.length);
-        console.error('Token preview:', this.token.substring(0, 50) + '...');
+        logger.errorCategory('auth', '❌ Invalid token format - expected 3 parts, got:', tokenParts.length);
+        logger.errorCategory('auth', 'Token preview:', this.token.substring(0, 50) + '...');
         throw {
           error: 'Invalid token format',
           message: 'Token format is invalid. Please login again.',
@@ -153,13 +155,13 @@ export class ApiClient {
       }
       
       headers['Authorization'] = `Bearer ${this.token}`;
-      // Log token info for debugging (first 20 chars only)
+      // Log token info for debugging (first 20 chars only) - filtered
       const tokenPreview = this.token.length > 20 ? this.token.substring(0, 20) + '...' : this.token;
-      console.log(`🔑 Sending request with token: ${tokenPreview} (length: ${this.token.length}) to ${endpoint}`);
+      logger.logCategory('auth', `🔑 Sending request with token: ${tokenPreview} (length: ${this.token.length}) to ${endpoint}`);
     } else {
-      // Log when token is missing for authenticated endpoints
+      // Log when token is missing for authenticated endpoints - filtered
       if (!endpoint.includes('/register-tenant') && !endpoint.includes('/auth/')) {
-        console.warn(`⚠️ No token available for request to ${endpoint}`);
+        logger.warnCategory('auth', `⚠️ No token available for request to ${endpoint}`);
       }
     }
 
@@ -205,9 +207,11 @@ export class ApiClient {
         const hadToken = !!this.token;
         
         if (hadToken) {
-          // Check if this is a license status check during app initialization
+          // Check if this is a validation endpoint used during app initialization
           // Don't log as error - it's expected if token is invalid
-          const isLicenseStatusCheck = endpoint.includes('/license-status');
+          // These endpoints are used to verify token validity, not for user actions
+          const isValidationEndpoint = endpoint.includes('/license-status') || 
+                                       endpoint.includes('/tenants/me');
           
           // Check if this is a background sync operation (data operations)
           // Don't auto-logout for background syncs - let user continue working locally
@@ -226,19 +230,19 @@ export class ApiClient {
                                     endpoint.includes('/contracts') ||
                                     endpoint.includes('/budgets');
           
-          if (isLicenseStatusCheck) {
-            // Silent fail for license status check - expected if token is invalid during app init
-            // Don't log as error - AuthContext will handle it gracefully
-            // Don't clear auth or dispatch event - let AuthContext handle it
+          if (isValidationEndpoint) {
+            // Silent fail for validation endpoints - expected if token is invalid during app init
+            // Don't log as error - AuthContext/AppContext will handle it gracefully
+            // Don't clear auth or dispatch event - let the calling context handle it
           } else if (isBackgroundSync) {
             // For background syncs, just log the error but don't logout
             // Data is saved locally, user can re-login later to sync
-            console.warn('⚠️ Background sync failed due to expired token. Data saved locally. Please re-login to sync.');
+            logger.warnCategory('sync', '⚠️ Background sync failed due to expired token. Data saved locally. Please re-login to sync.');
             // Don't clear auth or dispatch event - let user continue working
             // The error will still be thrown so the caller knows it failed
           } else {
             // For user-initiated actions (like fetching data, navigation, auth operations), logout immediately
-            console.error('API Error (401 Unauthorized) - Token was present but invalid:', {
+            logger.errorCategory('auth', 'API Error (401 Unauthorized) - Token was present but invalid:', {
               error: data.error,
               code: data.code,
               endpoint
@@ -253,7 +257,7 @@ export class ApiClient {
             }
           }
         } else {
-          console.warn('API Error (401 Unauthorized) - No token was present for request:', endpoint);
+          logger.warnCategory('auth', 'API Error (401 Unauthorized) - No token was present for request:', endpoint);
         }
         
         throw error;

@@ -7,6 +7,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../services/api/client';
+import { logger } from '../services/logger';
 
 export interface User {
   id: string;
@@ -72,7 +73,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Call logout API to clear session on server
       await apiClient.post('/auth/logout', {});
     } catch (error) {
-      console.error('Logout API error:', error);
+      logger.errorCategory('auth', 'Logout API error:', error);
       // Continue with local logout even if API fails
     } finally {
       // Clear local auth
@@ -93,7 +94,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     // Listen for auth expiration events from API client
     const handleAuthExpired = () => {
-      console.log('Auth expired event received, logging out...');
+      logger.logCategory('auth', 'Auth expired event received, logging out...');
       logout();
     };
     
@@ -109,7 +110,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (token && tenantId) {
           // Check if token is expired before making API call
           if (apiClient.isTokenExpired()) {
-            console.log('Token in localStorage is expired, clearing auth');
+            logger.logCategory('auth', 'Token in localStorage is expired, clearing auth');
             apiClient.clearAuth();
             setState({
               isAuthenticated: false,
@@ -179,7 +180,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (error?.status === 401) {
               // Token is invalid or expired - clear auth silently
               // Don't log as error - this is expected if token is expired
-              console.log('Token verification failed (401) - clearing auth, user needs to re-login');
+              logger.logCategory('auth', 'Token verification failed (401) - clearing auth, user needs to re-login');
               apiClient.clearAuth();
               setState({
                 isAuthenticated: false,
@@ -200,7 +201,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               });
             } else {
               // Other error - clear auth
-              console.warn('Token verification failed with unexpected error:', error);
+              logger.warnCategory('auth', 'Token verification failed with unexpected error:', error);
               apiClient.clearAuth();
               setState({
                 isAuthenticated: false,
@@ -215,7 +216,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setState(prev => ({ ...prev, isLoading: false }));
         }
       } catch (error) {
-        console.error('Auth check error:', error);
+        logger.errorCategory('auth', 'Auth check error:', error);
         setState(prev => ({ ...prev, isLoading: false }));
       }
     };
@@ -274,13 +275,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const payload = JSON.parse(atob(parts[1]));
             const exp = payload.exp * 1000;
             if (Date.now() >= exp) {
-              console.error('❌ Token received from server is already expired!');
+              logger.errorCategory('auth', '❌ Token received from server is already expired!');
               throw new Error('Token is expired');
             }
-            console.log('✅ Token validated - expires at:', new Date(exp).toISOString());
+            logger.logCategory('auth', '✅ Token validated - expires at:', new Date(exp).toISOString());
           }
         } catch (tokenError) {
-          console.error('❌ Invalid token format received from server:', tokenError);
+          logger.errorCategory('auth', '❌ Invalid token format received from server:', tokenError);
           throw new Error('Invalid token received from server');
         }
 
@@ -377,7 +378,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         trialDaysRemaining: response.trialDaysRemaining,
       };
     } catch (error: any) {
-      console.error('registerTenant error:', error);
+      logger.errorCategory('auth', 'registerTenant error:', error);
       
       // Extract error message from various possible formats
       let errorMessage = 'Registration failed';
@@ -398,7 +399,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
       
-      console.log('Setting error message:', errorMessage);
+      // Error message set (no log needed)
       
       setState(prev => ({
         ...prev,
@@ -446,7 +447,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return response;
     } catch (error: any) {
-      console.error('License check error:', error);
+      logger.errorCategory('auth', 'License check error:', error);
       return { isValid: false };
     }
   }, []);

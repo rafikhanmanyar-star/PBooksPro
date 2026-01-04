@@ -7,6 +7,7 @@
 
 import { CREATE_SCHEMA_SQL, SCHEMA_VERSION } from './schema';
 import { loadSqlJs } from './sqljs-loader';
+import { logger } from '../logger';
 
 // Types for sql.js
 type Database = any;
@@ -56,7 +57,7 @@ class OpfsStorage {
             const buffer = await file.arrayBuffer();
             return new Uint8Array(buffer);
         } catch (error) {
-            console.warn('OPFS load failed, falling back to localStorage:', error);
+            logger.warnCategory('database', 'OPFS load failed, falling back to localStorage:', error);
             return null;
         }
     }
@@ -71,7 +72,7 @@ class OpfsStorage {
             await writable.write(buffer);
             await writable.close();
         } catch (error) {
-            console.warn('OPFS save failed:', error);
+            logger.warnCategory('database', 'OPFS save failed:', error);
             throw error;
         }
     }
@@ -127,7 +128,7 @@ class DatabaseService {
 
         private async _doInitialize(): Promise<void> {
             try {
-                console.log('🔄 Initializing SQL database...');
+                logger.logCategory('database', '🔄 Initializing SQL database...');
                 
                 // Load sql.js using the loader
                 if (!this.sqlJsModule) {
@@ -181,10 +182,10 @@ class DatabaseService {
                         try {
                             this.db = new SQL.Database(opfsData);
                             this.storageMode = 'opfs';
-                            console.log('✅ Loaded existing database from OPFS');
+                            logger.logCategory('database', '✅ Loaded existing database from OPFS');
                             loadedData = opfsData;
                         } catch (parseError) {
-                            console.warn('⚠️ Failed to parse OPFS database, trying localStorage:', parseError);
+                            logger.warnCategory('database', '⚠️ Failed to parse OPFS database, trying localStorage:', parseError);
                         }
                     }
                 }
@@ -197,23 +198,23 @@ class DatabaseService {
                             const buffer = Uint8Array.from(JSON.parse(savedDb));
                             this.db = new SQL.Database(buffer);
                             this.storageMode = 'localStorage';
-                            console.log('✅ Loaded existing database from localStorage');
+                            logger.logCategory('database', '✅ Loaded existing database from localStorage');
                             loadedData = buffer;
                         } catch (parseError) {
-                            console.warn('⚠️ Failed to parse saved database, creating new one:', parseError);
+                            logger.warnCategory('database', '⚠️ Failed to parse saved database, creating new one:', parseError);
                         }
                     }
                 }
 
             if (!this.db) {
                 // Create new database
-                console.log('📦 Creating new database...');
+                logger.logCategory('database', '📦 Creating new database...');
                 this.db = new SQL.Database();
                 // Create schema
                 this.db.run(CREATE_SCHEMA_SQL);
                 // Set schema version
                 this.setMetadata('schema_version', SCHEMA_VERSION.toString());
-                console.log('✅ Database schema created');
+                logger.logCategory('database', '✅ Database schema created');
             } else {
                 // Database exists - check schema version and migrate if needed
                 await this.checkAndMigrateSchema();
@@ -228,9 +229,9 @@ class DatabaseService {
                 try {
                     await this.opfs.save(this.db.export());
                     this.storageMode = 'opfs';
-                    console.log('✅ Copied database to OPFS for durability');
+                    logger.logCategory('database', '✅ Copied database to OPFS for durability');
                 } catch (copyError) {
-                    console.warn('⚠️ Failed to copy database to OPFS, continuing with localStorage:', copyError);
+                    logger.warnCategory('database', '⚠️ Failed to copy database to OPFS, continuing with localStorage:', copyError);
                 }
             }
 
@@ -242,9 +243,9 @@ class DatabaseService {
                 this.startAutoSave();
             }
 
-            console.log('✅ Database initialized successfully');
+            logger.logCategory('database', '✅ Database initialized successfully');
         } catch (error) {
-            console.error('❌ Failed to initialize database:', error);
+            logger.errorCategory('database', '❌ Failed to initialize database:', error);
             this.initializationError = error instanceof Error ? error : new Error(String(error));
             this.isInitialized = false;
             
@@ -946,11 +947,11 @@ class DatabaseService {
                 try {
                     await this.opfs.save(data);
                     this.storageMode = 'opfs';
-                    console.log('✅ Database saved to OPFS storage');
+                    logger.logCategory('database', '✅ Database saved to OPFS storage');
                     resolveLock!();
                     return;
                 } catch (opfsError) {
-                    console.warn('OPFS persistence failed, falling back to localStorage:', opfsError);
+                    logger.warnCategory('database', 'OPFS persistence failed, falling back to localStorage:', opfsError);
                 }
             }
 
@@ -959,13 +960,13 @@ class DatabaseService {
                 const buffer = Array.from(data);
                 localStorage.setItem('finance_db', JSON.stringify(buffer));
                 this.storageMode = 'localStorage';
-                console.log('✅ Database saved to localStorage');
+                logger.logCategory('database', '✅ Database saved to localStorage');
             } catch (error) {
-                console.error('Failed to save database:', error);
+                logger.errorCategory('database', 'Failed to save database:', error);
                 throw error;
             }
         } catch (error) {
-            console.error('❌ Database persistence failed:', error);
+            logger.errorCategory('database', '❌ Database persistence failed:', error);
             throw error;
         } finally {
             resolveLock!();

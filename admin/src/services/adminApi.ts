@@ -135,11 +135,39 @@ class AdminApi {
 
   // Dashboard Stats
   async getDashboardStats() {
-    const response = await fetch(`${ADMIN_API_URL}/stats/dashboard`, {
-      headers: this.getAuthHeaders(),
-    });
-    if (!response.ok) throw new Error('Failed to fetch dashboard stats');
-    return response.json();
+    try {
+      const response = await fetch(`${ADMIN_API_URL}/stats/dashboard`, {
+        headers: this.getAuthHeaders(),
+      });
+      
+      if (!response.ok) {
+        // Log detailed error for debugging
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: errorText || `HTTP ${response.status}` };
+        }
+        
+        console.error('Dashboard stats API error:', {
+          status: response.status,
+          statusText: response.statusText,
+          url: `${ADMIN_API_URL}/stats/dashboard`,
+          error: errorData
+        });
+        
+        throw new Error(errorData.error || `Failed to fetch dashboard stats (${response.status})`);
+      }
+      
+      return response.json();
+    } catch (error: any) {
+      // Re-throw with more context
+      if (error.message) {
+        throw error;
+      }
+      throw new Error(`Network error: ${error.message || 'Failed to fetch dashboard stats'}`);
+    }
   }
 
   // Admin User Management

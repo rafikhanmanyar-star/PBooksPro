@@ -31,10 +31,23 @@ const AdminDashboard: React.FC = () => {
 
   const loadStats = async () => {
     try {
+      setLoading(true);
+      setError('');
       const data = await adminApi.getDashboardStats();
       setStats(data);
     } catch (err: any) {
-      setError(err.message || 'Failed to load dashboard statistics');
+      console.error('Dashboard stats load error:', err);
+      const errorMessage = err?.message || err?.error || 'Failed to load dashboard statistics';
+      setError(errorMessage);
+      
+      // If it's a 401, the user might need to re-login
+      if (err?.status === 401 || errorMessage.includes('401')) {
+        setError('Session expired. Please login again.');
+        // Optionally redirect to login
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 2000);
+      }
     } finally {
       setLoading(false);
     }
