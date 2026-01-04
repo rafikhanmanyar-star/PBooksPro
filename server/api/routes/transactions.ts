@@ -130,30 +130,90 @@ router.get('/:id', async (req: TenantRequest, res) => {
   }
 });
 
-// POST create transaction
+// POST create/update transaction (upsert)
 router.post('/', async (req: TenantRequest, res) => {
   try {
+    console.log('📥 POST /transactions - Request received:', {
+      tenantId: req.tenantId,
+      transactionData: {
+        id: req.body.id,
+        type: req.body.type,
+        amount: req.body.amount
+      }
+    });
+    
     const db = getDb();
     const transaction = req.body;
-    const query = `
-      INSERT INTO transactions (
-        id, tenant_id, type, amount, date, description, account_id, 
-        category_id, contact_id, project_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      RETURNING *
-    `;
-    const result = await db.query(query, [
-      transaction.id,
-      req.tenantId,
-      transaction.type,
-      transaction.amount,
-      transaction.date,
-      transaction.description,
-      transaction.accountId,
-      transaction.categoryId,
-      transaction.contactId,
-      transaction.projectId,
-    ]);
+    
+    // Generate ID if not provided
+    const transactionId = transaction.id || `transaction_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    console.log('📝 POST /transactions - Using transaction ID:', transactionId);
+    
+    // Use transaction for data integrity (upsert behavior)
+    let wasUpdate = false;
+    let oldValues = null;
+    const result = await db.transaction(async (client) => {
+      // Check if transaction with this ID already exists
+      const existing = await client.query(
+        'SELECT * FROM transactions WHERE id = $1 AND tenant_id = $2',
+        [transactionId, req.tenantId]
+      );
+      
+      if (existing.rows.length > 0) {
+        // Update existing transaction
+        wasUpdate = true;
+        oldValues = existing.rows[0];
+        console.log('🔄 POST /transactions - Updating existing transaction:', transactionId);
+        const updateResult = await client.query(
+          `UPDATE transactions 
+           SET type = $1, amount = $2, date = $3, description = $4, 
+               account_id = $5, category_id = $6, contact_id = $7, project_id = $8, updated_at = NOW()
+           WHERE id = $9 AND tenant_id = $10
+           RETURNING *`,
+          [
+            transaction.type,
+            transaction.amount,
+            transaction.date,
+            transaction.description || null,
+            transaction.accountId || null,
+            transaction.categoryId || null,
+            transaction.contactId || null,
+            transaction.projectId || null,
+            transactionId,
+            req.tenantId
+          ]
+        );
+        return updateResult.rows[0];
+      } else {
+        // Create new transaction
+        console.log('➕ POST /transactions - Creating new transaction:', transactionId);
+        const insertResult = await client.query(
+          `INSERT INTO transactions (
+            id, tenant_id, type, amount, date, description, account_id, 
+            category_id, contact_id, project_id, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+          RETURNING *`,
+          [
+            transactionId,
+            req.tenantId,
+            transaction.type,
+            transaction.amount,
+            transaction.date,
+            transaction.description || null,
+            transaction.accountId || null,
+            transaction.categoryId || null,
+            transaction.contactId || null,
+            transaction.projectId || null
+          ]
+        );
+        return insertResult.rows[0];
+      }
+    });
+    
+    if (!result) {
+      console.error('❌ POST /transactions - Transaction returned no result');
+      return res.status(500).json({ error: 'Failed to create/update transaction' });
+    }
     
     // Log audit entry
     if (req.user) {
@@ -163,18 +223,42 @@ router.post('/', async (req: TenantRequest, res) => {
         req.user.userId,
         req.user.username || 'Unknown',
         req.user.role || 'Unknown',
-        'CREATE',
-        result[0].id,
-        result[0],
-        null,
+        wasUpdate ? 'UPDATE' : 'CREATE',
+        result.id,
+        result,
+        oldValues,
         req
       );
     }
     
-    res.json(result[0]);
-  } catch (error) {
-    console.error('Error creating transaction:', error);
-    res.status(500).json({ error: 'Failed to create transaction' });
+    console.log('✅ POST /transactions - Transaction saved successfully:', {
+      id: result.id,
+      type: result.type,
+      amount: result.amount,
+      tenantId: req.tenantId
+    });
+    
+    res.status(201).json(result);
+  } catch (error: any) {
+    console.error('❌ POST /transactions - Error:', {
+      error: error,
+      errorMessage: error.message,
+      errorCode: error.code,
+      tenantId: req.tenantId,
+      transactionId: req.body?.id
+    });
+    
+    if (error.code === '23505') { // Unique violation
+      return res.status(409).json({ 
+        error: 'Duplicate transaction',
+        message: 'A transaction with this ID already exists'
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Failed to create/update transaction',
+      message: error.message || 'Internal server error'
+    });
   }
 });
 

@@ -183,13 +183,13 @@ export class AppStateApiService {
    * Save account to API
    */
   async saveAccount(account: Partial<AppState['accounts'][0]>): Promise<AppState['accounts'][0]> {
-    if (account.id) {
-      // Update existing
-      return this.accountsRepo.update(account.id, account);
-    } else {
-      // Create new
-      return this.accountsRepo.create(account);
-    }
+    // Always use POST endpoint - it handles upserts automatically
+    const accountWithId = {
+      ...account,
+      id: account.id || `account_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+    logger.logCategory('sync', `💾 Syncing account (POST upsert): ${accountWithId.id} - ${accountWithId.name}`);
+    return this.accountsRepo.create(accountWithId);
   }
 
   /**
@@ -269,13 +269,13 @@ export class AppStateApiService {
    * Save transaction to API
    */
   async saveTransaction(transaction: Partial<AppState['transactions'][0]>): Promise<AppState['transactions'][0]> {
-    if (transaction.id) {
-      // Update existing
-      return this.transactionsRepo.update(transaction.id, transaction);
-    } else {
-      // Create new
-      return this.transactionsRepo.create(transaction);
-    }
+    // Always use POST endpoint - it handles upserts automatically
+    const transactionWithId = {
+      ...transaction,
+      id: transaction.id || `transaction_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+    logger.logCategory('sync', `💾 Syncing transaction (POST upsert): ${transactionWithId.id}`);
+    return this.transactionsRepo.create(transactionWithId);
   }
 
   /**
@@ -289,11 +289,13 @@ export class AppStateApiService {
    * Save category to API
    */
   async saveCategory(category: Partial<AppState['categories'][0]>): Promise<AppState['categories'][0]> {
-    if (category.id) {
-      return this.categoriesRepo.update(category.id, category);
-    } else {
-      return this.categoriesRepo.create(category);
-    }
+    // Always use POST endpoint - it handles upserts automatically
+    const categoryWithId = {
+      ...category,
+      id: category.id || `category_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+    logger.logCategory('sync', `💾 Syncing category (POST upsert): ${categoryWithId.id} - ${categoryWithId.name}`);
+    return this.categoriesRepo.create(categoryWithId);
   }
 
   /**
@@ -307,11 +309,13 @@ export class AppStateApiService {
    * Save project to API
    */
   async saveProject(project: Partial<AppState['projects'][0]>): Promise<AppState['projects'][0]> {
-    if (project.id) {
-      return this.projectsRepo.update(project.id, project);
-    } else {
-      return this.projectsRepo.create(project);
-    }
+    // Always use POST endpoint - it handles upserts automatically
+    const projectWithId = {
+      ...project,
+      id: project.id || `project_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+    logger.logCategory('sync', `💾 Syncing project (POST upsert): ${projectWithId.id} - ${projectWithId.name}`);
+    return this.projectsRepo.create(projectWithId);
   }
 
   /**
