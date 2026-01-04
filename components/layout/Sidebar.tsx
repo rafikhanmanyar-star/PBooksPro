@@ -16,9 +16,14 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const { state, dispatch } = useAppContext();
     const { isRegistered, daysRemaining } = useLicense();
-    const { logout, tenant } = useAuth();
+    const { logout, tenant, user } = useAuth();
     const { currentUser } = state;
     const [isRegModalOpen, setIsRegModalOpen] = useState(false);
+    
+    // Get user name - prefer AuthContext user (cloud auth) over AppContext currentUser (local)
+    const userName = user?.name || currentUser?.name || 'User';
+    const userRole = user?.role || currentUser?.role || '';
+    const organizationName = tenant?.companyName || tenant?.name || '';
 
     // Determine allowed pages based on role
     const isAccountsOnly = currentUser?.role === 'Accounts';
@@ -173,16 +178,22 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
 
                     <div className="space-y-2">
                         {/* User Info */}
-                        <div className="flex items-center gap-3 p-2 rounded-lg bg-slate-800/50">
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-[10px] shadow-inner">
-                                {currentUser?.name?.charAt(0) || 'U'}
+                        <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-inner flex-shrink-0">
+                                {userName.charAt(0).toUpperCase()}
                             </div>
                             <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-white truncate leading-tight">{currentUser?.name}</div>
-                                <div className="text-[10px] text-slate-400 truncate capitalize">{currentUser?.role}</div>
-                                {tenant && (
-                                    <div className="text-[10px] text-slate-500 truncate mt-0.5" title={tenant.companyName || tenant.name}>
-                                        {tenant.companyName || tenant.name}
+                                <div className="text-sm font-semibold text-white truncate leading-tight mb-0.5" title={userName}>
+                                    {userName}
+                                </div>
+                                {organizationName && (
+                                    <div className="text-xs font-medium text-indigo-300 truncate mb-0.5" title={organizationName}>
+                                        {organizationName}
+                                    </div>
+                                )}
+                                {userRole && (
+                                    <div className="text-[10px] text-slate-400 truncate capitalize">
+                                        {userRole}
                                     </div>
                                 )}
                             </div>

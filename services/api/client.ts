@@ -36,6 +36,13 @@ export class ApiClient {
     if (typeof window !== 'undefined') {
       this.token = localStorage.getItem('auth_token');
       this.tenantId = localStorage.getItem('tenant_id');
+      
+      // Log for debugging (remove in production if needed)
+      if (this.token) {
+        console.log('🔑 Loaded auth token from localStorage:', this.token.substring(0, 20) + '...');
+      } else {
+        console.warn('⚠️ No auth token found in localStorage');
+      }
     }
   }
 
@@ -84,6 +91,10 @@ export class ApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
+    // Reload auth from localStorage before each request to ensure we have the latest token
+    // This is important because the token might be updated after the singleton is created
+    this.loadAuth();
+    
     const url = `${this.baseUrl}${endpoint}`;
     
     const headers: HeadersInit = {
@@ -123,6 +134,26 @@ export class ApiClient {
         // If JSON parsing fails, create error from response text
         const text = await response.text();
         throw new Error(`Server error (${response.status}): ${text || response.statusText}`);
+      }
+
+      // Handle 401 Unauthorized - token expired or invalid
+      if (response.status === 401) {
+        const error: ApiError = {
+          error: data.error || 'Unauthorized',
+          message: data.message || data.error || 'Your session has expired. Please login again.',
+          status: 401,
+        };
+        
+        // Clear invalid auth
+        this.clearAuth();
+        
+        // Dispatch custom event for auth context to handle
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('auth:expired', { detail: error }));
+        }
+        
+        console.error('API Error (401 Unauthorized):', error);
+        throw error;
       }
 
       if (!response.ok) {

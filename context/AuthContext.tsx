@@ -68,6 +68,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Check if user is already authenticated (from localStorage)
    */
   useEffect(() => {
+    // Listen for auth expiration events from API client
+    const handleAuthExpired = () => {
+      console.log('Auth expired event received, logging out...');
+      logout();
+    };
+    
+    if (typeof window !== 'undefined') {
+      window.addEventListener('auth:expired', handleAuthExpired);
+    }
+    
     const checkAuth = async () => {
       try {
         const token = apiClient.getToken();
@@ -159,7 +169,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     checkAuth();
-  }, []);
+    
+    // Cleanup: remove event listener
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('auth:expired', handleAuthExpired);
+      }
+    };
+  }, [logout]);
 
   /**
    * Smart login - auto-resolves tenant from email/username
