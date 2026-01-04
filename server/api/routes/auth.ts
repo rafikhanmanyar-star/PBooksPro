@@ -17,6 +17,8 @@ router.post('/smart-login', async (req, res) => {
       return res.status(400).json({ error: 'Email/username and password are required' });
     }
 
+    console.log('🔐 Smart login attempt:', { identifier: identifier.substring(0, 10) + '...', hasPassword: !!password, tenantId });
+
     const isEmail = identifier.includes('@');
     let matchedTenants: any[] = [];
     let matchedUsers: any[] = [];
@@ -29,17 +31,29 @@ router.post('/smart-login', async (req, res) => {
       );
       
       if (tenants.length === 0) {
+        console.log('❌ Smart login: Tenant not found:', tenantId);
         return res.status(403).json({ error: 'Invalid tenant' });
       }
 
       const tenant = tenants[0];
-      const users = await db.query(
-        'SELECT * FROM users WHERE username = $1 AND tenant_id = $2 AND is_active = TRUE',
+      
+      // First check if user exists (without is_active check) for better error messages
+      const allUsers = await db.query(
+        'SELECT * FROM users WHERE username = $1 AND tenant_id = $2',
         [identifier, tenantId]
       );
       
+      if (allUsers.length === 0) {
+        console.log('❌ Smart login: User not found:', { identifier, tenantId });
+        return res.status(401).json({ error: 'Invalid credentials', message: 'User not found' });
+      }
+      
+      // Check if user is active
+      const users = allUsers.filter(u => u.is_active === true || u.is_active === null);
+      
       if (users.length === 0) {
-        return res.status(401).json({ error: 'Invalid credentials' });
+        console.log('❌ Smart login: User is inactive:', { identifier, tenantId, is_active: allUsers[0]?.is_active });
+        return res.status(403).json({ error: 'Account disabled', message: 'Your account has been disabled. Please contact your administrator.' });
       }
 
       matchedTenants = [tenant];
@@ -56,24 +70,29 @@ router.post('/smart-login', async (req, res) => {
         if (tenantsByEmail.length > 0) {
           // Found tenant by email, now find user by email in that tenant
           for (const tenant of tenantsByEmail) {
-            const users = await db.query(
-              'SELECT * FROM users WHERE email = $1 AND tenant_id = $2 AND is_active = TRUE',
+            const allUsers = await db.query(
+              'SELECT * FROM users WHERE email = $1 AND tenant_id = $2',
               [identifier, tenant.id]
             );
+            // Filter for active users
+            const users = allUsers.filter((u: any) => u.is_active === true || u.is_active === null);
             if (users.length > 0) {
               matchedTenants.push(tenant);
               matchedUsers.push(...users);
             }
           }
         } else {
-          // Check if email matches any user email
+          // Check if email matches any user email (check both active and inactive for better error messages)
           const usersByEmail = await db.query(
-            'SELECT u.*, t.* FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = $1 AND u.is_active = TRUE',
+            'SELECT u.*, t.* FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = $1',
             [identifier]
           );
           
-          if (usersByEmail.length > 0) {
-            matchedUsers = usersByEmail.map((row: any) => ({
+          // Filter for active users
+          const activeUsersByEmail = usersByEmail.filter((row: any) => row.is_active === true || row.is_active === null);
+          
+          if (activeUsersByEmail.length > 0) {
+            matchedUsers = activeUsersByEmail.map((row: any) => ({
               id: row.id,
               username: row.username,
               name: row.name,
@@ -82,24 +101,31 @@ router.post('/smart-login', async (req, res) => {
               password: row.password,
               tenant_id: row.tenant_id
             }));
-            matchedTenants = usersByEmail.map((row: any) => ({
+            matchedTenants = activeUsersByEmail.map((row: any) => ({
               id: row.tenant_id,
               name: row.name,
               company_name: row.company_name,
               email: row.email
             }));
+          } else if (usersByEmail.length > 0) {
+            // User exists but is inactive
+            console.log('❌ Smart login: User found but inactive:', identifier);
+            return res.status(403).json({ error: 'Account disabled', message: 'Your account has been disabled. Please contact your administrator.' });
           }
         }
       } else {
-        // Search by username across all tenants
-        const usersByUsername = await db.query(
-          `SELECT u.id, u.username, u.name, u.role, u.email, u.password, u.tenant_id,
+        // Search by username across all tenants (check all users first, then filter active)
+        const allUsersByUsername = await db.query(
+          `SELECT u.id, u.username, u.name, u.role, u.email, u.password, u.tenant_id, u.is_active,
                   t.id as t_id, t.name as tenant_name, t.company_name, t.email as tenant_email 
            FROM users u 
            JOIN tenants t ON u.tenant_id = t.id 
-           WHERE u.username = $1 AND u.is_active = TRUE`,
+           WHERE u.username = $1`,
           [identifier]
         );
+        
+        // Filter for active users
+        const usersByUsername = allUsersByUsername.filter((row: any) => row.is_active === true || row.is_active === null);
         
         if (usersByUsername.length > 0) {
           matchedUsers = usersByUsername.map((row: any) => ({
@@ -125,13 +151,18 @@ router.post('/smart-login', async (req, res) => {
             }
           });
           matchedTenants = Array.from(tenantMap.values());
+        } else if (allUsersByUsername.length > 0) {
+          // User exists but is inactive
+          console.log('❌ Smart login: User found but inactive:', identifier);
+          return res.status(403).json({ error: 'Account disabled', message: 'Your account has been disabled. Please contact your administrator.' });
         }
       }
     }
 
     // If no matches found
     if (matchedUsers.length === 0) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      console.log('❌ Smart login: No matching users found:', { identifier: identifier.substring(0, 10) + '...', isEmail });
+      return res.status(401).json({ error: 'Invalid credentials', message: 'No user found with this email/username' });
     }
 
     // If multiple tenants found, return them for selection
@@ -262,22 +293,40 @@ router.post('/login', async (req, res) => {
 
     const tenant = tenants[0];
 
-    // Find user within tenant
-    const users = await db.query(
-      'SELECT * FROM users WHERE username = $1 AND tenant_id = $2 AND is_active = TRUE',
+    // Find user within tenant (check all users first, then filter active)
+    const allUsers = await db.query(
+      'SELECT * FROM users WHERE username = $1 AND tenant_id = $2',
       [username, tenantId]
     );
     
+    if (allUsers.length === 0) {
+      console.log('❌ Login: User not found:', { username, tenantId });
+      return res.status(401).json({ error: 'Invalid credentials', message: 'User not found' });
+    }
+    
+    // Filter for active users (is_active = TRUE or NULL)
+    const users = allUsers.filter((u: any) => u.is_active === true || u.is_active === null);
+    
     if (users.length === 0) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      console.log('❌ Login: User is inactive:', { username, tenantId, is_active: allUsers[0]?.is_active });
+      return res.status(403).json({ error: 'Account disabled', message: 'Your account has been disabled. Please contact your administrator.' });
     }
 
     const user = users[0];
     
     // Verify password
-    if (!user.password || !await bcrypt.compare(password, user.password)) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+    if (!user.password) {
+      console.log('❌ Login: User has no password set:', { userId: user.id, username: user.username });
+      return res.status(401).json({ error: 'Invalid credentials', message: 'Password not set for this user' });
     }
+    
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
+      console.log('❌ Login: Password mismatch:', { userId: user.id, username: user.username });
+      return res.status(401).json({ error: 'Invalid credentials', message: 'Incorrect password' });
+    }
+    
+    console.log('✅ Login: Password verified for user:', { userId: user.id, username: user.username, role: user.role });
 
     // Check for existing active sessions for this user
     // NOTE: We no longer delete existing sessions on login to prevent premature expiration
@@ -560,10 +609,11 @@ router.post('/register-tenant', async (req, res) => {
       const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
       // Create the admin user (only one admin per organization)
+      // Explicitly set is_active = TRUE to ensure user can login
       await db.query(
-        `INSERT INTO users (id, tenant_id, username, name, role, password, email)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [userId, tenantId, adminUsername, adminName || 'Administrator', 'Admin', hashedPassword, email]
+        `INSERT INTO users (id, tenant_id, username, name, role, password, email, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [userId, tenantId, adminUsername, adminName || 'Administrator', 'Admin', hashedPassword, email, true]
       );
       console.log('Admin user created:', userId);
     } catch (userError: any) {
