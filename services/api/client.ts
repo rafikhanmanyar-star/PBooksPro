@@ -195,12 +195,38 @@ export class ApiClient {
             endpoint
           });
           
-          // Clear invalid auth
-          this.clearAuth();
+          // Check if this is a background sync operation (data operations)
+          // Don't auto-logout for background syncs - let user continue working locally
+          const isBackgroundSync = endpoint.includes('/contacts') || 
+                                    endpoint.includes('/transactions') || 
+                                    endpoint.includes('/accounts') ||
+                                    endpoint.includes('/invoices') ||
+                                    endpoint.includes('/bills') ||
+                                    endpoint.includes('/categories') ||
+                                    endpoint.includes('/projects') ||
+                                    endpoint.includes('/buildings') ||
+                                    endpoint.includes('/properties') ||
+                                    endpoint.includes('/units') ||
+                                    endpoint.includes('/rental-agreements') ||
+                                    endpoint.includes('/project-agreements') ||
+                                    endpoint.includes('/contracts') ||
+                                    endpoint.includes('/budgets');
           
-          // Dispatch custom event for auth context to handle
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('auth:expired', { detail: error }));
+          if (isBackgroundSync) {
+            // For background syncs, just log the error but don't logout
+            // Data is saved locally, user can re-login later to sync
+            console.warn('⚠️ Background sync failed due to expired token. Data saved locally. Please re-login to sync.');
+            // Don't clear auth or dispatch event - let user continue working
+            // The error will still be thrown so the caller knows it failed
+          } else {
+            // For user-initiated actions (like fetching data, navigation, auth operations), logout immediately
+            // Clear invalid auth
+            this.clearAuth();
+            
+            // Dispatch custom event for auth context to handle
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('auth:expired', { detail: error }));
+            }
           }
         } else {
           console.warn('API Error (401 Unauthorized) - No token was present for request:', endpoint);
