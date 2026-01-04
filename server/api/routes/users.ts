@@ -1,10 +1,15 @@
 import { Router } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
+import { adminOnlyMiddleware } from '../../middleware/adminOnlyMiddleware.js';
 import bcrypt from 'bcryptjs';
 
 const router = Router();
 const getDb = () => getDatabaseService();
+
+// Apply admin-only middleware to all user management routes
+// Only organization admins (role='Admin') can manage users
+router.use(adminOnlyMiddleware());
 
 // Helper function to check user limit
 async function checkUserLimit(tenantId: string, db: any): Promise<{ allowed: boolean; currentCount: number; maxUsers: number; error?: string }> {

@@ -463,16 +463,30 @@ router.post('/register-tenant', async (req, res) => {
 
     const db = getDb();
     
-    // Check if email already exists
-    const existing = await db.query(
-      'SELECT id FROM tenants WHERE email = $1',
+    // Check if organization already exists (by email OR company_name)
+    // Prevent re-registration of organizations
+    const existingByEmail = await db.query(
+      'SELECT id, company_name FROM tenants WHERE email = $1',
       [email]
     );
     
-    if (existing.length > 0) {
+    if (existingByEmail.length > 0) {
       return res.status(409).json({ 
-        error: 'Email already registered',
-        message: 'An account with this email already exists. Please use a different email or login.'
+        error: 'Organization already registered',
+        message: 'An organization with this email already exists. This organization has already been registered. Please login instead.'
+      });
+    }
+    
+    // Check if company name already exists
+    const existingByCompany = await db.query(
+      'SELECT id, email FROM tenants WHERE LOWER(company_name) = LOWER($1) OR LOWER(name) = LOWER($1)',
+      [companyName]
+    );
+    
+    if (existingByCompany.length > 0) {
+      return res.status(409).json({ 
+        error: 'Organization already registered',
+        message: 'An organization with this company name already exists. This organization has already been registered. Please login instead.'
       });
     }
 
@@ -504,6 +518,22 @@ router.post('/register-tenant', async (req, res) => {
 
     // Create admin user
     try {
+      // Safety check: Ensure no admin user already exists for this tenant
+      // (This shouldn't happen since we prevent re-registration, but check for safety)
+      const existingAdmin = await db.query(
+        'SELECT id FROM users WHERE tenant_id = $1 AND role = $2',
+        [tenantId, 'Admin']
+      );
+      
+      if (existingAdmin.length > 0) {
+        // Admin already exists - this shouldn't happen, but if it does, clean up tenant and reject
+        await db.query('DELETE FROM tenants WHERE id = $1', [tenantId]);
+        return res.status(409).json({
+          error: 'Admin user already exists',
+          message: 'This organization already has an admin user. Registration cannot be completed.'
+        });
+      }
+      
       // Check user limit (skip for first user during registration)
       const tenantInfo = await db.query(
         'SELECT max_users FROM tenants WHERE id = $1',
@@ -529,6 +559,7 @@ router.post('/register-tenant', async (req, res) => {
       const hashedPassword = await bcrypt.hash(adminPassword, 10);
       const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
+      // Create the admin user (only one admin per organization)
       await db.query(
         `INSERT INTO users (id, tenant_id, username, name, role, password, email)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
