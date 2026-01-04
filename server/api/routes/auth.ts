@@ -82,11 +82,21 @@ router.post('/smart-login', async (req, res) => {
             }
           }
         } else {
-          // Check if email matches any user email (check both active and inactive for better error messages)
+          // Check if email matches any user email - use explicit column selection to avoid conflicts
           const usersByEmail = await db.query(
-            'SELECT u.*, t.* FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = $1',
+            `SELECT u.id, u.username, u.name, u.role, u.email, u.password, u.tenant_id, u.is_active,
+                    t.id as tenant_id_col, t.name as tenant_name, t.company_name, t.email as tenant_email 
+             FROM users u 
+             JOIN tenants t ON u.tenant_id = t.id 
+             WHERE u.email = $1`,
             [identifier]
           );
+          
+          console.log('🔍 Smart login: Email lookup result:', { 
+            email: identifier, 
+            foundUsers: usersByEmail.length,
+            users: usersByEmail.map((u: any) => ({ id: u.id, username: u.username, email: u.email, is_active: u.is_active }))
+          });
           
           // Filter for active users
           const activeUsersByEmail = usersByEmail.filter((row: any) => row.is_active === true || row.is_active === null);
@@ -103,13 +113,13 @@ router.post('/smart-login', async (req, res) => {
             }));
             matchedTenants = activeUsersByEmail.map((row: any) => ({
               id: row.tenant_id,
-              name: row.name,
+              name: row.tenant_name,
               company_name: row.company_name,
-              email: row.email
+              email: row.tenant_email
             }));
           } else if (usersByEmail.length > 0) {
             // User exists but is inactive
-            console.log('❌ Smart login: User found but inactive:', identifier);
+            console.log('❌ Smart login: User found but inactive:', { email: identifier, is_active: usersByEmail[0]?.is_active });
             return res.status(403).json({ error: 'Account disabled', message: 'Your account has been disabled. Please contact your administrator.' });
           }
         }
@@ -161,8 +171,25 @@ router.post('/smart-login', async (req, res) => {
 
     // If no matches found
     if (matchedUsers.length === 0) {
-      console.log('❌ Smart login: No matching users found:', { identifier: identifier.substring(0, 10) + '...', isEmail });
-      return res.status(401).json({ error: 'Invalid credentials', message: 'No user found with this email/username' });
+      console.log('❌ Smart login: No matching users found:', { 
+        identifier: identifier.substring(0, 20) + '...', 
+        isEmail,
+        fullIdentifier: identifier,
+        matchedTenantsCount: matchedTenants.length
+      });
+      
+      // If it's an email, provide more helpful error message
+      if (isEmail) {
+        return res.status(401).json({ 
+          error: 'Invalid credentials', 
+          message: `No user found with email "${identifier}". Please check your email address or contact your administrator.` 
+        });
+      } else {
+        return res.status(401).json({ 
+          error: 'Invalid credentials', 
+          message: `No user found with username "${identifier}". Please check your username or contact your administrator.` 
+        });
+      }
     }
 
     // If multiple tenants found, return them for selection
