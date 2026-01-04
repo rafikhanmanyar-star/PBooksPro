@@ -57,24 +57,48 @@ import { licenseMiddleware } from '../middleware/licenseMiddleware.js';
 const app = express();
 const port = process.env.PORT || 3000;
 
-// PostgreSQL connection pool
+// Use DatabaseService singleton instead of creating separate pool
+// This ensures consistent connection management across the application
+import { getDatabaseService } from '../services/databaseService.js';
+
+// Test database connection on startup with retry
+(async () => {
+  let retries = 5;
+  let connected = false;
+  
+  while (retries > 0 && !connected) {
+    try {
+      const db = getDatabaseService();
+      await db.healthCheck();
+      console.log('✅ Connected to PostgreSQL database');
+      connected = true;
+    } catch (err: any) {
+      retries--;
+      if (retries > 0) {
+        console.warn(`⚠️ Database connection failed, retrying... (${retries} attempts left)`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } else {
+        console.error('❌ Database connection error:', err.message);
+        console.error('   Make sure PostgreSQL is running and DATABASE_URL is correct');
+        console.error('   Using External Database URL (not Internal) from Render Dashboard');
+      }
+    }
+  }
+})();
+
+// Create pool for tenantMiddleware (it needs direct pool access for RLS)
+// But use DatabaseService for all other operations
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000, // Increased for Render cold starts
 });
 
-// Test database connection on startup
-pool.query('SELECT NOW()')
-  .then(() => {
-    console.log('✅ Connected to PostgreSQL database');
-  })
-  .catch((err) => {
-    console.error('❌ Database connection error:', err.message);
-    console.error('   Make sure PostgreSQL is running and DATABASE_URL is correct');
-  });
-
 pool.on('error', (err) => {
-  console.error('❌ Database connection error:', err);
+  console.error('❌ Database pool error:', err);
+  // Don't exit - let the pool handle reconnection
 });
 
 // Middleware - CORS configuration

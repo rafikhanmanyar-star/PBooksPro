@@ -205,11 +205,9 @@ export class ApiClient {
         const hadToken = !!this.token;
         
         if (hadToken) {
-          console.error('API Error (401 Unauthorized) - Token was present but invalid:', {
-            error: data.error,
-            code: data.code,
-            endpoint
-          });
+          // Check if this is a license status check during app initialization
+          // Don't log as error - it's expected if token is invalid
+          const isLicenseStatusCheck = endpoint.includes('/license-status');
           
           // Check if this is a background sync operation (data operations)
           // Don't auto-logout for background syncs - let user continue working locally
@@ -228,7 +226,11 @@ export class ApiClient {
                                     endpoint.includes('/contracts') ||
                                     endpoint.includes('/budgets');
           
-          if (isBackgroundSync) {
+          if (isLicenseStatusCheck) {
+            // Silent fail for license status check - expected if token is invalid during app init
+            // Don't log as error - AuthContext will handle it gracefully
+            // Don't clear auth or dispatch event - let AuthContext handle it
+          } else if (isBackgroundSync) {
             // For background syncs, just log the error but don't logout
             // Data is saved locally, user can re-login later to sync
             console.warn('⚠️ Background sync failed due to expired token. Data saved locally. Please re-login to sync.');
@@ -236,6 +238,12 @@ export class ApiClient {
             // The error will still be thrown so the caller knows it failed
           } else {
             // For user-initiated actions (like fetching data, navigation, auth operations), logout immediately
+            console.error('API Error (401 Unauthorized) - Token was present but invalid:', {
+              error: data.error,
+              code: data.code,
+              endpoint
+            });
+            
             // Clear invalid auth
             this.clearAuth();
             

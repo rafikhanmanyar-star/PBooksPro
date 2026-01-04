@@ -107,6 +107,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const tenantId = apiClient.getTenantId();
 
         if (token && tenantId) {
+          // Check if token is expired before making API call
+          if (apiClient.isTokenExpired()) {
+            console.log('Token in localStorage is expired, clearing auth');
+            apiClient.clearAuth();
+            setState({
+              isAuthenticated: false,
+              user: null,
+              tenant: null,
+              isLoading: false,
+              error: null,
+            });
+            return;
+          }
+
           // Verify token is still valid by checking license status
           try {
             const licenseStatus = await apiClient.get<{ isValid: boolean }>('/tenants/license-status');
@@ -156,11 +170,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 error: 'License has expired. Please renew your license.',
               });
             }
-          } catch (error) {
+          } catch (error: any) {
             // Token invalid or expired, or network error
             // Don't clear auth on network errors - might be temporary
             const errorMessage = error instanceof Error ? error.message : String(error);
-            if (errorMessage.includes('Network') || errorMessage.includes('Failed to fetch')) {
+            
+            // Check if it's a 401 error (token invalid/expired)
+            if (error?.status === 401) {
+              // Token is invalid or expired - clear auth silently
+              // Don't log as error - this is expected if token is expired
+              console.log('Token verification failed (401) - clearing auth, user needs to re-login');
+              apiClient.clearAuth();
+              setState({
+                isAuthenticated: false,
+                user: null,
+                tenant: null,
+                isLoading: false,
+                error: null,
+              });
+            } else if (errorMessage.includes('Network') || errorMessage.includes('Failed to fetch')) {
               // Network error - keep token but mark as not authenticated
               // User can retry when network is back
               setState({
@@ -171,7 +199,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 error: 'Unable to verify authentication. Please check your connection.',
               });
             } else {
-              // Token invalid or expired
+              // Other error - clear auth
+              console.warn('Token verification failed with unexpected error:', error);
               apiClient.clearAuth();
               setState({
                 isAuthenticated: false,

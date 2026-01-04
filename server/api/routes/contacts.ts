@@ -25,26 +25,95 @@ router.post('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const contact = req.body;
-    const result = await db.query(
-      `INSERT INTO contacts (
-        id, tenant_id, name, type, description, contact_no, company_name, address
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING *`,
-      [
-        contact.id,
-        req.tenantId,
-        contact.name,
-        contact.type,
-        contact.description,
-        contact.contactNo,
-        contact.companyName,
-        contact.address
-      ]
-    );
-    res.json(result[0]);
-  } catch (error) {
+    
+    // Validate required fields
+    if (!contact.name || !contact.type) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Name and type are required fields'
+      });
+    }
+    
+    // Generate ID if not provided
+    const contactId = contact.id || `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Use transaction for data integrity
+    const result = await db.transaction(async (client) => {
+      // Check if contact with this ID already exists (upsert behavior)
+      const existing = await client.query(
+        'SELECT * FROM contacts WHERE id = $1 AND tenant_id = $2',
+        [contactId, req.tenantId]
+      );
+      
+      if (existing.rows.length > 0) {
+        // Update existing contact
+        const updateResult = await client.query(
+          `UPDATE contacts 
+           SET name = $1, type = $2, description = $3, contact_no = $4, 
+               company_name = $5, address = $6, updated_at = NOW()
+           WHERE id = $7 AND tenant_id = $8
+           RETURNING *`,
+          [
+            contact.name,
+            contact.type,
+            contact.description || null,
+            contact.contactNo || null,
+            contact.companyName || null,
+            contact.address || null,
+            contactId,
+            req.tenantId
+          ]
+        );
+        return updateResult.rows[0];
+      } else {
+        // Create new contact
+        const insertResult = await client.query(
+          `INSERT INTO contacts (
+            id, tenant_id, name, type, description, contact_no, company_name, address, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+          RETURNING *`,
+          [
+            contactId,
+            req.tenantId,
+            contact.name,
+            contact.type,
+            contact.description || null,
+            contact.contactNo || null,
+            contact.companyName || null,
+            contact.address || null
+          ]
+        );
+        return insertResult.rows[0];
+      }
+    });
+    
+    if (!result) {
+      return res.status(500).json({ error: 'Failed to create contact' });
+    }
+    
+    res.status(201).json(result);
+  } catch (error: any) {
     console.error('Error creating contact:', error);
-    res.status(500).json({ error: 'Failed to create contact' });
+    
+    // Handle specific database errors
+    if (error.code === '23505') { // Unique violation
+      return res.status(409).json({ 
+        error: 'Duplicate contact',
+        message: 'A contact with this ID already exists'
+      });
+    }
+    
+    if (error.code === '23503') { // Foreign key violation
+      return res.status(400).json({ 
+        error: 'Invalid reference',
+        message: 'One or more referenced records do not exist'
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Failed to create contact',
+      message: error.message || 'Internal server error'
+    });
   }
 });
 
@@ -53,6 +122,15 @@ router.put('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const contact = req.body;
+    
+    // Validate required fields
+    if (!contact.name || !contact.type) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Name and type are required fields'
+      });
+    }
+    
     const result = await db.query(
       `UPDATE contacts 
        SET name = $1, type = $2, description = $3, contact_no = $4, 
@@ -62,23 +140,29 @@ router.put('/:id', async (req: TenantRequest, res) => {
       [
         contact.name,
         contact.type,
-        contact.description,
-        contact.contactNo,
-        contact.companyName,
-        contact.address,
+        contact.description || null,
+        contact.contactNo || null,
+        contact.companyName || null,
+        contact.address || null,
         req.params.id,
         req.tenantId
       ]
     );
     
     if (result.length === 0) {
-      return res.status(404).json({ error: 'Contact not found' });
+      return res.status(404).json({ 
+        error: 'Contact not found',
+        message: `Contact with ID ${req.params.id} not found or does not belong to your tenant`
+      });
     }
     
     res.json(result[0]);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating contact:', error);
-    res.status(500).json({ error: 'Failed to update contact' });
+    res.status(500).json({ 
+      error: 'Failed to update contact',
+      message: error.message || 'Internal server error'
+    });
   }
 });
 
