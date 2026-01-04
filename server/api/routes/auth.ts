@@ -125,6 +125,7 @@ router.post('/smart-login', async (req, res) => {
         }
       } else {
         // Search by username across all tenants (check all users first, then filter active)
+        console.log('🔍 Smart login: Searching by username:', identifier);
         const allUsersByUsername = await db.query(
           `SELECT u.id, u.username, u.name, u.role, u.email, u.password, u.tenant_id, u.is_active,
                   t.id as t_id, t.name as tenant_name, t.company_name, t.email as tenant_email 
@@ -134,10 +135,17 @@ router.post('/smart-login', async (req, res) => {
           [identifier]
         );
         
+        console.log('🔍 Smart login: Username lookup result:', { 
+          username: identifier, 
+          foundUsers: allUsersByUsername.length,
+          users: allUsersByUsername.map((u: any) => ({ id: u.id, username: u.username, email: u.email, is_active: u.is_active, tenant_id: u.tenant_id }))
+        });
+        
         // Filter for active users
         const usersByUsername = allUsersByUsername.filter((row: any) => row.is_active === true || row.is_active === null);
         
         if (usersByUsername.length > 0) {
+          console.log('✅ Smart login: Found active users:', usersByUsername.length);
           matchedUsers = usersByUsername.map((row: any) => ({
             id: row.id,
             username: row.username,
@@ -163,7 +171,7 @@ router.post('/smart-login', async (req, res) => {
           matchedTenants = Array.from(tenantMap.values());
         } else if (allUsersByUsername.length > 0) {
           // User exists but is inactive
-          console.log('❌ Smart login: User found but inactive:', identifier);
+          console.log('❌ Smart login: User found but inactive:', { username: identifier, is_active: allUsersByUsername[0]?.is_active });
           return res.status(403).json({ error: 'Account disabled', message: 'Your account has been disabled. Please contact your administrator.' });
         }
       }
@@ -292,9 +300,18 @@ router.post('/smart-login', async (req, res) => {
         companyName: tenant.company_name
       }
     });
-  } catch (error) {
-    console.error('Smart login error:', error);
-    res.status(500).json({ error: 'Login failed' });
+  } catch (error: any) {
+    console.error('❌ Smart login error:', {
+      error: error,
+      message: error?.message,
+      stack: error?.stack,
+      code: error?.code,
+      detail: error?.detail
+    });
+    res.status(500).json({ 
+      error: 'Login failed',
+      message: error?.message || 'An error occurred during login. Please try again.'
+    });
   }
 });
 
