@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 const router = Router();
 const getDb = () => getDatabaseService();
@@ -31,7 +31,7 @@ async function checkUserLimit(tenantId: string, db: any): Promise<{ allowed: boo
   
   return {
     allowed: true,
-    currentCount,
+    currentCount: currentUserCount,
     maxUsers
   };
 }
