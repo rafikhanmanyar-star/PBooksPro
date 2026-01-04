@@ -223,19 +223,24 @@ export class AppStateApiService {
     }
     
     try {
-      // Ensure contact has an ID (for updates)
-      if (contact.id) {
-        // Update existing
-        logger.logCategory('sync', `🔄 Updating existing contact: ${contact.id}`);
-        const result = await this.contactsRepo.update(contact.id, contact);
+      // Ensure contact has an ID
+      const contactWithId = {
+        ...contact,
+        id: contact.id || `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      };
+      
+      // Check if contact exists in the API before deciding to create or update
+      // New contacts created locally have an ID but don't exist in the database yet
+      const contactExists = await this.contactsRepo.exists(contactWithId.id);
+      
+      if (contactExists) {
+        // Update existing contact
+        logger.logCategory('sync', `🔄 Updating existing contact: ${contactWithId.id}`);
+        const result = await this.contactsRepo.update(contactWithId.id, contactWithId);
         logger.logCategory('sync', `✅ Contact updated successfully: ${result.name} (${result.id})`);
         return result;
       } else {
-        // Create new - generate ID if missing
-        const contactWithId = {
-          ...contact,
-          id: contact.id || `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-        };
+        // Create new contact (POST endpoint handles upserts, so this is safe)
         logger.logCategory('sync', `➕ Creating new contact: ${contactWithId.id}`);
         const result = await this.contactsRepo.create(contactWithId);
         logger.logCategory('sync', `✅ Contact created successfully: ${result.name} (${result.id})`);
