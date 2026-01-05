@@ -2263,50 +2263,105 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         stateRef.current = state;
     }, [state]);
 
+    const refreshFromApi = useCallback(async () => {
+        if (!isAuthenticated) return;
+        try {
+            const apiService = getAppStateApiService();
+            const apiState = await apiService.loadState();
+
+            // Only apply slices we received, keep navigation/current page intact
+            const updates: Partial<AppState> = {};
+            if (apiState.contacts) updates.contacts = apiState.contacts;
+            if (apiState.transactions) updates.transactions = apiState.transactions;
+            if (apiState.bills) updates.bills = apiState.bills;
+            if (apiState.invoices) updates.invoices = apiState.invoices;
+            if (apiState.budgets) updates.budgets = apiState.budgets;
+            if (apiState.contracts) updates.contracts = apiState.contracts;
+            if (apiState.rentalAgreements) updates.rentalAgreements = apiState.rentalAgreements;
+            if (apiState.projectAgreements) updates.projectAgreements = apiState.projectAgreements;
+            if (apiState.categories) updates.categories = apiState.categories;
+            if (apiState.accounts) updates.accounts = apiState.accounts;
+            if (apiState.projects) updates.projects = apiState.projects;
+            if (apiState.buildings) updates.buildings = apiState.buildings;
+            if (apiState.properties) updates.properties = apiState.properties;
+            if (apiState.units) updates.units = apiState.units;
+
+            if (Object.keys(updates).length === 0) return;
+
+            const mergedState = { ...stateRef.current, ...updates };
+
+            dispatch({
+                type: 'SET_STATE',
+                payload: mergedState,
+                _isRemote: true
+            } as any);
+
+            setStoredState(prev => ({ ...prev, ...updates }));
+        } catch (err) {
+            console.error('⚠️ Failed to refresh data from API:', err);
+        }
+    }, [dispatch, isAuthenticated, setStoredState]);
+
+    // Initial/rehydration sync when auth status changes
     useEffect(() => {
-        const syncFromApi = async () => {
+        refreshFromApi();
+    }, [refreshFromApi]);
+
+    // Real-time sync via WebSocket events
+    useEffect(() => {
+        let cleanup: (() => void) | undefined;
+
+        const setupWebSocket = async () => {
             if (!isAuthenticated) return;
             try {
-                const apiService = getAppStateApiService();
-                const apiState = await apiService.loadState();
+                const { apiClient } = await import('../services/api/client');
+                const token = apiClient.getToken();
+                const tenantId = apiClient.getTenantId();
+                if (!token || !tenantId) return;
 
-                // Only apply slices we received, keep navigation/current page intact
-                const updates: Partial<AppState> = {};
-                if (apiState.contacts) updates.contacts = apiState.contacts;
-                if (apiState.transactions) updates.transactions = apiState.transactions;
-                if (apiState.bills) updates.bills = apiState.bills;
-                if (apiState.invoices) updates.invoices = apiState.invoices;
-                if (apiState.budgets) updates.budgets = apiState.budgets;
-                if (apiState.contracts) updates.contracts = apiState.contracts;
-                if (apiState.rentalAgreements) updates.rentalAgreements = apiState.rentalAgreements;
-                if (apiState.projectAgreements) updates.projectAgreements = apiState.projectAgreements;
-                if (apiState.categories) updates.categories = apiState.categories;
-                if (apiState.accounts) updates.accounts = apiState.accounts;
-                if (apiState.projects) updates.projects = apiState.projects;
-                if (apiState.buildings) updates.buildings = apiState.buildings;
-                if (apiState.properties) updates.properties = apiState.properties;
-                if (apiState.units) updates.units = apiState.units;
+                const { WebSocketClient } = await import('../services/websocketClient');
+                const ws = new WebSocketClient();
+                ws.connect(token, tenantId);
 
-                if (Object.keys(updates).length === 0) return;
+                // Throttle refresh to avoid bursts
+                let pending = false;
+                const scheduleRefresh = () => {
+                    if (pending) return;
+                    pending = true;
+                    setTimeout(() => {
+                        pending = false;
+                        refreshFromApi();
+                    }, 300);
+                };
 
-                const mergedState = { ...stateRef.current, ...updates };
+                const events = [
+                    'transaction:created', 'transaction:updated', 'transaction:deleted',
+                    'bill:created', 'bill:updated', 'bill:deleted',
+                    'invoice:created', 'invoice:updated', 'invoice:deleted',
+                    'contact:created', 'contact:updated', 'contact:deleted',
+                    'project:created', 'project:updated', 'project:deleted',
+                    'account:created', 'account:updated', 'account:deleted',
+                    'category:created', 'category:updated', 'category:deleted',
+                    'budget:created', 'budget:updated', 'budget:deleted'
+                ];
 
-                dispatch({
-                    type: 'SET_STATE',
-                    payload: mergedState,
-                    _isRemote: true
-                } as any);
+                const unsubscribers = events.map(evt => ws.on(evt, scheduleRefresh));
 
-                setStoredState(prev => ({ ...prev, ...updates }));
+                cleanup = () => {
+                    unsubscribers.forEach(unsub => unsub());
+                    ws.disconnect();
+                };
             } catch (err) {
-                console.error('⚠️ Failed to refresh data from API:', err);
+                console.error('⚠️ Failed to set up real-time sync:', err);
             }
         };
 
-        syncFromApi();
-        // Run only when auth status changes
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isAuthenticated]);
+        setupWebSocket();
+
+        return () => {
+            if (cleanup) cleanup();
+        };
+    }, [isAuthenticated, refreshFromApi]);
 
     // 3. Persist State Changes (with error handling) - OPTIMIZED: Skip navigation-only changes
     // Use refs to track previous values for fast comparison (no JSON.stringify blocking)
