@@ -20,28 +20,32 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const { logout, tenant, user } = useAuth();
     const { currentUser } = state;
     const [isRegModalOpen, setIsRegModalOpen] = useState(false);
-    const [totalUsers, setTotalUsers] = useState<number | null>(null);
+    const [onlineUsers, setOnlineUsers] = useState<number | null>(null);
     
     // Get user name - prefer AuthContext user (cloud auth) over AppContext currentUser (local)
     const userName = user?.name || currentUser?.name || 'User';
     const userRole = user?.role || currentUser?.role || '';
     const organizationName = tenant?.companyName || tenant?.name || '';
 
-    // Fetch total user count for the organization
+    // Fetch online users count (users with active sessions) for the organization
     useEffect(() => {
-        const fetchUserCount = async () => {
+        const fetchOnlineUsers = async () => {
             try {
-                const response = await apiClient.get<{ totalUsers: number }>('/tenants/user-count');
-                setTotalUsers(response.totalUsers);
+                const response = await apiClient.get<{ onlineUsers: number }>('/tenants/online-users-count');
+                setOnlineUsers(response.onlineUsers);
             } catch (error) {
-                console.error('Error fetching user count:', error);
+                console.error('Error fetching online users count:', error);
                 // Silently fail - don't show error to user
             }
         };
 
         // Only fetch if user is authenticated
         if (user || currentUser) {
-            fetchUserCount();
+            fetchOnlineUsers();
+            
+            // Refresh online users count every 30 seconds to keep it updated
+            const interval = setInterval(fetchOnlineUsers, 30000);
+            return () => clearInterval(interval);
         }
     }, [user, currentUser]);
 
@@ -219,18 +223,17 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                             </div>
                         </div>
 
-                        {/* Total Users Info */}
-                        {totalUsers !== null && (
+                        {/* Online Users Info */}
+                        {onlineUsers !== null && (
                             <div className="px-3 py-2 rounded-lg bg-slate-800/30 border border-slate-700/30">
                                 <div className="flex items-center gap-2">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
-                                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                                        <circle cx="9" cy="7" r="4"></circle>
-                                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-green-400">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <circle cx="12" cy="12" r="6"></circle>
+                                        <circle cx="12" cy="12" r="2"></circle>
                                     </svg>
                                     <span className="text-[10px] text-slate-400 font-medium">
-                                        Total Users: <span className="text-indigo-300 font-semibold">{totalUsers}</span>
+                                        Online Users: <span className="text-green-400 font-semibold">{onlineUsers}</span>
                                     </span>
                                 </div>
                             </div>
