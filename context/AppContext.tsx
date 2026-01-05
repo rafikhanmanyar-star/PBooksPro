@@ -1604,43 +1604,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             const apiService = getAppStateApiService();
                             const apiState = await apiService.loadState();
                             
-                            // Create full state with API data
-                            const fullState: AppState = {
-                                ...storedState,
-                                // Replace with API data to ensure synchronization across users in same tenant
-                                accounts: apiState.accounts || [],
-                                contacts: apiState.contacts || [],
-                                transactions: apiState.transactions || [],
-                                categories: apiState.categories || [],
-                                projects: apiState.projects || [],
-                                buildings: apiState.buildings || [],
-                                properties: apiState.properties || [],
-                                units: apiState.units || [],
-                                invoices: apiState.invoices || [],
-                                bills: apiState.bills || [],
-                                budgets: apiState.budgets || [],
-                                rentalAgreements: apiState.rentalAgreements || [],
-                                projectAgreements: apiState.projectAgreements || [],
-                                contracts: apiState.contracts || [],
-                            };
-                            
-                            // Save API data to local database with proper tenant_id
-                            // This ensures offline access and proper tenant isolation
-                            try {
-                                const dbService = getDatabaseService();
-                                if (dbService.isReady()) {
-                                    const appStateRepo = new AppStateRepository();
-                                    await appStateRepo.saveState(fullState);
-                                    console.log('✅ Saved API data to local database with tenant isolation');
-                                }
-                            } catch (saveError) {
-                                console.warn('⚠️ Could not save API data to local database:', saveError);
-                                // Continue anyway - state is set in memory
-                            }
-                            
-                            // Replace state with fresh API data (don't merge - ensure all users see same data)
+                            // Replace state with fresh API data using functional update
+                            // This ensures we access the current state value correctly
                             if (isMounted) {
-                                setStoredState(fullState);
+                                setStoredState(prev => {
+                                    const fullState: AppState = {
+                                        ...prev,
+                                        // Replace with API data to ensure synchronization across users in same tenant
+                                        accounts: apiState.accounts || [],
+                                        contacts: apiState.contacts || [],
+                                        transactions: apiState.transactions || [],
+                                        categories: apiState.categories || [],
+                                        projects: apiState.projects || [],
+                                        buildings: apiState.buildings || [],
+                                        properties: apiState.properties || [],
+                                        units: apiState.units || [],
+                                        invoices: apiState.invoices || [],
+                                        bills: apiState.bills || [],
+                                        budgets: apiState.budgets || [],
+                                        rentalAgreements: apiState.rentalAgreements || [],
+                                        projectAgreements: apiState.projectAgreements || [],
+                                        contracts: apiState.contracts || [],
+                                    };
+                                    
+                                    // Save API data to local database with proper tenant_id (async, don't await)
+                                    // This ensures offline access and proper tenant isolation
+                                    const dbService = getDatabaseService();
+                                    if (dbService.isReady()) {
+                                        const appStateRepo = new AppStateRepository();
+                                        appStateRepo.saveState(fullState).catch(saveError => {
+                                            console.warn('⚠️ Could not save API data to local database:', saveError);
+                                        });
+                                    }
+                                    
+                                    return fullState;
+                                });
                                 console.log('✅ Loaded data from API:', {
                                     accounts: apiState.accounts?.length || 0,
                                     contacts: apiState.contacts?.length || 0,
@@ -2586,34 +2584,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             const apiService = getAppStateApiService();
                             const apiState = await apiService.loadState();
                             
-                            // Create full state with API data
-                            // Get current state to preserve settings
-                            const currentState = storedState;
-                            const fullState: AppState = {
-                                ...currentState,
-                                // Replace with API data
-                                accounts: apiState.accounts || [],
-                                contacts: apiState.contacts || [],
-                                transactions: apiState.transactions || [],
-                                categories: apiState.categories || [],
-                                projects: apiState.projects || [],
-                                buildings: apiState.buildings || [],
-                                properties: apiState.properties || [],
-                                units: apiState.units || [],
-                                invoices: apiState.invoices || [],
-                                bills: apiState.bills || [],
-                                budgets: apiState.budgets || [],
-                                rentalAgreements: apiState.rentalAgreements || [],
-                                projectAgreements: apiState.projectAgreements || [],
-                                contracts: apiState.contracts || [],
-                            };
-                            
-                            // Save API data to local database with proper tenant_id
-                            const appStateRepo = new AppStateRepository();
-                            await appStateRepo.saveState(fullState);
-                            
-                            // Update state
-                            setStoredState(fullState);
+                            // Create full state with API data using functional update to access current state
+                            setStoredState(prev => {
+                                const fullState: AppState = {
+                                    ...prev,
+                                    // Replace with API data
+                                    accounts: apiState.accounts || [],
+                                    contacts: apiState.contacts || [],
+                                    transactions: apiState.transactions || [],
+                                    categories: apiState.categories || [],
+                                    projects: apiState.projects || [],
+                                    buildings: apiState.buildings || [],
+                                    properties: apiState.properties || [],
+                                    units: apiState.units || [],
+                                    invoices: apiState.invoices || [],
+                                    bills: apiState.bills || [],
+                                    budgets: apiState.budgets || [],
+                                    rentalAgreements: apiState.rentalAgreements || [],
+                                    projectAgreements: apiState.projectAgreements || [],
+                                    contracts: apiState.contracts || [],
+                                };
+                                
+                                // Save API data to local database with proper tenant_id (async, don't await)
+                                const appStateRepo = new AppStateRepository();
+                                appStateRepo.saveState(fullState).catch(err => {
+                                    logger.errorCategory('database', '⚠️ Failed to save API data to local database:', err);
+                                });
+                                
+                                return fullState;
+                            });
                             
                             logger.logCategory('sync', '✅ Reloaded and saved data from API for new tenant:', {
                                 contacts: apiState.contacts?.length || 0,
