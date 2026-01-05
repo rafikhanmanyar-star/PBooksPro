@@ -247,18 +247,32 @@ export function useDatabaseState<T extends AppState>(
                 clearTimeout(saveTimeoutRef.current);
             }
             
-            // Save immediately on unmount
-            if (!isLoading) {
+            // Save immediately on unmount (only if not already saving)
+            if (!isLoading && !pendingSaveRef.current) {
                 const valueToSave = pendingSaveRef.current || storedValue;
                 if (valueToSave && valueToSave !== initialValue) {
+                    // Mark as saving to prevent multiple unmount saves
+                    pendingSaveRef.current = valueToSave;
+                    
                     ensureDatabaseInitialized()
                         .then(async () => {
                             const appStateRepo = await getAppStateRepository();
-                            return appStateRepo.saveState(valueToSave as AppState);
+                            await appStateRepo.saveState(valueToSave as AppState);
+                            console.log('✅ State saved on unmount');
                         })
                         .catch((error) => {
-                            console.warn('⚠️ Failed to save state on unmount:', error);
-                            // Don't throw - just log
+                            // Only log if it's not a UNIQUE constraint error (expected during rapid saves)
+                            const errorMsg = error?.message || String(error);
+                            if (!errorMsg.includes('UNIQUE constraint')) {
+                                console.warn('⚠️ Failed to save state on unmount:', error);
+                            }
+                            // Don't throw - just log and continue
+                        })
+                        .finally(() => {
+                            // Clear the pending save flag after a delay to allow for retries if needed
+                            setTimeout(() => {
+                                pendingSaveRef.current = null;
+                            }, 1000);
                         });
                 }
             }

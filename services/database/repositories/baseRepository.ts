@@ -342,60 +342,161 @@ export abstract class BaseRepository<T> {
 
     /**
      * Save all records (delete existing and insert new)
+     * For tables with UNIQUE constraints (like users), use INSERT OR REPLACE
      */
     saveAll(records: T[]): void {
         try {
             console.log(`🔄 saveAll called for ${this.tableName} with ${records.length} records`);
 
-            // Delete all existing records for current tenant only
-            if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
-                const tenantId = getCurrentTenantId();
-                if (tenantId) {
-                    const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
-                    this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
-                    console.log(`🗑️ Deleted all existing records from ${this.tableName} for tenant ${tenantId}`);
+            // For users table, use INSERT OR REPLACE to handle UNIQUE constraint on (tenant_id, username)
+            // This prevents UNIQUE constraint violations when saving the same user multiple times
+            const useInsertOrReplace = this.tableName === 'users';
+
+            if (useInsertOrReplace) {
+                // For users, use INSERT OR REPLACE instead of DELETE + INSERT
+                // This handles UNIQUE constraint on (tenant_id, username) gracefully
+                if (records.length > 0) {
+                    console.log(`📥 Starting to insert/replace ${records.length} records into ${this.tableName}`);
+                    records.forEach((record, index) => {
+                        try {
+                            console.log(`  → Inserting/replacing record ${index + 1}/${records.length} into ${this.tableName}`);
+                            this.insertOrReplace(record);
+                            console.log(`  ✅ Successfully inserted/replaced record ${index + 1} into ${this.tableName}`);
+                        } catch (insertError) {
+                            console.error(`❌ Error inserting/replacing record ${index} into ${this.tableName}:`, insertError);
+                            console.error('Failed record:', record);
+                            throw insertError; // Re-throw to stop the process and rollback transaction
+                        }
+                    });
+                    console.log(`✅ Completed inserting/replacing ${records.length} records to ${this.tableName}`);
                 } else {
-                    // No tenant ID, delete all (shouldn't happen in normal flow)
-                    this.db.execute(`DELETE FROM ${this.tableName}`);
-                    console.log(`🗑️ Deleted all existing records from ${this.tableName} (no tenant filter)`);
-                }
-            } else {
-                // Global table, delete all
-                this.db.execute(`DELETE FROM ${this.tableName}`);
-                console.log(`🗑️ Deleted all existing records from ${this.tableName}`);
-            }
-
-            // Insert all new records
-            if (records.length > 0) {
-                console.log(`📥 Starting to insert ${records.length} records into ${this.tableName}`);
-                records.forEach((record, index) => {
-                    try {
-                        console.log(`  → Inserting record ${index + 1}/${records.length} into ${this.tableName}`);
-                        this.insert(record);
-                        console.log(`  ✅ Successfully inserted record ${index + 1} into ${this.tableName}`);
-                    } catch (insertError) {
-                        console.error(`❌ Error inserting record ${index} into ${this.tableName}:`, insertError);
-                        console.error('Failed record:', record);
-                        throw insertError; // Re-throw to stop the process and rollback transaction
+                    // If no records, delete all for current tenant
+                    if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
+                        const tenantId = getCurrentTenantId();
+                        if (tenantId) {
+                            this.db.execute(`DELETE FROM ${this.tableName} WHERE tenant_id = ?`, [tenantId]);
+                            console.log(`🗑️ Deleted all existing records from ${this.tableName} for tenant ${tenantId}`);
+                        }
+                    } else {
+                        this.db.execute(`DELETE FROM ${this.tableName}`);
+                        console.log(`🗑️ Deleted all existing records from ${this.tableName}`);
                     }
-                });
-
-                // Log successful save (for debugging)
-                console.log(`✅ Completed inserting ${records.length} records to ${this.tableName}`);
-
-                // Verify the save for contacts (after transaction commits)
-                if (this.tableName === 'contacts' && records.length > 0) {
-                    // Note: Verification happens after transaction commits in appStateRepository
-                    // This is just a log to track the save operation
-                    console.log(`📝 Contact save completed: ${records.length} contacts processed`);
                 }
             } else {
-                console.log(`📦 ${this.tableName} table cleared (no records to save)`);
+                // For other tables, use the original DELETE + INSERT approach
+                // Delete all existing records for current tenant only
+                if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
+                    const tenantId = getCurrentTenantId();
+                    if (tenantId) {
+                        const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                        this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
+                        console.log(`🗑️ Deleted all existing records from ${this.tableName} for tenant ${tenantId}`);
+                    } else {
+                        // No tenant ID, delete all (shouldn't happen in normal flow)
+                        this.db.execute(`DELETE FROM ${this.tableName}`);
+                        console.log(`🗑️ Deleted all existing records from ${this.tableName} (no tenant filter)`);
+                    }
+                } else {
+                    // Global table, delete all
+                    this.db.execute(`DELETE FROM ${this.tableName}`);
+                    console.log(`🗑️ Deleted all existing records from ${this.tableName}`);
+                }
+
+                // Insert all new records
+                if (records.length > 0) {
+                    console.log(`📥 Starting to insert ${records.length} records into ${this.tableName}`);
+                    records.forEach((record, index) => {
+                        try {
+                            console.log(`  → Inserting record ${index + 1}/${records.length} into ${this.tableName}`);
+                            this.insert(record);
+                            console.log(`  ✅ Successfully inserted record ${index + 1} into ${this.tableName}`);
+                        } catch (insertError) {
+                            console.error(`❌ Error inserting record ${index} into ${this.tableName}:`, insertError);
+                            console.error('Failed record:', record);
+                            throw insertError; // Re-throw to stop the process and rollback transaction
+                        }
+                    });
+
+                    // Log successful save (for debugging)
+                    console.log(`✅ Completed inserting ${records.length} records to ${this.tableName}`);
+
+                    // Verify the save for contacts (after transaction commits)
+                    if (this.tableName === 'contacts' && records.length > 0) {
+                        // Note: Verification happens after transaction commits in appStateRepository
+                        // This is just a log to track the save operation
+                        console.log(`📝 Contact save completed: ${records.length} contacts processed`);
+                    }
+                } else {
+                    console.log(`📦 ${this.tableName} table cleared (no records to save)`);
+                }
             }
         } catch (error) {
             console.error(`❌ Error saving records to ${this.tableName}:`, error);
             console.error(`Failed to save ${records.length} records to ${this.tableName}`);
             throw error; // Re-throw so caller knows save failed and transaction can rollback
+        }
+    }
+
+    /**
+     * Insert or replace a record (handles UNIQUE constraints gracefully)
+     */
+    private insertOrReplace(data: T): void {
+        try {
+            // Convert camelCase to snake_case for database
+            const dbData = objectToDbFormat(data as Record<string, any>);
+            const columnsSet = this.ensureTableColumns();
+
+            // Add tenant_id if needed
+            if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
+                const tenantId = getCurrentTenantId();
+                if (tenantId) {
+                    const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                    if (!dbData[tenantColumn] && columnsSet.has(tenantColumn)) {
+                        dbData[tenantColumn] = tenantId;
+                    }
+                }
+            }
+
+            const keys = Object.keys(dbData)
+                .filter(k => dbData[k] !== undefined && columnsSet.has(k));
+            const values = keys.map(k => dbData[k]);
+            const placeholders = keys.map(() => '?').join(', ');
+            const columns = keys.join(', ');
+
+            if (keys.length === 0) {
+                const errorMsg = `No valid columns to insert for ${this.tableName}. Available columns: ${Array.from(columnsSet).join(', ')}, Data keys after conversion: ${Object.keys(dbData).join(', ')}`;
+                console.error(`❌ ${errorMsg}`);
+                console.error('Original data:', data);
+                console.error('Converted data:', dbData);
+                throw new Error(errorMsg);
+            }
+
+            try {
+                // Use INSERT OR REPLACE to handle UNIQUE constraints
+                this.db.execute(
+                    `INSERT OR REPLACE INTO ${this.tableName} (${columns}) VALUES (${placeholders})`,
+                    values
+                );
+
+                if (!this.db.isInTransaction()) {
+                    this.db.save();
+                }
+            } catch (executeError: any) {
+                const errorMsg = (executeError?.message || String(executeError)).toLowerCase();
+                console.error(`❌ SQL execution error for ${this.tableName}:`, executeError);
+                console.error(`SQL: INSERT OR REPLACE INTO ${this.tableName} (${columns}) VALUES (${placeholders})`);
+                console.error(`Values:`, values);
+
+                if (errorMsg.includes('no transaction') || errorMsg.includes('transaction')) {
+                    console.error('⚠️ Transaction may have been auto-rolled back by sql.js');
+                }
+
+                throw executeError;
+            }
+        } catch (error) {
+            console.error(`❌ Error inserting/replacing into ${this.tableName}:`, error);
+            console.error('Data:', data);
+            throw error;
         }
     }
 }

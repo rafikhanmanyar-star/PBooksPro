@@ -92,6 +92,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Check if user is already authenticated (from localStorage)
    */
   useEffect(() => {
+    // Use a ref to prevent multiple simultaneous auth checks
+    let isChecking = false;
+    let isMounted = true;
+    
     // Listen for auth expiration events from API client
     const handleAuthExpired = () => {
       logger.logCategory('auth', 'Auth expired event received, logging out...');
@@ -103,6 +107,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     
     const checkAuth = async () => {
+      // Prevent multiple simultaneous checks
+      if (isChecking) {
+        return;
+      }
+      isChecking = true;
       try {
         const token = apiClient.getToken();
         const tenantId = apiClient.getTenantId();
@@ -110,21 +119,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (token && tenantId) {
           // Check if token is expired before making API call
           if (apiClient.isTokenExpired()) {
-            logger.logCategory('auth', 'Token in localStorage is expired, clearing auth');
-            apiClient.clearAuth();
-            setState({
-              isAuthenticated: false,
-              user: null,
-              tenant: null,
-              isLoading: false,
-              error: null,
-            });
+            if (isMounted) {
+              logger.logCategory('auth', 'Token in localStorage is expired, clearing auth');
+              apiClient.clearAuth();
+              setState({
+                isAuthenticated: false,
+                user: null,
+                tenant: null,
+                isLoading: false,
+                error: null,
+              });
+            }
             return;
           }
 
           // Verify token is still valid by checking license status
           try {
             const licenseStatus = await apiClient.get<{ isValid: boolean }>('/tenants/license-status');
+            if (!isMounted) return;
+            
             if (licenseStatus.isValid) {
               // Token is valid, restore session
               // Fetch user and tenant info from API
@@ -135,43 +148,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   company_name: string;
                 }>('/tenants/me');
                 
-                setState({
-                  isAuthenticated: true,
-                  user: {
-                    id: 'current-user', // Will be fetched from token if needed
-                    username: 'user', // Will be fetched from token if needed
-                    name: 'User',
-                    role: 'User',
-                    tenantId: tenantInfo.id,
-                  },
-                  tenant: {
-                    id: tenantInfo.id,
-                    name: tenantInfo.name,
-                    companyName: tenantInfo.company_name,
-                  },
-                  isLoading: false,
-                  error: null,
-                });
+                if (isMounted) {
+                  setState({
+                    isAuthenticated: true,
+                    user: {
+                      id: 'current-user', // Will be fetched from token if needed
+                      username: 'user', // Will be fetched from token if needed
+                      name: 'User',
+                      role: 'User',
+                      tenantId: tenantInfo.id,
+                    },
+                    tenant: {
+                      id: tenantInfo.id,
+                      name: tenantInfo.name,
+                      companyName: tenantInfo.company_name,
+                    },
+                    isLoading: false,
+                    error: null,
+                  });
+                }
               } catch (fetchError) {
                 // If we can't fetch tenant info, still allow access (token is valid)
-                setState(prev => ({
-                  ...prev,
-                  isAuthenticated: true,
-                  isLoading: false,
-                }));
+                if (isMounted) {
+                  setState(prev => ({
+                    ...prev,
+                    isAuthenticated: true,
+                    isLoading: false,
+                  }));
+                }
               }
             } else {
               // License expired, clear auth
-              apiClient.clearAuth();
-              setState({
-                isAuthenticated: false,
-                user: null,
-                tenant: null,
-                isLoading: false,
-                error: 'License has expired. Please renew your license.',
-              });
+              if (isMounted) {
+                apiClient.clearAuth();
+                setState({
+                  isAuthenticated: false,
+                  user: null,
+                  tenant: null,
+                  isLoading: false,
+                  error: 'License has expired. Please renew your license.',
+                });
+              }
             }
           } catch (error: any) {
+            if (!isMounted) return;
+            
             // Token invalid or expired, or network error
             // Don't clear auth on network errors - might be temporary
             const errorMessage = error instanceof Error ? error.message : String(error);
@@ -213,18 +234,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           }
         } else {
-          setState(prev => ({ ...prev, isLoading: false }));
+          if (isMounted) {
+            setState(prev => ({ ...prev, isLoading: false }));
+          }
         }
       } catch (error) {
-        logger.errorCategory('auth', 'Auth check error:', error);
-        setState(prev => ({ ...prev, isLoading: false }));
+        if (isMounted) {
+          logger.errorCategory('auth', 'Auth check error:', error);
+          setState(prev => ({ ...prev, isLoading: false }));
+        }
+      } finally {
+        isChecking = false;
       }
     };
 
     checkAuth();
     
-    // Cleanup: remove event listener
+    // Cleanup: remove event listener and mark as unmounted
     return () => {
+      isMounted = false;
       if (typeof window !== 'undefined') {
         window.removeEventListener('auth:expired', handleAuthExpired);
       }
