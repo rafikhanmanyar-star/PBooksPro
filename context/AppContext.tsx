@@ -1804,6 +1804,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             // Skip navigation actions
             if (!NAVIGATION_ACTIONS.includes(action.type)) {
+                // Only trigger API sync for transaction actions to avoid constant background syncing
+                const SYNC_TO_API_ACTIONS = new Set<AppAction['type']>([
+                    'ADD_TRANSACTION',
+                    'UPDATE_TRANSACTION',
+                    'DELETE_TRANSACTION',
+                    'BATCH_ADD_TRANSACTIONS',
+                    'RESTORE_TRANSACTION'
+                ]);
+
+                if (!SYNC_TO_API_ACTIONS.has(action.type)) {
+                    return newState;
+                }
+
                 // Sync to API asynchronously (don't block UI)
                 const syncToApi = async () => {
                     logger.logCategory('sync', `🚀 syncToApi called for action: ${action.type}`, {
