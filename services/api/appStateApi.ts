@@ -361,10 +361,14 @@ export class AppStateApiService {
    * Save property to API
    */
   async saveProperty(property: Partial<AppState['properties'][0]>): Promise<AppState['properties'][0]> {
+    const propertyWithId = {
+      ...property,
+      id: property.id || `property_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    };
     if (property.id) {
-      return this.propertiesRepo.update(property.id, property);
+      return this.propertiesRepo.update(propertyWithId.id!, propertyWithId);
     } else {
-      return this.propertiesRepo.create(property);
+      return this.propertiesRepo.create(propertyWithId);
     }
   }
 
@@ -379,10 +383,14 @@ export class AppStateApiService {
    * Save unit to API
    */
   async saveUnit(unit: Partial<AppState['units'][0]>): Promise<AppState['units'][0]> {
+    const unitWithId = {
+      ...unit,
+      id: unit.id || `unit_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    };
     if (unit.id) {
-      return this.unitsRepo.update(unit.id, unit);
+      return this.unitsRepo.update(unitWithId.id!, unitWithId);
     } else {
-      return this.unitsRepo.create(unit);
+      return this.unitsRepo.create(unitWithId);
     }
   }
 
@@ -397,10 +405,14 @@ export class AppStateApiService {
    * Save invoice to API
    */
   async saveInvoice(invoice: Partial<AppState['invoices'][0]>): Promise<AppState['invoices'][0]> {
+    const invoiceWithId = {
+      ...invoice,
+      id: invoice.id || `invoice_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    };
     if (invoice.id) {
-      return this.invoicesRepo.update(invoice.id, invoice);
+      return this.invoicesRepo.update(invoiceWithId.id!, invoiceWithId);
     } else {
-      return this.invoicesRepo.create(invoice);
+      return this.invoicesRepo.create(invoiceWithId);
     }
   }
 
@@ -455,10 +467,14 @@ export class AppStateApiService {
    * Save rental agreement to API
    */
   async saveRentalAgreement(agreement: Partial<AppState['rentalAgreements'][0]>): Promise<AppState['rentalAgreements'][0]> {
+    const agreementWithId = {
+      ...agreement,
+      id: agreement.id || `rental_agreement_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    };
     if (agreement.id) {
-      return this.rentalAgreementsRepo.update(agreement.id, agreement);
+      return this.rentalAgreementsRepo.update(agreementWithId.id!, agreementWithId);
     } else {
-      return this.rentalAgreementsRepo.create(agreement);
+      return this.rentalAgreementsRepo.create(agreementWithId);
     }
   }
 
@@ -473,10 +489,14 @@ export class AppStateApiService {
    * Save project agreement to API
    */
   async saveProjectAgreement(agreement: Partial<AppState['projectAgreements'][0]>): Promise<AppState['projectAgreements'][0]> {
+    const agreementWithId = {
+      ...agreement,
+      id: agreement.id || `project_agreement_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    };
     if (agreement.id) {
-      return this.projectAgreementsRepo.update(agreement.id, agreement);
+      return this.projectAgreementsRepo.update(agreementWithId.id!, agreementWithId);
     } else {
-      return this.projectAgreementsRepo.create(agreement);
+      return this.projectAgreementsRepo.create(agreementWithId);
     }
   }
 
@@ -491,10 +511,14 @@ export class AppStateApiService {
    * Save contract to API
    */
   async saveContract(contract: Partial<AppState['contracts'][0]>): Promise<AppState['contracts'][0]> {
+    const contractWithId = {
+      ...contract,
+      id: contract.id || `contract_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    };
     if (contract.id) {
-      return this.contractsRepo.update(contract.id, contract);
+      return this.contractsRepo.update(contractWithId.id!, contractWithId);
     } else {
-      return this.contractsRepo.create(contract);
+      return this.contractsRepo.create(contractWithId);
     }
   }
 
