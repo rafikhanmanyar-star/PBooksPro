@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
+import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
@@ -41,6 +42,7 @@ router.post('/', async (req: TenantRequest, res) => {
     
     // Use transaction for data integrity (upsert behavior)
     const result = await db.transaction(async (client) => {
+      let isUpdate = false;
       // Check if account with this ID already exists
       const existing = await client.query(
         'SELECT * FROM accounts WHERE id = $1 AND tenant_id = $2',
@@ -50,6 +52,7 @@ router.post('/', async (req: TenantRequest, res) => {
       if (existing.rows.length > 0) {
         // Update existing account
         console.log('🔄 POST /accounts - Updating existing account:', accountId);
+        isUpdate = true;
         const updateResult = await client.query(
           `UPDATE accounts 
            SET name = $1, type = $2, balance = $3, description = $4, 
@@ -100,6 +103,13 @@ router.post('/', async (req: TenantRequest, res) => {
       tenantId: req.tenantId
     });
     
+    // Emit WebSocket event for real-time sync
+    emitToTenant(req.tenantId!, isUpdate ? WS_EVENTS.ACCOUNT_UPDATED : WS_EVENTS.ACCOUNT_CREATED, {
+      account: result,
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+
     res.status(201).json(result);
   } catch (error: any) {
     console.error('❌ POST /accounts - Error:', {
@@ -150,6 +160,12 @@ router.put('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Account not found' });
     }
     
+    emitToTenant(req.tenantId!, WS_EVENTS.ACCOUNT_UPDATED, {
+      account: result[0],
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+
     res.json(result[0]);
   } catch (error) {
     console.error('Error updating account:', error);
@@ -170,6 +186,12 @@ router.delete('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Account not found' });
     }
     
+    emitToTenant(req.tenantId!, WS_EVENTS.ACCOUNT_DELETED, {
+      accountId: req.params.id,
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting account:', error);

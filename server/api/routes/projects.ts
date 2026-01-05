@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
+import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
@@ -62,6 +63,7 @@ router.post('/', async (req: TenantRequest, res) => {
     
     // Use transaction for data integrity (upsert behavior)
     const result = await db.transaction(async (client) => {
+      let isUpdate = false;
       // Check if project with this ID already exists
       const existing = await client.query(
         'SELECT * FROM projects WHERE id = $1 AND tenant_id = $2',
@@ -71,6 +73,7 @@ router.post('/', async (req: TenantRequest, res) => {
       if (existing.rows.length > 0) {
         // Update existing project
         console.log('🔄 POST /projects - Updating existing project:', projectId);
+        isUpdate = true;
         const updateResult = await client.query(
           `UPDATE projects 
            SET name = $1, description = $2, color = $3, status = $4, 
@@ -123,6 +126,12 @@ router.post('/', async (req: TenantRequest, res) => {
       tenantId: req.tenantId
     });
     
+    emitToTenant(req.tenantId!, isUpdate ? WS_EVENTS.PROJECT_UPDATED : WS_EVENTS.PROJECT_CREATED, {
+      project: result,
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+
     res.status(201).json(result);
   } catch (error: any) {
     console.error('❌ POST /projects - Error:', {
@@ -174,6 +183,12 @@ router.put('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
     
+    emitToTenant(req.tenantId!, WS_EVENTS.PROJECT_UPDATED, {
+      project: result[0],
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+
     res.json(result[0]);
   } catch (error) {
     console.error('Error updating project:', error);
@@ -194,6 +209,12 @@ router.delete('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
     
+    emitToTenant(req.tenantId!, WS_EVENTS.PROJECT_DELETED, {
+      projectId: req.params.id,
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting project:', error);

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
+import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
@@ -94,7 +95,15 @@ router.post('/', async (req: TenantRequest, res) => {
         invoice.rentalMonth || null
       ]
     );
-    res.status(201).json(result[0]);
+    const saved = result[0];
+
+    emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_CREATED, {
+      invoice: saved,
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+
+    res.status(201).json(saved);
   } catch (error: any) {
     console.error('Error creating invoice:', error);
     if (error.code === '23505') { // Unique violation
@@ -147,6 +156,12 @@ router.put('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Invoice not found' });
     }
     
+    emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_UPDATED, {
+      invoice: result[0],
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+
     res.json(result[0]);
   } catch (error) {
     console.error('Error updating invoice:', error);
@@ -167,6 +182,12 @@ router.delete('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Invoice not found' });
     }
     
+    emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_DELETED, {
+      invoiceId: req.params.id,
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting invoice:', error);

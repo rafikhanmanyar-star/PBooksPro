@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
+import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
@@ -61,6 +62,7 @@ router.post('/', async (req: TenantRequest, res) => {
     
     // Use transaction for data integrity (upsert behavior)
     const result = await db.transaction(async (client) => {
+      let isUpdate = false;
       // Check if category with this ID already exists
       const existing = await client.query(
         'SELECT * FROM categories WHERE id = $1 AND tenant_id = $2',
@@ -70,6 +72,7 @@ router.post('/', async (req: TenantRequest, res) => {
       if (existing.rows.length > 0) {
         // Update existing category
         console.log('🔄 POST /categories - Updating existing category:', categoryId);
+        isUpdate = true;
         const updateResult = await client.query(
           `UPDATE categories 
            SET name = $1, type = $2, description = $3, is_permanent = $4, 
@@ -122,6 +125,12 @@ router.post('/', async (req: TenantRequest, res) => {
       tenantId: req.tenantId
     });
     
+    emitToTenant(req.tenantId!, isUpdate ? WS_EVENTS.CATEGORY_UPDATED : WS_EVENTS.CATEGORY_CREATED, {
+      category: result,
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+
     res.status(201).json(result);
   } catch (error: any) {
     console.error('❌ POST /categories - Error:', {
@@ -173,6 +182,12 @@ router.put('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Category not found' });
     }
     
+    emitToTenant(req.tenantId!, WS_EVENTS.CATEGORY_UPDATED, {
+      category: result[0],
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+
     res.json(result[0]);
   } catch (error) {
     console.error('Error updating category:', error);
@@ -193,6 +208,12 @@ router.delete('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Category not found' });
     }
     
+    emitToTenant(req.tenantId!, WS_EVENTS.CATEGORY_DELETED, {
+      categoryId: req.params.id,
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting category:', error);

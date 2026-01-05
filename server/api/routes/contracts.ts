@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
+import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
@@ -92,7 +93,13 @@ router.post('/', async (req: TenantRequest, res) => {
         contract.documentPath || null
       ]
     );
-    res.status(201).json(result[0]);
+    const saved = result[0];
+    emitToTenant(req.tenantId!, WS_EVENTS.CONTRACT_CREATED, {
+      contract: saved,
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+    res.status(201).json(saved);
   } catch (error: any) {
     console.error('Error creating contract:', error);
     if (error.code === '23505') { // Unique violation
@@ -142,6 +149,12 @@ router.put('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Contract not found' });
     }
     
+    emitToTenant(req.tenantId!, WS_EVENTS.CONTRACT_UPDATED, {
+      contract: result[0],
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+
     res.json(result[0]);
   } catch (error) {
     console.error('Error updating contract:', error);
@@ -162,6 +175,12 @@ router.delete('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Contract not found' });
     }
     
+    emitToTenant(req.tenantId!, WS_EVENTS.CONTRACT_DELETED, {
+      contractId: req.params.id,
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting contract:', error);
