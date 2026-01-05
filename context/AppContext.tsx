@@ -2522,7 +2522,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 try {
                     const dbService = getDatabaseService();
                     if (dbService.isReady()) {
-                        const appStateRepo = new AppStateRepository();
+                        const appStateRepo = await getAppStateRepository();
                         await appStateRepo.saveState(state);
                         console.log('✅ State saved after login');
                     }
@@ -2661,7 +2661,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         
         // Update previous auth state
         prevAuthRef.current = isAuthenticated;
-    }, [isAuthenticated, isInitializing, state.contacts, state.accounts]);
+    }, [isAuthenticated, isInitializing]);
 
     // Reload data from API when user becomes authenticated (to ensure synchronization)
     useEffect(() => {
