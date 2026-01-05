@@ -1365,30 +1365,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const [initError, setInitError] = useState<string | null>(null);
 
     // 1. Initialize State with Database (with fallback to localStorage)
-    // Try database first, fallback to localStorage if database fails
-    // Use fallback immediately if there's an error
-    let dbState: AppState;
-    let setDbState: React.Dispatch<React.SetStateAction<AppState>>;
-    let fallbackState: AppState;
-    let setFallbackState: React.Dispatch<React.SetStateAction<AppState>>;
-
-    try {
-        [dbState, setDbState] = useDatabaseState<AppState>('finance_app_state_v4', initialState);
-    } catch (error) {
-        console.error('Failed to initialize database state, using fallback:', error);
-        setUseFallback(true);
-        [fallbackState, setFallbackState] = useDatabaseStateFallback<AppState>('finance_app_state_v4', initialState);
-        dbState = fallbackState;
-        setDbState = setFallbackState;
-    }
-
-    try {
-        [fallbackState, setFallbackState] = useDatabaseStateFallback<AppState>('finance_app_state_v4', initialState);
-    } catch (error) {
-        console.error('Failed to initialize fallback state:', error);
-        fallbackState = initialState;
-        setFallbackState = () => { };
-    }
+    // Hooks must be called unconditionally - always call both hooks
+    // Then use the appropriate one based on useFallback state
+    const [dbState, setDbState] = useDatabaseState<AppState>('finance_app_state_v4', initialState);
+    const [fallbackState, setFallbackState] = useDatabaseStateFallback<AppState>('finance_app_state_v4', initialState);
 
     // Initialize storedState safely - use initialState as fallback if hooks aren't ready
     const storedState = (useFallback ? fallbackState : dbState) || initialState;

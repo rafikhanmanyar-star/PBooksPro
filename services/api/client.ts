@@ -42,8 +42,9 @@ export class ApiClient {
       // Log for debugging (filtered)
       if (this.token) {
         logger.logCategory('auth', '🔑 Loaded auth token from localStorage:', this.token.substring(0, 20) + '...');
-      } else {
-        logger.warnCategory('auth', '⚠️ No auth token found in localStorage');
+      } else if (process.env.NODE_ENV === 'development') {
+        // Only log in development - this is expected when user hasn't logged in yet
+        logger.logCategory('auth', 'ℹ️ No auth token found in localStorage (user not logged in)');
       }
     }
   }
