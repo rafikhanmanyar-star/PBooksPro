@@ -2270,21 +2270,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const apiService = getAppStateApiService();
                 const contacts = await apiService.loadContacts();
 
-                // Update reducer state without clobbering current page/navigation
                 dispatch({
                     type: 'SET_STATE',
                     payload: { ...stateRef.current, contacts },
                     _isRemote: true
                 } as any);
 
-                // Persist to local DB (for offline/next load)
                 setStoredState(prev => ({ ...prev, contacts }));
             } catch (err) {
                 console.error('⚠️ Failed to refresh contacts from API:', err);
             }
         };
 
+        const syncTransactionsFromApi = async () => {
+            if (!isAuthenticated) return;
+            try {
+                const apiService = getAppStateApiService();
+                const transactions = await apiService.loadTransactions();
+
+                dispatch({
+                    type: 'SET_STATE',
+                    payload: { ...stateRef.current, transactions },
+                    _isRemote: true
+                } as any);
+
+                setStoredState(prev => ({ ...prev, transactions }));
+            } catch (err) {
+                console.error('⚠️ Failed to refresh transactions from API:', err);
+            }
+        };
+
         syncContactsFromApi();
+        syncTransactionsFromApi();
         // Run only when auth status changes
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isAuthenticated]);

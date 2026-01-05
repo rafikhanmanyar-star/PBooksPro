@@ -187,6 +187,13 @@ export class AppStateApiService {
   }
 
   /**
+   * Load transactions only (targeted sync)
+   */
+  async loadTransactions() {
+    return this.transactionsRepo.findAll();
+  }
+
+  /**
    * Save account to API
    */
   async saveAccount(account: Partial<AppState['accounts'][0]>): Promise<AppState['accounts'][0]> {
