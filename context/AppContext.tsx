@@ -2454,6 +2454,89 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
     }, [isAuthenticated, isInitializing]);
 
+    // Clear local database when tenant changes (to prevent data leakage between tenants)
+    const prevTenantIdRef = React.useRef<string | null>(null);
+    useEffect(() => {
+        const currentTenantId = auth.tenant?.id || null;
+        const prevTenantId = prevTenantIdRef.current;
+        
+        // Detect tenant change: tenant exists, is different from previous, and we're authenticated
+        if (isAuthenticated && currentTenantId && prevTenantId !== null && prevTenantId !== currentTenantId && !isInitializing) {
+            logger.logCategory('sync', `🔄 Tenant changed (${prevTenantId} -> ${currentTenantId}), clearing local database...`);
+            
+            const clearLocalDatabase = async () => {
+                try {
+                    const dbService = getDatabaseService();
+                    if (dbService.isReady()) {
+                        // Clear all local data
+                        dbService.clearAllData();
+                        logger.logCategory('database', '✅ Cleared local database for tenant change');
+                        
+                        // Reset state to initial state (keeping system defaults)
+                        setStoredState(prev => ({
+                            ...initialState,
+                            // Preserve settings that should persist across tenants
+                            printSettings: prev.printSettings,
+                            whatsAppTemplates: prev.whatsAppTemplates,
+                            invoiceHtmlTemplate: prev.invoiceHtmlTemplate,
+                            dashboardConfig: prev.dashboardConfig,
+                            agreementSettings: prev.agreementSettings,
+                            projectAgreementSettings: prev.projectAgreementSettings,
+                            rentalInvoiceSettings: prev.rentalInvoiceSettings,
+                            projectInvoiceSettings: prev.projectInvoiceSettings,
+                            showSystemTransactions: prev.showSystemTransactions,
+                            enableColorCoding: prev.enableColorCoding,
+                            enableBeepOnSave: prev.enableBeepOnSave,
+                            enableDatePreservation: prev.enableDatePreservation,
+                            pmCostPercentage: prev.pmCostPercentage,
+                        }));
+                        
+                        // Reload data from API for the new tenant
+                        try {
+                            logger.logCategory('sync', '🔄 Reloading data from API for new tenant...');
+                            const apiService = getAppStateApiService();
+                            const apiState = await apiService.loadState();
+                            
+                            setStoredState(prev => ({
+                                ...prev,
+                                accounts: apiState.accounts || [],
+                                contacts: apiState.contacts || [],
+                                transactions: apiState.transactions || [],
+                                categories: apiState.categories || [],
+                                projects: apiState.projects || [],
+                                buildings: apiState.buildings || [],
+                                properties: apiState.properties || [],
+                                units: apiState.units || [],
+                                invoices: apiState.invoices || [],
+                                bills: apiState.bills || [],
+                                budgets: apiState.budgets || [],
+                                rentalAgreements: apiState.rentalAgreements || [],
+                                projectAgreements: apiState.projectAgreements || [],
+                                contracts: apiState.contracts || [],
+                            }));
+                            
+                            logger.logCategory('sync', '✅ Reloaded data from API for new tenant:', {
+                                contacts: apiState.contacts?.length || 0,
+                                projects: apiState.projects?.length || 0,
+                                transactions: apiState.transactions?.length || 0,
+                            });
+                        } catch (error) {
+                            logger.errorCategory('sync', '⚠️ Failed to reload data from API after tenant change:', error);
+                        }
+                    }
+                } catch (error) {
+                    logger.errorCategory('database', '⚠️ Failed to clear local database for tenant change:', error);
+                }
+            };
+            
+            // Small delay to ensure auth is fully updated
+            setTimeout(clearLocalDatabase, 500);
+        }
+        
+        // Update previous tenant ID
+        prevTenantIdRef.current = currentTenantId;
+    }, [auth.tenant?.id, isAuthenticated, isInitializing, setStoredState]);
+
     // Show loading/initialization state
     if (isInitializing) {
         return (

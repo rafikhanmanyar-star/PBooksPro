@@ -93,5 +93,26 @@ router.post('/renew-license', async (req: TenantRequest, res) => {
   }
 });
 
+// Get total user count for the organization (including admin and all users)
+router.get('/user-count', async (req: TenantRequest, res) => {
+  try {
+    const db = getDb();
+    const tenantId = req.tenantId!;
+    
+    // Count all users for this tenant (including inactive users and admin)
+    const result = await db.query(
+      'SELECT COUNT(*) as count FROM users WHERE tenant_id = $1',
+      [tenantId]
+    );
+    
+    const totalUsers = parseInt(result[0]?.count || '0', 10);
+    
+    res.json({ totalUsers });
+  } catch (error) {
+    console.error('Error fetching user count:', error);
+    res.status(500).json({ error: 'Failed to fetch user count' });
+  }
+});
+
 export default router;
 
