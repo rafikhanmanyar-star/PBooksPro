@@ -377,6 +377,19 @@ export class ApiClient {
   }
 }
 
-// Singleton instance
-export const apiClient = new ApiClient();
+// Lazy singleton instance to avoid initialization issues during module load
+let apiClientInstance: ApiClient | null = null;
+
+export const apiClient = new Proxy({} as ApiClient, {
+    get(target, prop) {
+        if (!apiClientInstance) {
+            apiClientInstance = new ApiClient();
+        }
+        const value = (apiClientInstance as any)[prop];
+        if (typeof value === 'function') {
+            return value.bind(apiClientInstance);
+        }
+        return value;
+    }
+});
 
