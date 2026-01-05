@@ -38,13 +38,22 @@ router.post('/smart-login', async (req, res) => {
       const tenant = tenants[0];
       
       // First check if user exists (without is_active check) for better error messages
+      // Use case-insensitive comparison for username
       const allUsers = await db.query(
-        'SELECT * FROM users WHERE username = $1 AND tenant_id = $2',
+        'SELECT * FROM users WHERE LOWER(username) = LOWER($1) AND tenant_id = $2',
         [identifier, tenantId]
       );
       
       if (allUsers.length === 0) {
         console.log('❌ Smart login: User not found:', { identifier, tenantId });
+        // Additional diagnostic: check if user exists with different case
+        const diagnosticUsers = await db.query(
+          'SELECT username FROM users WHERE tenant_id = $1 AND LOWER(username) LIKE LOWER($2)',
+          [tenantId, `%${identifier}%`]
+        );
+        if (diagnosticUsers.length > 0) {
+          console.log('🔍 Diagnostic: Found similar usernames:', diagnosticUsers.map((u: any) => u.username));
+        }
         return res.status(401).json({ error: 'Invalid credentials', message: 'User not found' });
       }
       
@@ -125,13 +134,14 @@ router.post('/smart-login', async (req, res) => {
         }
       } else {
         // Search by username across all tenants (check all users first, then filter active)
+        // Use case-insensitive comparison for username
         console.log('🔍 Smart login: Searching by username:', identifier);
         const allUsersByUsername = await db.query(
           `SELECT u.id, u.username, u.name, u.role, u.email, u.password, u.tenant_id, u.is_active,
                   t.id as t_id, t.name as tenant_name, t.company_name, t.email as tenant_email 
            FROM users u 
            JOIN tenants t ON u.tenant_id = t.id 
-           WHERE u.username = $1`,
+           WHERE LOWER(u.username) = LOWER($1)`,
           [identifier]
         );
         
@@ -338,8 +348,9 @@ router.post('/login', async (req, res) => {
     const tenant = tenants[0];
 
     // Find user within tenant (check all users first, then filter active)
+    // Use case-insensitive comparison for username
     const allUsers = await db.query(
-      'SELECT * FROM users WHERE username = $1 AND tenant_id = $2',
+      'SELECT * FROM users WHERE LOWER(username) = LOWER($1) AND tenant_id = $2',
       [username, tenantId]
     );
     
