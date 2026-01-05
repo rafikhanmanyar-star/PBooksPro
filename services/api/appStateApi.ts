@@ -415,10 +415,14 @@ export class AppStateApiService {
    * Save bill to API
    */
   async saveBill(bill: Partial<AppState['bills'][0]>): Promise<AppState['bills'][0]> {
+    const billWithId = {
+      ...bill,
+      id: bill.id || `bill_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    };
     if (bill.id) {
-      return this.billsRepo.update(bill.id, bill);
+      return this.billsRepo.update(billWithId.id!, billWithId);
     } else {
-      return this.billsRepo.create(bill);
+      return this.billsRepo.create(billWithId);
     }
   }
 

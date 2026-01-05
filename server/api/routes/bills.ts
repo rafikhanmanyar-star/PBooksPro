@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
+import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
@@ -93,7 +94,10 @@ router.post('/', async (req: TenantRequest, res) => {
         bill.documentPath || null
       ]
     );
-    res.status(201).json(result[0]);
+    const saved = result[0];
+    // Emit realtime event
+    emitToTenant(req.tenantId!, WS_EVENTS.BILL_CREATED, saved);
+    res.status(201).json(saved);
   } catch (error: any) {
     console.error('Error creating bill:', error);
     if (error.code === '23505') { // Unique violation
@@ -144,7 +148,9 @@ router.put('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Bill not found' });
     }
     
-    res.json(result[0]);
+    const saved = result[0];
+    emitToTenant(req.tenantId!, WS_EVENTS.BILL_UPDATED, saved);
+    res.json(saved);
   } catch (error) {
     console.error('Error updating bill:', error);
     res.status(500).json({ error: 'Failed to update bill' });
@@ -164,6 +170,7 @@ router.delete('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Bill not found' });
     }
     
+    emitToTenant(req.tenantId!, WS_EVENTS.BILL_DELETED, { id: req.params.id });
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting bill:', error);
