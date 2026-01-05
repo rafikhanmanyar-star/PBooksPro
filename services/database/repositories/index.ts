@@ -5,10 +5,9 @@
  */
 
 import { BaseRepository } from './baseRepository';
+export { BaseRepository } from './baseRepository';
 import { getNativeDatabaseService } from '../nativeDatabaseService';
 import { getDatabaseService } from '../databaseService';
-export { BaseRepository } from './baseRepository';
-export { AppStateRepository } from './appStateRepository';
 
 // Entity repositories will be created below
 // For now, we'll create them as needed
