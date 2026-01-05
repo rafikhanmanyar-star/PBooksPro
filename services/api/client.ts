@@ -11,9 +11,6 @@ const API_BASE_URL = 'https://pbookspro-api.onrender.com/api';
 
 import { logger } from '../logger';
 
-// Debug: Log the API URL being used (filtered)
-logger.logCategory('api', '🔧 Client API URL:', API_BASE_URL);
-
 export interface ApiError {
   error: string;
   message?: string;
@@ -24,27 +21,39 @@ export class ApiClient {
   private baseUrl: string;
   private token: string | null = null;
   private tenantId: string | null = null;
+  private shouldLog: boolean = false; // Only log during login/transaction operations
 
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl;
     // Load token and tenantId from localStorage
-    this.loadAuth();
+    this.loadAuth(false); // Don't log during initialization
+  }
+
+  /**
+   * Enable logging for this request (for login/transaction operations)
+   */
+  enableLogging(): void {
+    this.shouldLog = true;
+  }
+
+  /**
+   * Disable logging (for background/validation operations)
+   */
+  disableLogging(): void {
+    this.shouldLog = false;
   }
 
   /**
    * Load authentication from localStorage
    */
-  private loadAuth(): void {
+  private loadAuth(shouldLog: boolean = false): void {
     if (typeof window !== 'undefined') {
       this.token = localStorage.getItem('auth_token');
       this.tenantId = localStorage.getItem('tenant_id');
       
-      // Log for debugging (filtered)
-      if (this.token) {
+      // Only log if explicitly requested (during login operations)
+      if (shouldLog && this.token) {
         logger.logCategory('auth', '🔑 Loaded auth token from localStorage:', this.token.substring(0, 20) + '...');
-      } else if (process.env.NODE_ENV === 'development') {
-        // Only log in development - this is expected when user hasn't logged in yet
-        logger.logCategory('auth', 'ℹ️ No auth token found in localStorage (user not logged in)');
       }
     }
   }
@@ -52,13 +61,16 @@ export class ApiClient {
   /**
    * Set authentication token and tenant ID
    */
-  setAuth(token: string, tenantId: string): void {
+  setAuth(token: string, tenantId: string, shouldLog: boolean = true): void {
     this.token = token;
     this.tenantId = tenantId;
     if (typeof window !== 'undefined') {
       localStorage.setItem('auth_token', token);
       localStorage.setItem('tenant_id', tenantId);
-      logger.logCategory('auth', '🔑 Auth token saved to localStorage and ApiClient instance');
+      // Only log during login operations
+      if (shouldLog) {
+        logger.logCategory('auth', '🔑 Auth token saved to localStorage and ApiClient instance');
+      }
     }
   }
 
@@ -111,7 +123,7 @@ export class ApiClient {
       return false;
     } catch (error) {
       // If we can't decode the token, consider it invalid
-      logger.errorCategory('auth', 'Error checking token expiration:', error);
+      // Don't log here - errors will be caught in request() method if token is actually used
       return true;
     }
   }
@@ -123,13 +135,24 @@ export class ApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
+    // Determine if this is a login or transaction operation
+    const isLoginOperation = endpoint.includes('/auth/login') || 
+                             endpoint.includes('/auth/smart-login') || 
+                             endpoint.includes('/auth/register');
+    const isTransactionOperation = endpoint.includes('/transactions');
+    
+    // Enable logging only for login and transaction operations
+    const shouldLogThisRequest = this.shouldLog || isLoginOperation || isTransactionOperation;
+    
     // Reload auth from localStorage before each request to ensure we have the latest token
     // This is important because the token might be updated after the singleton is created
-    this.loadAuth();
+    this.loadAuth(shouldLogThisRequest);
     
     // Check if token is expired before making the request
     if (this.token && this.isTokenExpired()) {
-      logger.warnCategory('auth', '⚠️ Token is expired, clearing auth before request');
+      if (shouldLogThisRequest) {
+        logger.warnCategory('auth', '⚠️ Token is expired, clearing auth before request');
+      }
       this.clearAuth();
       // Don't dispatch event here - let the 401 response handle it
     }
@@ -146,6 +169,7 @@ export class ApiClient {
       // Validate token format before sending
       const tokenParts = this.token.split('.');
       if (tokenParts.length !== 3) {
+        // Always log errors, even if logging is disabled
         logger.errorCategory('auth', '❌ Invalid token format - expected 3 parts, got:', tokenParts.length);
         logger.errorCategory('auth', 'Token preview:', this.token.substring(0, 50) + '...');
         throw {
@@ -156,12 +180,14 @@ export class ApiClient {
       }
       
       headers['Authorization'] = `Bearer ${this.token}`;
-      // Log token info for debugging (first 20 chars only) - filtered
-      const tokenPreview = this.token.length > 20 ? this.token.substring(0, 20) + '...' : this.token;
-      logger.logCategory('auth', `🔑 Sending request with token: ${tokenPreview} (length: ${this.token.length}) to ${endpoint}`);
+      // Only log token info during login/transaction operations
+      if (shouldLogThisRequest) {
+        const tokenPreview = this.token.length > 20 ? this.token.substring(0, 20) + '...' : this.token;
+        logger.logCategory('auth', `🔑 Sending request with token: ${tokenPreview} (length: ${this.token.length}) to ${endpoint}`);
+      }
     } else {
-      // Log when token is missing for authenticated endpoints - filtered
-      if (!endpoint.includes('/register-tenant') && !endpoint.includes('/auth/')) {
+      // Only log when token is missing for authenticated endpoints during login/transaction operations
+      if (shouldLogThisRequest && !endpoint.includes('/register-tenant') && !endpoint.includes('/auth/')) {
         logger.warnCategory('auth', `⚠️ No token available for request to ${endpoint}`);
       }
     }
@@ -172,18 +198,21 @@ export class ApiClient {
     }
 
     try {
-      logger.logCategory('api', `📤 API Request: ${options.method || 'GET'} ${endpoint}`);
-      if (options.body && typeof options.body === 'string') {
-        try {
-          const bodyData = JSON.parse(options.body);
-          logger.logCategory('api', `📤 Request body:`, { 
-            ...bodyData, 
-            // Truncate large fields for logging
-            ...(bodyData.description && { description: bodyData.description.substring(0, 50) + '...' })
-          });
-        } catch (e) {
-          // Body might not be JSON, log as-is
-          logger.logCategory('api', `📤 Request body length: ${options.body.length} bytes`);
+      // Only log API requests during login/transaction operations
+      if (shouldLogThisRequest) {
+        logger.logCategory('api', `📤 API Request: ${options.method || 'GET'} ${endpoint}`);
+        if (options.body && typeof options.body === 'string') {
+          try {
+            const bodyData = JSON.parse(options.body);
+            logger.logCategory('api', `📤 Request body:`, { 
+              ...bodyData, 
+              // Truncate large fields for logging
+              ...(bodyData.description && { description: bodyData.description.substring(0, 50) + '...' })
+            });
+          } catch (e) {
+            // Body might not be JSON, log as-is
+            logger.logCategory('api', `📤 Request body length: ${options.body.length} bytes`);
+          }
         }
       }
       
@@ -192,12 +221,16 @@ export class ApiClient {
         headers,
       });
 
-      logger.logCategory('api', `📥 API Response: ${response.status} ${response.statusText} for ${endpoint}`);
+      // Only log API responses during login/transaction operations
+      if (shouldLogThisRequest) {
+        logger.logCategory('api', `📥 API Response: ${response.status} ${response.statusText} for ${endpoint}`);
+      }
 
       // Handle non-JSON responses
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
         if (!response.ok) {
+          // Always log errors, even if logging is disabled
           const text = await response.text();
           logger.errorCategory('api', `❌ Non-JSON error response for ${endpoint}:`, text);
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -209,12 +242,17 @@ export class ApiClient {
       try {
         data = await response.json();
         if (response.ok) {
-          logger.logCategory('api', `✅ Success response for ${endpoint}`);
+          // Only log success during login/transaction operations
+          if (shouldLogThisRequest) {
+            logger.logCategory('api', `✅ Success response for ${endpoint}`);
+          }
         } else {
+          // Always log errors, even if logging is disabled
           logger.errorCategory('api', `❌ Error response for ${endpoint}:`, data);
         }
       } catch (jsonError) {
         // If JSON parsing fails, create error from response text
+        // Always log errors, even if logging is disabled
         const text = await response.text();
         logger.errorCategory('api', `❌ Failed to parse JSON response for ${endpoint}:`, text);
         throw new Error(`Server error (${response.status}): ${text || response.statusText}`);
@@ -261,13 +299,15 @@ export class ApiClient {
             // Don't log as error - AuthContext/AppContext will handle it gracefully
             // Don't clear auth or dispatch event - let the calling context handle it
           } else if (isBackgroundSync) {
-            // For background syncs, just log the error but don't logout
-            // Data is saved locally, user can re-login later to sync
-            logger.warnCategory('sync', '⚠️ Background sync failed due to expired token. Data saved locally. Please re-login to sync.');
+            // For background syncs, only log if it's a transaction operation
+            if (shouldLogThisRequest) {
+              logger.warnCategory('sync', '⚠️ Background sync failed due to expired token. Data saved locally. Please re-login to sync.');
+            }
             // Don't clear auth or dispatch event - let user continue working
             // The error will still be thrown so the caller knows it failed
           } else {
             // For user-initiated actions (like fetching data, navigation, auth operations), logout immediately
+            // Always log auth errors, even if logging is disabled
             logger.errorCategory('auth', 'API Error (401 Unauthorized) - Token was present but invalid:', {
               error: data.error,
               code: data.code,
@@ -283,7 +323,10 @@ export class ApiClient {
             }
           }
         } else {
-          logger.warnCategory('auth', 'API Error (401 Unauthorized) - No token was present for request:', endpoint);
+          // Only log if it's a login/transaction operation
+          if (shouldLogThisRequest) {
+            logger.warnCategory('auth', 'API Error (401 Unauthorized) - No token was present for request:', endpoint);
+          }
         }
         
         throw error;
@@ -305,8 +348,12 @@ export class ApiClient {
       console.error('API Request Error:', error);
       
       if (error instanceof Error) {
-        // Check if it's a network error
-          if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('Network request failed') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+          // Check if it's a network error
+        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('Network request failed') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+          // Only log network errors during login/transaction operations
+          if (shouldLogThisRequest) {
+            logger.errorCategory('api', 'Network error:', error.message);
+          }
           throw new Error('Network error: Unable to connect to server. Please check your connection.');
         }
         // If it's already an ApiError, throw it as-is
