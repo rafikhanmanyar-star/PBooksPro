@@ -5,17 +5,20 @@
  * This is used to filter data by tenant in the local database.
  */
 
-import { apiClient } from '../api/client';
-
 /**
  * Get the current tenant ID from apiClient (set by AuthContext)
  * Returns null if no tenant is logged in
+ * 
+ * Uses lazy import to avoid circular dependency issues during module initialization
  */
 export function getCurrentTenantId(): string | null {
     try {
+        // Lazy import to avoid circular dependency - only import when needed
+        const { apiClient } = require('../api/client');
         // Get tenant ID from apiClient (which gets it from localStorage)
         return apiClient.getTenantId();
     } catch (error) {
+        // If apiClient isn't available yet, return null (user not logged in)
         console.warn('Failed to get tenant ID:', error);
         return null;
     }
