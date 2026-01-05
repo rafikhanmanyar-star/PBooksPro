@@ -80,7 +80,7 @@ class AdminApi {
     return response.json();
   }
 
-  async updateTenant(tenantId: string, data: { maxUsers?: number; name?: string; companyName?: string; email?: string; phone?: string; address?: string; subscriptionTier?: string }) {
+  async updateTenant(tenantId: string, data: { maxUsers?: number; name?: string; companyName?: string; email?: string; phone?: string; address?: string; subscriptionTier?: string; licenseType?: string; licenseStatus?: string }) {
     const response = await fetch(`${ADMIN_API_URL}/tenants/${tenantId}`, {
       method: 'PUT',
       headers: this.getAuthHeaders(),
@@ -89,6 +89,18 @@ class AdminApi {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to update tenant');
+    }
+    return response.json();
+  }
+
+  async deleteTenant(tenantId: string) {
+    const response = await fetch(`${ADMIN_API_URL}/tenants/${tenantId}`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to delete tenant');
     }
     return response.json();
   }

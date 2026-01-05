@@ -6,6 +6,7 @@
 
 import { getDatabaseService } from '../databaseService';
 import { objectToDbFormat, dbToObjectFormat, camelToSnake } from '../columnMapper';
+import { getCurrentTenantId, shouldFilterByTenant } from '../tenantUtils';
 
 export abstract class BaseRepository<T> {
     protected tableName: string;
@@ -35,9 +36,30 @@ export abstract class BaseRepository<T> {
         const { limit, offset, orderBy, orderDir = 'DESC', condition, params = [] } = options;
 
         let sql = `SELECT * FROM ${this.tableName}`;
-        if (condition) {
-            sql += ` WHERE ${condition}`;
+        const whereConditions: string[] = [];
+        const whereParams: any[] = [];
+        
+        // Add tenant_id filter if tenant is logged in
+        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
+            const tenantId = getCurrentTenantId();
+            if (tenantId) {
+                // Use org_tenant_id for rental_agreements, tenant_id for others
+                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                whereConditions.push(`${tenantColumn} = ?`);
+                whereParams.push(tenantId);
+            }
         }
+        
+        // Add custom condition if provided
+        if (condition) {
+            whereConditions.push(condition);
+            whereParams.push(...params);
+        }
+        
+        if (whereConditions.length > 0) {
+            sql += ` WHERE ${whereConditions.join(' AND ')}`;
+        }
+        
         if (orderBy) {
             sql += ` ORDER BY ${camelToSnake(orderBy)} ${orderDir}`;
         }
@@ -48,18 +70,38 @@ export abstract class BaseRepository<T> {
             sql += ` OFFSET ${offset}`;
         }
 
-        const results = this.db.query<Record<string, any>>(sql, params);
+        const results = this.db.query<Record<string, any>>(sql, whereParams);
         return results.map(row => dbToObjectFormat<T>(row));
+    }
+    
+    /**
+     * Check if this table should be filtered by tenant_id
+     * Override in subclasses if needed
+     */
+    protected shouldFilterByTenant(): boolean {
+        // Filter by tenant for all tables except global ones
+        const globalTables = ['metadata', 'error_log', 'app_settings', 'license_settings', 'tasks'];
+        return !globalTables.includes(this.tableName);
     }
 
     /**
      * Find by primary key
      */
     findById(id: string): T | null {
-        const results = this.db.query<Record<string, any>>(
-            `SELECT * FROM ${this.tableName} WHERE ${camelToSnake(this.primaryKey)} = ?`,
-            [id]
-        );
+        let sql = `SELECT * FROM ${this.tableName} WHERE ${camelToSnake(this.primaryKey)} = ?`;
+        const params: any[] = [id];
+        
+        // Add tenant_id filter if tenant is logged in
+        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
+            const tenantId = getCurrentTenantId();
+            if (tenantId) {
+                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                sql += ` AND ${tenantColumn} = ?`;
+                params.push(tenantId);
+            }
+        }
+        
+        const results = this.db.query<Record<string, any>>(sql, params);
         return results.length > 0 ? dbToObjectFormat<T>(results[0]) : null;
     }
 
@@ -99,6 +141,17 @@ export abstract class BaseRepository<T> {
         try {
             const dbData = objectToDbFormat(data as Record<string, any>);
             const columnsSet = this.ensureTableColumns();
+            
+            // Add tenant_id if not present and tenant is logged in
+            if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
+                const tenantId = getCurrentTenantId();
+                if (tenantId) {
+                    const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                    if (!dbData[tenantColumn] && columnsSet.has(tenantColumn)) {
+                        dbData[tenantColumn] = tenantId;
+                    }
+                }
+            }
 
             // Debug logging for contacts to diagnose column mapping issues
             if (this.tableName === 'contacts') {
@@ -179,12 +232,21 @@ export abstract class BaseRepository<T> {
         const setClause = keys.map(k => `${k} = ?`).join(', ');
         const values = keys.map(k => dbData[k]);
         const primaryKeyColumn = camelToSnake(this.primaryKey);
+        
+        let sql = `UPDATE ${this.tableName} SET ${setClause}, updated_at = datetime('now') WHERE ${primaryKeyColumn} = ?`;
         values.push(id);
+        
+        // Add tenant_id filter if tenant is logged in
+        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
+            const tenantId = getCurrentTenantId();
+            if (tenantId) {
+                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                sql += ` AND ${tenantColumn} = ?`;
+                values.push(tenantId);
+            }
+        }
 
-        this.db.execute(
-            `UPDATE ${this.tableName} SET ${setClause}, updated_at = datetime('now') WHERE ${primaryKeyColumn} = ?`,
-            values
-        );
+        this.db.execute(sql, values);
         if (!this.db.isInTransaction()) {
             this.db.save();
         }
@@ -195,10 +257,20 @@ export abstract class BaseRepository<T> {
      */
     delete(id: string): void {
         const primaryKeyColumn = camelToSnake(this.primaryKey);
-        this.db.execute(
-            `DELETE FROM ${this.tableName} WHERE ${primaryKeyColumn} = ?`,
-            [id]
-        );
+        let sql = `DELETE FROM ${this.tableName} WHERE ${primaryKeyColumn} = ?`;
+        const params: any[] = [id];
+        
+        // Add tenant_id filter if tenant is logged in
+        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
+            const tenantId = getCurrentTenantId();
+            if (tenantId) {
+                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                sql += ` AND ${tenantColumn} = ?`;
+                params.push(tenantId);
+            }
+        }
+        
+        this.db.execute(sql, params);
         if (!this.db.isInTransaction()) {
             this.db.save();
         }
@@ -208,7 +280,17 @@ export abstract class BaseRepository<T> {
      * Delete all records
      */
     deleteAll(): void {
-        this.db.execute(`DELETE FROM ${this.tableName}`);
+        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
+            const tenantId = getCurrentTenantId();
+            if (tenantId) {
+                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
+            } else {
+                this.db.execute(`DELETE FROM ${this.tableName}`);
+            }
+        } else {
+            this.db.execute(`DELETE FROM ${this.tableName}`);
+        }
         if (!this.db.isInTransaction()) {
             this.db.save();
         }
@@ -218,9 +300,20 @@ export abstract class BaseRepository<T> {
      * Count records
      */
     count(): number {
-        const results = this.db.query<{ count: number }>(
-            `SELECT COUNT(*) as count FROM ${this.tableName}`
-        );
+        let sql = `SELECT COUNT(*) as count FROM ${this.tableName}`;
+        const params: any[] = [];
+        
+        // Add tenant_id filter if tenant is logged in
+        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
+            const tenantId = getCurrentTenantId();
+            if (tenantId) {
+                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                sql += ` WHERE ${tenantColumn} = ?`;
+                params.push(tenantId);
+            }
+        }
+        
+        const results = this.db.query<{ count: number }>(sql, params);
         return results[0]?.count || 0;
     }
 
@@ -243,9 +336,23 @@ export abstract class BaseRepository<T> {
         try {
             console.log(`🔄 saveAll called for ${this.tableName} with ${records.length} records`);
 
-            // Delete all existing records
-            this.db.execute(`DELETE FROM ${this.tableName}`);
-            console.log(`🗑️ Deleted all existing records from ${this.tableName}`);
+            // Delete all existing records for current tenant only
+            if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
+                const tenantId = getCurrentTenantId();
+                if (tenantId) {
+                    const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                    this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
+                    console.log(`🗑️ Deleted all existing records from ${this.tableName} for tenant ${tenantId}`);
+                } else {
+                    // No tenant ID, delete all (shouldn't happen in normal flow)
+                    this.db.execute(`DELETE FROM ${this.tableName}`);
+                    console.log(`🗑️ Deleted all existing records from ${this.tableName} (no tenant filter)`);
+                }
+            } else {
+                // Global table, delete all
+                this.db.execute(`DELETE FROM ${this.tableName}`);
+                console.log(`🗑️ Deleted all existing records from ${this.tableName}`);
+            }
 
             // Insert all new records
             if (records.length > 0) {

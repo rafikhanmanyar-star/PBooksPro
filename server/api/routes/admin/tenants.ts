@@ -125,19 +125,118 @@ router.post('/:id/activate', async (req: AdminRequest, res) => {
 router.put('/:id', async (req: AdminRequest, res) => {
   try {
     const db = getDb();
-    const { name, companyName, email, phone, address, maxUsers, subscriptionTier } = req.body;
+    const tenantId = req.params.id;
+    const { name, companyName, email, phone, address, maxUsers, subscriptionTier, licenseType, licenseStatus } = req.body;
     
-    await db.query(
-      `UPDATE tenants 
-       SET name = $1, company_name = $2, email = $3, phone = $4, 
-           address = $5, max_users = $6, subscription_tier = $7, updated_at = NOW()
-       WHERE id = $8`,
-      [name, companyName, email, phone, address, maxUsers, subscriptionTier, req.params.id]
-    );
+    // First, check if tenant exists
+    const existingTenants = await db.query('SELECT * FROM tenants WHERE id = $1', [tenantId]);
+    if (existingTenants.length === 0) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
     
-    res.json({ success: true });
-  } catch (error) {
+    const existing = existingTenants[0];
+    
+    // Build dynamic update query for partial updates
+    const updates: string[] = [];
+    const params: any[] = [];
+    let paramIndex = 1;
+    
+    if (name !== undefined) {
+      updates.push(`name = $${paramIndex++}`);
+      params.push(name);
+    }
+    if (companyName !== undefined) {
+      updates.push(`company_name = $${paramIndex++}`);
+      params.push(companyName);
+    }
+    if (email !== undefined) {
+      // Check if email is already taken by another tenant
+      const emailCheck = await db.query('SELECT id FROM tenants WHERE email = $1 AND id != $2', [email, tenantId]);
+      if (emailCheck.length > 0) {
+        return res.status(400).json({ error: 'Email already in use by another tenant' });
+      }
+      updates.push(`email = $${paramIndex++}`);
+      params.push(email);
+    }
+    if (phone !== undefined) {
+      updates.push(`phone = $${paramIndex++}`);
+      params.push(phone);
+    }
+    if (address !== undefined) {
+      updates.push(`address = $${paramIndex++}`);
+      params.push(address);
+    }
+    if (maxUsers !== undefined) {
+      if (maxUsers < 1) {
+        return res.status(400).json({ error: 'Maximum users must be at least 1' });
+      }
+      updates.push(`max_users = $${paramIndex++}`);
+      params.push(maxUsers);
+    }
+    if (subscriptionTier !== undefined) {
+      updates.push(`subscription_tier = $${paramIndex++}`);
+      params.push(subscriptionTier);
+    }
+    if (licenseType !== undefined) {
+      if (!['trial', 'monthly', 'yearly', 'perpetual'].includes(licenseType)) {
+        return res.status(400).json({ error: 'Invalid license type' });
+      }
+      updates.push(`license_type = $${paramIndex++}`);
+      params.push(licenseType);
+    }
+    if (licenseStatus !== undefined) {
+      if (!['active', 'expired', 'suspended', 'cancelled'].includes(licenseStatus)) {
+        return res.status(400).json({ error: 'Invalid license status' });
+      }
+      updates.push(`license_status = $${paramIndex++}`);
+      params.push(licenseStatus);
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+    
+    // Always update updated_at
+    updates.push(`updated_at = NOW()`);
+    
+    // Add tenant ID as last parameter
+    params.push(tenantId);
+    
+    const query = `UPDATE tenants SET ${updates.join(', ')} WHERE id = $${paramIndex}`;
+    
+    await db.query(query, params);
+    
+    // Return updated tenant
+    const updatedTenants = await db.query('SELECT * FROM tenants WHERE id = $1', [tenantId]);
+    res.json(updatedTenants[0]);
+  } catch (error: any) {
+    console.error('Error updating tenant:', error);
+    if (error.code === '23505') { // Unique constraint violation
+      return res.status(400).json({ error: 'Email already in use' });
+    }
     res.status(500).json({ error: 'Failed to update tenant' });
+  }
+});
+
+// Delete tenant
+router.delete('/:id', async (req: AdminRequest, res) => {
+  try {
+    const db = getDb();
+    const tenantId = req.params.id;
+    
+    // Check if tenant exists
+    const tenants = await db.query('SELECT * FROM tenants WHERE id = $1', [tenantId]);
+    if (tenants.length === 0) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+    
+    // Delete tenant (CASCADE will handle related data)
+    await db.query('DELETE FROM tenants WHERE id = $1', [tenantId]);
+    
+    res.json({ success: true, message: 'Tenant deleted successfully' });
+  } catch (error: any) {
+    console.error('Error deleting tenant:', error);
+    res.status(500).json({ error: 'Failed to delete tenant' });
   }
 });
 

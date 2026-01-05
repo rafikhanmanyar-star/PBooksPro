@@ -718,6 +718,14 @@ class DatabaseService {
                 // Ensure contract and bill columns exist (for expense_category_items)
                 this.ensureContractColumnsExist();
                 
+                // Add tenant_id columns for multi-tenant support
+                try {
+                    const { migrateTenantColumns } = await import('./tenantMigration');
+                    migrateTenantColumns();
+                } catch (migrationError) {
+                    console.warn('⚠️ Tenant migration failed, continuing anyway:', migrationError);
+                }
+                
                 // Update schema version
                 this.setMetadata('schema_version', latestVersion.toString());
                 
