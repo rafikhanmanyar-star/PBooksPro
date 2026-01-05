@@ -1392,6 +1392,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const storedState = useFallback ? fallbackState : dbState;
     const setStoredState = useFallback ? setFallbackState : setDbState;
+    
+    // Use a ref to track storedState to avoid initialization issues in dependency arrays
+    const storedStateRef = useRef(storedState);
+    useEffect(() => {
+        storedStateRef.current = storedState;
+    }, [storedState]);
 
     // 2. Version check and logout on version update or app relaunch
     useEffect(() => {
@@ -1411,14 +1417,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         // Logout user if app relaunched OR version changed
-        if (storedState.currentUser && (isAppRelaunched || versionChanged)) {
-            const reason = versionChanged ? `Version changed (${storedVersion} -> ${currentVersion})` : 'Application relaunched';
-            console.log(`🔄 ${reason} - logging out user`);
-
-            const updatedState = { ...storedState, currentUser: null };
-            setStoredState(updatedState);
-
-            // Also clear from database if available (async, don't block)
+        // Use functional update to avoid accessing storedState before initialization
+        setStoredState(prev => {
+            if (prev.currentUser && (isAppRelaunched || versionChanged)) {
+                const reason = versionChanged ? `Version changed (${storedVersion} -> ${currentVersion})` : 'Application relaunched';
+                console.log(`🔄 ${reason} - logging out user`);
+                return { ...prev, currentUser: null };
+            }
+            return prev;
+        });
+        
+        // Also clear from database if needed (check after state update)
+        if (isAppRelaunched || versionChanged) {
+            // Clear from database if available (async, don't block)
             (async () => {
                 try {
                     const dbService = getDatabaseService();
@@ -1685,14 +1696,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         setInitProgress(70);
 
                         // Wait longer for database state to load (up to 5 seconds)
+                        // Note: We can't directly access storedState here as it may not be initialized
+                        // Instead, we'll rely on the database loading mechanism and timeout
                         let stateLoaded = false;
                         const checkStateLoaded = () => {
-                            // Check if storedState has been loaded (not just initial state)
-                            const hasLoadedData = storedState.contacts.length > 0 ||
-                                storedState.transactions.length > 0 ||
-                                storedState.invoices.length > 0 ||
-                                storedState.accounts.length > SYSTEM_ACCOUNTS.length;
-                            return hasLoadedData || storedState !== initialState;
+                            // Check if database has been initialized and has data
+                            // We'll check this by trying to load from database directly
+                            try {
+                                const dbService = getDatabaseService();
+                                if (dbService.isReady()) {
+                                    // Database is ready, assume state will be loaded
+                                    return true;
+                                }
+                            } catch {
+                                // Database not ready yet
+                            }
+                            return false;
                         };
 
                         // Poll for state to load (with timeout)
@@ -2175,19 +2194,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
 
     // Sync reducer state with loaded database state (critical for first load)
+    // Use storedState in dependency array but access via ref inside to avoid initialization issues
     useEffect(() => {
         if (!isInitializing) {
+            // Use ref to access storedState to avoid dependency issues
+            const currentStoredState = storedStateRef.current;
+            
             // Check if storedState has more data than current state (database loaded)
-            const storedHasMoreData = storedState.contacts.length > state.contacts.length ||
-                storedState.transactions.length > state.transactions.length ||
-                storedState.invoices.length > state.invoices.length ||
-                storedState.accounts.length > state.accounts.length;
+            const storedHasMoreData = currentStoredState.contacts.length > state.contacts.length ||
+                currentStoredState.transactions.length > state.transactions.length ||
+                currentStoredState.invoices.length > state.invoices.length ||
+                currentStoredState.accounts.length > state.accounts.length;
 
             // Check if storedState has any user data (not just system defaults)
-            const storedHasUserData = storedState.contacts.length > 0 ||
-                storedState.transactions.length > 0 ||
-                storedState.invoices.length > 0 ||
-                storedState.bills.length > 0;
+            const storedHasUserData = currentStoredState.contacts.length > 0 ||
+                currentStoredState.transactions.length > 0 ||
+                currentStoredState.invoices.length > 0 ||
+                currentStoredState.bills.length > 0;
 
             const currentHasUserData = state.contacts.length > 0 ||
                 state.transactions.length > 0 ||
@@ -2198,21 +2221,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // Only sync once during initialization to avoid infinite loops
             if ((storedHasMoreData || (storedHasUserData && !currentHasUserData)) && !reducerInitializedRef.current) {
                 console.log('🔄 Syncing reducer state with loaded database state:', {
-                    storedContacts: storedState.contacts.length,
+                    storedContacts: currentStoredState.contacts.length,
                     currentContacts: state.contacts.length,
-                    storedTransactions: storedState.transactions.length,
+                    storedTransactions: currentStoredState.transactions.length,
                     currentTransactions: state.transactions.length,
-                    storedInvoices: storedState.invoices.length,
+                    storedInvoices: currentStoredState.invoices.length,
                     currentInvoices: state.invoices.length
                 });
-                dispatch({ type: 'SET_STATE', payload: storedState });
+                dispatch({ type: 'SET_STATE', payload: currentStoredState });
                 reducerInitializedRef.current = true;
             } else if (storedHasUserData && currentHasUserData) {
                 // Mark as initialized if both have data (already synced)
                 reducerInitializedRef.current = true;
             }
         }
-    }, [storedState, isInitializing, state]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isInitializing, state, dispatch, storedState]);
 
     // 3. Persist State Changes (with error handling) - OPTIMIZED: Skip navigation-only changes
     // Use refs to track previous values for fast comparison (no JSON.stringify blocking)
