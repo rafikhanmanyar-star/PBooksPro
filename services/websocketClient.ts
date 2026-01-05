@@ -207,6 +207,45 @@ export class WebSocketClient {
       this.handleEvent('budget:deleted', data);
     });
 
+    // Rental agreement events
+    this.socket.on('rental_agreement:created', (data: any) => {
+      this.handleEvent('rental_agreement:created', data);
+    });
+
+    this.socket.on('rental_agreement:updated', (data: any) => {
+      this.handleEvent('rental_agreement:updated', data);
+    });
+
+    this.socket.on('rental_agreement:deleted', (data: any) => {
+      this.handleEvent('rental_agreement:deleted', data);
+    });
+
+    // Project agreement events
+    this.socket.on('project_agreement:created', (data: any) => {
+      this.handleEvent('project_agreement:created', data);
+    });
+
+    this.socket.on('project_agreement:updated', (data: any) => {
+      this.handleEvent('project_agreement:updated', data);
+    });
+
+    this.socket.on('project_agreement:deleted', (data: any) => {
+      this.handleEvent('project_agreement:deleted', data);
+    });
+
+    // Contract events
+    this.socket.on('contract:created', (data: any) => {
+      this.handleEvent('contract:created', data);
+    });
+
+    this.socket.on('contract:updated', (data: any) => {
+      this.handleEvent('contract:updated', data);
+    });
+
+    this.socket.on('contract:deleted', (data: any) => {
+      this.handleEvent('contract:deleted', data);
+    });
+
     // User connection events
     this.socket.on('user:connected', (data: any) => {
       logger.logCategory('websocket', 'User connected:', data);

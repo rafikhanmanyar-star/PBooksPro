@@ -2342,7 +2342,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     'project:created', 'project:updated', 'project:deleted',
                     'account:created', 'account:updated', 'account:deleted',
                     'category:created', 'category:updated', 'category:deleted',
-                    'budget:created', 'budget:updated', 'budget:deleted'
+                    'budget:created', 'budget:updated', 'budget:deleted',
+                    'rental_agreement:created', 'rental_agreement:updated', 'rental_agreement:deleted',
+                    'project_agreement:created', 'project_agreement:updated', 'project_agreement:deleted',
+                    'contract:created', 'contract:updated', 'contract:deleted'
                 ];
 
                 const unsubscribers = events.map(evt => ws.on(evt, scheduleRefresh));
