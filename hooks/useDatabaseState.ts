@@ -8,7 +8,20 @@
 import React, { useState, useEffect, useCallback, Dispatch, SetStateAction } from 'react';
 import { AppState } from '../types';
 import { getDatabaseService } from '../services/database/databaseService';
-import { AppStateRepository } from '../services/database/repositories/appStateRepository';
+// Lazy import AppStateRepository to avoid initialization issues during module load
+let AppStateRepositoryClass: any = null;
+
+function getAppStateRepository() {
+    if (!AppStateRepositoryClass) {
+        try {
+            AppStateRepositoryClass = require('../services/database/repositories/appStateRepository').AppStateRepository;
+        } catch (error) {
+            console.error('❌ [useDatabaseState] Failed to load AppStateRepository:', error);
+            throw new Error(`Failed to load AppStateRepository: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+    return new AppStateRepositoryClass();
+}
 
 let dbInitialized = false;
 let initializationPromise: Promise<void> | null = null;
@@ -89,7 +102,7 @@ export function useDatabaseState<T extends AppState>(
                 }
 
                 try {
-                    const appStateRepo = new AppStateRepository();
+                    const appStateRepo = getAppStateRepository();
                     const state = await appStateRepo.loadState();
                     
                     if (isMounted && timeoutId) {
@@ -170,7 +183,7 @@ export function useDatabaseState<T extends AppState>(
                         return; // Don't try to save if database isn't available
                     }
                     
-                    const appStateRepo = new AppStateRepository();
+                    const appStateRepo = getAppStateRepository();
                     await appStateRepo.saveState(valueToSave as AppState);
                     console.log('✅ State saved to database');
                     pendingSaveRef.current = null;
@@ -225,7 +238,7 @@ export function useDatabaseState<T extends AppState>(
                 if (valueToSave && valueToSave !== initialValue) {
                     ensureDatabaseInitialized()
                         .then(() => {
-                            const appStateRepo = new AppStateRepository();
+                            const appStateRepo = getAppStateRepository();
                             return appStateRepo.saveState(valueToSave as AppState);
                         })
                         .catch((error) => {
@@ -246,7 +259,7 @@ export function useDatabaseState<T extends AppState>(
                 // Use synchronous storage if possible
                 try {
                     ensureDatabaseInitialized().then(() => {
-                        const appStateRepo = new AppStateRepository();
+                        const appStateRepo = getAppStateRepository();
                         appStateRepo.saveState(valueToSave as AppState).catch(() => {
                             // Ignore errors during unload
                         });

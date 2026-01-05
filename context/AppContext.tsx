@@ -6,7 +6,21 @@ import { useDatabaseStateFallback } from '../hooks/useDatabaseStateFallback';
 // import { syncService } from '../services/SyncService';
 import { runAllMigrations, needsMigration } from '../services/database/migration';
 import { getDatabaseService } from '../services/database/databaseService';
-import { AppStateRepository } from '../services/database/repositories/appStateRepository';
+// Lazy import AppStateRepository to avoid initialization issues during module load
+// It will be imported when actually needed
+let AppStateRepositoryClass: any = null;
+
+function getAppStateRepository() {
+    if (!AppStateRepositoryClass) {
+        try {
+            AppStateRepositoryClass = require('../services/database/repositories/appStateRepository').AppStateRepository;
+        } catch (error) {
+            console.error('❌ Failed to load AppStateRepository:', error);
+            throw new Error(`Failed to load AppStateRepository: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+    return new AppStateRepositoryClass();
+}
 import { useAuth } from './AuthContext';
 import { getAppStateApiService } from '../services/api/appStateApi';
 import { logger } from '../services/logger';
@@ -1636,7 +1650,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     // This ensures offline access and proper tenant isolation
                                     const dbService = getDatabaseService();
                                     if (dbService.isReady()) {
-                                        const appStateRepo = new AppStateRepository();
+                                        const appStateRepo = getAppStateRepository();
                                         appStateRepo.saveState(fullState).catch(saveError => {
                                             console.warn('⚠️ Could not save API data to local database:', saveError);
                                         });

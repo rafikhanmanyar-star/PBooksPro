@@ -9,12 +9,6 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "icon.ico",
-      "sizes": "256x256",
-      "type": "image/x-icon",
-      "purpose": "any"
-    },
-    {
       "src": "icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
@@ -35,9 +29,9 @@
       "url": "./?page=transactions&action=new",
       "icons": [
         {
-          "src": "icon.ico",
-          "sizes": "256x256",
-          "type": "image/x-icon"
+          "src": "icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
         }
       ]
     },
@@ -48,9 +42,9 @@
       "url": "./?page=dashboard",
       "icons": [
         {
-          "src": "icon.ico",
-          "sizes": "256x256",
-          "type": "image/x-icon"
+          "src": "icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
         }
       ]
     }

@@ -94,7 +94,8 @@ export default defineConfig({
     {
       name: 'copy-icon',
       closeBundle() {
-        // Copy icon.ico from build folder to dist folder
+        // Copy icon.ico from build folder to dist folder (optional - for production)
+        // Icon.ico is not required during testing - will be added during production stage
         const iconSource = join(process.cwd(), 'build', 'icon.ico')
         const iconDest = join(process.cwd(), 'dist', 'icon.ico')
         if (existsSync(iconSource)) {
@@ -102,9 +103,10 @@ export default defineConfig({
             copyFileSync(iconSource, iconDest)
             console.log('✅ Copied icon.ico to dist folder')
           } catch (error) {
-            console.warn('⚠️ Failed to copy icon.ico:', error)
+            // Silently ignore - icon.ico is optional during testing
           }
         }
+        // No warning if icon.ico doesn't exist - it's optional for testing
       }
     },
   ],
