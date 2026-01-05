@@ -57,6 +57,26 @@ router.post('/', async (req: TenantRequest, res) => {
     const contactId = contact.id || `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     console.log('📝 POST /contacts - Using contact ID:', contactId);
     
+    // Check if contact with this ID already exists and belongs to a different tenant
+    if (contact.id) {
+      const existingContact = await db.query(
+        'SELECT tenant_id FROM contacts WHERE id = $1',
+        [contactId]
+      );
+      
+      if (existingContact.length > 0 && existingContact[0].tenant_id !== req.tenantId) {
+        console.error('❌ POST /contacts - Contact ID exists but belongs to different tenant:', {
+          contactId,
+          existingTenantId: existingContact[0].tenant_id,
+          currentTenantId: req.tenantId
+        });
+        return res.status(403).json({ 
+          error: 'Forbidden',
+          message: 'A contact with this ID already exists in another organization'
+        });
+      }
+    }
+    
     // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
     // This prevents unique constraint violations when multiple requests come in simultaneously
     const result = await db.query(
@@ -87,7 +107,30 @@ router.post('/', async (req: TenantRequest, res) => {
     );
     
     if (!result || result.length === 0) {
-      console.error('❌ POST /contacts - Query returned no result');
+      // This can happen if the contact exists but the WHERE clause in DO UPDATE prevents the update
+      // In this case, try to fetch the existing contact to verify it belongs to this tenant
+      const existingContact = await db.query(
+        'SELECT * FROM contacts WHERE id = $1 AND tenant_id = $2',
+        [contactId, req.tenantId]
+      );
+      
+      if (existingContact.length > 0) {
+        // Contact exists and belongs to this tenant, but UPDATE didn't happen
+        // This shouldn't normally occur, but handle it gracefully
+        console.warn('⚠️ POST /contacts - Contact exists but UPDATE returned no rows, using existing contact');
+        const savedContact = existingContact[0];
+        
+        // Emit WebSocket event
+        emitToTenant(req.tenantId!, WS_EVENTS.CONTACT_CREATED, {
+          contact: savedContact,
+          userId: req.user?.userId,
+          username: req.user?.username,
+        });
+        
+        return res.status(200).json(savedContact);
+      }
+      
+      console.error('❌ POST /contacts - Query returned no result and contact not found');
       return res.status(500).json({ error: 'Failed to create contact' });
     }
     
