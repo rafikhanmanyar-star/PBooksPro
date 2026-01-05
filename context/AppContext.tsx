@@ -1390,13 +1390,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setFallbackState = () => { };
     }
 
-    const storedState = useFallback ? fallbackState : dbState;
+    // Initialize storedState safely - use initialState as fallback if hooks aren't ready
+    const storedState = (useFallback ? fallbackState : dbState) || initialState;
     const setStoredState = useFallback ? setFallbackState : setDbState;
     
     // Use a ref to track storedState to avoid initialization issues in dependency arrays
-    const storedStateRef = useRef(storedState);
+    // Initialize ref with initialState to ensure it's always defined
+    const storedStateRef = useRef<AppState>(initialState);
     useEffect(() => {
-        storedStateRef.current = storedState;
+        if (storedState) {
+            storedStateRef.current = storedState;
+        }
     }, [storedState]);
 
     // 2. Version check and logout on version update or app relaunch
@@ -2188,15 +2192,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Use a ref to track if we've initialized the reducer with database state
     const reducerInitializedRef = useRef(false);
 
-    // Initialize reducer with storedState, but update it when database loads
-    const [state, dispatch] = useReducer(reducerWithPersistence, storedState);
+    // Initialize reducer with initialState first, then sync with storedState when ready
+    // This avoids initialization issues with storedState
+    const [state, dispatch] = useReducer(reducerWithPersistence, initialState);
 
 
 
     // Sync reducer state with loaded database state (critical for first load)
-    // Use storedState in dependency array but access via ref inside to avoid initialization issues
+    // Initialize with storedState when it's ready (after initialization)
     useEffect(() => {
-        if (!isInitializing) {
+        // Wait for initialization to complete and storedState to be ready
+        if (!isInitializing && storedStateRef.current) {
             // Use ref to access storedState to avoid dependency issues
             const currentStoredState = storedStateRef.current;
             
@@ -2235,8 +2241,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 reducerInitializedRef.current = true;
             }
         }
+        // Only depend on isInitializing to avoid accessing storedState before it's ready
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isInitializing, state, dispatch, storedState]);
+    }, [isInitializing, state, dispatch]);
 
     // 3. Persist State Changes (with error handling) - OPTIMIZED: Skip navigation-only changes
     // Use refs to track previous values for fast comparison (no JSON.stringify blocking)
