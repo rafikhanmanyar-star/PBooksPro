@@ -32,6 +32,8 @@ if (result.error && !process.env.DATABASE_URL) {
 import express from 'express';
 import cors from 'cors';
 import { Pool } from 'pg';
+import { createServer } from 'http';
+import { getWebSocketService } from '../services/websocketService.js';
 import authRouter from './routes/auth.js';
 import tenantRouter from './routes/tenants.js';
 import adminRouter from './routes/admin/index.js';
@@ -55,6 +57,7 @@ import { tenantMiddleware } from '../middleware/tenantMiddleware.js';
 import { licenseMiddleware } from '../middleware/licenseMiddleware.js';
 
 const app = express();
+const httpServer = createServer(app);
 const port = process.env.PORT || 3000;
 
 // Use DatabaseService singleton instead of creating separate pool
@@ -205,10 +208,18 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
+// Initialize WebSocket service
+const wsService = getWebSocketService();
+wsService.initialize(httpServer, corsOrigins);
+
+// Export WebSocket service for use in routes
+export { wsService };
+
 // Start server
-app.listen(port, () => {
+httpServer.listen(port, () => {
   console.log(`🚀 API server running on port ${port}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔌 WebSocket server initialized`);
 });
 
 export default app;

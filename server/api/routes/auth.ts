@@ -456,6 +456,95 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// Refresh token endpoint
+router.post('/refresh-token', async (req, res) => {
+  try {
+    const db = getDb();
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No authentication token' });
+    }
+    
+    const oldToken = authHeader.substring(7);
+    
+    try {
+      // Verify old token (allow expired tokens for refresh)
+      let decoded: any;
+      try {
+        decoded = jwt.verify(oldToken, process.env.JWT_SECRET!) as any;
+      } catch (jwtError: any) {
+        // If token is expired, try to decode without verification to get user info
+        if (jwtError.name === 'TokenExpiredError') {
+          decoded = jwt.decode(oldToken) as any;
+          if (!decoded) {
+            return res.status(401).json({ error: 'Invalid token' });
+          }
+        } else {
+          return res.status(401).json({ error: 'Invalid token' });
+        }
+      }
+      
+      // Verify user still exists and is active
+      const users = await db.query(
+        'SELECT * FROM users WHERE id = $1 AND tenant_id = $2 AND is_active = TRUE',
+        [decoded.userId, decoded.tenantId]
+      );
+      
+      if (users.length === 0) {
+        return res.status(401).json({ error: 'User not found or inactive' });
+      }
+      
+      const user = users[0];
+      
+      // Verify tenant exists
+      const tenants = await db.query(
+        'SELECT * FROM tenants WHERE id = $1',
+        [decoded.tenantId]
+      );
+      
+      if (tenants.length === 0) {
+        return res.status(403).json({ error: 'Invalid tenant' });
+      }
+      
+      // Generate new token with same expiration (30 days)
+      const expiresIn = '30d';
+      const newToken = jwt.sign(
+        { 
+          userId: user.id, 
+          username: user.username,
+          tenantId: user.tenant_id,
+          role: user.role
+        },
+        process.env.JWT_SECRET!,
+        { expiresIn }
+      );
+      
+      // Update session with new token
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 30);
+      
+      await db.query(
+        `UPDATE user_sessions 
+         SET token = $1, expires_at = $2, last_activity = NOW() 
+         WHERE token = $3`,
+        [newToken, expiresAt, oldToken]
+      );
+      
+      res.json({ 
+        token: newToken,
+        expiresIn: expiresIn
+      });
+    } catch (error: any) {
+      console.error('Token refresh error:', error);
+      res.status(401).json({ error: 'Token refresh failed', message: error.message });
+    }
+  } catch (error: any) {
+    console.error('Refresh token error:', error);
+    res.status(500).json({ error: 'Token refresh failed' });
+  }
+});
+
 // Logout endpoint
 router.post('/logout', async (req, res) => {
   try {

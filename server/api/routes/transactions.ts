@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
+import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
@@ -238,6 +239,13 @@ router.post('/', async (req: TenantRequest, res) => {
       tenantId: req.tenantId
     });
     
+    // Emit WebSocket event for real-time sync
+    emitToTenant(req.tenantId!, wasUpdate ? WS_EVENTS.TRANSACTION_UPDATED : WS_EVENTS.TRANSACTION_CREATED, {
+      transaction: result,
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+    
     res.status(201).json(result);
   } catch (error: any) {
     console.error('❌ POST /transactions - Error:', {
@@ -315,6 +323,13 @@ router.put('/:id', async (req: TenantRequest, res) => {
       );
     }
     
+    // Emit WebSocket event for real-time sync
+    emitToTenant(req.tenantId!, WS_EVENTS.TRANSACTION_UPDATED, {
+      transaction: result[0],
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+    
     res.json(result[0]);
   } catch (error) {
     console.error('Error updating transaction:', error);
@@ -357,6 +372,13 @@ router.delete('/:id', async (req: TenantRequest, res) => {
         req
       );
     }
+    
+    // Emit WebSocket event for real-time sync
+    emitToTenant(req.tenantId!, WS_EVENTS.TRANSACTION_DELETED, {
+      transactionId: req.params.id,
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
     
     res.json({ success: true });
   } catch (error) {
