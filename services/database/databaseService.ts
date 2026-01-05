@@ -218,6 +218,13 @@ class DatabaseService {
             } else {
                 // Database exists - check schema version and migrate if needed
                 await this.checkAndMigrateSchema();
+                // Ensure tenant columns are present even if schema version is current (idempotent)
+                try {
+                    const { migrateTenantColumns } = await import('./tenantMigration');
+                    migrateTenantColumns();
+                } catch (tenantError) {
+                    console.warn('⚠️ Tenant column migration failed during init (continuing):', tenantError);
+                }
                 // Ensure all tables are present (for existing databases)
                 this.ensureAllTablesExist();
                 // Ensure contracts table has new columns

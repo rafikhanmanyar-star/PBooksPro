@@ -22,6 +22,7 @@ import {
     TransactionLogRepository, ErrorLogRepository, TasksRepository, AppSettingsRepository,
     QuotationsRepository, DocumentsRepository
 } from './index';
+import { migrateTenantColumns } from '../tenantMigration';
 
 export class AppStateRepository {
     private db = getDatabaseService();
@@ -80,6 +81,12 @@ export class AppStateRepository {
         // This prevents data loss when columns are missing (e.g., after restore)
         this.db.ensureAllTablesExist();
         this.db.ensureContractColumnsExist();
+        // Ensure tenant_id columns exist on all relevant tables (idempotent)
+        try {
+            migrateTenantColumns();
+        } catch (err) {
+            console.warn('⚠️ Tenant column migration failed during loadState (continuing):', err);
+        }
         
         // Run budget migration if needed (handles old backups with monthly budgets)
         try {
@@ -245,6 +252,13 @@ export class AppStateRepository {
                     this.db.ensureAllTablesExist();
                 } catch (tableCheckError) {
                     console.warn('⚠️ Could not verify tables exist, continuing anyway:', tableCheckError);
+                }
+                
+                // Ensure tenant_id columns exist before saving (idempotent)
+                try {
+                    migrateTenantColumns();
+                } catch (tenantError) {
+                    console.warn('⚠️ Tenant column migration failed during saveState (continuing):', tenantError);
                 }
                 
                 // Migrate budgets if they're in old format (for in-memory data being saved)
