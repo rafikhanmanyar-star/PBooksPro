@@ -277,7 +277,7 @@ export abstract class BaseRepository<T> {
     }
 
     /**
-     * Delete all records
+     * Delete all records (filtered by tenant if tenant is logged in)
      */
     deleteAll(): void {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
@@ -291,6 +291,17 @@ export abstract class BaseRepository<T> {
         } else {
             this.db.execute(`DELETE FROM ${this.tableName}`);
         }
+        if (!this.db.isInTransaction()) {
+            this.db.save();
+        }
+    }
+
+    /**
+     * Delete all records without tenant filtering
+     * Used when switching tenants to ensure clean state
+     */
+    deleteAllUnfiltered(): void {
+        this.db.execute(`DELETE FROM ${this.tableName}`);
         if (!this.db.isInTransaction()) {
             this.db.save();
         }

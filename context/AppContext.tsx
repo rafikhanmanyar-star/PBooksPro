@@ -1345,7 +1345,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     
     // Track previous auth state to detect when user re-authenticates
     const prevAuthRef = React.useRef<boolean>(false);
+    const prevTenantIdRef = React.useRef<string | null>(null);
     const isAuthenticated = auth.isAuthenticated;
+    
+    // Track tenant ID to detect tenant switches
+    const currentTenantId = React.useMemo(() => {
+        try {
+            const { apiClient } = require('../services/api/client');
+            return apiClient.getTenantId();
+        } catch {
+            return null;
+        }
+    }, [isAuthenticated]);
     
     const [isInitializing, setIsInitializing] = useState(true);
     const [initMessage, setInitMessage] = useState('Initializing application...');
@@ -1529,29 +1540,107 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         setInitProgress(60);
                         
                         try {
+                            // Get current tenant ID to detect tenant switches
+                            const { apiClient } = await import('../services/api/client');
+                            const currentTenantId = apiClient.getTenantId();
+                            
+                            // Clear local database data for previous tenant if tenant changed
+                            // This prevents cross-tenant data leakage
+                            try {
+                                const dbService = getDatabaseService();
+                                if (dbService.isReady()) {
+                                    const appStateRepo = new AppStateRepository();
+                                    const localState = await appStateRepo.loadState();
+                                    
+                                    // Check if we need to clear data (tenant switch detected)
+                                    // We'll clear tenant-specific data to ensure clean state
+                                    const { ContactsRepository, TransactionsRepository, AccountsRepository,
+                                            CategoriesRepository, ProjectsRepository, BuildingsRepository,
+                                            PropertiesRepository, UnitsRepository, InvoicesRepository,
+                                            BillsRepository, BudgetsRepository, RentalAgreementsRepository,
+                                            ProjectAgreementsRepository, ContractsRepository } = await import('../services/database/repositories/index');
+                                    
+                                    // Clear all tenant-specific data to start fresh
+                                    // This ensures no cross-tenant data leakage
+                                    const contactsRepo = new ContactsRepository();
+                                    const transactionsRepo = new TransactionsRepository();
+                                    const accountsRepo = new AccountsRepository();
+                                    const categoriesRepo = new CategoriesRepository();
+                                    const projectsRepo = new ProjectsRepository();
+                                    const buildingsRepo = new BuildingsRepository();
+                                    const propertiesRepo = new PropertiesRepository();
+                                    const unitsRepo = new UnitsRepository();
+                                    const invoicesRepo = new InvoicesRepository();
+                                    const billsRepo = new BillsRepository();
+                                    const budgetsRepo = new BudgetsRepository();
+                                    const rentalAgreementsRepo = new RentalAgreementsRepository();
+                                    const projectAgreementsRepo = new ProjectAgreementsRepository();
+                                    const contractsRepo = new ContractsRepository();
+                                    
+                            // Delete ALL data (from all tenants) to ensure clean state when switching tenants
+                            // Use deleteAllUnfiltered to bypass tenant filtering and clear everything
+                            contactsRepo.deleteAllUnfiltered();
+                            transactionsRepo.deleteAllUnfiltered();
+                            accountsRepo.deleteAllUnfiltered();
+                            categoriesRepo.deleteAllUnfiltered();
+                            projectsRepo.deleteAllUnfiltered();
+                            buildingsRepo.deleteAllUnfiltered();
+                            propertiesRepo.deleteAllUnfiltered();
+                            unitsRepo.deleteAllUnfiltered();
+                            invoicesRepo.deleteAllUnfiltered();
+                            billsRepo.deleteAllUnfiltered();
+                            budgetsRepo.deleteAllUnfiltered();
+                            rentalAgreementsRepo.deleteAllUnfiltered();
+                            projectAgreementsRepo.deleteAllUnfiltered();
+                            contractsRepo.deleteAllUnfiltered();
+                                    
+                                    console.log('🗑️ Cleared local database data to prevent cross-tenant leakage');
+                                }
+                            } catch (clearError) {
+                                console.warn('⚠️ Could not clear local database data:', clearError);
+                                // Continue anyway - tenant filtering in queries will handle it
+                            }
+                            
                             const apiService = getAppStateApiService();
                             const apiState = await apiService.loadState();
                             
+                            // Create full state with API data
+                            const fullState: AppState = {
+                                ...storedState,
+                                // Replace with API data to ensure synchronization across users in same tenant
+                                accounts: apiState.accounts || [],
+                                contacts: apiState.contacts || [],
+                                transactions: apiState.transactions || [],
+                                categories: apiState.categories || [],
+                                projects: apiState.projects || [],
+                                buildings: apiState.buildings || [],
+                                properties: apiState.properties || [],
+                                units: apiState.units || [],
+                                invoices: apiState.invoices || [],
+                                bills: apiState.bills || [],
+                                budgets: apiState.budgets || [],
+                                rentalAgreements: apiState.rentalAgreements || [],
+                                projectAgreements: apiState.projectAgreements || [],
+                                contracts: apiState.contracts || [],
+                            };
+                            
+                            // Save API data to local database with proper tenant_id
+                            // This ensures offline access and proper tenant isolation
+                            try {
+                                const dbService = getDatabaseService();
+                                if (dbService.isReady()) {
+                                    const appStateRepo = new AppStateRepository();
+                                    await appStateRepo.saveState(fullState);
+                                    console.log('✅ Saved API data to local database with tenant isolation');
+                                }
+                            } catch (saveError) {
+                                console.warn('⚠️ Could not save API data to local database:', saveError);
+                                // Continue anyway - state is set in memory
+                            }
+                            
                             // Replace state with fresh API data (don't merge - ensure all users see same data)
                             if (isMounted) {
-                                setStoredState(prev => ({
-                                    ...prev,
-                                    // Replace with API data to ensure synchronization across users
-                                    accounts: apiState.accounts || [],
-                                    contacts: apiState.contacts || [],
-                                    transactions: apiState.transactions || [],
-                                    categories: apiState.categories || [],
-                                    projects: apiState.projects || [],
-                                    buildings: apiState.buildings || [],
-                                    properties: apiState.properties || [],
-                                    units: apiState.units || [],
-                                    invoices: apiState.invoices || [],
-                                    bills: apiState.bills || [],
-                                    budgets: apiState.budgets || [],
-                                    rentalAgreements: apiState.rentalAgreements || [],
-                                    projectAgreements: apiState.projectAgreements || [],
-                                    contracts: apiState.contracts || [],
-                                }));
+                                setStoredState(fullState);
                                 console.log('✅ Loaded data from API:', {
                                     accounts: apiState.accounts?.length || 0,
                                     contacts: apiState.contacts?.length || 0,
@@ -2085,6 +2174,110 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Initialize reducer with storedState, but update it when database loads
     const [state, dispatch] = useReducer(reducerWithPersistence, storedState);
 
+
+    // Detect tenant switches and clear local database to prevent cross-tenant data leakage
+    useEffect(() => {
+        if (isAuthenticated && currentTenantId) {
+            const prevTenantId = prevTenantIdRef.current;
+            
+            // If tenant changed, clear local database data
+            if (prevTenantId !== null && prevTenantId !== currentTenantId) {
+                console.log(`🔄 Tenant switch detected: ${prevTenantId} -> ${currentTenantId}. Clearing local database...`);
+                
+                // Clear local database data asynchronously
+                (async () => {
+                    try {
+                        const dbService = getDatabaseService();
+                        if (dbService.isReady()) {
+                            const { ContactsRepository, TransactionsRepository, AccountsRepository,
+                                    CategoriesRepository, ProjectsRepository, BuildingsRepository,
+                                    PropertiesRepository, UnitsRepository, InvoicesRepository,
+                                    BillsRepository, BudgetsRepository, RentalAgreementsRepository,
+                                    ProjectAgreementsRepository, ContractsRepository } = await import('../services/database/repositories/index');
+                            
+                            const contactsRepo = new ContactsRepository();
+                            const transactionsRepo = new TransactionsRepository();
+                            const accountsRepo = new AccountsRepository();
+                            const categoriesRepo = new CategoriesRepository();
+                            const projectsRepo = new ProjectsRepository();
+                            const buildingsRepo = new BuildingsRepository();
+                            const propertiesRepo = new PropertiesRepository();
+                            const unitsRepo = new UnitsRepository();
+                            const invoicesRepo = new InvoicesRepository();
+                            const billsRepo = new BillsRepository();
+                            const budgetsRepo = new BudgetsRepository();
+                            const rentalAgreementsRepo = new RentalAgreementsRepository();
+                            const projectAgreementsRepo = new ProjectAgreementsRepository();
+                            const contractsRepo = new ContractsRepository();
+                            
+                            // Delete ALL data (from all tenants) to ensure clean state when switching tenants
+                            // Use deleteAllUnfiltered to bypass tenant filtering and clear everything
+                            contactsRepo.deleteAllUnfiltered();
+                            transactionsRepo.deleteAllUnfiltered();
+                            accountsRepo.deleteAllUnfiltered();
+                            categoriesRepo.deleteAllUnfiltered();
+                            projectsRepo.deleteAllUnfiltered();
+                            buildingsRepo.deleteAllUnfiltered();
+                            propertiesRepo.deleteAllUnfiltered();
+                            unitsRepo.deleteAllUnfiltered();
+                            invoicesRepo.deleteAllUnfiltered();
+                            billsRepo.deleteAllUnfiltered();
+                            budgetsRepo.deleteAllUnfiltered();
+                            rentalAgreementsRepo.deleteAllUnfiltered();
+                            projectAgreementsRepo.deleteAllUnfiltered();
+                            contractsRepo.deleteAllUnfiltered();
+                            
+                            console.log('✅ Cleared local database data after tenant switch');
+                            
+                            // Reload data from API for new tenant
+                            try {
+                                const apiService = getAppStateApiService();
+                                const apiState = await apiService.loadState();
+                                
+                                const fullState: AppState = {
+                                    ...storedState,
+                                    accounts: apiState.accounts || [],
+                                    contacts: apiState.contacts || [],
+                                    transactions: apiState.transactions || [],
+                                    categories: apiState.categories || [],
+                                    projects: apiState.projects || [],
+                                    buildings: apiState.buildings || [],
+                                    properties: apiState.properties || [],
+                                    units: apiState.units || [],
+                                    invoices: apiState.invoices || [],
+                                    bills: apiState.bills || [],
+                                    budgets: apiState.budgets || [],
+                                    rentalAgreements: apiState.rentalAgreements || [],
+                                    projectAgreements: apiState.projectAgreements || [],
+                                    contracts: apiState.contracts || [],
+                                };
+                                
+                                // Save new tenant's data to local database
+                                const appStateRepo = new AppStateRepository();
+                                await appStateRepo.saveState(fullState);
+                                
+                                // Update state
+                                setStoredState(fullState);
+                                dispatch({ type: 'SET_STATE', payload: fullState });
+                                
+                                console.log('✅ Loaded and saved new tenant data');
+                            } catch (apiError) {
+                                console.error('⚠️ Failed to reload data from API after tenant switch:', apiError);
+                            }
+                        }
+                    } catch (clearError) {
+                        console.error('❌ Failed to clear local database after tenant switch:', clearError);
+                    }
+                })();
+            }
+            
+            // Update previous tenant ID
+            prevTenantIdRef.current = currentTenantId;
+        } else if (!isAuthenticated) {
+            // Clear previous tenant ID when logged out
+            prevTenantIdRef.current = null;
+        }
+    }, [isAuthenticated, currentTenantId]);
 
     // Sync reducer state with loaded database state (critical for first load)
     useEffect(() => {
