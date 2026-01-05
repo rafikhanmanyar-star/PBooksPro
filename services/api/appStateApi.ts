@@ -180,6 +180,13 @@ export class AppStateApiService {
   }
 
   /**
+   * Load contacts only (useful for targeted sync tests)
+   */
+  async loadContacts() {
+    return this.contactsRepo.findAll();
+  }
+
+  /**
    * Save account to API
    */
   async saveAccount(account: Partial<AppState['accounts'][0]>): Promise<AppState['accounts'][0]> {

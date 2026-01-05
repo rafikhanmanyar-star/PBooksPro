@@ -2205,7 +2205,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
 
 
-    // Sync reducer state with loaded database state (critical for first load)
+        // Sync reducer state with loaded database state (critical for first load)
     // Initialize with storedState when it's ready (after initialization)
     useEffect(() => {
         // Wait for initialization to complete and storedState to be ready
@@ -2251,6 +2251,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // Only depend on isInitializing to avoid accessing storedState before it's ready
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isInitializing, state, dispatch]);
+
+    /**
+     * Cloud contacts refresh (one-entity wiring test)
+     * When authenticated, reload contacts from API and merge into state + local DB.
+     * This makes different users on the same tenant see the same contacts.
+     */
+    useEffect(() => {
+        const syncContactsFromApi = async () => {
+            if (!isAuthenticated) return;
+            try {
+                const apiService = getAppStateApiService();
+                const contacts = await apiService.loadContacts();
+
+                // Update reducer state
+                dispatch({
+                    type: 'SET_STATE',
+                    payload: { ...state, contacts },
+                    _isRemote: true
+                } as any);
+
+                // Persist to local DB (for offline/next load)
+                setStoredState(prev => ({ ...prev, contacts }));
+            } catch (err) {
+                console.error('⚠️ Failed to refresh contacts from API:', err);
+            }
+        };
+
+        syncContactsFromApi();
+    }, [isAuthenticated, dispatch, setStoredState, state]);
 
     // 3. Persist State Changes (with error handling) - OPTIMIZED: Skip navigation-only changes
     // Use refs to track previous values for fast comparison (no JSON.stringify blocking)
