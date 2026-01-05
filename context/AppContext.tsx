@@ -6,6 +6,11 @@ import { useDatabaseStateFallback } from '../hooks/useDatabaseStateFallback';
 // import { syncService } from '../services/SyncService';
 import { runAllMigrations, needsMigration } from '../services/database/migration';
 import { getDatabaseService } from '../services/database/databaseService';
+import { useAuth } from './AuthContext';
+import { getAppStateApiService } from '../services/api/appStateApi';
+import { logger } from '../services/logger';
+import packageJson from '../package.json';
+
 // Lazy import AppStateRepository to avoid initialization issues during module load
 // It will be imported when actually needed
 let AppStateRepositoryClass: any = null;
@@ -21,10 +26,6 @@ function getAppStateRepository() {
     }
     return new AppStateRepositoryClass();
 }
-import { useAuth } from './AuthContext';
-import { getAppStateApiService } from '../services/api/appStateApi';
-import { logger } from '../services/logger';
-import packageJson from '../package.json';
 
 const SYSTEM_ACCOUNTS: Account[] = [
     { id: 'sys-acc-cash', name: 'Cash', type: AccountType.BANK, balance: 0, isPermanent: true, description: 'Default cash account' },
@@ -278,7 +279,9 @@ const initialState: AppState = {
     documents: [],
 }
 
-const AppContext = createContext<{ state: AppState; dispatch: React.Dispatch<AppAction> } | undefined>(undefined);
+// Create context - use any temporarily to avoid TDZ issues, then cast to proper type
+// This ensures the context is created even if types aren't fully initialized yet
+const AppContext = createContext<any>(undefined) as React.Context<{ state: AppState; dispatch: React.Dispatch<AppAction> } | undefined>;
 
 // Helper to auto-update contract status based on payments
 const updateContractStatus = (state: AppState, contractId: string | undefined): AppState => {
