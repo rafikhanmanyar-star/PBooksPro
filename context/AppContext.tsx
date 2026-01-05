@@ -2264,44 +2264,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, [state]);
 
     useEffect(() => {
-        const syncContactsFromApi = async () => {
+        const syncFromApi = async () => {
             if (!isAuthenticated) return;
             try {
                 const apiService = getAppStateApiService();
-                const contacts = await apiService.loadContacts();
+                const apiState = await apiService.loadState();
+
+                // Only apply slices we received, keep navigation/current page intact
+                const updates: Partial<AppState> = {};
+                if (apiState.contacts) updates.contacts = apiState.contacts;
+                if (apiState.transactions) updates.transactions = apiState.transactions;
+                if (apiState.bills) updates.bills = apiState.bills;
+                if (apiState.invoices) updates.invoices = apiState.invoices;
+                if (apiState.budgets) updates.budgets = apiState.budgets;
+                if (apiState.contracts) updates.contracts = apiState.contracts;
+                if (apiState.rentalAgreements) updates.rentalAgreements = apiState.rentalAgreements;
+                if (apiState.projectAgreements) updates.projectAgreements = apiState.projectAgreements;
+                if (apiState.categories) updates.categories = apiState.categories;
+                if (apiState.accounts) updates.accounts = apiState.accounts;
+                if (apiState.projects) updates.projects = apiState.projects;
+                if (apiState.buildings) updates.buildings = apiState.buildings;
+                if (apiState.properties) updates.properties = apiState.properties;
+                if (apiState.units) updates.units = apiState.units;
+
+                if (Object.keys(updates).length === 0) return;
+
+                const mergedState = { ...stateRef.current, ...updates };
 
                 dispatch({
                     type: 'SET_STATE',
-                    payload: { ...stateRef.current, contacts },
+                    payload: mergedState,
                     _isRemote: true
                 } as any);
 
-                setStoredState(prev => ({ ...prev, contacts }));
+                setStoredState(prev => ({ ...prev, ...updates }));
             } catch (err) {
-                console.error('⚠️ Failed to refresh contacts from API:', err);
+                console.error('⚠️ Failed to refresh data from API:', err);
             }
         };
 
-        const syncTransactionsFromApi = async () => {
-            if (!isAuthenticated) return;
-            try {
-                const apiService = getAppStateApiService();
-                const transactions = await apiService.loadTransactions();
-
-                dispatch({
-                    type: 'SET_STATE',
-                    payload: { ...stateRef.current, transactions },
-                    _isRemote: true
-                } as any);
-
-                setStoredState(prev => ({ ...prev, transactions }));
-            } catch (err) {
-                console.error('⚠️ Failed to refresh transactions from API:', err);
-            }
-        };
-
-        syncContactsFromApi();
-        syncTransactionsFromApi();
+        syncFromApi();
         // Run only when auth status changes
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isAuthenticated]);
