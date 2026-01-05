@@ -6,20 +6,23 @@
  */
 
 /**
- * Get the current tenant ID from apiClient (set by AuthContext)
+ * Get the current tenant ID directly from localStorage
  * Returns null if no tenant is logged in
  * 
- * Uses lazy import to avoid circular dependency issues during module initialization
+ * Reads directly from localStorage to avoid circular dependency issues during module initialization.
+ * This matches how apiClient.getTenantId() works, but avoids importing apiClient.
  */
 export function getCurrentTenantId(): string | null {
     try {
-        // Lazy import to avoid circular dependency - only import when needed
-        const { apiClient } = require('../api/client');
-        // Get tenant ID from apiClient (which gets it from localStorage)
-        return apiClient.getTenantId();
+        // Read directly from localStorage to avoid circular dependency
+        // This is the same source that apiClient uses, so it's safe
+        if (typeof window !== 'undefined') {
+            const tenantId = localStorage.getItem('tenant_id');
+            return tenantId;
+        }
+        return null;
     } catch (error) {
-        // If apiClient isn't available yet, return null (user not logged in)
-        console.warn('Failed to get tenant ID:', error);
+        // If localStorage isn't available, return null (user not logged in or SSR)
         return null;
     }
 }
