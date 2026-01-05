@@ -150,10 +150,26 @@ try {
   // This helps prevent React 19.2.x Activity initialization errors
   const initApp = () => {
     // Import and render app
+    // Import AppContext separately with better error handling
+    console.log('[index] Starting module imports...');
     Promise.all([
-    import('./App'),
-    import('./context/AppContext'),
-    import('./context/AuthContext'),
+    import('./App').catch(err => {
+      console.error('❌ Failed to import App:', err);
+      throw new Error(`Failed to import App: ${err instanceof Error ? err.message : String(err)}`);
+    }),
+    import('./context/AppContext').catch(err => {
+      console.error('❌ Failed to import AppContext:', err);
+      console.error('❌ AppContext import error details:', {
+        message: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+        name: err instanceof Error ? err.name : typeof err
+      });
+      throw new Error(`Failed to import AppContext: ${err instanceof Error ? err.message : String(err)}`);
+    }),
+    import('./context/AuthContext').catch(err => {
+      console.error('❌ Failed to import AuthContext:', err);
+      throw new Error(`Failed to import AuthContext: ${err instanceof Error ? err.message : String(err)}`);
+    }),
     import('./context/ProgressContext'),
     import('./context/KeyboardContext'),
     import('./context/KPIContext'),
@@ -218,6 +234,15 @@ try {
   }).catch((error) => {
     appLoadError = error instanceof Error ? error : new Error(String(error));
     console.error('❌ Failed to load application:', appLoadError);
+    console.error('❌ Error details:', {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      name: error instanceof Error ? error.name : typeof error,
+      cause: (error as any)?.cause,
+      fileName: (error as any)?.fileName,
+      lineNumber: (error as any)?.lineNumber,
+      columnNumber: (error as any)?.columnNumber
+    });
     
     // Show error UI
     if (rootElement) {

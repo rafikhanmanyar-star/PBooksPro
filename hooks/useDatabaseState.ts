@@ -21,9 +21,22 @@ async function ensureDatabaseInitialized(): Promise<void> {
     }
 
     initializationPromise = (async () => {
-        const dbService = getDatabaseService();
-        await dbService.initialize();
-        dbInitialized = true;
+        try {
+            console.log('[useDatabaseState] Getting database service...');
+            const dbService = getDatabaseService();
+            console.log('[useDatabaseState] Database service obtained, initializing...');
+            await dbService.initialize();
+            console.log('[useDatabaseState] Database initialized successfully');
+            dbInitialized = true;
+        } catch (error) {
+            console.error('❌ [useDatabaseState] Database initialization failed:', error);
+            console.error('❌ [useDatabaseState] Error details:', {
+                message: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined,
+                name: error instanceof Error ? error.name : typeof error
+            });
+            throw error;
+        }
     })();
 
     return initializationPromise;

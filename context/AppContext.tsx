@@ -1349,11 +1349,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const isAuthenticated = auth.isAuthenticated;
     
     // Track tenant ID to detect tenant switches
+    // Read directly from localStorage to avoid circular dependency issues
     const currentTenantId = React.useMemo(() => {
         try {
-            const { apiClient } = require('../services/api/client');
-            return apiClient.getTenantId();
-        } catch {
+            if (typeof window !== 'undefined') {
+                return localStorage.getItem('tenant_id');
+            }
+            return null;
+        } catch (error) {
+            console.warn('Failed to get tenant ID:', error);
             return null;
         }
     }, [isAuthenticated]);
@@ -1367,8 +1371,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 1. Initialize State with Database (with fallback to localStorage)
     // Hooks must be called unconditionally - always call both hooks
     // Then use the appropriate one based on useFallback state
+    // Add error boundary logging before hooks
+    console.log('[AppContext] About to initialize database hooks...');
+    console.log('[AppContext] initialState keys:', Object.keys(initialState));
+    
     const [dbState, setDbState] = useDatabaseState<AppState>('finance_app_state_v4', initialState);
     const [fallbackState, setFallbackState] = useDatabaseStateFallback<AppState>('finance_app_state_v4', initialState);
+    
+    console.log('[AppContext] Database hooks initialized successfully');
 
     // Initialize storedState safely - use initialState as fallback if hooks aren't ready
     const storedState = (useFallback ? fallbackState : dbState) || initialState;
