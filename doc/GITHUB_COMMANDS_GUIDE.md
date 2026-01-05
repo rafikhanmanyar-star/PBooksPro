@@ -121,7 +121,7 @@ git diff --staged
 ### Undo Changes
 
 **Unstage files (keep changes):**
-```bash
+```bashgit stat
 git reset HEAD filename
 ```
 

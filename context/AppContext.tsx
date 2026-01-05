@@ -2257,6 +2257,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
      * When authenticated, reload contacts from API and merge into state + local DB.
      * This makes different users on the same tenant see the same contacts.
      */
+    // Track latest state to avoid stale captures in async effects
+    const stateRef = useRef(state);
+    useEffect(() => {
+        stateRef.current = state;
+    }, [state]);
+
     useEffect(() => {
         const syncContactsFromApi = async () => {
             if (!isAuthenticated) return;
@@ -2264,10 +2270,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const apiService = getAppStateApiService();
                 const contacts = await apiService.loadContacts();
 
-                // Update reducer state
+                // Update reducer state without clobbering current page/navigation
                 dispatch({
                     type: 'SET_STATE',
-                    payload: { ...state, contacts },
+                    payload: { ...stateRef.current, contacts },
                     _isRemote: true
                 } as any);
 
@@ -2279,7 +2285,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
 
         syncContactsFromApi();
-    }, [isAuthenticated, dispatch, setStoredState, state]);
+        // Run only when auth status changes
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isAuthenticated]);
 
     // 3. Persist State Changes (with error handling) - OPTIMIZED: Skip navigation-only changes
     // Use refs to track previous values for fast comparison (no JSON.stringify blocking)
