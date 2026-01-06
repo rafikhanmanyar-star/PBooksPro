@@ -190,6 +190,56 @@ export class AppStateApiService {
         })()
       }));
 
+      // Normalize contracts from API (transform snake_case to camelCase)
+      // The server returns snake_case fields, but the client expects camelCase
+      const normalizedContracts = contracts.map((c: any) => ({
+        id: c.id,
+        contractNumber: c.contract_number || c.contractNumber,
+        name: c.name || '',
+        projectId: c.project_id || c.projectId || '',
+        vendorId: c.vendor_id || c.vendorId || '',
+        totalAmount: typeof c.total_amount === 'number' ? c.total_amount : (typeof c.totalAmount === 'number' ? c.totalAmount : parseFloat(c.total_amount || c.totalAmount || '0')),
+        area: c.area !== undefined && c.area !== null 
+          ? (typeof c.area === 'number' ? c.area : parseFloat(c.area || '0'))
+          : undefined,
+        rate: c.rate !== undefined && c.rate !== null
+          ? (typeof c.rate === 'number' ? c.rate : parseFloat(c.rate || '0'))
+          : undefined,
+        startDate: c.start_date || c.startDate,
+        endDate: c.end_date || c.endDate,
+        status: c.status || 'Active',
+        categoryIds: (() => {
+          const ids = c.category_ids || c.categoryIds;
+          if (!ids) return [];
+          if (typeof ids === 'string' && ids.trim().length > 0) {
+            try {
+              return JSON.parse(ids);
+            } catch {
+              return [];
+            }
+          }
+          if (Array.isArray(ids)) return ids;
+          return [];
+        })(),
+        expenseCategoryItems: (() => {
+          const items = c.expense_category_items || c.expenseCategoryItems;
+          if (!items) return undefined;
+          if (typeof items === 'string' && items.trim().length > 0) {
+            try {
+              return JSON.parse(items);
+            } catch {
+              return undefined;
+            }
+          }
+          if (Array.isArray(items)) return items;
+          return undefined;
+        })(),
+        termsAndConditions: c.terms_and_conditions || c.termsAndConditions || undefined,
+        paymentTerms: c.payment_terms || c.paymentTerms || undefined,
+        description: c.description || undefined,
+        documentPath: c.document_path || c.documentPath || undefined
+      }));
+
       // Normalize transactions from API (transform snake_case to camelCase)
       // The server returns snake_case fields, but the client expects camelCase
       const normalizedTransactions = transactions.map((t: any) => ({
@@ -235,7 +285,7 @@ export class AppStateApiService {
         budgets,
         rentalAgreements,
         projectAgreements,
-        contracts,
+        contracts: normalizedContracts,
       };
     } catch (error) {
       logger.errorCategory('sync', '❌ Error loading state from API:', error);
@@ -632,7 +682,60 @@ export class AppStateApiService {
       id: contract.id || `contract_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
     logger.logCategory('sync', `💾 Syncing contract (POST upsert): ${contractWithId.id} - ${contractWithId.contractNumber}`);
-    return this.contractsRepo.create(contractWithId);
+    const saved = await this.contractsRepo.create(contractWithId);
+    
+    // Normalize the response (server returns snake_case, client expects camelCase)
+    return {
+      id: saved.id,
+      contractNumber: (saved as any).contract_number || saved.contractNumber,
+      name: saved.name || '',
+      projectId: (saved as any).project_id || saved.projectId || '',
+      vendorId: (saved as any).vendor_id || saved.vendorId || '',
+      totalAmount: typeof saved.totalAmount === 'number' ? saved.totalAmount : parseFloat((saved as any).total_amount || saved.totalAmount || '0'),
+      area: (saved as any).area !== undefined && (saved as any).area !== null 
+        ? (typeof (saved as any).area === 'number' ? (saved as any).area : parseFloat((saved as any).area || '0'))
+        : (saved.area !== undefined && saved.area !== null 
+          ? (typeof saved.area === 'number' ? saved.area : parseFloat(saved.area || '0'))
+          : undefined),
+      rate: (saved as any).rate !== undefined && (saved as any).rate !== null
+        ? (typeof (saved as any).rate === 'number' ? (saved as any).rate : parseFloat((saved as any).rate || '0'))
+        : (saved.rate !== undefined && saved.rate !== null
+          ? (typeof saved.rate === 'number' ? saved.rate : parseFloat(saved.rate || '0'))
+          : undefined),
+      startDate: (saved as any).start_date || saved.startDate,
+      endDate: (saved as any).end_date || saved.endDate,
+      status: saved.status || 'Active',
+      categoryIds: (() => {
+        const ids = (saved as any).category_ids || saved.categoryIds;
+        if (!ids) return [];
+        if (typeof ids === 'string' && ids.trim().length > 0) {
+          try {
+            return JSON.parse(ids);
+          } catch {
+            return [];
+          }
+        }
+        if (Array.isArray(ids)) return ids;
+        return [];
+      })(),
+      expenseCategoryItems: (() => {
+        const items = (saved as any).expense_category_items || saved.expenseCategoryItems;
+        if (!items) return undefined;
+        if (typeof items === 'string' && items.trim().length > 0) {
+          try {
+            return JSON.parse(items);
+          } catch {
+            return undefined;
+          }
+        }
+        if (Array.isArray(items)) return items;
+        return undefined;
+      })(),
+      termsAndConditions: (saved as any).terms_and_conditions || saved.termsAndConditions || undefined,
+      paymentTerms: (saved as any).payment_terms || saved.paymentTerms || undefined,
+      description: saved.description || undefined,
+      documentPath: (saved as any).document_path || saved.documentPath || undefined
+    };
   }
 
   /**
