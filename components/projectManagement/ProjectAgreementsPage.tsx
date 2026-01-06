@@ -197,13 +197,15 @@ const ProjectAgreementsPage: React.FC = () => {
                 .filter(inv => inv.agreementId === pa.id)
                 .reduce((sum, inv) => sum + inv.paidAmount, 0);
 
-            const balance = pa.sellingPrice - paid;
+            const sellingPrice = pa.sellingPrice || 0;
+            const balance = sellingPrice - paid;
 
             return {
                 ...pa,
                 projectName: project?.name || 'Unknown',
                 ownerName: client?.name || 'Unknown',
                 unitNames: units,
+                sellingPrice,
                 paid,
                 balance
             };
@@ -444,9 +446,9 @@ const ProjectAgreementsPage: React.FC = () => {
                                         </td>
                                         <td className="px-4 py-2 text-xs text-slate-600 truncate max-w-[140px]" title={agreement.projectName}>{agreement.projectName}</td>
                                         <td className="px-4 py-2 text-xs text-slate-500 truncate max-w-[100px]" title={agreement.unitNames}>{agreement.unitNames}</td>
-                                        <td className="px-4 py-2 text-xs text-right font-medium text-slate-700 tabular-nums">{CURRENCY} {agreement.sellingPrice.toLocaleString()}</td>
-                                        <td className="px-4 py-2 text-xs text-right text-emerald-600 tabular-nums font-medium">{CURRENCY} {agreement.paid.toLocaleString()}</td>
-                                        <td className={`px-4 py-2 text-xs text-right font-bold tabular-nums ${agreement.balance > 0 ? 'text-slate-700' : 'text-slate-400'}`}>{CURRENCY} {agreement.balance.toLocaleString()}</td>
+                                        <td className="px-4 py-2 text-xs text-right font-medium text-slate-700 tabular-nums">{CURRENCY} {(agreement.sellingPrice || 0).toLocaleString()}</td>
+                                        <td className="px-4 py-2 text-xs text-right text-emerald-600 tabular-nums font-medium">{CURRENCY} {(agreement.paid || 0).toLocaleString()}</td>
+                                        <td className={`px-4 py-2 text-xs text-right font-bold tabular-nums ${(agreement.balance || 0) > 0 ? 'text-slate-700' : 'text-slate-400'}`}>{CURRENCY} {(agreement.balance || 0).toLocaleString()}</td>
                                         <td className="px-4 py-2 text-center whitespace-nowrap">
                                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${agreement.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
                                                     agreement.status === ProjectAgreementStatus.COMPLETED ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' :
@@ -480,8 +482,8 @@ const ProjectAgreementsPage: React.FC = () => {
                             <span className="bg-white border border-slate-200 px-2 py-0.5 rounded-md shadow-sm">{filteredAgreements.length} Agreements</span>
                         </div>
                         <div className="flex items-center gap-4">
-                            <span>Total Value: <span className="text-slate-900 font-bold">{CURRENCY} {filteredAgreements.reduce((sum, a) => sum + a.sellingPrice, 0).toLocaleString()}</span></span>
-                            <span>Outstanding: <span className="text-indigo-600 font-bold">{CURRENCY} {filteredAgreements.reduce((sum, a) => sum + (a.sellingPrice - a.paid), 0).toLocaleString()}</span></span>
+                            <span>Total Value: <span className="text-slate-900 font-bold">{CURRENCY} {filteredAgreements.reduce((sum, a) => sum + (a.sellingPrice || 0), 0).toLocaleString()}</span></span>
+                            <span>Outstanding: <span className="text-indigo-600 font-bold">{CURRENCY} {filteredAgreements.reduce((sum, a) => sum + ((a.sellingPrice || 0) - (a.paid || 0)), 0).toLocaleString()}</span></span>
                         </div>
                     </div>
                 </div>
