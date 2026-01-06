@@ -190,12 +190,40 @@ export class AppStateApiService {
         })()
       }));
 
+      // Normalize transactions from API (transform snake_case to camelCase)
+      // The server returns snake_case fields, but the client expects camelCase
+      const normalizedTransactions = transactions.map((t: any) => ({
+        id: t.id,
+        type: t.type,
+        subtype: t.subtype || undefined,
+        amount: typeof t.amount === 'number' ? t.amount : parseFloat(t.amount || '0'),
+        date: t.date,
+        description: t.description || undefined,
+        accountId: t.account_id || t.accountId,
+        fromAccountId: t.from_account_id || t.fromAccountId || undefined,
+        toAccountId: t.to_account_id || t.toAccountId || undefined,
+        categoryId: t.category_id || t.categoryId || undefined,
+        contactId: t.contact_id || t.contactId || undefined,
+        projectId: t.project_id || t.projectId || undefined,
+        buildingId: t.building_id || t.buildingId || undefined,
+        propertyId: t.property_id || t.propertyId || undefined,
+        unitId: t.unit_id || t.unitId || undefined,
+        invoiceId: t.invoice_id || t.invoiceId || undefined,
+        billId: t.bill_id || t.billId || undefined,
+        payslipId: t.payslip_id || t.payslipId || undefined,
+        contractId: t.contract_id || t.contractId || undefined,
+        agreementId: t.agreement_id || t.agreementId || undefined,
+        batchId: t.batch_id || t.batchId || undefined,
+        isSystem: t.is_system === true || t.is_system === 1 || t.isSystem === true || false,
+        children: t.children || undefined
+      }));
+
       // Return partial state with API-loaded data
       // Other entities will remain from initial state or be loaded separately
       return {
         accounts,
         contacts,
-        transactions,
+        transactions: normalizedTransactions,
         categories,
         projects,
         buildings,
@@ -324,7 +352,34 @@ export class AppStateApiService {
       id: transaction.id || `transaction_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
     logger.logCategory('sync', `💾 Syncing transaction (POST upsert): ${transactionWithId.id}`);
-    return this.transactionsRepo.create(transactionWithId);
+    const saved = await this.transactionsRepo.create(transactionWithId);
+    
+    // Normalize the response (server returns snake_case, client expects camelCase)
+    return {
+      id: saved.id,
+      type: saved.type,
+      subtype: (saved as any).subtype || saved.subtype || undefined,
+      amount: typeof saved.amount === 'number' ? saved.amount : parseFloat(saved.amount || '0'),
+      date: saved.date,
+      description: saved.description || undefined,
+      accountId: (saved as any).account_id || saved.accountId,
+      fromAccountId: (saved as any).from_account_id || saved.fromAccountId || undefined,
+      toAccountId: (saved as any).to_account_id || saved.toAccountId || undefined,
+      categoryId: (saved as any).category_id || saved.categoryId || undefined,
+      contactId: (saved as any).contact_id || saved.contactId || undefined,
+      projectId: (saved as any).project_id || saved.projectId || undefined,
+      buildingId: (saved as any).building_id || saved.buildingId || undefined,
+      propertyId: (saved as any).property_id || saved.propertyId || undefined,
+      unitId: (saved as any).unit_id || saved.unitId || undefined,
+      invoiceId: (saved as any).invoice_id || saved.invoiceId || undefined,
+      billId: (saved as any).bill_id || saved.billId || undefined,
+      payslipId: (saved as any).payslip_id || saved.payslipId || undefined,
+      contractId: (saved as any).contract_id || saved.contractId || undefined,
+      agreementId: (saved as any).agreement_id || saved.agreementId || undefined,
+      batchId: (saved as any).batch_id || saved.batchId || undefined,
+      isSystem: (saved as any).is_system === true || (saved as any).is_system === 1 || saved.isSystem === true || false,
+      children: saved.children || undefined
+    };
   }
 
   /**
