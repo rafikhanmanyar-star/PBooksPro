@@ -823,7 +823,6 @@ class DatabaseService {
                 // Note: The global UNIQUE constraint on bill_number cannot be easily removed in SQLite
                 // We use INSERT OR REPLACE in saveAll to handle duplicates gracefully
                 // Tenant_id column is added by tenantMigration.ts
-                }
             }
         } catch (error) {
             console.error('❌ Error ensuring contract/bill columns exist:', error);
