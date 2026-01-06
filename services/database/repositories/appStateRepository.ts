@@ -162,12 +162,33 @@ export class AppStateRepository {
             units,
             transactions,
             invoices,
-            bills: bills.map(b => ({
-                ...b,
-                expenseCategoryItems: b.expenseCategoryItems 
-                    ? (typeof b.expenseCategoryItems === 'string' ? JSON.parse(b.expenseCategoryItems) : b.expenseCategoryItems)
-                    : undefined
-            })),
+            bills: bills.map(b => {
+                // Normalize bill to ensure all fields are properly mapped
+                // Handle both camelCase and snake_case field names for backward compatibility
+                const normalizedBill = {
+                    id: b.id,
+                    billNumber: b.billNumber || b.bill_number || `BILL-${b.id}`,
+                    contactId: b.contactId || b.contact_id || '',
+                    amount: typeof b.amount === 'number' ? b.amount : parseFloat(b.amount || '0'),
+                    paidAmount: typeof b.paidAmount === 'number' ? b.paidAmount : parseFloat(b.paid_amount || b.paidAmount || '0'),
+                    status: b.status || 'Unpaid',
+                    issueDate: b.issueDate || b.issue_date || new Date().toISOString().split('T')[0],
+                    dueDate: b.dueDate || b.due_date || undefined,
+                    description: b.description || undefined,
+                    categoryId: b.categoryId || b.category_id || undefined,
+                    projectId: b.projectId || b.project_id || undefined,
+                    buildingId: b.buildingId || b.building_id || undefined,
+                    propertyId: b.propertyId || b.property_id || undefined,
+                    projectAgreementId: b.projectAgreementId || b.project_agreement_id || b.agreementId || b.agreement_id || undefined,
+                    contractId: b.contractId || b.contract_id || undefined,
+                    staffId: b.staffId || b.staff_id || undefined,
+                    documentPath: b.documentPath || b.document_path || undefined,
+                    expenseCategoryItems: b.expenseCategoryItems 
+                        ? (typeof b.expenseCategoryItems === 'string' ? JSON.parse(b.expenseCategoryItems) : b.expenseCategoryItems)
+                        : (b.expense_category_items && typeof b.expense_category_items === 'string' ? JSON.parse(b.expense_category_items) : b.expense_category_items) || undefined
+                };
+                return normalizedBill;
+            }),
             quotations: quotations.map(q => ({
                 ...q,
                 items: typeof q.items === 'string' ? JSON.parse(q.items) : q.items
@@ -334,12 +355,35 @@ export class AppStateRepository {
                             this.transactionsRepo.saveAll(state.transactions);
                             this.invoicesRepo.saveAll(state.invoices);
                             // Save bills with expenseCategoryItems serialized as JSON
-                            this.billsRepo.saveAll(state.bills.map(b => ({
-                                ...b,
-                                expenseCategoryItems: b.expenseCategoryItems 
-                                    ? (typeof b.expenseCategoryItems === 'string' ? b.expenseCategoryItems : JSON.stringify(b.expenseCategoryItems))
-                                    : undefined
-                            })));
+                            // Ensure all fields are explicitly included to prevent data loss
+                            this.billsRepo.saveAll(state.bills.map(b => {
+                                const billToSave: any = {
+                                    id: b.id,
+                                    billNumber: b.billNumber || `BILL-${b.id}`,
+                                    contactId: b.contactId || '',
+                                    amount: b.amount || 0,
+                                    paidAmount: b.paidAmount || 0,
+                                    status: b.status || 'Unpaid',
+                                    issueDate: b.issueDate || new Date().toISOString().split('T')[0],
+                                };
+                                // Only include optional fields if they have values (to avoid skipping in objectToDbFormat)
+                                if (b.dueDate) billToSave.dueDate = b.dueDate;
+                                if (b.description) billToSave.description = b.description;
+                                if (b.categoryId) billToSave.categoryId = b.categoryId;
+                                if (b.projectId) billToSave.projectId = b.projectId;
+                                if (b.buildingId) billToSave.buildingId = b.buildingId;
+                                if (b.propertyId) billToSave.propertyId = b.propertyId;
+                                if (b.projectAgreementId) billToSave.projectAgreementId = b.projectAgreementId;
+                                if (b.contractId) billToSave.contractId = b.contractId;
+                                if (b.staffId) billToSave.staffId = b.staffId;
+                                if (b.documentPath) billToSave.documentPath = b.documentPath;
+                                if (b.expenseCategoryItems) {
+                                    billToSave.expenseCategoryItems = typeof b.expenseCategoryItems === 'string' 
+                                        ? b.expenseCategoryItems 
+                                        : JSON.stringify(b.expenseCategoryItems);
+                                }
+                                return billToSave;
+                            }));
                         } catch (e) {
                             console.error('❌ Failed to save projects/buildings/properties/units/transactions/invoices/bills:', e);
                             throw e;
