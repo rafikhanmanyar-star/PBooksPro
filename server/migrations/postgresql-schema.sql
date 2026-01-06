@@ -304,7 +304,7 @@ CREATE TABLE IF NOT EXISTS invoices (
 CREATE TABLE IF NOT EXISTS bills (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL,
-    bill_number TEXT NOT NULL UNIQUE,
+    bill_number TEXT NOT NULL,
     contact_id TEXT NOT NULL,
     amount DECIMAL(15, 2) NOT NULL,
     paid_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
@@ -325,7 +325,8 @@ CREATE TABLE IF NOT EXISTS bills (
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE RESTRICT,
-    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
+    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+    UNIQUE(tenant_id, bill_number)
 );
 
 -- Budgets table

@@ -191,9 +191,11 @@ CREATE TABLE IF NOT EXISTS invoices (
 );
 
 -- Bills table
+-- Note: bill_number UNIQUE constraint is handled at application level with tenant_id
+-- Using INSERT OR REPLACE in saveAll to handle duplicates gracefully
 CREATE TABLE IF NOT EXISTS bills (
     id TEXT PRIMARY KEY,
-    bill_number TEXT NOT NULL UNIQUE,
+    bill_number TEXT NOT NULL,
     contact_id TEXT NOT NULL,
     amount REAL NOT NULL,
     paid_amount REAL NOT NULL DEFAULT 0,
