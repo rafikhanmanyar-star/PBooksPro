@@ -245,4 +245,3 @@ WEBHOOK_SECRET=your_webhook_secret
 2. Payment service and gateway adapter (start with PayFast)
 3. Backend API routes
 4. Webhook handling
-5. Frontend payment UI

@@ -71,6 +71,12 @@ export class PaymentService {
     // Generate payment ID
     const paymentId = `payment_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
 
+    // Get server URL for gateway (needed for mock gateway to construct full URLs)
+    const serverUrl = process.env.API_URL || 
+                     process.env.SERVER_URL || 
+                     process.env.API_BASE_URL || 
+                     'http://localhost:3000';
+
     // Create payment session with gateway
     const session = await this.gateway.createPaymentSession({
       amount,
@@ -84,7 +90,8 @@ export class PaymentService {
         licenseType: request.licenseType,
         customerName: tenant.name,
         customerEmail: tenant.email,
-        webhookUrl: `${process.env.API_BASE_URL || 'http://localhost:3000'}/api/payments/webhook/${this.gateway.getName()}`,
+        serverUrl, // Pass server URL for mock gateway
+        webhookUrl: `${serverUrl}/api/payments/webhook/${this.gateway.getName()}`,
       },
     });
 

@@ -57,7 +57,15 @@ export class MockGateway extends BaseGateway {
     }, this.autoCompleteDelay);
 
     // Return checkout URL that simulates payment page
-    const checkoutUrl = `/mock-payment?payment_intent=${paymentIntentId}&return_url=${encodeURIComponent(params.returnUrl || '')}`;
+    // Use server URL from environment or metadata, fallback to relative URL
+    const serverUrl = params.metadata?.serverUrl || 
+                      process.env.API_URL || 
+                      process.env.SERVER_URL || 
+                      process.env.API_BASE_URL || 
+                      'http://localhost:3000';
+    
+    // Construct full URL to the mock payment page on the backend server
+    const checkoutUrl = `${serverUrl}/mock-payment?payment_intent=${paymentIntentId}&return_url=${encodeURIComponent(params.returnUrl || '')}`;
 
     return {
       paymentIntentId,

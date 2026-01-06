@@ -191,6 +191,333 @@ app.post('/api/payments/webhook/:gateway', async (req, res, next) => {
   }
 });
 
+// Mock payment page (public route for testing)
+// This serves an HTML page that simulates a payment gateway
+app.get('/mock-payment', async (req, res) => {
+  try {
+    const { payment_intent, return_url } = req.query;
+    
+    if (!payment_intent || typeof payment_intent !== 'string') {
+      return res.status(400).send(`
+        <html>
+          <head><title>Payment Error</title></head>
+          <body style="font-family: Arial, sans-serif; padding: 40px; text-align: center;">
+            <h1 style="color: #dc2626;">Payment Error</h1>
+            <p>Invalid payment intent. Please try again.</p>
+          </body>
+        </html>
+      `);
+    }
+
+    // Get base URL for API calls
+    const baseUrl = req.headers.origin || process.env.CLIENT_URL || 'http://localhost:5173';
+    const apiUrl = process.env.API_URL || process.env.SERVER_URL || 'http://localhost:3000';
+    const returnUrl = return_url || `${baseUrl}/license/payment-success`;
+
+    // Serve mock payment page
+    res.send(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Mock Payment Gateway - PBooksPro</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+          }
+          .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+            padding: 40px;
+            text-align: center;
+          }
+          .logo {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+          }
+          h1 {
+            color: #1f2937;
+            margin-bottom: 10px;
+            font-size: 24px;
+          }
+          .subtitle {
+            color: #6b7280;
+            margin-bottom: 30px;
+            font-size: 14px;
+          }
+          .payment-info {
+            background: #f9fafb;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+            text-align: left;
+          }
+          .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 14px;
+          }
+          .info-label {
+            color: #6b7280;
+          }
+          .info-value {
+            color: #1f2937;
+            font-weight: 600;
+          }
+          .card-form {
+            text-align: left;
+            margin-bottom: 30px;
+          }
+          .form-group {
+            margin-bottom: 20px;
+          }
+          label {
+            display: block;
+            color: #374151;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 8px;
+          }
+          input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.2s;
+          }
+          input:focus {
+            outline: none;
+            border-color: #667eea;
+          }
+          .card-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 15px;
+          }
+          .btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-bottom: 10px;
+          }
+          .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+          }
+          .btn:active {
+            transform: translateY(0);
+          }
+          .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+          }
+          .btn-secondary {
+            background: #6b7280;
+          }
+          .btn-secondary:hover {
+            background: #4b5563;
+          }
+          .loading {
+            display: none;
+            margin-top: 20px;
+          }
+          .spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+          }
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+          .success {
+            display: none;
+            color: #10b981;
+            font-weight: 600;
+            margin-top: 20px;
+          }
+          .error {
+            display: none;
+            color: #ef4444;
+            background: #fef2f2;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 14px;
+          }
+          .note {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 12px;
+            border-radius: 4px;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #92400e;
+            text-align: left;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="logo">PBooksPro</div>
+          <h1>Mock Payment Gateway</h1>
+          <p class="subtitle">Test payment processing (Development Only)</p>
+          
+          <div class="payment-info">
+            <div class="info-row">
+              <span class="info-label">Payment Intent:</span>
+              <span class="info-value">${payment_intent}</span>
+            </div>
+          </div>
+
+          <form id="paymentForm" class="card-form">
+            <div class="form-group">
+              <label>Card Number</label>
+              <input type="text" id="cardNumber" value="4242 4242 4242 4242" placeholder="1234 5678 9012 3456" maxlength="19">
+            </div>
+            <div class="card-row">
+              <div class="form-group">
+                <label>Expiry Date</label>
+                <input type="text" id="expiry" value="12/25" placeholder="MM/YY" maxlength="5">
+              </div>
+              <div class="form-group">
+                <label>CVV</label>
+                <input type="text" id="cvv" value="123" placeholder="123" maxlength="3">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Cardholder Name</label>
+              <input type="text" id="cardName" value="Test User" placeholder="John Doe">
+            </div>
+            
+            <button type="submit" class="btn" id="submitBtn">Process Payment</button>
+            <button type="button" class="btn btn-secondary" onclick="window.location.href='${returnUrl}?canceled=true'">Cancel</button>
+          </form>
+
+          <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p style="margin-top: 10px; color: #6b7280;">Processing payment...</p>
+          </div>
+
+          <div class="success" id="success">
+            ✓ Payment processed successfully! Redirecting...
+          </div>
+
+          <div class="error" id="error"></div>
+
+          <div class="note">
+            <strong>Note:</strong> This is a mock payment gateway for testing purposes only. No real payment will be processed.
+          </div>
+        </div>
+
+          <script>
+          const paymentIntent = '${payment_intent}';
+          const returnUrl = '${returnUrl}';
+          const apiUrl = '${apiUrl}';
+
+          document.getElementById('paymentForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('submitBtn');
+            const loading = document.getElementById('loading');
+            const success = document.getElementById('success');
+            const error = document.getElementById('error');
+            const form = document.getElementById('paymentForm');
+            
+            submitBtn.disabled = true;
+            form.style.display = 'none';
+            loading.style.display = 'block';
+            success.style.display = 'none';
+            error.style.display = 'none';
+
+            try {
+              // Wait for mock gateway auto-completion (default 3 seconds + 1 second processing)
+              // The mock gateway automatically completes the payment after a delay
+              await new Promise(resolve => setTimeout(resolve, 4000));
+
+              // Payment should be auto-completed by mock gateway webhook
+              // Just redirect to success page
+              success.style.display = 'block';
+              loading.style.display = 'none';
+              
+              // Redirect after a short delay
+              setTimeout(() => {
+                window.location.href = returnUrl + '?payment_intent=' + encodeURIComponent(paymentIntent) + '&status=success';
+              }, 1500);
+            } catch (err) {
+              loading.style.display = 'none';
+              error.style.display = 'block';
+              error.textContent = 'Payment failed: ' + (err.message || 'Unknown error');
+              form.style.display = 'block';
+              submitBtn.disabled = false;
+            }
+          });
+
+          // Format card number
+          document.getElementById('cardNumber').addEventListener('input', (e) => {
+            let value = e.target.value.replace(/\\s/g, '');
+            let formatted = value.match(/.{1,4}/g)?.join(' ') || value;
+            e.target.value = formatted;
+          });
+
+          // Format expiry
+          document.getElementById('expiry').addEventListener('input', (e) => {
+            let value = e.target.value.replace(/\\D/g, '');
+            if (value.length >= 2) {
+              value = value.substring(0, 2) + '/' + value.substring(2, 4);
+            }
+            e.target.value = value;
+          });
+
+          // Only numbers for CVV
+          document.getElementById('cvv').addEventListener('input', (e) => {
+            e.target.value = e.target.value.replace(/\\D/g, '');
+          });
+        </script>
+      </body>
+      </html>
+    `);
+  } catch (error: any) {
+    console.error('Mock payment page error:', error);
+    res.status(500).send(`
+      <html>
+        <head><title>Payment Error</title></head>
+        <body style="font-family: Arial, sans-serif; padding: 40px; text-align: center;">
+          <h1 style="color: #dc2626;">Payment Error</h1>
+          <p>An error occurred while loading the payment page. Please try again.</p>
+        </body>
+      </html>
+    `);
+  }
+});
+
 // Protected routes (tenant + license authentication required)
 app.use('/api', tenantMiddleware(pool));
 
