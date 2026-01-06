@@ -9,6 +9,8 @@ import { useAuth } from '../../context/AuthContext';
 import { apiClient } from '../../services/api/client';
 import packageJson from '../../package.json';
 import ChatModal from '../chat/ChatModal';
+import { getWebSocketClient } from '../../services/websocket/websocketClient';
+import { ChatMessagesRepository } from '../../services/database/repositories';
 
 interface SidebarProps {
     currentPage: Page;
@@ -24,11 +26,16 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const [onlineUsers, setOnlineUsers] = useState<number | null>(null);
     const [onlineUsersList, setOnlineUsersList] = useState<any[]>([]);
     const [isChatModalOpen, setIsChatModalOpen] = useState(false);
+    const [unreadMessageCount, setUnreadMessageCount] = useState(0);
     
     // Get user name - prefer AuthContext user (cloud auth) over AppContext currentUser (local)
     const userName = user?.name || currentUser?.name || 'User';
     const userRole = user?.role || currentUser?.role || '';
     const organizationName = tenant?.companyName || tenant?.name || '';
+    const currentUserId = user?.id || currentUser?.id || '';
+    
+    const chatRepo = new ChatMessagesRepository();
+    const wsClient = getWebSocketClient();
 
     // Fetch online users count and list (users with active sessions) for the organization
     useEffect(() => {
@@ -55,6 +62,60 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
             return () => clearInterval(interval);
         }
     }, [user, currentUser]);
+
+    // Check for unread messages
+    const checkUnreadMessages = useCallback(() => {
+        if (currentUserId) {
+            try {
+                const count = chatRepo.getUnreadCount(currentUserId);
+                setUnreadMessageCount(count);
+            } catch (error) {
+                console.error('Error checking unread messages:', error);
+            }
+        }
+    }, [currentUserId]);
+
+    // Listen for incoming chat messages via WebSocket
+    useEffect(() => {
+        if (!currentUserId) return;
+
+        // Connect to WebSocket
+        wsClient.connect();
+
+        // Check initial unread count
+        checkUnreadMessages();
+
+        // Listen for new chat messages
+        const handleChatMessage = (data: any) => {
+            // Only process messages for current user
+            if (data.recipientId === currentUserId) {
+                checkUnreadMessages();
+            }
+        };
+
+        wsClient.on('chat:message', handleChatMessage);
+
+        // Periodically check for unread messages (in case messages arrive when WebSocket is disconnected)
+        const interval = setInterval(checkUnreadMessages, 5000);
+
+        return () => {
+            wsClient.off('chat:message', handleChatMessage);
+            clearInterval(interval);
+        };
+    }, [currentUserId, wsClient, checkUnreadMessages]);
+
+    // Update unread count when chat modal opens/closes
+    useEffect(() => {
+        if (currentUserId) {
+            if (isChatModalOpen) {
+                // Reset unread count when modal opens (messages will be marked as read when conversation is selected)
+                setUnreadMessageCount(0);
+            } else {
+                // Check for unread messages when modal closes (in case new messages arrived while modal was open)
+                checkUnreadMessages();
+            }
+        }
+    }, [isChatModalOpen, currentUserId, checkUnreadMessages]);
 
     // Determine allowed pages based on role
     const isAccountsOnly = currentUser?.role === 'Accounts';
@@ -255,12 +316,20 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                 {onlineUsers > 0 && (
                                     <button
                                         onClick={() => setIsChatModalOpen(true)}
-                                        className="w-full px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition-colors flex items-center justify-center gap-2"
+                                        className={`w-full px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition-colors flex items-center justify-center gap-2 relative ${
+                                            unreadMessageCount > 0 ? 'animate-pulse' : ''
+                                        }`}
                                     >
                                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                                         </svg>
                                         Chat
+                                        {unreadMessageCount > 0 && (
+                                            <>
+                                                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
+                                                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
+                                            </>
+                                        )}
                                     </button>
                                 )}
                             </div>
