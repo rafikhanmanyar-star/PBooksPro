@@ -3,13 +3,13 @@ import React, { createContext, useContext, useReducer, useEffect, useCallback, u
 import { AppState, AppAction, Transaction, TransactionType, Account, Category, AccountType, LoanSubtype, InvoiceStatus, TransactionLogEntry, Page, ContractStatus, User, UserRole, Staff, Payslip, PayslipStatus, SalaryComponent, SalaryComponentType, LifeCycleEvent, ProjectAgreementStatus, Bill, SalesReturn, SalesReturnStatus, SalesReturnReason } from '../types';
 import useDatabaseState from '../hooks/useDatabaseState';
 import { useDatabaseStateFallback } from '../hooks/useDatabaseStateFallback';
-// import { syncService } from '../services/SyncService';
 import { runAllMigrations, needsMigration } from '../services/database/migration';
 import { getDatabaseService } from '../services/database/databaseService';
 import { useAuth } from './AuthContext';
 import { getAppStateApiService } from '../services/api/appStateApi';
 import { logger } from '../services/logger';
 import packageJson from '../package.json';
+import { shouldSyncAction } from '../services/sync/dataFilter';
 
 // Lazy import AppStateRepository to avoid initialization issues during module load
 // It will be imported when actually needed
@@ -421,7 +421,7 @@ const createLogEntry = (action: TransactionLogEntry['action'], entityType: Trans
 });
 
 const reducer = (state: AppState, action: AppAction): AppState => {
-    // If action is from remote sync, we assume conflict resolution is done by SyncService merge logic
+    // Real-time sync is now handled via Socket.IO in the backend with tenant isolation
     // but some actions like DELETE need to run logic. However, for SYNC_REQUEST (SET_STATE), we just replace state.
     // For single actions broadcasted, we apply them normally.
 
@@ -1796,26 +1796,83 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const newState = reducer(state, action);
 
         // Sync to API if authenticated (cloud mode)
+        // IMPORTANT: Only organization data is synced, not user-specific preferences
         if (isAuthenticated && !(action as any)._isRemote) {
-            const NAVIGATION_ACTIONS = ['SET_PAGE', 'SET_INITIAL_TABS', 'CLEAR_INITIAL_TABS',
-                'SET_INITIAL_TRANSACTION_TYPE', 'CLEAR_INITIAL_TRANSACTION_TYPE',
-                'SET_INITIAL_TRANSACTION_FILTER', 'SET_INITIAL_IMPORT_TYPE',
-                'CLEAR_INITIAL_IMPORT_TYPE', 'SET_EDITING_ENTITY', 'CLEAR_EDITING_ENTITY'];
+            // Skip user-specific actions (UI preferences, navigation, etc.)
+            // These include: enableBeepOnSave, dashboardConfig, defaultProjectId, etc.
+            if (!shouldSyncAction(action)) {
+                return newState;
+            }
 
-            // Skip navigation actions
-            if (!NAVIGATION_ACTIONS.includes(action.type)) {
-                // Only trigger API sync for transaction actions to avoid constant background syncing
-                const SYNC_TO_API_ACTIONS = new Set<AppAction['type']>([
-                    'ADD_TRANSACTION',
-                    'UPDATE_TRANSACTION',
-                    'DELETE_TRANSACTION',
-                    'BATCH_ADD_TRANSACTIONS',
-                    'RESTORE_TRANSACTION'
-                ]);
+            // Only trigger API sync for organization data actions
+            // User preferences (enableBeepOnSave, dashboardConfig, defaultProjectId, etc.) are NOT synced
+            const SYNC_TO_API_ACTIONS = new Set<AppAction['type']>([
+                // Financial transactions
+                'ADD_TRANSACTION',
+                'UPDATE_TRANSACTION',
+                'DELETE_TRANSACTION',
+                'BATCH_ADD_TRANSACTIONS',
+                'RESTORE_TRANSACTION',
+                // Accounts
+                'ADD_ACCOUNT',
+                'UPDATE_ACCOUNT',
+                'DELETE_ACCOUNT',
+                // Contacts
+                'ADD_CONTACT',
+                'UPDATE_CONTACT',
+                'DELETE_CONTACT',
+                // Categories
+                'ADD_CATEGORY',
+                'UPDATE_CATEGORY',
+                'DELETE_CATEGORY',
+                // Projects & Properties
+                'ADD_PROJECT',
+                'UPDATE_PROJECT',
+                'DELETE_PROJECT',
+                'ADD_BUILDING',
+                'UPDATE_BUILDING',
+                'DELETE_BUILDING',
+                'ADD_PROPERTY',
+                'UPDATE_PROPERTY',
+                'DELETE_PROPERTY',
+                'ADD_UNIT',
+                'UPDATE_UNIT',
+                'DELETE_UNIT',
+                // Invoices & Bills
+                'ADD_INVOICE',
+                'UPDATE_INVOICE',
+                'DELETE_INVOICE',
+                'ADD_BILL',
+                'UPDATE_BILL',
+                'DELETE_BILL',
+                // Budgets
+                'ADD_BUDGET',
+                'UPDATE_BUDGET',
+                'DELETE_BUDGET',
+                // Agreements
+                'ADD_RENTAL_AGREEMENT',
+                'UPDATE_RENTAL_AGREEMENT',
+                'DELETE_RENTAL_AGREEMENT',
+                'ADD_PROJECT_AGREEMENT',
+                'UPDATE_PROJECT_AGREEMENT',
+                'DELETE_PROJECT_AGREEMENT',
+                // Contracts
+                'ADD_CONTRACT',
+                'UPDATE_CONTRACT',
+                'DELETE_CONTRACT',
+                // Organization settings (NOT user preferences)
+                'UPDATE_AGREEMENT_SETTINGS',
+                'UPDATE_PROJECT_AGREEMENT_SETTINGS',
+                'UPDATE_RENTAL_INVOICE_SETTINGS',
+                'UPDATE_PROJECT_INVOICE_SETTINGS',
+                'UPDATE_PRINT_SETTINGS',
+                'UPDATE_WHATSAPP_TEMPLATES',
+                'UPDATE_PM_COST_PERCENTAGE',
+            ]);
 
-                if (!SYNC_TO_API_ACTIONS.has(action.type)) {
-                    return newState;
-                }
+            if (!SYNC_TO_API_ACTIONS.has(action.type)) {
+                return newState;
+            }
 
                 // Sync to API asynchronously (don't block UI)
                 const syncToApi = async () => {
@@ -2188,22 +2245,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 'SET_INITIAL_TRANSACTION_FILTER', 'SET_INITIAL_IMPORT_TYPE',
                 'CLEAR_INITIAL_IMPORT_TYPE', 'SET_EDITING_ENTITY', 'CLEAR_EDITING_ENTITY'];
 
-            // Only broadcast non-navigation actions to avoid blocking
-            if (!NAVIGATION_ACTIONS.includes(action.type)) {
-                // Defer sync broadcast to avoid blocking navigation
-                // TODO: Re-enable when syncService is properly configured with peerjs
-                /*
-                if ('requestIdleCallback' in window) {
-                    requestIdleCallback(() => {
-                        syncService.broadcastAction(action);
-                    });
-                } else {
-                    setTimeout(() => {
-                        syncService.broadcastAction(action);
-                    }, 0);
-                }
-                */
-            }
+            // Real-time sync is now handled via Socket.IO in the backend
+            // No peer-to-peer sync needed
         }
 
         return newState;

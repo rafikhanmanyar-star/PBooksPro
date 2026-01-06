@@ -825,30 +825,28 @@ const HELP_TOPICS: HelpTopic[] = [
         )
     },
     {
-        id: 'sync-mobile',
-        title: 'Mobile Sync & PWA',
+        id: 'mobile-pwa',
+        title: 'Mobile & PWA',
         category: 'Advanced Tools',
-        keywords: ['sync', 'mobile', 'pwa', 'progressive web app', 'device sync', 'qr code'],
+        keywords: ['mobile', 'pwa', 'progressive web app'],
         content: (
             <div className="space-y-3 text-sm text-slate-600">
-                <p>Sync data across devices and use the app on mobile.</p>
+                <p>Use the app on mobile devices and install as a Progressive Web App.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
-                    <li><strong>Sync Feature:</strong> Click "Sync Mobile" in sidebar. Host device generates QR code. Scan with mobile device to connect.</li>
-                    <li><strong>Real-time Sync:</strong> When connected, data syncs in real-time between devices. Changes on one device appear on others.</li>
                     <li><strong>PWA Installation:</strong> Install app on mobile as Progressive Web App for app-like experience. Browser will prompt or use install option.</li>
                     <li><strong>Mobile Payments:</strong> Use Mobile Payments page for quick payment entry on mobile devices with optimized interface.</li>
+                    <li><strong>Real-time Sync:</strong> Data automatically syncs in real-time across all devices when users are logged into the same organization account.</li>
                     <li><strong>Offline Support:</strong> App works offline. Data syncs when connection is restored.</li>
-                    <li><strong>Sync Status:</strong> Green indicator in sidebar shows sync connection status. Disconnect when done.</li>
                 </ul>
             </div>
         ),
         visual: (
-            <MockWindow title="Sync">
+            <MockWindow title="Mobile App">
                 <div className="space-y-2">
                     <div className="w-full h-24 bg-slate-200 rounded flex items-center justify-center text-[8px] text-slate-500">
-                        QR Code
+                        Mobile View
                     </div>
-                    <div className="text-[9px] text-slate-500 text-center">Scan to Connect</div>
+                    <div className="text-[9px] text-slate-500 text-center">Optimized for Mobile</div>
                 </div>
             </MockWindow>
         )
