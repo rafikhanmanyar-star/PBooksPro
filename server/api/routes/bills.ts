@@ -61,9 +61,9 @@ router.get('/:id', async (req: TenantRequest, res) => {
 
 // POST create/update bill (upsert)
 router.post('/', async (req: TenantRequest, res) => {
+  const bill = req.body; // Declare outside try block so it's accessible in catch
   try {
     const db = getDb();
-    const bill = req.body;
     
     // Validate required fields
     if (!bill.billNumber) {
