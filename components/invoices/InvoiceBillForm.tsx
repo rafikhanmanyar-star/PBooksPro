@@ -349,9 +349,14 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   }, [calculatedAmount, invoiceTypeForNew, defaults, agreementForInvoice, agreementBalance]);
 
   useEffect(() => {
-    if (invoiceType === InvoiceType.INSTALLMENT && !categoryId && !defaults.id) {
-        const defaultCat = state.categories.find(c => c.name === 'Unit Selling Income' && c.type === TransactionType.INCOME);
-        if (defaultCat) setCategoryId(defaultCat.id);
+    if (!categoryId && !defaults.id) {
+        if (invoiceType === InvoiceType.INSTALLMENT) {
+            const defaultCat = state.categories.find(c => c.name === 'Unit Selling Income' && c.type === TransactionType.INCOME);
+            if (defaultCat) setCategoryId(defaultCat.id);
+        } else if (invoiceType === InvoiceType.SERVICE_CHARGE) {
+            const defaultCat = state.categories.find(c => c.name === 'Service Charge Income' && c.type === TransactionType.INCOME);
+            if (defaultCat) setCategoryId(defaultCat.id);
+        }
     }
   }, [invoiceType, categoryId, defaults, state.categories]);
 
@@ -1550,14 +1555,14 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
            <div>
-            {type === 'invoice' && invoiceType === InvoiceType.INSTALLMENT ? (
+            {type === 'invoice' && (invoiceType === InvoiceType.INSTALLMENT || invoiceType === InvoiceType.SERVICE_CHARGE) ? (
                     <ComboBox 
                         label="Income Category" 
                         items={incomeCategories} 
                         selectedId={categoryId || ''} 
                         onSelect={(item) => setCategoryId(item?.id || '')} 
                         placeholder="Select category..." 
-                        required={true}
+                        required={invoiceType === InvoiceType.INSTALLMENT}
                         disabled={isAgreementCancelled}
                         entityType="category"
                         onAddNew={(entityType, name) => {

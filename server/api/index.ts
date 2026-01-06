@@ -53,6 +53,7 @@ import projectAgreementsRouter from './routes/projectAgreements.js';
 import contractsRouter from './routes/contracts.js';
 import usersRouter from './routes/users.js';
 import transactionAuditRouter from './routes/transaction-audit.js';
+import paymentsRouter from './routes/payments.js';
 import { tenantMiddleware } from '../middleware/tenantMiddleware.js';
 import { licenseMiddleware } from '../middleware/licenseMiddleware.js';
 
