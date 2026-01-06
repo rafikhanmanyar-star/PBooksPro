@@ -94,7 +94,7 @@ export class PaymobGateway extends BaseGateway {
         throw new Error(`Paymob authentication failed: ${response.statusText}`);
       }
 
-      const data: PaymobAuthResponse = await response.json();
+      const data = await response.json() as PaymobAuthResponse;
       this.authToken = data.token;
       this.authTokenExpiry = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
       return this.authToken;
@@ -152,7 +152,7 @@ export class PaymobGateway extends BaseGateway {
         throw new Error(`Paymob order creation failed: ${orderResponse.statusText}`);
       }
 
-      const order: PaymobOrderResponse = await orderResponse.json();
+      const order = await orderResponse.json() as PaymobOrderResponse;
 
       // Create payment key
       const paymentKeyResponse = await fetch(`${this.baseUrl}/acceptance/payment_keys`, {
@@ -190,7 +190,7 @@ export class PaymobGateway extends BaseGateway {
         throw new Error(`Paymob payment key creation failed: ${paymentKeyResponse.statusText}`);
       }
 
-      const paymentKey: PaymobPaymentKeyResponse = await paymentKeyResponse.json();
+      const paymentKey = await paymentKeyResponse.json() as PaymobPaymentKeyResponse;
 
       // Build checkout URL
       const checkoutUrl = `https://accept.paymob.com/api/acceptance/iframes/${this.config.integrationId}?payment_token=${paymentKey.token}`;
@@ -315,9 +315,9 @@ export class PaymobGateway extends BaseGateway {
         throw new Error(`Paymob status check failed: ${response.statusText}`);
       }
 
-      const transactions = await response.json();
+      const transactions = await response.json() as any[];
 
-      if (transactions.length > 0) {
+      if (transactions && transactions.length > 0) {
         const transaction = transactions[0];
         return {
           status: transaction.success ? 'success' : 'failed',

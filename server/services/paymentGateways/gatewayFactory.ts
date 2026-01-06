@@ -4,6 +4,9 @@ import { BaseGateway } from './baseGateway.js';
 import { PayFastGateway } from './payfastGateway.js';
 import { PaymobGateway } from './paymobGateway.js';
 
+// Re-export BaseGateway for use in other modules
+export { BaseGateway } from './baseGateway.js';
+
 export function createGateway(): BaseGateway {
   const gatewayType = (process.env.PAYMENT_GATEWAY || 'payfast').toLowerCase();
   const sandbox = process.env.PAYMENT_SANDBOX === 'true' || process.env.NODE_ENV !== 'production';

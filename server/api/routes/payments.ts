@@ -1,5 +1,5 @@
 // Payment API routes for license renewal
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
 import { PaymentService } from '../../services/paymentService.js';

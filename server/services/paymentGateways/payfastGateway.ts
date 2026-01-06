@@ -96,7 +96,7 @@ export class PayFastGateway extends BaseGateway {
     metadata?: Record<string, any>;
   }): Promise<PaymentSession> {
     const paymentIntentId = `pf_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
-    const amount = params.currency === 'USD' ? params.amount : params.amount.toFixed(2);
+    const amount = params.currency === 'USD' ? params.amount.toFixed(2) : params.amount.toFixed(2);
 
     // PayFast payment request parameters
     const payfastParams: PayFastPaymentRequest = {
@@ -115,8 +115,26 @@ export class PayFastGateway extends BaseGateway {
       custom_str1: JSON.stringify(params.metadata || {}),
     };
 
-    // Generate signature
-    payfastParams.signature = this.generateSignature(payfastParams);
+    // Generate signature - convert to Record<string, string> for generateSignature
+    const paramsForSignature: Record<string, string> = {
+      merchant_id: payfastParams.merchant_id,
+      merchant_key: payfastParams.merchant_key,
+      return_url: payfastParams.return_url,
+      cancel_url: payfastParams.cancel_url,
+      notify_url: payfastParams.notify_url,
+      name_first: payfastParams.name_first,
+      name_last: payfastParams.name_last,
+      email_address: payfastParams.email_address,
+      m_payment_id: payfastParams.m_payment_id,
+      amount: payfastParams.amount,
+      item_name: payfastParams.item_name,
+      custom_str1: payfastParams.custom_str1 || '',
+    };
+    if (payfastParams.cell_number) {
+      paramsForSignature.cell_number = payfastParams.cell_number;
+    }
+
+    payfastParams.signature = this.generateSignature(paramsForSignature);
 
     // Build form data for redirect
     const formFields = Object.entries(payfastParams)
