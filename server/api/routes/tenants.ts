@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
 import { LicenseService } from '../../services/licenseService.js';
+import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
+import { getWebSocketService } from '../../services/websocketService.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
@@ -138,6 +140,62 @@ router.get('/online-users', async (req: TenantRequest, res) => {
   } catch (error) {
     console.error('Error fetching online users:', error);
     res.status(500).json({ error: 'Failed to fetch online users' });
+  }
+});
+
+// Send chat message (relays via WebSocket, not stored in cloud DB)
+router.post('/chat/send', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId!;
+    const senderId = req.userId!;
+    const { recipientId, message } = req.body;
+
+    if (!recipientId || !message || !message.trim()) {
+      return res.status(400).json({ error: 'Recipient ID and message are required' });
+    }
+
+    // Verify recipient exists and is in same tenant
+    const db = getDb();
+    const recipient = await db.query(
+      'SELECT id, name FROM users WHERE id = $1 AND tenant_id = $2',
+      [recipientId, tenantId]
+    );
+
+    if (recipient.length === 0) {
+      return res.status(404).json({ error: 'Recipient not found' });
+    }
+
+    // Get sender info
+    const sender = await db.query(
+      'SELECT id, name FROM users WHERE id = $1 AND tenant_id = $2',
+      [senderId, tenantId]
+    );
+
+    if (sender.length === 0) {
+      return res.status(404).json({ error: 'Sender not found' });
+    }
+
+    const messageData = {
+      id: `chat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      senderId: senderId,
+      senderName: sender[0].name,
+      recipientId: recipientId,
+      recipientName: recipient[0].name,
+      message: message.trim(),
+      createdAt: new Date().toISOString()
+    };
+
+    // Emit to specific user via WebSocket (not stored in cloud DB)
+    const wsService = getWebSocketService();
+    wsService.emitToUser(tenantId, recipientId, WS_EVENTS.CHAT_MESSAGE, messageData);
+
+    // Also emit to sender for confirmation (optional, but helps with UI updates)
+    wsService.emitToUser(tenantId, senderId, WS_EVENTS.CHAT_MESSAGE, messageData);
+
+    res.json({ success: true, message: messageData });
+  } catch (error) {
+    console.error('Error sending chat message:', error);
+    res.status(500).json({ error: 'Failed to send message' });
   }
 });
 

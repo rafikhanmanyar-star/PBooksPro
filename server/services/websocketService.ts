@@ -10,6 +10,12 @@ interface AuthenticatedSocket extends Socket {
   role?: string;
 }
 
+interface UserSocket {
+  socketId: string;
+  userId: string;
+  tenantId: string;
+}
+
 /**
  * WebSocket Service for Real-Time Synchronization
  * Handles tenant-scoped pub/sub for real-time updates
@@ -17,6 +23,7 @@ interface AuthenticatedSocket extends Socket {
 export class WebSocketService {
   private io: SocketIOServer | null = null;
   private connectedClients: Map<string, Set<string>> = new Map(); // tenantId -> Set of socketIds
+  private userSockets: Map<string, UserSocket> = new Map(); // socketId -> UserSocket
 
   /**
    * Initialize WebSocket server
@@ -88,6 +95,13 @@ export class WebSocketService {
         this.connectedClients.set(tenantId, new Set());
       }
       this.connectedClients.get(tenantId)!.add(socket.id);
+      
+      // Track user socket mapping
+      this.userSockets.set(socket.id, {
+        socketId: socket.id,
+        userId: userId,
+        tenantId: tenantId
+      });
 
       // Emit connection status to other clients in the tenant
       socket.to(`tenant:${tenantId}`).emit('user:connected', {
@@ -108,6 +122,9 @@ export class WebSocketService {
             this.connectedClients.delete(tenantId);
           }
         }
+        
+        // Remove from user sockets
+        this.userSockets.delete(socket.id);
 
         // Emit disconnection status
         socket.to(`tenant:${tenantId}`).emit('user:disconnected', {
@@ -169,6 +186,34 @@ export class WebSocketService {
    */
   getConnectedTenants(): string[] {
     return Array.from(this.connectedClients.keys());
+  }
+
+  /**
+   * Emit event to a specific user
+   */
+  emitToUser(tenantId: string, userId: string, event: string, data: any): void {
+    if (!this.io) {
+      console.warn('WebSocket server not initialized');
+      return;
+    }
+
+    // Find all sockets for this user
+    const userSockets = Array.from(this.userSockets.values())
+      .filter(us => us.userId === userId && us.tenantId === tenantId)
+      .map(us => us.socketId);
+
+    if (userSockets.length === 0) {
+      console.log(`User ${userId} not connected, message will not be delivered`);
+      return;
+    }
+
+    // Emit to all sockets for this user (user might have multiple tabs/devices)
+    userSockets.forEach(socketId => {
+      this.io!.to(socketId).emit(event, {
+        ...data,
+        timestamp: new Date().toISOString(),
+      });
+    });
   }
 
   /**

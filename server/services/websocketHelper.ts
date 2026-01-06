@@ -96,5 +96,8 @@ export const WS_EVENTS = {
   // Connection events
   USER_CONNECTED: 'user:connected',
   USER_DISCONNECTED: 'user:disconnected',
+  
+  // Chat events
+  CHAT_MESSAGE: 'chat:message',
 } as const;
 

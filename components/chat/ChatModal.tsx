@@ -3,6 +3,8 @@ import Modal from '../ui/Modal';
 import { ChatMessagesRepository } from '../../services/database/repositories';
 import { useAuth } from '../../context/AuthContext';
 import { useAppContext } from '../../context/AppContext';
+import { apiClient } from '../../services/api/client';
+import { getWebSocketClient } from '../../services/websocket/websocketClient';
 
 interface OnlineUser {
     id: string;
@@ -42,6 +44,44 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
     const [conversations, setConversations] = useState<any[]>([]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const chatRepo = new ChatMessagesRepository();
+    const wsClient = getWebSocketClient();
+
+    // Connect to WebSocket on mount
+    useEffect(() => {
+        wsClient.connect();
+        return () => {
+            // Don't disconnect on unmount - keep connection alive for other components
+        };
+    }, []);
+
+    // Listen for incoming chat messages
+    useEffect(() => {
+        const handleChatMessage = (data: ChatMessage) => {
+            // Only process messages for current user
+            if (data.recipientId === currentUserId || data.senderId === currentUserId) {
+                try {
+                    // Save message locally
+                    chatRepo.insert(data);
+                    
+                    // If this message is for the currently selected conversation, update UI
+                    if (selectedUserId && (data.senderId === selectedUserId || data.recipientId === selectedUserId)) {
+                        loadMessages(selectedUserId);
+                    }
+                    
+                    // Refresh conversations list
+                    loadConversations();
+                } catch (error) {
+                    console.error('Error saving incoming message:', error);
+                }
+            }
+        };
+
+        wsClient.on('chat:message', handleChatMessage);
+
+        return () => {
+            wsClient.off('chat:message', handleChatMessage);
+        };
+    }, [currentUserId, selectedUserId]);
 
     // Load conversations on mount
     useEffect(() => {
@@ -86,31 +126,33 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
-    const handleSendMessage = () => {
+    const handleSendMessage = async () => {
         if (!newMessage.trim() || !selectedUserId) return;
 
         const selectedUser = onlineUsers.find(u => u.id === selectedUserId);
         if (!selectedUser) return;
 
-        try {
-            const messageId = `chat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            const message: ChatMessage = {
-                id: messageId,
-                senderId: currentUserId,
-                senderName: currentUserName,
-                recipientId: selectedUserId,
-                recipientName: selectedUser.name,
-                message: newMessage.trim(),
-                createdAt: new Date().toISOString()
-            };
+        const messageText = newMessage.trim();
+        setNewMessage(''); // Clear input immediately for better UX
 
-            chatRepo.insert(message);
-            setMessages([...messages, message]);
-            setNewMessage('');
-            loadConversations(); // Refresh conversations list
+        try {
+            // Send message via API (which will broadcast via WebSocket)
+            const response = await apiClient.post('/tenants/chat/send', {
+                recipientId: selectedUserId,
+                message: messageText
+            });
+
+            // Message will be received via WebSocket and saved locally
+            // But we can also save it locally immediately for instant UI update
+            if (response.message) {
+                chatRepo.insert(response.message);
+                setMessages([...messages, response.message]);
+                loadConversations();
+            }
         } catch (error) {
             console.error('Error sending message:', error);
             alert('Failed to send message. Please try again.');
+            setNewMessage(messageText); // Restore message on error
         }
     };
 

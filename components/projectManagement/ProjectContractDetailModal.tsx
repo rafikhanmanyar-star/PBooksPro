@@ -27,9 +27,10 @@ const ProjectContractDetailModal: React.FC<ProjectContractDetailModalProps> = ({
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [state.transactions, contract.id]);
 
-    const totalPaid = payments.reduce((sum, tx) => sum + tx.amount, 0);
-    const balance = contract.totalAmount - totalPaid;
-    const progress = contract.totalAmount > 0 ? (totalPaid / contract.totalAmount) * 100 : 0;
+    const totalAmount = contract.totalAmount ?? 0;
+    const totalPaid = payments.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+    const balance = totalAmount - totalPaid;
+    const progress = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
 
     const handlePrint = () => window.print();
 
@@ -47,7 +48,7 @@ const ProjectContractDetailModal: React.FC<ProjectContractDetailModalProps> = ({
             if (contract.area && contract.rate) {
                 message += `Area: ${contract.area} sqft @ ${contract.rate}/sqft\n`;
             }
-            message += `Total Value: ${CURRENCY} ${contract.totalAmount.toLocaleString()}\n`;
+            message += `Total Value: ${CURRENCY} ${totalAmount.toLocaleString()}\n`;
             message += `Paid to Date: ${CURRENCY} ${totalPaid.toLocaleString()}\n`;
             message += `Balance: ${CURRENCY} ${balance.toLocaleString()}\n\n`;
             message += `Terms:\n${contract.termsAndConditions}`;
@@ -140,17 +141,17 @@ const ProjectContractDetailModal: React.FC<ProjectContractDetailModalProps> = ({
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                          <div>
                             <span className="text-slate-500 block">Total Amount</span>
-                            <span className="font-bold text-lg">{CURRENCY} {contract.totalAmount.toLocaleString()}</span>
+                            <span className="font-bold text-lg">{CURRENCY} {totalAmount.toLocaleString()}</span>
                         </div>
                         {contract.area && contract.rate ? (
                             <div className="md:col-span-2 grid grid-cols-2 gap-4 bg-white p-2 rounded border border-slate-100">
                                 <div>
                                     <span className="text-slate-400 block text-xs uppercase">Total Area</span>
-                                    <span className="font-medium">{contract.area.toLocaleString()} sqft</span>
+                                    <span className="font-medium">{(contract.area ?? 0).toLocaleString()} sqft</span>
                                 </div>
                                 <div>
                                     <span className="text-slate-400 block text-xs uppercase">Rate</span>
-                                    <span className="font-medium">{CURRENCY} {contract.rate.toLocaleString()} / sqft</span>
+                                    <span className="font-medium">{CURRENCY} {(contract.rate ?? 0).toLocaleString()} / sqft</span>
                                 </div>
                             </div>
                         ) : (
