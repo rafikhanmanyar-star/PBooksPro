@@ -105,7 +105,12 @@ export function tenantMiddleware(pool: Pool) {
       };
 
       if (!req.tenantId) {
-        return res.status(403).json({ error: 'No tenant context' });
+        // No tenantId in token - this is an authentication issue
+        return res.status(401).json({ 
+          error: 'Invalid token',
+          message: 'Token does not contain tenant information. Please login again.',
+          code: 'NO_TENANT_CONTEXT'
+        });
       }
 
       // Verify session is still valid (optional check - JWT expiration is primary)
@@ -165,7 +170,14 @@ export function tenantMiddleware(pool: Pool) {
       );
 
       if (tenants.rows.length === 0) {
-        return res.status(403).json({ error: 'Invalid tenant' });
+        // Tenant doesn't exist - this is an authentication issue, not authorization
+        // Return 401 to indicate the token is invalid (tenant no longer exists)
+        console.error(`❌ Tenant not found in database: ${req.tenantId}. Token is invalid.`);
+        return res.status(401).json({ 
+          error: 'Invalid token',
+          message: 'The tenant associated with your token no longer exists. Please login again.',
+          code: 'TENANT_NOT_FOUND'
+        });
       }
 
       // Note: We don't set the session variable because:

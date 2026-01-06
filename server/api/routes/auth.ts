@@ -347,7 +347,11 @@ router.post('/login', async (req, res) => {
     );
     
     if (tenants.length === 0) {
-      return res.status(403).json({ error: 'Invalid tenant' });
+      // Tenant doesn't exist - return 401 to indicate authentication failure
+      return res.status(401).json({ 
+        error: 'Invalid tenant',
+        message: 'The specified tenant does not exist. Please check your tenant ID and try again.'
+      });
     }
 
     const tenant = tenants[0];
@@ -520,7 +524,12 @@ router.post('/refresh-token', async (req, res) => {
       );
       
       if (tenants.length === 0) {
-        return res.status(403).json({ error: 'Invalid tenant' });
+        // Tenant doesn't exist - token is invalid, user needs to re-login
+        // Return 401 instead of 403 to indicate authentication failure
+        return res.status(401).json({ 
+          error: 'Invalid token', 
+          message: 'The tenant associated with your token no longer exists. Please login again.' 
+        });
       }
       
       // Generate new token with same expiration (30 days)
