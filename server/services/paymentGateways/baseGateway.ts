@@ -23,6 +23,7 @@ export interface WebhookEvent {
   status: string;
   amount?: number;
   currency?: string;
+  message?: string;
   metadata?: Record<string, any>;
   rawPayload: any;
 }

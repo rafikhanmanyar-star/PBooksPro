@@ -241,7 +241,7 @@ export class PaymentService {
     if (event.status === 'completed') {
       await this.processSuccessfulPayment(payment.id);
     } else if (event.status === 'failed') {
-      await this.processFailedPayment(payment.id, event.message);
+      await this.processFailedPayment(payment.id, event.message || 'Payment failed');
     } else {
       // Update status for pending/processing
       await this.db.query(
