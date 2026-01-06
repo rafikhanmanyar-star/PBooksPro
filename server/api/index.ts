@@ -200,6 +200,14 @@ app.use('/api/payments', (req: any, res: Response, next: NextFunction) => {
   next();
 }, paymentsRouter);
 
+// Payment test routes (for mock gateway testing - only in development)
+if (process.env.NODE_ENV !== 'production') {
+  import('./routes/payments-test.js').then(module => {
+    app.use('/api/payments/test', module.default);
+    console.log('🧪 Payment test routes enabled (mock gateway testing)');
+  });
+}
+
 app.use('/api', licenseMiddleware());
 
 // Data routes (require tenant context and valid license)

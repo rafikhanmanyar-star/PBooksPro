@@ -3,13 +3,32 @@
 import { BaseGateway } from './baseGateway.js';
 import { PayFastGateway } from './payfastGateway.js';
 import { PaymobGateway } from './paymobGateway.js';
+import { MockGateway } from './mockGateway.js';
 
 // Re-export BaseGateway for use in other modules
 export { BaseGateway } from './baseGateway.js';
 
 export function createGateway(): BaseGateway {
-  const gatewayType = (process.env.PAYMENT_GATEWAY || 'payfast').toLowerCase();
+  const gatewayType = (process.env.PAYMENT_GATEWAY || 'mock').toLowerCase();
   const sandbox = process.env.PAYMENT_SANDBOX === 'true' || process.env.NODE_ENV !== 'production';
+
+  // Use mock gateway if explicitly set, or if no real gateway credentials are provided
+  const useMock = gatewayType === 'mock' || 
+                  (gatewayType !== 'mock' && 
+                   !process.env.PAYFAST_MERCHANT_ID && 
+                   !process.env.PAYMOB_API_KEY &&
+                   process.env.NODE_ENV !== 'production');
+
+  if (useMock || gatewayType === 'mock') {
+    const autoCompleteDelay = parseInt(process.env.MOCK_PAYMENT_DELAY || '3000', 10);
+    const successRate = parseFloat(process.env.MOCK_PAYMENT_SUCCESS_RATE || '1.0');
+    
+    console.log('💰 Using MOCK payment gateway for testing');
+    console.log(`   Auto-complete delay: ${autoCompleteDelay}ms`);
+    console.log(`   Success rate: ${(successRate * 100).toFixed(0)}%`);
+    
+    return new MockGateway(autoCompleteDelay, successRate);
+  }
 
   switch (gatewayType) {
     case 'payfast':

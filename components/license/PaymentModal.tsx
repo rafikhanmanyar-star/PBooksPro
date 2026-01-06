@@ -59,11 +59,18 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
       setPaymentSession(session);
 
-      // If there's a checkout URL (PayFast), redirect to it
+      // If there's a checkout URL, redirect to it
       if (session.checkoutUrl) {
         setIsProcessing(true);
-        // Open in same window or new window based on preference
-        window.location.href = session.checkoutUrl;
+        
+        // Check if it's a mock gateway URL (starts with /mock-payment)
+        if (session.checkoutUrl.startsWith('/mock-payment')) {
+          // For mock gateway, navigate to mock payment page
+          window.location.href = session.checkoutUrl;
+        } else {
+          // For real gateways (PayFast, Paymob), redirect to gateway
+          window.location.href = session.checkoutUrl;
+        }
         // Note: User will be redirected back after payment
       } else if (session.clientSecret) {
         // For Paymob or other gateways that use embedded forms

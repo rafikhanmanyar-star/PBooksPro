@@ -274,6 +274,34 @@ export class AppStateApiService {
         })()
       }));
 
+      // Normalize invoices from API (transform snake_case to camelCase)
+      // The server returns snake_case fields, but the client expects camelCase
+      const normalizedInvoices = invoices.map((inv: any) => ({
+        id: inv.id,
+        invoiceNumber: inv.invoice_number || inv.invoiceNumber || `INV-${inv.id}`,
+        contactId: inv.contact_id || inv.contactId || '',
+        amount: typeof inv.amount === 'number' ? inv.amount : parseFloat(inv.amount || '0'),
+        paidAmount: typeof inv.paid_amount === 'number' ? inv.paid_amount : (typeof inv.paidAmount === 'number' ? inv.paidAmount : parseFloat(inv.paid_amount || inv.paidAmount || '0')),
+        status: inv.status || 'Unpaid',
+        issueDate: inv.issue_date || inv.issueDate || new Date().toISOString().split('T')[0],
+        dueDate: inv.due_date || inv.dueDate || undefined,
+        invoiceType: inv.invoice_type || inv.invoiceType || 'Rental',
+        description: inv.description || undefined,
+        projectId: inv.project_id || inv.projectId || undefined,
+        buildingId: inv.building_id || inv.buildingId || undefined,
+        propertyId: inv.property_id || inv.propertyId || undefined,
+        unitId: inv.unit_id || inv.unitId || undefined,
+        categoryId: inv.category_id || inv.categoryId || undefined,
+        agreementId: inv.agreement_id || inv.agreementId || undefined,
+        securityDepositCharge: inv.security_deposit_charge !== undefined && inv.security_deposit_charge !== null
+          ? (typeof inv.security_deposit_charge === 'number' ? inv.security_deposit_charge : (typeof inv.securityDepositCharge === 'number' ? inv.securityDepositCharge : parseFloat(inv.security_deposit_charge || inv.securityDepositCharge || '0')))
+          : undefined,
+        serviceCharges: inv.service_charges !== undefined && inv.service_charges !== null
+          ? (typeof inv.service_charges === 'number' ? inv.service_charges : (typeof inv.serviceCharges === 'number' ? inv.serviceCharges : parseFloat(inv.service_charges || inv.serviceCharges || '0')))
+          : undefined,
+        rentalMonth: inv.rental_month || inv.rentalMonth || undefined
+      }));
+
       // Normalize contracts from API (transform snake_case to camelCase)
       // The server returns snake_case fields, but the client expects camelCase
       const normalizedContracts = contracts.map((c: any) => ({
@@ -364,7 +392,7 @@ export class AppStateApiService {
         buildings,
         properties,
         units: normalizedUnits,
-        invoices,
+        invoices: normalizedInvoices,
         bills: normalizedBills,
         budgets,
         rentalAgreements,

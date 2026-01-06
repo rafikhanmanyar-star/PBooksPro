@@ -13,6 +13,52 @@ Both gateways support:
 - Secure payment processing
 - Webhook notifications for automatic license renewal
 
+## Testing with Mock Gateway
+
+For development and testing, you can use a **mock payment gateway** that simulates payment processing without requiring real gateway credentials.
+
+### Using Mock Gateway
+
+1. **Set environment variable:**
+   ```env
+   PAYMENT_GATEWAY=mock
+   ```
+
+2. **Optional configuration:**
+   ```env
+   MOCK_PAYMENT_DELAY=3000        # Milliseconds before auto-completing payment (default: 3000)
+   MOCK_PAYMENT_SUCCESS_RATE=1.0  # Success rate 0.0-1.0 (default: 1.0 = 100% success)
+   ```
+
+3. **Mock gateway features:**
+   - Automatically completes payments after delay (simulates processing time)
+   - Configurable success rate (test failure scenarios)
+   - No real credentials required
+   - Full webhook simulation
+   - Test endpoints available
+
+### Test Endpoints (Development Only)
+
+When using mock gateway, these test endpoints are available:
+
+- `POST /api/payments/test/test-webhook/:paymentIntentId` - Manually trigger webhook
+  ```json
+  {
+    "status": "completed"  // or "failed"
+  }
+  ```
+
+- `GET /api/payments/test/test-status` - View all mock payments
+
+- `POST /api/payments/test/test-clear` - Clear all mock payment records
+
+### Mock Gateway Flow
+
+1. Create payment session → Returns checkout URL immediately
+2. Payment auto-processes after delay (default 3 seconds)
+3. Webhook automatically triggered with success/failure
+4. License automatically renewed on success
+
 ## Configuration
 
 ### Environment Variables
