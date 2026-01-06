@@ -66,11 +66,12 @@ const ProjectContractsPage: React.FC = () => {
             const groupId = contract.projectId;
             const group = groupMap.get(groupId);
             const paid = contractPayments.get(contract.id) || 0;
-            const balance = contract.totalAmount - paid;
+            const totalAmount = contract.totalAmount ?? 0;
+            const balance = totalAmount - paid;
 
             if (group) {
                 group.count++;
-                group.amount += contract.totalAmount;
+                group.amount += totalAmount;
                 group.balance += balance;
 
                 // Find or create Vendor node under this project
@@ -89,7 +90,7 @@ const ProjectContractsPage: React.FC = () => {
                     group.children.push(vendorNode);
                 }
                 vendorNode.count++;
-                vendorNode.amount += contract.totalAmount;
+                vendorNode.amount += totalAmount;
                 vendorNode.balance += balance;
             }
         });
@@ -135,9 +136,9 @@ const ProjectContractsPage: React.FC = () => {
             switch (sortConfig.key) {
                 case 'contractNumber': valA = a.contractNumber; valB = b.contractNumber; break;
                 case 'name': valA = a.name.toLowerCase(); valB = b.name.toLowerCase(); break;
-                case 'totalAmount': valA = a.totalAmount; valB = b.totalAmount; break;
-                case 'paid': valA = getPaid(a); valB = getPaid(b); break;
-                case 'balance': valA = a.totalAmount - getPaid(a); valB = b.totalAmount - getPaid(b); break;
+                case 'totalAmount': valA = a.totalAmount ?? 0; valB = b.totalAmount ?? 0; break;
+                case 'paid': valA = getPaid(a) ?? 0; valB = getPaid(b) ?? 0; break;
+                case 'balance': valA = (a.totalAmount ?? 0) - (getPaid(a) ?? 0); valB = (b.totalAmount ?? 0) - (getPaid(b) ?? 0); break;
                 case 'status': valA = a.status; valB = b.status; break;
                 case 'startDate': valA = new Date(a.startDate).getTime(); valB = new Date(b.startDate).getTime(); break;
             }
@@ -338,8 +339,9 @@ const ProjectContractsPage: React.FC = () => {
                             </thead>
                             <tbody className="divide-y divide-slate-50 bg-white">
                                 {filteredContracts.length > 0 ? filteredContracts.map((contract) => {
-                                    const paid = getPaidAmount(contract.id);
-                                    const balance = contract.totalAmount - paid;
+                                    const totalAmount = contract.totalAmount ?? 0;
+                                    const paid = getPaidAmount(contract.id) ?? 0;
+                                    const balance = totalAmount - paid;
                                     const vendor = state.contacts.find(c => c.id === contract.vendorId);
                                     const project = state.projects.find(p => p.id === contract.projectId);
 
@@ -369,7 +371,7 @@ const ProjectContractsPage: React.FC = () => {
                                                 </div>
                                             </td>
                                             <td className="px-4 py-2.5 text-right font-semibold text-slate-700 tabular-nums">
-                                                {CURRENCY} {contract.totalAmount.toLocaleString()}
+                                                {CURRENCY} {totalAmount.toLocaleString()}
                                             </td>
                                             <td className="px-4 py-2.5 text-right text-emerald-600 font-medium tabular-nums">
                                                 {CURRENCY} {paid.toLocaleString()}
@@ -418,7 +420,11 @@ const ProjectContractsPage: React.FC = () => {
                         <div className="flex items-center gap-2">
                             <span>Total Exposure:</span>
                             <span className="text-slate-900 text-xs font-bold tabular-nums">
-                                {CURRENCY} {filteredContracts.reduce((sum, c) => sum + (c.totalAmount - getPaidAmount(c.id)), 0).toLocaleString()}
+                                {CURRENCY} {filteredContracts.reduce((sum, c) => {
+                                    const totalAmount = c.totalAmount ?? 0;
+                                    const paid = getPaidAmount(c.id) ?? 0;
+                                    return sum + (totalAmount - paid);
+                                }, 0).toLocaleString()}
                             </span>
                         </div>
                     </div>

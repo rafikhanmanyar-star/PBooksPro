@@ -8,6 +8,7 @@ import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { apiClient } from '../../services/api/client';
 import packageJson from '../../package.json';
+import ChatModal from '../chat/ChatModal';
 
 interface SidebarProps {
     currentPage: Page;
@@ -21,20 +22,26 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const { currentUser } = state;
     const [isRegModalOpen, setIsRegModalOpen] = useState(false);
     const [onlineUsers, setOnlineUsers] = useState<number | null>(null);
+    const [onlineUsersList, setOnlineUsersList] = useState<any[]>([]);
+    const [isChatModalOpen, setIsChatModalOpen] = useState(false);
     
     // Get user name - prefer AuthContext user (cloud auth) over AppContext currentUser (local)
     const userName = user?.name || currentUser?.name || 'User';
     const userRole = user?.role || currentUser?.role || '';
     const organizationName = tenant?.companyName || tenant?.name || '';
 
-    // Fetch online users count (users with active sessions) for the organization
+    // Fetch online users count and list (users with active sessions) for the organization
     useEffect(() => {
         const fetchOnlineUsers = async () => {
             try {
-                const response = await apiClient.get<{ onlineUsers: number }>('/tenants/online-users-count');
-                setOnlineUsers(response.onlineUsers);
+                const [countResponse, listResponse] = await Promise.all([
+                    apiClient.get<{ onlineUsers: number }>('/tenants/online-users-count'),
+                    apiClient.get<any[]>('/tenants/online-users')
+                ]);
+                setOnlineUsers(countResponse.onlineUsers);
+                setOnlineUsersList(listResponse || []);
             } catch (error) {
-                console.error('Error fetching online users count:', error);
+                console.error('Error fetching online users:', error);
                 // Silently fail - don't show error to user
             }
         };
@@ -232,23 +239,41 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
 
                         {/* Online Users Info */}
                         {onlineUsers !== null && (
-                            <div className="px-3 py-2 rounded-lg bg-slate-800/30 border border-slate-700/30">
-                                <div className="flex items-center gap-2">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-green-400">
-                                        <circle cx="12" cy="12" r="10"></circle>
-                                        <circle cx="12" cy="12" r="6"></circle>
-                                        <circle cx="12" cy="12" r="2"></circle>
-                                    </svg>
-                                    <span className="text-[10px] text-slate-400 font-medium">
-                                        Online Users: <span className="text-green-400 font-semibold">{onlineUsers}</span>
-                                    </span>
+                            <div className="space-y-2">
+                                <div className="px-3 py-2 rounded-lg bg-slate-800/30 border border-slate-700/30">
+                                    <div className="flex items-center gap-2">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-green-400">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <circle cx="12" cy="12" r="6"></circle>
+                                            <circle cx="12" cy="12" r="2"></circle>
+                                        </svg>
+                                        <span className="text-[10px] text-slate-400 font-medium">
+                                            Online Users: <span className="text-green-400 font-semibold">{onlineUsers}</span>
+                                        </span>
+                                    </div>
                                 </div>
+                                {onlineUsers > 0 && (
+                                    <button
+                                        onClick={() => setIsChatModalOpen(true)}
+                                        className="w-full px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                                        </svg>
+                                        Chat
+                                    </button>
+                                )}
                             </div>
                         )}
                     </div>
                 </div>
             </aside>
             <RegistrationModal isOpen={isRegModalOpen} onClose={() => setIsRegModalOpen(false)} />
+            <ChatModal 
+                isOpen={isChatModalOpen} 
+                onClose={() => setIsChatModalOpen(false)} 
+                onlineUsers={onlineUsersList}
+            />
         </>
     );
 };

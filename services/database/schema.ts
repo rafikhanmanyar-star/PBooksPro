@@ -716,6 +716,18 @@ CREATE TABLE IF NOT EXISTS license_settings (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Chat Messages table (local only, not synced)
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id TEXT PRIMARY KEY,
+    sender_id TEXT NOT NULL,
+    sender_name TEXT NOT NULL,
+    recipient_id TEXT NOT NULL,
+    recipient_name TEXT NOT NULL,
+    message TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    read_at TEXT
+);
+
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
@@ -738,4 +750,7 @@ CREATE INDEX IF NOT EXISTS idx_payslips_employee ON payslips(employee_id);
 CREATE INDEX IF NOT EXISTS idx_payslips_month ON payslips(month);
 CREATE INDEX IF NOT EXISTS idx_attendance_employee_date ON attendance_records(employee_id, date);
 CREATE INDEX IF NOT EXISTS idx_tasks_completed ON tasks(completed);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_sender ON chat_messages(sender_id);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_recipient ON chat_messages(recipient_id);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at);
 `;

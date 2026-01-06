@@ -8,6 +8,7 @@ import { BaseRepository } from './baseRepository';
 export { BaseRepository } from './baseRepository';
 import { getNativeDatabaseService } from '../nativeDatabaseService';
 import { getDatabaseService } from '../databaseService';
+import { dbToObjectFormat } from '../columnMapper';
 
 // Entity repositories will be created below
 // For now, we'll create them as needed
@@ -286,6 +287,85 @@ export class QuotationsRepository extends BaseRepository<any> {
 
 export class DocumentsRepository extends BaseRepository<any> {
     constructor() { super('documents'); }
+}
+
+export class ChatMessagesRepository extends BaseRepository<any> {
+    constructor() { 
+        super('chat_messages'); 
+    }
+    
+    /**
+     * Chat messages are local only and should not be filtered by tenant
+     */
+    protected shouldFilterByTenant(): boolean {
+        return false;
+    }
+    
+    /**
+     * Get conversation between two users
+     */
+    getConversation(userId1: string, userId2: string): any[] {
+        const sql = `
+            SELECT * FROM chat_messages 
+            WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?)
+            ORDER BY created_at ASC
+        `;
+        const results = this.db.query<Record<string, any>>(sql, [userId1, userId2, userId2, userId1]);
+        return results.map(row => dbToObjectFormat(row));
+    }
+    
+    /**
+     * Get all conversations for a user (list of users they've chatted with)
+     */
+    getConversationsForUser(userId: string): any[] {
+        const sql = `
+            SELECT DISTINCT 
+                CASE 
+                    WHEN sender_id = ? THEN recipient_id 
+                    ELSE sender_id 
+                END as other_user_id,
+                CASE 
+                    WHEN sender_id = ? THEN recipient_name 
+                    ELSE sender_name 
+                END as other_user_name,
+                MAX(created_at) as last_message_time
+            FROM chat_messages 
+            WHERE sender_id = ? OR recipient_id = ?
+            GROUP BY other_user_id
+            ORDER BY last_message_time DESC
+        `;
+        const results = this.db.query<Record<string, any>>(sql, [userId, userId, userId, userId]);
+        return results.map(row => dbToObjectFormat(row));
+    }
+    
+    /**
+     * Mark messages as read
+     */
+    markAsRead(senderId: string, recipientId: string): void {
+        const sql = `
+            UPDATE chat_messages 
+            SET read_at = datetime('now')
+            WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL
+        `;
+        this.db.execute(sql, [senderId, recipientId]);
+        if (!this.db.isInTransaction()) {
+            this.db.save();
+        }
+    }
+    
+    /**
+     * Get unread message count for a user
+     */
+    getUnreadCount(userId: string): number {
+        const sql = `
+            SELECT COUNT(*) as count 
+            FROM chat_messages 
+            WHERE recipient_id = ? AND read_at IS NULL
+        `;
+        const results = this.db.query<{ count: number }>(sql, [userId]);
+        return results[0]?.count || 0;
+    }
+    
 }
 
 export class AppSettingsRepository {

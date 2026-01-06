@@ -117,5 +117,29 @@ router.get('/online-users-count', async (req: TenantRequest, res) => {
   }
 });
 
+// Get list of online users for the organization
+router.get('/online-users', async (req: TenantRequest, res) => {
+  try {
+    const db = getDb();
+    const tenantId = req.tenantId!;
+    
+    // Get distinct users with active sessions (logged in) for this tenant
+    // A user is considered online if they have at least one active session (not expired)
+    const users = await db.query(
+      `SELECT DISTINCT u.id, u.username, u.name, u.role, u.email
+       FROM users u
+       INNER JOIN user_sessions us ON u.id = us.user_id
+       WHERE u.tenant_id = $1 AND us.expires_at > NOW()
+       ORDER BY u.name`,
+      [tenantId]
+    );
+    
+    res.json(users);
+  } catch (error) {
+    console.error('Error fetching online users:', error);
+    res.status(500).json({ error: 'Failed to fetch online users' });
+  }
+});
+
 export default router;
 
