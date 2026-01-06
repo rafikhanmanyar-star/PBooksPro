@@ -403,15 +403,13 @@ export class AppStateApiService {
    * Save invoice to API
    */
   async saveInvoice(invoice: Partial<AppState['invoices'][0]>): Promise<AppState['invoices'][0]> {
+    // Always use POST endpoint - it handles upserts automatically
     const invoiceWithId = {
       ...invoice,
-      id: invoice.id || `invoice_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      id: invoice.id || `invoice_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
-    if (invoice.id) {
-      return this.invoicesRepo.update(invoiceWithId.id!, invoiceWithId);
-    } else {
-      return this.invoicesRepo.create(invoiceWithId);
-    }
+    logger.logCategory('sync', `💾 Syncing invoice (POST upsert): ${invoiceWithId.id} - ${invoiceWithId.invoiceNumber}`);
+    return this.invoicesRepo.create(invoiceWithId);
   }
 
   /**
@@ -425,15 +423,13 @@ export class AppStateApiService {
    * Save bill to API
    */
   async saveBill(bill: Partial<AppState['bills'][0]>): Promise<AppState['bills'][0]> {
+    // Always use POST endpoint - it handles upserts automatically
     const billWithId = {
       ...bill,
-      id: bill.id || `bill_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      id: bill.id || `bill_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
-    if (bill.id) {
-      return this.billsRepo.update(billWithId.id!, billWithId);
-    } else {
-      return this.billsRepo.create(billWithId);
-    }
+    logger.logCategory('sync', `💾 Syncing bill (POST upsert): ${billWithId.id} - ${billWithId.billNumber}`);
+    return this.billsRepo.create(billWithId);
   }
 
   /**
@@ -465,15 +461,13 @@ export class AppStateApiService {
    * Save rental agreement to API
    */
   async saveRentalAgreement(agreement: Partial<AppState['rentalAgreements'][0]>): Promise<AppState['rentalAgreements'][0]> {
+    // Always use POST endpoint - it handles upserts automatically
     const agreementWithId = {
       ...agreement,
-      id: agreement.id || `rental_agreement_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      id: agreement.id || `rental_agreement_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
-    if (agreement.id) {
-      return this.rentalAgreementsRepo.update(agreementWithId.id!, agreementWithId);
-    } else {
-      return this.rentalAgreementsRepo.create(agreementWithId);
-    }
+    logger.logCategory('sync', `💾 Syncing rental agreement (POST upsert): ${agreementWithId.id} - ${agreementWithId.agreementNumber}`);
+    return this.rentalAgreementsRepo.create(agreementWithId);
   }
 
   /**
@@ -487,15 +481,13 @@ export class AppStateApiService {
    * Save project agreement to API
    */
   async saveProjectAgreement(agreement: Partial<AppState['projectAgreements'][0]>): Promise<AppState['projectAgreements'][0]> {
+    // Always use POST endpoint - it handles upserts automatically
     const agreementWithId = {
       ...agreement,
-      id: agreement.id || `project_agreement_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      id: agreement.id || `project_agreement_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
-    if (agreement.id) {
-      return this.projectAgreementsRepo.update(agreementWithId.id!, agreementWithId);
-    } else {
-      return this.projectAgreementsRepo.create(agreementWithId);
-    }
+    logger.logCategory('sync', `💾 Syncing project agreement (POST upsert): ${agreementWithId.id} - ${agreementWithId.agreementNumber}`);
+    return this.projectAgreementsRepo.create(agreementWithId);
   }
 
   /**
@@ -509,15 +501,13 @@ export class AppStateApiService {
    * Save contract to API
    */
   async saveContract(contract: Partial<AppState['contracts'][0]>): Promise<AppState['contracts'][0]> {
+    // Always use POST endpoint - it handles upserts automatically
     const contractWithId = {
       ...contract,
-      id: contract.id || `contract_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      id: contract.id || `contract_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
-    if (contract.id) {
-      return this.contractsRepo.update(contractWithId.id!, contractWithId);
-    } else {
-      return this.contractsRepo.create(contractWithId);
-    }
+    logger.logCategory('sync', `💾 Syncing contract (POST upsert): ${contractWithId.id} - ${contractWithId.contractNumber}`);
+    return this.contractsRepo.create(contractWithId);
   }
 
   /**

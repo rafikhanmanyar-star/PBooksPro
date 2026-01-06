@@ -59,21 +59,78 @@ router.get('/:id', async (req: TenantRequest, res) => {
   }
 });
 
-// POST create invoice
+// POST create/update invoice (upsert)
 router.post('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const invoice = req.body;
+    
+    // Validate required fields
+    if (!invoice.invoiceNumber) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Invoice number is required'
+      });
+    }
+    
+    // Generate ID if not provided
+    const invoiceId = invoice.id || `invoice_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Check if invoice with this ID already exists and belongs to a different tenant
+    if (invoice.id) {
+      const existingInvoice = await db.query(
+        'SELECT tenant_id FROM invoices WHERE id = $1',
+        [invoiceId]
+      );
+      
+      if (existingInvoice.length > 0 && existingInvoice[0].tenant_id !== req.tenantId) {
+        return res.status(403).json({ 
+          error: 'Forbidden',
+          message: 'An invoice with this ID already exists in another organization'
+        });
+      }
+    }
+    
+    // Check if invoice exists to determine if this is a create or update
+    const existing = await db.query(
+      'SELECT id FROM invoices WHERE id = $1 AND tenant_id = $2',
+      [invoiceId, req.tenantId]
+    );
+    const isUpdate = existing.length > 0;
+    
+    // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
     const result = await db.query(
       `INSERT INTO invoices (
         id, tenant_id, invoice_number, contact_id, amount, paid_amount, status,
         issue_date, due_date, invoice_type, description, project_id, building_id,
         property_id, unit_id, category_id, agreement_id, security_deposit_charge,
-        service_charges, rental_month
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+        service_charges, rental_month, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+                COALESCE((SELECT created_at FROM invoices WHERE id = $1), NOW()), NOW())
+      ON CONFLICT (id) 
+      DO UPDATE SET
+        invoice_number = EXCLUDED.invoice_number,
+        contact_id = EXCLUDED.contact_id,
+        amount = EXCLUDED.amount,
+        paid_amount = EXCLUDED.paid_amount,
+        status = EXCLUDED.status,
+        issue_date = EXCLUDED.issue_date,
+        due_date = EXCLUDED.due_date,
+        invoice_type = EXCLUDED.invoice_type,
+        description = EXCLUDED.description,
+        project_id = EXCLUDED.project_id,
+        building_id = EXCLUDED.building_id,
+        property_id = EXCLUDED.property_id,
+        unit_id = EXCLUDED.unit_id,
+        category_id = EXCLUDED.category_id,
+        agreement_id = EXCLUDED.agreement_id,
+        security_deposit_charge = EXCLUDED.security_deposit_charge,
+        service_charges = EXCLUDED.service_charges,
+        rental_month = EXCLUDED.rental_month,
+        updated_at = NOW()
       RETURNING *`,
       [
-        invoice.id,
+        invoiceId,
         req.tenantId,
         invoice.invoiceNumber,
         invoice.contactId,
@@ -96,20 +153,29 @@ router.post('/', async (req: TenantRequest, res) => {
       ]
     );
     const saved = result[0];
-
-    emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_CREATED, {
-      invoice: saved,
-      userId: req.user?.userId,
-      username: req.user?.username,
-    });
-
-    res.status(201).json(saved);
+    
+    // Emit WebSocket event for real-time sync
+    if (isUpdate) {
+      emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_UPDATED, {
+        invoice: saved,
+        userId: req.user?.userId,
+        username: req.user?.username,
+      });
+    } else {
+      emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_CREATED, {
+        invoice: saved,
+        userId: req.user?.userId,
+        username: req.user?.username,
+      });
+    }
+    
+    res.status(isUpdate ? 200 : 201).json(saved);
   } catch (error: any) {
-    console.error('Error creating invoice:', error);
+    console.error('Error creating/updating invoice:', error);
     if (error.code === '23505') { // Unique violation
       return res.status(400).json({ error: 'Invoice number already exists' });
     }
-    res.status(500).json({ error: 'Failed to create invoice' });
+    res.status(500).json({ error: 'Failed to save invoice' });
   }
 });
 

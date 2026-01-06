@@ -14,15 +14,21 @@ import { shouldSyncAction } from '../services/sync/dataFilter';
 // Lazy import AppStateRepository to avoid initialization issues during module load
 // It will be imported when actually needed
 let AppStateRepositoryClass: any = null;
+let importPromise: Promise<any> | null = null;
 
-function getAppStateRepository() {
+async function getAppStateRepository() {
     if (!AppStateRepositoryClass) {
-        try {
-            AppStateRepositoryClass = require('../services/database/repositories/appStateRepository').AppStateRepository;
-        } catch (error) {
-            console.error('❌ Failed to load AppStateRepository:', error);
-            throw new Error(`Failed to load AppStateRepository: ${error instanceof Error ? error.message : String(error)}`);
+        if (!importPromise) {
+            importPromise = import('../services/database/repositories/appStateRepository').then(module => {
+                AppStateRepositoryClass = module.AppStateRepository;
+                return AppStateRepositoryClass;
+            }).catch(error => {
+                console.error('❌ Failed to load AppStateRepository:', error);
+                importPromise = null; // Reset so we can retry
+                throw new Error(`Failed to load AppStateRepository: ${error instanceof Error ? error.message : String(error)}`);
+            });
         }
+        await importPromise;
     }
     return new AppStateRepositoryClass();
 }
@@ -1445,7 +1451,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 try {
                     const dbService = getDatabaseService();
                     if (dbService.isReady()) {
-                        const appStateRepo = getAppStateRepository();
+                        const appStateRepo = await getAppStateRepository();
                         const currentState = await appStateRepo.loadState();
                         if (currentState.currentUser) {
                             currentState.currentUser = null;
@@ -1533,7 +1539,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         // Reload state after migration
                         setInitMessage(`Loading migrated data (${recordCount} records)...`);
                         setInitProgress(95);
-                        const appStateRepo = getAppStateRepository();
+                        const appStateRepo = await getAppStateRepository();
                         const migratedState = await appStateRepo.loadState();
 
                         if (isMounted) {
@@ -1571,7 +1577,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             try {
                                 const dbService = getDatabaseService();
                                 if (dbService.isReady()) {
-                                    const appStateRepo = getAppStateRepository();
+                                    const appStateRepo = await getAppStateRepository();
                                     const localState = await appStateRepo.loadState();
                                     
                                     // Check if we need to clear data (tenant switch detected)
@@ -1653,9 +1659,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     // This ensures offline access and proper tenant isolation
                                     const dbService = getDatabaseService();
                                     if (dbService.isReady()) {
-                                        const appStateRepo = getAppStateRepository();
-                                        appStateRepo.saveState(fullState).catch(saveError => {
-                                            console.warn('⚠️ Could not save API data to local database:', saveError);
+                                        getAppStateRepository().then(appStateRepo => {
+                                            appStateRepo.saveState(fullState).catch(saveError => {
+                                                console.warn('⚠️ Could not save API data to local database:', saveError);
+                                            });
+                                        }).catch(err => {
+                                            console.warn('⚠️ Could not load AppStateRepository:', err);
                                         });
                                     }
                                     
@@ -2535,7 +2544,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             await dbService.initialize();
                         }
 
-                        const appStateRepo = getAppStateRepository();
+                        const appStateRepo = await getAppStateRepository();
                         await appStateRepo.saveState(state);
                         console.log('✅ State saved immediately after data change:', {
                             contacts: state.contacts.length,
@@ -2578,7 +2587,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 try {
                     const dbService = getDatabaseService();
                     if (dbService.isReady()) {
-                        const appStateRepo = getAppStateRepository();
+                        const appStateRepo = await getAppStateRepository();
                         await appStateRepo.saveState(state);
                         console.log('✅ State saved after login');
                     }
@@ -2711,9 +2720,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 };
                                 
                                 // Save API data to local database with proper tenant_id (async, don't await)
-                                const appStateRepo = getAppStateRepository();
-                                appStateRepo.saveState(fullState).catch(err => {
-                                    logger.errorCategory('database', '⚠️ Failed to save API data to local database:', err);
+                                getAppStateRepository().then(appStateRepo => {
+                                    appStateRepo.saveState(fullState).catch(err => {
+                                        logger.errorCategory('database', '⚠️ Failed to save API data to local database:', err);
+                                    });
+                                }).catch(err => {
+                                    logger.errorCategory('database', '⚠️ Failed to load AppStateRepository:', err);
                                 });
                                 
                                 return fullState;

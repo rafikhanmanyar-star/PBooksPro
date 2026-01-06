@@ -59,21 +59,76 @@ router.get('/:id', async (req: TenantRequest, res) => {
   }
 });
 
-// POST create contract
+// POST create/update contract (upsert)
 router.post('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const contract = req.body;
+    
+    // Validate required fields
+    if (!contract.contractNumber || !contract.name) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Contract number and name are required'
+      });
+    }
+    
+    // Generate ID if not provided
+    const contractId = contract.id || `contract_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Check if contract with this ID already exists and belongs to a different tenant
+    if (contract.id) {
+      const existingContract = await db.query(
+        'SELECT tenant_id FROM contracts WHERE id = $1',
+        [contractId]
+      );
+      
+      if (existingContract.length > 0 && existingContract[0].tenant_id !== req.tenantId) {
+        return res.status(403).json({ 
+          error: 'Forbidden',
+          message: 'A contract with this ID already exists in another organization'
+        });
+      }
+    }
+    
+    // Check if contract exists to determine if this is a create or update
+    const existing = await db.query(
+      'SELECT id FROM contracts WHERE id = $1 AND tenant_id = $2',
+      [contractId, req.tenantId]
+    );
+    const isUpdate = existing.length > 0;
+    
+    // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
     const result = await db.query(
       `INSERT INTO contracts (
         id, tenant_id, contract_number, name, project_id, vendor_id, total_amount,
         area, rate, start_date, end_date, status, category_ids,
         expense_category_items, terms_and_conditions, payment_terms,
-        description, document_path
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        description, document_path, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
+                COALESCE((SELECT created_at FROM contracts WHERE id = $1), NOW()), NOW())
+      ON CONFLICT (id) 
+      DO UPDATE SET
+        contract_number = EXCLUDED.contract_number,
+        name = EXCLUDED.name,
+        project_id = EXCLUDED.project_id,
+        vendor_id = EXCLUDED.vendor_id,
+        total_amount = EXCLUDED.total_amount,
+        area = EXCLUDED.area,
+        rate = EXCLUDED.rate,
+        start_date = EXCLUDED.start_date,
+        end_date = EXCLUDED.end_date,
+        status = EXCLUDED.status,
+        category_ids = EXCLUDED.category_ids,
+        expense_category_items = EXCLUDED.expense_category_items,
+        terms_and_conditions = EXCLUDED.terms_and_conditions,
+        payment_terms = EXCLUDED.payment_terms,
+        description = EXCLUDED.description,
+        document_path = EXCLUDED.document_path,
+        updated_at = NOW()
       RETURNING *`,
       [
-        contract.id,
+        contractId,
         req.tenantId,
         contract.contractNumber,
         contract.name,
@@ -94,18 +149,29 @@ router.post('/', async (req: TenantRequest, res) => {
       ]
     );
     const saved = result[0];
-    emitToTenant(req.tenantId!, WS_EVENTS.CONTRACT_CREATED, {
-      contract: saved,
-      userId: req.user?.userId,
-      username: req.user?.username,
-    });
-    res.status(201).json(saved);
+    
+    // Emit WebSocket event for real-time sync
+    if (isUpdate) {
+      emitToTenant(req.tenantId!, WS_EVENTS.CONTRACT_UPDATED, {
+        contract: saved,
+        userId: req.user?.userId,
+        username: req.user?.username,
+      });
+    } else {
+      emitToTenant(req.tenantId!, WS_EVENTS.CONTRACT_CREATED, {
+        contract: saved,
+        userId: req.user?.userId,
+        username: req.user?.username,
+      });
+    }
+    
+    res.status(isUpdate ? 200 : 201).json(saved);
   } catch (error: any) {
-    console.error('Error creating contract:', error);
+    console.error('Error creating/updating contract:', error);
     if (error.code === '23505') { // Unique violation
       return res.status(400).json({ error: 'Contract number already exists' });
     }
-    res.status(500).json({ error: 'Failed to create contract' });
+    res.status(500).json({ error: 'Failed to save contract' });
   }
 });
 

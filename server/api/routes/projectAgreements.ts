@@ -59,11 +59,46 @@ router.get('/:id', async (req: TenantRequest, res) => {
   }
 });
 
-// POST create project agreement
+// POST create/update project agreement (upsert)
 router.post('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const agreement = req.body;
+    
+    // Validate required fields
+    if (!agreement.agreementNumber) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Agreement number is required'
+      });
+    }
+    
+    // Generate ID if not provided
+    const agreementId = agreement.id || `project_agreement_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Check if agreement with this ID already exists and belongs to a different tenant
+    if (agreement.id) {
+      const existingAgreement = await db.query(
+        'SELECT tenant_id FROM project_agreements WHERE id = $1',
+        [agreementId]
+      );
+      
+      if (existingAgreement.length > 0 && existingAgreement[0].tenant_id !== req.tenantId) {
+        return res.status(403).json({ 
+          error: 'Forbidden',
+          message: 'A project agreement with this ID already exists in another organization'
+        });
+      }
+    }
+    
+    // Check if agreement exists to determine if this is a create or update
+    const existing = await db.query(
+      'SELECT id FROM project_agreements WHERE id = $1 AND tenant_id = $2',
+      [agreementId, req.tenantId]
+    );
+    const isUpdate = existing.length > 0;
+    
+    // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
     const result = await db.query(
       `INSERT INTO project_agreements (
         id, tenant_id, agreement_number, client_id, project_id, unit_ids,
@@ -72,11 +107,39 @@ router.post('/', async (req: TenantRequest, res) => {
         issue_date, description, status, cancellation_details,
         list_price_category_id, customer_discount_category_id,
         floor_discount_category_id, lump_sum_discount_category_id,
-        misc_discount_category_id, selling_price_category_id, rebate_category_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+        misc_discount_category_id, selling_price_category_id, rebate_category_id,
+        created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25,
+                COALESCE((SELECT created_at FROM project_agreements WHERE id = $1), NOW()), NOW())
+      ON CONFLICT (id) 
+      DO UPDATE SET
+        agreement_number = EXCLUDED.agreement_number,
+        client_id = EXCLUDED.client_id,
+        project_id = EXCLUDED.project_id,
+        unit_ids = EXCLUDED.unit_ids,
+        list_price = EXCLUDED.list_price,
+        customer_discount = EXCLUDED.customer_discount,
+        floor_discount = EXCLUDED.floor_discount,
+        lump_sum_discount = EXCLUDED.lump_sum_discount,
+        misc_discount = EXCLUDED.misc_discount,
+        selling_price = EXCLUDED.selling_price,
+        rebate_amount = EXCLUDED.rebate_amount,
+        rebate_broker_id = EXCLUDED.rebate_broker_id,
+        issue_date = EXCLUDED.issue_date,
+        description = EXCLUDED.description,
+        status = EXCLUDED.status,
+        cancellation_details = EXCLUDED.cancellation_details,
+        list_price_category_id = EXCLUDED.list_price_category_id,
+        customer_discount_category_id = EXCLUDED.customer_discount_category_id,
+        floor_discount_category_id = EXCLUDED.floor_discount_category_id,
+        lump_sum_discount_category_id = EXCLUDED.lump_sum_discount_category_id,
+        misc_discount_category_id = EXCLUDED.misc_discount_category_id,
+        selling_price_category_id = EXCLUDED.selling_price_category_id,
+        rebate_category_id = EXCLUDED.rebate_category_id,
+        updated_at = NOW()
       RETURNING *`,
       [
-        agreement.id,
+        agreementId,
         req.tenantId,
         agreement.agreementNumber,
         agreement.clientId,
@@ -104,18 +167,29 @@ router.post('/', async (req: TenantRequest, res) => {
       ]
     );
     const saved = result[0];
-    emitToTenant(req.tenantId!, WS_EVENTS.PROJECT_AGREEMENT_CREATED, {
-      agreement: saved,
-      userId: req.user?.userId,
-      username: req.user?.username,
-    });
-    res.status(201).json(saved);
+    
+    // Emit WebSocket event for real-time sync
+    if (isUpdate) {
+      emitToTenant(req.tenantId!, WS_EVENTS.PROJECT_AGREEMENT_UPDATED, {
+        agreement: saved,
+        userId: req.user?.userId,
+        username: req.user?.username,
+      });
+    } else {
+      emitToTenant(req.tenantId!, WS_EVENTS.PROJECT_AGREEMENT_CREATED, {
+        agreement: saved,
+        userId: req.user?.userId,
+        username: req.user?.username,
+      });
+    }
+    
+    res.status(isUpdate ? 200 : 201).json(saved);
   } catch (error: any) {
-    console.error('Error creating project agreement:', error);
+    console.error('Error creating/updating project agreement:', error);
     if (error.code === '23505') { // Unique violation
       return res.status(400).json({ error: 'Agreement number already exists' });
     }
-    res.status(500).json({ error: 'Failed to create project agreement' });
+    res.status(500).json({ error: 'Failed to save project agreement' });
   }
 });
 

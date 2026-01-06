@@ -55,20 +55,71 @@ router.get('/:id', async (req: TenantRequest, res) => {
   }
 });
 
-// POST create rental agreement
+// POST create/update rental agreement (upsert)
 router.post('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const agreement = req.body;
+    
+    // Validate required fields
+    if (!agreement.agreementNumber) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Agreement number is required'
+      });
+    }
+    
+    // Generate ID if not provided
+    const agreementId = agreement.id || `rental_agreement_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Check if agreement with this ID already exists and belongs to a different tenant
+    if (agreement.id) {
+      const existingAgreement = await db.query(
+        'SELECT tenant_id FROM rental_agreements WHERE id = $1',
+        [agreementId]
+      );
+      
+      if (existingAgreement.length > 0 && existingAgreement[0].tenant_id !== req.tenantId) {
+        return res.status(403).json({ 
+          error: 'Forbidden',
+          message: 'A rental agreement with this ID already exists in another organization'
+        });
+      }
+    }
+    
+    // Check if agreement exists to determine if this is a create or update
+    const existing = await db.query(
+      'SELECT id FROM rental_agreements WHERE id = $1 AND tenant_id = $2',
+      [agreementId, req.tenantId]
+    );
+    const isUpdate = existing.length > 0;
+    
+    // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
     const result = await db.query(
       `INSERT INTO rental_agreements (
         id, tenant_id, agreement_number, property_id, start_date, end_date,
         monthly_rent, rent_due_date, status, description, security_deposit,
-        broker_id, broker_fee, owner_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        broker_id, broker_fee, owner_id, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+                COALESCE((SELECT created_at FROM rental_agreements WHERE id = $1), NOW()), NOW())
+      ON CONFLICT (id) 
+      DO UPDATE SET
+        agreement_number = EXCLUDED.agreement_number,
+        property_id = EXCLUDED.property_id,
+        start_date = EXCLUDED.start_date,
+        end_date = EXCLUDED.end_date,
+        monthly_rent = EXCLUDED.monthly_rent,
+        rent_due_date = EXCLUDED.rent_due_date,
+        status = EXCLUDED.status,
+        description = EXCLUDED.description,
+        security_deposit = EXCLUDED.security_deposit,
+        broker_id = EXCLUDED.broker_id,
+        broker_fee = EXCLUDED.broker_fee,
+        owner_id = EXCLUDED.owner_id,
+        updated_at = NOW()
       RETURNING *`,
       [
-        agreement.id,
+        agreementId,
         req.tenantId,
         agreement.agreementNumber,
         agreement.propertyId,
@@ -85,18 +136,29 @@ router.post('/', async (req: TenantRequest, res) => {
       ]
     );
     const saved = result[0];
-    emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_CREATED, {
-      agreement: saved,
-      userId: req.user?.userId,
-      username: req.user?.username,
-    });
-    res.status(201).json(saved);
+    
+    // Emit WebSocket event for real-time sync
+    if (isUpdate) {
+      emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_UPDATED, {
+        agreement: saved,
+        userId: req.user?.userId,
+        username: req.user?.username,
+      });
+    } else {
+      emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_CREATED, {
+        agreement: saved,
+        userId: req.user?.userId,
+        username: req.user?.username,
+      });
+    }
+    
+    res.status(isUpdate ? 200 : 201).json(saved);
   } catch (error: any) {
-    console.error('Error creating rental agreement:', error);
+    console.error('Error creating/updating rental agreement:', error);
     if (error.code === '23505') { // Unique violation
       return res.status(400).json({ error: 'Agreement number already exists' });
     }
-    res.status(500).json({ error: 'Failed to create rental agreement' });
+    res.status(500).json({ error: 'Failed to save rental agreement' });
   }
 });
 

@@ -59,21 +59,77 @@ router.get('/:id', async (req: TenantRequest, res) => {
   }
 });
 
-// POST create bill
+// POST create/update bill (upsert)
 router.post('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const bill = req.body;
+    
+    // Validate required fields
+    if (!bill.billNumber) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Bill number is required'
+      });
+    }
+    
+    // Generate ID if not provided
+    const billId = bill.id || `bill_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Check if bill with this ID already exists and belongs to a different tenant
+    if (bill.id) {
+      const existingBill = await db.query(
+        'SELECT tenant_id FROM bills WHERE id = $1',
+        [billId]
+      );
+      
+      if (existingBill.length > 0 && existingBill[0].tenant_id !== req.tenantId) {
+        return res.status(403).json({ 
+          error: 'Forbidden',
+          message: 'A bill with this ID already exists in another organization'
+        });
+      }
+    }
+    
+    // Check if bill exists to determine if this is a create or update
+    const existing = await db.query(
+      'SELECT id FROM bills WHERE id = $1 AND tenant_id = $2',
+      [billId, req.tenantId]
+    );
+    const isUpdate = existing.length > 0;
+    
+    // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
     const result = await db.query(
       `INSERT INTO bills (
         id, tenant_id, bill_number, contact_id, amount, paid_amount, status,
         issue_date, due_date, description, category_id, project_id, building_id,
         property_id, project_agreement_id, contract_id, staff_id,
-        expense_category_items, document_path
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+        expense_category_items, document_path, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, 
+                COALESCE((SELECT created_at FROM bills WHERE id = $1), NOW()), NOW())
+      ON CONFLICT (id) 
+      DO UPDATE SET
+        bill_number = EXCLUDED.bill_number,
+        contact_id = EXCLUDED.contact_id,
+        amount = EXCLUDED.amount,
+        paid_amount = EXCLUDED.paid_amount,
+        status = EXCLUDED.status,
+        issue_date = EXCLUDED.issue_date,
+        due_date = EXCLUDED.due_date,
+        description = EXCLUDED.description,
+        category_id = EXCLUDED.category_id,
+        project_id = EXCLUDED.project_id,
+        building_id = EXCLUDED.building_id,
+        property_id = EXCLUDED.property_id,
+        project_agreement_id = EXCLUDED.project_agreement_id,
+        contract_id = EXCLUDED.contract_id,
+        staff_id = EXCLUDED.staff_id,
+        expense_category_items = EXCLUDED.expense_category_items,
+        document_path = EXCLUDED.document_path,
+        updated_at = NOW()
       RETURNING *`,
       [
-        bill.id,
+        billId,
         req.tenantId,
         bill.billNumber,
         bill.contactId,
@@ -95,19 +151,29 @@ router.post('/', async (req: TenantRequest, res) => {
       ]
     );
     const saved = result[0];
+    
     // Emit WebSocket event for real-time sync
-    emitToTenant(req.tenantId!, WS_EVENTS.BILL_CREATED, {
-      bill: saved,
-      userId: req.user?.userId,
-      username: req.user?.username,
-    });
-    res.status(201).json(saved);
+    if (isUpdate) {
+      emitToTenant(req.tenantId!, WS_EVENTS.BILL_UPDATED, {
+        bill: saved,
+        userId: req.user?.userId,
+        username: req.user?.username,
+      });
+    } else {
+      emitToTenant(req.tenantId!, WS_EVENTS.BILL_CREATED, {
+        bill: saved,
+        userId: req.user?.userId,
+        username: req.user?.username,
+      });
+    }
+    
+    res.status(isUpdate ? 200 : 201).json(saved);
   } catch (error: any) {
-    console.error('Error creating bill:', error);
+    console.error('Error creating/updating bill:', error);
     if (error.code === '23505') { // Unique violation
       return res.status(400).json({ error: 'Bill number already exists' });
     }
-    res.status(500).json({ error: 'Failed to create bill' });
+    res.status(500).json({ error: 'Failed to save bill' });
   }
 });
 
