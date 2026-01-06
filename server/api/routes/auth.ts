@@ -31,43 +31,48 @@ router.post('/smart-login', async (req, res) => {
       );
       
       if (tenants.length === 0) {
-        console.log('❌ Smart login: Tenant not found:', tenantId);
-        return res.status(403).json({ error: 'Invalid tenant' });
-      }
-
-      const tenant = tenants[0];
-      
-      // First check if user exists (without is_active check) for better error messages
-      // Use case-insensitive comparison for username
-      const allUsers = await db.query(
-        'SELECT * FROM users WHERE LOWER(username) = LOWER($1) AND tenant_id = $2',
-        [identifier, tenantId]
-      );
-      
-      if (allUsers.length === 0) {
-        console.log('❌ Smart login: User not found:', { identifier, tenantId });
-        // Additional diagnostic: check if user exists with different case
-        const diagnosticUsers = await db.query(
-          'SELECT username FROM users WHERE tenant_id = $1 AND LOWER(username) LIKE LOWER($2)',
-          [tenantId, `%${identifier}%`]
+        // Tenant not found - fall back to auto-resolve mode
+        // This handles cases where localStorage has a stale tenantId
+        console.log('⚠️ Smart login: Tenant not found, falling back to auto-resolve:', tenantId);
+        // Continue to auto-resolve logic below (don't return error)
+      } else {
+        const tenant = tenants[0];
+        
+        // First check if user exists (without is_active check) for better error messages
+        // Use case-insensitive comparison for username
+        const allUsers = await db.query(
+          'SELECT * FROM users WHERE LOWER(username) = LOWER($1) AND tenant_id = $2',
+          [identifier, tenantId]
         );
-        if (diagnosticUsers.length > 0) {
-          console.log('🔍 Diagnostic: Found similar usernames:', diagnosticUsers.map((u: any) => u.username));
+        
+        if (allUsers.length === 0) {
+          console.log('❌ Smart login: User not found:', { identifier, tenantId });
+          // Additional diagnostic: check if user exists with different case
+          const diagnosticUsers = await db.query(
+            'SELECT username FROM users WHERE tenant_id = $1 AND LOWER(username) LIKE LOWER($2)',
+            [tenantId, `%${identifier}%`]
+          );
+          if (diagnosticUsers.length > 0) {
+            console.log('🔍 Diagnostic: Found similar usernames:', diagnosticUsers.map((u: any) => u.username));
+          }
+          return res.status(401).json({ error: 'Invalid credentials', message: 'User not found' });
         }
-        return res.status(401).json({ error: 'Invalid credentials', message: 'User not found' });
-      }
-      
-      // Check if user is active
-      const users = allUsers.filter(u => u.is_active === true || u.is_active === null);
-      
-      if (users.length === 0) {
-        console.log('❌ Smart login: User is inactive:', { identifier, tenantId, is_active: allUsers[0]?.is_active });
-        return res.status(403).json({ error: 'Account disabled', message: 'Your account has been disabled. Please contact your administrator.' });
-      }
+        
+        // Check if user is active
+        const users = allUsers.filter(u => u.is_active === true || u.is_active === null);
+        
+        if (users.length === 0) {
+          console.log('❌ Smart login: User is inactive:', { identifier, tenantId, is_active: allUsers[0]?.is_active });
+          return res.status(403).json({ error: 'Account disabled', message: 'Your account has been disabled. Please contact your administrator.' });
+        }
 
-      matchedTenants = [tenant];
-      matchedUsers = users;
-    } else {
+        matchedTenants = [tenant];
+        matchedUsers = users;
+      }
+    }
+    
+    // Auto-resolve tenant (if tenantId was not provided, or if provided tenantId was invalid)
+    if (matchedUsers.length === 0) {
       // Auto-resolve tenant
       if (isEmail) {
         // Search by email - check tenant email first, then user emails
