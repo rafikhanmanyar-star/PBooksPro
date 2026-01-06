@@ -259,9 +259,9 @@ const ProjectMaterialReport: React.FC = () => {
                                         {reportData.rows.map((item) => (
                                             <tr key={`${item.categoryId}-${item.unit}`} className="hover:bg-slate-50 transition-colors">
                                                 <td className="px-3 py-2 text-slate-800 font-medium">{item.categoryName}</td>
-                                                <td className="px-3 py-2 text-right text-slate-700">{item.totalQuantity.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                                                <td className="px-3 py-2 text-right text-slate-700">{(item.totalQuantity || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
                                                 <td className="px-3 py-2 text-slate-600">{item.unit}</td>
-                                                <td className="px-3 py-2 text-right font-semibold text-slate-800">{CURRENCY} {item.totalAmount.toLocaleString()}</td>
+                                                <td className="px-3 py-2 text-right font-semibold text-slate-800">{CURRENCY} {(item.totalAmount || 0).toLocaleString()}</td>
                                                 <td className="px-3 py-2 text-right text-slate-600">{item.billCount}</td>
                                             </tr>
                                         ))}
@@ -269,10 +269,10 @@ const ProjectMaterialReport: React.FC = () => {
                                     <tfoot className="bg-slate-50 font-bold sticky bottom-0 z-10 shadow-md">
                                         <tr>
                                             <td className="px-3 py-2 text-left">Total</td>
-                                            <td className="px-3 py-2 text-right">{reportData.totalQuantity.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                                            <td className="px-3 py-2 text-right">{(reportData.totalQuantity || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
                                             <td className="px-3 py-2 text-left">-</td>
-                                            <td className="px-3 py-2 text-right">{CURRENCY} {reportData.totalAmount.toLocaleString()}</td>
-                                            <td className="px-3 py-2 text-right">{reportData.rows.reduce((sum, row) => sum + row.billCount, 0)}</td>
+                                            <td className="px-3 py-2 text-right">{CURRENCY} {(reportData.totalAmount || 0).toLocaleString()}</td>
+                                            <td className="px-3 py-2 text-right">{reportData.rows.reduce((sum, row) => sum + (row.billCount || 0), 0)}</td>
                                         </tr>
                                     </tfoot>
                                 </table>

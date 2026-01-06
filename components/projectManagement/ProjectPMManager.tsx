@@ -614,7 +614,7 @@ const ProjectPMManager: React.FC = () => {
 
         // Confirm refresh
         const confirm = await showConfirm(
-            `This will recalculate the allocation for ${getCycleLabel(cycleId, frequency)}. New amount: ${CURRENCY} ${newFeeAmount.toLocaleString()} (Current: ${CURRENCY} ${existingBill.amount.toLocaleString()}). Continue?`,
+            `This will recalculate the allocation for ${getCycleLabel(cycleId, frequency)}. New amount: ${CURRENCY} ${(newFeeAmount || 0).toLocaleString()} (Current: ${CURRENCY} ${(existingBill.amount || 0).toLocaleString()}). Continue?`,
             { title: "Refresh Cycle Allocation", confirmLabel: "Refresh", cancelLabel: "Cancel" }
         );
 
@@ -627,7 +627,7 @@ const ProjectPMManager: React.FC = () => {
         };
 
         dispatch({ type: 'UPDATE_BILL', payload: updatedBill });
-        showToast(`Refreshed allocation for ${getCycleLabel(cycleId, frequency)}. New amount: ${CURRENCY} ${newFeeAmount.toLocaleString()}`, "success");
+        showToast(`Refreshed allocation for ${getCycleLabel(cycleId, frequency)}. New amount: ${CURRENCY} ${(newFeeAmount || 0).toLocaleString()}`, "success");
     };
 
     const handleRunCycle = async () => {
@@ -881,21 +881,21 @@ const ProjectPMManager: React.FC = () => {
                                 <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
                                     <div className="text-slate-400 mb-1 scale-90 origin-left">{ICONS.barChart}</div>
                                     <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Total Expenses</p>
-                                    <p className="text-2xl font-bold text-slate-700">{CURRENCY} {financials.totalExpense.toLocaleString()}</p>
+                                    <p className="text-2xl font-bold text-slate-700">{CURRENCY} {(financials.totalExpense || 0).toLocaleString()}</p>
                                     <p className="text-xs text-slate-400 mt-1">Gross project spending</p>
                                 </div>
 
                                 <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
                                     <div className="text-slate-400 mb-1 scale-90 origin-left">{ICONS.filter}</div>
                                     <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Excluded Costs</p>
-                                    <p className="text-2xl font-bold text-slate-500">{CURRENCY} {financials.excludedCost.toLocaleString()}</p>
+                                    <p className="text-2xl font-bold text-slate-500">{CURRENCY} {(financials.excludedCost || 0).toLocaleString()}</p>
                                     <p className="text-xs text-slate-400 mt-1">Non-commissionable</p>
                                 </div>
 
                                 <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 p-5 rounded-xl text-white shadow-lg shadow-indigo-200">
                                     <div className="text-indigo-200 mb-1 scale-90 origin-left">{ICONS.wallet}</div>
                                     <p className="text-xs font-bold text-indigo-100 uppercase tracking-wider mb-2">Net Cost Base</p>
-                                    <p className="text-2xl font-bold">{CURRENCY} {financials.netBase.toLocaleString()}</p>
+                                    <p className="text-2xl font-bold">{CURRENCY} {(financials.netBase || 0).toLocaleString()}</p>
                                     <p className="text-xs text-indigo-200 mt-1">Commissionable Amount</p>
                                 </div>
 
@@ -903,9 +903,9 @@ const ProjectPMManager: React.FC = () => {
                                     <div className="absolute right-0 top-0 w-20 h-20 bg-emerald-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
                                     <div className="relative text-emerald-500 mb-1 scale-90 origin-left">{ICONS.dollarSign}</div>
                                     <p className="relative text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Balance Due</p>
-                                    <p className="relative text-2xl font-bold text-emerald-600">{CURRENCY} {financials.balance.toLocaleString()}</p>
+                                    <p className="relative text-2xl font-bold text-emerald-600">{CURRENCY} {(financials.balance || 0).toLocaleString()}</p>
                                     <div className="relative flex items-center gap-2 mt-1">
-                                        <span className="text-xs text-slate-400">Accrued: {CURRENCY} {financials.accrued.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                        <span className="text-xs text-slate-400">Accrued: {CURRENCY} {(financials.accrued || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                                     </div>
                                 </div>
                             </div>
