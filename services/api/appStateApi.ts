@@ -155,6 +155,41 @@ export class AppStateApiService {
         contracts: contracts.length,
       });
 
+      // Normalize bills from API (transform snake_case to camelCase)
+      // The server returns snake_case fields, but the client expects camelCase
+      const normalizedBills = bills.map((b: any) => ({
+        id: b.id,
+        billNumber: b.bill_number || b.billNumber,
+        contactId: b.contact_id || b.contactId,
+        amount: typeof b.amount === 'number' ? b.amount : parseFloat(b.amount || '0'),
+        paidAmount: typeof b.paid_amount === 'number' ? b.paid_amount : (typeof b.paidAmount === 'number' ? b.paidAmount : parseFloat(b.paid_amount || b.paidAmount || '0')),
+        status: b.status || 'Unpaid',
+        issueDate: b.issue_date || b.issueDate,
+        dueDate: b.due_date || b.dueDate || undefined,
+        description: b.description || undefined,
+        categoryId: b.category_id || b.categoryId || undefined,
+        projectId: b.project_id || b.projectId || undefined,
+        buildingId: b.building_id || b.buildingId || undefined,
+        propertyId: b.property_id || b.propertyId || undefined,
+        projectAgreementId: b.project_agreement_id || b.projectAgreementId || undefined,
+        contractId: b.contract_id || b.contractId || undefined,
+        staffId: b.staff_id || b.staffId || undefined,
+        documentPath: b.document_path || b.documentPath || undefined,
+        expenseCategoryItems: (() => {
+          const items = b.expense_category_items || b.expenseCategoryItems;
+          if (!items) return undefined;
+          if (typeof items === 'string' && items.trim().length > 0) {
+            try {
+              return JSON.parse(items);
+            } catch {
+              return undefined;
+            }
+          }
+          if (Array.isArray(items)) return items;
+          return undefined;
+        })()
+      }));
+
       // Return partial state with API-loaded data
       // Other entities will remain from initial state or be loaded separately
       return {
@@ -167,7 +202,7 @@ export class AppStateApiService {
         properties,
         units,
         invoices,
-        bills,
+        bills: normalizedBills,
         budgets,
         rentalAgreements,
         projectAgreements,
@@ -429,7 +464,41 @@ export class AppStateApiService {
       id: bill.id || `bill_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
     logger.logCategory('sync', `💾 Syncing bill (POST upsert): ${billWithId.id} - ${billWithId.billNumber}`);
-    return this.billsRepo.create(billWithId);
+    const saved = await this.billsRepo.create(billWithId);
+    
+    // Normalize the response (server returns snake_case, client expects camelCase)
+    return {
+      id: saved.id,
+      billNumber: (saved as any).bill_number || saved.billNumber,
+      contactId: (saved as any).contact_id || saved.contactId,
+      amount: typeof saved.amount === 'number' ? saved.amount : parseFloat(saved.amount || '0'),
+      paidAmount: typeof (saved as any).paid_amount === 'number' ? (saved as any).paid_amount : (typeof saved.paidAmount === 'number' ? saved.paidAmount : parseFloat((saved as any).paid_amount || saved.paidAmount || '0')),
+      status: saved.status || 'Unpaid',
+      issueDate: (saved as any).issue_date || saved.issueDate,
+      dueDate: (saved as any).due_date || saved.dueDate || undefined,
+      description: saved.description || undefined,
+      categoryId: (saved as any).category_id || saved.categoryId || undefined,
+      projectId: (saved as any).project_id || saved.projectId || undefined,
+      buildingId: (saved as any).building_id || saved.buildingId || undefined,
+      propertyId: (saved as any).property_id || saved.propertyId || undefined,
+      projectAgreementId: (saved as any).project_agreement_id || saved.projectAgreementId || undefined,
+      contractId: (saved as any).contract_id || saved.contractId || undefined,
+      staffId: (saved as any).staff_id || saved.staffId || undefined,
+      documentPath: (saved as any).document_path || saved.documentPath || undefined,
+      expenseCategoryItems: (() => {
+        const items = (saved as any).expense_category_items || saved.expenseCategoryItems;
+        if (!items) return undefined;
+        if (typeof items === 'string' && items.trim().length > 0) {
+          try {
+            return JSON.parse(items);
+          } catch {
+            return undefined;
+          }
+        }
+        if (Array.isArray(items)) return items;
+        return undefined;
+      })()
+    };
   }
 
   /**
