@@ -175,6 +175,7 @@ CREATE TABLE IF NOT EXISTS categories (
 CREATE TABLE IF NOT EXISTS transactions (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL,
+    user_id TEXT,
     type TEXT NOT NULL,
     subtype TEXT,
     amount DECIMAL(15, 2) NOT NULL,
@@ -199,6 +200,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
     FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE SET NULL
@@ -490,6 +492,7 @@ CREATE TABLE IF NOT EXISTS user_sessions (
 );
 
 -- Transaction indexes
+CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_project_id ON transactions(project_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type);

@@ -277,6 +277,7 @@ export interface Transaction {
   agreementId?: string;
   batchId?: string;
   isSystem?: boolean;
+  userId?: string;
   children?: Transaction[];
 }
 
