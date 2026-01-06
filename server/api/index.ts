@@ -218,8 +218,12 @@ app.get('/mock-payment', (req, res) => {
     }
 
     // Get base URL for API calls
+    // On Render, RENDER_EXTERNAL_URL is automatically available for the server URL
     const baseUrl = req.headers.origin || process.env.CLIENT_URL || 'http://localhost:5173';
-    const apiUrl = process.env.API_URL || process.env.SERVER_URL || 'http://localhost:3000';
+    const apiUrl = process.env.API_URL || 
+                   process.env.SERVER_URL || 
+                   process.env.RENDER_EXTERNAL_URL ||
+                   'http://localhost:3000';
     
     // Decode return_url if it's URL encoded
     let returnUrl: string;

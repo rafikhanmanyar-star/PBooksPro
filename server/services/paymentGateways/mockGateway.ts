@@ -58,9 +58,11 @@ export class MockGateway extends BaseGateway {
 
     // Return checkout URL that simulates payment page
     // Use server URL from environment or metadata, fallback to relative URL
+    // On Render, RENDER_EXTERNAL_URL is automatically available
     const serverUrl = params.metadata?.serverUrl || 
                       process.env.API_URL || 
                       process.env.SERVER_URL || 
+                      process.env.RENDER_EXTERNAL_URL ||
                       process.env.API_BASE_URL || 
                       'http://localhost:3000';
     

@@ -72,8 +72,10 @@ export class PaymentService {
     const paymentId = `payment_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
 
     // Get server URL for gateway (needed for mock gateway to construct full URLs)
+    // On Render, RENDER_EXTERNAL_URL is automatically available
     const serverUrl = process.env.API_URL || 
                      process.env.SERVER_URL || 
+                     process.env.RENDER_EXTERNAL_URL ||
                      process.env.API_BASE_URL || 
                      'http://localhost:3000';
 
