@@ -289,8 +289,8 @@ router.post('/', async (req: TenantRequest, res) => {
           }
           
           // Update bill's paid_amount and status
-          await db.query(
-            'UPDATE bills SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4',
+          const updatedBill = await db.query(
+            'UPDATE bills SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4 RETURNING *',
             [totalPaid, newStatus, result.bill_id, req.tenantId]
           );
           
@@ -299,6 +299,15 @@ router.post('/', async (req: TenantRequest, res) => {
             totalPaid,
             status: newStatus
           });
+          
+          // Emit WebSocket event to notify other users of bill update
+          if (updatedBill.length > 0) {
+            emitToTenant(req.tenantId!, WS_EVENTS.BILL_UPDATED, {
+              bill: updatedBill[0],
+              userId: req.user?.userId,
+              username: req.user?.username,
+            });
+          }
         }
       } catch (billUpdateError) {
         // Log error but don't fail the transaction save
@@ -332,8 +341,8 @@ router.post('/', async (req: TenantRequest, res) => {
           }
           
           // Update invoice's paid_amount and status
-          await db.query(
-            'UPDATE invoices SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4',
+          const updatedInvoice = await db.query(
+            'UPDATE invoices SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4 RETURNING *',
             [totalPaid, newStatus, result.invoice_id, req.tenantId]
           );
           
@@ -342,6 +351,15 @@ router.post('/', async (req: TenantRequest, res) => {
             totalPaid,
             status: newStatus
           });
+          
+          // Emit WebSocket event to notify other users of invoice update
+          if (updatedInvoice.length > 0) {
+            emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_UPDATED, {
+              invoice: updatedInvoice[0],
+              userId: req.user?.userId,
+              username: req.user?.username,
+            });
+          }
         }
       } catch (invoiceUpdateError) {
         // Log error but don't fail the transaction save
@@ -405,21 +423,36 @@ router.put('/:id', async (req: TenantRequest, res) => {
     const transaction = req.body;
     const query = `
       UPDATE transactions 
-      SET type = $1, amount = $2, date = $3, description = $4, 
-          account_id = $5, category_id = $6, contact_id = $7, project_id = $8,
-          updated_at = NOW()
-      WHERE id = $9 AND tenant_id = $10
+      SET type = $1, subtype = $2, amount = $3, date = $4, description = $5, 
+          account_id = $6, from_account_id = $7, to_account_id = $8, category_id = $9, 
+          contact_id = $10, project_id = $11, building_id = $12, property_id = $13,
+          unit_id = $14, invoice_id = $15, bill_id = $16, payslip_id = $17,
+          contract_id = $18, agreement_id = $19, batch_id = $20, is_system = $21, updated_at = NOW()
+      WHERE id = $22 AND tenant_id = $23
       RETURNING *
     `;
     const result = await db.query(query, [
       transaction.type,
+      transaction.subtype || null,
       transaction.amount,
       transaction.date,
-      transaction.description,
-      transaction.accountId,
-      transaction.categoryId,
-      transaction.contactId,
-      transaction.projectId,
+      transaction.description || null,
+      transaction.accountId || null,
+      transaction.fromAccountId || null,
+      transaction.toAccountId || null,
+      transaction.categoryId || null,
+      transaction.contactId || null,
+      transaction.projectId || null,
+      transaction.buildingId || null,
+      transaction.propertyId || null,
+      transaction.unitId || null,
+      transaction.invoiceId || null,
+      transaction.billId || null,
+      transaction.payslipId || null,
+      transaction.contractId || null,
+      transaction.agreementId || null,
+      transaction.batchId || null,
+      transaction.isSystem || false,
       req.params.id,
       req.tenantId
     ]);
@@ -438,6 +471,90 @@ router.put('/:id', async (req: TenantRequest, res) => {
         oldTransaction[0],
         req
       );
+    }
+    
+    // Update bill's paid_amount if this transaction is linked to a bill (check both old and new bill_id)
+    const billIdToUpdate = result[0].bill_id || oldTransaction[0].bill_id;
+    if (billIdToUpdate) {
+      try {
+        const billTransactions = await db.query(
+          'SELECT SUM(amount) as total_paid FROM transactions WHERE bill_id = $1 AND tenant_id = $2',
+          [billIdToUpdate, req.tenantId]
+        );
+        const totalPaid = parseFloat(billTransactions[0]?.total_paid || '0');
+        
+        const billData = await db.query(
+          'SELECT amount FROM bills WHERE id = $1 AND tenant_id = $2',
+          [billIdToUpdate, req.tenantId]
+        );
+        
+        if (billData.length > 0) {
+          const billAmount = parseFloat(billData[0].amount);
+          let newStatus = 'Unpaid';
+          if (totalPaid >= billAmount - 0.01) {
+            newStatus = 'Paid';
+          } else if (totalPaid > 0.01) {
+            newStatus = 'Partially Paid';
+          }
+          
+          const updatedBill = await db.query(
+            'UPDATE bills SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4 RETURNING *',
+            [totalPaid, newStatus, billIdToUpdate, req.tenantId]
+          );
+          
+          if (updatedBill.length > 0) {
+            emitToTenant(req.tenantId!, WS_EVENTS.BILL_UPDATED, {
+              bill: updatedBill[0],
+              userId: req.user?.userId,
+              username: req.user?.username,
+            });
+          }
+        }
+      } catch (billUpdateError) {
+        console.error('⚠️ PUT /transactions - Failed to update bill paid_amount:', billUpdateError);
+      }
+    }
+    
+    // Update invoice's paid_amount if this transaction is linked to an invoice (check both old and new invoice_id)
+    const invoiceIdToUpdate = result[0].invoice_id || oldTransaction[0].invoice_id;
+    if (invoiceIdToUpdate) {
+      try {
+        const invoiceTransactions = await db.query(
+          'SELECT SUM(amount) as total_paid FROM transactions WHERE invoice_id = $1 AND tenant_id = $2',
+          [invoiceIdToUpdate, req.tenantId]
+        );
+        const totalPaid = parseFloat(invoiceTransactions[0]?.total_paid || '0');
+        
+        const invoiceData = await db.query(
+          'SELECT amount FROM invoices WHERE id = $1 AND tenant_id = $2',
+          [invoiceIdToUpdate, req.tenantId]
+        );
+        
+        if (invoiceData.length > 0) {
+          const invoiceAmount = parseFloat(invoiceData[0].amount);
+          let newStatus = 'Unpaid';
+          if (totalPaid >= invoiceAmount - 0.1) {
+            newStatus = 'Paid';
+          } else if (totalPaid > 0.1) {
+            newStatus = 'Partially Paid';
+          }
+          
+          const updatedInvoice = await db.query(
+            'UPDATE invoices SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4 RETURNING *',
+            [totalPaid, newStatus, invoiceIdToUpdate, req.tenantId]
+          );
+          
+          if (updatedInvoice.length > 0) {
+            emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_UPDATED, {
+              invoice: updatedInvoice[0],
+              userId: req.user?.userId,
+              username: req.user?.username,
+            });
+          }
+        }
+      } catch (invoiceUpdateError) {
+        console.error('⚠️ PUT /transactions - Failed to update invoice paid_amount:', invoiceUpdateError);
+      }
     }
     
     // Emit WebSocket event for real-time sync
@@ -473,6 +590,88 @@ router.delete('/:id', async (req: TenantRequest, res) => {
       'DELETE FROM transactions WHERE id = $1 AND tenant_id = $2 RETURNING id',
       [req.params.id, req.tenantId]
     );
+    
+    // Update bill's paid_amount if this transaction was linked to a bill
+    if (oldTransaction[0].bill_id) {
+      try {
+        const billTransactions = await db.query(
+          'SELECT SUM(amount) as total_paid FROM transactions WHERE bill_id = $1 AND tenant_id = $2',
+          [oldTransaction[0].bill_id, req.tenantId]
+        );
+        const totalPaid = parseFloat(billTransactions[0]?.total_paid || '0');
+        
+        const billData = await db.query(
+          'SELECT amount FROM bills WHERE id = $1 AND tenant_id = $2',
+          [oldTransaction[0].bill_id, req.tenantId]
+        );
+        
+        if (billData.length > 0) {
+          const billAmount = parseFloat(billData[0].amount);
+          let newStatus = 'Unpaid';
+          if (totalPaid >= billAmount - 0.01) {
+            newStatus = 'Paid';
+          } else if (totalPaid > 0.01) {
+            newStatus = 'Partially Paid';
+          }
+          
+          const updatedBill = await db.query(
+            'UPDATE bills SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4 RETURNING *',
+            [totalPaid, newStatus, oldTransaction[0].bill_id, req.tenantId]
+          );
+          
+          if (updatedBill.length > 0) {
+            emitToTenant(req.tenantId!, WS_EVENTS.BILL_UPDATED, {
+              bill: updatedBill[0],
+              userId: req.user?.userId,
+              username: req.user?.username,
+            });
+          }
+        }
+      } catch (billUpdateError) {
+        console.error('⚠️ DELETE /transactions - Failed to update bill paid_amount:', billUpdateError);
+      }
+    }
+    
+    // Update invoice's paid_amount if this transaction was linked to an invoice
+    if (oldTransaction[0].invoice_id) {
+      try {
+        const invoiceTransactions = await db.query(
+          'SELECT SUM(amount) as total_paid FROM transactions WHERE invoice_id = $1 AND tenant_id = $2',
+          [oldTransaction[0].invoice_id, req.tenantId]
+        );
+        const totalPaid = parseFloat(invoiceTransactions[0]?.total_paid || '0');
+        
+        const invoiceData = await db.query(
+          'SELECT amount FROM invoices WHERE id = $1 AND tenant_id = $2',
+          [oldTransaction[0].invoice_id, req.tenantId]
+        );
+        
+        if (invoiceData.length > 0) {
+          const invoiceAmount = parseFloat(invoiceData[0].amount);
+          let newStatus = 'Unpaid';
+          if (totalPaid >= invoiceAmount - 0.1) {
+            newStatus = 'Paid';
+          } else if (totalPaid > 0.1) {
+            newStatus = 'Partially Paid';
+          }
+          
+          const updatedInvoice = await db.query(
+            'UPDATE invoices SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4 RETURNING *',
+            [totalPaid, newStatus, oldTransaction[0].invoice_id, req.tenantId]
+          );
+          
+          if (updatedInvoice.length > 0) {
+            emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_UPDATED, {
+              invoice: updatedInvoice[0],
+              userId: req.user?.userId,
+              username: req.user?.username,
+            });
+          }
+        }
+      } catch (invoiceUpdateError) {
+        console.error('⚠️ DELETE /transactions - Failed to update invoice paid_amount:', invoiceUpdateError);
+      }
+    }
     
     // Log audit entry
     if (req.user) {
