@@ -1445,7 +1445,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 try {
                     const dbService = getDatabaseService();
                     if (dbService.isReady()) {
-                        const appStateRepo = new AppStateRepository();
+                        const appStateRepo = getAppStateRepository();
                         const currentState = await appStateRepo.loadState();
                         if (currentState.currentUser) {
                             currentState.currentUser = null;
@@ -1533,7 +1533,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         // Reload state after migration
                         setInitMessage(`Loading migrated data (${recordCount} records)...`);
                         setInitProgress(95);
-                        const appStateRepo = new AppStateRepository();
+                        const appStateRepo = getAppStateRepository();
                         const migratedState = await appStateRepo.loadState();
 
                         if (isMounted) {
@@ -1571,7 +1571,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             try {
                                 const dbService = getDatabaseService();
                                 if (dbService.isReady()) {
-                                    const appStateRepo = new AppStateRepository();
+                                    const appStateRepo = getAppStateRepository();
                                     const localState = await appStateRepo.loadState();
                                     
                                     // Check if we need to clear data (tenant switch detected)
@@ -2535,7 +2535,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             await dbService.initialize();
                         }
 
-                        const appStateRepo = new AppStateRepository();
+                        const appStateRepo = getAppStateRepository();
                         await appStateRepo.saveState(state);
                         console.log('✅ State saved immediately after data change:', {
                             contacts: state.contacts.length,
@@ -2578,7 +2578,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 try {
                     const dbService = getDatabaseService();
                     if (dbService.isReady()) {
-                        const appStateRepo = await getAppStateRepository();
+                        const appStateRepo = getAppStateRepository();
                         await appStateRepo.saveState(state);
                         console.log('✅ State saved after login');
                     }
@@ -2711,7 +2711,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 };
                                 
                                 // Save API data to local database with proper tenant_id (async, don't await)
-                                const appStateRepo = new AppStateRepository();
+                                const appStateRepo = getAppStateRepository();
                                 appStateRepo.saveState(fullState).catch(err => {
                                     logger.errorCategory('database', '⚠️ Failed to save API data to local database:', err);
                                 });
