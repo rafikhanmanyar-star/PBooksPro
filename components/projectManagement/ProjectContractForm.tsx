@@ -27,7 +27,7 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
         const prefix = 'CONT-';
         let maxNum = 0;
         (state.contracts || []).forEach(c => {
-            if (c.contractNumber.startsWith(prefix)) {
+            if (c.contractNumber && c.contractNumber.startsWith(prefix)) {
                 const part = c.contractNumber.substring(prefix.length);
                 const num = parseInt(part, 10);
                 if (!isNaN(num) && num > maxNum) maxNum = num;

@@ -846,7 +846,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             let updateType = null;
             
             if (invoiceType === InvoiceType.INSTALLMENT) {
-                if (number.startsWith(projectInvoiceSettings.prefix)) {
+                if (number && number.startsWith(projectInvoiceSettings.prefix)) {
                      const numPart = parseInt(number.substring(projectInvoiceSettings.prefix.length));
                      if (!isNaN(numPart) && numPart >= projectInvoiceSettings.nextNumber) {
                          settingsToUpdate = { ...projectInvoiceSettings, nextNumber: numPart + 1 };
@@ -854,7 +854,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                      }
                 }
             } else {
-                if (number.startsWith(rentalInvoiceSettings.prefix)) {
+                if (number && number.startsWith(rentalInvoiceSettings.prefix)) {
                      const numPart = parseInt(number.substring(rentalInvoiceSettings.prefix.length));
                      if (!isNaN(numPart) && numPart >= rentalInvoiceSettings.nextNumber) {
                          settingsToUpdate = { ...rentalInvoiceSettings, nextNumber: numPart + 1 };

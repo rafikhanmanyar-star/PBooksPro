@@ -28,7 +28,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
         
         let maxNum = nextNumber;
         state.rentalAgreements.forEach(a => {
-            if (a.agreementNumber.startsWith(prefix)) {
+            if (a.agreementNumber && a.agreementNumber.startsWith(prefix)) {
                 const numPart = parseInt(a.agreementNumber.slice(prefix.length), 10);
                 if (!isNaN(numPart) && numPart >= maxNum) maxNum = numPart + 1;
             }
@@ -173,7 +173,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     const getNextInvNumber = (currentNextNum: number, prefix: string, padding: number) => {
         let maxNum = currentNextNum;
         state.invoices.forEach(inv => {
-            if (inv.invoiceNumber.startsWith(prefix)) {
+            if (inv.invoiceNumber && inv.invoiceNumber.startsWith(prefix)) {
                 const numPart = parseInt(inv.invoiceNumber.slice(prefix.length), 10);
                 if (!isNaN(numPart) && numPart >= maxNum) maxNum = numPart + 1;
             }

@@ -737,7 +737,7 @@ const ProjectPMManager: React.FC = () => {
             const padding = 5;
             let maxNum = 0;
             state.bills.forEach(b => {
-                if (b.billNumber.startsWith(prefix)) {
+                if (b.billNumber && b.billNumber.startsWith(prefix)) {
                     const part = b.billNumber.substring(prefix.length);
                     if (/^\d+$/.test(part)) {
                         const num = parseInt(part, 10);

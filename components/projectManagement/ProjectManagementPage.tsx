@@ -7,6 +7,7 @@ import SalesReturnsPage from './SalesReturnsPage';
 import BrokerPayouts from '../payouts/BrokerPayouts';
 import { Page, InvoiceType, TransactionType } from '../../types';
 import { useAppContext } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
 
 // Direct Report Imports
@@ -46,7 +47,10 @@ type ProjectView =
 const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPage }) => {
     const { state, dispatch } = useAppContext();
     const { initialTabs, currentUser } = state;
-    const isAdmin = currentUser?.role === 'Admin';
+    const { user } = useAuth();
+    // Check admin role from both AuthContext (cloud auth) and AppContext (local auth)
+    // Organization admins should have full access to all reports
+    const isAdmin = user?.role === 'Admin' || currentUser?.role === 'Admin';
     
     // Detect Mobile
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);

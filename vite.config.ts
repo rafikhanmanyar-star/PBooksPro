@@ -41,7 +41,7 @@ export default defineConfig({
   assetsInclude: ['**/*.wasm'], // Include WASM files as assets
   optimizeDeps: {
     exclude: ['sql.js'], // Exclude sql.js from pre-bundling
-    include: ['react', 'react-dom'], // Ensure React is pre-bundled and deduplicated
+    include: ['react', 'react-dom', 'socket.io-client'], // Ensure React and socket.io-client are pre-bundled
       esbuildOptions: {
       define: {
         global: 'globalThis',
@@ -53,14 +53,14 @@ export default defineConfig({
     // Node.js modules (fs, path, crypto) are externalized by sql.js internally
     dedupe: ['react', 'react-dom'], // Ensure single React instance
   },
-  // Handle CommonJS modules
-  build: {
-    cssCodeSplit: false,
-    commonjsOptions: {
-      include: [/sql\.js/, /node_modules/],
-      transformMixedEsModules: true,
-      esmExternals: true
-    },
+    // Handle CommonJS modules
+    build: {
+      cssCodeSplit: false,
+      commonjsOptions: {
+        include: [/sql\.js/, /socket\.io-client/, /node_modules/],
+        transformMixedEsModules: true,
+        esmExternals: true
+      },
     // Copy icon.ico to dist folder after build
     rollupOptions: {
       onwarn(warning, warn) {

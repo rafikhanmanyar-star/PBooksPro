@@ -258,7 +258,7 @@ const RecurringInvoicesList: React.FC = () => {
         
         let maxNum = nextNumber;
         state.invoices.forEach(inv => {
-             if (inv.invoiceNumber.startsWith(prefix)) {
+             if (inv.invoiceNumber && inv.invoiceNumber.startsWith(prefix)) {
                  const part = inv.invoiceNumber.substring(prefix.length);
                  if (/^\d+$/.test(part)) {
                      const num = parseInt(part, 10);
@@ -387,7 +387,7 @@ const RecurringInvoicesList: React.FC = () => {
             // Determine safe starting invoice number
             let maxNum = nextNumber;
             state.invoices.forEach(inv => {
-                 if (inv.invoiceNumber.startsWith(prefix)) {
+                 if (inv.invoiceNumber && inv.invoiceNumber.startsWith(prefix)) {
                      const part = inv.invoiceNumber.substring(prefix.length);
                      if (/^\d+$/.test(part)) {
                          const num = parseInt(part, 10);

@@ -120,7 +120,7 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
         
         let maxNum = nextNumber;
         state.rentalAgreements.forEach(a => {
-            if (a.agreementNumber.startsWith(prefix)) {
+            if (a.agreementNumber && a.agreementNumber.startsWith(prefix)) {
                 const numPart = parseInt(a.agreementNumber.slice(prefix.length), 10);
                 if (!isNaN(numPart) && numPart >= maxNum) maxNum = numPart + 1;
             }

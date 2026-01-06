@@ -35,7 +35,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
         let maxExisting = 0;
         // Scan existing agreements to find the highest number for this prefix
         state.projectAgreements.forEach(pa => {
-            if (pa.agreementNumber.startsWith(prefix)) {
+            if (pa.agreementNumber && pa.agreementNumber.startsWith(prefix)) {
                 const part = pa.agreementNumber.substring(prefix.length);
                 if (/^\d+$/.test(part)) {
                     const num = parseInt(part, 10);
@@ -232,7 +232,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
         
         // Scan to ensure we don't duplicate if settings are lagging
         state.invoices.forEach(inv => {
-            if (inv.invoiceNumber.startsWith(prefix)) {
+            if (inv.invoiceNumber && inv.invoiceNumber.startsWith(prefix)) {
                 const part = inv.invoiceNumber.substring(prefix.length);
                 if (/^\d+$/.test(part)) {
                     const num = parseInt(part, 10);
@@ -535,7 +535,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
             });
 
             // Update Next Number in Settings if this number pushes the counter forward
-            if (projectAgreementSettings && agreementNumber.startsWith(projectAgreementSettings.prefix)) {
+            if (projectAgreementSettings && agreementNumber && agreementNumber.startsWith(projectAgreementSettings.prefix)) {
                  const numPart = parseInt(agreementNumber.substring(projectAgreementSettings.prefix.length));
                  if (!isNaN(numPart)) {
                      if (numPart >= projectAgreementSettings.nextNumber) {
