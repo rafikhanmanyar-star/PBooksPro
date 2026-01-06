@@ -246,6 +246,45 @@ export class WebSocketClient {
       this.handleEvent('contract:deleted', data);
     });
 
+    // Building events
+    this.socket.on('building:created', (data: any) => {
+      this.handleEvent('building:created', data);
+    });
+
+    this.socket.on('building:updated', (data: any) => {
+      this.handleEvent('building:updated', data);
+    });
+
+    this.socket.on('building:deleted', (data: any) => {
+      this.handleEvent('building:deleted', data);
+    });
+
+    // Property events
+    this.socket.on('property:created', (data: any) => {
+      this.handleEvent('property:created', data);
+    });
+
+    this.socket.on('property:updated', (data: any) => {
+      this.handleEvent('property:updated', data);
+    });
+
+    this.socket.on('property:deleted', (data: any) => {
+      this.handleEvent('property:deleted', data);
+    });
+
+    // Unit events
+    this.socket.on('unit:created', (data: any) => {
+      this.handleEvent('unit:created', data);
+    });
+
+    this.socket.on('unit:updated', (data: any) => {
+      this.handleEvent('unit:updated', data);
+    });
+
+    this.socket.on('unit:deleted', (data: any) => {
+      this.handleEvent('unit:deleted', data);
+    });
+
     // User connection events
     this.socket.on('user:connected', (data: any) => {
       logger.logCategory('websocket', 'User connected:', data);

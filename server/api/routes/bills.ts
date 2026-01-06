@@ -95,8 +95,12 @@ router.post('/', async (req: TenantRequest, res) => {
       ]
     );
     const saved = result[0];
-    // Emit realtime event
-    emitToTenant(req.tenantId!, WS_EVENTS.BILL_CREATED, saved);
+    // Emit WebSocket event for real-time sync
+    emitToTenant(req.tenantId!, WS_EVENTS.BILL_CREATED, {
+      bill: saved,
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
     res.status(201).json(saved);
   } catch (error: any) {
     console.error('Error creating bill:', error);
@@ -149,7 +153,12 @@ router.put('/:id', async (req: TenantRequest, res) => {
     }
     
     const saved = result[0];
-    emitToTenant(req.tenantId!, WS_EVENTS.BILL_UPDATED, saved);
+    // Emit WebSocket event for real-time sync
+    emitToTenant(req.tenantId!, WS_EVENTS.BILL_UPDATED, {
+      bill: saved,
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
     res.json(saved);
   } catch (error) {
     console.error('Error updating bill:', error);
@@ -170,7 +179,12 @@ router.delete('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Bill not found' });
     }
     
-    emitToTenant(req.tenantId!, WS_EVENTS.BILL_DELETED, { id: req.params.id });
+    // Emit WebSocket event for real-time sync
+    emitToTenant(req.tenantId!, WS_EVENTS.BILL_DELETED, {
+      billId: req.params.id,
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting bill:', error);

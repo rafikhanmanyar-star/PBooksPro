@@ -61,9 +61,11 @@ router.post('/', async (req: TenantRequest, res) => {
     const projectId = project.id || `project_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     console.log('📝 POST /projects - Using project ID:', projectId);
     
+    // Track if this is an update operation
+    let isUpdate = false;
+    
     // Use transaction for data integrity (upsert behavior)
     const result = await db.transaction(async (client) => {
-      let isUpdate = false;
       // Check if project with this ID already exists
       const existing = await client.query(
         'SELECT * FROM projects WHERE id = $1 AND tenant_id = $2',

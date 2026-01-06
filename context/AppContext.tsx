@@ -1874,8 +1874,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 return newState;
             }
 
-                // Sync to API asynchronously (don't block UI)
-                const syncToApi = async () => {
+            // Sync to API asynchronously (don't block UI)
+            const syncToApi = async () => {
                     logger.logCategory('sync', `🚀 syncToApi called for action: ${action.type}`, {
                         actionType: action.type,
                         isAuthenticated: isAuthenticated,
@@ -2229,12 +2229,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     }
                 };
 
-                // Defer API sync to avoid blocking UI
-                if ('requestIdleCallback' in window) {
-                    requestIdleCallback(syncToApi, { timeout: 2000 });
-                } else {
-                    setTimeout(syncToApi, 0);
-                }
+            // Defer API sync to avoid blocking UI
+            if ('requestIdleCallback' in window) {
+                requestIdleCallback(syncToApi, { timeout: 2000 });
+            } else {
+                setTimeout(syncToApi, 0);
             }
         }
 
@@ -2401,7 +2400,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     'budget:created', 'budget:updated', 'budget:deleted',
                     'rental_agreement:created', 'rental_agreement:updated', 'rental_agreement:deleted',
                     'project_agreement:created', 'project_agreement:updated', 'project_agreement:deleted',
-                    'contract:created', 'contract:updated', 'contract:deleted'
+                    'contract:created', 'contract:updated', 'contract:deleted',
+                    'building:created', 'building:updated', 'building:deleted',
+                    'property:created', 'property:updated', 'property:deleted',
+                    'unit:created', 'unit:updated', 'unit:deleted'
                 ];
 
                 const unsubscribers = events.map(evt => ws.on(evt, scheduleRefresh));

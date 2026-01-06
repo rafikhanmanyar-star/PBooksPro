@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
+import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
@@ -60,7 +61,16 @@ router.post('/', async (req: TenantRequest, res) => {
         property.monthlyServiceCharge || null
       ]
     );
-    res.status(201).json(result[0]);
+    const saved = result[0];
+    
+    // Emit WebSocket event for real-time sync
+    emitToTenant(req.tenantId!, WS_EVENTS.PROPERTY_CREATED, {
+      property: saved,
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+    
+    res.status(201).json(saved);
   } catch (error) {
     console.error('Error creating property:', error);
     res.status(500).json({ error: 'Failed to create property' });
@@ -93,6 +103,13 @@ router.put('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Property not found' });
     }
     
+    // Emit WebSocket event for real-time sync
+    emitToTenant(req.tenantId!, WS_EVENTS.PROPERTY_UPDATED, {
+      property: result[0],
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+    
     res.json(result[0]);
   } catch (error) {
     console.error('Error updating property:', error);
@@ -112,6 +129,13 @@ router.delete('/:id', async (req: TenantRequest, res) => {
     if (result.length === 0) {
       return res.status(404).json({ error: 'Property not found' });
     }
+    
+    // Emit WebSocket event for real-time sync
+    emitToTenant(req.tenantId!, WS_EVENTS.PROPERTY_DELETED, {
+      propertyId: req.params.id,
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
     
     res.json({ success: true });
   } catch (error) {

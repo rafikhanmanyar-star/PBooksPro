@@ -40,9 +40,11 @@ router.post('/', async (req: TenantRequest, res) => {
     const accountId = account.id || `account_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     console.log('📝 POST /accounts - Using account ID:', accountId);
     
+    // Track if this is an update operation
+    let isUpdate = false;
+    
     // Use transaction for data integrity (upsert behavior)
     const result = await db.transaction(async (client) => {
-      let isUpdate = false;
       // Check if account with this ID already exists
       const existing = await client.query(
         'SELECT * FROM accounts WHERE id = $1 AND tenant_id = $2',

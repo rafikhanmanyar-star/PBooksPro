@@ -73,6 +73,21 @@ export const WS_EVENTS = {
   CONTRACT_UPDATED: 'contract:updated',
   CONTRACT_DELETED: 'contract:deleted',
   
+  // Buildings
+  BUILDING_CREATED: 'building:created',
+  BUILDING_UPDATED: 'building:updated',
+  BUILDING_DELETED: 'building:deleted',
+  
+  // Properties
+  PROPERTY_CREATED: 'property:created',
+  PROPERTY_UPDATED: 'property:updated',
+  PROPERTY_DELETED: 'property:deleted',
+  
+  // Units
+  UNIT_CREATED: 'unit:created',
+  UNIT_UPDATED: 'unit:updated',
+  UNIT_DELETED: 'unit:deleted',
+  
   // Users
   USER_CREATED: 'user:created',
   USER_UPDATED: 'user:updated',
