@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useLicense } from '../../context/LicenseContext';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import PaymentModal from './PaymentModal';
 import { ICONS } from '../../constants';
 
 const LicenseLockScreen: React.FC = () => {
@@ -10,6 +11,7 @@ const LicenseLockScreen: React.FC = () => {
     const [keyInput, setKeyInput] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [showPaymentModal, setShowPaymentModal] = useState(false);
 
     const handleUnlock = (e: React.FormEvent) => {
         e.preventDefault();
@@ -56,6 +58,22 @@ const LicenseLockScreen: React.FC = () => {
                             {isLoading ? 'Verifying...' : 'Unlock Software'}
                         </Button>
                     </form>
+
+                    <div className="relative">
+                        <div className="absolute inset-0 flex items-center">
+                            <div className="w-full border-t border-slate-200"></div>
+                        </div>
+                        <div className="relative flex justify-center text-sm">
+                            <span className="px-2 bg-white text-slate-500">OR</span>
+                        </div>
+                    </div>
+
+                    <Button 
+                        onClick={() => setShowPaymentModal(true)}
+                        className="w-full justify-center bg-blue-600 hover:bg-blue-700 py-3 text-lg"
+                    >
+                        Renew License Online
+                    </Button>
                     
                     <div className="text-center pt-4 border-t border-slate-100">
                         <p className="text-xs text-slate-400">Contact support: support@myaccountant.com</p>
@@ -63,6 +81,17 @@ const LicenseLockScreen: React.FC = () => {
                 </div>
             </div>
         </div>
+
+        {/* Payment Modal */}
+        <PaymentModal
+            isOpen={showPaymentModal}
+            onClose={() => setShowPaymentModal(false)}
+            onSuccess={() => {
+                setShowPaymentModal(false);
+                // Reload page or refresh license status
+                window.location.reload();
+            }}
+        />
     );
 };
 

@@ -29,7 +29,7 @@ if (result.error && !process.env.DATABASE_URL) {
   }
 })();
 
-import express from 'express';
+import express, { Response, NextFunction } from 'express';
 import cors from 'cors';
 import { Pool } from 'pg';
 import { createServer } from 'http';
@@ -177,8 +177,29 @@ app.post('/api/tenants/register', async (req, res, next) => {
 // Admin routes (admin authentication required)
 app.use('/api/admin', adminRouter);
 
+// Payment webhook endpoint (public, no auth required)
+// Must be defined BEFORE tenantMiddleware to allow gateway callbacks
+// Note: PayFast sends form-encoded data, which is handled by urlencoded middleware
+app.post('/api/payments/webhook/:gateway', async (req, res, next) => {
+  try {
+    const paymentsModule = await import('./routes/payments.js');
+    await paymentsModule.handleWebhookRoute(req, res, next);
+  } catch (error) {
+    console.error('Webhook route error:', error);
+    // Return 200 to prevent gateway retries
+    res.status(200).send('OK');
+  }
+});
+
 // Protected routes (tenant + license authentication required)
 app.use('/api', tenantMiddleware(pool));
+
+// Payment routes (require tenant context but allow expired licenses)
+app.use('/api/payments', (req: any, res: Response, next: NextFunction) => {
+  // Skip license check for payment routes - allow expired tenants to pay
+  next();
+}, paymentsRouter);
+
 app.use('/api', licenseMiddleware());
 
 // Data routes (require tenant context and valid license)

@@ -90,7 +90,8 @@ router.post('/confirm', async (req: TenantRequest, res: Response) => {
 });
 
 // Webhook endpoint for payment gateway callbacks
-router.post('/webhook/:gateway', async (req: Request, res: Response) => {
+// Exported separately for direct access before middleware
+export async function handleWebhookRoute(req: Request, res: Response, next: NextFunction) {
   try {
     const { gateway } = req.params;
     const signature = req.headers['x-signature'] || req.headers['x-payfast-signature'] || req.query.signature;
@@ -118,7 +119,9 @@ router.post('/webhook/:gateway', async (req: Request, res: Response) => {
     // Still return 200 to prevent gateway from retrying invalid requests
     res.status(200).send('OK');
   }
-});
+}
+
+router.post('/webhook/:gateway', handleWebhookRoute);
 
 // Get payment history for tenant
 router.get('/history', async (req: TenantRequest, res: Response) => {
