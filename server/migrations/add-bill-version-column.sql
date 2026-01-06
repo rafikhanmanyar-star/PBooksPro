@@ -11,3 +11,4 @@ CREATE INDEX IF NOT EXISTS idx_bills_id_version ON bills(id, version);
 -- Note: All existing bills will have version = 1
 -- The version will be incremented each time a bill is updated
 
+

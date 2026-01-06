@@ -26,6 +26,7 @@ import { ImportType } from '../../services/importService';
 import BackupRestorePage from './BackupRestorePage';
 import PropertyTransferModal from './PropertyTransferModal';
 import MigratAIWizard from './MigratAIWizard';
+import LicenseManagement from '../license/LicenseManagement';
 import { Property } from '../../types';
 
 interface TableRowData {
@@ -106,6 +107,7 @@ const SettingsPage: React.FC = () => {
             title: 'General',
             items: [
                 { id: 'preferences', label: 'Preferences', icon: ICONS.settings },
+                { id: 'license', label: 'License & Subscription', icon: ICONS.lock || '🔒' },
                 ...(isAdmin && !isMobile ? [{ id: 'users', label: 'Users & Access', icon: ICONS.users }] : []),
                 { id: 'backup', label: 'Backup & Restore', icon: ICONS.download },
                 { id: 'data', label: 'Data Management', icon: ICONS.trash }, // Changed Icon
@@ -803,6 +805,11 @@ const SettingsPage: React.FC = () => {
                         {isTableViewCategory ? renderTable() : null}
                         {activeCategory === 'users' && <UserManagement />}
                         {activeCategory === 'preferences' && renderPreferences()}
+                        {activeCategory === 'license' && (
+                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                                <LicenseManagement />
+                            </div>
+                        )}
                         {activeCategory === 'backup' && <BackupRestorePage />}
                         {activeCategory === 'data' && renderDataManagement()}
                         {activeCategory === 'help' && (

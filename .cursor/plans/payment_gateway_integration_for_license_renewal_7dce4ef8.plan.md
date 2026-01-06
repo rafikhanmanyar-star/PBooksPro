@@ -246,5 +246,3 @@ WEBHOOK_SECRET=your_webhook_secret
 3. Backend API routes
 4. Webhook handling
 5. Frontend payment UI
-6. License renewal integration
-7. Testing and error handling
