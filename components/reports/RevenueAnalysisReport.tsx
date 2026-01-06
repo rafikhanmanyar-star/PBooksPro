@@ -258,26 +258,26 @@ const RevenueAnalysisReport: React.FC = () => {
                                         <td className="px-2 py-2 whitespace-nowrap text-slate-700 font-mono">{row.agreementNumber}</td>
                                         <td className="px-2 py-2 whitespace-normal break-words text-slate-800">{row.projectName}</td>
                                         <td className="px-2 py-2 whitespace-normal break-words text-slate-800">{row.ownerName}</td>
-                                        <td className="px-2 py-2 text-right text-slate-600">{CURRENCY} {row.listPrice.toLocaleString()}</td>
-                                        <td className="px-2 py-2 text-right text-rose-500">({CURRENCY} {row.customerDiscount.toLocaleString()})</td>
-                                        <td className="px-2 py-2 text-right text-rose-500">({CURRENCY} {row.floorDiscount.toLocaleString()})</td>
-                                        <td className="px-2 py-2 text-right text-rose-500">({CURRENCY} {row.lumpSumDiscount.toLocaleString()})</td>
-                                        <td className="px-2 py-2 text-right text-rose-500">({CURRENCY} {row.miscDiscount.toLocaleString()})</td>
-                                        <td className="px-2 py-2 text-right font-medium text-slate-700">{CURRENCY} {row.sellingPrice.toLocaleString()}</td>
-                                        <td className="px-2 py-2 text-right text-slate-500">{CURRENCY} {row.brokerFee.toLocaleString()}</td>
+                                        <td className="px-2 py-2 text-right text-slate-600">{CURRENCY} {(row.listPrice || 0).toLocaleString()}</td>
+                                        <td className="px-2 py-2 text-right text-rose-500">({CURRENCY} {(row.customerDiscount || 0).toLocaleString()})</td>
+                                        <td className="px-2 py-2 text-right text-rose-500">({CURRENCY} {(row.floorDiscount || 0).toLocaleString()})</td>
+                                        <td className="px-2 py-2 text-right text-rose-500">({CURRENCY} {(row.lumpSumDiscount || 0).toLocaleString()})</td>
+                                        <td className="px-2 py-2 text-right text-rose-500">({CURRENCY} {(row.miscDiscount || 0).toLocaleString()})</td>
+                                        <td className="px-2 py-2 text-right font-medium text-slate-700">{CURRENCY} {(row.sellingPrice || 0).toLocaleString()}</td>
+                                        <td className="px-2 py-2 text-right text-slate-500">{CURRENCY} {(row.brokerFee || 0).toLocaleString()}</td>
                                     </tr>
                                 ))}
                             </tbody>
                             <tfoot className="bg-slate-50 font-bold sticky bottom-0 z-10 shadow-md">
                                 <tr>
                                     <td colSpan={3} className="px-2 py-2 text-right">Totals</td>
-                                    <td className="px-2 py-2 text-right">{CURRENCY} {totals.listPrice.toLocaleString()}</td>
-                                    <td className="px-2 py-2 text-right text-rose-600">({CURRENCY} {totals.customerDiscount.toLocaleString()})</td>
-                                    <td className="px-2 py-2 text-right text-rose-600">({CURRENCY} {totals.floorDiscount.toLocaleString()})</td>
-                                    <td className="px-2 py-2 text-right text-rose-600">({CURRENCY} {totals.lumpSumDiscount.toLocaleString()})</td>
-                                    <td className="px-2 py-2 text-right text-rose-600">({CURRENCY} {totals.miscDiscount.toLocaleString()})</td>
-                                    <td className="px-2 py-2 text-right text-emerald-600">{CURRENCY} {totals.sellingPrice.toLocaleString()}</td>
-                                    <td className="px-2 py-2 text-right text-amber-600">{CURRENCY} {totals.brokerFee.toLocaleString()}</td>
+                                    <td className="px-2 py-2 text-right">{CURRENCY} {(totals.listPrice || 0).toLocaleString()}</td>
+                                    <td className="px-2 py-2 text-right text-rose-600">({CURRENCY} {(totals.customerDiscount || 0).toLocaleString()})</td>
+                                    <td className="px-2 py-2 text-right text-rose-600">({CURRENCY} {(totals.floorDiscount || 0).toLocaleString()})</td>
+                                    <td className="px-2 py-2 text-right text-rose-600">({CURRENCY} {(totals.lumpSumDiscount || 0).toLocaleString()})</td>
+                                    <td className="px-2 py-2 text-right text-rose-600">({CURRENCY} {(totals.miscDiscount || 0).toLocaleString()})</td>
+                                    <td className="px-2 py-2 text-right text-emerald-600">{CURRENCY} {(totals.sellingPrice || 0).toLocaleString()}</td>
+                                    <td className="px-2 py-2 text-right text-amber-600">{CURRENCY} {(totals.brokerFee || 0).toLocaleString()}</td>
                                 </tr>
                             </tfoot>
                         </table>

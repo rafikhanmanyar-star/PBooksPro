@@ -407,18 +407,18 @@ const ProjectSummaryReport: React.FC = () => {
                                             {reportData.map(item => (
                                                 <tr key={item.projectId} onClick={() => handleProjectClick(item.projectId)} className="cursor-pointer hover:bg-slate-50">
                                                     <td className="px-3 py-2 whitespace-nowrap font-medium text-slate-800">{item.projectName}</td>
-                                                    <td className="px-3 py-2 text-right text-success">{CURRENCY} {item.income.toLocaleString()}</td>
-                                                    <td className="px-3 py-2 text-right text-danger">{CURRENCY} {item.expense.toLocaleString()}</td>
-                                                    <td className={`px-3 py-2 text-right font-bold ${item.net >= 0 ? 'text-slate-800' : 'text-danger'}`}>{CURRENCY} {item.net.toLocaleString()}</td>
+                                                    <td className="px-3 py-2 text-right text-success">{CURRENCY} {(item.income || 0).toLocaleString()}</td>
+                                                    <td className="px-3 py-2 text-right text-danger">{CURRENCY} {(item.expense || 0).toLocaleString()}</td>
+                                                    <td className={`px-3 py-2 text-right font-bold ${(item.net || 0) >= 0 ? 'text-slate-800' : 'text-danger'}`}>{CURRENCY} {(item.net || 0).toLocaleString()}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
                                         <tfoot className="bg-slate-50 font-bold border-t border-slate-300">
                                             <tr>
                                                 <td className="px-3 py-2 text-right">Totals</td>
-                                                <td className="px-3 py-2 text-right text-success">{CURRENCY} {totals.totalIncome.toLocaleString()}</td>
-                                                <td className="px-3 py-2 text-right text-danger">{CURRENCY} {totals.totalExpense.toLocaleString()}</td>
-                                                <td className={`px-3 py-2 text-right ${totals.totalNet >= 0 ? 'text-slate-800' : 'text-danger'}`}>{CURRENCY} {totals.totalNet.toLocaleString()}</td>
+                                                <td className="px-3 py-2 text-right text-success">{CURRENCY} {(totals.totalIncome || 0).toLocaleString()}</td>
+                                                <td className="px-3 py-2 text-right text-danger">{CURRENCY} {(totals.totalExpense || 0).toLocaleString()}</td>
+                                                <td className={`px-3 py-2 text-right ${(totals.totalNet || 0) >= 0 ? 'text-slate-800' : 'text-danger'}`}>{CURRENCY} {(totals.totalNet || 0).toLocaleString()}</td>
                                             </tr>
                                         </tfoot>
                                     </table>

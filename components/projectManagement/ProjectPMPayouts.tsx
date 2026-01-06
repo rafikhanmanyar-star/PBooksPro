@@ -156,16 +156,16 @@ const ProjectPMPayouts: React.FC = () => {
                             <div className="mt-3 space-y-2 text-sm">
                                 <div className="flex justify-between text-slate-600">
                                     <span>Accrued ({state.pmCostPercentage}%):</span>
-                                    <span className="font-medium">{CURRENCY} {item.accruedFee.toLocaleString()}</span>
+                                    <span className="font-medium">{CURRENCY} {(item.accruedFee || 0).toLocaleString()}</span>
                                 </div>
                                 <div className="flex justify-between text-slate-600">
                                     <span>Paid:</span>
-                                    <span className="font-medium text-emerald-600">{CURRENCY} {item.paidFee.toLocaleString()}</span>
+                                    <span className="font-medium text-emerald-600">{CURRENCY} {(item.paidFee || 0).toLocaleString()}</span>
                                 </div>
                                 <div className="flex justify-between pt-3 border-t border-slate-100 mt-2">
                                     <span className="font-bold text-slate-700">Balance Due:</span>
-                                    <span className={`font-bold ${item.balance > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                        {CURRENCY} {item.balance.toLocaleString()}
+                                    <span className={`font-bold ${(item.balance || 0) > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                        {CURRENCY} {(item.balance || 0).toLocaleString()}
                                     </span>
                                 </div>
                             </div>
@@ -189,7 +189,7 @@ const ProjectPMPayouts: React.FC = () => {
                         <p className="text-sm text-slate-500">Project</p>
                         <p className="font-bold text-slate-800">{selectedBalance?.projectName}</p>
                         <p className="text-sm text-slate-500 mt-2">Outstanding Balance</p>
-                        <p className="font-bold text-rose-600">{CURRENCY} {selectedBalance?.balance.toLocaleString()}</p>
+                        <p className="font-bold text-rose-600">{CURRENCY} {(selectedBalance?.balance || 0).toLocaleString()}</p>
                     </div>
                     <Input label="Payment Amount" type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} />
                     <ComboBox label="Pay From Account" items={accounts} selectedId={paymentAccount} onSelect={item => setPaymentAccount(item?.id || '')} placeholder="Select account" />

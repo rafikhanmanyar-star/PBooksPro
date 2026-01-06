@@ -737,9 +737,9 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                                         {(row.balance || 0) > 0.01 && (
                                                             <button
                                                                 onClick={(e) => { e.stopPropagation(); handleRecordPayment(bill); }}
-                                                                className="text-white bg-indigo-600 hover:bg-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-all shadow-sm"
+                                                                className="text-white bg-indigo-600 hover:bg-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold transition-all shadow-sm"
                                                             >
-                                                                Record
+                                                                Pay
                                                             </button>
                                                         )}
                                                     </div>

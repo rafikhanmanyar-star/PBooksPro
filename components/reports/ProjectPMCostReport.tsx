@@ -268,13 +268,13 @@ const ProjectPMCostReport: React.FC = () => {
                                     <tr key={`${row.projectId}-${row.month}`} className="hover:bg-slate-50">
                                         <td className="px-3 py-2 whitespace-nowrap text-slate-700">{row.month}</td>
                                         <td className="px-3 py-2 whitespace-normal break-words font-medium text-slate-800">{row.projectName}</td>
-                                        <td className="px-3 py-2 text-right text-slate-600">{CURRENCY} {row.totalExpense.toLocaleString()}</td>
-                                        <td className="px-3 py-2 text-right text-slate-500">({CURRENCY} {row.excludedCosts.toLocaleString()})</td>
-                                        <td className="px-3 py-2 text-right font-medium text-slate-700">{CURRENCY} {row.netCostBase.toLocaleString()}</td>
-                                        <td className="px-3 py-2 text-right text-indigo-600">{CURRENCY} {row.accruedFee.toLocaleString()}</td>
-                                        <td className="px-3 py-2 text-right text-emerald-600">{CURRENCY} {row.paidFee.toLocaleString()}</td>
-                                        <td className={`px-3 py-2 text-right font-bold ${row.balance > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
-                                            {CURRENCY} {row.balance.toLocaleString()}
+                                        <td className="px-3 py-2 text-right text-slate-600">{CURRENCY} {(row.totalExpense || 0).toLocaleString()}</td>
+                                        <td className="px-3 py-2 text-right text-slate-500">({CURRENCY} {(row.excludedCosts || 0).toLocaleString()})</td>
+                                        <td className="px-3 py-2 text-right font-medium text-slate-700">{CURRENCY} {(row.netCostBase || 0).toLocaleString()}</td>
+                                        <td className="px-3 py-2 text-right text-indigo-600">{CURRENCY} {(row.accruedFee || 0).toLocaleString()}</td>
+                                        <td className="px-3 py-2 text-right text-emerald-600">{CURRENCY} {(row.paidFee || 0).toLocaleString()}</td>
+                                        <td className={`px-3 py-2 text-right font-bold ${(row.balance || 0) > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                                            {CURRENCY} {(row.balance || 0).toLocaleString()}
                                         </td>
                                     </tr>
                                 ))}
@@ -287,12 +287,12 @@ const ProjectPMCostReport: React.FC = () => {
                             <tfoot className="bg-slate-50 font-bold sticky bottom-0 border-t border-slate-300">
                                 <tr>
                                     <td colSpan={2} className="px-3 py-2 text-right">Totals</td>
-                                    <td className="px-3 py-2 text-right text-slate-600">{CURRENCY} {totals.totalExpense.toLocaleString()}</td>
-                                    <td className="px-3 py-2 text-right text-slate-500">({CURRENCY} {totals.excludedCosts.toLocaleString()})</td>
-                                    <td className="px-3 py-2 text-right text-slate-700">{CURRENCY} {totals.netCostBase.toLocaleString()}</td>
-                                    <td className="px-3 py-2 text-right text-indigo-600">{CURRENCY} {totals.accruedFee.toLocaleString()}</td>
-                                    <td className="px-3 py-2 text-right text-emerald-600">{CURRENCY} {totals.paidFee.toLocaleString()}</td>
-                                    <td className="px-3 py-2 text-right text-rose-600">{CURRENCY} {totals.balance.toLocaleString()}</td>
+                                    <td className="px-3 py-2 text-right text-slate-600">{CURRENCY} {(totals.totalExpense || 0).toLocaleString()}</td>
+                                    <td className="px-3 py-2 text-right text-slate-500">({CURRENCY} {(totals.excludedCosts || 0).toLocaleString()})</td>
+                                    <td className="px-3 py-2 text-right text-slate-700">{CURRENCY} {(totals.netCostBase || 0).toLocaleString()}</td>
+                                    <td className="px-3 py-2 text-right text-indigo-600">{CURRENCY} {(totals.accruedFee || 0).toLocaleString()}</td>
+                                    <td className="px-3 py-2 text-right text-emerald-600">{CURRENCY} {(totals.paidFee || 0).toLocaleString()}</td>
+                                    <td className="px-3 py-2 text-right text-rose-600">{CURRENCY} {(totals.balance || 0).toLocaleString()}</td>
                                 </tr>
                             </tfoot>
                         </table>

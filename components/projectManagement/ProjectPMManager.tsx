@@ -965,11 +965,11 @@ const ProjectPMManager: React.FC = () => {
                                                         </span>
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-right">
-                                                        <span className={`text-sm font-mono font-bold ${item.netBalance > 0 ? 'text-indigo-600' :
-                                                            item.netBalance < 0 ? 'text-emerald-600' :
+                                                        <span className={`text-sm font-mono font-bold ${(item.netBalance || 0) > 0 ? 'text-indigo-600' :
+                                                            (item.netBalance || 0) < 0 ? 'text-emerald-600' :
                                                                 'text-slate-400'
                                                             }`}>
-                                                            {CURRENCY} {item.netBalance.toLocaleString()}
+                                                            {CURRENCY} {(item.netBalance || 0).toLocaleString()}
                                                         </span>
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-center">
