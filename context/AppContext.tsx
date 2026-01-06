@@ -2399,7 +2399,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
                 // Throttle refresh to avoid bursts
                 let pending = false;
-                const scheduleRefresh = () => {
+                const scheduleRefresh = (eventData?: any) => {
+                    // Ignore events from the current user - they already have the data locally
+                    // This prevents the refresh from overwriting optimistic updates
+                    const currentUser = stateRef.current.currentUser;
+                    if (eventData?.userId && currentUser?.id) {
+                        if (eventData.userId === currentUser.id) {
+                            console.log('🔄 Skipping WebSocket refresh - event from current user:', eventData.userId);
+                            return;
+                        }
+                    }
+                    
                     if (pending) return;
                     pending = true;
                     setTimeout(() => {
@@ -2426,7 +2436,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     'unit:created', 'unit:updated', 'unit:deleted'
                 ];
 
-                const unsubscribers = events.map(evt => ws.on(evt, scheduleRefresh));
+                const unsubscribers = events.map(evt => ws.on(evt, (data: any) => scheduleRefresh(data)));
 
                 cleanup = () => {
                     unsubscribers.forEach(unsub => unsub());
