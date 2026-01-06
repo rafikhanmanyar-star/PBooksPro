@@ -706,7 +706,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                                     </div>
                                                 </td>
                                                 <td className="px-3 py-2.5 text-right font-semibold text-slate-700 tabular-nums">
-                                                    {CURRENCY} {row.amount.toLocaleString()}
+                                                    {CURRENCY} {(row.amount || 0).toLocaleString()}
                                                 </td>
                                                 <td className="px-3 py-2.5 text-center">
                                                     <div className="flex items-center justify-center gap-2">
@@ -786,13 +786,13 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                                 <td className="px-3 py-2.5 text-slate-500">{row.projectName}</td>
                                                 <td className="px-3 py-2.5 text-slate-500 italic">{row.vendorName}</td>
                                                 <td className="px-3 py-2.5 text-right font-medium text-emerald-600 tabular-nums">
-                                                    {CURRENCY} {row.amount.toLocaleString()}
+                                                    {CURRENCY} {(row.amount || 0).toLocaleString()}
                                                 </td>
                                                 <td className="px-3 py-2.5 text-center">
                                                     <span className="text-[10px] font-medium text-slate-400 uppercase tracking-tighter">{account?.name || 'Cash/Bank'}</span>
                                                 </td>
                                                 <td className="px-3 py-2.5 text-right italic text-slate-400 tabular-nums">
-                                                    {CURRENCY} {row.amount.toLocaleString()}
+                                                    {CURRENCY} {(row.amount || 0).toLocaleString()}
                                                 </td>
                                                 <td className="px-3 py-2.5"></td>
                                             </tr>
