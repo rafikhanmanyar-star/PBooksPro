@@ -108,7 +108,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       let maxNum = nextNumber;
       // Robust Scanning: Check existing invoices for higher number to avoid duplicates
       state.invoices.forEach(inv => {
-          if (inv.invoiceNumber.startsWith(prefix)) {
+          if (inv.invoiceNumber && inv.invoiceNumber.startsWith(prefix)) {
               const part = inv.invoiceNumber.substring(prefix.length);
               // Ensure we are parsing a valid number part
               if (/^\d+$/.test(part)) {
@@ -129,7 +129,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       let maxNum = 0;
       
       state.bills.forEach(b => {
-          if (b.billNumber.startsWith(prefix)) {
+          if (b.billNumber && b.billNumber.startsWith(prefix)) {
               const part = b.billNumber.substring(prefix.length);
               if (/^\d+$/.test(part)) {
                   const num = parseInt(part, 10);
@@ -146,7 +146,10 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   
   useEffect(() => {
       if (itemToEdit) {
-          setNumber(type === 'invoice' ? (itemToEdit as Invoice).invoiceNumber : (itemToEdit as Bill).billNumber);
+          const invoiceOrBillNumber = type === 'invoice' 
+              ? (itemToEdit as Invoice).invoiceNumber 
+              : (itemToEdit as Bill).billNumber;
+          setNumber(invoiceOrBillNumber || '');
       } else {
           // New Record or Duplicate
           if (type === 'invoice') {
@@ -376,18 +379,18 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   }, [issueDate, type, defaults]);
 
   useEffect(() => {
-    if (!number.trim()) {
+    if (!number || !number.trim()) {
       return;
     }
     
     let isDuplicate = false;
     if (type === 'invoice') {
       isDuplicate = state.invoices.some(
-        inv => inv.invoiceNumber.trim().toLowerCase() === number.trim().toLowerCase() && inv.id !== itemToEdit?.id
+        inv => inv.invoiceNumber && inv.invoiceNumber.trim().toLowerCase() === number.trim().toLowerCase() && inv.id !== itemToEdit?.id
       );
     } else { 
       isDuplicate = state.bills.some(
-        bill => bill.billNumber.trim().toLowerCase() === number.trim().toLowerCase() && bill.id !== itemToEdit?.id
+        bill => bill.billNumber && bill.billNumber.trim().toLowerCase() === number.trim().toLowerCase() && bill.id !== itemToEdit?.id
       );
     }
 
@@ -696,7 +699,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   const handleSubmit = async (e: React.FormEvent, skipClose = false) => {
     if (e) e.preventDefault();
     
-    if (!number.trim()) {
+    if (!number || !number.trim()) {
         await showAlert(`${type === 'invoice' ? 'Invoice' : 'Bill'} number is required.`);
         return;
     }
@@ -711,11 +714,11 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     let isDuplicate = false;
     if (type === 'invoice') {
       isDuplicate = state.invoices.some(
-        inv => inv.invoiceNumber.trim().toLowerCase() === number.trim().toLowerCase() && inv.id !== itemToEdit?.id
+        inv => inv.invoiceNumber && inv.invoiceNumber.trim().toLowerCase() === number.trim().toLowerCase() && inv.id !== itemToEdit?.id
       );
     } else { 
       isDuplicate = state.bills.some(
-        bill => bill.billNumber.trim().toLowerCase() === number.trim().toLowerCase() && bill.id !== itemToEdit?.id
+        bill => bill.billNumber && bill.billNumber.trim().toLowerCase() === number.trim().toLowerCase() && bill.id !== itemToEdit?.id
       );
     }
 
@@ -769,7 +772,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
             // Generate file path
             const fileExtension = documentFile.name.split('.').pop() || 'pdf';
-            const billNumber = number.trim().replace(/[^a-zA-Z0-9]/g, '_');
+            const billNumber = (number || '').trim().replace(/[^a-zA-Z0-9]/g, '_');
             const fileName = `BILL-${billNumber}-${Date.now()}.${fileExtension}`;
             const filePath = `${state.documentStoragePath}/${fileName}`;
 
