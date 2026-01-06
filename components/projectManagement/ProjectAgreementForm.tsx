@@ -143,7 +143,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
             return;
         }
         const isDuplicate = state.projectAgreements.some(
-            pa => pa.agreementNumber.toLowerCase() === agreementNumber.trim().toLowerCase() && pa.id !== agreementToEdit?.id
+            pa => pa.agreementNumber && pa.agreementNumber.toLowerCase() === agreementNumber.trim().toLowerCase() && pa.id !== agreementToEdit?.id
         );
         if (isDuplicate) {
             setAgreementNumberError('This Agreement ID is already in use.');
