@@ -167,19 +167,35 @@ router.post('/', async (req: TenantRequest, res) => {
         console.log('🔄 POST /transactions - Updating existing transaction:', transactionId);
         const updateResult = await client.query(
           `UPDATE transactions 
-           SET type = $1, amount = $2, date = $3, description = $4, 
-               account_id = $5, category_id = $6, contact_id = $7, project_id = $8, updated_at = NOW()
-           WHERE id = $9 AND tenant_id = $10
+           SET type = $1, subtype = $2, amount = $3, date = $4, description = $5, 
+               account_id = $6, from_account_id = $7, to_account_id = $8, category_id = $9, 
+               contact_id = $10, project_id = $11, building_id = $12, property_id = $13,
+               unit_id = $14, invoice_id = $15, bill_id = $16, payslip_id = $17,
+               contract_id = $18, agreement_id = $19, batch_id = $20, is_system = $21, updated_at = NOW()
+           WHERE id = $22 AND tenant_id = $23
            RETURNING *`,
           [
             transaction.type,
+            transaction.subtype || null,
             transaction.amount,
             transaction.date,
             transaction.description || null,
             transaction.accountId || null,
+            transaction.fromAccountId || null,
+            transaction.toAccountId || null,
             transaction.categoryId || null,
             transaction.contactId || null,
             transaction.projectId || null,
+            transaction.buildingId || null,
+            transaction.propertyId || null,
+            transaction.unitId || null,
+            transaction.invoiceId || null,
+            transaction.billId || null,
+            transaction.payslipId || null,
+            transaction.contractId || null,
+            transaction.agreementId || null,
+            transaction.batchId || null,
+            transaction.isSystem || false,
             transactionId,
             req.tenantId
           ]
@@ -190,21 +206,36 @@ router.post('/', async (req: TenantRequest, res) => {
         console.log('➕ POST /transactions - Creating new transaction:', transactionId);
         const insertResult = await client.query(
           `INSERT INTO transactions (
-            id, tenant_id, type, amount, date, description, account_id, 
-            category_id, contact_id, project_id, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+            id, tenant_id, type, subtype, amount, date, description, account_id, 
+            from_account_id, to_account_id, category_id, contact_id, project_id,
+            building_id, property_id, unit_id, invoice_id, bill_id, payslip_id,
+            contract_id, agreement_id, batch_id, is_system, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, NOW(), NOW())
           RETURNING *`,
           [
             transactionId,
             req.tenantId,
             transaction.type,
+            transaction.subtype || null,
             transaction.amount,
             transaction.date,
             transaction.description || null,
             transaction.accountId || null,
+            transaction.fromAccountId || null,
+            transaction.toAccountId || null,
             transaction.categoryId || null,
             transaction.contactId || null,
-            transaction.projectId || null
+            transaction.projectId || null,
+            transaction.buildingId || null,
+            transaction.propertyId || null,
+            transaction.unitId || null,
+            transaction.invoiceId || null,
+            transaction.billId || null,
+            transaction.payslipId || null,
+            transaction.contractId || null,
+            transaction.agreementId || null,
+            transaction.batchId || null,
+            transaction.isSystem || false
           ]
         );
         return insertResult.rows[0];
@@ -230,6 +261,92 @@ router.post('/', async (req: TenantRequest, res) => {
         oldValues,
         req
       );
+    }
+    
+    // Update bill's paid_amount if this transaction is linked to a bill
+    if (result.bill_id) {
+      try {
+        // Calculate total paid amount from all transactions for this bill
+        const billTransactions = await db.query(
+          'SELECT SUM(amount) as total_paid FROM transactions WHERE bill_id = $1 AND tenant_id = $2',
+          [result.bill_id, req.tenantId]
+        );
+        const totalPaid = parseFloat(billTransactions[0]?.total_paid || '0');
+        
+        // Get bill amount to calculate status
+        const billData = await db.query(
+          'SELECT amount FROM bills WHERE id = $1 AND tenant_id = $2',
+          [result.bill_id, req.tenantId]
+        );
+        
+        if (billData.length > 0) {
+          const billAmount = parseFloat(billData[0].amount);
+          let newStatus = 'Unpaid';
+          if (totalPaid >= billAmount - 0.01) {
+            newStatus = 'Paid';
+          } else if (totalPaid > 0.01) {
+            newStatus = 'Partially Paid';
+          }
+          
+          // Update bill's paid_amount and status
+          await db.query(
+            'UPDATE bills SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4',
+            [totalPaid, newStatus, result.bill_id, req.tenantId]
+          );
+          
+          console.log('✅ POST /transactions - Updated bill paid_amount:', {
+            billId: result.bill_id,
+            totalPaid,
+            status: newStatus
+          });
+        }
+      } catch (billUpdateError) {
+        // Log error but don't fail the transaction save
+        console.error('⚠️ POST /transactions - Failed to update bill paid_amount:', billUpdateError);
+      }
+    }
+    
+    // Update invoice's paid_amount if this transaction is linked to an invoice
+    if (result.invoice_id) {
+      try {
+        // Calculate total paid amount from all transactions for this invoice
+        const invoiceTransactions = await db.query(
+          'SELECT SUM(amount) as total_paid FROM transactions WHERE invoice_id = $1 AND tenant_id = $2',
+          [result.invoice_id, req.tenantId]
+        );
+        const totalPaid = parseFloat(invoiceTransactions[0]?.total_paid || '0');
+        
+        // Get invoice amount to calculate status
+        const invoiceData = await db.query(
+          'SELECT amount FROM invoices WHERE id = $1 AND tenant_id = $2',
+          [result.invoice_id, req.tenantId]
+        );
+        
+        if (invoiceData.length > 0) {
+          const invoiceAmount = parseFloat(invoiceData[0].amount);
+          let newStatus = 'Unpaid';
+          if (totalPaid >= invoiceAmount - 0.1) {
+            newStatus = 'Paid';
+          } else if (totalPaid > 0.1) {
+            newStatus = 'Partially Paid';
+          }
+          
+          // Update invoice's paid_amount and status
+          await db.query(
+            'UPDATE invoices SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4',
+            [totalPaid, newStatus, result.invoice_id, req.tenantId]
+          );
+          
+          console.log('✅ POST /transactions - Updated invoice paid_amount:', {
+            invoiceId: result.invoice_id,
+            totalPaid,
+            status: newStatus
+          });
+        }
+      } catch (invoiceUpdateError) {
+        // Log error but don't fail the transaction save
+        console.error('⚠️ POST /transactions - Failed to update invoice paid_amount:', invoiceUpdateError);
+      }
     }
     
     console.log('✅ POST /transactions - Transaction saved successfully:', {
