@@ -10,6 +10,7 @@ import Select from '../ui/Select';
 import { useNotification } from '../../context/NotificationContext';
 import { CURRENCY } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
+import { getAppStateApiService } from '../../services/api/appStateApi';
 
 interface PMLedgerItem {
     id: string;
@@ -205,11 +206,69 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                 }
             });
 
-            dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: transactions });
-            billsToUpdate.forEach(bill => {
-                dispatch({ type: 'UPDATE_BILL', payload: bill });
-            });
-            showToast(`Payment recorded for ${transactions.length} allocation(s).`, "success");
+            try {
+                // Try to save transactions via API first to catch conflicts early
+                const apiService = getAppStateApiService();
+                const savedTransactions: Transaction[] = [];
+                const failedBills: { billId: string; error: any }[] = [];
+
+                // Process each transaction individually to handle errors per bill
+                for (const tx of transactions) {
+                    try {
+                        const saved = await apiService.saveTransaction(tx);
+                        savedTransactions.push(saved as Transaction);
+                    } catch (error: any) {
+                        if (tx.billId) {
+                            failedBills.push({ billId: tx.billId, error });
+                        }
+                        if (error.status === 409 || error.code === 'BILL_LOCKED' || error.code === 'BILL_VERSION_MISMATCH') {
+                            console.warn(`Payment conflict for bill ${tx.billId}:`, error.message);
+                        } else if (error.status === 400 && error.code === 'PAYMENT_OVERPAYMENT') {
+                            console.error(`Overpayment for bill ${tx.billId}:`, error.message);
+                        }
+                    }
+                }
+
+                if (savedTransactions.length === 0) {
+                    const firstError = failedBills[0]?.error;
+                    if (firstError?.status === 409 || firstError?.code === 'BILL_LOCKED' || firstError?.code === 'BILL_VERSION_MISMATCH') {
+                        await showAlert(
+                            `Payment conflict detected. One or more bills are being processed by another user. Please refresh and try again.`
+                        );
+                    } else if (firstError?.status === 400 && firstError?.code === 'PAYMENT_OVERPAYMENT') {
+                        await showAlert(
+                            `Overpayment detected. ${firstError.message || 'One or more payments exceed the bill amount.'}`
+                        );
+                    } else {
+                        await showAlert(
+                            `Failed to process payments: ${firstError?.message || 'Unknown error occurred'}`
+                        );
+                    }
+                    return;
+                }
+
+                if (savedTransactions.length > 0) {
+                    dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: savedTransactions });
+                    // Only update bills that had successful transactions
+                    const successfulBillIds = new Set(savedTransactions.map(tx => tx.billId).filter(Boolean));
+                    billsToUpdate.filter(bill => successfulBillIds.has(bill.id)).forEach(bill => {
+                        dispatch({ type: 'UPDATE_BILL', payload: bill });
+                    });
+                    
+                    if (failedBills.length > 0) {
+                        showToast(
+                            `Payment recorded for ${savedTransactions.length} allocation(s). ${failedBills.length} payment(s) failed due to conflicts. Please refresh and try again.`,
+                            'warning'
+                        );
+                    } else {
+                        showToast(`Payment recorded for ${savedTransactions.length} allocation(s).`, "success");
+                    }
+                }
+            } catch (error: any) {
+                console.error('Error processing PM payment:', error);
+                await showAlert(`Payment failed: ${error.message || 'An unexpected error occurred while processing payments.'}`);
+                return;
+            }
 
         } else {
             // EQUITY TRANSFER to PM Project
@@ -293,11 +352,69 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                 });
             });
 
-            dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: transactions });
-            billsToUpdate.forEach(bill => {
-                dispatch({ type: 'UPDATE_BILL', payload: bill });
-            });
-            showToast(`Transferred ${transactions.length / 2} allocation(s) to PM equity.`, "success");
+            try {
+                // Try to save transactions via API first to catch conflicts early
+                const apiService = getAppStateApiService();
+                const savedTransactions: Transaction[] = [];
+                const failedBills: { billId: string; error: any }[] = [];
+
+                // Process each transaction individually to handle errors per bill
+                for (const tx of transactions) {
+                    try {
+                        const saved = await apiService.saveTransaction(tx);
+                        savedTransactions.push(saved as Transaction);
+                    } catch (error: any) {
+                        if (tx.billId) {
+                            failedBills.push({ billId: tx.billId, error });
+                        }
+                        if (error.status === 409 || error.code === 'BILL_LOCKED' || error.code === 'BILL_VERSION_MISMATCH') {
+                            console.warn(`Payment conflict for bill ${tx.billId}:`, error.message);
+                        } else if (error.status === 400 && error.code === 'PAYMENT_OVERPAYMENT') {
+                            console.error(`Overpayment for bill ${tx.billId}:`, error.message);
+                        }
+                    }
+                }
+
+                if (savedTransactions.length === 0) {
+                    const firstError = failedBills[0]?.error;
+                    if (firstError?.status === 409 || firstError?.code === 'BILL_LOCKED' || firstError?.code === 'BILL_VERSION_MISMATCH') {
+                        await showAlert(
+                            `Payment conflict detected. One or more bills are being processed by another user. Please refresh and try again.`
+                        );
+                    } else if (firstError?.status === 400 && firstError?.code === 'PAYMENT_OVERPAYMENT') {
+                        await showAlert(
+                            `Overpayment detected. ${firstError.message || 'One or more payments exceed the bill amount.'}`
+                        );
+                    } else {
+                        await showAlert(
+                            `Failed to process transfers: ${firstError?.message || 'Unknown error occurred'}`
+                        );
+                    }
+                    return;
+                }
+
+                if (savedTransactions.length > 0) {
+                    dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: savedTransactions });
+                    // Only update bills that had successful transactions
+                    const successfulBillIds = new Set(savedTransactions.filter(tx => tx.billId).map(tx => tx.billId));
+                    billsToUpdate.filter(bill => successfulBillIds.has(bill.id)).forEach(bill => {
+                        dispatch({ type: 'UPDATE_BILL', payload: bill });
+                    });
+                    
+                    if (failedBills.length > 0) {
+                        showToast(
+                            `Transferred ${savedTransactions.length / 2} allocation(s) to PM equity. ${failedBills.length} transfer(s) failed due to conflicts. Please refresh and try again.`,
+                            'warning'
+                        );
+                    } else {
+                        showToast(`Transferred ${savedTransactions.length / 2} allocation(s) to PM equity.`, "success");
+                    }
+                }
+            } catch (error: any) {
+                console.error('Error processing PM equity transfer:', error);
+                await showAlert(`Transfer failed: ${error.message || 'An unexpected error occurred while processing transfers.'}`);
+                return;
+            }
         }
 
         onClose();

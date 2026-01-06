@@ -947,5 +947,255 @@ router.delete('/:id', async (req: TenantRequest, res) => {
   }
 });
 
+// POST batch transactions - For bulk payment operations
+router.post('/batch', async (req: TenantRequest, res) => {
+  try {
+    const db = getDb();
+    const transactions = Array.isArray(req.body) ? req.body : req.body.transactions || [];
+    
+    if (!transactions || transactions.length === 0) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'At least one transaction is required'
+      });
+    }
+    
+    const results: Array<{
+      transactionId: string;
+      success: boolean;
+      error?: string;
+      transaction?: any;
+    }> = [];
+    
+    // Process each transaction individually with proper locking
+    for (const transaction of transactions) {
+      try {
+        const transactionId = transaction.id || `transaction_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        const savedTransaction = await db.transaction(async (client) => {
+          // Lock bill if transaction is linked to a bill
+          if (transaction.billId && !transaction.id) { // Only lock for new transactions
+            try {
+              const billLock = await client.query(
+                'SELECT * FROM bills WHERE id = $1 AND tenant_id = $2 FOR UPDATE NOWAIT',
+                [transaction.billId, req.tenantId]
+              );
+              
+              if (billLock.rows.length === 0) {
+                throw { code: 'BILL_NOT_FOUND', message: 'Bill not found' };
+              }
+              
+              const bill = billLock.rows[0];
+              const billAmount = parseFloat(bill.amount);
+              const currentPaidAmount = parseFloat(bill.paid_amount || '0');
+              const paymentAmount = parseFloat(transaction.amount);
+              
+              // Validate overpayment
+              if (currentPaidAmount + paymentAmount > billAmount + 0.01) {
+                const overpayment = (currentPaidAmount + paymentAmount) - billAmount;
+                throw {
+                  code: 'PAYMENT_OVERPAYMENT',
+                  message: `Payment would exceed bill amount. Overpayment: ${overpayment.toFixed(2)}`,
+                  overpayment: overpayment
+                };
+              }
+            } catch (lockError: any) {
+              if (lockError.code === '55P03' || lockError.code === 'LOCK_NOT_AVAILABLE') {
+                throw {
+                  code: 'BILL_LOCKED',
+                  message: 'Bill is currently being processed by another user',
+                  retryAfter: 1
+                };
+              }
+              throw lockError;
+            }
+          }
+          
+          // Check if transaction already exists
+          const existing = await client.query(
+            'SELECT * FROM transactions WHERE id = $1 AND tenant_id = $2',
+            [transactionId, req.tenantId]
+          );
+          
+          let savedTransaction;
+          if (existing.rows.length > 0) {
+            // Update existing
+            const updateResult = await client.query(
+              `UPDATE transactions 
+               SET type = $1, subtype = $2, amount = $3, date = $4, description = $5, 
+                   account_id = $6, from_account_id = $7, to_account_id = $8, category_id = $9, 
+                   contact_id = $10, project_id = $11, building_id = $12, property_id = $13,
+                   unit_id = $14, invoice_id = $15, bill_id = $16, payslip_id = $17,
+                   contract_id = $18, agreement_id = $19, batch_id = $20, is_system = $21, 
+                   user_id = $22, updated_at = NOW()
+               WHERE id = $23 AND tenant_id = $24
+               RETURNING *`,
+              [
+                transaction.type,
+                transaction.subtype || null,
+                transaction.amount,
+                transaction.date,
+                transaction.description || null,
+                transaction.accountId || null,
+                transaction.fromAccountId || null,
+                transaction.toAccountId || null,
+                transaction.categoryId || null,
+                transaction.contactId || null,
+                transaction.projectId || null,
+                transaction.buildingId || null,
+                transaction.propertyId || null,
+                transaction.unitId || null,
+                transaction.invoiceId || null,
+                transaction.billId || null,
+                transaction.payslipId || null,
+                transaction.contractId || null,
+                transaction.agreementId || null,
+                transaction.batchId || null,
+                transaction.isSystem || false,
+                req.user?.userId || null,
+                transactionId,
+                req.tenantId
+              ]
+            );
+            savedTransaction = updateResult.rows[0];
+          } else {
+            // Create new
+            const insertResult = await client.query(
+              `INSERT INTO transactions (
+                id, tenant_id, user_id, type, subtype, amount, date, description, account_id, 
+                from_account_id, to_account_id, category_id, contact_id, project_id,
+                building_id, property_id, unit_id, invoice_id, bill_id, payslip_id,
+                contract_id, agreement_id, batch_id, is_system, created_at, updated_at
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, NOW(), NOW())
+              RETURNING *`,
+              [
+                transactionId,
+                req.tenantId,
+                req.user?.userId || null,
+                transaction.type,
+                transaction.subtype || null,
+                transaction.amount,
+                transaction.date,
+                transaction.description || null,
+                transaction.accountId || null,
+                transaction.fromAccountId || null,
+                transaction.toAccountId || null,
+                transaction.categoryId || null,
+                transaction.contactId || null,
+                transaction.projectId || null,
+                transaction.buildingId || null,
+                transaction.propertyId || null,
+                transaction.unitId || null,
+                transaction.invoiceId || null,
+                transaction.billId || null,
+                transaction.payslipId || null,
+                transaction.contractId || null,
+                transaction.agreementId || null,
+                transaction.batchId || null,
+                transaction.isSystem || false
+              ]
+            );
+            savedTransaction = insertResult.rows[0];
+            
+            // Update bill if linked
+            if (transaction.billId && !transaction.id) {
+              const billTransactions = await client.query(
+                'SELECT SUM(amount) as total_paid FROM transactions WHERE bill_id = $1 AND tenant_id = $2',
+                [transaction.billId, req.tenantId]
+              );
+              const totalPaid = parseFloat(billTransactions.rows[0]?.total_paid || '0');
+              
+              const billData = await client.query(
+                'SELECT amount, version FROM bills WHERE id = $1 AND tenant_id = $2',
+                [transaction.billId, req.tenantId]
+              );
+              
+              if (billData.rows.length > 0) {
+                const billAmount = parseFloat(billData.rows[0].amount);
+                const currentVersion = parseInt(billData.rows[0].version || '1');
+                let newStatus = 'Unpaid';
+                if (totalPaid >= billAmount - 0.01) {
+                  newStatus = 'Paid';
+                } else if (totalPaid > 0.01) {
+                  newStatus = 'Partially Paid';
+                }
+                
+                const updatedBill = await client.query(
+                  `UPDATE bills 
+                   SET paid_amount = $1, status = $2, version = version + 1, updated_at = NOW() 
+                   WHERE id = $3 AND tenant_id = $4 AND version = $5
+                   RETURNING *`,
+                  [totalPaid, newStatus, transaction.billId, req.tenantId, currentVersion]
+                );
+                
+                if (updatedBill.rows.length === 0) {
+                  throw {
+                    code: 'BILL_VERSION_MISMATCH',
+                    message: 'Bill was modified by another user'
+                  };
+                }
+                
+                // Emit WebSocket event for bill update
+                if (updatedBill.rows.length > 0) {
+                  emitToTenant(req.tenantId!, WS_EVENTS.BILL_UPDATED, {
+                    bill: updatedBill.rows[0],
+                    userId: req.user?.userId,
+                    username: req.user?.username,
+                  });
+                }
+              }
+            }
+          }
+          
+          return savedTransaction;
+        });
+        
+        // Transaction succeeded
+        results.push({
+          transactionId,
+          success: true,
+          transaction: savedTransaction
+        });
+        
+        // Emit WebSocket event for transaction
+        emitToTenant(req.tenantId!, WS_EVENTS.TRANSACTION_CREATED, {
+          transaction: savedTransaction,
+          userId: req.user?.userId,
+          username: req.user?.username,
+        });
+        
+      } catch (error: any) {
+        // Transaction failed
+        const transactionId = transaction.id || `transaction_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        results.push({
+          transactionId,
+          success: false,
+          error: error.message || error.code || 'Unknown error',
+          ...(error.code && { code: error.code }),
+          ...(error.overpayment && { overpayment: error.overpayment })
+        });
+      }
+    }
+    
+    const successCount = results.filter(r => r.success).length;
+    const failureCount = results.filter(r => !r.success).length;
+    
+    res.status(200).json({
+      success: failureCount === 0,
+      total: transactions.length,
+      succeeded: successCount,
+      failed: failureCount,
+      results
+    });
+    
+  } catch (error: any) {
+    console.error('Error processing batch transactions:', error);
+    res.status(500).json({ 
+      error: 'Failed to process batch transactions',
+      message: error.message || 'Internal server error'
+    });
+  }
+});
+
 export default router;
 

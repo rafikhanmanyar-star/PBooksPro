@@ -149,28 +149,16 @@ export class PaymentService {
       [paymentId]
     );
 
-    // Renew license
-    const success = await this.licenseService.renewLicense(
+    // Renew license with payment tracking
+    const success = await this.licenseService.renewLicenseWithPayment(
       payment.tenant_id,
-      payment.license_type as 'monthly' | 'yearly'
+      payment.license_type as 'monthly' | 'yearly',
+      paymentId
     );
 
     if (!success) {
       throw new Error('License renewal failed');
     }
-
-    // Link payment to license history
-    await this.db.query(
-      `UPDATE license_history 
-       SET payment_id = $1 
-       WHERE tenant_id = $2 
-       AND action = 'license_renewed' 
-       AND created_at > NOW() - INTERVAL '1 minute'
-       AND payment_id IS NULL
-       ORDER BY created_at DESC
-       LIMIT 1`,
-      [paymentId, payment.tenant_id]
-    );
 
     console.log(`Payment ${paymentId} processed successfully, license renewed for tenant ${payment.tenant_id}`);
   }

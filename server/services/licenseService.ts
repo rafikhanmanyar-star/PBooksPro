@@ -262,6 +262,17 @@ export class LicenseService {
    * Renew license
    */
   async renewLicense(tenantId: string, licenseType: 'monthly' | 'yearly'): Promise<boolean> {
+    return this.renewLicenseWithPayment(tenantId, licenseType);
+  }
+
+  /**
+   * Renew license with optional payment tracking
+   */
+  async renewLicenseWithPayment(
+    tenantId: string, 
+    licenseType: 'monthly' | 'yearly',
+    paymentId?: string
+  ): Promise<boolean> {
     const now = new Date();
     let expiryDate = new Date(now);
     
@@ -283,11 +294,17 @@ export class LicenseService {
       [licenseType, expiryDate, now, tenantId]
     );
     
-    await this.logLicenseHistory(tenantId, null, 'license_renewed', {
-      from_status: 'expired',
+    // Get current license status to determine from_status
+    const currentStatus = await this.checkLicenseStatus(tenantId);
+    const fromStatus = currentStatus.isExpired ? 'expired' : currentStatus.licenseStatus;
+    
+    // Log history with payment link if provided
+    const historyId = await this.logLicenseHistory(tenantId, null, 'license_renewed', {
+      from_status: fromStatus,
       to_status: 'active',
+      from_type: currentStatus.licenseType,
       to_type: licenseType
-    });
+    }, paymentId);
     
     return true;
   }
@@ -348,13 +365,14 @@ export class LicenseService {
     tenantId: string,
     licenseKeyId: string | null,
     action: string,
-    data: any
-  ): Promise<void> {
+    data: any,
+    paymentId?: string
+  ): Promise<string> {
     const historyId = `history_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
     await this.db.query(
       `INSERT INTO license_history (
-        id, tenant_id, license_key_id, action, from_status, to_status, from_type, to_type
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        id, tenant_id, license_key_id, action, from_status, to_status, from_type, to_type, payment_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         historyId,
         tenantId,
@@ -363,9 +381,11 @@ export class LicenseService {
         data.from_status || null,
         data.to_status || null,
         data.from_type || null,
-        data.to_type || null
+        data.to_type || null,
+        paymentId || null
       ]
     );
+    return historyId;
   }
 }
 
