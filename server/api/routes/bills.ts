@@ -98,6 +98,21 @@ router.post('/', async (req: TenantRequest, res) => {
     );
     const isUpdate = existing.length > 0;
     
+    // Check if bill number already exists for this tenant (only for new bills or when bill number is being changed)
+    if (!isUpdate || (isUpdate && existing[0].bill_number !== bill.billNumber)) {
+      const duplicateBill = await db.query(
+        'SELECT id FROM bills WHERE bill_number = $1 AND tenant_id = $2 AND id != $3',
+        [bill.billNumber, req.tenantId, billId]
+      );
+      
+      if (duplicateBill.length > 0) {
+        return res.status(400).json({ 
+          error: 'Bill number already exists',
+          message: `A bill with number "${bill.billNumber}" already exists for this organization.`
+        });
+      }
+    }
+    
     // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
     const result = await db.query(
       `INSERT INTO bills (
@@ -171,9 +186,19 @@ router.post('/', async (req: TenantRequest, res) => {
   } catch (error: any) {
     console.error('Error creating/updating bill:', error);
     if (error.code === '23505') { // Unique violation
-      return res.status(400).json({ error: 'Bill number already exists' });
+      // Check if it's a bill_number constraint violation
+      if (error.constraint && error.constraint.includes('bill_number')) {
+        return res.status(400).json({ 
+          error: 'Bill number already exists',
+          message: `A bill with number "${bill.billNumber}" already exists. Please use a unique bill number.`
+        });
+      }
+      return res.status(400).json({ 
+        error: 'Duplicate entry',
+        message: 'A bill with this identifier already exists.'
+      });
     }
-    res.status(500).json({ error: 'Failed to save bill' });
+    res.status(500).json({ error: 'Failed to save bill', message: error.message });
   }
 });
 
