@@ -77,6 +77,13 @@ const SettingsPage: React.FC = () => {
         return () => window.removeEventListener('open-backup-restore-section', handleOpenBackup);
     }, []);
 
+    // Close dropdown when navigating away from accounts view
+    useEffect(() => {
+        if (activeCategory !== 'accounts') {
+            setIsAddNewMenuOpen(false);
+        }
+    }, [activeCategory]);
+
     const [searchQuery, setSearchQuery] = useState('');
     const [isErrorLogOpen, setIsErrorLogOpen] = useState(false);
     const [isTransactionLogOpen, setIsTransactionLogOpen] = useState(false);
@@ -88,6 +95,7 @@ const SettingsPage: React.FC = () => {
     const [ledgerModalState, setLedgerModalState] = useState<{ isOpen: boolean; entityId: string; entityType: 'account' | 'category' | 'contact' | 'project' | 'building' | 'property' | 'unit'; entityName: string } | null>(null);
     const [propertyToTransfer, setPropertyToTransfer] = useState<Property | null>(null);
     const [isMigrationWizardOpen, setIsMigrationWizardOpen] = useState(false);
+    const [isAddNewMenuOpen, setIsAddNewMenuOpen] = useState(false);
 
     // Check if user is admin - use AuthContext user (cloud auth) or fallback to AppContext currentUser (local)
     const isAdmin = authUser?.role === 'Admin' || state.currentUser?.role === 'Admin';
@@ -346,7 +354,10 @@ const SettingsPage: React.FC = () => {
                 case 'units': type = 'UNIT'; break;
             }
         }
-        if (type) dispatch({ type: 'SET_EDITING_ENTITY', payload: { type, id: '' } });
+        if (type) {
+            dispatch({ type: 'SET_EDITING_ENTITY', payload: { type, id: '' } });
+            setIsAddNewMenuOpen(false);
+        }
     };
 
     const handleEdit = (e: React.MouseEvent, item: TableRowData) => {
@@ -733,10 +744,54 @@ const SettingsPage: React.FC = () => {
                                     </div>
                                     {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><div className="w-4 h-4">{ICONS.x}</div></button>}
                                 </div>
-                                <Button onClick={() => handleAddNew()} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 border-0 rounded-lg px-4 py-2.5 flex items-center gap-2">
-                                    <div className="w-5 h-5">{ICONS.plus}</div>
-                                    <span className="font-semibold">Add New</span>
-                                </Button>
+                                {activeCategory === 'accounts' ? (
+                                    <div className="relative">
+                                        <Button 
+                                            onClick={() => setIsAddNewMenuOpen(!isAddNewMenuOpen)} 
+                                            className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 border-0 rounded-lg px-4 py-2.5 flex items-center gap-2"
+                                        >
+                                            <div className="w-5 h-5">{ICONS.plus}</div>
+                                            <span className="font-semibold">Add New</span>
+                                            <div className="w-4 h-4">{ICONS.chevronDown}</div>
+                                        </Button>
+                                        {isAddNewMenuOpen && (
+                                            <>
+                                                <div 
+                                                    className="fixed inset-0 z-10" 
+                                                    onClick={() => setIsAddNewMenuOpen(false)}
+                                                />
+                                                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-slate-200 z-20 py-1">
+                                                    <button
+                                                        onClick={() => handleAddNew('ACCOUNT')}
+                                                        className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2 transition-colors"
+                                                    >
+                                                        <div className="w-4 h-4">{ICONS.wallet}</div>
+                                                        <span>Account</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleAddNew('CATEGORY_INCOME')}
+                                                        className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-center gap-2 transition-colors"
+                                                    >
+                                                        <div className="w-4 h-4">{ICONS.arrowUp}</div>
+                                                        <span>Income Category</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleAddNew('CATEGORY_EXPENSE')}
+                                                        className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-rose-50 hover:text-rose-700 flex items-center gap-2 transition-colors"
+                                                    >
+                                                        <div className="w-4 h-4">{ICONS.arrowDown}</div>
+                                                        <span>Expense Category</span>
+                                                    </button>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <Button onClick={() => handleAddNew()} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 border-0 rounded-lg px-4 py-2.5 flex items-center gap-2">
+                                        <div className="w-5 h-5">{ICONS.plus}</div>
+                                        <span className="font-semibold">Add New</span>
+                                    </Button>
+                                )}
                             </>
                         )}
                     </div>
