@@ -108,8 +108,8 @@ router.post('/', async (req: TenantRequest, res) => {
         list_price_category_id, customer_discount_category_id,
         floor_discount_category_id, lump_sum_discount_category_id,
         misc_discount_category_id, selling_price_category_id, rebate_category_id,
-        created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25,
+        user_id, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
                 COALESCE((SELECT created_at FROM project_agreements WHERE id = $1), NOW()), NOW())
       ON CONFLICT (id) 
       DO UPDATE SET
@@ -136,26 +136,27 @@ router.post('/', async (req: TenantRequest, res) => {
         misc_discount_category_id = EXCLUDED.misc_discount_category_id,
         selling_price_category_id = EXCLUDED.selling_price_category_id,
         rebate_category_id = EXCLUDED.rebate_category_id,
+        user_id = EXCLUDED.user_id,
         updated_at = NOW()
       RETURNING *`,
       [
         agreementId,
         req.tenantId,
-        agreement.agreementNumber,
-        agreement.clientId,
-        agreement.projectId,
+        agreement.agreementNumber || null,
+        agreement.clientId || null,
+        agreement.projectId || null,
         JSON.stringify(agreement.unitIds || []),
-        agreement.listPrice,
+        agreement.listPrice || 0,
         agreement.customerDiscount || 0,
         agreement.floorDiscount || 0,
         agreement.lumpSumDiscount || 0,
         agreement.miscDiscount || 0,
-        agreement.sellingPrice,
+        agreement.sellingPrice || 0,
         agreement.rebateAmount || null,
         agreement.rebateBrokerId || null,
-        agreement.issueDate,
+        agreement.issueDate || null,
         agreement.description || null,
-        agreement.status,
+        agreement.status || null,
         agreement.cancellationDetails ? JSON.stringify(agreement.cancellationDetails) : null,
         agreement.listPriceCategoryId || null,
         agreement.customerDiscountCategoryId || null,
@@ -163,7 +164,8 @@ router.post('/', async (req: TenantRequest, res) => {
         agreement.lumpSumDiscountCategoryId || null,
         agreement.miscDiscountCategoryId || null,
         agreement.sellingPriceCategoryId || null,
-        agreement.rebateCategoryId || null
+        agreement.rebateCategoryId || null,
+        req.user?.userId || null
       ]
     );
     const saved = result[0];

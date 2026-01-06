@@ -170,6 +170,63 @@ export class AppStateApiService {
         description: u.description || undefined
       }));
 
+      // Normalize project agreements from API (transform snake_case to camelCase)
+      // The server returns snake_case fields, but the client expects camelCase
+      const normalizedProjectAgreements = projectAgreements.map((pa: any) => ({
+        id: pa.id,
+        agreementNumber: pa.agreement_number || pa.agreementNumber || '',
+        clientId: pa.client_id || pa.clientId || '',
+        projectId: pa.project_id || pa.projectId || '',
+        unitIds: (() => {
+          const ids = pa.unit_ids || pa.unitIds;
+          if (!ids) return [];
+          if (Array.isArray(ids)) return ids;
+          if (typeof ids === 'string') {
+            try {
+              return JSON.parse(ids);
+            } catch {
+              return [];
+            }
+          }
+          return [];
+        })(),
+        listPrice: typeof pa.list_price === 'number' ? pa.list_price : (typeof pa.listPrice === 'number' ? pa.listPrice : parseFloat(pa.list_price || pa.listPrice || '0')),
+        customerDiscount: typeof pa.customer_discount === 'number' ? pa.customer_discount : (typeof pa.customerDiscount === 'number' ? pa.customerDiscount : parseFloat(pa.customer_discount || pa.customerDiscount || '0')),
+        floorDiscount: typeof pa.floor_discount === 'number' ? pa.floor_discount : (typeof pa.floorDiscount === 'number' ? pa.floorDiscount : parseFloat(pa.floor_discount || pa.floorDiscount || '0')),
+        lumpSumDiscount: typeof pa.lump_sum_discount === 'number' ? pa.lump_sum_discount : (typeof pa.lumpSumDiscount === 'number' ? pa.lumpSumDiscount : parseFloat(pa.lump_sum_discount || pa.lumpSumDiscount || '0')),
+        miscDiscount: typeof pa.misc_discount === 'number' ? pa.misc_discount : (typeof pa.miscDiscount === 'number' ? pa.miscDiscount : parseFloat(pa.misc_discount || pa.miscDiscount || '0')),
+        sellingPrice: typeof pa.selling_price === 'number' ? pa.selling_price : (typeof pa.sellingPrice === 'number' ? pa.sellingPrice : parseFloat(pa.selling_price || pa.sellingPrice || '0')),
+        rebateAmount: (() => {
+          const amount = pa.rebate_amount || pa.rebateAmount;
+          if (amount == null) return undefined;
+          return typeof amount === 'number' ? amount : parseFloat(String(amount));
+        })(),
+        rebateBrokerId: pa.rebate_broker_id || pa.rebateBrokerId || undefined,
+        issueDate: pa.issue_date || pa.issueDate || new Date().toISOString().split('T')[0],
+        description: pa.description || undefined,
+        status: pa.status || 'Active',
+        cancellationDetails: (() => {
+          const details = pa.cancellation_details || pa.cancellationDetails;
+          if (!details) return undefined;
+          if (typeof details === 'string') {
+            try {
+              return JSON.parse(details);
+            } catch {
+              return undefined;
+            }
+          }
+          if (typeof details === 'object') return details;
+          return undefined;
+        })(),
+        listPriceCategoryId: pa.list_price_category_id || pa.listPriceCategoryId || undefined,
+        customerDiscountCategoryId: pa.customer_discount_category_id || pa.customerDiscountCategoryId || undefined,
+        floorDiscountCategoryId: pa.floor_discount_category_id || pa.floorDiscountCategoryId || undefined,
+        lumpSumDiscountCategoryId: pa.lump_sum_discount_category_id || pa.lumpSumDiscountCategoryId || undefined,
+        miscDiscountCategoryId: pa.misc_discount_category_id || pa.miscDiscountCategoryId || undefined,
+        sellingPriceCategoryId: pa.selling_price_category_id || pa.sellingPriceCategoryId || undefined,
+        rebateCategoryId: pa.rebate_category_id || pa.rebateCategoryId || undefined
+      }));
+
       // Normalize bills from API (transform snake_case to camelCase)
       // The server returns snake_case fields, but the client expects camelCase
       const normalizedBills = bills.map((b: any) => ({
@@ -299,7 +356,7 @@ export class AppStateApiService {
         bills: normalizedBills,
         budgets,
         rentalAgreements,
-        projectAgreements,
+        projectAgreements: normalizedProjectAgreements,
         contracts: normalizedContracts,
       };
     } catch (error) {

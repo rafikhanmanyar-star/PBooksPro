@@ -5,7 +5,7 @@
  * This is the main entry point for state persistence.
  */
 
-import { AppState, Bill, Unit, Building, Property } from '../../../types';
+import { AppState, Bill, Unit, Building, Property, ProjectAgreement, ProjectAgreementStatus } from '../../../types';
 import { getDatabaseService } from '../databaseService';
 import { objectToDbFormat } from '../columnMapper';
 import { migrateBudgetsToNewStructure, migrateBudgetsArray } from '../budgetMigration';
@@ -292,7 +292,96 @@ export class AppStateRepository {
             documents,
             budgets,
             rentalAgreements,
-            projectAgreements,
+            projectAgreements: projectAgreements.map(pa => {
+                // Normalize project agreement to ensure all fields are properly mapped
+                // Handle both camelCase and snake_case field names for backward compatibility
+                // Preserve null/undefined values explicitly to prevent data loss
+                const normalizedAgreement: ProjectAgreement = {
+                    id: pa.id || '',
+                    agreementNumber: pa.agreementNumber ?? pa.agreement_number ?? '',
+                    clientId: pa.clientId ?? pa.client_id ?? '',
+                    projectId: pa.projectId ?? pa.project_id ?? '',
+                    unitIds: (() => {
+                        const ids = pa.unitIds ?? pa.unit_ids;
+                        if (!ids) return [];
+                        if (Array.isArray(ids)) return ids;
+                        if (typeof ids === 'string') {
+                            try {
+                                return JSON.parse(ids);
+                            } catch {
+                                return [];
+                            }
+                        }
+                        return [];
+                    })(),
+                    listPrice: (() => {
+                        const price = pa.listPrice ?? pa.list_price;
+                        return typeof price === 'number' ? price : parseFloat(String(price || '0'));
+                    })(),
+                    customerDiscount: (() => {
+                        const discount = pa.customerDiscount ?? pa.customer_discount;
+                        return typeof discount === 'number' ? discount : parseFloat(String(discount || '0'));
+                    })(),
+                    floorDiscount: (() => {
+                        const discount = pa.floorDiscount ?? pa.floor_discount;
+                        return typeof discount === 'number' ? discount : parseFloat(String(discount || '0'));
+                    })(),
+                    lumpSumDiscount: (() => {
+                        const discount = pa.lumpSumDiscount ?? pa.lump_sum_discount;
+                        return typeof discount === 'number' ? discount : parseFloat(String(discount || '0'));
+                    })(),
+                    miscDiscount: (() => {
+                        const discount = pa.miscDiscount ?? pa.misc_discount;
+                        return typeof discount === 'number' ? discount : parseFloat(String(discount || '0'));
+                    })(),
+                    sellingPrice: (() => {
+                        const price = pa.sellingPrice ?? pa.selling_price;
+                        return typeof price === 'number' ? price : parseFloat(String(price || '0'));
+                    })(),
+                    rebateAmount: (() => {
+                        const amount = pa.rebateAmount ?? pa.rebate_amount;
+                        if (amount == null) return undefined;
+                        return typeof amount === 'number' ? amount : parseFloat(String(amount));
+                    })(),
+                    rebateBrokerId: (pa.rebateBrokerId ?? pa.rebate_broker_id) || undefined,
+                    issueDate: pa.issueDate ?? pa.issue_date ?? new Date().toISOString().split('T')[0],
+                    description: (pa.description) || undefined,
+                    status: (pa.status ?? ProjectAgreementStatus.ACTIVE) as ProjectAgreementStatus,
+                    cancellationDetails: (() => {
+                        const details = pa.cancellationDetails ?? pa.cancellation_details;
+                        if (!details) return undefined;
+                        if (typeof details === 'string') {
+                            try {
+                                return JSON.parse(details);
+                            } catch {
+                                return undefined;
+                            }
+                        }
+                        if (typeof details === 'object') return details;
+                        return undefined;
+                    })(),
+                    listPriceCategoryId: (pa.listPriceCategoryId ?? pa.list_price_category_id) || undefined,
+                    customerDiscountCategoryId: (pa.customerDiscountCategoryId ?? pa.customer_discount_category_id) || undefined,
+                    floorDiscountCategoryId: (pa.floorDiscountCategoryId ?? pa.floor_discount_category_id) || undefined,
+                    lumpSumDiscountCategoryId: (pa.lumpSumDiscountCategoryId ?? pa.lump_sum_discount_category_id) || undefined,
+                    miscDiscountCategoryId: (pa.miscDiscountCategoryId ?? pa.misc_discount_category_id) || undefined,
+                    sellingPriceCategoryId: (pa.sellingPriceCategoryId ?? pa.selling_price_category_id) || undefined,
+                    rebateCategoryId: (pa.rebateCategoryId ?? pa.rebate_category_id) || undefined
+                };
+                
+                // Debug: Log agreements that seem to be missing critical data
+                if (!normalizedAgreement.agreementNumber || !normalizedAgreement.clientId || !normalizedAgreement.projectId) {
+                    console.warn('⚠️ Project Agreement normalization warning - missing critical fields:', {
+                        id: normalizedAgreement.id,
+                        agreementNumber: normalizedAgreement.agreementNumber,
+                        clientId: normalizedAgreement.clientId,
+                        projectId: normalizedAgreement.projectId,
+                        rawAgreement: pa
+                    });
+                }
+                
+                return normalizedAgreement;
+            }),
             contracts: contracts.map(c => ({
                 ...c,
                 expenseCategoryItems: c.expenseCategoryItems 
