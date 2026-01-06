@@ -2357,10 +2357,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
     }, [dispatch, isAuthenticated, setStoredState]);
 
+    // Store refreshFromApi in a ref so WebSocket handlers always use the latest version
+    const refreshFromApiRef = useRef(refreshFromApi);
+    useEffect(() => {
+        refreshFromApiRef.current = refreshFromApi;
+    }, [refreshFromApi]);
+
     // Initial/rehydration sync when auth status changes
     useEffect(() => {
-        refreshFromApi();
-    }, [refreshFromApi]);
+        // Only refresh when authenticated to prevent unnecessary API calls
+        if (isAuthenticated) {
+            // Use ref to get latest refreshFromApi without adding it as dependency
+            refreshFromApiRef.current();
+        }
+    }, [isAuthenticated]); // Only depend on isAuthenticated, not refreshFromApi
 
     // Real-time sync via WebSocket events
     useEffect(() => {
@@ -2385,7 +2395,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     pending = true;
                     setTimeout(() => {
                         pending = false;
-                        refreshFromApi();
+                        // Use ref to get latest refreshFromApi without adding it as dependency
+                        refreshFromApiRef.current();
                     }, 300);
                 };
 
@@ -2422,7 +2433,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return () => {
             if (cleanup) cleanup();
         };
-    }, [isAuthenticated, refreshFromApi]);
+    }, [isAuthenticated]); // Only depend on isAuthenticated, not refreshFromApi
 
     // 3. Persist State Changes (with error handling) - OPTIMIZED: Skip navigation-only changes
     // Use refs to track previous values for fast comparison (no JSON.stringify blocking)
