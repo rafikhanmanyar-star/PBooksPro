@@ -155,6 +155,21 @@ export class AppStateApiService {
         contracts: contracts.length,
       });
 
+      // Normalize units from API (transform snake_case to camelCase)
+      // The server returns snake_case fields, but the client expects camelCase
+      const normalizedUnits = units.map((u: any) => ({
+        id: u.id,
+        name: u.name || '',
+        projectId: u.project_id || u.projectId || '',
+        contactId: u.contact_id || u.contactId || undefined,
+        salePrice: (() => {
+          const price = u.sale_price || u.salePrice;
+          if (price == null) return undefined;
+          return typeof price === 'number' ? price : parseFloat(String(price));
+        })(),
+        description: u.description || undefined
+      }));
+
       // Normalize bills from API (transform snake_case to camelCase)
       // The server returns snake_case fields, but the client expects camelCase
       const normalizedBills = bills.map((b: any) => ({
@@ -279,7 +294,7 @@ export class AppStateApiService {
         projects,
         buildings,
         properties,
-        units,
+        units: normalizedUnits,
         invoices,
         bills: normalizedBills,
         budgets,

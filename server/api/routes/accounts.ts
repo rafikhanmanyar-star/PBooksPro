@@ -58,8 +58,8 @@ router.post('/', async (req: TenantRequest, res) => {
         const updateResult = await client.query(
           `UPDATE accounts 
            SET name = $1, type = $2, balance = $3, description = $4, 
-               parent_account_id = $5, updated_at = NOW()
-           WHERE id = $6 AND tenant_id = $7
+               parent_account_id = $5, user_id = $6, updated_at = NOW()
+           WHERE id = $7 AND tenant_id = $8
            RETURNING *`,
           [
             account.name,
@@ -67,6 +67,7 @@ router.post('/', async (req: TenantRequest, res) => {
             account.balance || 0,
             account.description || null,
             account.parentAccountId || null,
+            req.user?.userId || null,
             accountId,
             req.tenantId
           ]
@@ -77,8 +78,8 @@ router.post('/', async (req: TenantRequest, res) => {
         console.log('➕ POST /accounts - Creating new account:', accountId);
         const insertResult = await client.query(
           `INSERT INTO accounts (
-            id, tenant_id, name, type, balance, description, parent_account_id, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+            id, tenant_id, name, type, balance, description, parent_account_id, user_id, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
           RETURNING *`,
           [
             accountId,
@@ -87,7 +88,8 @@ router.post('/', async (req: TenantRequest, res) => {
             account.type,
             account.balance || 0,
             account.description || null,
-            account.parentAccountId || null
+            account.parentAccountId || null,
+            req.user?.userId || null
           ]
         );
         return insertResult.rows[0];

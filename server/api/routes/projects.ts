@@ -79,8 +79,8 @@ router.post('/', async (req: TenantRequest, res) => {
         const updateResult = await client.query(
           `UPDATE projects 
            SET name = $1, description = $2, color = $3, status = $4, 
-               pm_config = $5, installment_config = $6, updated_at = NOW()
-           WHERE id = $7 AND tenant_id = $8
+               pm_config = $5, installment_config = $6, user_id = $7, updated_at = NOW()
+           WHERE id = $8 AND tenant_id = $9
            RETURNING *`,
           [
             project.name,
@@ -89,6 +89,7 @@ router.post('/', async (req: TenantRequest, res) => {
             project.status || null,
             project.pmConfig ? JSON.stringify(project.pmConfig) : null,
             project.installmentConfig ? JSON.stringify(project.installmentConfig) : null,
+            req.user?.userId || null,
             projectId,
             req.tenantId
           ]
@@ -99,8 +100,8 @@ router.post('/', async (req: TenantRequest, res) => {
         console.log('➕ POST /projects - Creating new project:', projectId);
         const insertResult = await client.query(
           `INSERT INTO projects (
-            id, tenant_id, name, description, color, status, pm_config, installment_config, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+            id, tenant_id, name, description, color, status, pm_config, installment_config, user_id, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
           RETURNING *`,
           [
             projectId,
@@ -110,7 +111,8 @@ router.post('/', async (req: TenantRequest, res) => {
             project.color || null,
             project.status || null,
             project.pmConfig ? JSON.stringify(project.pmConfig) : null,
-            project.installmentConfig ? JSON.stringify(project.installmentConfig) : null
+            project.installmentConfig ? JSON.stringify(project.installmentConfig) : null,
+            req.user?.userId || null
           ]
         );
         return insertResult.rows[0];

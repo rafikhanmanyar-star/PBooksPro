@@ -78,8 +78,8 @@ router.post('/', async (req: TenantRequest, res) => {
         const updateResult = await client.query(
           `UPDATE categories 
            SET name = $1, type = $2, description = $3, is_permanent = $4, 
-               is_rental = $5, parent_category_id = $6, updated_at = NOW()
-           WHERE id = $7 AND tenant_id = $8
+               is_rental = $5, parent_category_id = $6, user_id = $7, updated_at = NOW()
+           WHERE id = $8 AND tenant_id = $9
            RETURNING *`,
           [
             category.name,
@@ -88,6 +88,7 @@ router.post('/', async (req: TenantRequest, res) => {
             category.isPermanent || false,
             category.isRental || false,
             category.parentCategoryId || null,
+            req.user?.userId || null,
             categoryId,
             req.tenantId
           ]
@@ -98,8 +99,8 @@ router.post('/', async (req: TenantRequest, res) => {
         console.log('➕ POST /categories - Creating new category:', categoryId);
         const insertResult = await client.query(
           `INSERT INTO categories (
-            id, tenant_id, name, type, description, is_permanent, is_rental, parent_category_id, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+            id, tenant_id, name, type, description, is_permanent, is_rental, parent_category_id, user_id, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
           RETURNING *`,
           [
             categoryId,
@@ -109,7 +110,8 @@ router.post('/', async (req: TenantRequest, res) => {
             category.description || null,
             category.isPermanent || false,
             category.isRental || false,
-            category.parentCategoryId || null
+            category.parentCategoryId || null,
+            req.user?.userId || null
           ]
         );
         return insertResult.rows[0];

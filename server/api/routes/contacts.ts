@@ -81,8 +81,8 @@ router.post('/', async (req: TenantRequest, res) => {
     // This prevents unique constraint violations when multiple requests come in simultaneously
     const result = await db.query(
       `INSERT INTO contacts (
-        id, tenant_id, name, type, description, contact_no, company_name, address, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+        id, tenant_id, name, type, description, contact_no, company_name, address, user_id, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
       ON CONFLICT (id) 
       DO UPDATE SET
         name = EXCLUDED.name,
@@ -91,6 +91,7 @@ router.post('/', async (req: TenantRequest, res) => {
         contact_no = EXCLUDED.contact_no,
         company_name = EXCLUDED.company_name,
         address = EXCLUDED.address,
+        user_id = EXCLUDED.user_id,
         updated_at = NOW()
       WHERE contacts.tenant_id = $2
       RETURNING *`,
@@ -102,7 +103,8 @@ router.post('/', async (req: TenantRequest, res) => {
         contact.description || null,
         contact.contactNo || null,
         contact.companyName || null,
-        contact.address || null
+        contact.address || null,
+        req.user?.userId || null
       ]
     );
     
@@ -214,8 +216,8 @@ router.put('/:id', async (req: TenantRequest, res) => {
     const result = await db.query(
       `UPDATE contacts 
        SET name = $1, type = $2, description = $3, contact_no = $4, 
-           company_name = $5, address = $6, updated_at = NOW()
-       WHERE id = $7 AND tenant_id = $8
+           company_name = $5, address = $6, user_id = $7, updated_at = NOW()
+       WHERE id = $8 AND tenant_id = $9
        RETURNING *`,
       [
         contact.name,
@@ -224,6 +226,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
         contact.contactNo || null,
         contact.companyName || null,
         contact.address || null,
+        req.user?.userId || null,
         req.params.id,
         req.tenantId
       ]

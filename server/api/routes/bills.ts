@@ -119,8 +119,8 @@ router.post('/', async (req: TenantRequest, res) => {
         id, tenant_id, bill_number, contact_id, amount, paid_amount, status,
         issue_date, due_date, description, category_id, project_id, building_id,
         property_id, project_agreement_id, contract_id, staff_id,
-        expense_category_items, document_path, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, 
+        expense_category_items, document_path, user_id, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 
                 COALESCE((SELECT created_at FROM bills WHERE id = $1), NOW()), NOW())
       ON CONFLICT (id) 
       DO UPDATE SET
@@ -141,6 +141,7 @@ router.post('/', async (req: TenantRequest, res) => {
         staff_id = EXCLUDED.staff_id,
         expense_category_items = EXCLUDED.expense_category_items,
         document_path = EXCLUDED.document_path,
+        user_id = EXCLUDED.user_id,
         updated_at = NOW()
       RETURNING *`,
       [
@@ -162,7 +163,8 @@ router.post('/', async (req: TenantRequest, res) => {
         bill.contractId || null,
         bill.staffId || null,
         bill.expenseCategoryItems ? JSON.stringify(bill.expenseCategoryItems) : null,
-        bill.documentPath || null
+        bill.documentPath || null,
+        req.user?.userId || null
       ]
     );
     const saved = result[0];
@@ -213,8 +215,8 @@ router.put('/:id', async (req: TenantRequest, res) => {
            status = $5, issue_date = $6, due_date = $7, description = $8, 
            category_id = $9, project_id = $10, building_id = $11, property_id = $12,
            project_agreement_id = $13, contract_id = $14, staff_id = $15,
-           expense_category_items = $16, document_path = $17, updated_at = NOW()
-       WHERE id = $18 AND tenant_id = $19
+           expense_category_items = $16, document_path = $17, user_id = $18, updated_at = NOW()
+       WHERE id = $19 AND tenant_id = $20
        RETURNING *`,
       [
         bill.billNumber,
@@ -234,6 +236,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
         bill.staffId || null,
         bill.expenseCategoryItems ? JSON.stringify(bill.expenseCategoryItems) : null,
         bill.documentPath || null,
+        req.user?.userId || null,
         req.params.id,
         req.tenantId
       ]

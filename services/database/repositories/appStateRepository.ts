@@ -5,7 +5,7 @@
  * This is the main entry point for state persistence.
  */
 
-import { AppState, Bill } from '../../../types';
+import { AppState, Bill, Unit, Building, Property } from '../../../types';
 import { getDatabaseService } from '../databaseService';
 import { objectToDbFormat } from '../columnMapper';
 import { migrateBudgetsToNewStructure, migrateBudgetsArray } from '../budgetMigration';
@@ -157,9 +157,79 @@ export class AppStateRepository {
             contacts,
             categories,
             projects,
-            buildings,
-            properties,
-            units,
+            buildings: buildings.map(b => {
+                // Normalize building to ensure all fields are properly mapped
+                // Handle both camelCase and snake_case field names for backward compatibility
+                const normalizedBuilding: Building = {
+                    id: b.id || '',
+                    name: b.name ?? b.name ?? '',
+                    description: (b.description) || undefined,
+                    color: (b.color) || undefined
+                };
+                return normalizedBuilding;
+            }),
+            properties: properties.map(p => {
+                // Normalize property to ensure all fields are properly mapped
+                // Handle both camelCase and snake_case field names for backward compatibility
+                // Preserve null/undefined values explicitly to prevent data loss
+                const normalizedProperty: Property = {
+                    id: p.id || '',
+                    name: p.name ?? p.name ?? '',
+                    ownerId: p.ownerId ?? p.owner_id ?? '',
+                    buildingId: p.buildingId ?? p.building_id ?? '',
+                    description: (p.description) || undefined,
+                    monthlyServiceCharge: (() => {
+                        const charge = p.monthlyServiceCharge ?? p.monthly_service_charge;
+                        if (charge == null) return undefined;
+                        return typeof charge === 'number' ? charge : parseFloat(String(charge));
+                    })()
+                };
+                
+                // Debug: Log properties that seem to be missing critical data
+                if (!normalizedProperty.name || !normalizedProperty.ownerId || !normalizedProperty.buildingId) {
+                    console.warn('⚠️ Property normalization warning - missing critical fields:', {
+                        id: normalizedProperty.id,
+                        name: normalizedProperty.name,
+                        ownerId: normalizedProperty.ownerId,
+                        buildingId: normalizedProperty.buildingId,
+                        rawProperty: p
+                    });
+                }
+                
+                return normalizedProperty;
+            }),
+            units: units.map(u => {
+                // Normalize unit to ensure all fields are properly mapped
+                // Handle both camelCase and snake_case field names for backward compatibility
+                // Preserve null/undefined values explicitly to prevent data loss
+                // Use nullish coalescing (??) to preserve null values, only use || for defaults
+                const normalizedUnit: Unit = {
+                    id: u.id || '',
+                    name: u.name ?? u.name ?? '',
+                    projectId: u.projectId ?? u.project_id ?? '',
+                    contactId: (u.contactId ?? u.contact_id) || undefined,
+                    salePrice: (() => {
+                        const price = u.salePrice ?? u.sale_price;
+                        if (price == null) return undefined;
+                        return typeof price === 'number' ? price : parseFloat(String(price));
+                    })(),
+                    description: (u.description) || undefined
+                };
+                
+                // Debug: Log units that seem to be missing critical data
+                if (!normalizedUnit.name || !normalizedUnit.projectId) {
+                    console.warn('⚠️ Unit normalization warning - missing critical fields:', {
+                        id: normalizedUnit.id,
+                        name: normalizedUnit.name,
+                        projectId: normalizedUnit.projectId,
+                        contactId: normalizedUnit.contactId,
+                        salePrice: normalizedUnit.salePrice,
+                        rawUnit: u
+                    });
+                }
+                
+                return normalizedUnit;
+            }),
             transactions,
             invoices,
             bills: bills.map(b => {

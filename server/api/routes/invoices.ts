@@ -104,8 +104,8 @@ router.post('/', async (req: TenantRequest, res) => {
         id, tenant_id, invoice_number, contact_id, amount, paid_amount, status,
         issue_date, due_date, invoice_type, description, project_id, building_id,
         property_id, unit_id, category_id, agreement_id, security_deposit_charge,
-        service_charges, rental_month, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+        service_charges, rental_month, user_id, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
                 COALESCE((SELECT created_at FROM invoices WHERE id = $1), NOW()), NOW())
       ON CONFLICT (id) 
       DO UPDATE SET
@@ -127,6 +127,7 @@ router.post('/', async (req: TenantRequest, res) => {
         security_deposit_charge = EXCLUDED.security_deposit_charge,
         service_charges = EXCLUDED.service_charges,
         rental_month = EXCLUDED.rental_month,
+        user_id = EXCLUDED.user_id,
         updated_at = NOW()
       RETURNING *`,
       [
@@ -149,7 +150,8 @@ router.post('/', async (req: TenantRequest, res) => {
         invoice.agreementId || null,
         invoice.securityDepositCharge || null,
         invoice.serviceCharges || null,
-        invoice.rentalMonth || null
+        invoice.rentalMonth || null,
+        req.user?.userId || null
       ]
     );
     const saved = result[0];
@@ -191,8 +193,8 @@ router.put('/:id', async (req: TenantRequest, res) => {
            description = $9, project_id = $10, building_id = $11, property_id = $12,
            unit_id = $13, category_id = $14, agreement_id = $15, 
            security_deposit_charge = $16, service_charges = $17, rental_month = $18,
-           updated_at = NOW()
-       WHERE id = $19 AND tenant_id = $20
+           user_id = $19, updated_at = NOW()
+       WHERE id = $20 AND tenant_id = $21
        RETURNING *`,
       [
         invoice.invoiceNumber,
@@ -213,6 +215,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
         invoice.securityDepositCharge || null,
         invoice.serviceCharges || null,
         invoice.rentalMonth || null,
+        req.user?.userId || null,
         req.params.id,
         req.tenantId
       ]
