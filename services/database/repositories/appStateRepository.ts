@@ -5,7 +5,7 @@
  * This is the main entry point for state persistence.
  */
 
-import { AppState } from '../../../types';
+import { AppState, Bill } from '../../../types';
 import { getDatabaseService } from '../databaseService';
 import { objectToDbFormat } from '../columnMapper';
 import { migrateBudgetsToNewStructure, migrateBudgetsArray } from '../budgetMigration';
@@ -165,28 +165,54 @@ export class AppStateRepository {
             bills: bills.map(b => {
                 // Normalize bill to ensure all fields are properly mapped
                 // Handle both camelCase and snake_case field names for backward compatibility
-                const normalizedBill = {
-                    id: b.id,
-                    billNumber: b.billNumber || b.bill_number || `BILL-${b.id}`,
-                    contactId: b.contactId || b.contact_id || '',
-                    amount: typeof b.amount === 'number' ? b.amount : parseFloat(b.amount || '0'),
-                    paidAmount: typeof b.paidAmount === 'number' ? b.paidAmount : parseFloat(b.paid_amount || b.paidAmount || '0'),
-                    status: b.status || 'Unpaid',
-                    issueDate: b.issueDate || b.issue_date || new Date().toISOString().split('T')[0],
-                    dueDate: b.dueDate || b.due_date || undefined,
-                    description: b.description || undefined,
-                    categoryId: b.categoryId || b.category_id || undefined,
-                    projectId: b.projectId || b.project_id || undefined,
-                    buildingId: b.buildingId || b.building_id || undefined,
-                    propertyId: b.propertyId || b.property_id || undefined,
-                    projectAgreementId: b.projectAgreementId || b.project_agreement_id || b.agreementId || b.agreement_id || undefined,
-                    contractId: b.contractId || b.contract_id || undefined,
-                    staffId: b.staffId || b.staff_id || undefined,
-                    documentPath: b.documentPath || b.document_path || undefined,
-                    expenseCategoryItems: b.expenseCategoryItems 
-                        ? (typeof b.expenseCategoryItems === 'string' ? JSON.parse(b.expenseCategoryItems) : b.expenseCategoryItems)
-                        : (b.expense_category_items && typeof b.expense_category_items === 'string' ? JSON.parse(b.expense_category_items) : b.expense_category_items) || undefined
+                // Preserve null/undefined values explicitly to prevent data loss
+                // Use nullish coalescing (??) to preserve null values, only use || for defaults
+                const normalizedBill: Bill = {
+                    id: b.id || '',
+                    billNumber: b.billNumber ?? b.bill_number ?? `BILL-${b.id}`,
+                    contactId: b.contactId ?? b.contact_id ?? '',
+                    amount: typeof b.amount === 'number' ? b.amount : (b.amount != null ? parseFloat(String(b.amount)) : 0),
+                    paidAmount: typeof b.paidAmount === 'number' ? b.paidAmount : (b.paidAmount != null ? parseFloat(String(b.paidAmount)) : (b.paid_amount != null ? parseFloat(String(b.paid_amount)) : 0)),
+                    status: b.status ?? 'Unpaid',
+                    issueDate: b.issueDate ?? b.issue_date ?? new Date().toISOString().split('T')[0],
+                    // Use nullish coalescing to preserve null/undefined, but convert null to undefined for optional fields
+                    dueDate: (b.dueDate ?? b.due_date) || undefined,
+                    description: (b.description) || undefined,
+                    categoryId: (b.categoryId ?? b.category_id) || undefined,
+                    projectId: (b.projectId ?? b.project_id) || undefined,
+                    buildingId: (b.buildingId ?? b.building_id) || undefined,
+                    propertyId: (b.propertyId ?? b.property_id) || undefined,
+                    projectAgreementId: (b.projectAgreementId ?? b.project_agreement_id ?? b.agreementId ?? b.agreement_id) || undefined,
+                    contractId: (b.contractId ?? b.contract_id) || undefined,
+                    staffId: (b.staffId ?? b.staff_id) || undefined,
+                    documentPath: (b.documentPath ?? b.document_path) || undefined,
+                    expenseCategoryItems: (() => {
+                        // Handle expenseCategoryItems - check both camelCase and snake_case
+                        const items = b.expenseCategoryItems ?? b.expense_category_items;
+                        if (!items) return undefined;
+                        if (typeof items === 'string' && items.trim().length > 0) {
+                            try {
+                                return JSON.parse(items);
+                            } catch {
+                                return undefined;
+                            }
+                        }
+                        if (Array.isArray(items)) return items;
+                        return undefined;
+                    })()
                 };
+                
+                // Debug: Log bills that seem to be missing critical data
+                if (!normalizedBill.billNumber || !normalizedBill.contactId) {
+                    console.warn('⚠️ Bill normalization warning - missing critical fields:', {
+                        id: normalizedBill.id,
+                        billNumber: normalizedBill.billNumber,
+                        contactId: normalizedBill.contactId,
+                        projectId: normalizedBill.projectId,
+                        rawBill: b
+                    });
+                }
+                
                 return normalizedBill;
             }),
             quotations: quotations.map(q => ({
