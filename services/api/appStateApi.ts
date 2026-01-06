@@ -170,6 +170,18 @@ export class AppStateApiService {
         description: u.description || undefined
       }));
 
+      // Normalize categories from API (transform snake_case to camelCase)
+      // The server returns snake_case fields, but the client expects camelCase
+      const normalizedCategories = categories.map((c: any) => ({
+        id: c.id,
+        name: c.name || '',
+        type: c.type,
+        description: c.description || undefined,
+        isPermanent: c.is_permanent === true || c.is_permanent === 1 || c.isPermanent === true || false,
+        isRental: c.is_rental === true || c.is_rental === 1 || c.isRental === true || false,
+        parentCategoryId: c.parent_category_id || c.parentCategoryId || undefined
+      }));
+
       // Normalize project agreements from API (transform snake_case to camelCase)
       // The server returns snake_case fields, but the client expects camelCase
       const normalizedProjectAgreements = projectAgreements.map((pa: any) => ({
@@ -347,7 +359,7 @@ export class AppStateApiService {
         accounts,
         contacts,
         transactions: normalizedTransactions,
-        categories,
+        categories: normalizedCategories,
         projects,
         buildings,
         properties,
