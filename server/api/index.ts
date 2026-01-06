@@ -193,17 +193,25 @@ app.post('/api/payments/webhook/:gateway', async (req, res, next) => {
 
 // Mock payment page (public route for testing)
 // This serves an HTML page that simulates a payment gateway
-app.get('/mock-payment', async (req, res) => {
+app.get('/mock-payment', (req, res) => {
   try {
+    console.log('💰 Mock payment route accessed:', {
+      url: req.url,
+      query: req.query,
+      method: req.method
+    });
+    
     const { payment_intent, return_url } = req.query;
     
     if (!payment_intent || typeof payment_intent !== 'string') {
+      console.error('Missing payment_intent in query:', req.query);
       return res.status(400).send(`
         <html>
           <head><title>Payment Error</title></head>
           <body style="font-family: Arial, sans-serif; padding: 40px; text-align: center;">
             <h1 style="color: #dc2626;">Payment Error</h1>
             <p>Invalid payment intent. Please try again.</p>
+            <p style="font-size: 12px; color: #666;">Query: ${JSON.stringify(req.query)}</p>
           </body>
         </html>
       `);
@@ -212,7 +220,18 @@ app.get('/mock-payment', async (req, res) => {
     // Get base URL for API calls
     const baseUrl = req.headers.origin || process.env.CLIENT_URL || 'http://localhost:5173';
     const apiUrl = process.env.API_URL || process.env.SERVER_URL || 'http://localhost:3000';
-    const returnUrl = return_url || `${baseUrl}/license/payment-success`;
+    
+    // Decode return_url if it's URL encoded
+    let returnUrl: string;
+    if (return_url && typeof return_url === 'string') {
+      try {
+        returnUrl = decodeURIComponent(return_url);
+      } catch (e) {
+        returnUrl = return_url;
+      }
+    } else {
+      returnUrl = `${baseUrl}/license/payment-success`;
+    }
 
     // Serve mock payment page
     res.send(`
@@ -489,7 +508,7 @@ app.get('/mock-payment', async (req, res) => {
 
           // Format expiry
           document.getElementById('expiry').addEventListener('input', (e) => {
-            let value = e.target.value.replace(/\\D/g, '');
+            let value = e.target.value.replace(/[^0-9]/g, '');
             if (value.length >= 2) {
               value = value.substring(0, 2) + '/' + value.substring(2, 4);
             }
@@ -498,20 +517,22 @@ app.get('/mock-payment', async (req, res) => {
 
           // Only numbers for CVV
           document.getElementById('cvv').addEventListener('input', (e) => {
-            e.target.value = e.target.value.replace(/\\D/g, '');
+            e.target.value = e.target.value.replace(/[^0-9]/g, '');
           });
         </script>
       </body>
       </html>
     `);
   } catch (error: any) {
-    console.error('Mock payment page error:', error);
+    console.error('❌ Mock payment page error:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).send(`
       <html>
         <head><title>Payment Error</title></head>
         <body style="font-family: Arial, sans-serif; padding: 40px; text-align: center;">
           <h1 style="color: #dc2626;">Payment Error</h1>
           <p>An error occurred while loading the payment page. Please try again.</p>
+          ${process.env.NODE_ENV === 'development' ? `<pre style="text-align: left; background: #f5f5f5; padding: 10px; margin-top: 20px;">${error.message}\n${error.stack}</pre>` : ''}
         </body>
       </html>
     `);
