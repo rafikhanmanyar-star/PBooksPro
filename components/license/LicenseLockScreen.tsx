@@ -28,70 +28,72 @@ const LicenseLockScreen: React.FC = () => {
     };
 
     return (
-        <div className="fixed inset-0 z-[9999] bg-slate-900 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
-                <div className="bg-rose-600 p-6 text-center">
-                    <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 text-white">
-                        <div className="w-8 h-8">{ICONS.lock}</div>
-                    </div>
-                    <h2 className="text-2xl font-bold text-white">Trial Expired</h2>
-                    <p className="text-rose-100 mt-2 text-sm">Your 30-day trial period has ended.</p>
-                </div>
-                
-                <div className="p-8 space-y-6">
-                    <div className="text-center p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                        <p className="text-xs text-slate-500 uppercase font-bold mb-1">Your Device ID</p>
-                        <code className="text-lg font-mono font-bold text-slate-800 select-all block cursor-text">{deviceId}</code>
-                        <p className="text-xs text-slate-400 mt-1">Send this ID to support to get your key.</p>
-                    </div>
-
-                    <form onSubmit={handleUnlock} className="space-y-4">
-                        <Input
-                            placeholder="MA-XXXXXXXX-XXXX"
-                            value={keyInput}
-                            onChange={(e) => setKeyInput(e.target.value.toUpperCase())}
-                            className="font-mono text-center tracking-widest text-lg border-2 border-slate-300 focus:border-rose-500 focus:ring-rose-200"
-                        />
-                        {error && <p className="text-center text-rose-600 text-sm font-bold">{error}</p>}
-                        
-                        <Button type="submit" className="w-full justify-center bg-rose-600 hover:bg-rose-700 py-3 text-lg" disabled={isLoading}>
-                            {isLoading ? 'Verifying...' : 'Unlock Software'}
-                        </Button>
-                    </form>
-
-                    <div className="relative">
-                        <div className="absolute inset-0 flex items-center">
-                            <div className="w-full border-t border-slate-200"></div>
+        <>
+            <div className="fixed inset-0 z-[9999] bg-slate-900 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+                    <div className="bg-rose-600 p-6 text-center">
+                        <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 text-white">
+                            <div className="w-8 h-8">{ICONS.lock}</div>
                         </div>
-                        <div className="relative flex justify-center text-sm">
-                            <span className="px-2 bg-white text-slate-500">OR</span>
-                        </div>
+                        <h2 className="text-2xl font-bold text-white">Trial Expired</h2>
+                        <p className="text-rose-100 mt-2 text-sm">Your 30-day trial period has ended.</p>
                     </div>
-
-                    <Button 
-                        onClick={() => setShowPaymentModal(true)}
-                        className="w-full justify-center bg-blue-600 hover:bg-blue-700 py-3 text-lg"
-                    >
-                        Renew License Online
-                    </Button>
                     
-                    <div className="text-center pt-4 border-t border-slate-100">
-                        <p className="text-xs text-slate-400">Contact support: support@myaccountant.com</p>
+                    <div className="p-8 space-y-6">
+                        <div className="text-center p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <p className="text-xs text-slate-500 uppercase font-bold mb-1">Your Device ID</p>
+                            <code className="text-lg font-mono font-bold text-slate-800 select-all block cursor-text">{deviceId}</code>
+                            <p className="text-xs text-slate-400 mt-1">Send this ID to support to get your key.</p>
+                        </div>
+
+                        <form onSubmit={handleUnlock} className="space-y-4">
+                            <Input
+                                placeholder="MA-XXXXXXXX-XXXX"
+                                value={keyInput}
+                                onChange={(e) => setKeyInput(e.target.value.toUpperCase())}
+                                className="font-mono text-center tracking-widest text-lg border-2 border-slate-300 focus:border-rose-500 focus:ring-rose-200"
+                            />
+                            {error && <p className="text-center text-rose-600 text-sm font-bold">{error}</p>}
+                            
+                            <Button type="submit" className="w-full justify-center bg-rose-600 hover:bg-rose-700 py-3 text-lg" disabled={isLoading}>
+                                {isLoading ? 'Verifying...' : 'Unlock Software'}
+                            </Button>
+                        </form>
+
+                        <div className="relative">
+                            <div className="absolute inset-0 flex items-center">
+                                <div className="w-full border-t border-slate-200"></div>
+                            </div>
+                            <div className="relative flex justify-center text-sm">
+                                <span className="px-2 bg-white text-slate-500">OR</span>
+                            </div>
+                        </div>
+
+                        <Button 
+                            onClick={() => setShowPaymentModal(true)}
+                            className="w-full justify-center bg-blue-600 hover:bg-blue-700 py-3 text-lg"
+                        >
+                            Renew License Online
+                        </Button>
+                        
+                        <div className="text-center pt-4 border-t border-slate-100">
+                            <p className="text-xs text-slate-400">Contact support: support@myaccountant.com</p>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        {/* Payment Modal */}
-        <PaymentModal
-            isOpen={showPaymentModal}
-            onClose={() => setShowPaymentModal(false)}
-            onSuccess={() => {
-                setShowPaymentModal(false);
-                // Reload page or refresh license status
-                window.location.reload();
-            }}
-        />
+            {/* Payment Modal */}
+            <PaymentModal
+                isOpen={showPaymentModal}
+                onClose={() => setShowPaymentModal(false)}
+                onSuccess={() => {
+                    setShowPaymentModal(false);
+                    // Reload page or refresh license status
+                    window.location.reload();
+                }}
+            />
+        </>
     );
 };
 

@@ -9,6 +9,7 @@ import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { CURRENCY } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
+import { getAppStateApiService } from '../../services/api/appStateApi';
 
 interface BillBulkPaymentModalProps {
     isOpen: boolean;
@@ -122,13 +123,75 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
             return;
         }
 
-        dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: transactions });
-        showToast(`Processed bulk payment for ${transactions.length} bills.`, 'success');
-        
-        if (onPaymentComplete) {
-            onPaymentComplete();
-        } else {
-            onClose();
+        try {
+            // Try to save transactions via API first to catch conflicts early
+            const apiService = getAppStateApiService();
+            const savedTransactions: Transaction[] = [];
+            const failedBills: { bill: Bill; error: any }[] = [];
+
+            // Process each transaction individually to handle errors per bill
+            for (const tx of transactions) {
+                try {
+                    const saved = await apiService.saveTransaction(tx);
+                    savedTransactions.push(saved as Transaction);
+                } catch (error: any) {
+                    const bill = selectedBills.find(b => b.id === tx.billId);
+                    failedBills.push({ bill: bill!, error });
+                    
+                    // Handle specific error codes
+                    if (error.status === 409 || error.code === 'BILL_LOCKED' || error.code === 'BILL_VERSION_MISMATCH') {
+                        // Concurrent modification - don't show error for this one, will show summary
+                        console.warn(`Payment conflict for bill ${bill?.billNumber}:`, error.message);
+                    } else if (error.status === 400 && error.code === 'PAYMENT_OVERPAYMENT') {
+                        // Overpayment detected
+                        console.error(`Overpayment for bill ${bill?.billNumber}:`, error.message);
+                    }
+                }
+            }
+
+            // If all transactions failed, show error
+            if (savedTransactions.length === 0) {
+                const firstError = failedBills[0]?.error;
+                if (firstError?.status === 409 || firstError?.code === 'BILL_LOCKED' || firstError?.code === 'BILL_VERSION_MISMATCH') {
+                    await showAlert(
+                        `Payment conflict detected. One or more bills are being processed by another user. Please refresh and try again.`
+                    );
+                } else if (firstError?.status === 400 && firstError?.code === 'PAYMENT_OVERPAYMENT') {
+                    await showAlert(
+                        `Overpayment detected. ${firstError.message || 'One or more payments exceed the bill amount.'}`
+                    );
+                } else {
+                    await showAlert(
+                        `Failed to process payments: ${firstError?.message || 'Unknown error occurred'}`
+                    );
+                }
+                return;
+            }
+
+            // If some succeeded, dispatch only the successful ones
+            if (savedTransactions.length > 0) {
+                dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: savedTransactions });
+                
+                if (failedBills.length > 0) {
+                    const failedBillNumbers = failedBills.map(f => f.bill.billNumber).join(', ');
+                    showToast(
+                        `Processed ${savedTransactions.length} payment(s). Failed for bill(s): ${failedBillNumbers}. Please refresh and try again.`,
+                        'warning'
+                    );
+                } else {
+                    showToast(`Processed bulk payment for ${savedTransactions.length} bills.`, 'success');
+                }
+            }
+
+            if (onPaymentComplete) {
+                onPaymentComplete();
+            } else {
+                onClose();
+            }
+        } catch (error: any) {
+            console.error('Error processing bulk payment:', error);
+            const errorMessage = error.message || 'An unexpected error occurred while processing payments.';
+            await showAlert(`Payment failed: ${errorMessage}`);
         }
     };
 

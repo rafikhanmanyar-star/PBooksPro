@@ -153,7 +153,107 @@ router.post('/', async (req: TenantRequest, res) => {
     // Use transaction for data integrity (upsert behavior)
     let wasUpdate = false;
     let oldValues = null;
+    let billLocked = false;
+    let invoiceLocked = false;
+    
     const result = await db.transaction(async (client) => {
+      // If transaction is linked to a bill, lock the bill row first to prevent concurrent payments
+      if (transaction.billId && !wasUpdate) {
+        try {
+          console.log('🔒 POST /transactions - Attempting to lock bill:', transaction.billId);
+          const billLock = await client.query(
+            'SELECT * FROM bills WHERE id = $1 AND tenant_id = $2 FOR UPDATE NOWAIT',
+            [transaction.billId, req.tenantId]
+          );
+          
+          if (billLock.rows.length === 0) {
+            throw new Error('Bill not found');
+          }
+          
+          billLocked = true;
+          const bill = billLock.rows[0];
+          const billAmount = parseFloat(bill.amount);
+          const currentPaidAmount = parseFloat(bill.paid_amount || '0');
+          const paymentAmount = parseFloat(transaction.amount);
+          
+          // Validate overpayment: Check if payment would exceed bill amount
+          if (currentPaidAmount + paymentAmount > billAmount + 0.01) {
+            const overpayment = (currentPaidAmount + paymentAmount) - billAmount;
+            throw {
+              code: 'PAYMENT_OVERPAYMENT',
+              message: `Payment amount (${paymentAmount}) would exceed bill amount. Current paid: ${currentPaidAmount}, Bill amount: ${billAmount}, Overpayment: ${overpayment.toFixed(2)}`,
+              overpayment: overpayment
+            };
+          }
+          
+          console.log('✅ POST /transactions - Bill locked and validated:', {
+            billId: transaction.billId,
+            currentPaid: currentPaidAmount,
+            paymentAmount: paymentAmount,
+            billAmount: billAmount
+          });
+        } catch (lockError: any) {
+          if (lockError.code === '55P03' || lockError.code === 'LOCK_NOT_AVAILABLE') {
+            // Lock not available - another transaction is processing payment
+            throw {
+              code: 'BILL_LOCKED',
+              message: 'This bill is currently being processed by another user. Please try again in a moment.',
+              retryAfter: 1
+            };
+          }
+          if (lockError.code === 'PAYMENT_OVERPAYMENT') {
+            throw lockError;
+          }
+          // Re-throw other errors
+          throw lockError;
+        }
+      }
+      
+      // If transaction is linked to an invoice, lock the invoice row first
+      if (transaction.invoiceId && !wasUpdate) {
+        try {
+          console.log('🔒 POST /transactions - Attempting to lock invoice:', transaction.invoiceId);
+          const invoiceLock = await client.query(
+            'SELECT * FROM invoices WHERE id = $1 AND tenant_id = $2 FOR UPDATE NOWAIT',
+            [transaction.invoiceId, req.tenantId]
+          );
+          
+          if (invoiceLock.rows.length === 0) {
+            throw new Error('Invoice not found');
+          }
+          
+          invoiceLocked = true;
+          const invoice = invoiceLock.rows[0];
+          const invoiceAmount = parseFloat(invoice.amount);
+          const currentPaidAmount = parseFloat(invoice.paid_amount || '0');
+          const paymentAmount = parseFloat(transaction.amount);
+          
+          // Validate overpayment for invoice
+          if (currentPaidAmount + paymentAmount > invoiceAmount + 0.1) {
+            const overpayment = (currentPaidAmount + paymentAmount) - invoiceAmount;
+            throw {
+              code: 'PAYMENT_OVERPAYMENT',
+              message: `Payment amount (${paymentAmount}) would exceed invoice amount. Current paid: ${currentPaidAmount}, Invoice amount: ${invoiceAmount}, Overpayment: ${overpayment.toFixed(2)}`,
+              overpayment: overpayment
+            };
+          }
+          
+          console.log('✅ POST /transactions - Invoice locked and validated');
+        } catch (lockError: any) {
+          if (lockError.code === '55P03' || lockError.code === 'LOCK_NOT_AVAILABLE') {
+            throw {
+              code: 'INVOICE_LOCKED',
+              message: 'This invoice is currently being processed by another user. Please try again in a moment.',
+              retryAfter: 1
+            };
+          }
+          if (lockError.code === 'PAYMENT_OVERPAYMENT') {
+            throw lockError;
+          }
+          throw lockError;
+        }
+      }
+      
       // Check if transaction with this ID already exists
       const existing = await client.query(
         'SELECT * FROM transactions WHERE id = $1 AND tenant_id = $2',
@@ -241,6 +341,89 @@ router.post('/', async (req: TenantRequest, res) => {
             transaction.isSystem || false
           ]
         );
+        
+        // If bill is locked, update it within the same transaction
+        if (billLocked && transaction.billId) {
+          // Recalculate total paid amount from all transactions for this bill
+          const billTransactions = await client.query(
+            'SELECT SUM(amount) as total_paid FROM transactions WHERE bill_id = $1 AND tenant_id = $2',
+            [transaction.billId, req.tenantId]
+          );
+          const totalPaid = parseFloat(billTransactions.rows[0]?.total_paid || '0');
+          
+          // Get bill amount to calculate status
+          const billData = await client.query(
+            'SELECT amount, version FROM bills WHERE id = $1 AND tenant_id = $2',
+            [transaction.billId, req.tenantId]
+          );
+          
+          if (billData.rows.length > 0) {
+            const billAmount = parseFloat(billData.rows[0].amount);
+            const currentVersion = parseInt(billData.rows[0].version || '1');
+            let newStatus = 'Unpaid';
+            if (totalPaid >= billAmount - 0.01) {
+              newStatus = 'Paid';
+            } else if (totalPaid > 0.01) {
+              newStatus = 'Partially Paid';
+            }
+            
+            // Update bill with version check for optimistic locking
+            const updatedBill = await client.query(
+              `UPDATE bills 
+               SET paid_amount = $1, status = $2, version = version + 1, updated_at = NOW() 
+               WHERE id = $3 AND tenant_id = $4 AND version = $5
+               RETURNING *`,
+              [totalPaid, newStatus, transaction.billId, req.tenantId, currentVersion]
+            );
+            
+            if (updatedBill.rows.length === 0) {
+              // Version mismatch - concurrent modification detected
+              throw {
+                code: 'BILL_VERSION_MISMATCH',
+                message: 'Bill was modified by another user. Please refresh and try again.'
+              };
+            }
+            
+            console.log('✅ POST /transactions - Updated bill within transaction:', {
+              billId: transaction.billId,
+              totalPaid,
+              status: newStatus,
+              version: updatedBill.rows[0].version
+            });
+          }
+        }
+        
+        // If invoice is locked, update it within the same transaction
+        if (invoiceLocked && transaction.invoiceId) {
+          const invoiceTransactions = await client.query(
+            'SELECT SUM(amount) as total_paid FROM transactions WHERE invoice_id = $1 AND tenant_id = $2',
+            [transaction.invoiceId, req.tenantId]
+          );
+          const totalPaid = parseFloat(invoiceTransactions.rows[0]?.total_paid || '0');
+          
+          const invoiceData = await client.query(
+            'SELECT amount FROM invoices WHERE id = $1 AND tenant_id = $2',
+            [transaction.invoiceId, req.tenantId]
+          );
+          
+          if (invoiceData.rows.length > 0) {
+            const invoiceAmount = parseFloat(invoiceData.rows[0].amount);
+            let newStatus = 'Unpaid';
+            if (totalPaid >= invoiceAmount - 0.1) {
+              newStatus = 'Paid';
+            } else if (totalPaid > 0.1) {
+              newStatus = 'Partially Paid';
+            }
+            
+            await client.query(
+              'UPDATE invoices SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4',
+              [totalPaid, newStatus, transaction.invoiceId, req.tenantId]
+            );
+            
+            console.log('✅ POST /transactions - Updated invoice within transaction');
+          }
+        }
+        
         return insertResult.rows[0];
       }
     });
@@ -267,7 +450,9 @@ router.post('/', async (req: TenantRequest, res) => {
     }
     
     // Update bill's paid_amount if this transaction is linked to a bill
-    if (result.bill_id) {
+    // Note: For new transactions, bill is already updated within the transaction above
+    // This section only handles updates to existing transactions or when bill wasn't locked
+    if (result.bill_id && wasUpdate) {
       try {
         // Calculate total paid amount from all transactions for this bill
         const billTransactions = await db.query(
@@ -315,6 +500,24 @@ router.post('/', async (req: TenantRequest, res) => {
       } catch (billUpdateError) {
         // Log error but don't fail the transaction save
         console.error('⚠️ POST /transactions - Failed to update bill paid_amount:', billUpdateError);
+      }
+    } else if (result.bill_id && !wasUpdate) {
+      // For new transactions, bill was updated in transaction, just fetch and emit event
+      try {
+        const updatedBill = await db.query(
+          'SELECT * FROM bills WHERE id = $1 AND tenant_id = $2',
+          [result.bill_id, req.tenantId]
+        );
+        
+        if (updatedBill.length > 0) {
+          emitToTenant(req.tenantId!, WS_EVENTS.BILL_UPDATED, {
+            bill: updatedBill[0],
+            userId: req.user?.userId,
+            username: req.user?.username,
+          });
+        }
+      } catch (error) {
+        console.error('⚠️ POST /transactions - Failed to fetch updated bill:', error);
       }
     }
     
@@ -394,10 +597,46 @@ router.post('/', async (req: TenantRequest, res) => {
       transactionId: req.body?.id
     });
     
+    // Handle specific error codes
     if (error.code === '23505') { // Unique violation
       return res.status(409).json({ 
         error: 'Duplicate transaction',
         message: 'A transaction with this ID already exists'
+      });
+    }
+    
+    if (error.code === 'BILL_LOCKED' || error.code === 'INVOICE_LOCKED') {
+      return res.status(409).json({ 
+        error: 'Concurrent modification',
+        message: error.message,
+        code: error.code,
+        retryAfter: error.retryAfter
+      });
+    }
+    
+    if (error.code === 'PAYMENT_OVERPAYMENT') {
+      return res.status(400).json({ 
+        error: 'Overpayment detected',
+        message: error.message,
+        code: error.code,
+        overpayment: error.overpayment
+      });
+    }
+    
+    if (error.code === 'BILL_VERSION_MISMATCH') {
+      return res.status(409).json({ 
+        error: 'Concurrent modification',
+        message: error.message,
+        code: error.code
+      });
+    }
+    
+    // Handle PostgreSQL lock errors
+    if (error.code === '55P03' || error.message?.includes('could not obtain lock')) {
+      return res.status(409).json({ 
+        error: 'Lock timeout',
+        message: 'This resource is currently being processed by another user. Please try again in a moment.',
+        code: 'LOCK_TIMEOUT'
       });
     }
     

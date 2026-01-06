@@ -260,6 +260,193 @@ router.put('/:id', async (req: TenantRequest, res) => {
   }
 });
 
+// POST pay bill - Dedicated endpoint for atomic payment processing
+router.post('/:id/pay', async (req: TenantRequest, res) => {
+  try {
+    const db = getDb();
+    const billId = req.params.id;
+    const { amount, accountId, date, description, categoryId, reference } = req.body;
+    
+    // Validate required fields
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Payment amount must be greater than 0'
+      });
+    }
+    
+    if (!accountId) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Payment account is required'
+      });
+    }
+    
+    const paymentDate = date || new Date().toISOString().split('T')[0];
+    const paymentAmount = parseFloat(amount);
+    
+    // Process payment atomically within a transaction
+    const result = await db.transaction(async (client) => {
+      // Lock the bill row to prevent concurrent payments
+      const billLock = await client.query(
+        'SELECT * FROM bills WHERE id = $1 AND tenant_id = $2 FOR UPDATE NOWAIT',
+        [billId, req.tenantId]
+      );
+      
+      if (billLock.rows.length === 0) {
+        throw { code: 'BILL_NOT_FOUND', message: 'Bill not found' };
+      }
+      
+      const bill = billLock.rows[0];
+      const billAmount = parseFloat(bill.amount);
+      const currentPaidAmount = parseFloat(bill.paid_amount || '0');
+      
+      // Validate overpayment
+      if (currentPaidAmount + paymentAmount > billAmount + 0.01) {
+        const overpayment = (currentPaidAmount + paymentAmount) - billAmount;
+        throw {
+          code: 'PAYMENT_OVERPAYMENT',
+          message: `Payment amount (${paymentAmount}) would exceed bill amount. Current paid: ${currentPaidAmount}, Bill amount: ${billAmount}, Overpayment: ${overpayment.toFixed(2)}`,
+          overpayment: overpayment,
+          remainingBalance: billAmount - currentPaidAmount
+        };
+      }
+      
+      // Create transaction
+      const transactionId = `txn-bill-${Date.now()}-${billId}`;
+      const transactionDescription = description || 
+        `Bill Payment: #${bill.bill_number}${reference ? ` (Ref: ${reference})` : ''}`;
+      
+      const transactionResult = await client.query(
+        `INSERT INTO transactions (
+          id, tenant_id, user_id, type, amount, date, description, account_id,
+          category_id, contact_id, project_id, building_id, property_id,
+          project_agreement_id, contract_id, bill_id, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())
+        RETURNING *`,
+        [
+          transactionId,
+          req.tenantId,
+          req.user?.userId || null,
+          'EXPENSE',
+          paymentAmount,
+          paymentDate,
+          transactionDescription,
+          accountId,
+          categoryId || bill.category_id || null,
+          bill.contact_id,
+          bill.project_id || null,
+          bill.building_id || null,
+          bill.property_id || null,
+          bill.project_agreement_id || null,
+          bill.contract_id || null,
+          billId
+        ]
+      );
+      
+      const transaction = transactionResult.rows[0];
+      
+      // Calculate new paid amount
+      const billTransactions = await client.query(
+        'SELECT SUM(amount) as total_paid FROM transactions WHERE bill_id = $1 AND tenant_id = $2',
+        [billId, req.tenantId]
+      );
+      const totalPaid = parseFloat(billTransactions.rows[0]?.total_paid || '0');
+      
+      // Determine new status
+      let newStatus = 'Unpaid';
+      if (totalPaid >= billAmount - 0.01) {
+        newStatus = 'Paid';
+      } else if (totalPaid > 0.01) {
+        newStatus = 'Partially Paid';
+      }
+      
+      // Update bill with version check
+      const currentVersion = parseInt(bill.version || '1');
+      const updatedBillResult = await client.query(
+        `UPDATE bills 
+         SET paid_amount = $1, status = $2, version = version + 1, updated_at = NOW() 
+         WHERE id = $3 AND tenant_id = $4 AND version = $5
+         RETURNING *`,
+        [totalPaid, newStatus, billId, req.tenantId, currentVersion]
+      );
+      
+      if (updatedBillResult.rows.length === 0) {
+        // Version mismatch - concurrent modification detected
+        throw {
+          code: 'BILL_VERSION_MISMATCH',
+          message: 'Bill was modified by another user. Please refresh and try again.'
+        };
+      }
+      
+      return {
+        transaction: transaction,
+        bill: updatedBillResult.rows[0]
+      };
+    });
+    
+    // Emit WebSocket events
+    emitToTenant(req.tenantId!, WS_EVENTS.TRANSACTION_CREATED, {
+      transaction: result.transaction,
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+    
+    emitToTenant(req.tenantId!, WS_EVENTS.BILL_UPDATED, {
+      bill: result.bill,
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+    
+    res.status(201).json({
+      transaction: result.transaction,
+      bill: result.bill,
+      message: 'Payment processed successfully'
+    });
+  } catch (error: any) {
+    console.error('Error processing bill payment:', error);
+    
+    if (error.code === 'BILL_NOT_FOUND') {
+      return res.status(404).json({ 
+        error: 'Bill not found',
+        message: error.message
+      });
+    }
+    
+    if (error.code === 'PAYMENT_OVERPAYMENT') {
+      return res.status(400).json({ 
+        error: 'Overpayment detected',
+        message: error.message,
+        code: error.code,
+        overpayment: error.overpayment,
+        remainingBalance: error.remainingBalance
+      });
+    }
+    
+    if (error.code === 'BILL_VERSION_MISMATCH') {
+      return res.status(409).json({ 
+        error: 'Concurrent modification',
+        message: error.message,
+        code: error.code
+      });
+    }
+    
+    // Handle PostgreSQL lock errors
+    if (error.code === '55P03' || error.message?.includes('could not obtain lock')) {
+      return res.status(409).json({ 
+        error: 'Lock timeout',
+        message: 'This bill is currently being processed by another user. Please try again in a moment.',
+        code: 'LOCK_TIMEOUT'
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Failed to process payment',
+      message: error.message || 'Internal server error'
+    });
+  }
+});
+
 // DELETE bill
 router.delete('/:id', async (req: TenantRequest, res) => {
   try {
