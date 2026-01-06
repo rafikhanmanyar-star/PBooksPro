@@ -69,6 +69,49 @@ async function runMigrations() {
     
     console.log('✅ Database migrations completed successfully');
     
+    // Run additional migrations
+    console.log('🔄 Running additional migrations...');
+    
+    // Migration: Add user_id to transactions table
+    const userIdMigrationPaths = [
+      join(__dirname, '../migrations/add-user-id-to-transactions.sql'),
+      join(__dirname, '../../migrations/add-user-id-to-transactions.sql'),
+      join(process.cwd(), 'server/migrations/add-user-id-to-transactions.sql'),
+      join(process.cwd(), 'migrations/add-user-id-to-transactions.sql'),
+    ];
+    
+    let userIdMigrationPath: string | null = null;
+    for (const path of userIdMigrationPaths) {
+      try {
+        readFileSync(path, 'utf8');
+        userIdMigrationPath = path;
+        break;
+      } catch (e) {
+        // Try next path
+      }
+    }
+    
+    if (userIdMigrationPath) {
+      try {
+        console.log('📋 Running user_id migration from:', userIdMigrationPath);
+        const userIdMigrationSQL = readFileSync(userIdMigrationPath, 'utf8');
+        await pool.query(userIdMigrationSQL);
+        console.log('✅ user_id migration completed');
+      } catch (error: any) {
+        // If column already exists, that's okay
+        if (error.code === '42701' && error.message.includes('user_id')) {
+          console.log('   ℹ️  user_id column already exists (skipping)');
+        } else if (error.code === '42P07' && error.message.includes('idx_transactions_user_id')) {
+          console.log('   ℹ️  user_id index already exists (skipping)');
+        } else {
+          console.warn('   ⚠️  user_id migration warning:', error.message);
+          // Don't throw - migration might already be applied
+        }
+      }
+    } else {
+      console.warn('   ⚠️  Could not find add-user-id-to-transactions.sql migration file');
+    }
+    
     // Create default admin user if it doesn't exist
     console.log('👤 Ensuring admin user exists...');
     const bcrypt = await import('bcryptjs');

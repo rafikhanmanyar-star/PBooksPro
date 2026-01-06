@@ -215,6 +215,7 @@ export class AppStateApiService {
         agreementId: t.agreement_id || t.agreementId || undefined,
         batchId: t.batch_id || t.batchId || undefined,
         isSystem: t.is_system === true || t.is_system === 1 || t.isSystem === true || false,
+        userId: t.user_id || t.userId || undefined,
         children: t.children || undefined
       }));
 
