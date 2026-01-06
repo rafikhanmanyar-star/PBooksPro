@@ -343,11 +343,13 @@ export class AppStateApiService {
    * Save building to API
    */
   async saveBuilding(building: Partial<AppState['buildings'][0]>): Promise<AppState['buildings'][0]> {
-    if (building.id) {
-      return this.buildingsRepo.update(building.id, building);
-    } else {
-      return this.buildingsRepo.create(building);
-    }
+    // Always use POST endpoint - it handles upserts automatically
+    const buildingWithId = {
+      ...building,
+      id: building.id || `building_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+    logger.logCategory('sync', `💾 Syncing building (POST upsert): ${buildingWithId.id} - ${buildingWithId.name}`);
+    return this.buildingsRepo.create(buildingWithId);
   }
 
   /**
@@ -361,15 +363,13 @@ export class AppStateApiService {
    * Save property to API
    */
   async saveProperty(property: Partial<AppState['properties'][0]>): Promise<AppState['properties'][0]> {
+    // Always use POST endpoint - it handles upserts automatically
     const propertyWithId = {
       ...property,
-      id: property.id || `property_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      id: property.id || `property_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
-    if (property.id) {
-      return this.propertiesRepo.update(propertyWithId.id!, propertyWithId);
-    } else {
-      return this.propertiesRepo.create(propertyWithId);
-    }
+    logger.logCategory('sync', `💾 Syncing property (POST upsert): ${propertyWithId.id} - ${propertyWithId.name}`);
+    return this.propertiesRepo.create(propertyWithId);
   }
 
   /**
@@ -383,15 +383,13 @@ export class AppStateApiService {
    * Save unit to API
    */
   async saveUnit(unit: Partial<AppState['units'][0]>): Promise<AppState['units'][0]> {
+    // Always use POST endpoint - it handles upserts automatically
     const unitWithId = {
       ...unit,
-      id: unit.id || `unit_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      id: unit.id || `unit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
-    if (unit.id) {
-      return this.unitsRepo.update(unitWithId.id!, unitWithId);
-    } else {
-      return this.unitsRepo.create(unitWithId);
-    }
+    logger.logCategory('sync', `💾 Syncing unit (POST upsert): ${unitWithId.id} - ${unitWithId.name}`);
+    return this.unitsRepo.create(unitWithId);
   }
 
   /**

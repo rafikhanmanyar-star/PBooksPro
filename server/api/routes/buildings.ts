@@ -41,17 +41,58 @@ router.get('/:id', async (req: TenantRequest, res) => {
   }
 });
 
-// POST create building
+// POST create/update building (upsert)
 router.post('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const building = req.body;
+    
+    // Validate required fields
+    if (!building.name) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Name is required'
+      });
+    }
+    
+    // Generate ID if not provided
+    const buildingId = building.id || `building_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Check if building with this ID already exists and belongs to a different tenant
+    if (building.id) {
+      const existingBuilding = await db.query(
+        'SELECT tenant_id FROM buildings WHERE id = $1',
+        [buildingId]
+      );
+      
+      if (existingBuilding.length > 0 && existingBuilding[0].tenant_id !== req.tenantId) {
+        return res.status(403).json({ 
+          error: 'Forbidden',
+          message: 'A building with this ID already exists in another organization'
+        });
+      }
+    }
+    
+    // Check if building exists to determine if this is a create or update
+    const existing = await db.query(
+      'SELECT id FROM buildings WHERE id = $1 AND tenant_id = $2',
+      [buildingId, req.tenantId]
+    );
+    const isUpdate = existing.length > 0;
+    
+    // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
     const result = await db.query(
-      `INSERT INTO buildings (id, tenant_id, name, description, color)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO buildings (id, tenant_id, name, description, color, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, COALESCE((SELECT created_at FROM buildings WHERE id = $1), NOW()), NOW())
+       ON CONFLICT (id) 
+       DO UPDATE SET
+         name = EXCLUDED.name,
+         description = EXCLUDED.description,
+         color = EXCLUDED.color,
+         updated_at = NOW()
        RETURNING *`,
       [
-        building.id,
+        buildingId,
         req.tenantId,
         building.name,
         building.description || null,
@@ -61,16 +102,24 @@ router.post('/', async (req: TenantRequest, res) => {
     const saved = result[0];
     
     // Emit WebSocket event for real-time sync
-    emitToTenant(req.tenantId!, WS_EVENTS.BUILDING_CREATED, {
-      building: saved,
-      userId: req.user?.userId,
-      username: req.user?.username,
-    });
+    if (isUpdate) {
+      emitToTenant(req.tenantId!, WS_EVENTS.BUILDING_UPDATED, {
+        building: saved,
+        userId: req.user?.userId,
+        username: req.user?.username,
+      });
+    } else {
+      emitToTenant(req.tenantId!, WS_EVENTS.BUILDING_CREATED, {
+        building: saved,
+        userId: req.user?.userId,
+        username: req.user?.username,
+      });
+    }
     
-    res.status(201).json(saved);
+    res.status(isUpdate ? 200 : 201).json(saved);
   } catch (error) {
-    console.error('Error creating building:', error);
-    res.status(500).json({ error: 'Failed to create building' });
+    console.error('Error creating/updating building:', error);
+    res.status(500).json({ error: 'Failed to save building' });
   }
 });
 

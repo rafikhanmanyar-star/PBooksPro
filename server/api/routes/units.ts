@@ -41,17 +41,60 @@ router.get('/:id', async (req: TenantRequest, res) => {
   }
 });
 
-// POST create unit
+// POST create/update unit (upsert)
 router.post('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const unit = req.body;
+    
+    // Validate required fields
+    if (!unit.name) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Name is required'
+      });
+    }
+    
+    // Generate ID if not provided
+    const unitId = unit.id || `unit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Check if unit with this ID already exists and belongs to a different tenant
+    if (unit.id) {
+      const existingUnit = await db.query(
+        'SELECT tenant_id FROM units WHERE id = $1',
+        [unitId]
+      );
+      
+      if (existingUnit.length > 0 && existingUnit[0].tenant_id !== req.tenantId) {
+        return res.status(403).json({ 
+          error: 'Forbidden',
+          message: 'A unit with this ID already exists in another organization'
+        });
+      }
+    }
+    
+    // Check if unit exists to determine if this is a create or update
+    const existing = await db.query(
+      'SELECT id FROM units WHERE id = $1 AND tenant_id = $2',
+      [unitId, req.tenantId]
+    );
+    const isUpdate = existing.length > 0;
+    
+    // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
     const result = await db.query(
-      `INSERT INTO units (id, tenant_id, name, project_id, contact_id, sale_price, description)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO units (id, tenant_id, name, project_id, contact_id, sale_price, description, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE((SELECT created_at FROM units WHERE id = $1), NOW()), NOW())
+       ON CONFLICT (id) 
+       DO UPDATE SET
+         name = EXCLUDED.name,
+         project_id = EXCLUDED.project_id,
+         contact_id = EXCLUDED.contact_id,
+         sale_price = EXCLUDED.sale_price,
+         description = EXCLUDED.description,
+         updated_at = NOW()
        RETURNING *`,
       [
-        unit.id,
+        unitId,
         req.tenantId,
         unit.name,
         unit.projectId,
@@ -63,16 +106,24 @@ router.post('/', async (req: TenantRequest, res) => {
     const saved = result[0];
     
     // Emit WebSocket event for real-time sync
-    emitToTenant(req.tenantId!, WS_EVENTS.UNIT_CREATED, {
-      unit: saved,
-      userId: req.user?.userId,
-      username: req.user?.username,
-    });
+    if (isUpdate) {
+      emitToTenant(req.tenantId!, WS_EVENTS.UNIT_UPDATED, {
+        unit: saved,
+        userId: req.user?.userId,
+        username: req.user?.username,
+      });
+    } else {
+      emitToTenant(req.tenantId!, WS_EVENTS.UNIT_CREATED, {
+        unit: saved,
+        userId: req.user?.userId,
+        username: req.user?.username,
+      });
+    }
     
-    res.status(201).json(saved);
+    res.status(isUpdate ? 200 : 201).json(saved);
   } catch (error) {
-    console.error('Error creating unit:', error);
-    res.status(500).json({ error: 'Failed to create unit' });
+    console.error('Error creating/updating unit:', error);
+    res.status(500).json({ error: 'Failed to save unit' });
   }
 });
 

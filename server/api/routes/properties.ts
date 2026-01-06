@@ -41,18 +41,61 @@ router.get('/:id', async (req: TenantRequest, res) => {
   }
 });
 
-// POST create property
+// POST create/update property (upsert)
 router.post('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const property = req.body;
+    
+    // Validate required fields
+    if (!property.name) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Name is required'
+      });
+    }
+    
+    // Generate ID if not provided
+    const propertyId = property.id || `property_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Check if property with this ID already exists and belongs to a different tenant
+    if (property.id) {
+      const existingProperty = await db.query(
+        'SELECT tenant_id FROM properties WHERE id = $1',
+        [propertyId]
+      );
+      
+      if (existingProperty.length > 0 && existingProperty[0].tenant_id !== req.tenantId) {
+        return res.status(403).json({ 
+          error: 'Forbidden',
+          message: 'A property with this ID already exists in another organization'
+        });
+      }
+    }
+    
+    // Check if property exists to determine if this is a create or update
+    const existing = await db.query(
+      'SELECT id FROM properties WHERE id = $1 AND tenant_id = $2',
+      [propertyId, req.tenantId]
+    );
+    const isUpdate = existing.length > 0;
+    
+    // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
     const result = await db.query(
       `INSERT INTO properties (
-        id, tenant_id, name, owner_id, building_id, description, monthly_service_charge
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        id, tenant_id, name, owner_id, building_id, description, monthly_service_charge, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE((SELECT created_at FROM properties WHERE id = $1), NOW()), NOW())
+      ON CONFLICT (id) 
+      DO UPDATE SET
+        name = EXCLUDED.name,
+        owner_id = EXCLUDED.owner_id,
+        building_id = EXCLUDED.building_id,
+        description = EXCLUDED.description,
+        monthly_service_charge = EXCLUDED.monthly_service_charge,
+        updated_at = NOW()
       RETURNING *`,
       [
-        property.id,
+        propertyId,
         req.tenantId,
         property.name,
         property.ownerId,
@@ -64,16 +107,24 @@ router.post('/', async (req: TenantRequest, res) => {
     const saved = result[0];
     
     // Emit WebSocket event for real-time sync
-    emitToTenant(req.tenantId!, WS_EVENTS.PROPERTY_CREATED, {
-      property: saved,
-      userId: req.user?.userId,
-      username: req.user?.username,
-    });
+    if (isUpdate) {
+      emitToTenant(req.tenantId!, WS_EVENTS.PROPERTY_UPDATED, {
+        property: saved,
+        userId: req.user?.userId,
+        username: req.user?.username,
+      });
+    } else {
+      emitToTenant(req.tenantId!, WS_EVENTS.PROPERTY_CREATED, {
+        property: saved,
+        userId: req.user?.userId,
+        username: req.user?.username,
+      });
+    }
     
-    res.status(201).json(saved);
+    res.status(isUpdate ? 200 : 201).json(saved);
   } catch (error) {
-    console.error('Error creating property:', error);
-    res.status(500).json({ error: 'Failed to create property' });
+    console.error('Error creating/updating property:', error);
+    res.status(500).json({ error: 'Failed to save property' });
   }
 });
 
