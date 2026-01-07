@@ -186,6 +186,76 @@ router.post('/', async (req: TenantRequest, res) => {
     console.log('🔄 POST /transactions - Starting database transaction');
     const result = await db.transaction(async (client) => {
       console.log('✅ POST /transactions - Transaction client acquired');
+      
+      // Validate and ensure account exists
+      const accountCheck = await client.query(
+        'SELECT id FROM accounts WHERE id = $1 AND tenant_id = $2',
+        [transaction.accountId, req.tenantId]
+      );
+      
+      if (accountCheck.rows.length === 0) {
+        // Check if it's a system account that should be auto-created
+        const systemAccounts: { [key: string]: { name: string; type: string; description: string } } = {
+          'sys-acc-cash': { name: 'Cash', type: 'Bank', description: 'Default cash account' },
+          'sys-acc-ar': { name: 'Accounts Receivable', type: 'Asset', description: 'System account for unpaid invoices' },
+          'sys-acc-ap': { name: 'Accounts Payable', type: 'Liability', description: 'System account for unpaid bills and salaries' },
+          'sys-acc-equity': { name: 'Owner Equity', type: 'Equity', description: 'System account for owner capital and equity' },
+          'sys-acc-clearing': { name: 'Internal Clearing', type: 'Bank', description: 'System account for internal transfers and equity clearing' }
+        };
+        
+        const systemAccount = systemAccounts[transaction.accountId];
+        if (systemAccount) {
+          // Auto-create system account
+          console.log(`🔧 POST /transactions - Auto-creating missing system account: ${transaction.accountId}`);
+          await client.query(
+            `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, 0, TRUE, $5, NOW(), NOW())
+             ON CONFLICT (id) DO NOTHING`,
+            [transaction.accountId, req.tenantId, systemAccount.name, systemAccount.type, systemAccount.description]
+          );
+          console.log(`✅ POST /transactions - System account created: ${transaction.accountId}`);
+        } else {
+          // Not a system account - return error
+          throw {
+            code: 'ACCOUNT_NOT_FOUND',
+            message: `Account with ID "${transaction.accountId}" does not exist. Please select a valid account.`,
+            accountId: transaction.accountId
+          };
+        }
+      }
+      
+      // Validate from_account_id if provided (for transfers)
+      if (transaction.fromAccountId) {
+        const fromAccountCheck = await client.query(
+          'SELECT id FROM accounts WHERE id = $1 AND tenant_id = $2',
+          [transaction.fromAccountId, req.tenantId]
+        );
+        
+        if (fromAccountCheck.rows.length === 0) {
+          throw {
+            code: 'ACCOUNT_NOT_FOUND',
+            message: `From account with ID "${transaction.fromAccountId}" does not exist. Please select a valid account.`,
+            accountId: transaction.fromAccountId
+          };
+        }
+      }
+      
+      // Validate to_account_id if provided (for transfers)
+      if (transaction.toAccountId) {
+        const toAccountCheck = await client.query(
+          'SELECT id FROM accounts WHERE id = $1 AND tenant_id = $2',
+          [transaction.toAccountId, req.tenantId]
+        );
+        
+        if (toAccountCheck.rows.length === 0) {
+          throw {
+            code: 'ACCOUNT_NOT_FOUND',
+            message: `To account with ID "${transaction.toAccountId}" does not exist. Please select a valid account.`,
+            accountId: transaction.toAccountId
+          };
+        }
+      }
+      
       // If transaction is linked to a bill, lock the bill row first to prevent concurrent payments
       if (transaction.billId && !wasUpdate) {
         try {
@@ -667,12 +737,50 @@ router.post('/', async (req: TenantRequest, res) => {
       });
     }
     
+    if (error.code === 'ACCOUNT_NOT_FOUND') {
+      return res.status(400).json({ 
+        error: 'Account not found',
+        message: error.message,
+        code: error.code,
+        accountId: error.accountId
+      });
+    }
+    
     if (error.code === 'BILL_VERSION_MISMATCH') {
       return res.status(409).json({ 
         error: 'Concurrent modification',
         message: error.message,
         code: error.code
       });
+    }
+    
+    // Handle foreign key constraint violations
+    if (error.code === '23503') {
+      const constraint = error.constraint;
+      if (constraint === 'transactions_account_id_fkey') {
+        return res.status(400).json({ 
+          error: 'Account not found',
+          message: `The selected account does not exist. Please select a valid account.`,
+          code: 'ACCOUNT_NOT_FOUND',
+          detail: error.detail
+        });
+      }
+      if (constraint === 'transactions_from_account_id_fkey') {
+        return res.status(400).json({ 
+          error: 'From account not found',
+          message: `The selected "from" account does not exist. Please select a valid account.`,
+          code: 'ACCOUNT_NOT_FOUND',
+          detail: error.detail
+        });
+      }
+      if (constraint === 'transactions_to_account_id_fkey') {
+        return res.status(400).json({ 
+          error: 'To account not found',
+          message: `The selected "to" account does not exist. Please select a valid account.`,
+          code: 'ACCOUNT_NOT_FOUND',
+          detail: error.detail
+        });
+      }
     }
     
     // Handle PostgreSQL lock errors
@@ -1017,6 +1125,40 @@ router.post('/batch', async (req: TenantRequest, res) => {
         const transactionId = transaction.id || `transaction_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
         const savedTransaction = await db.transaction(async (client) => {
+          // Validate and ensure account exists
+          const accountCheck = await client.query(
+            'SELECT id FROM accounts WHERE id = $1 AND tenant_id = $2',
+            [transaction.accountId, req.tenantId]
+          );
+          
+          if (accountCheck.rows.length === 0) {
+            // Check if it's a system account that should be auto-created
+            const systemAccounts: { [key: string]: { name: string; type: string; description: string } } = {
+              'sys-acc-cash': { name: 'Cash', type: 'Bank', description: 'Default cash account' },
+              'sys-acc-ar': { name: 'Accounts Receivable', type: 'Asset', description: 'System account for unpaid invoices' },
+              'sys-acc-ap': { name: 'Accounts Payable', type: 'Liability', description: 'System account for unpaid bills and salaries' },
+              'sys-acc-equity': { name: 'Owner Equity', type: 'Equity', description: 'System account for owner capital and equity' },
+              'sys-acc-clearing': { name: 'Internal Clearing', type: 'Bank', description: 'System account for internal transfers and equity clearing' }
+            };
+            
+            const systemAccount = systemAccounts[transaction.accountId];
+            if (systemAccount) {
+              // Auto-create system account
+              await client.query(
+                `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, 0, TRUE, $5, NOW(), NOW())
+                 ON CONFLICT (id) DO NOTHING`,
+                [transaction.accountId, req.tenantId, systemAccount.name, systemAccount.type, systemAccount.description]
+              );
+            } else {
+              throw {
+                code: 'ACCOUNT_NOT_FOUND',
+                message: `Account with ID "${transaction.accountId}" does not exist. Please select a valid account.`,
+                accountId: transaction.accountId
+              };
+            }
+          }
+          
           // Lock bill if transaction is linked to a bill
           if (transaction.billId && !transaction.id) { // Only lock for new transactions
             try {
@@ -1204,12 +1346,32 @@ router.post('/batch', async (req: TenantRequest, res) => {
       } catch (error: any) {
         // Transaction failed
         const transactionId = transaction.id || `transaction_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Handle foreign key constraint violations for accounts
+        let errorMessage = error.message || error.code || 'Unknown error';
+        let errorCode = error.code;
+        
+        if (error.code === '23503') {
+          const constraint = error.constraint;
+          if (constraint === 'transactions_account_id_fkey') {
+            errorMessage = `The selected account does not exist. Please select a valid account.`;
+            errorCode = 'ACCOUNT_NOT_FOUND';
+          } else if (constraint === 'transactions_from_account_id_fkey') {
+            errorMessage = `The selected "from" account does not exist. Please select a valid account.`;
+            errorCode = 'ACCOUNT_NOT_FOUND';
+          } else if (constraint === 'transactions_to_account_id_fkey') {
+            errorMessage = `The selected "to" account does not exist. Please select a valid account.`;
+            errorCode = 'ACCOUNT_NOT_FOUND';
+          }
+        }
+        
         results.push({
           transactionId,
           success: false,
-          error: error.message || error.code || 'Unknown error',
-          ...(error.code && { code: error.code }),
-          ...(error.overpayment && { overpayment: error.overpayment })
+          error: errorMessage,
+          ...(errorCode && { code: errorCode }),
+          ...(error.overpayment && { overpayment: error.overpayment }),
+          ...(error.accountId && { accountId: error.accountId })
         });
       }
     }

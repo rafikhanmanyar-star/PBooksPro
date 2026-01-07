@@ -814,6 +814,18 @@ router.post('/register-tenant', async (req, res) => {
       });
     }
 
+    // Initialize system accounts and categories for the new tenant
+    try {
+      const { TenantInitializationService } = await import('../../services/tenantInitializationService.js');
+      const initService = new TenantInitializationService(db);
+      const initResult = await initService.initializeSystemData(tenantId);
+      console.log(`✅ System data initialized for tenant ${tenantId}: ${initResult.accountsCreated} accounts, ${initResult.categoriesCreated} categories`);
+    } catch (initError: any) {
+      console.error('Error initializing system data:', initError);
+      // Don't fail registration if initialization fails - it can be retried later
+      // The ensure methods in accounts/categories routes will create them on-demand
+    }
+
     res.json({
       success: true,
       tenantId,

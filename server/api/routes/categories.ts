@@ -10,6 +10,17 @@ const getDb = () => getDatabaseService();
 router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
+    
+    // Ensure system categories exist before fetching
+    try {
+      const { TenantInitializationService } = await import('../../services/tenantInitializationService.js');
+      const initService = new TenantInitializationService(db);
+      await initService.ensureSystemCategories(req.tenantId!);
+    } catch (initError) {
+      // Log but don't fail - categories will still be returned
+      console.warn('Warning: Failed to ensure system categories:', initError);
+    }
+    
     const categories = await db.query(
       'SELECT * FROM categories WHERE tenant_id = $1 ORDER BY name',
       [req.tenantId]

@@ -10,6 +10,17 @@ const getDb = () => getDatabaseService();
 router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
+    
+    // Ensure system accounts exist before fetching
+    try {
+      const { TenantInitializationService } = await import('../../services/tenantInitializationService.js');
+      const initService = new TenantInitializationService(db);
+      await initService.ensureSystemAccounts(req.tenantId!);
+    } catch (initError) {
+      // Log but don't fail - accounts will still be returned
+      console.warn('Warning: Failed to ensure system accounts:', initError);
+    }
+    
     const accounts = await db.query(
       'SELECT * FROM accounts WHERE tenant_id = $1 ORDER BY name',
       [req.tenantId]
