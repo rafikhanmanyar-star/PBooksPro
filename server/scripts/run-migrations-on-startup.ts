@@ -112,6 +112,40 @@ async function runMigrations() {
       console.warn('   ⚠️  Could not find add-user-id-to-transactions.sql migration file');
     }
     
+    // Run additional migrations
+    console.log('🔄 Running additional migrations...');
+    
+    // Migration: Make transaction_audit_log.user_id nullable
+    const auditLogMigrationPath = join(__dirname, '../migrations/make-audit-log-user-id-nullable.sql');
+    const auditLogMigrationAltPath = join(process.cwd(), 'server/migrations/make-audit-log-user-id-nullable.sql');
+    
+    let auditLogMigrationSQL: string | null = null;
+    try {
+      auditLogMigrationSQL = readFileSync(auditLogMigrationPath, 'utf8');
+    } catch (e) {
+      try {
+        auditLogMigrationSQL = readFileSync(auditLogMigrationAltPath, 'utf8');
+      } catch (e2) {
+        // Migration file not found - that's okay, might not exist yet
+      }
+    }
+    
+    if (auditLogMigrationSQL) {
+      try {
+        await pool.query(auditLogMigrationSQL);
+        console.log('   ✅ Made transaction_audit_log.user_id nullable');
+      } catch (error: any) {
+        // If column is already nullable or doesn't exist, that's okay
+        if (error.code === '42703' || error.message.includes('does not exist') || 
+            error.message.includes('already nullable')) {
+          console.log('   ℹ️  transaction_audit_log.user_id migration already applied (skipping)');
+        } else {
+          console.warn('   ⚠️  transaction_audit_log.user_id migration warning:', error.message);
+          // Don't throw - migration might already be applied
+        }
+      }
+    }
+    
     // Create default admin user if it doesn't exist
     console.log('👤 Ensuring admin user exists...');
     const bcrypt = await import('bcryptjs');

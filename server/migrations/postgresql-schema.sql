@@ -489,7 +489,7 @@ CREATE TABLE IF NOT EXISTS transaction_audit_log (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL,
     transaction_id TEXT,
-    user_id TEXT NOT NULL,
+    user_id TEXT, -- Nullable to allow user deletion while preserving audit trail (user_name and user_role remain)
     user_name TEXT NOT NULL,
     user_role TEXT NOT NULL,
     action TEXT NOT NULL, -- 'CREATE', 'UPDATE', 'DELETE', 'VIEW'

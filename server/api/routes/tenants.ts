@@ -190,8 +190,15 @@ router.post('/chat/send', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Sender not found' });
     }
 
+    // Generate unique message ID with better collision prevention
+    // Use high-resolution time and multiple random components
+    const timestamp = Date.now();
+    const random1 = Math.random().toString(36).substring(2, 11);
+    const random2 = Math.random().toString(36).substring(2, 11);
+    const messageId = `chat_${timestamp}_${random1}_${random2}`;
+    
     const messageData = {
-      id: `chat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: messageId,
       senderId: senderId,
       senderName: sender[0].name,
       recipientId: recipientId,

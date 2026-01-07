@@ -8,7 +8,7 @@ import { BaseRepository } from './baseRepository';
 export { BaseRepository } from './baseRepository';
 import { getNativeDatabaseService } from '../nativeDatabaseService';
 import { getDatabaseService } from '../databaseService';
-import { dbToObjectFormat } from '../columnMapper';
+import { dbToObjectFormat, objectToDbFormat } from '../columnMapper';
 
 // Entity repositories will be created below
 // For now, we'll create them as needed
@@ -299,6 +299,44 @@ export class ChatMessagesRepository extends BaseRepository<any> {
      */
     protected shouldFilterByTenant(): boolean {
         return false;
+    }
+    
+    /**
+     * Override insert to use INSERT OR IGNORE to prevent duplicate key errors
+     * Messages can arrive from both API response and WebSocket, causing duplicates
+     */
+    insert(data: Partial<any>): void {
+        try {
+            const dbData = objectToDbFormat(data as Record<string, any>);
+            const columnsSet = this.ensureTableColumns();
+            
+            const keys = Object.keys(dbData)
+                .filter(k => dbData[k] !== undefined && columnsSet.has(k));
+            const values = keys.map(k => dbData[k]);
+            const placeholders = keys.map(() => '?').join(', ');
+            const columns = keys.join(', ');
+
+            if (keys.length === 0) {
+                const errorMsg = `No valid columns to insert for ${this.tableName}. Available columns: ${Array.from(columnsSet).join(', ')}, Data keys after conversion: ${Object.keys(dbData).join(', ')}`;
+                console.error(`❌ ${errorMsg}`);
+                throw new Error(errorMsg);
+            }
+
+            // Use INSERT OR IGNORE to prevent duplicate key errors
+            // Messages can arrive from both API response and WebSocket
+            this.db.execute(
+                `INSERT OR IGNORE INTO ${this.tableName} (${columns}) VALUES (${placeholders})`,
+                values
+            );
+
+            if (!this.db.isInTransaction()) {
+                this.db.save();
+            }
+        } catch (error) {
+            console.error(`❌ Error inserting into ${this.tableName}:`, error);
+            console.error('Data:', data);
+            throw error;
+        }
     }
     
     /**
