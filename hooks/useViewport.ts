@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 interface ViewportSize {
   width: number;
@@ -53,38 +53,52 @@ export const useViewport = (debounceMs: number = 150): UseViewportReturn => {
     isLargeDesktop: viewport.width >= 1536, // 2xl+
   };
 
-  // Update viewport size
-  const updateViewport = useCallback(() => {
+  // Update viewport size - use ref to avoid dependency issues
+  const updateViewportRef = useRef(() => {
     if (typeof window !== 'undefined') {
       setViewport({
         width: window.innerWidth,
         height: window.innerHeight,
       });
     }
-  }, []);
+  });
 
-  // Debounced resize handler
-  const debouncedUpdate = useCallback(
-    debounce(updateViewport, debounceMs),
-    [updateViewport, debounceMs]
-  );
+  // Keep ref updated
+  updateViewportRef.current = () => {
+    if (typeof window !== 'undefined') {
+      setViewport({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    }
+  };
 
+  // Store debounced function in ref
+  const debouncedUpdateRef = useRef<ReturnType<typeof debounce>>();
+  
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
+    // Create debounced function
+    debouncedUpdateRef.current = debounce(() => {
+      updateViewportRef.current();
+    }, debounceMs);
+
     // Initial update
-    updateViewport();
+    updateViewportRef.current();
+
+    const debouncedUpdate = debouncedUpdateRef.current;
 
     // Add resize listener
     window.addEventListener('resize', debouncedUpdate);
-    window.addEventListener('orientationchange', updateViewport);
+    window.addEventListener('orientationchange', updateViewportRef.current);
 
     // Cleanup
     return () => {
       window.removeEventListener('resize', debouncedUpdate);
-      window.removeEventListener('orientationchange', updateViewport);
+      window.removeEventListener('orientationchange', updateViewportRef.current);
     };
-  }, [debouncedUpdate, updateViewport]);
+  }, [debounceMs]);
 
   // Helper functions
   const isSmallerThan = useCallback(
