@@ -1,7 +1,6 @@
 
-import React, { ReactNode, useEffect, useState, useMemo } from 'react';
+import React, { ReactNode, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useViewport } from '../../hooks/useViewport';
 
 interface ModalProps {
   isOpen: boolean;
@@ -25,7 +24,6 @@ const Modal: React.FC<ModalProps> = ({
   maxContentHeight
 }) => {
   const [mounted, setMounted] = useState(false);
-  const { isMobile, height: viewportHeight } = useViewport();
 
   useEffect(() => {
     setMounted(true);
@@ -54,10 +52,10 @@ const Modal: React.FC<ModalProps> = ({
 
   if (!isOpen || !mounted) return null;
 
-  // Dynamic size classes that adapt to viewport
-  const sizeClasses = useMemo(() => {
-    if (fullScreen && isMobile) {
-      return 'w-full h-full max-w-full max-h-full rounded-none';
+  // Dynamic size classes that adapt to viewport (using CSS classes only)
+  const sizeClasses = (() => {
+    if (fullScreen) {
+      return 'w-full h-full max-w-full max-h-full rounded-none sm:rounded-xl';
     }
     
     const baseSizes = {
@@ -68,38 +66,38 @@ const Modal: React.FC<ModalProps> = ({
     };
     
     return baseSizes[size as keyof typeof baseSizes] || baseSizes.md;
-  }, [size, fullScreen, isMobile]);
+  })();
 
-  // Dynamic max-height calculation based on viewport
-  const maxHeightStyle = useMemo(() => {
-    if (fullScreen && isMobile) {
-      return { maxHeight: '100vh' };
+  // Dynamic max-height calculation based on viewport (using CSS classes)
+  const maxHeightClass = (() => {
+    if (fullScreen) {
+      return 'max-h-screen';
     }
     
     if (maxContentHeight) {
-      return { maxHeight: `${maxContentHeight}px` };
+      return '';
     }
     
-    // Calculate based on viewport height minus padding
-    // Mobile: 100vh - 1rem (top) - 1rem (bottom) = calc(100vh - 2rem)
-    // Desktop: 100vh - 2rem (top) - 2rem (bottom) = calc(100vh - 4rem)
-    const padding = isMobile ? '2rem' : '4rem';
-    return { maxHeight: `calc(100vh - ${padding})` };
-  }, [isMobile, fullScreen, maxContentHeight, viewportHeight]);
+    // Use CSS classes for responsive max-height
+    // Mobile: calc(100vh - 2rem), Desktop: calc(100vh - 4rem)
+    return 'max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-4rem)]';
+  })();
 
-  // Responsive padding classes
-  const paddingClasses = isMobile 
-    ? 'p-4' 
-    : 'p-6 lg:p-8';
+  const maxHeightStyle: React.CSSProperties = maxContentHeight 
+    ? { maxHeight: `${maxContentHeight}px` }
+    : {};
 
-  // Container alignment - bottom sheet on mobile, centered on desktop
-  const containerClasses = fullScreen && isMobile
-    ? 'items-stretch justify-stretch'
+  // Responsive padding classes (CSS-only)
+  const paddingClasses = 'p-4 sm:p-6 lg:p-8';
+
+  // Container alignment - bottom sheet on mobile, centered on desktop (CSS-only)
+  const containerClasses = fullScreen
+    ? 'items-stretch justify-stretch sm:items-center sm:justify-center'
     : 'items-end sm:items-center justify-center';
 
-  // Modal positioning
-  const modalPositionClasses = fullScreen && isMobile
-    ? 'rounded-none'
+  // Modal positioning (CSS-only)
+  const modalPositionClasses = fullScreen
+    ? 'rounded-none sm:rounded-xl'
     : 'rounded-t-2xl sm:rounded-xl';
 
   return createPortal(
@@ -113,7 +111,7 @@ const Modal: React.FC<ModalProps> = ({
       }}
     >
       <div 
-        className={`bg-white ${modalPositionClasses} shadow-2xl ${sizeClasses} flex flex-col overflow-hidden mx-auto sm:mx-0 transition-transform duration-300 transform translate-y-0 border border-gray-200`}
+        className={`bg-white ${modalPositionClasses} shadow-2xl ${sizeClasses} ${maxHeightClass} flex flex-col overflow-hidden mx-auto sm:mx-0 transition-transform duration-300 transform translate-y-0 border border-gray-200`}
         style={maxHeightStyle}
         role="dialog"
         aria-modal="true"
@@ -131,10 +129,7 @@ const Modal: React.FC<ModalProps> = ({
           </button>
         </div>
         <div 
-          className={`flex-grow min-h-0 ${disableScroll ? 'overflow-hidden flex flex-col' : 'overflow-y-auto scroll-smooth'} ${!disableScroll ? paddingClasses : ''}`}
-          style={{
-            paddingBottom: `calc(${isMobile ? 'var(--safe-area-bottom, 0px)' : '0px'} + ${disableScroll ? '0' : isMobile ? '1rem' : '1.5rem'})`
-          }}
+          className={`flex-grow min-h-0 ${disableScroll ? 'overflow-hidden flex flex-col' : 'overflow-y-auto scroll-smooth'} ${!disableScroll ? paddingClasses : ''} ${!disableScroll ? 'pb-[calc(var(--safe-area-bottom,0px)+1rem)] sm:pb-[calc(var(--safe-area-bottom,0px)+1.5rem)]' : ''}`}
         >
           {children}
         </div>
