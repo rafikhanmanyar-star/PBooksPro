@@ -15,6 +15,7 @@ import KPIDrilldown from './components/kpi/KPIDrilldown';
 import ScrollToTop from './components/ui/ScrollToTop';
 import { useLicense } from './context/LicenseContext';
 import LicenseLockScreen from './components/license/LicenseLockScreen';
+import PaymentSuccessPage from './components/license/PaymentSuccessPage';
 import { useAuth } from './context/AuthContext';
 import CloudLoginPage from './components/auth/CloudLoginPage';
 // Initialize Sync Service removed
@@ -299,6 +300,29 @@ const App: React.FC = () => {
   // Show loading while checking authentication
   if (authLoading) {
     return <Loading message="Checking authentication..." />;
+  }
+
+  // Check for payment success page URL
+  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
+  
+  useEffect(() => {
+    // Check if current URL path matches payment success route
+    const pathname = window.location.pathname;
+    const searchParams = new URLSearchParams(window.location.search);
+    const hasPaymentParams = searchParams.has('payment_intent') || searchParams.has('status');
+    
+    if (pathname === '/license/payment-success' || 
+        pathname.endsWith('/license/payment-success') ||
+        (pathname === '/' && hasPaymentParams)) {
+      setShowPaymentSuccess(true);
+    } else {
+      setShowPaymentSuccess(false);
+    }
+  }, []);
+
+  // Show payment success page if URL matches
+  if (showPaymentSuccess) {
+    return <PaymentSuccessPage />;
   }
 
   // --- CLOUD AUTHENTICATION CHECK ---

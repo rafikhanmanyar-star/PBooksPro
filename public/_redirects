@@ -1,0 +1,4 @@
+# SPA fallback - redirect all routes to index.html
+# This ensures that routes like /license/payment-success work correctly
+/*    /index.html   200
+
