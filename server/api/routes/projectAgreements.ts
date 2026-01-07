@@ -104,12 +104,12 @@ router.post('/', async (req: TenantRequest, res) => {
         id, tenant_id, agreement_number, client_id, project_id, unit_ids,
         list_price, customer_discount, floor_discount, lump_sum_discount,
         misc_discount, selling_price, rebate_amount, rebate_broker_id,
-        issue_date, description, status, cancellation_details,
+        issue_date, description, status, cancellation_details, installment_plan,
         list_price_category_id, customer_discount_category_id,
         floor_discount_category_id, lump_sum_discount_category_id,
         misc_discount_category_id, selling_price_category_id, rebate_category_id,
         user_id, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27,
                 COALESCE((SELECT created_at FROM project_agreements WHERE id = $1), NOW()), NOW())
       ON CONFLICT (id) 
       DO UPDATE SET
@@ -129,6 +129,7 @@ router.post('/', async (req: TenantRequest, res) => {
         description = EXCLUDED.description,
         status = EXCLUDED.status,
         cancellation_details = EXCLUDED.cancellation_details,
+        installment_plan = EXCLUDED.installment_plan,
         list_price_category_id = EXCLUDED.list_price_category_id,
         customer_discount_category_id = EXCLUDED.customer_discount_category_id,
         floor_discount_category_id = EXCLUDED.floor_discount_category_id,
@@ -158,6 +159,7 @@ router.post('/', async (req: TenantRequest, res) => {
         agreement.description || null,
         agreement.status || null,
         agreement.cancellationDetails ? JSON.stringify(agreement.cancellationDetails) : null,
+        agreement.installmentPlan ? JSON.stringify(agreement.installmentPlan) : null,
         agreement.listPriceCategoryId || null,
         agreement.customerDiscountCategoryId || null,
         agreement.floorDiscountCategoryId || null,
@@ -207,11 +209,12 @@ router.put('/:id', async (req: TenantRequest, res) => {
            lump_sum_discount = $8, misc_discount = $9, selling_price = $10,
            rebate_amount = $11, rebate_broker_id = $12, issue_date = $13,
            description = $14, status = $15, cancellation_details = $16,
-           list_price_category_id = $17, customer_discount_category_id = $18,
-           floor_discount_category_id = $19, lump_sum_discount_category_id = $20,
-           misc_discount_category_id = $21, selling_price_category_id = $22,
-           rebate_category_id = $23, updated_at = NOW()
-       WHERE id = $24 AND tenant_id = $25
+           installment_plan = $17,
+           list_price_category_id = $18, customer_discount_category_id = $19,
+           floor_discount_category_id = $20, lump_sum_discount_category_id = $21,
+           misc_discount_category_id = $22, selling_price_category_id = $23,
+           rebate_category_id = $24, updated_at = NOW()
+       WHERE id = $25 AND tenant_id = $26
        RETURNING *`,
       [
         agreement.agreementNumber,
@@ -230,6 +233,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
         agreement.description || null,
         agreement.status,
         agreement.cancellationDetails ? JSON.stringify(agreement.cancellationDetails) : null,
+        agreement.installmentPlan ? JSON.stringify(agreement.installmentPlan) : null,
         agreement.listPriceCategoryId || null,
         agreement.customerDiscountCategoryId || null,
         agreement.floorDiscountCategoryId || null,

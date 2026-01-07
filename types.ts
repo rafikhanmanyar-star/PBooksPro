@@ -224,6 +224,17 @@ export interface Property {
 export type ProjectStatus = 'Active' | 'Completed' | 'On Hold';
 export type InstallmentFrequency = 'Monthly' | 'Quarterly' | 'Yearly';
 
+export interface InstallmentPlan {
+  id: string;
+  projectId: string;
+  ownerId: string; // clientId/ownerId
+  durationYears: number;
+  downPaymentPercentage: number;
+  frequency: InstallmentFrequency;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface PMConfig {
   rate: number;
   frequency: 'Monthly' | 'Weekly' | 'Yearly';
@@ -397,6 +408,11 @@ export interface ProjectAgreement {
     penaltyAmount: number;
     penaltyPercentage?: number;
     refundAmount: number;
+  };
+  installmentPlan?: {
+    durationYears: number;
+    downPaymentPercentage: number;
+    frequency: InstallmentFrequency;
   };
   listPriceCategoryId?: string;
   customerDiscountCategoryId?: string;
@@ -1015,6 +1031,7 @@ export interface AppState {
   whatsAppTemplates: WhatsAppTemplates;
   dashboardConfig: DashboardConfig;
   invoiceHtmlTemplate?: string;
+  installmentPlans: InstallmentPlan[]; // Per owner per project installment plans
 
   showSystemTransactions: boolean;
   enableColorCoding: boolean;
@@ -1135,6 +1152,9 @@ export type AppAction =
   | { type: 'UPDATE_PRINT_SETTINGS'; payload: PrintSettings }
   | { type: 'UPDATE_WHATSAPP_TEMPLATES'; payload: WhatsAppTemplates }
   | { type: 'UPDATE_INVOICE_TEMPLATE'; payload: string }
+  | { type: 'ADD_INSTALLMENT_PLAN'; payload: InstallmentPlan }
+  | { type: 'UPDATE_INSTALLMENT_PLAN'; payload: InstallmentPlan }
+  | { type: 'DELETE_INSTALLMENT_PLAN'; payload: string }
   | { type: 'UPDATE_PM_COST_PERCENTAGE'; payload: number }
   | { type: 'UPDATE_DEFAULT_PROJECT'; payload: string | undefined }
   | { type: 'UPDATE_DOCUMENT_STORAGE_PATH'; payload: string | undefined }

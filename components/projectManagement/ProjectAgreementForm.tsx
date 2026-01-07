@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { ProjectAgreement, ContactType, ProjectAgreementStatus, Invoice, InvoiceStatus, InvoiceType, Project } from '../../types';
+import { ProjectAgreement, ContactType, ProjectAgreementStatus, Invoice, InvoiceStatus, InvoiceType, Project, InstallmentFrequency } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
@@ -24,30 +24,36 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
     const { projectAgreementSettings, projectInvoiceSettings } = state;
 
     // Config Mode State
-    const [configMode, setConfigMode] = useState(false);
-    const [currentProjectForConfig, setCurrentProjectForConfig] = useState<Project | null>(null);
     const [showMissingPlanDialog, setShowMissingPlanDialog] = useState(false);
+    const [showInstallmentConfig, setShowInstallmentConfig] = useState(false);
 
     const generateNextAgreementNumber = () => {
-        if (!projectAgreementSettings) return '';
-        const { prefix, nextNumber, padding } = projectAgreementSettings;
-        
-        let maxExisting = 0;
-        // Scan existing agreements to find the highest number for this prefix
-        state.projectAgreements.forEach(pa => {
-            if (pa.agreementNumber && pa.agreementNumber.startsWith(prefix)) {
-                const part = pa.agreementNumber.substring(prefix.length);
-                if (/^\d+$/.test(part)) {
-                    const num = parseInt(part, 10);
-                    if (num > maxExisting) maxExisting = num;
-                }
+        try {
+            if (!projectAgreementSettings) return '';
+            const { prefix, nextNumber, padding } = projectAgreementSettings;
+            
+            let maxExisting = 0;
+            // Scan existing agreements to find the highest number for this prefix
+            if (state.projectAgreements && Array.isArray(state.projectAgreements)) {
+                state.projectAgreements.forEach(pa => {
+                    if (pa.agreementNumber && pa.agreementNumber.startsWith(prefix)) {
+                        const part = pa.agreementNumber.substring(prefix.length);
+                        if (/^\d+$/.test(part)) {
+                            const num = parseInt(part, 10);
+                            if (num > maxExisting) maxExisting = num;
+                        }
+                    }
+                });
             }
-        });
-        
-        // Candidate is either nextNumber from settings OR maxExisting + 1, whichever is higher
-        const candidate = Math.max(nextNumber, maxExisting + 1);
+            
+            // Candidate is either nextNumber from settings OR maxExisting + 1, whichever is higher
+            const candidate = Math.max(nextNumber || 1, maxExisting + 1);
 
-        return `${prefix}${String(candidate).padStart(padding, '0')}`;
+            return `${prefix}${String(candidate).padStart(padding || 4, '0')}`;
+        } catch (error) {
+            console.error('Error generating agreement number:', error);
+            return '';
+        }
     };
 
     const [agreementNumber, setAgreementNumber] = useState(agreementToEdit?.agreementNumber || generateNextAgreementNumber());
@@ -89,6 +95,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
     const [description, setDescription] = useState(agreementToEdit?.description || '');
     const [agreementNumberError, setAgreementNumberError] = useState('');
     const [status, setStatus] = useState<ProjectAgreementStatus>(agreementToEdit?.status || ProjectAgreementStatus.ACTIVE);
+    const [installmentPlan, setInstallmentPlan] = useState<{ durationYears: number; downPaymentPercentage: number; frequency: InstallmentFrequency } | undefined>(agreementToEdit?.installmentPlan);
 
     // Category Mapping State
     const [listPriceCatId, setListPriceCatId] = useState(agreementToEdit?.listPriceCategoryId || '');
@@ -138,27 +145,33 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
     }, [agreementToEdit, state.categories]);
 
     useEffect(() => {
-        if (!agreementNumber.trim()) {
-            setAgreementNumberError('Agreement ID is required.');
-            return;
-        }
-        const isDuplicate = state.projectAgreements.some(
-            pa => pa.agreementNumber && pa.agreementNumber.toLowerCase() === agreementNumber.trim().toLowerCase() && pa.id !== agreementToEdit?.id
-        );
-        if (isDuplicate) {
-            setAgreementNumberError('This Agreement ID is already in use.');
-        } else {
+        try {
+            if (!agreementNumber.trim()) {
+                setAgreementNumberError('Agreement ID is required.');
+                return;
+            }
+            const isDuplicate = state.projectAgreements?.some(
+                pa => pa.agreementNumber && pa.agreementNumber.toLowerCase() === agreementNumber.trim().toLowerCase() && pa.id !== agreementToEdit?.id
+            ) || false;
+            if (isDuplicate) {
+                setAgreementNumberError('This Agreement ID is already in use.');
+            } else {
+                setAgreementNumberError('');
+            }
+        } catch (error) {
+            console.error('Error validating agreement number:', error);
             setAgreementNumberError('');
         }
     }, [agreementNumber, state.projectAgreements, agreementToEdit]);
 
     // Auto-calculate List Price based on selected Units
     useEffect(() => {
-        const calculatedListPrice = unitIds.reduce((sum, id) => {
-            const unit = state.units.find(u => u.id === id);
-            // Default to 0 if salePrice is not defined in settings
-            return sum + (unit?.salePrice || 0);
-        }, 0);
+        try {
+            const calculatedListPrice = unitIds.reduce((sum, id) => {
+                const unit = state.units?.find(u => u.id === id);
+                // Default to 0 if salePrice is not defined in settings
+                return sum + (unit?.salePrice || 0);
+            }, 0);
 
         if (agreementToEdit) {
             // Check if unit selection differs from the original agreement
@@ -174,17 +187,24 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
             // New agreement: always sync
             setListPrice(calculatedListPrice.toString());
         }
+        } catch (error) {
+            console.error('Error calculating list price:', error);
+        }
     }, [unitIds, state.units, agreementToEdit]);
 
     // Auto-calculate selling price
     useEffect(() => {
-        const lp = parseFloat(listPrice) || 0;
-        const cd = parseFloat(customerDiscount) || 0;
-        const fd = parseFloat(floorDiscount) || 0;
-        const lsd = parseFloat(lumpSumDiscount) || 0;
-        const md = parseFloat(miscDiscount) || 0;
-        const calculatedSellingPrice = lp - cd - fd - lsd - md;
-        setSellingPrice(calculatedSellingPrice.toString());
+        try {
+            const lp = parseFloat(listPrice) || 0;
+            const cd = parseFloat(customerDiscount) || 0;
+            const fd = parseFloat(floorDiscount) || 0;
+            const lsd = parseFloat(lumpSumDiscount) || 0;
+            const md = parseFloat(miscDiscount) || 0;
+            const calculatedSellingPrice = lp - cd - fd - lsd - md;
+            setSellingPrice(calculatedSellingPrice.toString());
+        } catch (error) {
+            console.error('Error calculating selling price:', error);
+        }
     }, [listPrice, customerDiscount, floorDiscount, lumpSumDiscount, miscDiscount]);
 
 
@@ -210,119 +230,131 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
         setter(value);
     };
 
-    const generateInvoices = (agreement: ProjectAgreement, config: any) => {
-        const { durationYears, downPaymentPercentage, frequency } = config;
-        const totalAmount = agreement.sellingPrice;
-        const downPayment = totalAmount * (downPaymentPercentage / 100);
-        const remaining = totalAmount - downPayment;
-        
-        let freqMonths = 1;
-        if (frequency === 'Quarterly') freqMonths = 3;
-        if (frequency === 'Yearly') freqMonths = 12;
-        
-        const totalInstallments = Math.round((durationYears * 12) / freqMonths);
-        const installmentAmount = totalInstallments > 0 ? remaining / totalInstallments : 0;
-
-        const invoices: Invoice[] = [];
-        
-        // determine next invoice number starting point
-        let maxNum = projectInvoiceSettings.nextNumber;
-        const prefix = projectInvoiceSettings.prefix;
-        const padding = projectInvoiceSettings.padding;
-        
-        // Scan to ensure we don't duplicate if settings are lagging
-        state.invoices.forEach(inv => {
-            if (inv.invoiceNumber && inv.invoiceNumber.startsWith(prefix)) {
-                const part = inv.invoiceNumber.substring(prefix.length);
-                if (/^\d+$/.test(part)) {
-                    const num = parseInt(part, 10);
-                    if (num >= maxNum) maxNum = num + 1;
-                }
+    const generateInvoices = (agreement: ProjectAgreement, plan: { durationYears: number; downPaymentPercentage: number; frequency: InstallmentFrequency }) => {
+        try {
+            if (!projectInvoiceSettings) {
+                showAlert('Project invoice settings are not configured. Please configure them in Settings.', { title: 'Configuration Error' });
+                return;
             }
-        });
-        
-        let nextInvNum = maxNum;
 
-        // 1. Down Payment Invoice
-        if (downPayment > 0) {
-            const invNum = `${prefix}${String(nextInvNum).padStart(padding, '0')}`;
-            const dpInvoice: Invoice = {
-                id: `inv-gen-${Date.now()}-dp`,
-                invoiceNumber: invNum,
-                contactId: agreement.clientId,
-                invoiceType: InvoiceType.INSTALLMENT,
-                amount: downPayment,
-                paidAmount: 0,
-                status: InvoiceStatus.UNPAID,
-                issueDate: agreement.issueDate,
-                dueDate: agreement.issueDate,
-                description: `Down Payment (${downPaymentPercentage}%) - ${agreement.description || ''}`,
-                projectId: agreement.projectId,
-                unitId: agreement.unitIds[0],
-                categoryId: agreement.sellingPriceCategoryId,
-                agreementId: agreement.id
-            };
-            invoices.push(dpInvoice);
-            nextInvNum++;
-        }
-
-        // 2. Installments
-        if (installmentAmount > 0) {
-            const baseDate = new Date(agreement.issueDate);
-            const originalDay = baseDate.getDate();
+            const { durationYears, downPaymentPercentage, frequency } = plan;
+            const totalAmount = agreement.sellingPrice;
+            const downPayment = totalAmount * (downPaymentPercentage / 100);
+            const remaining = totalAmount - downPayment;
             
-            for (let i = 1; i <= totalInstallments; i++) {
-                const targetDate = new Date(baseDate);
-                targetDate.setMonth(baseDate.getMonth() + (i * freqMonths));
-                
-                // Adjust for month end overflow (e.g. Jan 31 -> Feb 28/29)
-                if (targetDate.getDate() !== originalDay) {
-                    targetDate.setDate(0); 
-                }
-                
+            let freqMonths = 1;
+            if (frequency === 'Quarterly') freqMonths = 3;
+            if (frequency === 'Yearly') freqMonths = 12;
+            
+            const totalInstallments = Math.round((durationYears * 12) / freqMonths);
+            const installmentAmount = totalInstallments > 0 ? remaining / totalInstallments : 0;
+
+            const invoices: Invoice[] = [];
+            
+            // determine next invoice number starting point
+            let maxNum = projectInvoiceSettings.nextNumber || 1;
+            const prefix = projectInvoiceSettings.prefix || 'P-INV-';
+            const padding = projectInvoiceSettings.padding || 5;
+            
+            // Scan to ensure we don't duplicate if settings are lagging
+            if (state.invoices && Array.isArray(state.invoices)) {
+                state.invoices.forEach(inv => {
+                    if (inv.invoiceNumber && inv.invoiceNumber.startsWith(prefix)) {
+                        const part = inv.invoiceNumber.substring(prefix.length);
+                        if (/^\d+$/.test(part)) {
+                            const num = parseInt(part, 10);
+                            if (num >= maxNum) maxNum = num + 1;
+                        }
+                    }
+                });
+            }
+            
+            let nextInvNum = maxNum;
+
+            // 1. Down Payment Invoice
+            if (downPayment > 0) {
                 const invNum = `${prefix}${String(nextInvNum).padStart(padding, '0')}`;
-                const invDate = targetDate.toISOString().split('T')[0];
-                
-                const instInvoice: Invoice = {
-                    id: `inv-gen-${Date.now()}-${i}`,
+                const dpInvoice: Invoice = {
+                    id: `inv-gen-${Date.now()}-dp`,
                     invoiceNumber: invNum,
                     contactId: agreement.clientId,
                     invoiceType: InvoiceType.INSTALLMENT,
-                    amount: installmentAmount,
+                    amount: downPayment,
                     paidAmount: 0,
                     status: InvoiceStatus.UNPAID,
-                    issueDate: invDate,
-                    dueDate: invDate,
-                    description: `Installment ${i}/${totalInstallments} - ${agreement.description || ''}`,
+                    issueDate: agreement.issueDate,
+                    dueDate: agreement.issueDate,
+                    description: `Down Payment (${downPaymentPercentage}%) - ${agreement.description || ''}`,
                     projectId: agreement.projectId,
-                    unitId: agreement.unitIds[0],
+                    unitId: agreement.unitIds?.[0],
                     categoryId: agreement.sellingPriceCategoryId,
                     agreementId: agreement.id
                 };
-                invoices.push(instInvoice);
+                invoices.push(dpInvoice);
                 nextInvNum++;
             }
+
+            // 2. Installments
+            if (installmentAmount > 0) {
+                const baseDate = new Date(agreement.issueDate);
+                const originalDay = baseDate.getDate();
+                
+                for (let i = 1; i <= totalInstallments; i++) {
+                    const targetDate = new Date(baseDate);
+                    targetDate.setMonth(baseDate.getMonth() + (i * freqMonths));
+                    
+                    // Adjust for month end overflow (e.g. Jan 31 -> Feb 28/29)
+                    if (targetDate.getDate() !== originalDay) {
+                        targetDate.setDate(0); 
+                    }
+                    
+                    const invNum = `${prefix}${String(nextInvNum).padStart(padding, '0')}`;
+                    const invDate = targetDate.toISOString().split('T')[0];
+                    
+                    const instInvoice: Invoice = {
+                        id: `inv-gen-${Date.now()}-${i}`,
+                        invoiceNumber: invNum,
+                        contactId: agreement.clientId,
+                        invoiceType: InvoiceType.INSTALLMENT,
+                        amount: installmentAmount,
+                        paidAmount: 0,
+                        status: InvoiceStatus.UNPAID,
+                        issueDate: invDate,
+                        dueDate: invDate,
+                        description: `Installment ${i}/${totalInstallments} - ${agreement.description || ''}`,
+                        projectId: agreement.projectId,
+                        unitId: agreement.unitIds?.[0],
+                        categoryId: agreement.sellingPriceCategoryId,
+                        agreementId: agreement.id
+                    };
+                    invoices.push(instInvoice);
+                    nextInvNum++;
+                }
+            }
+
+            invoices.forEach(inv => dispatch({ type: 'ADD_INVOICE', payload: inv }));
+
+            // Update settings to reflect the consumed numbers
+            if (nextInvNum > (projectInvoiceSettings.nextNumber || 1)) {
+                dispatch({ 
+                    type: 'UPDATE_PROJECT_INVOICE_SETTINGS', 
+                    payload: { ...projectInvoiceSettings, nextNumber: nextInvNum } 
+                });
+            }
+
+            showToast(`Generated ${invoices.length} invoices successfully.`, 'success');
+        } catch (error) {
+            console.error('Error generating invoices:', error);
+            showAlert('Failed to generate invoices. Please try again.', { title: 'Error' });
         }
-
-        invoices.forEach(inv => dispatch({ type: 'ADD_INVOICE', payload: inv }));
-
-        // Update settings to reflect the consumed numbers
-        if (nextInvNum > projectInvoiceSettings.nextNumber) {
-            dispatch({ 
-                type: 'UPDATE_PROJECT_INVOICE_SETTINGS', 
-                payload: { ...projectInvoiceSettings, nextNumber: nextInvNum } 
-            });
-        }
-
-        showToast(`Generated ${invoices.length} invoices successfully.`, 'success');
     };
 
     const handleManualGenerate = async () => {
         if (!agreementToEdit) return;
         
-        const project = state.projects.find(p => p.id === agreementToEdit.projectId);
-        if (!project?.installmentConfig) {
-             await showAlert("This project does not have an installment plan configured. Please configure it in Project Settings or by clicking 'Config Plan' on the project list.", { title: "No Configuration" });
+        const plan = agreementToEdit.installmentPlan || installmentPlan;
+        if (!plan) {
+             await showAlert("Installment plan is not configured for this agreement. Please configure it in the Installment Configuration section above.", { title: "No Configuration" });
              return;
         }
 
@@ -332,17 +364,28 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
             if (!confirm) return;
         }
 
-        generateInvoices(agreementToEdit, project.installmentConfig);
+        generateInvoices(agreementToEdit, plan);
     };
 
-    const handleConfigSave = (updatedProject: Project) => {
-        dispatch({ type: 'UPDATE_PROJECT', payload: updatedProject });
-        showToast('Installment plan configured successfully.', 'success');
-        onClose(); // Discard agreement changes and close
+    const handleConfigSave = (config: { durationYears: number; downPaymentPercentage: number; frequency: InstallmentFrequency }) => {
+        try {
+            if (!projectId || !clientId) {
+                showAlert('Please select both Owner and Project before configuring installment plan.', { title: 'Missing Information' });
+                return;
+            }
+
+            setInstallmentPlan(config);
+            showToast('Installment plan configured. Save the agreement to persist it.', 'success');
+            setShowInstallmentConfig(false);
+        } catch (error) {
+            console.error('Error saving installment config:', error);
+            showAlert('Failed to save installment configuration. Please try again.', { title: 'Error' });
+        }
     };
 
     const executeSave = async (skipConfigCheck = false) => {
-        const agreementData = {
+        try {
+            const agreementData = {
             agreementNumber: agreementNumber.trim(),
             clientId,
             projectId,
@@ -366,6 +409,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
             sellingPriceCategoryId: sellingPriceCatId,
             rebateCategoryId: rebateCatId,
             status: status,
+            installmentPlan: installmentPlan,
         };
 
         if (agreementToEdit) {
@@ -516,10 +560,8 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
             // Update the agreement
             dispatch({ type: 'UPDATE_PROJECT_AGREEMENT', payload: updatedAgreement });
         } else {
-            const project = state.projects.find(p => p.id === projectId);
-            
-            if (!skipConfigCheck && project && !project.installmentConfig) {
-                 setCurrentProjectForConfig(project);
+            // Check for installment plan configured for this agreement
+            if (!skipConfigCheck && !installmentPlan) {
                  setShowMissingPlanDialog(true);
                  return;
             }
@@ -547,34 +589,42 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                  }
             }
 
-            // CHECK FOR INSTALLMENT CONFIG
-            if (project?.installmentConfig) {
+            // CHECK FOR INSTALLMENT PLAN IN AGREEMENT
+            if (installmentPlan) {
                 const confirmGen = await showConfirm(
-                    `Project "${project.name}" has an installment plan configured.\n\n` +
-                    `Duration: ${project.installmentConfig.durationYears} Years\n` +
-                    `Frequency: ${project.installmentConfig.frequency}\n` +
-                    `Down Payment: ${project.installmentConfig.downPaymentPercentage}%\n\n` +
+                    `Installment plan is configured for this agreement.\n\n` +
+                    `Duration: ${installmentPlan.durationYears} Years\n` +
+                    `Frequency: ${installmentPlan.frequency}\n` +
+                    `Down Payment: ${installmentPlan.downPaymentPercentage}%\n\n` +
                     `Do you want to auto-generate the invoices now?`,
                     { title: 'Auto-Generate Invoices', confirmLabel: 'Generate', cancelLabel: 'Skip' }
                 );
 
                 if (confirmGen) {
-                    generateInvoices(newAgreement as ProjectAgreement, project.installmentConfig);
+                    generateInvoices(newAgreement as ProjectAgreement, installmentPlan);
                 }
             }
         }
+        
         onClose();
+        } catch (error) {
+            console.error('Error saving agreement:', error);
+            showAlert('Failed to save agreement. Please try again.', { title: 'Error' });
+            // Don't close the form on error
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        // Prevent submission if the nested installment config form is open
+        if (showInstallmentConfig) return;
         if (agreementNumberError) return;
         await executeSave(false);
     };
 
     const handleCreatePlan = () => {
         setShowMissingPlanDialog(false);
-        setConfigMode(true);
+        setShowInstallmentConfig(true);
     };
 
     const handleManualProceed = () => {
@@ -592,15 +642,6 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
         }
     }
 
-    if (configMode && currentProjectForConfig) {
-        return (
-            <InstallmentConfigForm 
-                project={currentProjectForConfig}
-                onSave={handleConfigSave}
-                onCancel={onClose}
-            />
-        );
-    }
 
     const formBackgroundStyle = useMemo(() => {
         return getFormBackgroundColorStyle(projectId, undefined, state);
@@ -690,6 +731,55 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                      </div>
                 </div>
 
+                {/* Installment Configuration Section */}
+                {projectId && clientId && (
+                    <div className="p-3 border rounded-lg bg-indigo-50/30 border-indigo-200">
+                        <div className="flex items-center justify-between mb-3">
+                            <div>
+                                <h3 className="font-semibold text-sm text-slate-800">Installment Plan Configuration</h3>
+                                <p className="text-xs text-slate-600 mt-1">Configure installment plan for this owner and project</p>
+                            </div>
+                            <Button 
+                                type="button" 
+                                variant="secondary" 
+                                onClick={() => setShowInstallmentConfig(!showInstallmentConfig)}
+                                className="text-xs px-3 py-1.5"
+                            >
+                                {showInstallmentConfig ? 'Hide' : installmentPlan ? 'Edit' : 'Configure'}
+                            </Button>
+                        </div>
+                        
+                    {installmentPlan && !showInstallmentConfig && (
+                        <div className="text-sm text-slate-700 bg-white p-2 rounded border border-slate-200">
+                            <div className="grid grid-cols-3 gap-2">
+                                <div>
+                                    <span className="text-xs text-slate-500">Duration:</span>
+                                    <span className="ml-1 font-medium">{installmentPlan.durationYears} Years</span>
+                                </div>
+                                <div>
+                                    <span className="text-xs text-slate-500">Down Payment:</span>
+                                    <span className="ml-1 font-medium">{installmentPlan.downPaymentPercentage}%</span>
+                                </div>
+                                <div>
+                                    <span className="text-xs text-slate-500">Frequency:</span>
+                                    <span className="ml-1 font-medium">{installmentPlan.frequency}</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {showInstallmentConfig && (
+                        <div className="mt-3 bg-white p-4 rounded-lg border border-slate-200">
+                            <InstallmentConfigForm
+                                config={installmentPlan}
+                                onSave={handleConfigSave}
+                                onCancel={() => setShowInstallmentConfig(false)}
+                            />
+                        </div>
+                    )}
+                    </div>
+                )}
+
                 {/* Status Field - Only for editing existing agreements */}
                 {agreementToEdit && (
                     <div className="p-3 border rounded-lg bg-slate-50">
@@ -742,12 +832,12 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
 
             <Modal isOpen={showMissingPlanDialog} onClose={() => setShowMissingPlanDialog(false)} title="Installment Plan Not Configured">
                 <div className="space-y-4">
-                    <p className="text-slate-600">The selected project does not have an installment plan configured.</p>
-                    <p className="text-slate-600 font-medium">Would you like to create a plan now?</p>
-                    <p className="text-xs text-slate-500">Creating a plan will discard current agreement changes and redirect you to the configuration screen.</p>
+                    <p className="text-slate-600">Installment plan is not configured for this owner and project.</p>
+                    <p className="text-slate-600 font-medium">Would you like to configure it now?</p>
+                    <p className="text-xs text-slate-500">This configuration will be saved as organizational data and synced across all users.</p>
                     
                     <div className="flex flex-col gap-2 pt-2">
-                        <Button onClick={handleCreatePlan} className="w-full justify-center">Create Installment Plan</Button>
+                        <Button onClick={handleCreatePlan} className="w-full justify-center">Configure Installment Plan</Button>
                         <Button variant="secondary" onClick={handleManualProceed} className="w-full justify-center border-slate-300">Proceed with Manual Installments</Button>
                         <Button variant="ghost" onClick={() => setShowMissingPlanDialog(false)} className="w-full justify-center text-slate-500">Cancel</Button>
                     </div>

@@ -1504,6 +1504,27 @@ export const runImportProcess = async (
                                 // Also update tempState to reflect current process context
                                 (tempState as any)[row.Key.charAt(0).toLowerCase() + row.Key.slice(1)] = payload;
                                 log(sheetName, rowNum, 'Success', `Updated setting: ${row.Key}`);
+                            } else if (row.Key === 'InstallmentPlans') {
+                                // Handle installment plans array import
+                                const plans = safeJsonParse(row.Value);
+                                if (Array.isArray(plans)) {
+                                    if (!tempState.installmentPlans) {
+                                        tempState.installmentPlans = [];
+                                    }
+                                    plans.forEach((plan: any) => {
+                                        if (plan.id && plan.projectId && plan.ownerId) {
+                                            const existingPlanIndex = tempState.installmentPlans.findIndex((p: any) => p.id === plan.id);
+                                            if (existingPlanIndex >= 0) {
+                                                tempState.installmentPlans[existingPlanIndex] = plan;
+                                                dispatch({ type: 'UPDATE_INSTALLMENT_PLAN', payload: plan });
+                                            } else {
+                                                tempState.installmentPlans.push(plan);
+                                                dispatch({ type: 'ADD_INSTALLMENT_PLAN', payload: plan });
+                                            }
+                                        }
+                                    });
+                                    log(sheetName, rowNum, 'Success', `Imported ${plans.length} installment plans`);
+                                }
                             }
                         } catch (e) {
                             log(sheetName, rowNum, 'Error', `Failed to parse setting: ${row.Key}`);

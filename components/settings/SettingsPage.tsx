@@ -13,7 +13,6 @@ import ErrorLogViewer from './ErrorLogViewer';
 import TransactionLogViewer from './TransactionLogViewer';
 import MessagingTemplatesForm from './MessagingTemplatesForm';
 import PrintTemplateForm from './PrintTemplateForm';
-import InstallmentConfigForm from './InstallmentConfigForm';
 import HelpSection from './HelpSection';
 import Modal from '../ui/Modal';
 import { useNotification } from '../../context/NotificationContext';
@@ -88,8 +87,6 @@ const SettingsPage: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [isErrorLogOpen, setIsErrorLogOpen] = useState(false);
     const [isTransactionLogOpen, setIsTransactionLogOpen] = useState(false);
-    const [isProjectPickerOpen, setIsProjectPickerOpen] = useState(false);
-    const [projectToConfig, setProjectToConfig] = useState<Project | null>(null);
     const [activePreferenceModal, setActivePreferenceModal] = useState<'messaging' | 'print' | null>(null);
     const [activePreferenceTab, setActivePreferenceTab] = useState<string>('General');
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'default', direction: 'asc' });
@@ -414,11 +411,6 @@ const SettingsPage: React.FC = () => {
             showToast('App has been reset.', 'success');
         }
     };
-    const handleSaveInstallmentConfig = (updatedProject: Project) => {
-        dispatch({ type: 'UPDATE_PROJECT', payload: updatedProject });
-        setProjectToConfig(null);
-        showToast('Installment plan configured successfully.', 'success');
-    };
 
     const isTableViewCategory = !!columnConfig[activeCategory];
     const SortHeader: React.FC<{ label: string; sortKey: string; align?: string }> = ({ label, sortKey, align = 'left' }) => (
@@ -590,7 +582,6 @@ const SettingsPage: React.FC = () => {
 
     const renderToolsUtilities = () => (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {renderActionCard('Installments Creation', 'Configure project installment plans (duration, down payment, frequency).', <div className="w-6 h-6">{ICONS.calendar}</div>, () => setIsProjectPickerOpen(true))}
             {renderActionCard('Reset Dashboard', 'Restore dashboard widgets to default layout.', <div className="w-6 h-6">{ICONS.barChart}</div>, handleResetDashboard, 'amber')}
         </div>
     );
@@ -825,28 +816,6 @@ const SettingsPage: React.FC = () => {
             <ErrorLogViewer isOpen={isErrorLogOpen} onClose={() => setIsErrorLogOpen(false)} />
             <TransactionLogViewer isOpen={isTransactionLogOpen} onClose={() => setIsTransactionLogOpen(false)} />
 
-            <Modal isOpen={isProjectPickerOpen} onClose={() => setIsProjectPickerOpen(false)} title="Configure Installments">
-                <div className="space-y-2 max-h-[60vh] overflow-y-auto p-1">
-                    {state.projects.length > 0 ? state.projects.map(project => (
-                        <button
-                            key={project.id}
-                            onClick={() => { setProjectToConfig(project); setIsProjectPickerOpen(false); }}
-                            className="w-full text-left p-4 rounded-xl border border-slate-200 hover:bg-indigo-50 hover:border-indigo-200 transition-all flex justify-between items-center group"
-                        >
-                            <span className="font-bold text-slate-700 group-hover:text-indigo-700">{project.name}</span>
-                            <span className="text-slate-300 group-hover:text-indigo-400">→</span>
-                        </button>
-                    )) : (
-                        <p className="text-center text-slate-500 py-8 bg-slate-50 rounded-lg">No projects found.</p>
-                    )}
-                </div>
-            </Modal>
-
-            {projectToConfig && (
-                <Modal isOpen={!!projectToConfig} onClose={() => setProjectToConfig(null)} title={`Configure: ${projectToConfig.name}`}>
-                    <InstallmentConfigForm project={projectToConfig} onSave={handleSaveInstallmentConfig} onCancel={() => setProjectToConfig(null)} />
-                </Modal>
-            )}
 
             {ledgerModalState && (
                 <SettingsLedgerModal isOpen={ledgerModalState.isOpen} onClose={() => setLedgerModalState(null)} entityId={ledgerModalState.entityId} entityType={ledgerModalState.entityType} entityName={ledgerModalState.entityName} />

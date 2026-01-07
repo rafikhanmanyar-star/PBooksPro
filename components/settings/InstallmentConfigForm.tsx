@@ -1,37 +1,54 @@
 
-import React, { useState, useEffect } from 'react';
-import { Project, InstallmentFrequency } from '../../types';
+import React, { useState } from 'react';
+import { InstallmentFrequency } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
-import Select from '../ui/Select';
 
 interface InstallmentConfigFormProps {
-    project: Project;
-    onSave: (project: Project) => void;
+    config?: {
+        durationYears: number;
+        downPaymentPercentage: number;
+        frequency: InstallmentFrequency;
+    };
+    onSave: (config: { durationYears: number; downPaymentPercentage: number; frequency: InstallmentFrequency }) => void;
     onCancel: () => void;
 }
 
-const InstallmentConfigForm: React.FC<InstallmentConfigFormProps> = ({ project, onSave, onCancel }) => {
-    const [durationYears, setDurationYears] = useState(project.installmentConfig?.durationYears?.toString() || '1');
-    const [downPaymentPercentage, setDownPaymentPercentage] = useState(project.installmentConfig?.downPaymentPercentage?.toString() || '20');
-    const [frequency, setFrequency] = useState<InstallmentFrequency>(project.installmentConfig?.frequency || 'Monthly');
+const InstallmentConfigForm: React.FC<InstallmentConfigFormProps> = ({ config, onSave, onCancel }) => {
+    const [durationYears, setDurationYears] = useState(config?.durationYears?.toString() || '1');
+    const [downPaymentPercentage, setDownPaymentPercentage] = useState(config?.downPaymentPercentage?.toString() || '20');
+    const [frequency, setFrequency] = useState<InstallmentFrequency>(config?.frequency || 'Monthly');
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSave = (e?: React.MouseEvent) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        // Validate inputs
+        const duration = parseFloat(durationYears);
+        const downPayment = parseFloat(downPaymentPercentage);
+        
+        if (isNaN(duration) || duration <= 0) {
+            return; // Input component should handle this, but add safety check
+        }
+        
+        if (isNaN(downPayment) || downPayment < 0 || downPayment > 100) {
+            return; // Input component should handle this, but add safety check
+        }
+        
         onSave({
-            ...project,
-            installmentConfig: {
-                durationYears: parseFloat(durationYears) || 0,
-                downPaymentPercentage: parseFloat(downPaymentPercentage) || 0,
-                frequency
-            }
+            durationYears: duration,
+            downPaymentPercentage: downPayment,
+            frequency
         });
     };
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="space-y-6">
             <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                <h3 className="font-semibold text-lg text-slate-800 mb-4">Installment Configuration for {project.name}</h3>
+                <h3 className="font-semibold text-lg text-slate-800 mb-4">Organizational Installment Configuration</h3>
+                <p className="text-sm text-slate-600 mb-4">This configuration will be used as the default for all project agreements when auto-generating installments.</p>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <Input 
@@ -42,7 +59,14 @@ const InstallmentConfigForm: React.FC<InstallmentConfigFormProps> = ({ project, 
                         min="0.1" 
                         step="0.1"
                         value={durationYears} 
-                        onChange={e => setDurationYears(e.target.value)} 
+                        onChange={e => setDurationYears(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleSave();
+                            }
+                        }}
                         required 
                     />
                     <Input 
@@ -53,7 +77,14 @@ const InstallmentConfigForm: React.FC<InstallmentConfigFormProps> = ({ project, 
                         min="0" 
                         max="100"
                         value={downPaymentPercentage} 
-                        onChange={e => setDownPaymentPercentage(e.target.value)} 
+                        onChange={e => setDownPaymentPercentage(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleSave();
+                            }
+                        }}
                         required 
                     />
                 </div>
@@ -80,10 +111,25 @@ const InstallmentConfigForm: React.FC<InstallmentConfigFormProps> = ({ project, 
             </div>
 
             <div className="flex justify-end gap-2">
-                <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
-                <Button type="submit">Save Configuration</Button>
+                <Button 
+                    type="button" 
+                    variant="secondary" 
+                    onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onCancel();
+                    }}
+                >
+                    Cancel
+                </Button>
+                <Button 
+                    type="button"
+                    onClick={handleSave}
+                >
+                    Save Configuration
+                </Button>
             </div>
-        </form>
+        </div>
     );
 };
 

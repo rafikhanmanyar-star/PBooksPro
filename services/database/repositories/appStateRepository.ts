@@ -360,6 +360,19 @@ export class AppStateRepository {
                         if (typeof details === 'object') return details;
                         return undefined;
                     })(),
+                    installmentPlan: (() => {
+                        const plan = pa.installmentPlan ?? pa.installment_plan;
+                        if (!plan) return undefined;
+                        if (typeof plan === 'string') {
+                            try {
+                                return JSON.parse(plan);
+                            } catch {
+                                return undefined;
+                            }
+                        }
+                        if (typeof plan === 'object') return plan;
+                        return undefined;
+                    })(),
                     listPriceCategoryId: (pa.listPriceCategoryId ?? pa.list_price_category_id) || undefined,
                     customerDiscountCategoryId: (pa.customerDiscountCategoryId ?? pa.customer_discount_category_id) || undefined,
                     floorDiscountCategoryId: (pa.floorDiscountCategoryId ?? pa.floor_discount_category_id) || undefined,
@@ -421,6 +434,7 @@ export class AppStateRepository {
                 vendorGreeting: 'Hello {contactName},'
             },
             dashboardConfig: settings.dashboardConfig || { visibleKpis: [] },
+            installmentPlans: settings.installmentPlans || [],
             invoiceHtmlTemplate: settings.invoiceHtmlTemplate,
             showSystemTransactions: settings.showSystemTransactions ?? false,
             enableColorCoding: settings.enableColorCoding ?? true,
@@ -674,6 +688,7 @@ export class AppStateRepository {
                                 printSettings: state.printSettings,
                                 whatsAppTemplates: state.whatsAppTemplates,
                                 dashboardConfig: state.dashboardConfig,
+                                installmentPlans: state.installmentPlans || [],
                                 invoiceHtmlTemplate: state.invoiceHtmlTemplate,
                                 showSystemTransactions: state.showSystemTransactions,
                                 enableColorCoding: state.enableColorCoding,

@@ -397,6 +397,7 @@ CREATE TABLE IF NOT EXISTS project_agreements (
     misc_discount_category_id TEXT,
     selling_price_category_id TEXT,
     rebate_category_id TEXT,
+    installment_plan JSONB,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,

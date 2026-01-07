@@ -238,6 +238,7 @@ const initialState: AppState = {
     },
     invoiceHtmlTemplate: DEFAULT_INVOICE_TEMPLATE,
     dashboardConfig: { visibleKpis: [] },
+    installmentPlans: [],
     agreementSettings: { prefix: 'AGR-', nextNumber: 1, padding: 4 },
     projectAgreementSettings: { prefix: 'P-AGR-', nextNumber: 1, padding: 4 },
     rentalInvoiceSettings: { prefix: 'INV-', nextNumber: 1, padding: 5 },
@@ -1314,6 +1315,12 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, printSettings: action.payload };
         case 'UPDATE_WHATSAPP_TEMPLATES':
             return { ...state, whatsAppTemplates: action.payload };
+        case 'ADD_INSTALLMENT_PLAN':
+            return { ...state, installmentPlans: [...state.installmentPlans, action.payload] };
+        case 'UPDATE_INSTALLMENT_PLAN':
+            return { ...state, installmentPlans: state.installmentPlans.map(p => p.id === action.payload.id ? action.payload : p) };
+        case 'DELETE_INSTALLMENT_PLAN':
+            return { ...state, installmentPlans: state.installmentPlans.filter(p => p.id !== action.payload) };
         case 'UPDATE_PM_COST_PERCENTAGE':
             return { ...state, pmCostPercentage: action.payload };
         case 'UPDATE_DEFAULT_PROJECT':
@@ -1876,6 +1883,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 'UPDATE_PROJECT_INVOICE_SETTINGS',
                 'UPDATE_PRINT_SETTINGS',
                 'UPDATE_WHATSAPP_TEMPLATES',
+                'ADD_INSTALLMENT_PLAN',
+                'UPDATE_INSTALLMENT_PLAN',
+                'DELETE_INSTALLMENT_PLAN',
                 'UPDATE_PM_COST_PERCENTAGE',
             ]);
 
