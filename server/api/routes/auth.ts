@@ -323,6 +323,32 @@ router.post('/smart-login', async (req, res) => {
       code: error?.code,
       detail: error?.detail
     });
+
+    // Check for database connection errors
+    const isDatabaseError = error?.code === 'ENOTFOUND' || 
+                            error?.code === 'ECONNREFUSED' || 
+                            error?.code === 'ETIMEDOUT' ||
+                            error?.message?.includes('getaddrinfo') ||
+                            error?.message?.includes('ENOTFOUND');
+
+    if (isDatabaseError) {
+      const dbUrl = process.env.DATABASE_URL || '';
+      const isInternalUrl = dbUrl.includes('@dpg-') && !dbUrl.includes('.render.com');
+      
+      let errorMessage = 'Database connection failed. ';
+      if (isInternalUrl) {
+        errorMessage += 'The database URL appears to be an internal URL. Please use the External Database URL from Render Dashboard.';
+      } else {
+        errorMessage += 'Please check your database connection settings.';
+      }
+      
+      return res.status(500).json({ 
+        error: 'Login failed',
+        message: errorMessage,
+        hint: 'If using Render, ensure DATABASE_URL uses the External Database URL (with full hostname like dpg-xxx-a.region-postgres.render.com)'
+      });
+    }
+
     res.status(500).json({ 
       error: 'Login failed',
       message: error?.message || 'An error occurred during login. Please try again.'

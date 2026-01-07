@@ -84,7 +84,23 @@ import { getDatabaseService } from '../services/databaseService.js';
       } else {
         console.error('❌ Database connection error:', err.message);
         console.error('   Make sure PostgreSQL is running and DATABASE_URL is correct');
-        console.error('   Using External Database URL (not Internal) from Render Dashboard');
+        
+        // Check if it's an ENOTFOUND error (common with internal URLs)
+        if (err.code === 'ENOTFOUND' || err.message?.includes('getaddrinfo ENOTFOUND')) {
+          const dbUrl = process.env.DATABASE_URL || '';
+          const isInternalUrl = dbUrl.includes('@dpg-') && !dbUrl.includes('.render.com');
+          if (isInternalUrl) {
+            console.error('   ⚠️  DETECTED: Database URL appears to be an internal URL (missing .render.com domain)');
+            console.error('   💡 SOLUTION: Use the External Database URL from Render Dashboard');
+            console.error('   💡 Expected format: postgresql://user:pass@dpg-xxx-a.region-postgres.render.com:5432/dbname');
+            console.error('   📖 See: doc/FIX_DATABASE_CONNECTION.md for detailed instructions');
+          } else {
+            console.error('   💡 If using Render, ensure DATABASE_URL uses the External Database URL');
+            console.error('   💡 The External URL includes the full hostname (e.g., .oregon-postgres.render.com)');
+          }
+        } else {
+          console.error('   💡 Using External Database URL (not Internal) from Render Dashboard');
+        }
       }
     }
   }

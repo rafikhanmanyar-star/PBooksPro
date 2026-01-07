@@ -6,6 +6,14 @@ export class DatabaseService {
 
   constructor(connectionString: string) {
     this.connectionString = connectionString;
+    
+    // Validate database URL format and warn if it looks like an internal URL
+    if (connectionString && connectionString.includes('@dpg-') && !connectionString.includes('.render.com')) {
+      console.warn('⚠️  WARNING: Database URL appears to be an internal URL (missing .render.com domain)');
+      console.warn('   This may cause connection errors. Use the External Database URL from Render Dashboard.');
+      console.warn('   Expected format: postgresql://user:pass@dpg-xxx-a.region-postgres.render.com:5432/dbname');
+    }
+    
     this.pool = new Pool({
       connectionString,
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
@@ -53,6 +61,18 @@ export class DatabaseService {
             code: error.code,
             attempt
           });
+          
+          // Provide helpful error message for ENOTFOUND errors
+          if (error.code === 'ENOTFOUND' || error.message?.includes('getaddrinfo ENOTFOUND')) {
+            const dbUrl = this.connectionString || '';
+            const isInternalUrl = dbUrl.includes('@dpg-') && !dbUrl.includes('.render.com');
+            if (isInternalUrl) {
+              console.error('   💡 HINT: Database URL appears to be an internal URL.');
+              console.error('   💡 SOLUTION: Use the External Database URL from Render Dashboard.');
+              console.error('   💡 Expected format: postgresql://user:pass@dpg-xxx-a.region-postgres.render.com:5432/dbname');
+            }
+          }
+          
           throw error;
         }
         
@@ -112,6 +132,18 @@ export class DatabaseService {
             code: error.code,
             attempt
           });
+          
+          // Provide helpful error message for ENOTFOUND errors
+          if (error.code === 'ENOTFOUND' || error.message?.includes('getaddrinfo ENOTFOUND')) {
+            const dbUrl = this.connectionString || '';
+            const isInternalUrl = dbUrl.includes('@dpg-') && !dbUrl.includes('.render.com');
+            if (isInternalUrl) {
+              console.error('   💡 HINT: Database URL appears to be an internal URL.');
+              console.error('   💡 SOLUTION: Use the External Database URL from Render Dashboard.');
+              console.error('   💡 Expected format: postgresql://user:pass@dpg-xxx-a.region-postgres.render.com:5432/dbname');
+            }
+          }
+          
           throw error;
         }
         

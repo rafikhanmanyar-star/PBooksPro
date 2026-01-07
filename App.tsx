@@ -82,6 +82,24 @@ const App: React.FC = () => {
   const loadingTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const minLoadingTimeRef = React.useRef<NodeJS.Timeout | null>(null);
 
+  // Check for payment success page URL - MUST be before any early returns
+  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
+  
+  useEffect(() => {
+    // Check if current URL path matches payment success route
+    const pathname = window.location.pathname;
+    const searchParams = new URLSearchParams(window.location.search);
+    const hasPaymentParams = searchParams.has('payment_intent') || searchParams.has('status');
+    
+    if (pathname === '/license/payment-success' || 
+        pathname.endsWith('/license/payment-success') ||
+        (pathname === '/' && hasPaymentParams)) {
+      setShowPaymentSuccess(true);
+    } else {
+      setShowPaymentSuccess(false);
+    }
+  }, []);
+
   // Delay showing loading overlay for quick navigations, but ensure minimum display time
   useEffect(() => {
     if (isPending) {
@@ -301,24 +319,6 @@ const App: React.FC = () => {
   if (authLoading) {
     return <Loading message="Checking authentication..." />;
   }
-
-  // Check for payment success page URL
-  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
-  
-  useEffect(() => {
-    // Check if current URL path matches payment success route
-    const pathname = window.location.pathname;
-    const searchParams = new URLSearchParams(window.location.search);
-    const hasPaymentParams = searchParams.has('payment_intent') || searchParams.has('status');
-    
-    if (pathname === '/license/payment-success' || 
-        pathname.endsWith('/license/payment-success') ||
-        (pathname === '/' && hasPaymentParams)) {
-      setShowPaymentSuccess(true);
-    } else {
-      setShowPaymentSuccess(false);
-    }
-  }, []);
 
   // Show payment success page if URL matches
   if (showPaymentSuccess) {
