@@ -121,7 +121,7 @@ export function tenantMiddleware(pool: Pool) {
         const db = getDatabaseService();
 
         const sessions = await db.query(
-          'SELECT user_id, tenant_id, expires_at FROM user_sessions WHERE token = $1',
+          'SELECT user_id, tenant_id, expires_at, last_activity FROM user_sessions WHERE token = $1',
           [token]
         );
 
@@ -149,6 +149,30 @@ export function tenantMiddleware(pool: Pool) {
             error: 'Session expired',
             message: 'Your session has expired. Please login again.',
             code: 'SESSION_EXPIRED'
+          });
+        }
+
+        // Check if session is inactive (user disconnected)
+        // Sessions are considered inactive if last_activity is older than 30 minutes
+        const INACTIVITY_THRESHOLD_MINUTES = 30;
+        const lastActivity = new Date(session.last_activity);
+        const thresholdDate = new Date();
+        thresholdDate.setMinutes(thresholdDate.getMinutes() - INACTIVITY_THRESHOLD_MINUTES);
+
+        if (lastActivity < thresholdDate) {
+          // Session is inactive - user likely disconnected
+          console.log(`🔌 Inactive session detected (last activity: ${lastActivity.toISOString()}), cleaning up...`);
+          
+          try {
+            await db.query('DELETE FROM user_sessions WHERE token = $1', [token]);
+          } catch (cleanupError) {
+            console.warn('Failed to cleanup inactive session:', cleanupError);
+          }
+
+          return res.status(401).json({
+            error: 'Session inactive',
+            message: 'Your session has been inactive for too long. Please login again.',
+            code: 'SESSION_INACTIVE'
           });
         }
 

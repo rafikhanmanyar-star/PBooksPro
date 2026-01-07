@@ -615,6 +615,17 @@ wsService.initialize(httpServer, corsOrigins);
 // Export WebSocket service for use in routes
 export { wsService };
 
+// Start session cleanup service
+(async () => {
+  try {
+    const { startSessionCleanupService } = await import('../services/sessionCleanupService.js');
+    startSessionCleanupService();
+  } catch (error) {
+    console.error('❌ Failed to start session cleanup service:', error);
+    // Continue anyway - cleanup will still work on request basis
+  }
+})();
+
 // Start server
 httpServer.listen(port, () => {
   console.log(`🚀 API server running on port ${port}`);
