@@ -361,23 +361,14 @@ router.post('/:id/pay', async (req: TenantRequest, res) => {
         newStatus = 'Partially Paid';
       }
       
-      // Update bill with version check
-      const currentVersion = parseInt(bill.version || '1');
+      // Update bill (row is already locked via FOR UPDATE NOWAIT)
       const updatedBillResult = await client.query(
         `UPDATE bills 
-         SET paid_amount = $1, status = $2, version = version + 1, updated_at = NOW() 
-         WHERE id = $3 AND tenant_id = $4 AND version = $5
+         SET paid_amount = $1, status = $2, updated_at = NOW() 
+         WHERE id = $3 AND tenant_id = $4
          RETURNING *`,
-        [totalPaid, newStatus, billId, req.tenantId, currentVersion]
+        [totalPaid, newStatus, billId, req.tenantId]
       );
-      
-      if (updatedBillResult.rows.length === 0) {
-        // Version mismatch - concurrent modification detected
-        throw {
-          code: 'BILL_VERSION_MISMATCH',
-          message: 'Bill was modified by another user. Please refresh and try again.'
-        };
-      }
       
       return {
         transaction: transaction,

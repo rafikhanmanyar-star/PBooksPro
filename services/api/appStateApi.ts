@@ -20,6 +20,7 @@ import { BudgetsApiRepository } from './repositories/budgetsApi';
 import { RentalAgreementsApiRepository } from './repositories/rentalAgreementsApi';
 import { ProjectAgreementsApiRepository } from './repositories/projectAgreementsApi';
 import { ContractsApiRepository } from './repositories/contractsApi';
+import { SalesReturnsApiRepository } from './repositories/salesReturnsApi';
 import { logger } from '../logger';
 
 export class AppStateApiService {
@@ -37,6 +38,7 @@ export class AppStateApiService {
   private rentalAgreementsRepo: RentalAgreementsApiRepository;
   private projectAgreementsRepo: ProjectAgreementsApiRepository;
   private contractsRepo: ContractsApiRepository;
+  private salesReturnsRepo: SalesReturnsApiRepository;
 
   constructor() {
     this.accountsRepo = new AccountsApiRepository();
@@ -53,6 +55,7 @@ export class AppStateApiService {
     this.rentalAgreementsRepo = new RentalAgreementsApiRepository();
     this.projectAgreementsRepo = new ProjectAgreementsApiRepository();
     this.contractsRepo = new ContractsApiRepository();
+    this.salesReturnsRepo = new SalesReturnsApiRepository();
   }
 
   /**
@@ -78,7 +81,8 @@ export class AppStateApiService {
         budgets,
         rentalAgreements,
         projectAgreements,
-        contracts
+        contracts,
+        salesReturns
       ] = await Promise.all([
         this.accountsRepo.findAll().catch(err => {
           logger.errorCategory('sync', 'Error loading accounts from API:', err);
@@ -136,6 +140,10 @@ export class AppStateApiService {
           console.error('Error loading contracts from API:', err);
           return [];
         }),
+        this.salesReturnsRepo.findAll().catch(err => {
+          console.error('Error loading sales returns from API:', err);
+          return [];
+        }),
       ]);
 
       logger.logCategory('sync', '✅ Loaded from API:', {
@@ -153,6 +161,7 @@ export class AppStateApiService {
         rentalAgreements: rentalAgreements.length,
         projectAgreements: projectAgreements.length,
         contracts: contracts.length,
+        salesReturns: salesReturns.length,
       });
 
       // Normalize units from API (transform snake_case to camelCase)
@@ -302,6 +311,26 @@ export class AppStateApiService {
         rentalMonth: inv.rental_month || inv.rentalMonth || undefined
       }));
 
+      // Normalize sales returns from API (transform snake_case to camelCase)
+      // The server returns snake_case fields, but the client expects camelCase
+      const normalizedSalesReturns = salesReturns.map((sr: any) => ({
+        id: sr.id,
+        returnNumber: sr.return_number || sr.returnNumber || '',
+        agreementId: sr.agreement_id || sr.agreementId || '',
+        returnDate: sr.return_date || sr.returnDate || new Date().toISOString().split('T')[0],
+        reason: sr.reason || '',
+        reasonNotes: sr.reason_notes || sr.reasonNotes || undefined,
+        penaltyPercentage: typeof sr.penalty_percentage === 'number' ? sr.penalty_percentage : (typeof sr.penaltyPercentage === 'number' ? sr.penaltyPercentage : parseFloat(sr.penalty_percentage || sr.penaltyPercentage || '0')),
+        penaltyAmount: typeof sr.penalty_amount === 'number' ? sr.penalty_amount : (typeof sr.penaltyAmount === 'number' ? sr.penaltyAmount : parseFloat(sr.penalty_amount || sr.penaltyAmount || '0')),
+        refundAmount: typeof sr.refund_amount === 'number' ? sr.refund_amount : (typeof sr.refundAmount === 'number' ? sr.refundAmount : parseFloat(sr.refund_amount || sr.refundAmount || '0')),
+        status: sr.status || 'Pending',
+        processedDate: sr.processed_date || sr.processedDate || undefined,
+        refundedDate: sr.refunded_date || sr.refundedDate || undefined,
+        refundBillId: sr.refund_bill_id || sr.refundBillId || undefined,
+        createdBy: sr.created_by || sr.createdBy || undefined,
+        notes: sr.notes || undefined
+      }));
+
       // Normalize contracts from API (transform snake_case to camelCase)
       // The server returns snake_case fields, but the client expects camelCase
       const normalizedContracts = contracts.map((c: any) => ({
@@ -398,6 +427,7 @@ export class AppStateApiService {
         rentalAgreements,
         projectAgreements: normalizedProjectAgreements,
         contracts: normalizedContracts,
+        salesReturns: normalizedSalesReturns,
       };
     } catch (error) {
       logger.errorCategory('sync', '❌ Error loading state from API:', error);
@@ -855,6 +885,45 @@ export class AppStateApiService {
    */
   async deleteContract(id: string): Promise<void> {
     return this.contractsRepo.delete(id);
+  }
+
+  /**
+   * Save sales return to API
+   */
+  async saveSalesReturn(salesReturn: Partial<AppState['salesReturns'][0]>): Promise<AppState['salesReturns'][0]> {
+    // Always use POST endpoint - it handles upserts automatically
+    const salesReturnWithId = {
+      ...salesReturn,
+      id: salesReturn.id || `sales_return_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+    logger.logCategory('sync', `💾 Syncing sales return (POST upsert): ${salesReturnWithId.id} - ${salesReturnWithId.returnNumber}`);
+    const saved = await this.salesReturnsRepo.create(salesReturnWithId);
+    
+    // Normalize the response (server returns snake_case, client expects camelCase)
+    return {
+      id: saved.id,
+      returnNumber: (saved as any).return_number || saved.returnNumber || '',
+      agreementId: (saved as any).agreement_id || saved.agreementId || '',
+      returnDate: (saved as any).return_date || saved.returnDate || new Date().toISOString().split('T')[0],
+      reason: saved.reason || '',
+      reasonNotes: (saved as any).reason_notes || saved.reasonNotes || undefined,
+      penaltyPercentage: typeof saved.penaltyPercentage === 'number' ? saved.penaltyPercentage : parseFloat((saved as any).penalty_percentage || saved.penaltyPercentage || '0'),
+      penaltyAmount: typeof saved.penaltyAmount === 'number' ? saved.penaltyAmount : parseFloat((saved as any).penalty_amount || saved.penaltyAmount || '0'),
+      refundAmount: typeof saved.refundAmount === 'number' ? saved.refundAmount : parseFloat((saved as any).refund_amount || saved.refundAmount || '0'),
+      status: saved.status || 'Pending',
+      processedDate: (saved as any).processed_date || saved.processedDate || undefined,
+      refundedDate: (saved as any).refunded_date || saved.refundedDate || undefined,
+      refundBillId: (saved as any).refund_bill_id || saved.refundBillId || undefined,
+      createdBy: (saved as any).created_by || saved.createdBy || undefined,
+      notes: saved.notes || undefined
+    };
+  }
+
+  /**
+   * Delete sales return from API
+   */
+  async deleteSalesReturn(id: string): Promise<void> {
+    return this.salesReturnsRepo.delete(id);
   }
 }
 

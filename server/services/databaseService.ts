@@ -179,16 +179,27 @@ export class DatabaseService {
     for (let attempt = 1; attempt <= retries; attempt++) {
       const client = await this.pool.connect();
       try {
+        console.log(`🔄 Database transaction starting (attempt ${attempt}/${retries})`);
         await client.query('BEGIN');
+        console.log('✅ Transaction BEGIN successful');
         const result = await callback(client);
+        console.log('✅ Transaction callback completed, committing...');
         await client.query('COMMIT');
+        console.log('✅ Transaction COMMIT successful');
         client.release();
         return result;
       } catch (error: any) {
+        console.error(`❌ Transaction error (attempt ${attempt}/${retries}):`, {
+          message: error.message,
+          code: error.code,
+          detail: error.detail,
+          constraint: error.constraint
+        });
         try {
           await client.query('ROLLBACK');
+          console.log('✅ Transaction ROLLBACK successful');
         } catch (rollbackError) {
-          console.error('Error during rollback:', rollbackError);
+          console.error('❌ Error during rollback:', rollbackError);
         }
         client.release();
         

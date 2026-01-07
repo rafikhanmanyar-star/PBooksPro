@@ -24,6 +24,10 @@ const Modal: React.FC<ModalProps> = ({
   maxContentHeight
 }) => {
   const [mounted, setMounted] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [mouseDownTarget, setMouseDownTarget] = useState<EventTarget | null>(null);
+  const [mouseDownPosition, setMouseDownPosition] = useState<{ x: number; y: number } | null>(null);
+  const modalContentRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -37,8 +41,17 @@ const Modal: React.FC<ModalProps> = ({
       }
     };
 
+    const handleMouseUp = () => {
+      // Reset drag state on mouseup anywhere
+      // This handles cases where mouse is released outside the modal
+      setIsDragging(false);
+      setMouseDownTarget(null);
+      setMouseDownPosition(null);
+    };
+
     if (isOpen) {
       window.addEventListener('keydown', handleKeyDown);
+      window.addEventListener('mouseup', handleMouseUp);
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
@@ -46,7 +59,12 @@ const Modal: React.FC<ModalProps> = ({
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('mouseup', handleMouseUp);
       document.body.style.overflow = 'unset';
+      // Reset state when modal closes
+      setIsDragging(false);
+      setMouseDownTarget(null);
+      setMouseDownPosition(null);
     };
   }, [isOpen, onClose]);
 
@@ -100,22 +118,73 @@ const Modal: React.FC<ModalProps> = ({
     ? 'rounded-none sm:rounded-xl'
     : 'rounded-t-2xl sm:rounded-xl';
 
+  const handleBackdropMouseDown = (e: React.MouseEvent) => {
+    // Track where the mouse was pressed down
+    if (e.target === e.currentTarget) {
+      setMouseDownTarget(e.target);
+      setIsDragging(false);
+      setMouseDownPosition({ x: e.clientX, y: e.clientY });
+    } else {
+      // Mouse down was inside modal content - don't close on backdrop click
+      setMouseDownTarget(null);
+      setMouseDownPosition(null);
+    }
+  };
+
+  const handleBackdropMouseMove = (e: React.MouseEvent) => {
+    // If mouse moves significantly after mousedown, it's a drag operation
+    if (mouseDownPosition) {
+      const deltaX = Math.abs(e.clientX - mouseDownPosition.x);
+      const deltaY = Math.abs(e.clientY - mouseDownPosition.y);
+      // If mouse moved more than 5 pixels, consider it a drag
+      if (deltaX > 5 || deltaY > 5) {
+        setIsDragging(true);
+      }
+    }
+  };
+
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    // Only close if:
+    // 1. Click was on the backdrop (not modal content)
+    // 2. Mouse down was also on the backdrop (not inside modal content)
+    // 3. It wasn't a drag operation (user didn't move mouse significantly)
+    if (
+      e.target === e.currentTarget && 
+      mouseDownTarget === e.currentTarget && 
+      !isDragging
+    ) {
+      onClose();
+    }
+    // Reset drag state
+    setIsDragging(false);
+    setMouseDownTarget(null);
+    setMouseDownPosition(null);
+  };
+
+  const handleModalContentMouseDown = (e: React.MouseEvent) => {
+    // Track that mousedown happened inside modal content
+    setMouseDownTarget(e.target);
+    setMouseDownPosition({ x: e.clientX, y: e.clientY });
+    setIsDragging(false);
+    // Stop propagation to prevent backdrop handler from firing
+    e.stopPropagation();
+  };
+
   return createPortal(
     <div 
       className={`fixed inset-0 bg-gray-900/70 z-[9999] flex ${containerClasses} p-0 sm:p-4 backdrop-blur-sm animate-fade-in-fast transition-all`}
-      onClick={(e) => {
-        // Close on backdrop click
-        if (e.target === e.currentTarget) {
-          onClose();
-        }
-      }}
+      onMouseDown={handleBackdropMouseDown}
+      onMouseMove={handleBackdropMouseMove}
+      onClick={handleBackdropClick}
     >
       <div 
+        ref={modalContentRef}
         className={`bg-white ${modalPositionClasses} shadow-2xl ${sizeClasses} ${maxHeightClass} flex flex-col overflow-hidden mx-auto sm:mx-0 transition-transform duration-300 transform translate-y-0 border border-gray-200`}
         style={maxHeightStyle}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
+        onMouseDown={handleModalContentMouseDown}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center p-4 border-b border-gray-200 flex-shrink-0 bg-white">

@@ -51,6 +51,7 @@ import budgetsRouter from './routes/budgets.js';
 import rentalAgreementsRouter from './routes/rentalAgreements.js';
 import projectAgreementsRouter from './routes/projectAgreements.js';
 import contractsRouter from './routes/contracts.js';
+import salesReturnsRouter from './routes/salesReturns.js';
 import usersRouter from './routes/users.js';
 import transactionAuditRouter from './routes/transaction-audit.js';
 import paymentsRouter from './routes/payments.js';
@@ -593,6 +594,7 @@ app.use('/api/budgets', budgetsRouter);
 app.use('/api/rental-agreements', rentalAgreementsRouter);
 app.use('/api/project-agreements', projectAgreementsRouter);
 app.use('/api/contracts', contractsRouter);
+app.use('/api/sales-returns', salesReturnsRouter);
 app.use('/api/users', usersRouter); // User management (for authenticated tenants)
 app.use('/api/tenants', tenantRouter); // Tenant management (for authenticated tenants)
 app.use('/api/transaction-audit', transactionAuditRouter); // Transaction audit logs

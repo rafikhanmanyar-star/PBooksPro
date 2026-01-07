@@ -73,6 +73,11 @@ export const WS_EVENTS = {
   CONTRACT_UPDATED: 'contract:updated',
   CONTRACT_DELETED: 'contract:deleted',
   
+  // Sales Returns
+  SALES_RETURN_CREATED: 'sales_return:created',
+  SALES_RETURN_UPDATED: 'sales_return:updated',
+  SALES_RETURN_DELETED: 'sales_return:deleted',
+  
   // Buildings
   BUILDING_CREATED: 'building:created',
   BUILDING_UPDATED: 'building:updated',

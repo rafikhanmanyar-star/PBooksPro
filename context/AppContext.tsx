@@ -1872,6 +1872,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 'ADD_PROJECT_AGREEMENT',
                 'UPDATE_PROJECT_AGREEMENT',
                 'DELETE_PROJECT_AGREEMENT',
+                'CANCEL_PROJECT_AGREEMENT',
+                // Sales Returns
+                'ADD_SALES_RETURN',
+                'UPDATE_SALES_RETURN',
+                'DELETE_SALES_RETURN',
+                'MARK_RETURN_REFUNDED',
                 // Contracts
                 'ADD_CONTRACT',
                 'UPDATE_CONTRACT',
@@ -2195,6 +2201,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             const agreementId = action.payload as string;
                             await apiService.deleteProjectAgreement(agreementId);
                             logger.logCategory('sync', '✅ Synced project agreement deletion to API:', agreementId);
+                        } else if (action.type === 'CANCEL_PROJECT_AGREEMENT') {
+                            // When cancelling, we need to sync the updated agreement
+                            const { agreementId } = action.payload as any;
+                            const updatedAgreement = newState.projectAgreements.find(pa => pa.id === agreementId);
+                            if (updatedAgreement) {
+                                await apiService.saveProjectAgreement(updatedAgreement);
+                                logger.logCategory('sync', '✅ Synced cancelled project agreement to API:', agreementId);
+                            }
+                        }
+
+                        // Handle sales return changes
+                        if (action.type === 'ADD_SALES_RETURN') {
+                            const salesReturn = action.payload as any;
+                            await apiService.saveSalesReturn(salesReturn);
+                            logger.logCategory('sync', '✅ Synced sales return to API:', salesReturn.returnNumber);
+                        } else if (action.type === 'UPDATE_SALES_RETURN') {
+                            const salesReturn = action.payload as any;
+                            await apiService.saveSalesReturn(salesReturn);
+                            logger.logCategory('sync', '✅ Synced sales return update to API:', salesReturn.returnNumber);
+                        } else if (action.type === 'DELETE_SALES_RETURN') {
+                            const salesReturnId = action.payload as string;
+                            await apiService.deleteSalesReturn(salesReturnId);
+                            logger.logCategory('sync', '✅ Synced sales return deletion to API:', salesReturnId);
+                        } else if (action.type === 'MARK_RETURN_REFUNDED') {
+                            // When marking as refunded, update the sales return
+                            const { returnId } = action.payload as any;
+                            const salesReturn = newState.salesReturns.find(sr => sr.id === returnId);
+                            if (salesReturn) {
+                                await apiService.saveSalesReturn(salesReturn);
+                                logger.logCategory('sync', '✅ Synced sales return refund status to API:', salesReturn.returnNumber);
+                            }
                         }
 
                         // Handle contract changes
@@ -2343,26 +2380,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const apiService = getAppStateApiService();
             const apiState = await apiService.loadState();
 
+            // Helper function to merge arrays by ID (preserves local changes that haven't been synced)
+            const mergeById = <T extends { id: string }>(current: T[], api: T[]): T[] => {
+                if (!api || api.length === 0) return current;
+                const apiMap = new Map(api.map(item => [item.id, item]));
+                const currentMap = new Map(current.map(item => [item.id, item]));
+                
+                // Merge: API data takes precedence for existing items, but keep local items not in API
+                const merged = new Map<string, T>();
+                
+                // First, add all current items (preserves local changes)
+                current.forEach(item => merged.set(item.id, item));
+                
+                // Then, update with API data (overwrites with server version)
+                api.forEach(item => merged.set(item.id, item));
+                
+                return Array.from(merged.values());
+            };
+
             // Only apply slices we received, keep navigation/current page intact
+            // Merge arrays by ID to preserve local changes that haven't been synced yet
             const updates: Partial<AppState> = {};
-            if (apiState.contacts) updates.contacts = apiState.contacts;
-            if (apiState.transactions) updates.transactions = apiState.transactions;
-            if (apiState.bills) updates.bills = apiState.bills;
-            if (apiState.invoices) updates.invoices = apiState.invoices;
-            if (apiState.budgets) updates.budgets = apiState.budgets;
-            if (apiState.contracts) updates.contracts = apiState.contracts;
-            if (apiState.rentalAgreements) updates.rentalAgreements = apiState.rentalAgreements;
-            if (apiState.projectAgreements) updates.projectAgreements = apiState.projectAgreements;
-            if (apiState.categories) updates.categories = apiState.categories;
-            if (apiState.accounts) updates.accounts = apiState.accounts;
-            if (apiState.projects) updates.projects = apiState.projects;
-            if (apiState.buildings) updates.buildings = apiState.buildings;
-            if (apiState.properties) updates.properties = apiState.properties;
-            if (apiState.units) updates.units = apiState.units;
+            const currentState = stateRef.current;
+            
+            if (apiState.contacts) updates.contacts = mergeById(currentState.contacts, apiState.contacts);
+            if (apiState.transactions) updates.transactions = mergeById(currentState.transactions, apiState.transactions);
+            if (apiState.bills) updates.bills = mergeById(currentState.bills, apiState.bills);
+            if (apiState.invoices) updates.invoices = mergeById(currentState.invoices, apiState.invoices);
+            if (apiState.budgets) updates.budgets = mergeById(currentState.budgets, apiState.budgets);
+            if (apiState.contracts) updates.contracts = mergeById(currentState.contracts, apiState.contracts);
+            if (apiState.rentalAgreements) updates.rentalAgreements = mergeById(currentState.rentalAgreements, apiState.rentalAgreements);
+            if (apiState.projectAgreements) updates.projectAgreements = mergeById(currentState.projectAgreements, apiState.projectAgreements);
+            if (apiState.salesReturns) updates.salesReturns = mergeById(currentState.salesReturns, apiState.salesReturns);
+            if (apiState.categories) updates.categories = mergeById(currentState.categories, apiState.categories);
+            if (apiState.accounts) updates.accounts = mergeById(currentState.accounts, apiState.accounts);
+            if (apiState.projects) updates.projects = mergeById(currentState.projects, apiState.projects);
+            if (apiState.buildings) updates.buildings = mergeById(currentState.buildings, apiState.buildings);
+            if (apiState.properties) updates.properties = mergeById(currentState.properties, apiState.properties);
+            if (apiState.units) updates.units = mergeById(currentState.units, apiState.units);
 
             if (Object.keys(updates).length === 0) return;
 
-            const mergedState = { ...stateRef.current, ...updates };
+            const mergedState = { ...currentState, ...updates };
 
             dispatch({
                 type: 'SET_STATE',
@@ -2440,6 +2499,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     'budget:created', 'budget:updated', 'budget:deleted',
                     'rental_agreement:created', 'rental_agreement:updated', 'rental_agreement:deleted',
                     'project_agreement:created', 'project_agreement:updated', 'project_agreement:deleted',
+                    'sales_return:created', 'sales_return:updated', 'sales_return:deleted',
                     'contract:created', 'contract:updated', 'contract:deleted',
                     'building:created', 'building:updated', 'building:deleted',
                     'property:created', 'property:updated', 'property:deleted',

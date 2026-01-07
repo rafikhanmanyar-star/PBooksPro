@@ -146,9 +146,36 @@ router.post('/', async (req: TenantRequest, res) => {
     const db = getDb();
     const transaction = req.body;
     
+    // Validate required fields
+    if (!transaction.type) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Transaction type is required'
+      });
+    }
+    if (!transaction.amount) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Transaction amount is required'
+      });
+    }
+    if (!transaction.date) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Transaction date is required'
+      });
+    }
+    if (!transaction.accountId) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Account ID is required'
+      });
+    }
+    
     // Generate ID if not provided
     const transactionId = transaction.id || `transaction_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     console.log('📝 POST /transactions - Using transaction ID:', transactionId);
+    console.log('📋 POST /transactions - Full transaction data:', JSON.stringify(transaction, null, 2));
     
     // Use transaction for data integrity (upsert behavior)
     let wasUpdate = false;
@@ -156,7 +183,9 @@ router.post('/', async (req: TenantRequest, res) => {
     let billLocked = false;
     let invoiceLocked = false;
     
+    console.log('🔄 POST /transactions - Starting database transaction');
     const result = await db.transaction(async (client) => {
+      console.log('✅ POST /transactions - Transaction client acquired');
       // If transaction is linked to a bill, lock the bill row first to prevent concurrent payments
       if (transaction.billId && !wasUpdate) {
         try {
@@ -306,6 +335,14 @@ router.post('/', async (req: TenantRequest, res) => {
       } else {
         // Create new transaction
         console.log('➕ POST /transactions - Creating new transaction:', transactionId);
+        console.log('📝 POST /transactions - Insert data:', {
+          transactionId,
+          tenantId: req.tenantId,
+          type: transaction.type,
+          amount: transaction.amount,
+          billId: transaction.billId
+        });
+        
         const insertResult = await client.query(
           `INSERT INTO transactions (
             id, tenant_id, user_id, type, subtype, amount, date, description, account_id, 
@@ -342,6 +379,11 @@ router.post('/', async (req: TenantRequest, res) => {
           ]
         );
         
+        console.log('✅ POST /transactions - Transaction inserted successfully:', {
+          id: insertResult.rows[0]?.id,
+          rowCount: insertResult.rowCount
+        });
+        
         // If bill is locked, update it within the same transaction
         if (billLocked && transaction.billId) {
           // Recalculate total paid amount from all transactions for this bill
@@ -353,13 +395,12 @@ router.post('/', async (req: TenantRequest, res) => {
           
           // Get bill amount to calculate status
           const billData = await client.query(
-            'SELECT amount, version FROM bills WHERE id = $1 AND tenant_id = $2',
+            'SELECT amount FROM bills WHERE id = $1 AND tenant_id = $2',
             [transaction.billId, req.tenantId]
           );
           
           if (billData.rows.length > 0) {
             const billAmount = parseFloat(billData.rows[0].amount);
-            const currentVersion = parseInt(billData.rows[0].version || '1');
             let newStatus = 'Unpaid';
             if (totalPaid >= billAmount - 0.01) {
               newStatus = 'Paid';
@@ -367,28 +408,19 @@ router.post('/', async (req: TenantRequest, res) => {
               newStatus = 'Partially Paid';
             }
             
-            // Update bill with version check for optimistic locking
+            // Update bill (row is already locked via FOR UPDATE NOWAIT)
             const updatedBill = await client.query(
               `UPDATE bills 
-               SET paid_amount = $1, status = $2, version = version + 1, updated_at = NOW() 
-               WHERE id = $3 AND tenant_id = $4 AND version = $5
+               SET paid_amount = $1, status = $2, updated_at = NOW() 
+               WHERE id = $3 AND tenant_id = $4
                RETURNING *`,
-              [totalPaid, newStatus, transaction.billId, req.tenantId, currentVersion]
+              [totalPaid, newStatus, transaction.billId, req.tenantId]
             );
-            
-            if (updatedBill.rows.length === 0) {
-              // Version mismatch - concurrent modification detected
-              throw {
-                code: 'BILL_VERSION_MISMATCH',
-                message: 'Bill was modified by another user. Please refresh and try again.'
-              };
-            }
             
             console.log('✅ POST /transactions - Updated bill within transaction:', {
               billId: transaction.billId,
               totalPaid,
-              status: newStatus,
-              version: updatedBill.rows[0].version
+              status: newStatus
             });
           }
         }
@@ -424,8 +456,20 @@ router.post('/', async (req: TenantRequest, res) => {
           }
         }
         
-        return insertResult.rows[0];
+        const insertedTransaction = insertResult.rows[0];
+        console.log('✅ POST /transactions - Returning inserted transaction:', {
+          id: insertedTransaction?.id,
+          type: insertedTransaction?.type,
+          amount: insertedTransaction?.amount
+        });
+        return insertedTransaction;
       }
+    });
+    
+    console.log('✅ POST /transactions - Transaction completed, result:', {
+      hasResult: !!result,
+      resultId: result?.id,
+      resultType: result?.type
     });
     
     if (!result) {
@@ -1106,13 +1150,12 @@ router.post('/batch', async (req: TenantRequest, res) => {
               const totalPaid = parseFloat(billTransactions.rows[0]?.total_paid || '0');
               
               const billData = await client.query(
-                'SELECT amount, version FROM bills WHERE id = $1 AND tenant_id = $2',
+                'SELECT amount FROM bills WHERE id = $1 AND tenant_id = $2',
                 [transaction.billId, req.tenantId]
               );
               
               if (billData.rows.length > 0) {
                 const billAmount = parseFloat(billData.rows[0].amount);
-                const currentVersion = parseInt(billData.rows[0].version || '1');
                 let newStatus = 'Unpaid';
                 if (totalPaid >= billAmount - 0.01) {
                   newStatus = 'Paid';
@@ -1120,20 +1163,14 @@ router.post('/batch', async (req: TenantRequest, res) => {
                   newStatus = 'Partially Paid';
                 }
                 
+                // Update bill (row is already locked via FOR UPDATE NOWAIT)
                 const updatedBill = await client.query(
                   `UPDATE bills 
-                   SET paid_amount = $1, status = $2, version = version + 1, updated_at = NOW() 
-                   WHERE id = $3 AND tenant_id = $4 AND version = $5
+                   SET paid_amount = $1, status = $2, updated_at = NOW() 
+                   WHERE id = $3 AND tenant_id = $4
                    RETURNING *`,
-                  [totalPaid, newStatus, transaction.billId, req.tenantId, currentVersion]
+                  [totalPaid, newStatus, transaction.billId, req.tenantId]
                 );
-                
-                if (updatedBill.rows.length === 0) {
-                  throw {
-                    code: 'BILL_VERSION_MISMATCH',
-                    message: 'Bill was modified by another user'
-                  };
-                }
                 
                 // Emit WebSocket event for bill update
                 if (updatedBill.rows.length > 0) {

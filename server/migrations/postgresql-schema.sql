@@ -407,6 +407,32 @@ CREATE TABLE IF NOT EXISTS project_agreements (
     UNIQUE(tenant_id, agreement_number)
 );
 
+-- Sales Returns table
+CREATE TABLE IF NOT EXISTS sales_returns (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    return_number TEXT NOT NULL,
+    agreement_id TEXT NOT NULL,
+    return_date DATE NOT NULL,
+    reason TEXT NOT NULL,
+    reason_notes TEXT,
+    penalty_percentage DECIMAL(5, 2) NOT NULL DEFAULT 0,
+    penalty_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    refund_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    status TEXT NOT NULL,
+    processed_date TIMESTAMP,
+    refunded_date TIMESTAMP,
+    refund_bill_id TEXT,
+    created_by TEXT,
+    notes TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (agreement_id) REFERENCES project_agreements(id) ON DELETE RESTRICT,
+    FOREIGN KEY (refund_bill_id) REFERENCES bills(id) ON DELETE SET NULL,
+    UNIQUE(tenant_id, return_number)
+);
+
 -- Contracts table
 CREATE TABLE IF NOT EXISTS contracts (
     id TEXT PRIMARY KEY,
@@ -454,6 +480,8 @@ CREATE INDEX IF NOT EXISTS idx_bills_tenant_id ON bills(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_budgets_tenant_id ON budgets(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_rental_agreements_tenant_id ON rental_agreements(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_project_agreements_tenant_id ON project_agreements(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_sales_returns_tenant_id ON sales_returns(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_sales_returns_agreement_id ON sales_returns(agreement_id);
 CREATE INDEX IF NOT EXISTS idx_contracts_tenant_id ON contracts(tenant_id);
 
 -- Transaction Audit Log table
