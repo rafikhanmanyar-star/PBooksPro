@@ -39,12 +39,13 @@ const Footer: React.FC<FooterProps> = ({ isPanelOpen, onNavigate }) => {
           <button
             key={item.page}
             onClick={() => handleNavigate(item.page)}
-            className={`flex flex-col items-center justify-center flex-1 h-full min-w-[4rem] transition-colors duration-200
+            className={`flex flex-col items-center justify-center flex-1 h-full min-w-[4rem] min-h-[64px] transition-colors duration-200 touch-manipulation
               ${
                 currentPage === item.page
                   ? 'text-green-600 font-semibold'
-                  : 'text-gray-600 hover:text-gray-900'
+                  : 'text-gray-600 hover:text-gray-900 active:bg-gray-50'
               }`}
+            style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
           >
             <div className={`w-6 h-6 ${currentPage === item.page ? 'text-green-600' : 'text-gray-500'}`}>{item.icon}</div>
             <span className="text-[10px] sm:text-xs mt-1 truncate w-full text-center px-1">{item.label}</span>

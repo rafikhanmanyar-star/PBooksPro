@@ -188,8 +188,8 @@ const ContactForm: React.FC<ContactFormProps> = ({
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-purple-500"></div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              <div className="md:col-span-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6">
+              <div className="sm:col-span-2">
                 <Input
                   id="contact-name"
                   name="contact-name"
@@ -204,7 +204,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
               </div>
 
               {isBusinessContact && (
-                <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="sm:col-span-2 animate-in fade-in slide-in-from-top-2 duration-300">
                   <Input
                     id="company-name"
                     name="company-name"
@@ -217,7 +217,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
                 </div>
               )}
 
-              <div>
+              <div className="sm:col-span-1">
                 <Input
                   id="contact-no"
                   name="contact-no"

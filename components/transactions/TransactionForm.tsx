@@ -302,7 +302,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                             </button>
                         )}
                     </div>
-                    <div className="grid grid-cols-2 gap-y-1 gap-x-4 text-xs text-gray-600">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1 gap-x-4 text-xs text-gray-600">
                         <div><span className="font-semibold">Category:</span> {state.categories.find(c => c.id === billBeingPaid.categoryId)?.name || 'Uncategorized'}</div>
                         {billBeingPaid.projectId && <div><span className="font-semibold">Project:</span> {state.projects.find(p => p.id === billBeingPaid.projectId)?.name}</div>}
                         {billBeingPaid.buildingId && <div><span className="font-semibold">Building:</span> {state.buildings.find(b => b.id === billBeingPaid.buildingId)?.name}</div>}
@@ -600,15 +600,15 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                 placeholder="Details..." 
             />
 
-            <div className="flex justify-between items-center pt-4">
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4">
                 <div>
                     {transactionToEdit && transactionToEdit.id && (
-                        <Button type="button" variant="danger" onClick={handleDelete}>Delete</Button>
+                        <Button type="button" variant="danger" onClick={handleDelete} className="w-full sm:w-auto">Delete</Button>
                     )}
                 </div>
-                <div className="flex gap-2">
-                    <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button type="submit">{transactionToEdit && transactionToEdit.id ? 'Update' : 'Save'}</Button>
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    <Button type="button" variant="secondary" onClick={onClose} className="w-full sm:w-auto">Cancel</Button>
+                    <Button type="submit" className="w-full sm:w-auto">{transactionToEdit && transactionToEdit.id ? 'Update' : 'Save'}</Button>
                 </div>
             </div>
         </form>

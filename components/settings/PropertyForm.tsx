@@ -138,15 +138,15 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelet
                 />
                 <Textarea label="Description (Optional)" value={description} onChange={e => setDescription(e.target.value)} placeholder="Property details, notes, etc." />
                 
-                <div className="flex justify-between items-center pt-4">
+                <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4">
                     <div>
                         {propertyToEdit && onDelete && (
-                            <Button type="button" variant="danger" onClick={onDelete}>Delete</Button>
+                            <Button type="button" variant="danger" onClick={onDelete} className="w-full sm:w-auto">Delete</Button>
                         )}
                     </div>
-                    <div className="flex justify-end gap-2">
-                        <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
-                        <Button type="submit">{propertyToEdit ? 'Update' : 'Save'} Property</Button>
+                    <div className="flex flex-col sm:flex-row justify-end gap-2 w-full sm:w-auto">
+                        <Button type="button" variant="secondary" onClick={onCancel} className="w-full sm:w-auto">Cancel</Button>
+                        <Button type="submit" className="w-full sm:w-auto">{propertyToEdit ? 'Update' : 'Save'} Property</Button>
                     </div>
                 </div>
             </form>

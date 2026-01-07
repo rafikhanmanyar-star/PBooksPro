@@ -1,6 +1,33 @@
 /* QuickBooks-style Global Styles */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
+:root {
+  /* Responsive spacing variables */
+  --viewport-padding-mobile: 1rem;
+  --viewport-padding-tablet: 1.5rem;
+  --viewport-padding-desktop: 2rem;
+  --viewport-padding-large: 2.5rem;
+  
+  /* Safe area insets for mobile devices (notched phones) */
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  
+  /* Touch target minimum size */
+  --touch-target-min: 44px;
+  
+  /* Modal spacing */
+  --modal-padding-mobile: 1rem;
+  --modal-padding-tablet: 1.5rem;
+  --modal-padding-desktop: 2rem;
+  
+  /* Form spacing */
+  --form-gap-mobile: 0.75rem;
+  --form-gap-tablet: 1rem;
+  --form-gap-desktop: 1.25rem;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -176,6 +203,20 @@ h3 { font-size: 1.25rem; font-weight: 600; }  /* 20px */
   .animate-slide-in-up,
   .animate-fade-in-fast {
     animation: none;
+  }
+}
+
+/* Touch optimization for mobile */
+.touch-manipulation {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Ensure minimum touch target size on mobile */
+@media (max-width: 640px) {
+  button, a, [role="button"], [tabindex="0"] {
+    min-height: 44px;
+    min-width: 44px;
   }
 }
 

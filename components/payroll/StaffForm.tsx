@@ -169,20 +169,20 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, staffToEdit }) => {
     }, [basicSalary, salaryStructure, state.salaryComponents]);
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-[80vh]">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0">
             <div className="flex-shrink-0 mb-4">
                 <Tabs tabs={['Profile', 'Assignment', 'Salary', 'Bank']} activeTab={activeTab} onTabClick={setActiveTab} />
             </div>
 
-            <div className="flex-grow overflow-y-auto p-1">
+            <div className="flex-grow min-h-0 overflow-y-auto p-1 sm:p-4">
                 {activeTab === 'Profile' && (
                     <div className="space-y-4">
                         <Input label="Full Name" value={name} onChange={e => setName(e.target.value)} required />
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <Input label="Designation" value={designation} onChange={e => setDesignation(e.target.value)} required />
                             <Input label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} />
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <DatePicker label="Joining Date" value={joiningDate} onChange={d => setJoiningDate(d.toISOString().split('T')[0])} required />
                             <Select label="Status" value={status} onChange={e => setStatus(e.target.value as any)}>
                                 <option value="Active">Active</option>
@@ -241,15 +241,15 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, staffToEdit }) => {
                             {state.salaryComponents.filter(c => !c.isSystem).map(comp => {
                                 const current = salaryStructure.find(s => s.id === comp.id) || { id: comp.id, amount: '', calcType: 'Fixed' };
                                 return (
-                                    <div key={comp.id} className="grid grid-cols-12 gap-2 items-center">
-                                        <div className="col-span-4 text-sm font-medium text-slate-700">{comp.name}</div>
-                                        <div className="col-span-4">
+                                    <div key={comp.id} className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-2 items-center">
+                                        <div className="col-span-1 sm:col-span-4 text-sm font-medium text-slate-700">{comp.name}</div>
+                                        <div className="col-span-1 sm:col-span-4">
                                             <Select value={current.calcType} onChange={(e) => handleComponentChange(comp.id, 'calcType', e.target.value)} className="py-1 text-xs">
                                                 <option value="Fixed">Fixed Amount</option>
                                                 <option value="Percentage of Basic">% of Basic</option>
                                             </Select>
                                         </div>
-                                        <div className="col-span-4">
+                                        <div className="col-span-1 sm:col-span-4">
                                             <Input
                                                 value={current.amount}
                                                 onChange={e => handleComponentChange(comp.id, 'amount', e.target.value)}
@@ -274,9 +274,9 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, staffToEdit }) => {
                 )}
             </div>
 
-            <div className="flex justify-end gap-2 pt-4 border-t mt-auto flex-shrink-0">
-                <Button variant="secondary" onClick={onClose} type="button">Cancel</Button>
-                <Button type="submit">Save Staff</Button>
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-4 border-t mt-auto flex-shrink-0">
+                <Button variant="secondary" onClick={onClose} type="button" className="w-full sm:w-auto">Cancel</Button>
+                <Button type="submit" className="w-full sm:w-auto">Save Staff</Button>
             </div>
         </form>
     );

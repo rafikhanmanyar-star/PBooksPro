@@ -660,13 +660,13 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                 {/* Pricing Breakdown - Compact Grid */}
                 <div className="p-3 border rounded-lg bg-slate-50">
                     <h3 className="font-semibold text-sm text-slate-800 mb-3">Pricing Breakdown</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                         <Input label="List Price" type="text" inputMode="decimal" value={listPrice} onChange={handleAmountChange(setListPrice)} className="text-sm py-1" />
                         <Input label="Cust Disc" type="text" inputMode="decimal" value={customerDiscount} onChange={handleAmountChange(setCustomerDiscount)} className="text-sm py-1" />
                         <Input label="Floor Disc" type="text" inputMode="decimal" value={floorDiscount} onChange={handleAmountChange(setFloorDiscount)} className="text-sm py-1" />
                         <Input label="LumpSum Disc" type="text" inputMode="decimal" value={lumpSumDiscount} onChange={handleAmountChange(setLumpSumDiscount)} className="text-sm py-1" />
                         <Input label="Misc Disc" type="text" inputMode="decimal" value={miscDiscount} onChange={handleAmountChange(setMiscDiscount)} className="text-sm py-1" />
-                        <div className="col-span-1 md:col-span-1">
+                        <div className="col-span-1 sm:col-span-2 md:col-span-1">
                             <Input
                                 label="Selling Price"
                                 type="text"
@@ -712,11 +712,11 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                 )}
 
                 {/* Actions */}
-                <div className="flex justify-between items-center pt-2">
-                    <div>
-                        {agreementToEdit && <Button type="button" variant="danger" onClick={handleDelete}>Delete</Button>}
+                <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-2">
+                    <div className="flex-shrink-0">
+                        {agreementToEdit && <Button type="button" variant="danger" onClick={handleDelete} className="w-full sm:w-auto">Delete</Button>}
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                         {agreementToEdit && agreementToEdit.status === ProjectAgreementStatus.ACTIVE && onCancelRequest && (
                             <Button 
                                 type="button" 
@@ -724,18 +724,18 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                 onClick={() => {
                                     onCancelRequest(agreementToEdit);
                                 }}
-                                className="bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
+                                className="bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 w-full sm:w-auto"
                             >
                                 Cancel Agreement
                             </Button>
                         )}
                         {agreementToEdit && (
-                            <Button type="button" variant="secondary" onClick={handleManualGenerate} className="bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100">
+                            <Button type="button" variant="secondary" onClick={handleManualGenerate} className="bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 w-full sm:w-auto">
                                 Create Installments
                             </Button>
                         )}
-                        <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-                        <Button type="submit" disabled={!!agreementNumberError}>{agreementToEdit ? 'Update' : 'Save'}</Button>
+                        <Button type="button" variant="secondary" onClick={onClose} className="w-full sm:w-auto">Cancel</Button>
+                        <Button type="submit" disabled={!!agreementNumberError} className="w-full sm:w-auto">{agreementToEdit ? 'Update' : 'Save'}</Button>
                     </div>
                 </div>
             </form>

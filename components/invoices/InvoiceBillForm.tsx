@@ -1706,22 +1706,22 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             : renderStandardForm()}
       </div>
       
-      <div className="flex justify-between pt-4 border-t border-gray-200 mt-4 flex-shrink-0">
+      <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 border-t border-gray-200 mt-4 flex-shrink-0">
         <div className="flex gap-2">
             {itemToEdit && (
-                <Button type="button" variant="danger" onClick={handleDelete} disabled={isAgreementCancelled}>
+                <Button type="button" variant="danger" onClick={handleDelete} disabled={isAgreementCancelled} className="w-full sm:w-auto">
                     Delete
                 </Button>
             )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             {itemToEdit && type === 'bill' && onDuplicate && (
-                <Button type="button" variant="secondary" onClick={handleDuplicateClick} className="text-indigo-600 border-indigo-200 bg-indigo-50 hover:bg-indigo-100">
+                <Button type="button" variant="secondary" onClick={handleDuplicateClick} className="text-indigo-600 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 w-full sm:w-auto">
                     Duplicate Bill
                 </Button>
             )}
-            <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={!!numberError || isAgreementCancelled}>{itemToEdit ? 'Update' : 'Save'}</Button>
+            <Button type="button" variant="secondary" onClick={onClose} className="w-full sm:w-auto">Cancel</Button>
+            <Button type="submit" disabled={!!numberError || isAgreementCancelled} className="w-full sm:w-auto">{itemToEdit ? 'Update' : 'Save'}</Button>
         </div>
       </div>
     </form>
