@@ -1,31 +1,11 @@
 
 import React, { useState } from 'react';
-import { useLicense } from '../../context/LicenseContext';
-import Input from '../ui/Input';
 import Button from '../ui/Button';
 import PaymentModal from './PaymentModal';
 import { ICONS } from '../../constants';
 
 const LicenseLockScreen: React.FC = () => {
-    const { registerApp, deviceId } = useLicense();
-    const [keyInput, setKeyInput] = useState('');
-    const [error, setError] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
-
-    const handleUnlock = (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsLoading(true);
-        setError('');
-        
-        setTimeout(() => {
-            const success = registerApp(keyInput);
-            if (!success) {
-                setError('Invalid license key for this device.');
-                setIsLoading(false);
-            }
-        }, 800);
-    };
 
     return (
         <>
@@ -35,49 +15,30 @@ const LicenseLockScreen: React.FC = () => {
                         <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 text-white">
                             <div className="w-8 h-8">{ICONS.lock}</div>
                         </div>
-                        <h2 className="text-2xl font-bold text-white">Trial Expired</h2>
-                        <p className="text-rose-100 mt-2 text-sm">Your 30-day trial period has ended.</p>
+                        <h2 className="text-2xl font-bold text-white">License Expired</h2>
+                        <p className="text-rose-100 mt-2 text-sm">Your license has expired. Please renew to continue using the application.</p>
                     </div>
                     
                     <div className="p-8 space-y-6">
-                        <div className="text-center p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                            <p className="text-xs text-slate-500 uppercase font-bold mb-1">Your Device ID</p>
-                            <code className="text-lg font-mono font-bold text-slate-800 select-all block cursor-text">{deviceId}</code>
-                            <p className="text-xs text-slate-400 mt-1">Send this ID to support to get your key.</p>
-                        </div>
-
-                        <form onSubmit={handleUnlock} className="space-y-4">
-                            <Input
-                                placeholder="MA-XXXXXXXX-XXXX"
-                                value={keyInput}
-                                onChange={(e) => setKeyInput(e.target.value.toUpperCase())}
-                                className="font-mono text-center tracking-widest text-lg border-2 border-slate-300 focus:border-rose-500 focus:ring-rose-200"
-                            />
-                            {error && <p className="text-center text-rose-600 text-sm font-bold">{error}</p>}
-                            
-                            <Button type="submit" className="w-full justify-center bg-rose-600 hover:bg-rose-700 py-3 text-lg" disabled={isLoading}>
-                                {isLoading ? 'Verifying...' : 'Unlock Software'}
-                            </Button>
-                        </form>
-
-                        <div className="relative">
-                            <div className="absolute inset-0 flex items-center">
-                                <div className="w-full border-t border-slate-200"></div>
-                            </div>
-                            <div className="relative flex justify-center text-sm">
-                                <span className="px-2 bg-white text-slate-500">OR</span>
-                            </div>
+                        <div className="text-center p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                            <p className="text-sm text-blue-800">
+                                <strong>Renew Your License</strong>
+                            </p>
+                            <p className="text-xs text-blue-600 mt-1">
+                                Choose a monthly or yearly subscription plan to continue using all features.
+                            </p>
                         </div>
 
                         <Button 
                             onClick={() => setShowPaymentModal(true)}
                             className="w-full justify-center bg-blue-600 hover:bg-blue-700 py-3 text-lg"
                         >
+                            <span className="mr-2">💳</span>
                             Renew License Online
                         </Button>
                         
                         <div className="text-center pt-4 border-t border-slate-100">
-                            <p className="text-xs text-slate-400">Contact support: support@myaccountant.com</p>
+                            <p className="text-xs text-slate-400">Need help? Contact support: support@myaccountant.com</p>
                         </div>
                     </div>
                 </div>

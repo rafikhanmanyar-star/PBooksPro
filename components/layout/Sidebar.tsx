@@ -2,8 +2,7 @@
 import React, { useState, useEffect, useCallback, memo } from 'react';
 import { Page } from '../../types';
 import { ICONS, APP_LOGO } from '../../constants';
-import { useLicense } from '../../context/LicenseContext';
-import RegistrationModal from '../license/RegistrationModal';
+import LicenseManagement from '../license/LicenseManagement';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { apiClient } from '../../services/api/client';
@@ -11,6 +10,7 @@ import packageJson from '../../package.json';
 import ChatModal from '../chat/ChatModal';
 import { getWebSocketClient } from '../../services/websocket/websocketClient';
 import { ChatMessagesRepository } from '../../services/database/repositories';
+import Modal from '../ui/Modal';
 
 interface SidebarProps {
     currentPage: Page;
@@ -19,14 +19,18 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const { state, dispatch } = useAppContext();
-    const { isRegistered, daysRemaining } = useLicense();
     const { logout, tenant, user } = useAuth();
     const { currentUser } = state;
-    const [isRegModalOpen, setIsRegModalOpen] = useState(false);
+    const [isLicenseModalOpen, setIsLicenseModalOpen] = useState(false);
     const [onlineUsers, setOnlineUsers] = useState<number | null>(null);
     const [onlineUsersList, setOnlineUsersList] = useState<any[]>([]);
     const [isChatModalOpen, setIsChatModalOpen] = useState(false);
     const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+    const [licenseInfo, setLicenseInfo] = useState<{
+        licenseStatus: string;
+        daysRemaining: number;
+        isExpired: boolean;
+    } | null>(null);
     
     // Get user name - prefer AuthContext user (cloud auth) over AppContext currentUser (local)
     const userName = user?.name || currentUser?.name || 'User';
@@ -36,6 +40,32 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     
     const chatRepo = new ChatMessagesRepository();
     const wsClient = getWebSocketClient();
+
+    // Fetch license status
+    useEffect(() => {
+        const fetchLicenseStatus = async () => {
+            try {
+                const response = await apiClient.get<{
+                    licenseStatus: string;
+                    daysRemaining: number;
+                    isExpired: boolean;
+                }>('/tenants/license-status');
+                setLicenseInfo(response);
+            } catch (error) {
+                console.error('Error fetching license status:', error);
+                // Silently fail - don't show error to user
+            }
+        };
+
+        // Only fetch if user is authenticated
+        if (user || currentUser) {
+            fetchLicenseStatus();
+            
+            // Refresh license status every 5 minutes
+            const interval = setInterval(fetchLicenseStatus, 300000);
+            return () => clearInterval(interval);
+        }
+    }, [user, currentUser]);
 
     // Fetch online users count and list (users with active sessions) for the organization
     useEffect(() => {
@@ -250,23 +280,44 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 {/* Footer / User Profile */}
                 <div className="p-3 border-t border-slate-800 bg-slate-900/50">
 
-                    {!isRegistered && (
+                    {/* License Status Button */}
+                    {licenseInfo && (licenseInfo.isExpired || licenseInfo.daysRemaining <= 30) && (
                         <button
-                            onClick={() => setIsRegModalOpen(true)}
-                            className="w-full mb-3 bg-gradient-to-r from-amber-500 to-orange-600 text-white p-2.5 rounded-lg shadow-lg relative overflow-hidden group"
+                            onClick={() => setIsLicenseModalOpen(true)}
+                            className={`w-full mb-3 text-white p-2.5 rounded-lg shadow-lg relative overflow-hidden group ${
+                                licenseInfo.isExpired 
+                                    ? 'bg-gradient-to-r from-rose-500 to-red-600' 
+                                    : 'bg-gradient-to-r from-amber-500 to-orange-600'
+                            }`}
                         >
                             <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
                             <div className="relative flex items-center justify-between">
                                 <div className="text-left">
-                                    <div className="text-[10px] font-bold opacity-90">Trial Version</div>
-                                    <div className="text-sm font-bold leading-tight">{daysRemaining} Days</div>
+                                    <div className="text-[10px] font-bold opacity-90">
+                                        {licenseInfo.isExpired ? 'License Expired' : 'Renewal Due'}
+                                    </div>
+                                    <div className="text-sm font-bold leading-tight">
+                                        {licenseInfo.isExpired ? 'Expired' : `${licenseInfo.daysRemaining} Days`}
+                                    </div>
                                 </div>
                                 <div className="bg-white/20 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide">
-                                    Activate
+                                    {licenseInfo.isExpired ? 'Renew' : 'Renew'}
                                 </div>
                             </div>
                         </button>
                     )}
+                    
+                    {/* Always show license management button */}
+                    <button
+                        onClick={() => setIsLicenseModalOpen(true)}
+                        className="w-full mb-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-2.5 rounded-lg shadow-lg hover:from-indigo-700 hover:to-purple-700 transition-all flex items-center justify-center gap-2"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                        <span className="text-xs font-bold">License & Subscription</span>
+                    </button>
 
                     <div className="space-y-2">
                         {/* User Info with inline logout */}
@@ -337,7 +388,18 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                     </div>
                 </div>
             </aside>
-            <RegistrationModal isOpen={isRegModalOpen} onClose={() => setIsRegModalOpen(false)} />
+            {/* License Management Modal */}
+            {isLicenseModalOpen && (
+                <Modal
+                    isOpen={isLicenseModalOpen}
+                    onClose={() => setIsLicenseModalOpen(false)}
+                    title="License & Subscription"
+                    className="max-w-3xl"
+                >
+                    <LicenseManagement />
+                </Modal>
+            )}
+            
             <ChatModal 
                 isOpen={isChatModalOpen} 
                 onClose={() => setIsChatModalOpen(false)} 

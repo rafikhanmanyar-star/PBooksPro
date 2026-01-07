@@ -12,9 +12,7 @@ import { APP_LOGO } from '../../constants';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import TenantRegistration from './TenantRegistration';
-import LicenseActivation from './LicenseActivation';
-
-type View = 'login' | 'register' | 'activate-license';
+type View = 'login' | 'register';
 
 const CloudLoginPage: React.FC = () => {
   const { smartLogin, isLoading, error } = useAuth();
@@ -96,10 +94,6 @@ const CloudLoginPage: React.FC = () => {
     return <TenantRegistration onSuccess={handleRegistrationSuccess} onCancel={() => setView('login')} />;
   }
 
-  if (view === 'activate-license') {
-    return <LicenseActivation onSuccess={() => setView('login')} onCancel={() => setView('login')} />;
-  }
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
       <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-200">
@@ -172,20 +166,13 @@ const CloudLoginPage: React.FC = () => {
           </Button>
         </form>
 
-        <div className="mt-6 space-y-2">
+        <div className="mt-6">
           <button
             type="button"
             onClick={() => setView('register')}
             className="w-full text-sm text-blue-600 hover:text-blue-700 text-center"
           >
             Register New Organization (Free Trial)
-          </button>
-          <button
-            type="button"
-            onClick={() => setView('activate-license')}
-            className="w-full text-sm text-slate-600 hover:text-slate-700 text-center"
-          >
-            Activate License Key
           </button>
         </div>
       </div>
