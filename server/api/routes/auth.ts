@@ -237,27 +237,21 @@ router.post('/smart-login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Check for existing active sessions for this user
-    // NOTE: We no longer delete existing sessions on login to prevent premature expiration
-    // Multiple devices can have active sessions simultaneously
-    // Sessions will expire naturally based on their expiration time
-    // This prevents issues where a user logs in from one device and loses session on another
-    const existingSessions = await db.query(
-      `SELECT id FROM user_sessions 
-       WHERE user_id = $1 AND tenant_id = $2 AND expires_at > NOW()`,
+    // Restrict duplicate logins: if the user already has an active session in this tenant,
+    // do not allow logging in again. Return a clear message for the UI to display.
+    const activeSessions = await db.query(
+      `SELECT id FROM user_sessions
+       WHERE user_id = $1 AND tenant_id = $2 AND expires_at > NOW()
+       LIMIT 1`,
       [user.id, user.tenant_id]
     );
 
-    // Optional: Clean up only expired sessions (not active ones)
-    // This allows multiple active sessions but removes old expired ones
-    try {
-      await db.query(
-        'DELETE FROM user_sessions WHERE user_id = $1 AND tenant_id = $2 AND expires_at <= NOW()',
-        [user.id, user.tenant_id]
-      );
-    } catch (cleanupError) {
-      // Non-critical - just log
-      console.warn('Failed to cleanup expired sessions:', cleanupError);
+    if (activeSessions.length > 0) {
+      return res.status(409).json({
+        error: 'User is already logged in. Please logout first.',
+        message: 'This account is already logged in for this organization. Please logout from the other session/device and try again.',
+        code: 'ALREADY_LOGGED_IN'
+      });
     }
 
     // Update last login
@@ -280,15 +274,22 @@ router.post('/smart-login', async (req, res) => {
       { expiresIn }
     );
 
-    // Create session record
-    // Session expiration matches JWT expiration (30 days)
+    // Create session record (1 row per user+tenant). We use UPSERT to handle stale/expired rows.
+    // Session expiration matches JWT expiration (30 days).
     const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30); // 30 days to match JWT expiration
 
     await db.query(
-      `INSERT INTO user_sessions (id, user_id, tenant_id, token, ip_address, user_agent, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      `INSERT INTO user_sessions (id, user_id, tenant_id, token, ip_address, user_agent, expires_at, last_activity)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+       ON CONFLICT (user_id, tenant_id)
+       DO UPDATE SET
+         token = EXCLUDED.token,
+         ip_address = EXCLUDED.ip_address,
+         user_agent = EXCLUDED.user_agent,
+         expires_at = EXCLUDED.expires_at,
+         last_activity = NOW()`,
       [
         sessionId,
         user.id,
@@ -418,27 +419,21 @@ router.post('/login', async (req, res) => {
     
     console.log('✅ Login: Password verified for user:', { userId: user.id, username: user.username, role: user.role });
 
-    // Check for existing active sessions for this user
-    // NOTE: We no longer delete existing sessions on login to prevent premature expiration
-    // Multiple devices can have active sessions simultaneously
-    // Sessions will expire naturally based on their expiration time
-    // This prevents issues where a user logs in from one device and loses session on another
-    const existingSessions = await db.query(
-      `SELECT id FROM user_sessions 
-       WHERE user_id = $1 AND tenant_id = $2 AND expires_at > NOW()`,
+    // Restrict duplicate logins: if the user already has an active session in this tenant,
+    // do not allow logging in again. Return a clear message for the UI to display.
+    const activeSessions = await db.query(
+      `SELECT id FROM user_sessions
+       WHERE user_id = $1 AND tenant_id = $2 AND expires_at > NOW()
+       LIMIT 1`,
       [user.id, user.tenant_id]
     );
 
-    // Optional: Clean up only expired sessions (not active ones)
-    // This allows multiple active sessions but removes old expired ones
-    try {
-      await db.query(
-        'DELETE FROM user_sessions WHERE user_id = $1 AND tenant_id = $2 AND expires_at <= NOW()',
-        [user.id, user.tenant_id]
-      );
-    } catch (cleanupError) {
-      // Non-critical - just log
-      console.warn('Failed to cleanup expired sessions:', cleanupError);
+    if (activeSessions.length > 0) {
+      return res.status(409).json({
+        error: 'User is already logged in. Please logout first.',
+        message: 'This account is already logged in for this organization. Please logout from the other session/device and try again.',
+        code: 'ALREADY_LOGGED_IN'
+      });
     }
 
     // Update last login
@@ -461,15 +456,22 @@ router.post('/login', async (req, res) => {
       { expiresIn }
     );
 
-    // Create session record
-    // Session expiration matches JWT expiration (30 days)
+    // Create session record (1 row per user+tenant). We use UPSERT to handle stale/expired rows.
+    // Session expiration matches JWT expiration (30 days).
     const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30); // 30 days to match JWT expiration
 
     await db.query(
-      `INSERT INTO user_sessions (id, user_id, tenant_id, token, ip_address, user_agent, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      `INSERT INTO user_sessions (id, user_id, tenant_id, token, ip_address, user_agent, expires_at, last_activity)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+       ON CONFLICT (user_id, tenant_id)
+       DO UPDATE SET
+         token = EXCLUDED.token,
+         ip_address = EXCLUDED.ip_address,
+         user_agent = EXCLUDED.user_agent,
+         expires_at = EXCLUDED.expires_at,
+         last_activity = NOW()`,
       [
         sessionId,
         user.id,
@@ -515,6 +517,38 @@ router.post('/refresh-token', async (req, res) => {
     const oldToken = authHeader.substring(7);
     
     try {
+      // Session must exist and be unexpired (blocking).
+      // This keeps refresh aligned with tenantMiddleware which requires user_sessions.
+      const sessions = await db.query(
+        'SELECT user_id, tenant_id, expires_at FROM user_sessions WHERE token = $1',
+        [oldToken]
+      );
+
+      if (sessions.length === 0) {
+        return res.status(401).json({
+          error: 'Invalid session',
+          message: 'Your session is no longer valid. Please login again.',
+          code: 'SESSION_INVALID'
+        });
+      }
+
+      const session = sessions[0] as any;
+      const sessionExpiresAt = new Date(session.expires_at);
+      if (sessionExpiresAt <= new Date()) {
+        // Best-effort cleanup
+        try {
+          await db.query('DELETE FROM user_sessions WHERE token = $1', [oldToken]);
+        } catch (cleanupError) {
+          console.warn('Failed to cleanup expired session during refresh:', cleanupError);
+        }
+
+        return res.status(401).json({
+          error: 'Session expired',
+          message: 'Your session has expired. Please login again.',
+          code: 'SESSION_EXPIRED'
+        });
+      }
+
       // Verify old token (allow expired tokens for refresh)
       let decoded: any;
       try {
@@ -529,6 +563,15 @@ router.post('/refresh-token', async (req, res) => {
         } else {
           return res.status(401).json({ error: 'Invalid token' });
         }
+      }
+
+      // Extra safety: session must match token identity
+      if (session.user_id !== decoded.userId || session.tenant_id !== decoded.tenantId) {
+        return res.status(401).json({
+          error: 'Invalid session',
+          message: 'Session does not match token. Please login again.',
+          code: 'SESSION_MISMATCH'
+        });
       }
       
       // Verify user still exists and is active
@@ -575,12 +618,21 @@ router.post('/refresh-token', async (req, res) => {
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 30);
       
-      await db.query(
+      const updated = await db.query(
         `UPDATE user_sessions 
          SET token = $1, expires_at = $2, last_activity = NOW() 
-         WHERE token = $3`,
+         WHERE token = $3
+         RETURNING id`,
         [newToken, expiresAt, oldToken]
       );
+
+      if (updated.length === 0) {
+        return res.status(401).json({
+          error: 'Invalid session',
+          message: 'Your session is no longer valid. Please login again.',
+          code: 'SESSION_INVALID'
+        });
+      }
       
       res.json({ 
         token: newToken,

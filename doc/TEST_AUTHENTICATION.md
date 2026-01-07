@@ -67,6 +67,17 @@
    - You're redirected to the main app
    - Authentication token is stored in localStorage
 
+### Test 3B: Prevent Duplicate Login (Already Logged In Message)
+
+1. **Keep the first session logged in** (do not logout).
+
+2. **Open a second browser / incognito window** (or another device) and try to login with the same user credentials for the same tenant.
+
+3. **Expected Result:**
+   - Login is **blocked**
+   - API returns HTTP **409**
+   - UI shows message: **"User is already logged in. Please logout first."**
+
 ### Test 4: Direct Tenant ID Login
 
 1. **On the login page**, scroll to "Or enter Tenant ID directly"

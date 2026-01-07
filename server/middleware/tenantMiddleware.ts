@@ -113,54 +113,67 @@ export function tenantMiddleware(pool: Pool) {
         });
       }
 
-      // Verify session is still valid (optional check - JWT expiration is primary)
-      // NOTE: Session check is non-blocking - JWT validation is the primary security mechanism
-      // Sessions may not exist due to cleanup, database issues, or multi-device logins
-      // This is acceptable as long as the JWT is valid
+      // Verify session is still valid (blocking).
+      // We enforce single-session-per-user-per-tenant by requiring the token to exist in user_sessions.
+      // When the same user logs in again, the session row is replaced and old tokens stop working.
       try {
         const { getDatabaseService } = await import('../services/databaseService.js');
         const db = getDatabaseService();
-        
-        // Try to find session, but don't block if it doesn't exist
+
         const sessions = await db.query(
-          'SELECT id, expires_at FROM user_sessions WHERE token = $1',
+          'SELECT user_id, tenant_id, expires_at FROM user_sessions WHERE token = $1',
           [token]
         );
 
-        if (sessions.length > 0) {
-          const session = sessions[0];
-          const expiresAt = new Date(session.expires_at);
-          const now = new Date();
-          
-          // Check if session is expired
-          if (expiresAt > now) {
-            // Session is valid - update last activity
-            try {
-              await db.query(
-                'UPDATE user_sessions SET last_activity = NOW() WHERE token = $1',
-                [token]
-              );
-            } catch (updateError) {
-              // Non-critical - just log
-              console.warn('Failed to update session last_activity:', updateError);
-            }
-          } else {
-            // Session expired in DB but JWT is still valid
-            // This can happen if JWT expiration is longer than DB session expiration
-            // Or if there's a timezone issue
-            console.warn(`Session expired in DB but JWT is valid. User: ${decoded.userId}, Tenant: ${decoded.tenantId}`);
-            // Allow request - JWT validation is sufficient
+        if (sessions.length === 0) {
+          return res.status(401).json({
+            error: 'Invalid session',
+            message: 'Your session is no longer valid. Please login again.',
+            code: 'SESSION_INVALID'
+          });
+        }
+
+        const session = sessions[0] as any;
+        const expiresAt = new Date(session.expires_at);
+        const now = new Date();
+
+        if (expiresAt <= now) {
+          // Best-effort cleanup
+          try {
+            await db.query('DELETE FROM user_sessions WHERE token = $1', [token]);
+          } catch (cleanupError) {
+            console.warn('Failed to cleanup expired session:', cleanupError);
           }
-        } else {
-          // Session doesn't exist in DB but JWT is valid
-          // This is acceptable - session might have been cleaned up, deleted on multi-device login, or DB issue
-          // JWT validation is the primary security check
-          console.warn(`Session not found in DB but JWT is valid. User: ${decoded.userId}, Tenant: ${decoded.tenantId}. Allowing request based on JWT validation.`);
+
+          return res.status(401).json({
+            error: 'Session expired',
+            message: 'Your session has expired. Please login again.',
+            code: 'SESSION_EXPIRED'
+          });
+        }
+
+        // Extra safety: ensure the DB session matches the JWT identity
+        if (session.user_id !== decoded.userId || session.tenant_id !== decoded.tenantId) {
+          return res.status(401).json({
+            error: 'Invalid session',
+            message: 'Session does not match token. Please login again.',
+            code: 'SESSION_MISMATCH'
+          });
+        }
+
+        // Update last activity (non-blocking)
+        try {
+          await db.query('UPDATE user_sessions SET last_activity = NOW() WHERE token = $1', [token]);
+        } catch (updateError) {
+          console.warn('Failed to update session last_activity:', updateError);
         }
       } catch (sessionError) {
-        // If session check fails completely (DB error, etc.), log but don't block the request
-        // JWT validation is the primary security check
-        console.error('Session check error (non-blocking, request will proceed):', sessionError);
+        console.error('Session check error:', sessionError);
+        return res.status(500).json({
+          error: 'Authentication failed',
+          message: 'Could not validate session. Please try again.',
+          code: 'SESSION_CHECK_FAILED'
+        });
       }
 
       // Verify tenant exists and is active

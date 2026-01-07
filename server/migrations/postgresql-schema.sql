@@ -520,6 +520,20 @@ CREATE TABLE IF NOT EXISTS user_sessions (
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
 );
 
+-- Enforce ONE active session row per (user_id, tenant_id)
+-- If older duplicates exist from previous versions, keep the newest and delete the rest.
+-- This makes it safe to add a UNIQUE index for single-session enforcement.
+DELETE FROM user_sessions a
+USING user_sessions b
+WHERE a.user_id = b.user_id
+  AND a.tenant_id = b.tenant_id
+  AND (
+    a.created_at < b.created_at
+    OR (a.created_at = b.created_at AND a.id < b.id)
+  );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_user_sessions_user_tenant ON user_sessions(user_id, tenant_id);
+
 -- Transaction indexes
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
