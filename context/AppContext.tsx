@@ -2488,6 +2488,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     }, 300);
                 };
 
+                // Helper: normalize bill shape from server event payload
+                const normalizeBillFromEvent = (payloadBill: any) => {
+                    if (!payloadBill) return null;
+                    return {
+                        id: payloadBill.id,
+                        billNumber: payloadBill.bill_number ?? payloadBill.billNumber,
+                        contactId: payloadBill.contact_id ?? payloadBill.contactId,
+                        amount: typeof payloadBill.amount === 'number' ? payloadBill.amount : parseFloat(String(payloadBill.amount ?? '0')),
+                        paidAmount: typeof payloadBill.paid_amount === 'number'
+                            ? payloadBill.paid_amount
+                            : (typeof payloadBill.paidAmount === 'number' ? payloadBill.paidAmount : parseFloat(String(payloadBill.paid_amount ?? payloadBill.paidAmount ?? '0'))),
+                        status: payloadBill.status ?? 'Unpaid',
+                        issueDate: payloadBill.issue_date ?? payloadBill.issueDate,
+                        dueDate: payloadBill.due_date ?? payloadBill.dueDate ?? undefined,
+                        description: payloadBill.description ?? undefined,
+                        categoryId: payloadBill.category_id ?? payloadBill.categoryId ?? undefined,
+                        projectId: payloadBill.project_id ?? payloadBill.projectId ?? undefined,
+                        buildingId: payloadBill.building_id ?? payloadBill.buildingId ?? undefined,
+                        propertyId: payloadBill.property_id ?? payloadBill.propertyId ?? undefined,
+                        projectAgreementId: payloadBill.project_agreement_id ?? payloadBill.projectAgreementId ?? undefined,
+                        contractId: payloadBill.contract_id ?? payloadBill.contractId ?? undefined,
+                        staffId: payloadBill.staff_id ?? payloadBill.staffId ?? undefined,
+                        documentPath: payloadBill.document_path ?? payloadBill.documentPath ?? undefined,
+                        expenseCategoryItems: (() => {
+                            const items = payloadBill.expense_category_items ?? payloadBill.expenseCategoryItems;
+                            if (!items) return undefined;
+                            if (typeof items === 'string' && items.trim().length > 0) {
+                                try { return JSON.parse(items); } catch { return undefined; }
+                            }
+                            return Array.isArray(items) ? items : undefined;
+                        })()
+                    };
+                };
+
+                // Helper: normalize transaction from event payload
+                const normalizeTransactionFromEvent = (t: any) => {
+                    if (!t) return null;
+                    return {
+                        id: t.id,
+                        type: t.type,
+                        subtype: t.subtype ?? undefined,
+                        amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount ?? '0')),
+                        date: t.date,
+                        description: t.description ?? undefined,
+                        accountId: t.account_id ?? t.accountId,
+                        fromAccountId: t.from_account_id ?? t.fromAccountId ?? undefined,
+                        toAccountId: t.to_account_id ?? t.toAccountId ?? undefined,
+                        categoryId: t.category_id ?? t.categoryId ?? undefined,
+                        contactId: t.contact_id ?? t.contactId ?? undefined,
+                        projectId: t.project_id ?? t.projectId ?? undefined,
+                        buildingId: t.building_id ?? t.buildingId ?? undefined,
+                        propertyId: t.property_id ?? t.propertyId ?? undefined,
+                        unitId: t.unit_id ?? t.unitId ?? undefined,
+                        invoiceId: t.invoice_id ?? t.invoiceId ?? undefined,
+                        billId: t.bill_id ?? t.billId ?? undefined,
+                        payslipId: t.payslip_id ?? t.payslipId ?? undefined,
+                        contractId: t.contract_id ?? t.contractId ?? undefined,
+                        agreementId: t.agreement_id ?? t.agreementId ?? undefined,
+                        batchId: t.batch_id ?? t.batchId ?? undefined,
+                        isSystem: t.is_system === true || t.is_system === 1 || t.isSystem === true || false,
+                        userId: t.user_id ?? t.userId ?? undefined,
+                        children: t.children ?? undefined
+                    };
+                };
+
                 const events = [
                     'transaction:created', 'transaction:updated', 'transaction:deleted',
                     'bill:created', 'bill:updated', 'bill:deleted',
@@ -2506,10 +2571,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     'unit:created', 'unit:updated', 'unit:deleted'
                 ];
 
-                const unsubscribers = events.map(evt => ws.on(evt, (data: any) => scheduleRefresh(data)));
+                // Generic fallback subscription → schedule a full refresh
+                const unsubFallback = events.map(evt => ws.on(evt, (data: any) => scheduleRefresh(data)));
+
+                // Direct, immediate handlers to reflect payments across users without waiting for refresh
+                const currentUserId = stateRef.current.currentUser?.id;
+                const unsubSpecific: Array<() => void> = [];
+
+                // Bill events
+                unsubSpecific.push(ws.on('bill:updated', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const payloadBill = data?.bill ?? data;
+                    const normalized = normalizeBillFromEvent(payloadBill);
+                    if (!normalized) return;
+                    const existing = stateRef.current.bills.find(b => b.id === normalized.id);
+                    const merged = existing ? { ...existing, ...normalized } : normalized;
+                    dispatch({ type: existing ? 'UPDATE_BILL' : 'ADD_BILL', payload: merged } as any);
+                }));
+                unsubSpecific.push(ws.on('bill:created', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const payloadBill = data?.bill ?? data;
+                    const normalized = normalizeBillFromEvent(payloadBill);
+                    if (!normalized) return;
+                    const exists = stateRef.current.bills.some(b => b.id === normalized.id);
+                    if (!exists) dispatch({ type: 'ADD_BILL', payload: normalized } as any);
+                }));
+                unsubSpecific.push(ws.on('bill:deleted', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const id = data?.billId ?? data?.id;
+                    if (!id) return;
+                    dispatch({ type: 'DELETE_BILL', payload: id } as any);
+                }));
+
+                // Transaction events (so payments appear immediately)
+                unsubSpecific.push(ws.on('transaction:created', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const payloadTx = data?.transaction ?? data;
+                    const normalizedTx = normalizeTransactionFromEvent(payloadTx);
+                    if (!normalizedTx) return;
+                    const exists = stateRef.current.transactions.some(t => t.id === normalizedTx.id);
+                    if (!exists) dispatch({ type: 'ADD_TRANSACTION', payload: normalizedTx } as any);
+                }));
+                unsubSpecific.push(ws.on('transaction:updated', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const payloadTx = data?.transaction ?? data;
+                    const normalizedTx = normalizeTransactionFromEvent(payloadTx);
+                    if (!normalizedTx) return;
+                    dispatch({ type: 'UPDATE_TRANSACTION', payload: normalizedTx } as any);
+                }));
+                unsubSpecific.push(ws.on('transaction:deleted', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const id = data?.transactionId ?? data?.id;
+                    if (!id) return;
+                    dispatch({ type: 'DELETE_TRANSACTION', payload: id } as any);
+                }));
 
                 cleanup = () => {
-                    unsubscribers.forEach(unsub => unsub());
+                    unsubFallback.forEach(unsub => unsub());
+                    unsubSpecific.forEach(unsub => unsub());
                     ws.disconnect();
                 };
             } catch (err) {

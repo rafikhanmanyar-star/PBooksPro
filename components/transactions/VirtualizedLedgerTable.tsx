@@ -169,7 +169,7 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
             ) || { in: 0, out: 0 };
 
             return (
-                <div style={style} className="flex items-center px-4 bg-slate-50 border-b border-slate-200 sticky top-0 z-20">
+                <div style={style} className="flex items-center px-4 bg-slate-50 border-b border-slate-200">
                     <div className="flex items-center gap-2 flex-1">
                         <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">{row.groupTitle}</span>
                         <span className="text-[9px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
@@ -208,7 +208,7 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
                 className={`flex items-center group cursor-pointer border-b border-slate-100 hover:bg-slate-50 transition-colors ${isChild ? 'bg-slate-50/50' : 'bg-white'}`}
                 onClick={() => !isChild && onRowClick(tx)}
             >
-                <div className="w-[85px] flex-shrink-0 px-3 text-[11px] text-slate-500 font-mono py-1 border-r border-slate-100 sticky left-0 bg-inherit z-10 uppercase">
+                <div className="w-[85px] flex-shrink-0 px-3 text-[11px] text-slate-500 font-mono py-1 border-r border-slate-100 bg-inherit uppercase">
                     {formatDate(tx.date)}
                 </div>
 
@@ -263,7 +263,7 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
                     </span>
                 </div>
 
-                <div className="w-[120px] flex-shrink-0 px-3 text-right text-[11px] font-bold tabular-nums border-l border-slate-100 sticky right-0 bg-inherit z-10 py-1">
+                <div className="w-[120px] flex-shrink-0 px-3 text-right text-[11px] font-bold tabular-nums border-l border-slate-100 bg-inherit py-1">
                     <span className="text-slate-900">
                         <span className="text-[9px] opacity-40 mr-0.5 font-normal">{CURRENCY}</span>
                         {(tx.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 0 })}
@@ -293,14 +293,14 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
         <div ref={containerRef} className="w-full flex-1 flex flex-col bg-white overflow-hidden">
             <div className="overflow-x-auto bg-slate-50 border-b border-slate-200 scrollbar-hide">
                 <div className="flex items-center h-8 min-w-[1000px] text-[10px] font-bold uppercase tracking-wider text-slate-500 px-0">
-                    <div className="w-[85px] flex-shrink-0 px-3 py-2 cursor-pointer hover:bg-slate-100 border-r border-slate-200 flex items-center justify-between sticky left-0 bg-slate-50" onClick={() => onSort('date')}>DATE <SortIndicator column="date" /></div>
+                    <div className="w-[85px] flex-shrink-0 px-3 py-2 cursor-pointer hover:bg-slate-100 border-r border-slate-200 flex items-center justify-between bg-slate-50" onClick={() => onSort('date')}>DATE <SortIndicator column="date" /></div>
                     <div className="w-[80px] flex-shrink-0 px-3 py-2 cursor-pointer hover:bg-slate-100 flex items-center justify-between" onClick={() => onSort('type')}>TYPE <SortIndicator column="type" /></div>
                     <div className="flex-1 min-w-0 px-3 py-2 cursor-pointer hover:bg-slate-100 flex items-center justify-between" onClick={() => onSort('description')}>DESCRIPTION <SortIndicator column="description" /></div>
                     <div className="w-[140px] flex-shrink-0 px-3 py-2 cursor-pointer hover:bg-slate-100 flex items-center justify-between" onClick={() => onSort('account')}>ACCOUNT <SortIndicator column="account" /></div>
                     <div className="w-[120px] flex-shrink-0 px-3 py-2 cursor-pointer hover:bg-slate-100 flex items-center justify-between" onClick={() => onSort('category')}>CATEGORY <SortIndicator column="category" /></div>
                     <div className="w-[120px] flex-shrink-0 px-3 py-2 cursor-pointer hover:bg-slate-100 flex items-center justify-between" onClick={() => onSort('contact')}>CONTACT <SortIndicator column="contact" /></div>
                     <div className="w-[110px] flex-shrink-0 px-3 py-2 text-right cursor-pointer hover:bg-slate-100 flex items-center justify-end gap-1" onClick={() => onSort('amount')}>AMOUNT <SortIndicator column="amount" /></div>
-                    <div className="w-[120px] flex-shrink-0 px-3 py-2 text-right cursor-pointer hover:bg-slate-100 border-l border-slate-200 flex items-center justify-end gap-1 sticky right-0 bg-slate-50" onClick={() => onSort('balance')}>BALANCE <SortIndicator column="balance" /></div>
+                    <div className="w-[120px] flex-shrink-0 px-3 py-2 text-right cursor-pointer hover:bg-slate-100 border-l border-slate-200 flex items-center justify-end gap-1 bg-slate-50" onClick={() => onSort('balance')}>BALANCE <SortIndicator column="balance" /></div>
                     <div className="w-[40px] flex-shrink-0 px-3 py-2"></div>
                 </div>
             </div>

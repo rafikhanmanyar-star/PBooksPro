@@ -90,11 +90,11 @@ const LedgerTable: React.FC<LedgerTableProps> = ({
         return (
             <React.Fragment key={tx.id}>
                 <tr
-                    className={`${rowClasses} cursor-pointer transition-all duration-150 group border-b border-slate-100 last:border-0`}
+                    className={`${rowClasses} cursor-pointer transition-all duration-150 group border-b border-slate-100 last:border-0 relative z-0`}
                     onClick={() => !isChild && onRowClick(tx)}
                 >
                     {/* Date Column */}
-                    <td className="sticky left-0 z-[5] bg-inherit px-3 py-2 border-r border-slate-100">
+                    <td className="bg-inherit px-3 py-2 border-r border-slate-100">
                         <div className="text-[11px] text-slate-600 font-mono font-medium leading-none whitespace-nowrap">
                             {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: '2-digit' }).toUpperCase()}
                         </div>
@@ -179,7 +179,7 @@ const LedgerTable: React.FC<LedgerTableProps> = ({
                     </td>
 
                     {/* Balance Column */}
-                    <td className="sticky right-0 z-[5] bg-inherit px-3 py-2 border-l border-slate-100">
+                    <td className="bg-inherit px-3 py-2 border-l border-slate-100">
                         <div className={`text-xs font-bold tabular-nums text-slate-900`}>
                             <span className="text-[10px] opacity-40 mr-0.5 font-sans font-medium">{CURRENCY}</span>
                             {(tx.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
@@ -280,11 +280,11 @@ const LedgerTable: React.FC<LedgerTableProps> = ({
     return (
         <div ref={tableRef} className="w-full flex flex-col">
             {/* Header */}
-            <div className="flex-shrink-0 overflow-x-auto border-b border-slate-200 bg-white sticky top-0 z-20">
+            <div className="flex-shrink-0 overflow-x-auto border-b border-slate-200 bg-white">
                 <table className="w-full table-fixed min-w-[1200px] border-separate border-spacing-0">
                     <thead>
                         <tr className="bg-slate-50/50">
-                            <th className="sticky left-0 z-20 bg-slate-100 w-[90px] px-3 py-2.5 text-left cursor-pointer hover:bg-slate-200/50 transition-colors border-r border-slate-200" onClick={() => onSort('date')}>
+                            <th className="bg-slate-100 w-[90px] px-3 py-2.5 text-left cursor-pointer hover:bg-slate-200/50 transition-colors border-r border-slate-200" onClick={() => onSort('date')}>
                                 <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                                     <span>Date</span>
                                     <SortIcon column="date" />
@@ -329,7 +329,7 @@ const LedgerTable: React.FC<LedgerTableProps> = ({
                                     <SortIcon column="amount" />
                                 </div>
                             </th>
-                            <th className="sticky right-0 z-20 bg-slate-100 w-32 px-3 py-2.5 text-right cursor-pointer hover:bg-slate-200/50 transition-colors border-l border-slate-200" onClick={() => onSort('balance')}>
+                            <th className="bg-slate-100 w-32 px-3 py-2.5 text-right cursor-pointer hover:bg-slate-200/50 transition-colors border-l border-slate-200" onClick={() => onSort('balance')}>
                                 <div className="flex items-center justify-end gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                                     <span>Balance</span>
                                     <SortIcon column="balance" />
@@ -348,8 +348,8 @@ const LedgerTable: React.FC<LedgerTableProps> = ({
                         {groups.map((group) => (
                             <React.Fragment key={group.key}>
                                 {showGrouping && (
-                                    <tr className="bg-slate-50/30 sticky top-[38px] z-10">
-                                        <td colSpan={10} className="px-4 py-2 border-y border-slate-100 backdrop-blur-sm">
+                                    <tr className="bg-slate-50/30">
+                                        <td colSpan={10} className="px-4 py-2 border-y border-slate-100">
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded uppercase tracking-widest">{group.title}</span>
