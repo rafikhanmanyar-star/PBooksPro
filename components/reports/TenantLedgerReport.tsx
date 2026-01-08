@@ -96,20 +96,21 @@ const TenantLedgerReport: React.FC = () => {
             tenantInvoices = tenantInvoices.filter(inv => inv.contactId === selectedTenantId);
         }
 
-        // 2. Payments (Credit - Tenant paid us)
-        // We look for INCOME transactions linked to the tenant
-        let tenantPayments = state.transactions.filter(tx => 
-            tx.type === TransactionType.INCOME &&
+        // 2. Payments & Charges (Credits & Debits)
+        // INCOME: Tenant paid us (Credit)
+        // EXPENSE: Owner paid for tenant (Debit)
+        let tenantTransactions = state.transactions.filter(tx => 
+            (tx.type === TransactionType.INCOME || tx.type === TransactionType.EXPENSE) &&
             tx.contactId
         );
 
         if (selectedTenantId !== 'all') {
-            tenantPayments = tenantPayments.filter(tx => tx.contactId === selectedTenantId);
+            tenantTransactions = tenantTransactions.filter(tx => tx.contactId === selectedTenantId);
         } else {
             // Filter to only valid tenants if 'all' is selected
             const tenantIds = new Set(tenants.map(t => t.id));
             // Also include transactions that are linked to rental invoices even if the tenant is deleted (orphan transactions)
-            tenantPayments = tenantPayments.filter(tx => {
+            tenantTransactions = tenantTransactions.filter(tx => {
                 if (tenantIds.has(tx.contactId!)) return true;
                 if (tx.invoiceId) {
                     const inv = state.invoices.find(i => i.id === tx.invoiceId);
@@ -137,16 +138,18 @@ const TenantLedgerReport: React.FC = () => {
             }
         });
 
-        tenantPayments.forEach(tx => {
+        tenantTransactions.forEach(tx => {
             const txDate = new Date(tx.date);
             if(txDate >= start && txDate <= end) {
                 const tenant = state.contacts.find(c => c.id === tx.contactId);
+                const isExpense = tx.type === TransactionType.EXPENSE;
+                
                 ledgerItems.push({ 
                     date: tx.date, 
                     tenantName: tenant?.name || 'Unknown/Deleted Tenant',
-                    particulars: tx.description || 'Payment Received', 
-                    debit: 0, 
-                    credit: tx.amount,
+                    particulars: tx.description || (isExpense ? 'Charge Paid by Owner' : 'Payment Received'), 
+                    debit: isExpense ? tx.amount : 0, 
+                    credit: isExpense ? 0 : tx.amount,
                     entityType: 'transaction' as const,
                     entityId: tx.id
                 });

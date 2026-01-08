@@ -99,11 +99,18 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             });
 
             // B. Property Expenses (Bills, Repairs, Broker Fees) - Deductible from Owner Income
-            const expenses = state.transactions.filter(tx => 
-                tx.type === TransactionType.EXPENSE && 
-                tx.propertyId && 
-                ownerPropertyIds.has(tx.propertyId)
-            );
+            const expenses = state.transactions.filter(tx => {
+                if (tx.type !== TransactionType.EXPENSE) return false;
+                if (!tx.propertyId || !ownerPropertyIds.has(tx.propertyId)) return false;
+                
+                // Exclude tenant-allocated expenses (where contactId is a tenant)
+                if (tx.contactId) {
+                    const contact = state.contacts.find(c => c.id === tx.contactId);
+                    if (contact?.type === ContactType.TENANT) return false;
+                }
+                
+                return true;
+            });
 
             expenses.forEach(tx => {
                 // Skip if this is actually a Payout (handled in A)

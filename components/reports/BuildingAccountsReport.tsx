@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { TransactionType, InvoiceType, InvoiceStatus } from '../../types';
+import { TransactionType, InvoiceType, InvoiceStatus, ContactType } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -124,6 +124,12 @@ const BuildingAccountsReport: React.FC = () => {
             bldUtil: state.categories.find(c => c.name === 'Building Utilities')?.id,
         };
         
+        // Helper: Check if contact is a tenant
+        const isTenant = (contactId?: string) => {
+            if (!contactId) return false;
+            return state.contacts.find(c => c.id === contactId)?.type === ContactType.TENANT;
+        };
+
         // 1. Process Transactions
         state.transactions.forEach(tx => {
             const date = new Date(tx.date);
@@ -146,8 +152,9 @@ const BuildingAccountsReport: React.FC = () => {
                 } else if (tx.type === TransactionType.EXPENSE) {
                     if (tx.categoryId === cats.ownPay) row.rentPaidOut += amt;
                     else if (tx.categoryId === cats.secRef || tx.categoryId === cats.ownSecPay) row.securityPaidOut += amt;
-                    else if (tx.categoryId === cats.repTen) row.tenantExpenses += amt;
+                    else if (tx.categoryId === cats.repTen || isTenant(tx.contactId)) row.tenantExpenses += amt;
                     else if ([cats.repOwn, cats.brokFee, cats.bldMaint, cats.bldUtil].includes(tx.categoryId)) row.ownerExpenses += amt;
+                    else if (tx.propertyId) row.ownerExpenses += amt; // Any other property-linked expense is owner expense
                 }
             }
         });

@@ -159,7 +159,15 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
         // 2. Payments (Debit - Liability Decreases)
         state.transactions.forEach(tx => {
             if (tx.type === TransactionType.EXPENSE && tx.contactId) {
-                const vendor = vendors.find(v => v.id === tx.contactId);
+                // Determine the actual vendor ID for this transaction
+                // For tenant-allocated bills, contactId is set to the tenant, so we look up the bill
+                let vendorId = tx.contactId;
+                if (tx.billId) {
+                    const bill = state.bills.find(b => b.id === tx.billId);
+                    if (bill) vendorId = bill.contactId;
+                }
+
+                const vendor = vendors.find(v => v.id === vendorId);
                 if (vendor) {
                     const date = new Date(tx.date);
                     if (date >= start && date <= end) {
@@ -173,7 +181,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
 
                         items.push({
                             date: tx.date,
-                            vendorId: tx.contactId,
+                            vendorId: vendorId,
                             particulars: tx.description || 'Payment',
                             bill: 0,
                             paid: tx.amount,
