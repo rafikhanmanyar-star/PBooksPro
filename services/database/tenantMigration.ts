@@ -6,6 +6,7 @@
 
 import { getDatabaseService } from './databaseService';
 import { getCurrentTenantId } from './tenantUtils';
+import { getCurrentUserId } from './userUtils';
 
 /**
  * Tables that should have tenant_id column
@@ -91,7 +92,42 @@ function addTenantIdColumn(tableName: string): void {
 }
 
 /**
- * Run tenant migration - adds tenant_id columns to all relevant tables
+ * Add user_id column to a table if it doesn't exist
+ */
+function addUserIdColumn(tableName: string): void {
+    const db = getDatabaseService();
+    
+    try {
+        // Check if column already exists
+        const columns = db.query<{ name: string }>(`PRAGMA table_info(${tableName})`);
+        const hasUserId = columns.some(col => col.name === 'user_id');
+        
+        if (hasUserId) {
+            return; // Column already exists
+        }
+        
+        // Add user_id column
+        db.execute(`ALTER TABLE ${tableName} ADD COLUMN user_id TEXT`);
+        console.log(`✅ Added user_id column to ${tableName}`);
+        
+        // If there's existing data and we have a current user, set it
+        const currentUserId = getCurrentUserId();
+        if (currentUserId) {
+            try {
+                db.execute(`UPDATE ${tableName} SET user_id = ? WHERE user_id IS NULL`, [currentUserId]);
+                console.log(`✅ Updated existing records in ${tableName} with user_id`);
+            } catch (updateError) {
+                console.warn(`⚠️ Could not update existing records in ${tableName}:`, updateError);
+            }
+        }
+    } catch (error) {
+        console.error(`❌ Error adding user_id to ${tableName}:`, error);
+        // Don't throw - continue with other tables
+    }
+}
+
+/**
+ * Run tenant migration - adds tenant_id and user_id columns to all relevant tables
  */
 export function migrateTenantColumns(): void {
     const db = getDatabaseService();
@@ -101,14 +137,15 @@ export function migrateTenantColumns(): void {
         return;
     }
     
-    console.log('🔄 Running tenant migration...');
+    console.log('🔄 Running tenant and user migration...');
     
     try {
         TABLES_WITH_TENANT_ID.forEach(tableName => {
             addTenantIdColumn(tableName);
+            addUserIdColumn(tableName);
         });
         
-        console.log('✅ Tenant migration completed');
+        console.log('✅ Tenant and user migration completed');
     } catch (error) {
         console.error('❌ Error during tenant migration:', error);
         // Don't throw - allow app to continue

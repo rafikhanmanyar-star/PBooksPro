@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     is_permanent INTEGER NOT NULL DEFAULT 0,
     description TEXT,
     parent_account_id TEXT,
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (parent_account_id) REFERENCES accounts(id) ON DELETE SET NULL
@@ -53,6 +55,8 @@ CREATE TABLE IF NOT EXISTS contacts (
     contact_no TEXT,
     company_name TEXT,
     address TEXT,
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -66,6 +70,8 @@ CREATE TABLE IF NOT EXISTS categories (
     is_permanent INTEGER NOT NULL DEFAULT 0,
     is_rental INTEGER NOT NULL DEFAULT 0,
     parent_category_id TEXT,
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (parent_category_id) REFERENCES categories(id) ON DELETE SET NULL
@@ -80,6 +86,8 @@ CREATE TABLE IF NOT EXISTS projects (
     status TEXT,
     pm_config TEXT, -- JSON string
     installment_config TEXT, -- JSON string
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -90,6 +98,8 @@ CREATE TABLE IF NOT EXISTS buildings (
     name TEXT NOT NULL,
     description TEXT,
     color TEXT,
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -102,6 +112,8 @@ CREATE TABLE IF NOT EXISTS properties (
     building_id TEXT NOT NULL,
     description TEXT,
     monthly_service_charge REAL,
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (owner_id) REFERENCES contacts(id) ON DELETE RESTRICT,
@@ -116,6 +128,8 @@ CREATE TABLE IF NOT EXISTS units (
     contact_id TEXT,
     sale_price REAL,
     description TEXT,
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT,
@@ -146,6 +160,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     agreement_id TEXT,
     batch_id TEXT,
     is_system INTEGER NOT NULL DEFAULT 0,
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
@@ -180,6 +196,8 @@ CREATE TABLE IF NOT EXISTS invoices (
     security_deposit_charge REAL,
     service_charges REAL,
     rental_month TEXT,
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE RESTRICT,
@@ -211,6 +229,8 @@ CREATE TABLE IF NOT EXISTS bills (
     contract_id TEXT,
     staff_id TEXT,
     expense_category_items TEXT,
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE RESTRICT,
@@ -228,6 +248,8 @@ CREATE TABLE IF NOT EXISTS budgets (
     category_id TEXT NOT NULL,
     amount REAL NOT NULL,
     project_id TEXT,
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
@@ -244,6 +266,8 @@ CREATE TABLE IF NOT EXISTS quotations (
     items TEXT NOT NULL, -- JSON array of QuotationItem
     document_id TEXT,
     total_amount REAL NOT NULL,
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (vendor_id) REFERENCES contacts(id) ON DELETE CASCADE,
@@ -261,6 +285,8 @@ CREATE TABLE IF NOT EXISTS documents (
     file_name TEXT NOT NULL,
     file_size INTEGER NOT NULL,
     mime_type TEXT NOT NULL,
+    tenant_id TEXT,
+    user_id TEXT,
     uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
     uploaded_by TEXT
 );
@@ -280,6 +306,8 @@ CREATE TABLE IF NOT EXISTS rental_agreements (
     security_deposit REAL,
     broker_id TEXT,
     broker_fee REAL,
+    org_tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (tenant_id) REFERENCES contacts(id) ON DELETE RESTRICT,
@@ -312,6 +340,8 @@ CREATE TABLE IF NOT EXISTS project_agreements (
     misc_discount_category_id TEXT,
     selling_price_category_id TEXT,
     rebate_category_id TEXT,
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (client_id) REFERENCES contacts(id) ON DELETE RESTRICT,
@@ -345,6 +375,8 @@ CREATE TABLE IF NOT EXISTS contracts (
     payment_terms TEXT,
     expense_category_items TEXT,
     description TEXT,
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT,
@@ -377,6 +409,8 @@ CREATE TABLE IF NOT EXISTS recurring_invoice_templates (
     max_occurrences INTEGER,
     generated_count INTEGER NOT NULL DEFAULT 0,
     last_generated_date TEXT,
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE,
@@ -398,6 +432,8 @@ CREATE TABLE IF NOT EXISTS salary_components (
     effective_to TEXT,
     country_code TEXT,
     category TEXT,
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -419,6 +455,8 @@ CREATE TABLE IF NOT EXISTS staff (
     advance_balance REAL NOT NULL DEFAULT 0,
     exit_details TEXT, -- JSON string
     staff_type TEXT NOT NULL, -- 'project' or 'rental'
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (id) REFERENCES contacts(id) ON DELETE CASCADE,
@@ -442,6 +480,8 @@ CREATE TABLE IF NOT EXISTS employees (
     termination_details TEXT, -- JSON string
     advance_balance REAL NOT NULL DEFAULT 0,
     loan_balance REAL NOT NULL DEFAULT 0,
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     created_by TEXT,
@@ -471,7 +511,9 @@ CREATE TABLE IF NOT EXISTS payroll_cycles (
     approved_by TEXT,
     locked_at TEXT,
     locked_by TEXT,
-    notes TEXT
+    notes TEXT,
+    tenant_id TEXT,
+    user_id TEXT
 );
 
 -- Payslips table (Enterprise)
@@ -548,6 +590,8 @@ CREATE TABLE IF NOT EXISTS legacy_payslips (
     building_id TEXT,
     generated_at TEXT NOT NULL,
     payslip_type TEXT NOT NULL, -- 'project' or 'rental'
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (staff_id) REFERENCES contacts(id) ON DELETE CASCADE,
@@ -571,6 +615,8 @@ CREATE TABLE IF NOT EXISTS bonus_records (
     approved_at TEXT,
     status TEXT NOT NULL,
     project_id TEXT,
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
@@ -594,6 +640,8 @@ CREATE TABLE IF NOT EXISTS payroll_adjustments (
     performed_by TEXT NOT NULL,
     performed_at TEXT NOT NULL,
     status TEXT NOT NULL,
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
@@ -614,6 +662,8 @@ CREATE TABLE IF NOT EXISTS loan_advance_records (
     status TEXT NOT NULL,
     description TEXT,
     transaction_id TEXT,
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
@@ -649,6 +699,8 @@ CREATE TABLE IF NOT EXISTS tax_configurations (
     exemptions TEXT NOT NULL, -- JSON array
     credits TEXT NOT NULL, -- JSON array
     metadata TEXT, -- JSON object
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -664,6 +716,8 @@ CREATE TABLE IF NOT EXISTS statutory_configurations (
     effective_from TEXT NOT NULL,
     effective_to TEXT,
     rules TEXT, -- JSON object
+    tenant_id TEXT,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -753,4 +807,65 @@ CREATE INDEX IF NOT EXISTS idx_tasks_completed ON tasks(completed);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_sender ON chat_messages(sender_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_recipient ON chat_messages(recipient_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at);
+
+-- Indexes for tenant_id and user_id (multi-tenant support)
+CREATE INDEX IF NOT EXISTS idx_accounts_tenant_id ON accounts(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON accounts(user_id);
+CREATE INDEX IF NOT EXISTS idx_contacts_tenant_id ON contacts(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_contacts_user_id ON contacts(user_id);
+CREATE INDEX IF NOT EXISTS idx_categories_tenant_id ON categories(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_categories_user_id ON categories(user_id);
+CREATE INDEX IF NOT EXISTS idx_projects_tenant_id ON projects(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id);
+CREATE INDEX IF NOT EXISTS idx_buildings_tenant_id ON buildings(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_buildings_user_id ON buildings(user_id);
+CREATE INDEX IF NOT EXISTS idx_properties_tenant_id ON properties(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_properties_user_id ON properties(user_id);
+CREATE INDEX IF NOT EXISTS idx_units_tenant_id ON units(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_units_user_id ON units(user_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_tenant_id ON transactions(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_tenant_user ON transactions(tenant_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_tenant_id ON invoices(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_user_id ON invoices(user_id);
+CREATE INDEX IF NOT EXISTS idx_bills_tenant_id ON bills(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_bills_user_id ON bills(user_id);
+CREATE INDEX IF NOT EXISTS idx_budgets_tenant_id ON budgets(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_budgets_user_id ON budgets(user_id);
+CREATE INDEX IF NOT EXISTS idx_quotations_tenant_id ON quotations(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_quotations_user_id ON quotations(user_id);
+CREATE INDEX IF NOT EXISTS idx_documents_tenant_id ON documents(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);
+CREATE INDEX IF NOT EXISTS idx_rental_agreements_org_tenant_id ON rental_agreements(org_tenant_id);
+CREATE INDEX IF NOT EXISTS idx_rental_agreements_user_id ON rental_agreements(user_id);
+CREATE INDEX IF NOT EXISTS idx_project_agreements_tenant_id ON project_agreements(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_project_agreements_user_id ON project_agreements(user_id);
+CREATE INDEX IF NOT EXISTS idx_contracts_tenant_id ON contracts(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_contracts_user_id ON contracts(user_id);
+CREATE INDEX IF NOT EXISTS idx_recurring_invoice_templates_tenant_id ON recurring_invoice_templates(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_recurring_invoice_templates_user_id ON recurring_invoice_templates(user_id);
+CREATE INDEX IF NOT EXISTS idx_salary_components_tenant_id ON salary_components(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_salary_components_user_id ON salary_components(user_id);
+CREATE INDEX IF NOT EXISTS idx_staff_tenant_id ON staff(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_staff_user_id ON staff(user_id);
+CREATE INDEX IF NOT EXISTS idx_employees_tenant_id ON employees(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_employees_user_id ON employees(user_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_cycles_tenant_id ON payroll_cycles(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_cycles_user_id ON payroll_cycles(user_id);
+CREATE INDEX IF NOT EXISTS idx_payslips_tenant_id ON payslips(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_payslips_user_id ON payslips(user_id);
+CREATE INDEX IF NOT EXISTS idx_legacy_payslips_tenant_id ON legacy_payslips(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_legacy_payslips_user_id ON legacy_payslips(user_id);
+CREATE INDEX IF NOT EXISTS idx_bonus_records_tenant_id ON bonus_records(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_bonus_records_user_id ON bonus_records(user_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_adjustments_tenant_id ON payroll_adjustments(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_adjustments_user_id ON payroll_adjustments(user_id);
+CREATE INDEX IF NOT EXISTS idx_loan_advance_records_tenant_id ON loan_advance_records(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_loan_advance_records_user_id ON loan_advance_records(user_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_records_tenant_id ON attendance_records(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_records_user_id ON attendance_records(user_id);
+CREATE INDEX IF NOT EXISTS idx_tax_configurations_tenant_id ON tax_configurations(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tax_configurations_user_id ON tax_configurations(user_id);
+CREATE INDEX IF NOT EXISTS idx_statutory_configurations_tenant_id ON statutory_configurations(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_statutory_configurations_user_id ON statutory_configurations(user_id);
 `;

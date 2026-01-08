@@ -2501,6 +2501,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const tenantId = apiClient.getTenantId();
                 if (!token || !tenantId) return;
 
+                // Check if real-time sync should be enabled
+                // Sync is only enabled if there are 2+ active users in the organization
+                let shouldEnableSync = false;
+                try {
+                    const syncStatus = await apiClient.get<{ shouldEnableSync: boolean; userCount: number }>('/tenants/should-enable-sync');
+                    shouldEnableSync = syncStatus.shouldEnableSync;
+                    if (!shouldEnableSync) {
+                        console.log(`⏭️ Skipping WebSocket connection - organization has only ${syncStatus.userCount} user(s). Real-time sync is disabled for single-user organizations.`);
+                        return;
+                    }
+                    console.log(`✅ Enabling real-time sync - organization has ${syncStatus.userCount} active user(s)`);
+                } catch (syncCheckError) {
+                    // If check fails, log warning but don't block - allow connection to proceed
+                    // This ensures sync still works even if the endpoint is temporarily unavailable
+                    console.warn('⚠️ Could not determine if sync should be enabled, proceeding with connection:', syncCheckError);
+                    shouldEnableSync = true;
+                }
+
+                if (!shouldEnableSync) return;
+
                 const { WebSocketClient } = await import('../services/websocketClient');
                 const ws = new WebSocketClient();
                 ws.connect(token, tenantId);

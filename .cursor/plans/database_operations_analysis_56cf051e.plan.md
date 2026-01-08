@@ -269,6 +269,3 @@ await db.query(
 - [ ] Sync working between local and cloud
 
 ## Deliverables
-
-1. **Database schema migration** - Updated `postgresql-schema.sql`
-2. **API routes** - 18+ new route files in `server/api/routes/`

@@ -108,26 +108,28 @@ const ContactForm: React.FC<ContactFormProps> = ({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="animate-in fade-in zoom-in-95 duration-300">
+    <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0 animate-in fade-in zoom-in-95 duration-300">
 
       {/* Header Section */}
-      <div className="mb-8 text-center md:text-left">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-500 mb-3 uppercase tracking-wider">
+      <div className="flex-shrink-0 mb-4 sm:mb-6 text-center md:text-left">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-500 mb-2 sm:mb-3 uppercase tracking-wider">
           {isEditing ? 'Editing Profile' : 'New Entry'}
         </div>
-        <h2 className="text-3xl font-bold text-slate-800 tracking-tight mb-2">
+        <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-slate-800 tracking-tight mb-1 sm:mb-2">
           {isEditing ? `Edit ${name}` : 'Add New Contact'}
         </h2>
-        <p className="text-slate-500">
+        <p className="text-sm sm:text-base text-slate-500">
           {isEditing ? 'Update contact details and preferences below.' : 'Create a new contact profile to manage transactions and communications.'}
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      {/* Scrollable Content Area */}
+      <div className="flex-grow min-h-0 overflow-y-auto -mx-1 px-1">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
 
         {/* LEFT COLUMN: Identity & Type */}
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="lg:col-span-1 space-y-4 sm:space-y-6">
+          <div className="bg-white p-4 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200 shadow-sm">
             <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-4 flex items-center gap-2">
               Identity
             </h3>
@@ -184,11 +186,11 @@ const ContactForm: React.FC<ContactFormProps> = ({
         </div>
 
         {/* RIGHT COLUMN: Details Form */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
+        <div className="lg:col-span-2 space-y-4 sm:space-y-6">
+          <div className="bg-white p-4 sm:p-6 rounded-xl sm:rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-purple-500"></div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
               <div className="sm:col-span-2">
                 <Input
                   id="contact-name"
@@ -231,7 +233,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
             </div>
 
             {isBusinessContact && (
-              <div className="mb-6 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="mb-4 sm:mb-6 animate-in fade-in slide-in-from-top-2 duration-300">
                 <Textarea
                   id="address"
                   name="address"
@@ -252,18 +254,20 @@ const ContactForm: React.FC<ContactFormProps> = ({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Add any additional context about this contact..."
-                rows={3}
+                rows={2}
                 className="bg-slate-50/50"
               />
             </div>
           </div>
         </div>
       </div>
+      </div>
 
-      <div className="mt-8 pt-6 border-t border-slate-200 flex flex-col-reverse sm:flex-row justify-between items-center gap-4">
+      {/* Fixed Footer with Actions */}
+      <div className="flex-shrink-0 mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-slate-200 flex flex-col-reverse sm:flex-row justify-between items-center gap-3 sm:gap-4">
         <div>
           {contactToEdit && onDelete && (
-            <Button type="button" variant="danger" onClick={onDelete} className="text-rose-600 bg-rose-50 hover:bg-rose-100 border-rose-200">
+            <Button type="button" variant="danger" onClick={onDelete} className="text-rose-600 bg-rose-50 hover:bg-rose-100 border-rose-200 w-full sm:w-auto">
               <div className="flex items-center gap-2">
                 <span className="w-4 h-4"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></span>
                 Delete Contact
@@ -271,13 +275,13 @@ const ContactForm: React.FC<ContactFormProps> = ({
             </Button>
           )}
         </div>
-        <div className="flex gap-3 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
           {!hideCancelButton &&
-            <Button type="button" variant="secondary" onClick={onCancel} className="flex-1 sm:flex-none justify-center">
+            <Button type="button" variant="secondary" onClick={onCancel} className="flex-1 sm:flex-none justify-center w-full sm:w-auto">
               Cancel
             </Button>
           }
-          <Button type="submit" className="flex-1 sm:flex-none justify-center bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 border-0">
+          <Button type="submit" className="flex-1 sm:flex-none justify-center w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 border-0">
             {isEditing ? 'Save Changes' : 'Create Contact'}
           </Button>
         </div>

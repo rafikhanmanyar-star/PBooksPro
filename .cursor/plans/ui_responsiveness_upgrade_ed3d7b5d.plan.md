@@ -370,5 +370,3 @@ flowchart TD
 - `hooks/useViewport.ts` (new)
 
 ## Notes
-
-- This upgrade maintains backward compatibility

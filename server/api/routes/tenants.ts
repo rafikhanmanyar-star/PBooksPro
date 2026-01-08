@@ -110,6 +110,35 @@ router.post('/renew-license', async (req: TenantRequest, res) => {
   }
 });
 
+// Check if real-time sync should be enabled for this organization
+// Sync is only enabled if there are 2+ active users (potential for collaboration)
+router.get('/should-enable-sync', async (req: TenantRequest, res) => {
+  try {
+    const db = getDb();
+    const tenantId = req.tenantId!;
+    
+    // Count active users (is_active = TRUE) for this tenant
+    // Real-time sync only makes sense when there are multiple users to sync with
+    const result = await db.query(
+      `SELECT COUNT(*) as count 
+       FROM users 
+       WHERE tenant_id = $1 AND is_active = TRUE`,
+      [tenantId]
+    );
+    
+    const activeUserCount = parseInt(result[0]?.count || '0', 10);
+    const shouldEnableSync = activeUserCount >= 2;
+    
+    res.json({ 
+      shouldEnableSync,
+      userCount: activeUserCount
+    });
+  } catch (error) {
+    console.error('Error checking if sync should be enabled:', error);
+    res.status(500).json({ error: 'Failed to check sync status' });
+  }
+});
+
 // Get online user count for the organization (users with active sessions)
 router.get('/online-users-count', async (req: TenantRequest, res) => {
   try {

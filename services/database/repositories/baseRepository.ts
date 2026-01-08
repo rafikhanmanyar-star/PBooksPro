@@ -7,6 +7,7 @@
 import { getDatabaseService } from '../databaseService';
 import { objectToDbFormat, dbToObjectFormat, camelToSnake } from '../columnMapper';
 import { getCurrentTenantId, shouldFilterByTenant } from '../tenantUtils';
+import { getCurrentUserId, shouldTrackUserId } from '../userUtils';
 
 export abstract class BaseRepository<T> {
     protected tableName: string;
@@ -227,6 +228,26 @@ export abstract class BaseRepository<T> {
         // Convert camelCase to snake_case for database
         const dbData = objectToDbFormat(data as Record<string, any>);
         const columnsSet = this.ensureTableColumns();
+        
+        // Add tenant_id if updating and column exists
+        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
+            const tenantId = getCurrentTenantId();
+            if (tenantId) {
+                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                if (columnsSet.has(tenantColumn)) {
+                    dbData[tenantColumn] = tenantId;
+                }
+            }
+        }
+
+        // Add user_id if updating and column exists
+        if (shouldTrackUserId() && columnsSet.has('user_id')) {
+            const userId = getCurrentUserId();
+            if (userId) {
+                dbData['user_id'] = userId;
+            }
+        }
+        
         const keys = Object.keys(dbData)
             .filter(k => dbData[k] !== undefined && columnsSet.has(k));
         const setClause = keys.map(k => `${k} = ?`).join(', ');
@@ -454,6 +475,14 @@ export abstract class BaseRepository<T> {
                     if (!dbData[tenantColumn] && columnsSet.has(tenantColumn)) {
                         dbData[tenantColumn] = tenantId;
                     }
+                }
+            }
+
+            // Add user_id if needed
+            if (shouldTrackUserId() && columnsSet.has('user_id')) {
+                const userId = getCurrentUserId();
+                if (userId && !dbData['user_id']) {
+                    dbData['user_id'] = userId;
                 }
             }
 

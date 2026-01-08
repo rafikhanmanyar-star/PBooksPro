@@ -75,6 +75,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       // Clear local auth
       apiClient.clearAuth();
+      
+      // Clear user_id from localStorage on logout
+      localStorage.removeItem('user_id');
+      
       setState({
         isAuthenticated: false,
         user: null,
@@ -438,6 +442,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Store tenant info in localStorage for post-login session management
         localStorage.setItem('last_tenant_id', response.tenant.id);
         localStorage.setItem('last_username', username);
+        localStorage.setItem('user_id', response.user.id); // Store user_id for local database tracking
 
         // Set authentication
         apiClient.setAuth(response.token, response.tenant.id);
@@ -511,6 +516,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Store last used tenant in localStorage
       localStorage.setItem('last_tenant_id', response.tenant.id);
       localStorage.setItem('last_identifier', username);
+      if (response.user?.id) {
+        localStorage.setItem('user_id', response.user.id); // Store user_id for local database tracking
+      }
 
       // Set authentication
       apiClient.setAuth(response.token, response.tenant.id);

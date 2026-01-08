@@ -160,6 +160,54 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       }
   }, [itemToEdit, type, invoiceType, rentalInvoiceSettings, projectInvoiceSettings, state.bills]);
 
+  // Update all form fields when itemToEdit changes (ensures data is loaded correctly)
+  // This is critical to ensure all bill data is displayed when editing
+  useEffect(() => {
+      if (itemToEdit && type === 'bill') {
+          const bill = itemToEdit as Bill;
+          // Update all fields from the bill - handle both null/undefined and empty strings
+          // Use nullish coalescing to preserve empty strings but default undefined/null to empty string
+          setNumber(bill.billNumber || '');
+          setContactId(bill.contactId || '');
+          setPropertyId(bill.propertyId || '');
+          setProjectId(bill.projectId || '');
+          setBuildingId(bill.buildingId || '');
+          setStaffId(bill.staffId || '');
+          setContractId(bill.contractId || '');
+          setCategoryId(bill.categoryId || '');
+          if (bill.issueDate) {
+              setIssueDate(bill.issueDate.split('T')[0]);
+          }
+          if (bill.dueDate) {
+              setDueDate(bill.dueDate.split('T')[0]);
+          } else {
+              setDueDate('');
+          }
+          setDescription(bill.description || '');
+          if (bill.amount !== undefined && bill.amount !== null) {
+              setAmount(bill.amount.toString());
+          }
+          setAgreementId(bill.projectAgreementId || '');
+          setDocumentPath(bill.documentPath || '');
+          // Handle expenseCategoryItems - use the bill's items if they exist
+          if (bill.expenseCategoryItems && bill.expenseCategoryItems.length > 0) {
+              setExpenseCategoryItems(bill.expenseCategoryItems);
+          } else if (bill.categoryId) {
+              // Migration: if bill has categoryId but no expenseCategoryItems, create one
+              setExpenseCategoryItems([{
+                  id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                  categoryId: bill.categoryId,
+                  unit: 'quantity' as const,
+                  quantity: 1,
+                  pricePerUnit: bill.amount || 0,
+                  netValue: bill.amount || 0
+              }]);
+          } else {
+              setExpenseCategoryItems([]);
+          }
+      }
+  }, [itemToEdit?.id, type]); // Use itemToEdit?.id to trigger when bill changes
+
 
   const [numberError, setNumberError] = useState('');
   const [contactId, setContactId] = useState(defaults.contactId || agreementForInvoice?.clientId || initialContactId || '');
@@ -678,15 +726,15 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
      }
      
      return {
-        contactId, 
+        contactId: contactId || '', // Ensure contactId is always set (required field)
         propertyId: propertyId || undefined, 
         projectId: projectId || undefined, 
         amount: finalAmount, 
-        issueDate, 
-        description,
+        issueDate: issueDate || new Date().toISOString().split('T')[0], // Ensure issueDate is always set
+        description: description || undefined, // Preserve empty strings as undefined for optional fields
         invoiceNumber: number, 
         billNumber: number,
-        dueDate, 
+        dueDate: dueDate || undefined, 
         invoiceType: invoiceType!,
         buildingId: buildingId || undefined,
         categoryId: (type === 'bill' && expenseCategoryItems.length > 0) ? undefined : (categoryId || undefined), // Don't save categoryId if using expenseCategoryItems
@@ -698,6 +746,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         contractId: contractId || undefined,
         rentalMonth: (invoiceType === InvoiceType.RENTAL) ? new Date(issueDate).toISOString().slice(0, 7) : undefined,
         expenseCategoryItems: (type === 'bill' && expenseCategoryItems.length > 0) ? expenseCategoryItems : undefined,
+        // Note: documentPath is handled separately in handleSubmit
      };
   };
 
@@ -834,11 +883,15 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             dispatch({ type: 'UPDATE_INVOICE', payload: updatedInvoice });
             showToast("Invoice updated successfully");
         } else {
+            // Ensure all bill fields are preserved when updating
             const updatedBill: Bill = { 
-                ...(itemToEdit as Bill), 
-                ...formData, 
+                ...(itemToEdit as Bill), // Preserve existing fields (id, paidAmount, status, etc.)
+                ...formData, // Update with form data
+                // Explicitly set all bill-specific fields to ensure nothing is lost
                 projectAgreementId: agreementId || undefined,
-                documentPath: type === 'bill' ? (finalDocumentPath || undefined) : undefined
+                documentPath: type === 'bill' ? (finalDocumentPath || (itemToEdit as Bill).documentPath || undefined) : undefined,
+                // Ensure expenseCategoryItems is properly set
+                expenseCategoryItems: (type === 'bill' && expenseCategoryItems.length > 0) ? expenseCategoryItems : ((itemToEdit as Bill).expenseCategoryItems || undefined),
             };
             dispatch({ type: 'UPDATE_BILL', payload: updatedBill });
             showToast("Bill updated successfully");
