@@ -223,9 +223,183 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
         }
     };
 
+    // Mobile sidebar state and event listener
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+    useEffect(() => {
+        const handleToggleSidebar = () => {
+            setIsMobileMenuOpen(prev => !prev);
+        };
+
+        document.addEventListener('toggle-sidebar', handleToggleSidebar);
+        return () => document.removeEventListener('toggle-sidebar', handleToggleSidebar);
+    }, []);
+
     return (
         <>
-            {/* Premium Dark Sidebar */}
+            {/* Mobile Sidebar Drawer - Only visible on mobile */}
+            {isMobileMenuOpen && (
+                <>
+                    {/* Backdrop overlay */}
+                    <div 
+                        className="fixed inset-0 bg-black/50 z-40 md:hidden animate-fade-in"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                    />
+                    
+                    {/* Mobile drawer */}
+                    <aside className="fixed left-0 top-0 h-full w-64 bg-slate-900 border-r border-slate-800 z-50 md:hidden flex flex-col text-slate-300 animate-slide-in-left">
+                        
+                        {/* Brand Header */}
+                        <div className="h-14 flex items-center justify-between px-5 border-b border-slate-800/50 bg-slate-900/50 backdrop-blur-sm">
+                            <div className="flex items-center gap-3">
+                                <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-900/20 text-sm">
+                                    P
+                                </div>
+                                <div>
+                                    <h1 className="text-sm font-bold tracking-wide">
+                                        <span className="text-red-500">P</span>
+                                        <span className="text-white">Books</span>
+                                        <span className="text-indigo-400">Pro</span>
+                                    </h1>
+                                    <div className="text-[10px] text-slate-500 font-mono">v{packageJson.version}</div>
+                                </div>
+                            </div>
+                            {/* Close button */}
+                            <button
+                                onClick={() => setIsMobileMenuOpen(false)}
+                                className="p-2 -mr-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
+                        </div>
+
+                        {/* Navigation Menu */}
+                        <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                            {navGroups.map((group, idx) => (
+                                <div key={idx}>
+                                    <h3 className="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 opacity-80">{group.title}</h3>
+                                    <div className="space-y-0.5">
+                                        {group.items.map((item) => {
+                                            const active = isCurrent(item.page as Page);
+                                            return (
+                                                <button
+                                                    key={item.page}
+                                                    onClick={() => {
+                                                        setCurrentPage(item.page as Page);
+                                                        setIsMobileMenuOpen(false); // Close menu after navigation
+                                                    }}
+                                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-200 group touch-manipulation
+                                            ${active
+                                                            ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/30'
+                                                            : 'text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700'
+                                                        }`}
+                                                >
+                                                    <div className={`transition-colors ${active ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`}>
+                                                        {React.cloneElement(item.icon as any, { width: 18, height: 18 })}
+                                                    </div>
+                                                    <span className="truncate">{item.label}</span>
+                                                    {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/50"></div>}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+                        </nav>
+
+                        {/* Mobile Footer - Simplified */}
+                        <div className="p-3 border-t border-slate-800 bg-slate-900/50">
+                            {/* License Status Button */}
+                            {licenseInfo && (licenseInfo.isExpired || licenseInfo.daysRemaining <= 30) && (
+                                <button
+                                    onClick={() => {
+                                        setIsLicenseModalOpen(true);
+                                        setIsMobileMenuOpen(false);
+                                    }}
+                                    className={`w-full mb-3 text-white p-2.5 rounded-lg shadow-lg relative overflow-hidden group ${
+                                        licenseInfo.isExpired 
+                                            ? 'bg-gradient-to-r from-rose-500 to-red-600' 
+                                            : 'bg-gradient-to-r from-amber-500 to-orange-600'
+                                    }`}
+                                >
+                                    <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                                    <div className="relative flex items-center justify-between">
+                                        <div className="text-left">
+                                            <div className="text-[10px] font-bold opacity-90">
+                                                {licenseInfo.isExpired ? 'License Expired' : 'Renewal Due'}
+                                            </div>
+                                            <div className="text-sm font-bold leading-tight">
+                                                {licenseInfo.isExpired ? 'Expired' : `${licenseInfo.daysRemaining} Days`}
+                                            </div>
+                                        </div>
+                                        <div className="bg-white/20 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide">
+                                            Renew
+                                        </div>
+                                    </div>
+                                </button>
+                            )}
+
+                            {/* User Info with logout */}
+                            <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-inner flex-shrink-0">
+                                    {userName.charAt(0).toUpperCase()}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-semibold text-white truncate leading-tight mb-0.5" title={userName}>
+                                        {userName}
+                                    </div>
+                                    {organizationName && (
+                                        <div className="text-xs font-medium text-indigo-300 truncate mb-0.5" title={organizationName}>
+                                            {organizationName}
+                                        </div>
+                                    )}
+                                    {userRole && (
+                                        <div className="text-[10px] text-slate-400 truncate capitalize">
+                                            {userRole}
+                                        </div>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={handleLogout}
+                                    className="flex items-center justify-center p-2 rounded-md border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500 hover:bg-slate-800 transition-colors touch-manipulation"
+                                    title="Logout"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
+                                </button>
+                            </div>
+
+                            {/* Online Users & Chat - Mobile */}
+                            {onlineUsers !== null && onlineUsers > 0 && (
+                                <button
+                                    onClick={() => {
+                                        setIsChatModalOpen(true);
+                                        setIsMobileMenuOpen(false);
+                                    }}
+                                    className={`w-full mt-2 px-3 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-sm font-medium transition-colors flex items-center justify-center gap-2 relative touch-manipulation ${
+                                        unreadMessageCount > 0 ? 'animate-pulse' : ''
+                                    }`}
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                                    </svg>
+                                    Chat ({onlineUsers} online)
+                                    {unreadMessageCount > 0 && (
+                                        <>
+                                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-ping"></span>
+                                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-[10px] font-bold">{unreadMessageCount}</span>
+                                        </>
+                                    )}
+                                </button>
+                            )}
+                        </div>
+                    </aside>
+                </>
+            )}
+
+            {/* Premium Dark Sidebar - DESKTOP ONLY (UNCHANGED) */}
             <aside className="hidden md:flex flex-col w-64 bg-slate-900 border-r border-slate-800 fixed left-0 top-0 h-full z-40 text-slate-300">
 
                 {/* Brand Header */}

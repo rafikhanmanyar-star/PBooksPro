@@ -267,5 +267,3 @@ await db.query(
 - [ ] Foreign key constraints working
 - [ ] Frontend API repositories working
 - [ ] Sync working between local and cloud
-
-## Deliverables

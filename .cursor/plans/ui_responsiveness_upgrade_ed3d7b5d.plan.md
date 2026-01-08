@@ -368,5 +368,3 @@ flowchart TD
 
 - `index.css`
 - `hooks/useViewport.ts` (new)
-
-## Notes

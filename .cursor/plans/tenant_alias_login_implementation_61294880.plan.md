@@ -63,15 +63,15 @@ This approach:
 - **Request**: `{ organizationEmail: string }`
 - **Response**: 
   ```typescript
-    {
-      tenants: Array<{
-        id: string;
-        name: string;
-        company_name: string;
-        email: string;
-        // No sensitive data (license info, etc.)
-      }>
-    }
+      {
+        tenants: Array<{
+          id: string;
+          name: string;
+          company_name: string;
+          email: string;
+          // No sensitive data (license info, etc.)
+        }>
+      }
   ```
 
 
@@ -252,4 +252,3 @@ lookupTenants: (organizationEmail: string) => Promise<{
 2. ✅ **More intuitive** - Users know their organization email
 3. ✅ **Privacy-friendly** - Only shows tenants matching entered email
 4. ✅ **Handles edge cases** - Multiple tenants with same email shown for selection
-5. ✅ **No data migration** - Uses existing schema

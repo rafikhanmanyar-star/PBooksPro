@@ -340,23 +340,23 @@ const KPIPanel: React.FC = () => {
         <>
             <div 
                 ref={sidebarRef}
-                className={`fixed top-0 right-0 h-full bg-slate-800 text-white shadow-2xl transition-transform duration-300 ease-in-out z-40 flex flex-col border-l border-slate-700 ${isPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}
-                style={{ width: isPanelOpen ? width : 0 }}
+                className={`fixed top-0 right-0 h-full bg-slate-800 text-white shadow-2xl transition-transform duration-300 ease-in-out z-40 flex flex-col border-l border-slate-700 w-full md:w-auto ${isPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}
+                style={{ width: isPanelOpen ? (typeof window !== 'undefined' && window.innerWidth < 768 ? '100%' : width) : 0 }}
             >
-                {/* Resize Handle */}
+                {/* Resize Handle - Desktop Only */}
                 <div 
-                    className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500 z-50 transition-colors"
+                    className="hidden md:block absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500 z-50 transition-colors"
                     onMouseDown={startResizing}
                 ></div>
 
-                <header className="flex items-center justify-between p-4 border-b border-white/10 flex-shrink-0 bg-slate-900/50">
-                    <h2 className="text-lg font-bold">Dashboard</h2>
-                    <Button variant="ghost" size="icon" onClick={togglePanel} className="text-white/60 hover:text-white hover:bg-white/10">
-                        <div className="w-5 h-5">{ICONS.chevronRight}</div>
+                <header className="flex items-center justify-between p-3 md:p-4 border-b border-white/10 flex-shrink-0 bg-slate-900/50">
+                    <h2 className="text-base md:text-lg font-bold">Dashboard</h2>
+                    <Button variant="ghost" size="icon" onClick={togglePanel} className="text-white/60 hover:text-white hover:bg-white/10 touch-manipulation">
+                        <div className="w-4 h-4 md:w-5 md:h-5">{ICONS.chevronRight}</div>
                     </Button>
                 </header>
                 
-                <main className="flex-grow p-4 flex flex-col overflow-y-auto custom-scrollbar">
+                <main className="flex-grow p-3 md:p-4 flex flex-col overflow-y-auto custom-scrollbar">
                     {/* Content (KPIs, Reports, Shortcuts) - Simplified for this view update */}
                      <div className="flex-grow">
                         {activePanelTab === 'kpis' && (

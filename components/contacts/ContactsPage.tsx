@@ -160,22 +160,23 @@ const ContactsPage: React.FC = () => {
     ];
 
     return (
-        <div className="flex flex-col h-full space-y-4">
-            <div className="flex flex-col gap-4 bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex-shrink-0">
-                <div className="flex justify-between items-center">
-                    <h2 className="text-2xl font-bold text-slate-800">Contacts</h2>
-                    <div className="flex gap-2">
+        <div className="flex flex-col h-full space-y-3 md:space-y-4">
+            <div className="flex flex-col gap-3 md:gap-4 bg-white p-3 md:p-4 rounded-lg shadow-sm border border-slate-200 flex-shrink-0">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                    <h2 className="text-xl md:text-2xl font-bold text-slate-800">Contacts</h2>
+                    <div className="flex gap-2 w-full md:w-auto">
                         <Button
                             variant="secondary"
                             onClick={() => {
                                 dispatch({ type: 'SET_INITIAL_IMPORT_TYPE', payload: ImportType.CONTACTS });
                                 dispatch({ type: 'SET_PAGE', payload: 'import' });
                             }}
+                            className="flex-1 md:flex-none text-xs md:text-sm"
                         >
-                            <div className="w-4 h-4 mr-2">{ICONS.download}</div> Bulk Import
+                            <div className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2">{ICONS.download}</div> <span className="hidden sm:inline">Bulk </span>Import
                         </Button>
-                        <Button onClick={openAddModal}>
-                            <div className="w-4 h-4 mr-2">{ICONS.plus}</div> Add Contact
+                        <Button onClick={openAddModal} className="flex-1 md:flex-none text-xs md:text-sm">
+                            <div className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2">{ICONS.plus}</div> Add<span className="hidden sm:inline"> Contact</span>
                         </Button>
                     </div>
                 </div>
@@ -196,29 +197,30 @@ const ContactsPage: React.FC = () => {
             </div>
 
             <div className="flex-grow overflow-hidden bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col">
-                <div className="overflow-auto flex-grow">
-                    <table className="min-w-full divide-y divide-gray-200 text-sm">
+                {/* Mobile: Horizontal scroll wrapper with subtle scroll indicator */}
+                <div className="overflow-x-auto overflow-y-auto flex-grow -mx-px">
+                    <table className="min-w-full divide-y divide-gray-200 text-xs md:text-sm">
                         <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm border-b border-gray-200">
                             <tr>
-                                <th onClick={() => handleSort('name')} className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap transition-colors">
+                                <th onClick={() => handleSort('name')} className="px-2 md:px-4 py-2 md:py-3 text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
                                     Name <SortIcon column="name"/>
                                 </th>
-                                <th onClick={() => handleSort('type')} className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap transition-colors">
+                                <th onClick={() => handleSort('type')} className="px-2 md:px-4 py-2 md:py-3 text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
                                     Type <SortIcon column="type"/>
                                 </th>
-                                <th onClick={() => handleSort('companyName')} className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap transition-colors">
+                                <th onClick={() => handleSort('companyName')} className="hidden sm:table-cell px-2 md:px-4 py-2 md:py-3 text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
                                     Company <SortIcon column="companyName"/>
                                 </th>
-                                <th onClick={() => handleSort('contactNo')} className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap transition-colors">
+                                <th onClick={() => handleSort('contactNo')} className="px-2 md:px-4 py-2 md:py-3 text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
                                     Phone <SortIcon column="contactNo"/>
                                 </th>
-                                <th onClick={() => handleSort('address')} className="px-4 py-3 text-left font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap transition-colors">
+                                <th onClick={() => handleSort('address')} className="hidden lg:table-cell px-2 md:px-4 py-2 md:py-3 text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
                                     Address <SortIcon column="address"/>
                                 </th>
-                                <th onClick={() => handleSort('balance')} className="px-4 py-3 text-right font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap transition-colors">
+                                <th onClick={() => handleSort('balance')} className="px-2 md:px-4 py-2 md:py-3 text-right text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
                                     Balance <SortIcon column="balance"/>
                                 </th>
-                                <th className="px-4 py-3 text-right font-semibold text-gray-700 whitespace-nowrap">
+                                <th className="px-2 md:px-4 py-2 md:py-3 text-right text-[10px] md:text-xs font-semibold text-gray-700 whitespace-nowrap">
                                     Actions
                                 </th>
                             </tr>
@@ -230,49 +232,49 @@ const ContactsPage: React.FC = () => {
                                     return (
                                         <tr 
                                             key={contact.id} 
-                                            className="hover:bg-gray-50 cursor-pointer transition-colors group"
+                                            className="hover:bg-gray-50 active:bg-gray-100 cursor-pointer transition-colors group touch-manipulation"
                                             onClick={() => openLedger(contact)}
                                         >
-                                            <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">
+                                            <td className="px-2 md:px-4 py-2 md:py-3 font-medium text-gray-800 whitespace-nowrap text-xs md:text-sm">
                                                 {contact.name}
                                             </td>
-                                            <td className="px-4 py-3">
-                                                <span className="inline-block bg-gray-100 text-gray-700 text-[10px] px-2 py-0.5 rounded-full font-medium uppercase tracking-wide whitespace-nowrap">
+                                            <td className="px-2 md:px-4 py-2 md:py-3">
+                                                <span className="inline-block bg-gray-100 text-gray-700 text-[9px] md:text-[10px] px-1.5 md:px-2 py-0.5 rounded-full font-medium uppercase tracking-wide whitespace-nowrap">
                                                     {contact.type}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                                            <td className="hidden sm:table-cell px-2 md:px-4 py-2 md:py-3 text-gray-600 whitespace-nowrap text-xs md:text-sm">
                                                 {contact.companyName || '-'}
                                             </td>
-                                            <td className="px-4 py-3 text-gray-600 font-mono whitespace-nowrap">
+                                            <td className="px-2 md:px-4 py-2 md:py-3 text-gray-600 font-mono whitespace-nowrap text-xs md:text-sm">
                                                 {contact.contactNo || '-'}
                                             </td>
-                                            <td className="px-4 py-3 text-gray-600 truncate max-w-xs" title={contact.address}>
+                                            <td className="hidden lg:table-cell px-2 md:px-4 py-2 md:py-3 text-gray-600 truncate max-w-xs text-xs md:text-sm" title={contact.address}>
                                                 {contact.address || '-'}
                                             </td>
-                                            <td className={`px-4 py-3 text-right font-bold font-mono whitespace-nowrap ${balance > 0 ? 'text-green-600' : balance < 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                                                {CURRENCY} {Math.abs(balance).toLocaleString()}
-                                                <span className="text-[10px] font-normal ml-1 text-gray-400">
+                                            <td className={`px-2 md:px-4 py-2 md:py-3 text-right font-bold font-mono whitespace-nowrap text-xs md:text-sm ${balance > 0 ? 'text-green-600' : balance < 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                                                <span className="hidden sm:inline">{CURRENCY} </span>{Math.abs(balance).toLocaleString()}
+                                                <span className="text-[9px] md:text-[10px] font-normal ml-0.5 md:ml-1 text-gray-400">
                                                     {balance > 0 ? '(Cr)' : balance < 0 ? '(Dr)' : ''}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-3 text-right">
-                                                <div className="flex justify-end gap-1">
+                                            <td className="px-2 md:px-4 py-2 md:py-3 text-right">
+                                                <div className="flex justify-end gap-0.5 md:gap-1">
                                                     {contact.contactNo && WhatsAppService.isValidPhoneNumber(contact.contactNo) && (
                                                         <button 
                                                             onClick={(e) => handleSendWhatsApp(contact, e)}
-                                                            className="text-gray-400 hover:text-green-600 p-1.5 rounded-full hover:bg-green-50 transition-colors opacity-0 group-hover:opacity-100"
+                                                            className="text-gray-400 hover:text-green-600 active:text-green-700 p-1 md:p-1.5 rounded-full hover:bg-green-50 active:bg-green-100 transition-colors md:opacity-0 md:group-hover:opacity-100 touch-manipulation"
                                                             title="Send WhatsApp Message"
                                                         >
-                                                            <div className="w-4 h-4">{ICONS.whatsapp}</div>
+                                                            <div className="w-3.5 h-3.5 md:w-4 md:h-4">{ICONS.whatsapp}</div>
                                                         </button>
                                                     )}
                                                     <button 
                                                         onClick={(e) => openEditModal(contact, e)}
-                                                        className="text-gray-400 hover:text-blue-600 p-1.5 rounded-full hover:bg-blue-50 transition-colors opacity-0 group-hover:opacity-100"
+                                                        className="text-gray-400 hover:text-blue-600 active:text-blue-700 p-1 md:p-1.5 rounded-full hover:bg-blue-50 active:bg-blue-100 transition-colors md:opacity-0 md:group-hover:opacity-100 touch-manipulation"
                                                         title="Edit Contact"
                                                     >
-                                                        <div className="w-4 h-4">{ICONS.edit}</div>
+                                                        <div className="w-3.5 h-3.5 md:w-4 md:h-4">{ICONS.edit}</div>
                                                     </button>
                                                 </div>
                                             </td>
@@ -292,7 +294,7 @@ const ContactsPage: React.FC = () => {
                         </tbody>
                     </table>
                 </div>
-                <div className="p-3 border-t border-slate-200 bg-slate-50 text-xs text-slate-500 font-medium">
+                <div className="p-2 md:p-3 border-t border-slate-200 bg-slate-50 text-[10px] md:text-xs text-slate-500 font-medium">
                     Total Contacts: {contacts.length}
                 </div>
             </div>

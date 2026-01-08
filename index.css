@@ -106,6 +106,19 @@ h3 { font-size: 1.25rem; font-weight: 600; }  /* 20px */
   animation: slide-up 0.3s ease-out;
 }
 
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.3s ease-out;
+}
+
 @keyframes slide-in-up {
   from {
     transform: translateY(20px);
@@ -234,5 +247,49 @@ h3 { font-size: 1.25rem; font-weight: 600; }  /* 20px */
   .no-print {
     display: none !important;
   }
+}
+
+/* Mobile-specific utility classes */
+@media (max-width: 640px) {
+  .mobile-full-width {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  
+  .mobile-text-xs {
+    font-size: 0.75rem !important;
+  }
+  
+  .mobile-p-2 {
+    padding: 0.5rem !important;
+  }
+  
+  .mobile-gap-2 {
+    gap: 0.5rem !important;
+  }
+}
+
+/* Horizontal scroll container with subtle indicators */
+.scroll-container-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.scroll-container-x::-webkit-scrollbar {
+  height: 4px;
+}
+
+.scroll-container-x::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.scroll-container-x::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 2px;
+}
+
+.scroll-container-x::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 

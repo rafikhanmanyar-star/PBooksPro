@@ -243,4 +243,3 @@ WEBHOOK_SECRET=your_webhook_secret
 
 1. Database schema migration
 2. Payment service and gateway adapter (start with PayFast)
-3. Backend API routes

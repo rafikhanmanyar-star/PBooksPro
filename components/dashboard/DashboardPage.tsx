@@ -93,26 +93,26 @@ const DashboardPage: React.FC = () => {
     }, [state.invoices, state.transactions]);
 
     return (
-        <div className="space-y-6 max-w-7xl mx-auto">
+        <div className="space-y-4 md:space-y-6 max-w-7xl mx-auto">
 
             {/* Welcome Banner */}
-            <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900">{greeting}, {state.currentUser?.name?.split(' ')[0]}</h1>
-                    <p className="text-slate-500 text-sm mt-1">Here's what's happening with your projects today.</p>
+                    <h1 className="text-xl md:text-2xl font-bold text-slate-900">{greeting}, {state.currentUser?.name?.split(' ')[0]}</h1>
+                    <p className="text-slate-500 text-xs md:text-sm mt-1">Here's what's happening with your projects today.</p>
                 </div>
-                <div className="flex items-center gap-3">
-                    <Button variant="secondary" onClick={() => setIsConfigModalOpen(true)} className="text-slate-600 border-slate-200 hover:bg-white text-sm">
+                <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto">
+                    <Button variant="secondary" onClick={() => setIsConfigModalOpen(true)} className="text-slate-600 border-slate-200 hover:bg-white text-xs md:text-sm flex-1 md:flex-none">
                         Customize
                     </Button>
-                    <Button onClick={() => navigate('transactions')} className="bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-900/20 text-sm">
+                    <Button onClick={() => navigate('transactions')} className="bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-900/20 text-xs md:text-sm flex-1 md:flex-none">
                         + New Entry
                     </Button>
                 </div>
             </div>
 
             {/* Bento Grid Layout */}
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-6">
 
                 {/* KPI Cards Row */}
                 {kpisToDisplay.slice(0, 4).map((kpi, idx) => (
@@ -129,21 +129,21 @@ const DashboardPage: React.FC = () => {
                 ))}
 
                 {/* Main Chart Section (Span 2 or 3 cols) */}
-                <div className="col-span-1 md:col-span-2 lg:col-span-3 bg-white p-6 rounded-2xl border border-slate-200/60 shadow-sm relative overflow-hidden">
-                    <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-lg font-bold text-slate-800">Cash Flow</h3>
-                        <div className="flex gap-2">
-                            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
-                                <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Income
+                <div className="col-span-1 md:col-span-2 lg:col-span-3 bg-white p-4 md:p-6 rounded-2xl border border-slate-200/60 shadow-sm relative overflow-hidden">
+                    <div className="flex justify-between items-center mb-4 md:mb-6">
+                        <h3 className="text-base md:text-lg font-bold text-slate-800">Cash Flow</h3>
+                        <div className="flex gap-2 md:gap-3">
+                            <div className="flex items-center gap-1 md:gap-1.5 text-[10px] md:text-xs font-medium text-slate-500">
+                                <span className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-500"></span> <span className="hidden sm:inline">Income</span>
                             </div>
-                            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
-                                <span className="w-2 h-2 rounded-full bg-rose-500"></span> Expense
+                            <div className="flex items-center gap-1 md:gap-1.5 text-[10px] md:text-xs font-medium text-slate-500">
+                                <span className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-rose-500"></span> <span className="hidden sm:inline">Expense</span>
                             </div>
                         </div>
                     </div>
 
                     {isAdmin ? (
-                        <div className="h-72 w-full">
+                        <div className="h-48 md:h-72 w-full">
                             <ResponsiveContainer width="100%" height="100%">
                                 <AreaChart data={cashFlowData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                     <defs>
@@ -174,28 +174,28 @@ const DashboardPage: React.FC = () => {
                 </div>
 
                 {/* Quick Actions / Activity (Sidebar Col) */}
-                <div className="col-span-1 md:col-span-1 lg:col-span-1 space-y-6">
+                <div className="col-span-1 md:col-span-1 lg:col-span-1 space-y-3 md:space-y-6">
 
                     {/* Actions Card */}
-                    <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-lg relative overflow-hidden group hover:shadow-xl transition-all">
+                    <div className="bg-slate-900 text-white p-4 md:p-6 rounded-2xl shadow-lg relative overflow-hidden group hover:shadow-xl transition-all">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500 rounded-full blur-3xl opacity-20 -mr-10 -mt-10"></div>
-                        <h3 className="font-bold mb-4 relative z-10">Quick Actions</h3>
-                        <div className="space-y-3 relative z-10">
-                            <button onClick={() => { navigate('transactions'); dispatch({ type: 'SET_INITIAL_TRANSACTION_TYPE', payload: TransactionType.INCOME }); }} className="w-full flex items-center gap-3 p-3 rounded-xl bg-white/10 hover:bg-white/20 transition-colors text-sm font-medium border border-white/5">
-                                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400"><div className="w-4 h-4">{ICONS.plus}</div></div>
+                        <h3 className="text-sm md:text-base font-bold mb-3 md:mb-4 relative z-10">Quick Actions</h3>
+                        <div className="space-y-2 md:space-y-3 relative z-10">
+                            <button onClick={() => { navigate('transactions'); dispatch({ type: 'SET_INITIAL_TRANSACTION_TYPE', payload: TransactionType.INCOME }); }} className="w-full flex items-center gap-2 md:gap-3 p-2.5 md:p-3 rounded-xl bg-white/10 hover:bg-white/20 active:bg-white/25 transition-colors text-xs md:text-sm font-medium border border-white/5 touch-manipulation">
+                                <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400"><div className="w-3.5 h-3.5 md:w-4 md:h-4">{ICONS.plus}</div></div>
                                 Record Income
                             </button>
-                            <button onClick={() => { navigate('transactions'); dispatch({ type: 'SET_INITIAL_TRANSACTION_TYPE', payload: TransactionType.EXPENSE }); }} className="w-full flex items-center gap-3 p-3 rounded-xl bg-white/10 hover:bg-white/20 transition-colors text-sm font-medium border border-white/5">
-                                <div className="w-8 h-8 rounded-lg bg-rose-500/20 flex items-center justify-center text-rose-400"><div className="w-4 h-4">{ICONS.minus}</div></div>
+                            <button onClick={() => { navigate('transactions'); dispatch({ type: 'SET_INITIAL_TRANSACTION_TYPE', payload: TransactionType.EXPENSE }); }} className="w-full flex items-center gap-2 md:gap-3 p-2.5 md:p-3 rounded-xl bg-white/10 hover:bg-white/20 active:bg-white/25 transition-colors text-xs md:text-sm font-medium border border-white/5 touch-manipulation">
+                                <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-rose-500/20 flex items-center justify-center text-rose-400"><div className="w-3.5 h-3.5 md:w-4 md:h-4">{ICONS.minus}</div></div>
                                 Record Expense
                             </button>
                         </div>
                     </div>
 
                     {/* Recent Activity Mini List */}
-                    <div className="bg-white p-5 rounded-2xl border border-slate-200/60 shadow-sm">
-                        <h3 className="text-sm font-bold text-slate-800 mb-4 uppercase tracking-wide">Recent Activity</h3>
-                        <div className="space-y-4">
+                    <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200/60 shadow-sm">
+                        <h3 className="text-xs md:text-sm font-bold text-slate-800 mb-3 md:mb-4 uppercase tracking-wide">Recent Activity</h3>
+                        <div className="space-y-3 md:space-y-4">
                             {recentActivity.map((item, i) => (
                                 <div key={i} className="flex items-center gap-3">
                                     <div className={`w-2 h-2 rounded-full ${item.type === 'Income' ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
