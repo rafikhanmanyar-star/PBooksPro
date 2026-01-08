@@ -306,18 +306,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                             </div>
                         </button>
                     )}
-                    
-                    {/* Always show license management button */}
-                    <button
-                        onClick={() => setIsLicenseModalOpen(true)}
-                        className="w-full mb-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-2.5 rounded-lg shadow-lg hover:from-indigo-700 hover:to-purple-700 transition-all flex items-center justify-center gap-2"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                        </svg>
-                        <span className="text-xs font-bold">License & Subscription</span>
-                    </button>
 
                     <div className="space-y-2">
                         {/* User Info with inline logout */}

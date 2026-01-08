@@ -462,6 +462,434 @@ CREATE TABLE IF NOT EXISTS contracts (
 );
 
 -- ============================================================================
+-- ADDITIONAL ENTITIES (Previously Local-Only)
+-- ============================================================================
+
+-- Quotations table
+CREATE TABLE IF NOT EXISTS quotations (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    vendor_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    date DATE NOT NULL,
+    items JSONB NOT NULL,
+    document_id TEXT,
+    total_amount DECIMAL(15, 2) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (vendor_id) REFERENCES contacts(id) ON DELETE RESTRICT
+);
+
+-- Documents table
+CREATE TABLE IF NOT EXISTS documents (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    file_data TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    file_size INTEGER NOT NULL,
+    mime_type TEXT NOT NULL,
+    uploaded_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Tasks table (Todo list items - tenant-specific)
+CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    text TEXT NOT NULL,
+    completed BOOLEAN NOT NULL DEFAULT FALSE,
+    priority TEXT NOT NULL DEFAULT 'medium',
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT valid_priority CHECK (priority IN ('low', 'medium', 'high'))
+);
+
+-- Recurring Invoice Templates table
+CREATE TABLE IF NOT EXISTS recurring_invoice_templates (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    contact_id TEXT NOT NULL,
+    property_id TEXT NOT NULL,
+    building_id TEXT NOT NULL,
+    amount DECIMAL(15, 2) NOT NULL,
+    description_template TEXT NOT NULL,
+    day_of_month INTEGER NOT NULL,
+    next_due_date DATE NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    agreement_id TEXT,
+    frequency TEXT,
+    auto_generate BOOLEAN NOT NULL DEFAULT FALSE,
+    max_occurrences INTEGER,
+    generated_count INTEGER NOT NULL DEFAULT 0,
+    last_generated_date DATE,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE,
+    FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
+    FOREIGN KEY (building_id) REFERENCES buildings(id) ON DELETE CASCADE
+);
+
+-- Salary Components table (tenant-specific templates)
+CREATE TABLE IF NOT EXISTS salary_components (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    is_taxable BOOLEAN NOT NULL DEFAULT FALSE,
+    is_system BOOLEAN NOT NULL DEFAULT FALSE,
+    calculation_type TEXT,
+    formula TEXT,
+    eligibility_rules JSONB,
+    effective_from DATE,
+    effective_to DATE,
+    country_code TEXT,
+    category TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Employees table
+CREATE TABLE IF NOT EXISTS employees (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    employee_id TEXT NOT NULL,
+    personal_details JSONB NOT NULL,
+    employment_details JSONB NOT NULL,
+    status TEXT NOT NULL,
+    basic_salary DECIMAL(15, 2) NOT NULL,
+    salary_structure JSONB NOT NULL,
+    project_assignments JSONB NOT NULL,
+    bank_details JSONB,
+    documents JSONB NOT NULL,
+    lifecycle_history JSONB NOT NULL,
+    termination_details JSONB,
+    advance_balance DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    loan_balance DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE(tenant_id, employee_id)
+);
+
+-- Payroll Cycles table
+CREATE TABLE IF NOT EXISTS payroll_cycles (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    name TEXT NOT NULL,
+    month TEXT NOT NULL,
+    frequency TEXT NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    pay_date DATE NOT NULL,
+    issue_date DATE NOT NULL,
+    status TEXT NOT NULL,
+    payslip_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    total_employees INTEGER NOT NULL DEFAULT 0,
+    total_gross_salary DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    total_deductions DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    total_net_salary DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    project_costs JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    approved_at TIMESTAMP,
+    approved_by TEXT,
+    locked_at TIMESTAMP,
+    locked_by TEXT,
+    notes TEXT,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Payslips table
+CREATE TABLE IF NOT EXISTS payslips (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    employee_id TEXT NOT NULL,
+    payroll_cycle_id TEXT NOT NULL,
+    month TEXT NOT NULL,
+    issue_date DATE NOT NULL,
+    pay_period_start DATE NOT NULL,
+    pay_period_end DATE NOT NULL,
+    basic_salary DECIMAL(15, 2) NOT NULL,
+    allowances JSONB NOT NULL DEFAULT '[]'::jsonb,
+    total_allowances DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    bonuses JSONB DEFAULT '[]'::jsonb,
+    total_bonuses DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    overtime JSONB DEFAULT '[]'::jsonb,
+    total_overtime DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    commissions JSONB DEFAULT '[]'::jsonb,
+    total_commissions DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    deductions JSONB NOT NULL DEFAULT '[]'::jsonb,
+    total_deductions DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    tax_deductions JSONB NOT NULL DEFAULT '[]'::jsonb,
+    total_tax DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    statutory_deductions JSONB NOT NULL DEFAULT '[]'::jsonb,
+    total_statutory DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    loan_deductions JSONB NOT NULL DEFAULT '[]'::jsonb,
+    total_loan_deductions DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    gross_salary DECIMAL(15, 2) NOT NULL,
+    taxable_income DECIMAL(15, 2) NOT NULL,
+    net_salary DECIMAL(15, 2) NOT NULL,
+    cost_allocations JSONB NOT NULL DEFAULT '[]'::jsonb,
+    is_prorated BOOLEAN NOT NULL DEFAULT FALSE,
+    proration_days INTEGER,
+    proration_reason TEXT,
+    status TEXT NOT NULL,
+    paid_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    payment_date DATE,
+    transaction_id TEXT,
+    payment_account_id TEXT,
+    generated_at TIMESTAMP NOT NULL,
+    generated_by TEXT,
+    approved_at TIMESTAMP,
+    approved_by TEXT,
+    notes TEXT,
+    snapshot JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+    FOREIGN KEY (payroll_cycle_id) REFERENCES payroll_cycles(id) ON DELETE CASCADE,
+    FOREIGN KEY (payment_account_id) REFERENCES accounts(id) ON DELETE SET NULL
+);
+
+-- Legacy Payslips table
+CREATE TABLE IF NOT EXISTS legacy_payslips (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    staff_id TEXT NOT NULL,
+    month TEXT NOT NULL,
+    issue_date DATE NOT NULL,
+    basic_salary DECIMAL(15, 2) NOT NULL,
+    allowances JSONB NOT NULL DEFAULT '[]'::jsonb,
+    total_allowances DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    deductions JSONB NOT NULL DEFAULT '[]'::jsonb,
+    total_deductions DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    bonuses JSONB DEFAULT '[]'::jsonb,
+    total_bonuses DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    gross_salary DECIMAL(15, 2) NOT NULL,
+    net_salary DECIMAL(15, 2) NOT NULL,
+    status TEXT NOT NULL,
+    paid_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    payment_date DATE,
+    transaction_id TEXT,
+    project_id TEXT,
+    building_id TEXT,
+    generated_at TIMESTAMP NOT NULL,
+    payslip_type TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (staff_id) REFERENCES contacts(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+    FOREIGN KEY (building_id) REFERENCES buildings(id) ON DELETE SET NULL,
+    CONSTRAINT valid_payslip_type CHECK (payslip_type IN ('project', 'rental'))
+);
+
+-- Bonus Records table
+CREATE TABLE IF NOT EXISTS bonus_records (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    employee_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    amount DECIMAL(15, 2) NOT NULL,
+    description TEXT NOT NULL,
+    effective_date DATE NOT NULL,
+    payroll_month TEXT,
+    is_recurring BOOLEAN NOT NULL DEFAULT FALSE,
+    recurrence_pattern TEXT,
+    eligibility_rule TEXT,
+    approved_by TEXT,
+    approved_at TIMESTAMP,
+    status TEXT NOT NULL,
+    project_id TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+);
+
+-- Payroll Adjustments table
+CREATE TABLE IF NOT EXISTS payroll_adjustments (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    employee_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    category TEXT NOT NULL,
+    amount DECIMAL(15, 2) NOT NULL,
+    description TEXT NOT NULL,
+    effective_date DATE NOT NULL,
+    payroll_month TEXT,
+    is_recurring BOOLEAN NOT NULL DEFAULT FALSE,
+    recurrence_pattern TEXT,
+    formula TEXT,
+    reason TEXT NOT NULL,
+    performed_by TEXT NOT NULL,
+    performed_at TIMESTAMP NOT NULL,
+    status TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+);
+
+-- Loan Advance Records table
+CREATE TABLE IF NOT EXISTS loan_advance_records (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    employee_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    amount DECIMAL(15, 2) NOT NULL,
+    issued_date DATE NOT NULL,
+    repayment_start_date DATE NOT NULL,
+    total_installments INTEGER,
+    installment_amount DECIMAL(15, 2),
+    repayment_frequency TEXT NOT NULL,
+    outstanding_balance DECIMAL(15, 2) NOT NULL,
+    status TEXT NOT NULL,
+    description TEXT,
+    transaction_id TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+    CONSTRAINT valid_loan_type CHECK (type IN ('loan', 'advance'))
+);
+
+-- Attendance Records table
+CREATE TABLE IF NOT EXISTS attendance_records (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    employee_id TEXT NOT NULL,
+    date DATE NOT NULL,
+    check_in TIME,
+    check_out TIME,
+    hours_worked DECIMAL(5, 2),
+    status TEXT NOT NULL,
+    leave_type TEXT,
+    project_id TEXT,
+    notes TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+    UNIQUE(tenant_id, employee_id, date)
+);
+
+-- Tax Configurations table (tenant-specific)
+CREATE TABLE IF NOT EXISTS tax_configurations (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    country_code TEXT NOT NULL,
+    state_code TEXT,
+    effective_from DATE NOT NULL,
+    effective_to DATE,
+    tax_slabs JSONB NOT NULL,
+    exemptions JSONB NOT NULL,
+    credits JSONB NOT NULL,
+    metadata JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Statutory Configurations table (tenant-specific)
+CREATE TABLE IF NOT EXISTS statutory_configurations (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    country_code TEXT NOT NULL,
+    type TEXT NOT NULL,
+    employee_contribution_rate DECIMAL(5, 2),
+    employer_contribution_rate DECIMAL(5, 2),
+    max_salary_limit DECIMAL(15, 2),
+    effective_from DATE NOT NULL,
+    effective_to DATE,
+    rules JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Transaction Log table (audit log - already exists but ensure user_id is present)
+-- Note: Already exists above, but ensuring it has proper structure
+
+-- Error Log table (tenant-specific)
+CREATE TABLE IF NOT EXISTS error_log (
+    id SERIAL PRIMARY KEY,
+    tenant_id TEXT,
+    user_id TEXT,
+    message TEXT NOT NULL,
+    stack TEXT,
+    component_stack TEXT,
+    timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- App Settings table (tenant-specific key-value store)
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    value JSONB NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE(tenant_id, key)
+);
+
+-- License Settings table (tenant-specific)
+CREATE TABLE IF NOT EXISTS license_settings (
+    key TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    UNIQUE(tenant_id, key)
+);
+
+-- Note: Chat Messages table remains local-only (not synced to cloud)
+
+-- ============================================================================
 -- INDEXES FOR PERFORMANCE
 -- ============================================================================
 
@@ -483,6 +911,40 @@ CREATE INDEX IF NOT EXISTS idx_project_agreements_tenant_id ON project_agreement
 CREATE INDEX IF NOT EXISTS idx_sales_returns_tenant_id ON sales_returns(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_sales_returns_agreement_id ON sales_returns(agreement_id);
 CREATE INDEX IF NOT EXISTS idx_contracts_tenant_id ON contracts(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_quotations_tenant_id ON quotations(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_quotations_user_id ON quotations(user_id);
+CREATE INDEX IF NOT EXISTS idx_quotations_vendor_id ON quotations(vendor_id);
+CREATE INDEX IF NOT EXISTS idx_documents_tenant_id ON documents(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);
+CREATE INDEX IF NOT EXISTS idx_documents_entity ON documents(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_tenant_id ON tasks(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_recurring_invoice_templates_tenant_id ON recurring_invoice_templates(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_salary_components_tenant_id ON salary_components(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_employees_tenant_id ON employees(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_employees_user_id ON employees(user_id);
+CREATE INDEX IF NOT EXISTS idx_employees_employee_id ON employees(tenant_id, employee_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_cycles_tenant_id ON payroll_cycles(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_cycles_user_id ON payroll_cycles(user_id);
+CREATE INDEX IF NOT EXISTS idx_payslips_tenant_id ON payslips(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_payslips_user_id ON payslips(user_id);
+CREATE INDEX IF NOT EXISTS idx_payslips_employee_id ON payslips(employee_id);
+CREATE INDEX IF NOT EXISTS idx_payslips_payroll_cycle_id ON payslips(payroll_cycle_id);
+CREATE INDEX IF NOT EXISTS idx_legacy_payslips_tenant_id ON legacy_payslips(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_bonus_records_tenant_id ON bonus_records(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_bonus_records_employee_id ON bonus_records(employee_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_adjustments_tenant_id ON payroll_adjustments(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_adjustments_employee_id ON payroll_adjustments(employee_id);
+CREATE INDEX IF NOT EXISTS idx_loan_advance_records_tenant_id ON loan_advance_records(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_loan_advance_records_employee_id ON loan_advance_records(employee_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_records_tenant_id ON attendance_records(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_records_employee_id ON attendance_records(employee_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_records_date ON attendance_records(date);
+CREATE INDEX IF NOT EXISTS idx_tax_configurations_tenant_id ON tax_configurations(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_statutory_configurations_tenant_id ON statutory_configurations(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_error_log_tenant_id ON error_log(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_app_settings_tenant_id ON app_settings(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_license_settings_tenant_id ON license_settings(tenant_id);
 
 -- Transaction Audit Log table
 CREATE TABLE IF NOT EXISTS transaction_audit_log (
@@ -578,6 +1040,24 @@ ALTER TABLE budgets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rental_agreements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE project_agreements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE contracts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE quotations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE recurring_invoice_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE salary_components ENABLE ROW LEVEL SECURITY;
+ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payroll_cycles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payslips ENABLE ROW LEVEL SECURITY;
+ALTER TABLE legacy_payslips ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bonus_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payroll_adjustments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE loan_advance_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE attendance_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tax_configurations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE statutory_configurations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE error_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE license_settings ENABLE ROW LEVEL SECURITY;
 
 -- Function to get current tenant ID
 CREATE OR REPLACE FUNCTION get_current_tenant_id() 
@@ -673,6 +1153,114 @@ CREATE POLICY tenant_isolation_project_agreements ON project_agreements
 
 DROP POLICY IF EXISTS tenant_isolation_contracts ON contracts;
 CREATE POLICY tenant_isolation_contracts ON contracts
+    FOR ALL
+    USING (tenant_id = get_current_tenant_id())
+    WITH CHECK (tenant_id = get_current_tenant_id());
+
+DROP POLICY IF EXISTS tenant_isolation_quotations ON quotations;
+CREATE POLICY tenant_isolation_quotations ON quotations
+    FOR ALL
+    USING (tenant_id = get_current_tenant_id())
+    WITH CHECK (tenant_id = get_current_tenant_id());
+
+DROP POLICY IF EXISTS tenant_isolation_documents ON documents;
+CREATE POLICY tenant_isolation_documents ON documents
+    FOR ALL
+    USING (tenant_id = get_current_tenant_id())
+    WITH CHECK (tenant_id = get_current_tenant_id());
+
+DROP POLICY IF EXISTS tenant_isolation_tasks ON tasks;
+CREATE POLICY tenant_isolation_tasks ON tasks
+    FOR ALL
+    USING (tenant_id = get_current_tenant_id())
+    WITH CHECK (tenant_id = get_current_tenant_id());
+
+DROP POLICY IF EXISTS tenant_isolation_recurring_invoice_templates ON recurring_invoice_templates;
+CREATE POLICY tenant_isolation_recurring_invoice_templates ON recurring_invoice_templates
+    FOR ALL
+    USING (tenant_id = get_current_tenant_id())
+    WITH CHECK (tenant_id = get_current_tenant_id());
+
+DROP POLICY IF EXISTS tenant_isolation_salary_components ON salary_components;
+CREATE POLICY tenant_isolation_salary_components ON salary_components
+    FOR ALL
+    USING (tenant_id = get_current_tenant_id())
+    WITH CHECK (tenant_id = get_current_tenant_id());
+
+DROP POLICY IF EXISTS tenant_isolation_employees ON employees;
+CREATE POLICY tenant_isolation_employees ON employees
+    FOR ALL
+    USING (tenant_id = get_current_tenant_id())
+    WITH CHECK (tenant_id = get_current_tenant_id());
+
+DROP POLICY IF EXISTS tenant_isolation_payroll_cycles ON payroll_cycles;
+CREATE POLICY tenant_isolation_payroll_cycles ON payroll_cycles
+    FOR ALL
+    USING (tenant_id = get_current_tenant_id())
+    WITH CHECK (tenant_id = get_current_tenant_id());
+
+DROP POLICY IF EXISTS tenant_isolation_payslips ON payslips;
+CREATE POLICY tenant_isolation_payslips ON payslips
+    FOR ALL
+    USING (tenant_id = get_current_tenant_id())
+    WITH CHECK (tenant_id = get_current_tenant_id());
+
+DROP POLICY IF EXISTS tenant_isolation_legacy_payslips ON legacy_payslips;
+CREATE POLICY tenant_isolation_legacy_payslips ON legacy_payslips
+    FOR ALL
+    USING (tenant_id = get_current_tenant_id())
+    WITH CHECK (tenant_id = get_current_tenant_id());
+
+DROP POLICY IF EXISTS tenant_isolation_bonus_records ON bonus_records;
+CREATE POLICY tenant_isolation_bonus_records ON bonus_records
+    FOR ALL
+    USING (tenant_id = get_current_tenant_id())
+    WITH CHECK (tenant_id = get_current_tenant_id());
+
+DROP POLICY IF EXISTS tenant_isolation_payroll_adjustments ON payroll_adjustments;
+CREATE POLICY tenant_isolation_payroll_adjustments ON payroll_adjustments
+    FOR ALL
+    USING (tenant_id = get_current_tenant_id())
+    WITH CHECK (tenant_id = get_current_tenant_id());
+
+DROP POLICY IF EXISTS tenant_isolation_loan_advance_records ON loan_advance_records;
+CREATE POLICY tenant_isolation_loan_advance_records ON loan_advance_records
+    FOR ALL
+    USING (tenant_id = get_current_tenant_id())
+    WITH CHECK (tenant_id = get_current_tenant_id());
+
+DROP POLICY IF EXISTS tenant_isolation_attendance_records ON attendance_records;
+CREATE POLICY tenant_isolation_attendance_records ON attendance_records
+    FOR ALL
+    USING (tenant_id = get_current_tenant_id())
+    WITH CHECK (tenant_id = get_current_tenant_id());
+
+DROP POLICY IF EXISTS tenant_isolation_tax_configurations ON tax_configurations;
+CREATE POLICY tenant_isolation_tax_configurations ON tax_configurations
+    FOR ALL
+    USING (tenant_id = get_current_tenant_id())
+    WITH CHECK (tenant_id = get_current_tenant_id());
+
+DROP POLICY IF EXISTS tenant_isolation_statutory_configurations ON statutory_configurations;
+CREATE POLICY tenant_isolation_statutory_configurations ON statutory_configurations
+    FOR ALL
+    USING (tenant_id = get_current_tenant_id())
+    WITH CHECK (tenant_id = get_current_tenant_id());
+
+DROP POLICY IF EXISTS tenant_isolation_error_log ON error_log;
+CREATE POLICY tenant_isolation_error_log ON error_log
+    FOR ALL
+    USING (tenant_id = get_current_tenant_id() OR tenant_id IS NULL)
+    WITH CHECK (tenant_id = get_current_tenant_id() OR tenant_id IS NULL);
+
+DROP POLICY IF EXISTS tenant_isolation_app_settings ON app_settings;
+CREATE POLICY tenant_isolation_app_settings ON app_settings
+    FOR ALL
+    USING (tenant_id = get_current_tenant_id())
+    WITH CHECK (tenant_id = get_current_tenant_id());
+
+DROP POLICY IF EXISTS tenant_isolation_license_settings ON license_settings;
+CREATE POLICY tenant_isolation_license_settings ON license_settings
     FOR ALL
     USING (tenant_id = get_current_tenant_id())
     WITH CHECK (tenant_id = get_current_tenant_id());

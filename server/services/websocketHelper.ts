@@ -104,5 +104,86 @@ export const WS_EVENTS = {
   
   // Chat events
   CHAT_MESSAGE: 'chat:message',
+  
+  // Quotations
+  QUOTATION_CREATED: 'quotation:created',
+  QUOTATION_UPDATED: 'quotation:updated',
+  QUOTATION_DELETED: 'quotation:deleted',
+  
+  // Documents
+  DOCUMENT_CREATED: 'document:created',
+  DOCUMENT_UPDATED: 'document:updated',
+  DOCUMENT_DELETED: 'document:deleted',
+  
+  // Tasks
+  TASK_CREATED: 'task:created',
+  TASK_UPDATED: 'task:updated',
+  TASK_DELETED: 'task:deleted',
+  
+  // Recurring Invoice Templates
+  RECURRING_INVOICE_TEMPLATE_CREATED: 'recurring_invoice_template:created',
+  RECURRING_INVOICE_TEMPLATE_UPDATED: 'recurring_invoice_template:updated',
+  RECURRING_INVOICE_TEMPLATE_DELETED: 'recurring_invoice_template:deleted',
+  
+  // Salary Components
+  SALARY_COMPONENT_CREATED: 'salary_component:created',
+  SALARY_COMPONENT_UPDATED: 'salary_component:updated',
+  SALARY_COMPONENT_DELETED: 'salary_component:deleted',
+  
+  // Employees
+  EMPLOYEE_CREATED: 'employee:created',
+  EMPLOYEE_UPDATED: 'employee:updated',
+  EMPLOYEE_DELETED: 'employee:deleted',
+  
+  // Payroll Cycles
+  PAYROLL_CYCLE_CREATED: 'payroll_cycle:created',
+  PAYROLL_CYCLE_UPDATED: 'payroll_cycle:updated',
+  PAYROLL_CYCLE_DELETED: 'payroll_cycle:deleted',
+  
+  // Payslips
+  PAYSLIP_CREATED: 'payslip:created',
+  PAYSLIP_UPDATED: 'payslip:updated',
+  PAYSLIP_DELETED: 'payslip:deleted',
+  
+  // Legacy Payslips
+  LEGACY_PAYSLIP_CREATED: 'legacy_payslip:created',
+  LEGACY_PAYSLIP_UPDATED: 'legacy_payslip:updated',
+  LEGACY_PAYSLIP_DELETED: 'legacy_payslip:deleted',
+  
+  // Bonus Records
+  BONUS_RECORD_CREATED: 'bonus_record:created',
+  BONUS_RECORD_UPDATED: 'bonus_record:updated',
+  BONUS_RECORD_DELETED: 'bonus_record:deleted',
+  
+  // Payroll Adjustments
+  PAYROLL_ADJUSTMENT_CREATED: 'payroll_adjustment:created',
+  PAYROLL_ADJUSTMENT_UPDATED: 'payroll_adjustment:updated',
+  PAYROLL_ADJUSTMENT_DELETED: 'payroll_adjustment:deleted',
+  
+  // Loan Advance Records
+  LOAN_ADVANCE_RECORD_CREATED: 'loan_advance_record:created',
+  LOAN_ADVANCE_RECORD_UPDATED: 'loan_advance_record:updated',
+  LOAN_ADVANCE_RECORD_DELETED: 'loan_advance_record:deleted',
+  
+  // Attendance Records
+  ATTENDANCE_RECORD_CREATED: 'attendance_record:created',
+  ATTENDANCE_RECORD_UPDATED: 'attendance_record:updated',
+  ATTENDANCE_RECORD_DELETED: 'attendance_record:deleted',
+  
+  // Tax Configurations
+  TAX_CONFIGURATION_CREATED: 'tax_configuration:created',
+  TAX_CONFIGURATION_UPDATED: 'tax_configuration:updated',
+  TAX_CONFIGURATION_DELETED: 'tax_configuration:deleted',
+  
+  // Statutory Configurations
+  STATUTORY_CONFIGURATION_CREATED: 'statutory_configuration:created',
+  STATUTORY_CONFIGURATION_UPDATED: 'statutory_configuration:updated',
+  STATUTORY_CONFIGURATION_DELETED: 'statutory_configuration:deleted',
+  
+  // App Settings
+  APP_SETTING_UPDATED: 'app_setting:updated',
+  
+  // License Settings
+  LICENSE_SETTING_UPDATED: 'license_setting:updated',
 } as const;
 

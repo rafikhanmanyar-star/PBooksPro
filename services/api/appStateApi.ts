@@ -21,6 +21,22 @@ import { RentalAgreementsApiRepository } from './repositories/rentalAgreementsAp
 import { ProjectAgreementsApiRepository } from './repositories/projectAgreementsApi';
 import { ContractsApiRepository } from './repositories/contractsApi';
 import { SalesReturnsApiRepository } from './repositories/salesReturnsApi';
+import { QuotationsApiRepository } from './repositories/quotationsApi';
+import { DocumentsApiRepository } from './repositories/documentsApi';
+import { TasksApiRepository } from './repositories/tasksApi';
+import { RecurringInvoiceTemplatesApiRepository } from './repositories/recurringInvoiceTemplatesApi';
+import { SalaryComponentsApiRepository } from './repositories/salaryComponentsApi';
+import { EmployeesApiRepository } from './repositories/employeesApi';
+import { PayrollCyclesApiRepository } from './repositories/payrollCyclesApi';
+import { PayslipsApiRepository } from './repositories/payslipsApi';
+import { LegacyPayslipsApiRepository } from './repositories/legacyPayslipsApi';
+import { BonusRecordsApiRepository } from './repositories/bonusRecordsApi';
+import { PayrollAdjustmentsApiRepository } from './repositories/payrollAdjustmentsApi';
+import { LoanAdvanceRecordsApiRepository } from './repositories/loanAdvanceRecordsApi';
+import { AttendanceRecordsApiRepository } from './repositories/attendanceRecordsApi';
+import { TaxConfigurationsApiRepository } from './repositories/taxConfigurationsApi';
+import { StatutoryConfigurationsApiRepository } from './repositories/statutoryConfigurationsApi';
+import { AppSettingsApiRepository } from './repositories/appSettingsApi';
 import { logger } from '../logger';
 
 export class AppStateApiService {
@@ -39,6 +55,22 @@ export class AppStateApiService {
   private projectAgreementsRepo: ProjectAgreementsApiRepository;
   private contractsRepo: ContractsApiRepository;
   private salesReturnsRepo: SalesReturnsApiRepository;
+  private quotationsRepo: QuotationsApiRepository;
+  private documentsRepo: DocumentsApiRepository;
+  private tasksRepo: TasksApiRepository;
+  private recurringInvoiceTemplatesRepo: RecurringInvoiceTemplatesApiRepository;
+  private salaryComponentsRepo: SalaryComponentsApiRepository;
+  private employeesRepo: EmployeesApiRepository;
+  private payrollCyclesRepo: PayrollCyclesApiRepository;
+  private payslipsRepo: PayslipsApiRepository;
+  private legacyPayslipsRepo: LegacyPayslipsApiRepository;
+  private bonusRecordsRepo: BonusRecordsApiRepository;
+  private payrollAdjustmentsRepo: PayrollAdjustmentsApiRepository;
+  private loanAdvanceRecordsRepo: LoanAdvanceRecordsApiRepository;
+  private attendanceRecordsRepo: AttendanceRecordsApiRepository;
+  private taxConfigurationsRepo: TaxConfigurationsApiRepository;
+  private statutoryConfigurationsRepo: StatutoryConfigurationsApiRepository;
+  private appSettingsRepo: AppSettingsApiRepository;
 
   constructor() {
     this.accountsRepo = new AccountsApiRepository();
@@ -56,6 +88,22 @@ export class AppStateApiService {
     this.projectAgreementsRepo = new ProjectAgreementsApiRepository();
     this.contractsRepo = new ContractsApiRepository();
     this.salesReturnsRepo = new SalesReturnsApiRepository();
+    this.quotationsRepo = new QuotationsApiRepository();
+    this.documentsRepo = new DocumentsApiRepository();
+    this.tasksRepo = new TasksApiRepository();
+    this.recurringInvoiceTemplatesRepo = new RecurringInvoiceTemplatesApiRepository();
+    this.salaryComponentsRepo = new SalaryComponentsApiRepository();
+    this.employeesRepo = new EmployeesApiRepository();
+    this.payrollCyclesRepo = new PayrollCyclesApiRepository();
+    this.payslipsRepo = new PayslipsApiRepository();
+    this.legacyPayslipsRepo = new LegacyPayslipsApiRepository();
+    this.bonusRecordsRepo = new BonusRecordsApiRepository();
+    this.payrollAdjustmentsRepo = new PayrollAdjustmentsApiRepository();
+    this.loanAdvanceRecordsRepo = new LoanAdvanceRecordsApiRepository();
+    this.attendanceRecordsRepo = new AttendanceRecordsApiRepository();
+    this.taxConfigurationsRepo = new TaxConfigurationsApiRepository();
+    this.statutoryConfigurationsRepo = new StatutoryConfigurationsApiRepository();
+    this.appSettingsRepo = new AppSettingsApiRepository();
   }
 
   /**
@@ -82,7 +130,22 @@ export class AppStateApiService {
         rentalAgreements,
         projectAgreements,
         contracts,
-        salesReturns
+        salesReturns,
+        quotations,
+        documents,
+        tasks,
+        recurringInvoiceTemplates,
+        salaryComponents,
+        employees,
+        payrollCycles,
+        payslips,
+        legacyPayslips,
+        bonusRecords,
+        payrollAdjustments,
+        loanAdvanceRecords,
+        attendanceRecords,
+        taxConfigurations,
+        statutoryConfigurations
       ] = await Promise.all([
         this.accountsRepo.findAll().catch(err => {
           logger.errorCategory('sync', 'Error loading accounts from API:', err);
@@ -144,6 +207,66 @@ export class AppStateApiService {
           console.error('Error loading sales returns from API:', err);
           return [];
         }),
+        this.quotationsRepo.findAll().catch(err => {
+          console.error('Error loading quotations from API:', err);
+          return [];
+        }),
+        this.documentsRepo.findAll().catch(err => {
+          console.error('Error loading documents from API:', err);
+          return [];
+        }),
+        this.tasksRepo.findAll().catch(err => {
+          console.error('Error loading tasks from API:', err);
+          return [];
+        }),
+        this.recurringInvoiceTemplatesRepo.findAll().catch(err => {
+          console.error('Error loading recurring invoice templates from API:', err);
+          return [];
+        }),
+        this.salaryComponentsRepo.findAll().catch(err => {
+          console.error('Error loading salary components from API:', err);
+          return [];
+        }),
+        this.employeesRepo.findAll().catch(err => {
+          console.error('Error loading employees from API:', err);
+          return [];
+        }),
+        this.payrollCyclesRepo.findAll().catch(err => {
+          console.error('Error loading payroll cycles from API:', err);
+          return [];
+        }),
+        this.payslipsRepo.findAll().catch(err => {
+          console.error('Error loading payslips from API:', err);
+          return [];
+        }),
+        this.legacyPayslipsRepo.findAll().catch(err => {
+          console.error('Error loading legacy payslips from API:', err);
+          return [];
+        }),
+        this.bonusRecordsRepo.findAll().catch(err => {
+          console.error('Error loading bonus records from API:', err);
+          return [];
+        }),
+        this.payrollAdjustmentsRepo.findAll().catch(err => {
+          console.error('Error loading payroll adjustments from API:', err);
+          return [];
+        }),
+        this.loanAdvanceRecordsRepo.findAll().catch(err => {
+          console.error('Error loading loan/advance records from API:', err);
+          return [];
+        }),
+        this.attendanceRecordsRepo.findAll().catch(err => {
+          console.error('Error loading attendance records from API:', err);
+          return [];
+        }),
+        this.taxConfigurationsRepo.findAll().catch(err => {
+          console.error('Error loading tax configurations from API:', err);
+          return [];
+        }),
+        this.statutoryConfigurationsRepo.findAll().catch(err => {
+          console.error('Error loading statutory configurations from API:', err);
+          return [];
+        }),
       ]);
 
       logger.logCategory('sync', '✅ Loaded from API:', {
@@ -162,6 +285,21 @@ export class AppStateApiService {
         projectAgreements: projectAgreements.length,
         contracts: contracts.length,
         salesReturns: salesReturns.length,
+        quotations: quotations.length,
+        documents: documents.length,
+        tasks: tasks.length,
+        recurringInvoiceTemplates: recurringInvoiceTemplates.length,
+        salaryComponents: salaryComponents.length,
+        employees: employees.length,
+        payrollCycles: payrollCycles.length,
+        payslips: payslips.length,
+        legacyPayslips: legacyPayslips.length,
+        bonusRecords: bonusRecords.length,
+        payrollAdjustments: payrollAdjustments.length,
+        loanAdvanceRecords: loanAdvanceRecords.length,
+        attendanceRecords: attendanceRecords.length,
+        taxConfigurations: taxConfigurations.length,
+        statutoryConfigurations: statutoryConfigurations.length,
       });
 
       // Normalize units from API (transform snake_case to camelCase)
@@ -428,6 +566,21 @@ export class AppStateApiService {
         projectAgreements: normalizedProjectAgreements,
         contracts: normalizedContracts,
         salesReturns: normalizedSalesReturns,
+        quotations: quotations || [],
+        documents: documents || [],
+        tasks: tasks || [],
+        recurringInvoiceTemplates: recurringInvoiceTemplates || [],
+        salaryComponents: salaryComponents || [],
+        employees: employees || [],
+        payrollCycles: payrollCycles || [],
+        payslips: payslips || [],
+        legacyPayslips: legacyPayslips || [],
+        bonusRecords: bonusRecords || [],
+        payrollAdjustments: payrollAdjustments || [],
+        loanAdvanceRecords: loanAdvanceRecords || [],
+        attendanceRecords: attendanceRecords || [],
+        taxConfigurations: taxConfigurations || [],
+        statutoryConfigurations: statutoryConfigurations || [],
       };
     } catch (error) {
       logger.errorCategory('sync', '❌ Error loading state from API:', error);

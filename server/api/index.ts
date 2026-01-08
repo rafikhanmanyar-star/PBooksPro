@@ -55,6 +55,23 @@ import salesReturnsRouter from './routes/salesReturns.js';
 import usersRouter from './routes/users.js';
 import transactionAuditRouter from './routes/transaction-audit.js';
 import paymentsRouter from './routes/payments.js';
+import quotationsRouter from './routes/quotations.js';
+import documentsRouter from './routes/documents.js';
+import tasksRouter from './routes/tasks.js';
+import recurringInvoiceTemplatesRouter from './routes/recurring-invoice-templates.js';
+import salaryComponentsRouter from './routes/salary-components.js';
+import employeesRouter from './routes/employees.js';
+import payrollCyclesRouter from './routes/payroll-cycles.js';
+import payslipsRouter from './routes/payslips.js';
+import legacyPayslipsRouter from './routes/legacy-payslips.js';
+import bonusRecordsRouter from './routes/bonus-records.js';
+import payrollAdjustmentsRouter from './routes/payroll-adjustments.js';
+import loanAdvanceRecordsRouter from './routes/loan-advance-records.js';
+import attendanceRecordsRouter from './routes/attendance-records.js';
+import taxConfigurationsRouter from './routes/tax-configurations.js';
+import statutoryConfigurationsRouter from './routes/statutory-configurations.js';
+import errorLogRouter from './routes/error-log.js';
+import appSettingsRouter from './routes/app-settings.js';
 import { tenantMiddleware } from '../middleware/tenantMiddleware.js';
 import { licenseMiddleware } from '../middleware/licenseMiddleware.js';
 
@@ -598,6 +615,23 @@ app.use('/api/sales-returns', salesReturnsRouter);
 app.use('/api/users', usersRouter); // User management (for authenticated tenants)
 app.use('/api/tenants', tenantRouter); // Tenant management (for authenticated tenants)
 app.use('/api/transaction-audit', transactionAuditRouter); // Transaction audit logs
+app.use('/api/quotations', quotationsRouter); // Quotations
+app.use('/api/documents', documentsRouter); // Documents
+app.use('/api/tasks', tasksRouter); // Tasks
+app.use('/api/recurring-invoice-templates', recurringInvoiceTemplatesRouter); // Recurring Invoice Templates
+app.use('/api/salary-components', salaryComponentsRouter); // Salary Components
+app.use('/api/employees', employeesRouter); // Employees
+app.use('/api/payroll-cycles', payrollCyclesRouter); // Payroll Cycles
+app.use('/api/payslips', payslipsRouter); // Payslips
+app.use('/api/legacy-payslips', legacyPayslipsRouter); // Legacy Payslips
+app.use('/api/bonus-records', bonusRecordsRouter); // Bonus Records
+app.use('/api/payroll-adjustments', payrollAdjustmentsRouter); // Payroll Adjustments
+app.use('/api/loan-advance-records', loanAdvanceRecordsRouter); // Loan/Advance Records
+app.use('/api/attendance-records', attendanceRecordsRouter); // Attendance Records
+app.use('/api/tax-configurations', taxConfigurationsRouter); // Tax Configurations
+app.use('/api/statutory-configurations', statutoryConfigurationsRouter); // Statutory Configurations
+app.use('/api/error-log', errorLogRouter); // Error Log
+app.use('/api/app-settings', appSettingsRouter); // App Settings
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
