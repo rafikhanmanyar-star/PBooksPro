@@ -235,12 +235,51 @@ router.delete('/:id', async (req: TenantRequest, res) => {
     
     // Verify user belongs to tenant
     const existing = await db.query(
-      'SELECT id FROM users WHERE id = $1 AND tenant_id = $2',
+      'SELECT id, username, name, role FROM users WHERE id = $1 AND tenant_id = $2',
       [userId, tenantId]
     );
     
     if (existing.length === 0) {
       return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const userToDelete = existing[0];
+    
+    // First, ensure transaction_audit_log.user_id column is nullable
+    // This handles cases where the migration hasn't been applied yet
+    try {
+      await db.query(`
+        DO $$
+        BEGIN
+          -- Check if column exists and has NOT NULL constraint
+          IF EXISTS (
+            SELECT 1 
+            FROM information_schema.columns 
+            WHERE table_name = 'transaction_audit_log' 
+            AND column_name = 'user_id'
+            AND is_nullable = 'NO'
+          ) THEN
+            -- Alter the column to allow NULL values
+            ALTER TABLE transaction_audit_log 
+            ALTER COLUMN user_id DROP NOT NULL;
+          END IF;
+        END $$;
+      `);
+    } catch (migrationError: any) {
+      // If migration fails, log but continue - column might already be nullable
+      console.warn('Warning: Could not ensure transaction_audit_log.user_id is nullable:', migrationError.message);
+    }
+    
+    // Set user_id to NULL in transaction_audit_log before deleting the user
+    // This preserves the audit trail (user_name and user_role remain)
+    try {
+      await db.query(
+        'UPDATE transaction_audit_log SET user_id = NULL WHERE user_id = $1 AND tenant_id = $2',
+        [userId, tenantId]
+      );
+    } catch (updateError: any) {
+      // If update fails, log but continue - might not have any audit log entries
+      console.warn('Warning: Could not update transaction_audit_log:', updateError.message);
     }
     
     // Delete user
