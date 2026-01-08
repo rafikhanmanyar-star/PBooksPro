@@ -141,6 +141,8 @@ export function tenantMiddleware(pool: Pool) {
           // Best-effort cleanup
           try {
             await db.query('DELETE FROM user_sessions WHERE token = $1', [token]);
+            // Set login_status = false since session expired
+            await db.query('UPDATE users SET login_status = FALSE WHERE id = $1', [decoded.userId]);
           } catch (cleanupError) {
             console.warn('Failed to cleanup expired session:', cleanupError);
           }
@@ -165,6 +167,8 @@ export function tenantMiddleware(pool: Pool) {
           
           try {
             await db.query('DELETE FROM user_sessions WHERE token = $1', [token]);
+            // Set login_status = false since session is inactive
+            await db.query('UPDATE users SET login_status = FALSE WHERE id = $1', [decoded.userId]);
           } catch (cleanupError) {
             console.warn('Failed to cleanup inactive session:', cleanupError);
           }

@@ -237,43 +237,63 @@ router.post('/smart-login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Check for existing sessions and handle stale sessions (improper app closure)
-    // If session exists but last_activity is > 5 minutes old, consider it stale and cleanup
-    const STALE_SESSION_THRESHOLD_MINUTES = 5;
-    const activeSessions = await db.query(
-      `SELECT id, last_activity FROM user_sessions
-       WHERE user_id = $1 AND tenant_id = $2 AND expires_at > NOW()
-       LIMIT 1`,
-      [user.id, user.tenant_id]
+    // Check login_status flag - primary check for duplicate logins
+    const userStatus = await db.query(
+      'SELECT login_status FROM users WHERE id = $1',
+      [user.id]
     );
 
-    if (activeSessions.length > 0) {
-      const session = activeSessions[0] as any;
-      const lastActivity = new Date(session.last_activity);
-      const thresholdDate = new Date();
-      thresholdDate.setMinutes(thresholdDate.getMinutes() - STALE_SESSION_THRESHOLD_MINUTES);
+    if (userStatus.length > 0 && userStatus[0].login_status === true) {
+      // User is already logged in - check if session is stale
+      const STALE_SESSION_THRESHOLD_MINUTES = 5;
+      const activeSessions = await db.query(
+        `SELECT id, last_activity FROM user_sessions
+         WHERE user_id = $1 AND tenant_id = $2 AND expires_at > NOW()
+         LIMIT 1`,
+        [user.id, user.tenant_id]
+      );
 
-      // If session is stale (likely from improper app closure), cleanup and allow login
-      if (lastActivity < thresholdDate) {
-        console.log(`🧹 Cleaning up stale session (last activity: ${lastActivity.toISOString()})`);
-        await db.query(
-          'DELETE FROM user_sessions WHERE user_id = $1 AND tenant_id = $2',
-          [user.id, user.tenant_id]
-        );
-        // Continue with login - session was cleaned up
+      if (activeSessions.length > 0) {
+        const session = activeSessions[0] as any;
+        const lastActivity = new Date(session.last_activity);
+        const thresholdDate = new Date();
+        thresholdDate.setMinutes(thresholdDate.getMinutes() - STALE_SESSION_THRESHOLD_MINUTES);
+
+        // If session is stale (likely from improper app closure), cleanup and allow login
+        if (lastActivity < thresholdDate) {
+          console.log(`🧹 Cleaning up stale session (last activity: ${lastActivity.toISOString()})`);
+          await db.query(
+            'DELETE FROM user_sessions WHERE user_id = $1 AND tenant_id = $2',
+            [user.id, user.tenant_id]
+          );
+          // Reset login_status flag since session was stale
+          await db.query(
+            'UPDATE users SET login_status = FALSE WHERE id = $1',
+            [user.id]
+          );
+          // Continue with login - session was cleaned up
+        } else {
+          // Session is still active (recent activity) - user is truly logged in
+          return res.status(409).json({
+            error: 'User is already logged in. Please logout first.',
+            message: 'This account is already logged in for this organization. Please logout from the other session/device and try again.',
+            code: 'ALREADY_LOGGED_IN'
+          });
+        }
       } else {
-        // Session is still active (recent activity)
-        return res.status(409).json({
-          error: 'User is already logged in. Please logout first.',
-          message: 'This account is already logged in for this organization. Please logout from the other session/device and try again.',
-          code: 'ALREADY_LOGGED_IN'
-        });
+        // login_status is true but no active session - reset flag (orphaned state)
+        console.log(`🧹 Resetting orphaned login_status for user ${user.id}`);
+        await db.query(
+          'UPDATE users SET login_status = FALSE WHERE id = $1',
+          [user.id]
+        );
+        // Continue with login
       }
     }
 
-    // Update last login
+    // Update last login and set login_status = true
     await db.query(
-      'UPDATE users SET last_login = NOW() WHERE id = $1',
+      'UPDATE users SET last_login = NOW(), login_status = TRUE WHERE id = $1',
       [user.id]
     );
 
@@ -436,43 +456,63 @@ router.post('/login', async (req, res) => {
     
     console.log('✅ Login: Password verified for user:', { userId: user.id, username: user.username, role: user.role });
 
-    // Check for existing sessions and handle stale sessions (improper app closure)
-    // If session exists but last_activity is > 5 minutes old, consider it stale and cleanup
-    const STALE_SESSION_THRESHOLD_MINUTES = 5;
-    const activeSessions = await db.query(
-      `SELECT id, last_activity FROM user_sessions
-       WHERE user_id = $1 AND tenant_id = $2 AND expires_at > NOW()
-       LIMIT 1`,
-      [user.id, user.tenant_id]
+    // Check login_status flag - primary check for duplicate logins
+    const userStatus = await db.query(
+      'SELECT login_status FROM users WHERE id = $1',
+      [user.id]
     );
 
-    if (activeSessions.length > 0) {
-      const session = activeSessions[0] as any;
-      const lastActivity = new Date(session.last_activity);
-      const thresholdDate = new Date();
-      thresholdDate.setMinutes(thresholdDate.getMinutes() - STALE_SESSION_THRESHOLD_MINUTES);
+    if (userStatus.length > 0 && userStatus[0].login_status === true) {
+      // User is already logged in - check if session is stale
+      const STALE_SESSION_THRESHOLD_MINUTES = 5;
+      const activeSessions = await db.query(
+        `SELECT id, last_activity FROM user_sessions
+         WHERE user_id = $1 AND tenant_id = $2 AND expires_at > NOW()
+         LIMIT 1`,
+        [user.id, user.tenant_id]
+      );
 
-      // If session is stale (likely from improper app closure), cleanup and allow login
-      if (lastActivity < thresholdDate) {
-        console.log(`🧹 Cleaning up stale session (last activity: ${lastActivity.toISOString()})`);
-        await db.query(
-          'DELETE FROM user_sessions WHERE user_id = $1 AND tenant_id = $2',
-          [user.id, user.tenant_id]
-        );
-        // Continue with login - session was cleaned up
+      if (activeSessions.length > 0) {
+        const session = activeSessions[0] as any;
+        const lastActivity = new Date(session.last_activity);
+        const thresholdDate = new Date();
+        thresholdDate.setMinutes(thresholdDate.getMinutes() - STALE_SESSION_THRESHOLD_MINUTES);
+
+        // If session is stale (likely from improper app closure), cleanup and allow login
+        if (lastActivity < thresholdDate) {
+          console.log(`🧹 Cleaning up stale session (last activity: ${lastActivity.toISOString()})`);
+          await db.query(
+            'DELETE FROM user_sessions WHERE user_id = $1 AND tenant_id = $2',
+            [user.id, user.tenant_id]
+          );
+          // Reset login_status flag since session was stale
+          await db.query(
+            'UPDATE users SET login_status = FALSE WHERE id = $1',
+            [user.id]
+          );
+          // Continue with login - session was cleaned up
+        } else {
+          // Session is still active (recent activity) - user is truly logged in
+          return res.status(409).json({
+            error: 'User is already logged in. Please logout first.',
+            message: 'This account is already logged in for this organization. Please logout from the other session/device and try again.',
+            code: 'ALREADY_LOGGED_IN'
+          });
+        }
       } else {
-        // Session is still active (recent activity)
-        return res.status(409).json({
-          error: 'User is already logged in. Please logout first.',
-          message: 'This account is already logged in for this organization. Please logout from the other session/device and try again.',
-          code: 'ALREADY_LOGGED_IN'
-        });
+        // login_status is true but no active session - reset flag (orphaned state)
+        console.log(`🧹 Resetting orphaned login_status for user ${user.id}`);
+        await db.query(
+          'UPDATE users SET login_status = FALSE WHERE id = $1',
+          [user.id]
+        );
+        // Continue with login
       }
     }
 
-    // Update last login
+    // Update last login and set login_status = true
     await db.query(
-      'UPDATE users SET last_login = NOW() WHERE id = $1',
+      'UPDATE users SET last_login = NOW(), login_status = TRUE WHERE id = $1',
       [user.id]
     );
 
@@ -700,6 +740,12 @@ router.post('/logout', async (req, res) => {
           [token, decoded.userId, decoded.tenantId]
         );
         
+        // Set login_status = false
+        await db.query(
+          'UPDATE users SET login_status = FALSE WHERE id = $1',
+          [decoded.userId]
+        );
+        
         res.json({ success: true, message: 'Logged out successfully' });
       } catch (jwtError) {
         // Token invalid, but still return success
@@ -743,6 +789,12 @@ router.post('/heartbeat', async (req, res) => {
           code: 'SESSION_NOT_FOUND'
         });
       }
+      
+      // Ensure login_status is true (maintain login status during heartbeat)
+      await db.query(
+        'UPDATE users SET login_status = TRUE WHERE id = $1',
+        [decoded.userId]
+      );
       
       res.json({ success: true, message: 'Heartbeat received' });
     } catch (jwtError) {

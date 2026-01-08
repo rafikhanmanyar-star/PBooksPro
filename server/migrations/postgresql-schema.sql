@@ -113,12 +113,30 @@ CREATE TABLE IF NOT EXISTS users (
     password TEXT,
     email TEXT,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    login_status BOOLEAN NOT NULL DEFAULT FALSE,
     last_login TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     UNIQUE(tenant_id, username)
 );
+
+-- Add login_status column if it doesn't exist (for existing databases)
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'users' 
+        AND column_name = 'login_status'
+    ) THEN
+        ALTER TABLE users ADD COLUMN login_status BOOLEAN NOT NULL DEFAULT FALSE;
+    END IF;
+END $$;
+
+-- Create indexes for login_status (for faster queries)
+CREATE INDEX IF NOT EXISTS idx_users_login_status ON users(login_status);
+CREATE INDEX IF NOT EXISTS idx_users_tenant_login_status ON users(tenant_id, login_status);
 
 -- ============================================================================
 -- FINANCIAL DATA (All with tenant_id)

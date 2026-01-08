@@ -116,12 +116,12 @@ router.get('/online-users-count', async (req: TenantRequest, res) => {
     const db = getDb();
     const tenantId = req.tenantId!;
     
-    // Count distinct users with active sessions (logged in) for this tenant
-    // A user is considered online if they have at least one active session (not expired)
+    // Count users with login_status = true for this tenant
+    // A user is considered online if their login_status flag is true
     const result = await db.query(
-      `SELECT COUNT(DISTINCT user_id) as count 
-       FROM user_sessions 
-       WHERE tenant_id = $1 AND expires_at > NOW()`,
+      `SELECT COUNT(*) as count 
+       FROM users 
+       WHERE tenant_id = $1 AND login_status = TRUE AND is_active = TRUE`,
       [tenantId]
     );
     
@@ -140,13 +140,12 @@ router.get('/online-users', async (req: TenantRequest, res) => {
     const db = getDb();
     const tenantId = req.tenantId!;
     
-    // Get distinct users with active sessions (logged in) for this tenant
-    // A user is considered online if they have at least one active session (not expired)
+    // Get users with login_status = true for this tenant
+    // A user is considered online if their login_status flag is true
     const users = await db.query(
-      `SELECT DISTINCT u.id, u.username, u.name, u.role, u.email
+      `SELECT u.id, u.username, u.name, u.role, u.email
        FROM users u
-       INNER JOIN user_sessions us ON u.id = us.user_id
-       WHERE u.tenant_id = $1 AND us.expires_at > NOW()
+       WHERE u.tenant_id = $1 AND u.login_status = TRUE AND u.is_active = TRUE
        ORDER BY u.name`,
       [tenantId]
     );
