@@ -776,18 +776,61 @@ router.post('/heartbeat', async (req, res) => {
       // Verify token is valid
       const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
       
-      // Update last_activity for this session
-      const result = await db.query(
-        'UPDATE user_sessions SET last_activity = NOW() WHERE token = $1 AND user_id = $2 AND tenant_id = $3',
+      // Check if session exists first
+      const sessionCheck = await db.query(
+        'SELECT id FROM user_sessions WHERE token = $1 AND user_id = $2 AND tenant_id = $3',
         [token, decoded.userId, decoded.tenantId]
       );
       
-      if (result.length === 0) {
-        // Session doesn't exist or was deleted
-        return res.status(401).json({ 
-          error: 'Session not found',
-          code: 'SESSION_NOT_FOUND'
-        });
+      // If session doesn't exist, try to create it (might be a race condition after login)
+      if (!sessionCheck || sessionCheck.length === 0) {
+        // Try to create the session if it doesn't exist (handles race condition after login)
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 30); // 30 days to match JWT expiration
+        
+        const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        try {
+          await db.query(
+            `INSERT INTO user_sessions (id, user_id, tenant_id, token, ip_address, user_agent, expires_at, last_activity)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+             ON CONFLICT (user_id, tenant_id)
+             DO UPDATE SET
+               token = EXCLUDED.token,
+               expires_at = EXCLUDED.expires_at,
+               last_activity = NOW()`,
+            [
+              sessionId,
+              decoded.userId,
+              decoded.tenantId,
+              token,
+              req.ip || req.headers['x-forwarded-for'] || 'unknown',
+              req.headers['user-agent'] || 'unknown',
+              expiresAt
+            ]
+          );
+        } catch (insertError) {
+          // If insert fails, session might have been created by another request
+          // Try to update it one more time
+          const retryCheck = await db.query(
+            'SELECT id FROM user_sessions WHERE token = $1 AND user_id = $2 AND tenant_id = $3',
+            [token, decoded.userId, decoded.tenantId]
+          );
+          
+          if (!retryCheck || retryCheck.length === 0) {
+            // Session truly doesn't exist - return error
+            return res.status(401).json({ 
+              error: 'Session not found',
+              code: 'SESSION_NOT_FOUND'
+            });
+          }
+        }
+      } else {
+        // Session exists - update last_activity
+        await db.query(
+          'UPDATE user_sessions SET last_activity = NOW() WHERE token = $1 AND user_id = $2 AND tenant_id = $3',
+          [token, decoded.userId, decoded.tenantId]
+        );
       }
       
       // Ensure login_status is true (maintain login status during heartbeat)

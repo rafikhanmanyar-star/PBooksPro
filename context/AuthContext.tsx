@@ -95,25 +95,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!state.isAuthenticated) return;
 
     const HEARTBEAT_INTERVAL = 2 * 60 * 1000; // 2 minutes
+    const INITIAL_DELAY = 5000; // 5 seconds delay before first heartbeat to avoid race condition
     let heartbeatInterval: NodeJS.Timeout | null = null;
+    let initialTimeout: NodeJS.Timeout | null = null;
 
     const sendHeartbeat = async () => {
       try {
         await apiClient.post('/auth/heartbeat', {});
-      } catch (error) {
-        // If heartbeat fails, session might be invalid - don't log as error
-        // The middleware will handle invalid sessions
-        logger.logCategory('auth', 'Heartbeat failed (session may be invalid)');
+      } catch (error: any) {
+        // If heartbeat fails with SESSION_NOT_FOUND, it might be a race condition
+        // Don't trigger logout immediately - wait for next heartbeat
+        if (error?.code === 'SESSION_NOT_FOUND') {
+          logger.logCategory('auth', 'Heartbeat: Session not found (may be race condition), will retry on next interval');
+        } else if (error?.status === 401) {
+          // Only log, don't trigger logout - let middleware handle it on actual API calls
+          logger.logCategory('auth', 'Heartbeat failed (session may be invalid)');
+        } else {
+          // Other errors (network, etc.) - just log
+          logger.logCategory('auth', 'Heartbeat error:', error?.message || error);
+        }
       }
     };
 
-    // Send heartbeat immediately, then every 2 minutes
-    sendHeartbeat();
-    heartbeatInterval = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
+    // Delay first heartbeat to avoid race condition with session creation
+    initialTimeout = setTimeout(() => {
+      sendHeartbeat();
+      heartbeatInterval = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
+    }, INITIAL_DELAY);
 
     return () => {
       if (heartbeatInterval) {
         clearInterval(heartbeatInterval);
+      }
+      if (initialTimeout) {
+        clearTimeout(initialTimeout);
       }
     };
   }, [state.isAuthenticated]);

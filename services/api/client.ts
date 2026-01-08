@@ -307,19 +307,28 @@ export class ApiClient {
             // The error will still be thrown so the caller knows it failed
           } else {
             // For user-initiated actions (like fetching data, navigation, auth operations), logout immediately
-            // Always log auth errors, even if logging is disabled
-            logger.errorCategory('auth', 'API Error (401 Unauthorized) - Token was present but invalid:', {
-              error: data.error,
-              code: data.code,
-              endpoint
-            });
+            // BUT: Don't logout for heartbeat SESSION_NOT_FOUND errors - might be race condition
+            const isHeartbeatSessionNotFound = endpoint.includes('/auth/heartbeat') && data.code === 'SESSION_NOT_FOUND';
             
-            // Clear invalid auth
-            this.clearAuth();
-            
-            // Dispatch custom event for auth context to handle
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('auth:expired', { detail: error }));
+            if (isHeartbeatSessionNotFound) {
+              // Don't logout for heartbeat session not found - might be race condition
+              // Just throw the error, don't clear auth
+              logger.logCategory('auth', 'Heartbeat: Session not found (may be race condition), not logging out');
+            } else {
+              // Always log auth errors, even if logging is disabled
+              logger.errorCategory('auth', 'API Error (401 Unauthorized) - Token was present but invalid:', {
+                error: data.error,
+                code: data.code,
+                endpoint
+              });
+              
+              // Clear invalid auth
+              this.clearAuth();
+              
+              // Dispatch custom event for auth context to handle
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('auth:expired', { detail: error }));
+              }
             }
           }
         } else {
