@@ -668,7 +668,7 @@ const RentalBillsPage: React.FC = () => {
             </div>
 
             {/* Modals */}
-            <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title={duplicateBillData ? "New Bill (Duplicate)" : billToEdit ? "Edit Bill" : "Record New Bill"}>
+            <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title={duplicateBillData ? "New Bill (Duplicate)" : billToEdit ? "Edit Bill" : "Record New Bill"} size="xl">
                 <InvoiceBillForm 
                     onClose={() => setIsCreateModalOpen(false)} 
                     type="bill" 
