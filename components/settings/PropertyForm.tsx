@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Property, Contact, ContactType, Building, InvoiceType } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -26,6 +26,11 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelet
     const { state, dispatch } = useAppContext();
     const { showAlert } = useNotification();
     const entityFormModal = useEntityFormModal();
+    
+    // Use ref to track the last property ID we initialized with
+    // This prevents resetting the form when props change but we're still editing the same property
+    const lastInitializedPropertyId = useRef<string | 'new' | null>(null);
+    
     const [name, setName] = useState(propertyToEdit?.name || '');
     const [ownerId, setOwnerId] = useState(propertyToEdit?.ownerId || '');
     const [buildingId, setBuildingId] = useState(propertyToEdit?.buildingId || '');
@@ -38,6 +43,27 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelet
 
     // Allow both Owner and Client types for the "Global Owner" concept
     const owners = contacts.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
+    
+    // Update form state when propertyToEdit changes (for editing mode)
+    // Only update if propertyToEdit exists and we're actually editing (not creating new)
+    useEffect(() => {
+        const currentPropertyId = propertyToEdit?.id || 'new';
+        
+        // Only update form if we're switching to a different property
+        // This preserves user input when creating a new property
+        if (currentPropertyId !== lastInitializedPropertyId.current) {
+            if (propertyToEdit) {
+                // Editing mode - load property data
+                setName(propertyToEdit.name || '');
+                setOwnerId(propertyToEdit.ownerId || '');
+                setBuildingId(propertyToEdit.buildingId || '');
+                setDescription(propertyToEdit.description || '');
+                setMonthlyServiceCharge(propertyToEdit.monthlyServiceCharge?.toString() || '');
+            }
+            // For new property mode, we don't reset - preserve user input
+            lastInitializedPropertyId.current = currentPropertyId;
+        }
+    }, [propertyToEdit?.id]); // Only update when the property ID changes (switching between properties)
     
     // Check for duplicate property names
     useEffect(() => {
