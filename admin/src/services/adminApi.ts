@@ -243,6 +243,55 @@ class AdminApi {
     }
     return response.json();
   }
+
+  // Tenant User Management
+  async getTenantUsers(tenantId: string) {
+    const response = await fetch(`${ADMIN_API_URL}/tenants/${tenantId}/users`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to fetch tenant users');
+    }
+    return response.json();
+  }
+
+  async resetTenantUserPassword(tenantId: string, userId: string, newPassword: string) {
+    const response = await fetch(`${ADMIN_API_URL}/tenants/${tenantId}/users/${userId}/reset-password`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ newPassword }),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to reset password');
+    }
+    return response.json();
+  }
+
+  async deleteTenantUser(tenantId: string, userId: string) {
+    const response = await fetch(`${ADMIN_API_URL}/tenants/${tenantId}/users/${userId}`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || error.message || 'Failed to delete user');
+    }
+    return response.json();
+  }
+
+  async forceLogoutTenantUser(tenantId: string, userId: string) {
+    const response = await fetch(`${ADMIN_API_URL}/tenants/${tenantId}/users/${userId}/force-logout`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to force logout');
+    }
+    return response.json();
+  }
 }
 
 export const adminApi = new AdminApi();

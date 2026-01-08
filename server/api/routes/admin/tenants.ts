@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { AdminRequest } from '../../../middleware/adminAuthMiddleware.js';
 import { getDatabaseService } from '../../../services/databaseService.js';
 import { LicenseService } from '../../../services/licenseService.js';
+import bcrypt from 'bcryptjs';
 
 const router = Router();
 const getDb = () => getDatabaseService();
@@ -237,6 +238,193 @@ router.delete('/:id', async (req: AdminRequest, res) => {
   } catch (error: any) {
     console.error('Error deleting tenant:', error);
     res.status(500).json({ error: 'Failed to delete tenant' });
+  }
+});
+
+// ============================================================================
+// TENANT USER MANAGEMENT
+// ============================================================================
+
+// Get all users for a tenant
+router.get('/:id/users', async (req: AdminRequest, res) => {
+  try {
+    const db = getDb();
+    const tenantId = req.params.id;
+    
+    // Verify tenant exists
+    const tenants = await db.query('SELECT id, email FROM tenants WHERE id = $1', [tenantId]);
+    if (tenants.length === 0) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+    
+    const tenantEmail = tenants[0].email;
+    
+    // Get all users for this tenant, including login_status
+    const users = await db.query(
+      `SELECT 
+        id, 
+        username, 
+        name, 
+        role, 
+        email, 
+        is_active, 
+        login_status,
+        last_login, 
+        created_at 
+      FROM users 
+      WHERE tenant_id = $1 
+      ORDER BY 
+        CASE WHEN role = 'Admin' THEN 0 ELSE 1 END,
+        created_at ASC`,
+      [tenantId]
+    );
+    
+    // Mark tenant admin - user with role='Admin' or email matching tenant email
+    const usersWithAdminFlag = users.map((user: any) => ({
+      ...user,
+      is_tenant_admin: user.role === 'Admin' || user.email === tenantEmail
+    }));
+    
+    res.json(usersWithAdminFlag);
+  } catch (error: any) {
+    console.error('Error fetching tenant users:', error);
+    res.status(500).json({ error: 'Failed to fetch tenant users' });
+  }
+});
+
+// Reset user password
+router.post('/:id/users/:userId/reset-password', async (req: AdminRequest, res) => {
+  try {
+    const db = getDb();
+    const tenantId = req.params.id;
+    const userId = req.params.userId;
+    const { newPassword } = req.body;
+    
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+    }
+    
+    // Verify tenant exists
+    const tenants = await db.query('SELECT id FROM tenants WHERE id = $1', [tenantId]);
+    if (tenants.length === 0) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+    
+    // Verify user belongs to tenant
+    const users = await db.query(
+      'SELECT id FROM users WHERE id = $1 AND tenant_id = $2',
+      [userId, tenantId]
+    );
+    
+    if (users.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    
+    // Update password
+    await db.query(
+      'UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3',
+      [hashedPassword, userId, tenantId]
+    );
+    
+    res.json({ success: true, message: 'Password reset successfully' });
+  } catch (error: any) {
+    console.error('Error resetting user password:', error);
+    res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+// Delete user account
+router.delete('/:id/users/:userId', async (req: AdminRequest, res) => {
+  try {
+    const db = getDb();
+    const tenantId = req.params.id;
+    const userId = req.params.userId;
+    
+    // Verify tenant exists
+    const tenants = await db.query('SELECT id FROM tenants WHERE id = $1', [tenantId]);
+    if (tenants.length === 0) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+    
+    // Verify user belongs to tenant and get user info
+    const users = await db.query(
+      'SELECT id, role, username FROM users WHERE id = $1 AND tenant_id = $2',
+      [userId, tenantId]
+    );
+    
+    if (users.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const user = users[0];
+    
+    // Prevent deleting the last Admin user
+    if (user.role === 'Admin') {
+      const adminCount = await db.query(
+        'SELECT COUNT(*) as count FROM users WHERE tenant_id = $1 AND role = $2 AND is_active = true',
+        [tenantId, 'Admin']
+      );
+      
+      if (parseInt(adminCount[0].count) <= 1) {
+        return res.status(400).json({ 
+          error: 'Cannot delete the last admin user',
+          message: 'At least one admin user must remain in the organization.'
+        });
+      }
+    }
+    
+    // Delete user sessions first
+    await db.query('DELETE FROM user_sessions WHERE user_id = $1 AND tenant_id = $2', [userId, tenantId]);
+    
+    // Delete user
+    await db.query('DELETE FROM users WHERE id = $1 AND tenant_id = $2', [userId, tenantId]);
+    
+    res.json({ success: true, message: 'User deleted successfully' });
+  } catch (error: any) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// Force logout user (invalidate all sessions and set login_status = false)
+router.post('/:id/users/:userId/force-logout', async (req: AdminRequest, res) => {
+  try {
+    const db = getDb();
+    const tenantId = req.params.id;
+    const userId = req.params.userId;
+    
+    // Verify tenant exists
+    const tenants = await db.query('SELECT id FROM tenants WHERE id = $1', [tenantId]);
+    if (tenants.length === 0) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+    
+    // Verify user belongs to tenant
+    const users = await db.query(
+      'SELECT id FROM users WHERE id = $1 AND tenant_id = $2',
+      [userId, tenantId]
+    );
+    
+    if (users.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Delete all user sessions
+    await db.query('DELETE FROM user_sessions WHERE user_id = $1 AND tenant_id = $2', [userId, tenantId]);
+    
+    // Set login_status to false
+    await db.query(
+      'UPDATE users SET login_status = FALSE, updated_at = NOW() WHERE id = $1 AND tenant_id = $2',
+      [userId, tenantId]
+    );
+    
+    res.json({ success: true, message: 'User logged out successfully from all sessions' });
+  } catch (error: any) {
+    console.error('Error forcing user logout:', error);
+    res.status(500).json({ error: 'Failed to force logout' });
   }
 });
 

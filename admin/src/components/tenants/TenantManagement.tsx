@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '../../services/adminApi';
-import { Search, Eye, Ban, CheckCircle, Edit2, Save, X, Trash2 } from 'lucide-react';
+import { Search, Eye, Ban, CheckCircle, Edit2, Save, X, Trash2, Users, Key, LogOut, UserX, Settings } from 'lucide-react';
 
 interface Tenant {
   id: string;
@@ -258,12 +258,31 @@ const TenantManagement: React.FC = () => {
   );
 };
 
+interface TenantUser {
+  id: string;
+  username: string;
+  name: string;
+  role: string;
+  email?: string;
+  is_active: boolean;
+  login_status: boolean;
+  last_login?: string;
+  created_at: string;
+  is_tenant_admin: boolean;
+}
+
 const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpdate?: () => void }> = ({ tenant, onClose, onUpdate }) => {
   const [stats, setStats] = useState<any>(null);
   const [tenantDetails, setTenantDetails] = useState<Tenant>(tenant);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
+  const [users, setUsers] = useState<TenantUser[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<TenantUser | null>(null);
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [resettingPassword, setResettingPassword] = useState(false);
   
   // Form fields
   const [formData, setFormData] = useState({
@@ -281,6 +300,7 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
   useEffect(() => {
     loadStats();
     loadTenantDetails();
+    loadUsers();
   }, [tenant.id]);
 
   const loadTenantDetails = async () => {
@@ -309,6 +329,74 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
       setStats(data);
     } catch (error) {
       console.error('Failed to load tenant stats:', error);
+    }
+  };
+
+  const loadUsers = async () => {
+    try {
+      setLoadingUsers(true);
+      const data = await adminApi.getTenantUsers(tenant.id);
+      setUsers(data);
+    } catch (error: any) {
+      console.error('Failed to load users:', error);
+      setError(error.message || 'Failed to load users');
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!selectedUser || !newPassword || newPassword.length < 6) {
+      alert('Password must be at least 6 characters long');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to reset the password for "${selectedUser.name}" (${selectedUser.username})?`)) {
+      return;
+    }
+
+    setResettingPassword(true);
+    try {
+      await adminApi.resetTenantUserPassword(tenant.id, selectedUser.id, newPassword);
+      alert('Password reset successfully');
+      setShowPasswordReset(false);
+      setSelectedUser(null);
+      setNewPassword('');
+      await loadUsers();
+    } catch (error: any) {
+      alert(error.message || 'Failed to reset password');
+    } finally {
+      setResettingPassword(false);
+    }
+  };
+
+  const handleDeleteUser = async (user: TenantUser) => {
+    const userType = user.is_tenant_admin ? 'Tenant Admin' : 'Sub User';
+    const confirmMessage = `Are you sure you want to delete "${user.name}" (${user.username})?\n\nUser Type: ${userType}\n\nThis action will permanently delete:\n- The user account\n- All associated sessions\n\nThis action CANNOT be undone!`;
+    
+    if (!confirm(confirmMessage)) return;
+    
+    try {
+      await adminApi.deleteTenantUser(tenant.id, user.id);
+      alert('User deleted successfully');
+      await loadUsers();
+      await loadStats();
+    } catch (error: any) {
+      alert(error.message || 'Failed to delete user');
+    }
+  };
+
+  const handleForceLogout = async (user: TenantUser) => {
+    if (!confirm(`Are you sure you want to forcefully logout "${user.name}" (${user.username})?\n\nThis will invalidate all their active sessions.`)) {
+      return;
+    }
+
+    try {
+      await adminApi.forceLogoutTenantUser(tenant.id, user.id);
+      alert('User logged out successfully from all sessions');
+      await loadUsers();
+    } catch (error: any) {
+      alert(error.message || 'Failed to force logout');
     }
   };
 
@@ -384,7 +472,7 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
       justifyContent: 'center',
       zIndex: 1000
     }} onClick={onClose}>
-      <div className="card" style={{ maxWidth: '600px', width: '90%', maxHeight: '90vh', overflow: 'auto' }} onClick={(e) => e.stopPropagation()}>
+      <div className="card" style={{ maxWidth: '1000px', width: '95%', maxHeight: '90vh', overflow: 'auto' }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
           <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>Tenant Details</h2>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -632,8 +720,210 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
               </div>
             </div>
           )}
+
+          {/* Users Section */}
+          <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Users size={18} />
+                Organization Users ({users.length})
+              </h3>
+            </div>
+
+            {loadingUsers ? (
+              <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>Loading users...</div>
+            ) : users.length === 0 ? (
+              <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>No users found</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                      <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Name</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Username</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Type</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Role</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Status</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((user) => (
+                      <tr key={user.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        <td style={{ padding: '0.75rem' }}>
+                          <div style={{ fontWeight: 500 }}>{user.name}</div>
+                          {user.email && (
+                            <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{user.email}</div>
+                          )}
+                        </td>
+                        <td style={{ padding: '0.75rem', fontSize: '0.875rem' }}>{user.username}</td>
+                        <td style={{ padding: '0.75rem' }}>
+                          {user.is_tenant_admin ? (
+                            <span style={{ 
+                              padding: '0.25rem 0.5rem', 
+                              borderRadius: '0.25rem', 
+                              fontSize: '0.75rem', 
+                              fontWeight: 600,
+                              backgroundColor: '#dbeafe', 
+                              color: '#1e40af' 
+                            }}>
+                              Tenant Admin
+                            </span>
+                          ) : (
+                            <span style={{ 
+                              padding: '0.25rem 0.5rem', 
+                              borderRadius: '0.25rem', 
+                              fontSize: '0.75rem', 
+                              fontWeight: 600,
+                              backgroundColor: '#f3f4f6', 
+                              color: '#4b5563' 
+                            }}>
+                              Sub User
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: '0.75rem', fontSize: '0.875rem' }}>{user.role}</td>
+                        <td style={{ padding: '0.75rem' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                            <span style={{ 
+                              padding: '0.125rem 0.5rem', 
+                              borderRadius: '0.25rem', 
+                              fontSize: '0.75rem', 
+                              fontWeight: 500,
+                              backgroundColor: user.is_active ? '#d1fae5' : '#fee2e2', 
+                              color: user.is_active ? '#065f46' : '#991b1b',
+                              width: 'fit-content'
+                            }}>
+                              {user.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                            {user.login_status && (
+                              <span style={{ 
+                                padding: '0.125rem 0.5rem', 
+                                borderRadius: '0.25rem', 
+                                fontSize: '0.75rem', 
+                                fontWeight: 500,
+                                backgroundColor: '#dbeafe', 
+                                color: '#1e40af',
+                                width: 'fit-content'
+                              }}>
+                                Logged In
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ padding: '0.75rem' }}>
+                          <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                            <button
+                              className="btn btn-secondary"
+                              onClick={() => {
+                                setSelectedUser(user);
+                                setShowPasswordReset(true);
+                                setNewPassword('');
+                              }}
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                              title="Reset Password"
+                            >
+                              <Key size={14} />
+                            </button>
+                            {user.login_status && (
+                              <button
+                                className="btn btn-warning"
+                                onClick={() => handleForceLogout(user)}
+                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                                title="Force Logout"
+                              >
+                                <LogOut size={14} />
+                              </button>
+                            )}
+                            <button
+                              className="btn btn-danger"
+                              onClick={() => handleDeleteUser(user)}
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                              title="Delete User"
+                            >
+                              <UserX size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Password Reset Modal */}
+      {showPasswordReset && selectedUser && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000
+        }} onClick={() => {
+          setShowPasswordReset(false);
+          setSelectedUser(null);
+          setNewPassword('');
+        }}>
+          <div className="card" style={{ maxWidth: '400px', width: '90%' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>Reset Password</h3>
+              <button onClick={() => {
+                setShowPasswordReset(false);
+                setSelectedUser(null);
+                setNewPassword('');
+              }} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: '0.25rem' }}>×</button>
+            </div>
+            <div style={{ marginBottom: '1rem' }}>
+              <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.5rem' }}>
+                Reset password for: <strong>{selectedUser.name}</strong> ({selectedUser.username})
+              </p>
+              <label style={{ fontSize: '0.875rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>
+                New Password *
+              </label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="input"
+                placeholder="Enter new password (min 6 characters)"
+                style={{ width: '100%' }}
+                autoFocus
+              />
+              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                Password must be at least 6 characters long
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setShowPasswordReset(false);
+                  setSelectedUser(null);
+                  setNewPassword('');
+                }}
+                disabled={resettingPassword}
+                style={{ padding: '0.5rem 1rem' }}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleResetPassword}
+                disabled={resettingPassword || !newPassword || newPassword.length < 6}
+                style={{ padding: '0.5rem 1rem' }}
+              >
+                {resettingPassword ? 'Resetting...' : 'Reset Password'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
