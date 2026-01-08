@@ -86,16 +86,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
               // It's a project agreement, so it's a project bill (not tenant in building context)
               return 'project';
           }
-          // Check if propertyId belongs to a tenant (via rental agreement)
+          // Check if propertyId belongs to a building (owner bill)
           if (bill.propertyId) {
-              const rentalAgreement = state.rentalAgreements.find(ra => 
-                  ra.propertyId === bill.propertyId && ra.status === 'Active'
-              );
-              if (rentalAgreement) {
-                  // This property has an active rental agreement, so it's a tenant bill
-                  return 'tenant';
-              }
-              // Property exists but no active rental agreement, so it's an owner bill
               return 'owner';
           }
           if (bill.buildingId) return 'building';
@@ -235,7 +227,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                   setAgreementId(bill.projectAgreementId);
               }
           } else if (bill.propertyId) {
-              // No projectAgreementId but has propertyId - check if property has rental agreement
+              // No projectAgreementId but has propertyId - it's an owner bill
               const property = state.properties.find(p => p.id === bill.propertyId);
               if (property) {
                   // Derive buildingId from property if not already set
@@ -243,28 +235,12 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                       setBuildingId(property.buildingId);
                   }
                   
-                  // Check for rental agreement to determine if it's a tenant bill
-                  const rentalAgreement = state.rentalAgreements.find(ra => 
-                      ra.propertyId === bill.propertyId && ra.status === 'Active'
-                  );
-                  if (rentalAgreement) {
-                      // This is a tenant bill - restore tenant information
-                      setTenantId(rentalAgreement.tenantId);
-                      setAgreementId(rentalAgreement.id);
-                      setBillAllocationType('tenant');
-                      // Ensure root allocation type is building for tenant bills
-                      if (!bill.projectId && !bill.staffId) {
-                          setRootAllocationType('building');
-                      }
-                  } else {
-                      // Property exists but no active rental agreement - it's an owner bill
-                      setTenantId('');
-                      setAgreementId('');
-                      setBillAllocationType('owner');
-                      // Ensure root allocation type is building for owner bills
-                      if (!bill.projectId && !bill.staffId) {
-                          setRootAllocationType('building');
-                      }
+                  setTenantId('');
+                  setAgreementId('');
+                  setBillAllocationType('owner');
+                  // Ensure root allocation type is building for owner bills
+                  if (!bill.projectId && !bill.staffId) {
+                      setRootAllocationType('building');
                   }
               }
           } else if (bill.buildingId) {

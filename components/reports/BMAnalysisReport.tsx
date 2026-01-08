@@ -116,6 +116,11 @@ const BMAnalysisReport: React.FC = () => {
             return c?.type === ContactType.TENANT;
         };
 
+        const isTenantBill = (bill: typeof state.bills[0]) => {
+            if (!bill.projectAgreementId) return false;
+            return state.rentalAgreements.some(ra => ra.id === bill.projectAgreementId);
+        };
+
         // 1. Process Transactions (Collected & Direct Expenses)
         state.transactions.forEach(tx => {
             const date = new Date(tx.date);
@@ -158,11 +163,11 @@ const BMAnalysisReport: React.FC = () => {
 
             // Expense Logic: Include if linked to Building
             if (bill.buildingId && buildingData[bill.buildingId]) {
-                // Exclude Owner Bills
+                // Exclude Owner Bills (linked to Property)
                 if (bill.propertyId) return;
 
-                // Exclude Tenant Bills
-                if (isTenant(bill.contactId)) return;
+                // Exclude Tenant Bills (linked to Rental Agreement)
+                if (isTenantBill(bill)) return;
 
                 // Handle expenseCategoryItems: process each category separately
                 if (bill.expenseCategoryItems && bill.expenseCategoryItems.length > 0) {

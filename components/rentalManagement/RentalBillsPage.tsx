@@ -371,16 +371,6 @@ const RentalBillsPage: React.FC = () => {
             }
         }
 
-        // If no rental agreement found via projectAgreementId, check propertyId
-        if (!tenantId && paymentBill.propertyId) {
-            const rentalAgreement = state.rentalAgreements.find(ra => 
-                ra.propertyId === paymentBill.propertyId && ra.status === 'Active'
-            );
-            if (rentalAgreement) {
-                tenantId = rentalAgreement.tenantId;
-            }
-        }
-
         // If this is a tenant-allocated bill, update category to include "(Tenant)" suffix
         if (tenantId && paymentBill.categoryId) {
             const originalCategory = state.categories.find(c => c.id === paymentBill.categoryId);

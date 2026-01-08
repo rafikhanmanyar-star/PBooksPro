@@ -111,16 +111,6 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
                     }
                 }
 
-                // If no rental agreement found via projectAgreementId, check propertyId
-                if (!tenantId && bill.propertyId) {
-                    const rentalAgreement = state.rentalAgreements.find(ra => 
-                        ra.propertyId === bill.propertyId && ra.status === 'Active'
-                    );
-                    if (rentalAgreement) {
-                        tenantId = rentalAgreement.tenantId;
-                    }
-                }
-
                 // If this is a tenant-allocated bill, update category to include "(Tenant)" suffix
                 if (tenantId && bill.categoryId) {
                     const originalCategory = state.categories.find(c => c.id === bill.categoryId);
