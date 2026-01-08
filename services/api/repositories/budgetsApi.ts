@@ -43,9 +43,18 @@ export class BudgetsApiRepository {
 
   /**
    * Update an existing budget
+   * Note: For upsert operations, use create() which handles both create and update
    */
   async update(id: string, budget: Partial<Budget>): Promise<Budget> {
     return apiClient.put<Budget>(`/budgets/${id}`, budget);
+  }
+
+  /**
+   * Create or update budget (upsert)
+   * Uses POST endpoint which handles both create and update via ON CONFLICT
+   */
+  async save(budget: Partial<Budget>): Promise<Budget> {
+    return apiClient.post<Budget>('/budgets', budget);
   }
 
   /**

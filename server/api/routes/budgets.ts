@@ -50,33 +50,71 @@ router.get('/:id', async (req: TenantRequest, res) => {
   }
 });
 
-// POST create budget
+// POST create/update budget (upsert)
 router.post('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const budget = req.body;
+    
+    // Validate required fields
+    if (!budget.categoryId) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Category ID is required'
+      });
+    }
+    if (budget.amount === undefined || budget.amount === null) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Amount is required'
+      });
+    }
+    
+    // Generate ID if not provided
+    const budgetId = budget.id || `budget_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Check if budget exists to determine if this is a create or update
+    const existing = await db.query(
+      'SELECT id FROM budgets WHERE id = $1 AND tenant_id = $2',
+      [budgetId, req.tenantId]
+    );
+    const isUpdate = existing.length > 0;
+    
+    // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
     const result = await db.query(
-      `INSERT INTO budgets (id, tenant_id, category_id, amount, project_id)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING *`,
+      `INSERT INTO budgets (
+        id, tenant_id, category_id, amount, project_id, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5,
+                COALESCE((SELECT created_at FROM budgets WHERE id = $1), NOW()), NOW())
+      ON CONFLICT (id) 
+      DO UPDATE SET
+        category_id = EXCLUDED.category_id,
+        amount = EXCLUDED.amount,
+        project_id = EXCLUDED.project_id,
+        updated_at = NOW()
+      RETURNING *`,
       [
-        budget.id,
+        budgetId,
         req.tenantId,
         budget.categoryId,
         budget.amount,
         budget.projectId || null
       ]
     );
-    const saved = result[0];
-    emitToTenant(req.tenantId!, WS_EVENTS.BUDGET_CREATED, {
-      budget: saved,
+    
+    emitToTenant(req.tenantId!, isUpdate ? WS_EVENTS.BUDGET_UPDATED : WS_EVENTS.BUDGET_CREATED, {
+      budget: result[0],
       userId: req.user?.userId,
       username: req.user?.username,
     });
-    res.status(201).json(saved);
-  } catch (error) {
-    console.error('Error creating budget:', error);
-    res.status(500).json({ error: 'Failed to create budget' });
+
+    res.status(201).json(result[0]);
+  } catch (error: any) {
+    console.error('Error creating/updating budget:', error);
+    res.status(500).json({ 
+      error: 'Failed to create/update budget',
+      message: error.message || 'Internal server error'
+    });
   }
 });
 

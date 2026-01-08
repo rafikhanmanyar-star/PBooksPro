@@ -272,4 +272,3 @@ await db.query(
 
 1. **Database schema migration** - Updated `postgresql-schema.sql`
 2. **API routes** - 18+ new route files in `server/api/routes/`
-3. **Frontend API repositories** - 18+ new repository files in `services/api/repositories/`

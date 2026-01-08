@@ -913,11 +913,13 @@ export class AppStateApiService {
    * Save budget to API
    */
   async saveBudget(budget: Partial<AppState['budgets'][0]>): Promise<AppState['budgets'][0]> {
-    if (budget.id) {
-      return this.budgetsRepo.update(budget.id, budget);
-    } else {
-      return this.budgetsRepo.create(budget);
-    }
+    // Always use POST endpoint - it handles upserts automatically
+    const budgetWithId = {
+      ...budget,
+      id: budget.id || `budget_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+    logger.logCategory('sync', `💾 Syncing budget (POST upsert): ${budgetWithId.id} - Category: ${budgetWithId.categoryId}`);
+    return this.budgetsRepo.create(budgetWithId);
   }
 
   /**

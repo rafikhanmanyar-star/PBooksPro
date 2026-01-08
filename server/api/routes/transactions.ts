@@ -660,25 +660,44 @@ router.post('/', async (req: TenantRequest, res) => {
             newStatus = 'Partially Paid';
           }
           
-          // Update invoice's paid_amount and status
-          const updatedInvoice = await db.query(
-            'UPDATE invoices SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4 RETURNING *',
-            [totalPaid, newStatus, result.invoice_id, req.tenantId]
+          // Get full invoice data to ensure we have all required fields for upsert
+          const fullInvoiceData = await db.query(
+            'SELECT * FROM invoices WHERE id = $1 AND tenant_id = $2',
+            [result.invoice_id, req.tenantId]
           );
           
-          console.log('✅ POST /transactions - Updated invoice paid_amount:', {
-            invoiceId: result.invoice_id,
-            totalPaid,
-            status: newStatus
-          });
-          
-          // Emit WebSocket event to notify other users of invoice update
-          if (updatedInvoice.length > 0) {
-            emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_UPDATED, {
-              invoice: updatedInvoice[0],
-              userId: req.user?.userId,
-              username: req.user?.username,
+          if (fullInvoiceData.length > 0) {
+            // Invoice exists - update it
+            const invoice = fullInvoiceData[0];
+            const updatedInvoice = await db.query(
+              `UPDATE invoices 
+               SET paid_amount = $1, status = $2, updated_at = NOW() 
+               WHERE id = $3 AND tenant_id = $4 
+               RETURNING *`,
+              [totalPaid, newStatus, result.invoice_id, req.tenantId]
+            );
+            
+            console.log('✅ POST /transactions - Updated invoice paid_amount:', {
+              invoiceId: result.invoice_id,
+              totalPaid,
+              status: newStatus
             });
+            
+            // Emit WebSocket event to notify other users of invoice update
+            if (updatedInvoice.length > 0) {
+              emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_UPDATED, {
+                invoice: updatedInvoice[0],
+                userId: req.user?.userId,
+                username: req.user?.username,
+              });
+            }
+          } else {
+            // Invoice doesn't exist in cloud DB yet - this shouldn't happen but log it
+            console.warn('⚠️ POST /transactions - Invoice not found in cloud DB for paid_amount update:', {
+              invoiceId: result.invoice_id,
+              tenantId: req.tenantId
+            });
+            // The invoice will be synced when the frontend syncs it
           }
         }
       } catch (invoiceUpdateError) {
@@ -935,16 +954,29 @@ router.put('/:id', async (req: TenantRequest, res) => {
             newStatus = 'Partially Paid';
           }
           
-          const updatedInvoice = await db.query(
-            'UPDATE invoices SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4 RETURNING *',
-            [totalPaid, newStatus, invoiceIdToUpdate, req.tenantId]
+          // Check if invoice exists before updating
+          const fullInvoiceData = await db.query(
+            'SELECT * FROM invoices WHERE id = $1 AND tenant_id = $2',
+            [invoiceIdToUpdate, req.tenantId]
           );
           
-          if (updatedInvoice.length > 0) {
-            emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_UPDATED, {
-              invoice: updatedInvoice[0],
-              userId: req.user?.userId,
-              username: req.user?.username,
+          if (fullInvoiceData.length > 0) {
+            const updatedInvoice = await db.query(
+              'UPDATE invoices SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4 RETURNING *',
+              [totalPaid, newStatus, invoiceIdToUpdate, req.tenantId]
+            );
+            
+            if (updatedInvoice.length > 0) {
+              emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_UPDATED, {
+                invoice: updatedInvoice[0],
+                userId: req.user?.userId,
+                username: req.user?.username,
+              });
+            }
+          } else {
+            console.warn('⚠️ PUT /transactions - Invoice not found in cloud DB for paid_amount update:', {
+              invoiceId: invoiceIdToUpdate,
+              tenantId: req.tenantId
             });
           }
         }
@@ -1051,16 +1083,29 @@ router.delete('/:id', async (req: TenantRequest, res) => {
             newStatus = 'Partially Paid';
           }
           
-          const updatedInvoice = await db.query(
-            'UPDATE invoices SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4 RETURNING *',
-            [totalPaid, newStatus, oldTransaction[0].invoice_id, req.tenantId]
+          // Check if invoice exists before updating
+          const fullInvoiceData = await db.query(
+            'SELECT * FROM invoices WHERE id = $1 AND tenant_id = $2',
+            [oldTransaction[0].invoice_id, req.tenantId]
           );
           
-          if (updatedInvoice.length > 0) {
-            emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_UPDATED, {
-              invoice: updatedInvoice[0],
-              userId: req.user?.userId,
-              username: req.user?.username,
+          if (fullInvoiceData.length > 0) {
+            const updatedInvoice = await db.query(
+              'UPDATE invoices SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4 RETURNING *',
+              [totalPaid, newStatus, oldTransaction[0].invoice_id, req.tenantId]
+            );
+            
+            if (updatedInvoice.length > 0) {
+              emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_UPDATED, {
+                invoice: updatedInvoice[0],
+                userId: req.user?.userId,
+                username: req.user?.username,
+              });
+            }
+          } else {
+            console.warn('⚠️ DELETE /transactions - Invoice not found in cloud DB for paid_amount update:', {
+              invoiceId: oldTransaction[0].invoice_id,
+              tenantId: req.tenantId
             });
           }
         }
