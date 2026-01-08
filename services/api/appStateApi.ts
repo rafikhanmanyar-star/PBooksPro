@@ -311,6 +311,39 @@ export class AppStateApiService {
         pmCycleAllocations: pmCycleAllocations.length,
       });
 
+      // Normalize properties from API (transform snake_case to camelCase)
+      // The server returns snake_case fields, but the client expects camelCase
+      const normalizedProperties = properties.map((p: any) => {
+        // Normalize property to ensure all fields are properly mapped
+        // Handle both camelCase and snake_case field names for backward compatibility
+        // Preserve null/undefined values explicitly to prevent data loss
+        const normalizedProperty = {
+          id: p.id || '',
+          name: p.name ?? p.name ?? '',
+          ownerId: p.ownerId ?? p.owner_id ?? '',
+          buildingId: p.buildingId ?? p.building_id ?? '',
+          description: (p.description) || undefined,
+          monthlyServiceCharge: (() => {
+            const charge = p.monthlyServiceCharge ?? p.monthly_service_charge;
+            if (charge == null) return undefined;
+            return typeof charge === 'number' ? charge : parseFloat(String(charge));
+          })()
+        };
+        
+        // Debug: Log properties that seem to be missing critical data
+        if (!normalizedProperty.name || !normalizedProperty.ownerId || !normalizedProperty.buildingId) {
+          console.warn('⚠️ Property normalization warning - missing critical fields:', {
+            id: normalizedProperty.id,
+            name: normalizedProperty.name,
+            ownerId: normalizedProperty.ownerId,
+            buildingId: normalizedProperty.buildingId,
+            rawProperty: p
+          });
+        }
+        
+        return normalizedProperty;
+      });
+
       // Normalize units from API (transform snake_case to camelCase)
       // The server returns snake_case fields, but the client expects camelCase
       const normalizedUnits = units.map((u: any) => ({
@@ -566,7 +599,7 @@ export class AppStateApiService {
         categories: normalizedCategories,
         projects,
         buildings,
-        properties,
+        properties: normalizedProperties,
         units: normalizedUnits,
         invoices: normalizedInvoices,
         bills: normalizedBills,
@@ -815,7 +848,21 @@ export class AppStateApiService {
       id: property.id || `property_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
     logger.logCategory('sync', `💾 Syncing property (POST upsert): ${propertyWithId.id} - ${propertyWithId.name}`);
-    return this.propertiesRepo.create(propertyWithId);
+    const saved = await this.propertiesRepo.create(propertyWithId);
+    
+    // Normalize the response (server returns snake_case, client expects camelCase)
+    return {
+      id: saved.id,
+      name: saved.name || '',
+      ownerId: (saved as any).owner_id || saved.ownerId || '',
+      buildingId: (saved as any).building_id || saved.buildingId || '',
+      description: saved.description || undefined,
+      monthlyServiceCharge: (() => {
+        const charge = (saved as any).monthly_service_charge ?? saved.monthlyServiceCharge;
+        if (charge == null) return undefined;
+        return typeof charge === 'number' ? charge : parseFloat(String(charge));
+      })()
+    };
   }
 
   /**
