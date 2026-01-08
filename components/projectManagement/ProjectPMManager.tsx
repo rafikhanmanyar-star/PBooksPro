@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { TransactionType, Transaction, AccountType, Project, Bill, InvoiceStatus, ContactType } from '../../types';
+import { TransactionType, Transaction, AccountType, Project, Bill, InvoiceStatus, ContactType, PMCycleAllocation } from '../../types';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import { ICONS, CURRENCY } from '../../constants';
@@ -778,9 +778,42 @@ const ProjectPMManager: React.FC = () => {
         });
 
         if (bills.length > 0) {
-            bills.forEach(bill => {
+            // Create PM cycle allocation records for each bill
+            cyclesToProcess.forEach(({ cycleId, start, end }, index) => {
+                const bill = bills[index];
+                if (!bill) return; // Skip if no bill was created for this cycle
+                
+                const expenses = getExpensesInRange(selectedProjectId, start, end, excludedCategoryIds);
+                const totalExpense = expenses.reduce((sum, tx) => sum + tx.amount, 0);
+                const cycleLabel = getCycleLabel(cycleId, frequency);
+                
+                // Create PM cycle allocation record
+                const allocation: PMCycleAllocation = {
+                    id: `pm-alloc-${cycleId}-${Date.now()}-${index}`,
+                    projectId: selectedProjectId,
+                    cycleId: cycleId,
+                    cycleLabel: cycleLabel,
+                    frequency: frequency,
+                    startDate: start.toISOString().split('T')[0],
+                    endDate: end.toISOString().split('T')[0],
+                    allocationDate: new Date().toISOString().split('T')[0],
+                    amount: bill.amount,
+                    paidAmount: 0,
+                    status: 'unpaid',
+                    billId: bill.id,
+                    description: bill.description,
+                    expenseTotal: totalExpense,
+                    feeRate: rate,
+                    excludedCategoryIds: Array.from(excludedCategoryIds)
+                };
+                
+                // Dispatch bill (existing behavior)
                 dispatch({ type: 'ADD_BILL', payload: bill });
+                
+                // Dispatch PM cycle allocation (new - for cloud sync)
+                dispatch({ type: 'ADD_PM_CYCLE_ALLOCATION', payload: allocation });
             });
+            
             showToast(`Allocated PM fees for ${bills.length} cycle(s). Bills created as accounts payable.`, "success");
         } else {
             await showAlert("No fees to allocate for the selected cycles.");

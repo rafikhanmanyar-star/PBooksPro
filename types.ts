@@ -242,6 +242,25 @@ export interface PMConfig {
   excludedCategoryIds?: string[];
 }
 
+export interface PMCycleAllocation {
+  id: string;
+  projectId: string;
+  cycleId: string;
+  cycleLabel: string;
+  frequency: 'Monthly' | 'Weekly' | 'Yearly';
+  startDate: string;
+  endDate: string;
+  allocationDate: string;
+  amount: number;
+  paidAmount: number;
+  status: string;
+  billId?: string;
+  description?: string;
+  expenseTotal: number;
+  feeRate: number;
+  excludedCategoryIds?: string[];
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -1022,6 +1041,7 @@ export interface AppState {
   rentalPayslips: Payslip[];
 
   recurringInvoiceTemplates: RecurringInvoiceTemplate[];
+  pmCycleAllocations: PMCycleAllocation[];
 
   agreementSettings: AgreementSettings;
   projectAgreementSettings: AgreementSettings;

@@ -185,5 +185,10 @@ export const WS_EVENTS = {
   
   // License Settings
   LICENSE_SETTING_UPDATED: 'license_setting:updated',
+  
+  // PM Cycle Allocations
+  PM_CYCLE_ALLOCATION_CREATED: 'pm_cycle_allocation:created',
+  PM_CYCLE_ALLOCATION_UPDATED: 'pm_cycle_allocation:updated',
+  PM_CYCLE_ALLOCATION_DELETED: 'pm_cycle_allocation:deleted',
 } as const;
 

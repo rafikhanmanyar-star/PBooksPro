@@ -37,6 +37,7 @@ import { AttendanceRecordsApiRepository } from './repositories/attendanceRecords
 import { TaxConfigurationsApiRepository } from './repositories/taxConfigurationsApi';
 import { StatutoryConfigurationsApiRepository } from './repositories/statutoryConfigurationsApi';
 import { AppSettingsApiRepository } from './repositories/appSettingsApi';
+import { PMCycleAllocationsApiRepository } from './repositories/pmCycleAllocationsApi';
 import { logger } from '../logger';
 
 export class AppStateApiService {
@@ -71,6 +72,7 @@ export class AppStateApiService {
   private taxConfigurationsRepo: TaxConfigurationsApiRepository;
   private statutoryConfigurationsRepo: StatutoryConfigurationsApiRepository;
   private appSettingsRepo: AppSettingsApiRepository;
+  private pmCycleAllocationsRepo: PMCycleAllocationsApiRepository;
 
   constructor() {
     this.accountsRepo = new AccountsApiRepository();
@@ -104,6 +106,7 @@ export class AppStateApiService {
     this.taxConfigurationsRepo = new TaxConfigurationsApiRepository();
     this.statutoryConfigurationsRepo = new StatutoryConfigurationsApiRepository();
     this.appSettingsRepo = new AppSettingsApiRepository();
+    this.pmCycleAllocationsRepo = new PMCycleAllocationsApiRepository();
   }
 
   /**
@@ -145,7 +148,8 @@ export class AppStateApiService {
         loanAdvanceRecords,
         attendanceRecords,
         taxConfigurations,
-        statutoryConfigurations
+        statutoryConfigurations,
+        pmCycleAllocations
       ] = await Promise.all([
         this.accountsRepo.findAll().catch(err => {
           logger.errorCategory('sync', 'Error loading accounts from API:', err);
@@ -267,6 +271,10 @@ export class AppStateApiService {
           console.error('Error loading statutory configurations from API:', err);
           return [];
         }),
+        this.pmCycleAllocationsRepo.findAll().catch(err => {
+          console.error('Error loading PM cycle allocations from API:', err);
+          return [];
+        }),
       ]);
 
       logger.logCategory('sync', '✅ Loaded from API:', {
@@ -300,6 +308,7 @@ export class AppStateApiService {
         attendanceRecords: attendanceRecords.length,
         taxConfigurations: taxConfigurations.length,
         statutoryConfigurations: statutoryConfigurations.length,
+        pmCycleAllocations: pmCycleAllocations.length,
       });
 
       // Normalize units from API (transform snake_case to camelCase)
@@ -581,6 +590,7 @@ export class AppStateApiService {
         attendanceRecords: attendanceRecords || [],
         taxConfigurations: taxConfigurations || [],
         statutoryConfigurations: statutoryConfigurations || [],
+        pmCycleAllocations: pmCycleAllocations || [],
       };
     } catch (error) {
       logger.errorCategory('sync', '❌ Error loading state from API:', error);
@@ -1079,6 +1089,26 @@ export class AppStateApiService {
    */
   async deleteSalesReturn(id: string): Promise<void> {
     return this.salesReturnsRepo.delete(id);
+  }
+
+  /**
+   * Save PM cycle allocation to API
+   */
+  async savePMCycleAllocation(allocation: Partial<any>): Promise<any> {
+    // Always use POST endpoint - it handles upserts automatically
+    const allocationWithId = {
+      ...allocation,
+      id: allocation.id || `pm_alloc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+    logger.logCategory('sync', `💾 Syncing PM cycle allocation (POST upsert): ${allocationWithId.id} - Project: ${allocationWithId.projectId}, Cycle: ${allocationWithId.cycleId}`);
+    return this.pmCycleAllocationsRepo.create(allocationWithId);
+  }
+
+  /**
+   * Delete PM cycle allocation from API
+   */
+  async deletePMCycleAllocation(id: string): Promise<void> {
+    return this.pmCycleAllocationsRepo.delete(id);
   }
 }
 

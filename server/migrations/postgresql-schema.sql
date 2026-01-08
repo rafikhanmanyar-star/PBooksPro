@@ -907,6 +907,35 @@ CREATE TABLE IF NOT EXISTS license_settings (
 
 -- Note: Chat Messages table remains local-only (not synced to cloud)
 
+-- PM Cycle Allocations table (tracks PM fee allocations per cycle)
+CREATE TABLE IF NOT EXISTS pm_cycle_allocations (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    project_id TEXT NOT NULL,
+    cycle_id TEXT NOT NULL,
+    cycle_label TEXT NOT NULL,
+    frequency TEXT NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    allocation_date DATE NOT NULL,
+    amount DECIMAL(15, 2) NOT NULL,
+    paid_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'unpaid',
+    bill_id TEXT,
+    description TEXT,
+    expense_total DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    fee_rate DECIMAL(5, 2) NOT NULL,
+    excluded_category_ids JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (bill_id) REFERENCES bills(id) ON DELETE SET NULL,
+    UNIQUE(tenant_id, project_id, cycle_id)
+);
+
 -- ============================================================================
 -- INDEXES FOR PERFORMANCE
 -- ============================================================================
@@ -963,6 +992,10 @@ CREATE INDEX IF NOT EXISTS idx_statutory_configurations_tenant_id ON statutory_c
 CREATE INDEX IF NOT EXISTS idx_error_log_tenant_id ON error_log(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_app_settings_tenant_id ON app_settings(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_license_settings_tenant_id ON license_settings(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_tenant_id ON pm_cycle_allocations(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_project_id ON pm_cycle_allocations(project_id);
+CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_cycle_id ON pm_cycle_allocations(cycle_id);
+CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_user_id ON pm_cycle_allocations(user_id);
 
 -- Transaction Audit Log table
 CREATE TABLE IF NOT EXISTS transaction_audit_log (
@@ -1076,6 +1109,7 @@ ALTER TABLE statutory_configurations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE error_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE license_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pm_cycle_allocations ENABLE ROW LEVEL SECURITY;
 
 -- Function to get current tenant ID
 CREATE OR REPLACE FUNCTION get_current_tenant_id() 
@@ -1279,6 +1313,12 @@ CREATE POLICY tenant_isolation_app_settings ON app_settings
 
 DROP POLICY IF EXISTS tenant_isolation_license_settings ON license_settings;
 CREATE POLICY tenant_isolation_license_settings ON license_settings
+    FOR ALL
+    USING (tenant_id = get_current_tenant_id())
+    WITH CHECK (tenant_id = get_current_tenant_id());
+
+DROP POLICY IF EXISTS tenant_isolation_pm_cycle_allocations ON pm_cycle_allocations;
+CREATE POLICY tenant_isolation_pm_cycle_allocations ON pm_cycle_allocations
     FOR ALL
     USING (tenant_id = get_current_tenant_id())
     WITH CHECK (tenant_id = get_current_tenant_id());

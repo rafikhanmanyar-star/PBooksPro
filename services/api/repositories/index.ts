@@ -35,4 +35,5 @@ export { AttendanceRecordsApiRepository } from './attendanceRecordsApi';
 export { TaxConfigurationsApiRepository } from './taxConfigurationsApi';
 export { StatutoryConfigurationsApiRepository } from './statutoryConfigurationsApi';
 export { AppSettingsApiRepository } from './appSettingsApi';
+export { PMCycleAllocationsApiRepository } from './pmCycleAllocationsApi';
 

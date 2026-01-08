@@ -638,6 +638,26 @@ const reducer = (state: AppState, action: AppAction): AppState => {
         }
         case 'DELETE_BILL':
             return { ...state, bills: state.bills.filter(b => b.id !== action.payload) };
+        
+        // --- PM CYCLE ALLOCATIONS ---
+        case 'ADD_PM_CYCLE_ALLOCATION':
+            return { 
+                ...state, 
+                pmCycleAllocations: [...(state.pmCycleAllocations || []), action.payload] 
+            };
+        case 'UPDATE_PM_CYCLE_ALLOCATION':
+            return { 
+                ...state, 
+                pmCycleAllocations: (state.pmCycleAllocations || []).map(a => 
+                    a.id === action.payload.id ? action.payload : a
+                ) 
+            };
+        case 'DELETE_PM_CYCLE_ALLOCATION':
+            return { 
+                ...state, 
+                pmCycleAllocations: (state.pmCycleAllocations || []).filter(a => a.id !== action.payload) 
+            };
+        
         case 'ADD_QUOTATION':
             return { ...state, quotations: [...(state.quotations || []), action.payload] };
         case 'UPDATE_QUOTATION':
@@ -1893,6 +1913,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 'UPDATE_INSTALLMENT_PLAN',
                 'DELETE_INSTALLMENT_PLAN',
                 'UPDATE_PM_COST_PERCENTAGE',
+                // PM Cycle Allocations
+                'ADD_PM_CYCLE_ALLOCATION',
+                'UPDATE_PM_CYCLE_ALLOCATION',
+                'DELETE_PM_CYCLE_ALLOCATION',
             ]);
 
             if (!SYNC_TO_API_ACTIONS.has(action.type)) {
@@ -2247,6 +2271,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             const contractId = action.payload as string;
                             await apiService.deleteContract(contractId);
                             logger.logCategory('sync', '✅ Synced contract deletion to API:', contractId);
+                        }
+
+                        // Handle PM cycle allocation changes
+                        if (action.type === 'ADD_PM_CYCLE_ALLOCATION') {
+                            const allocation = action.payload as any;
+                            await apiService.savePMCycleAllocation(allocation);
+                            logger.logCategory('sync', '✅ Synced PM cycle allocation to API:', allocation.cycleId);
+                        } else if (action.type === 'UPDATE_PM_CYCLE_ALLOCATION') {
+                            const allocation = action.payload as any;
+                            await apiService.savePMCycleAllocation(allocation);
+                            logger.logCategory('sync', '✅ Synced PM cycle allocation update to API:', allocation.cycleId);
+                        } else if (action.type === 'DELETE_PM_CYCLE_ALLOCATION') {
+                            const allocationId = action.payload as string;
+                            await apiService.deletePMCycleAllocation(allocationId);
+                            logger.logCategory('sync', '✅ Synced PM cycle allocation deletion to API:', allocationId);
                         }
                     } catch (error: any) {
                         // Log error but don't block UI - state is already updated locally
