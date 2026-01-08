@@ -33,11 +33,8 @@ export interface AuthState {
 
 interface AuthContextType extends AuthState {
   login: (username: string, password: string, tenantId: string) => Promise<void>;
-  smartLogin: (identifier: string, password: string, tenantId?: string) => Promise<{
-    requiresTenantSelection: boolean;
-    tenants?: Array<{ id: string; name: string; company_name: string; email: string }>;
-    success?: boolean;
-  }>;
+  lookupTenants: (organizationEmail: string) => Promise<Array<{ id: string; name: string; company_name: string; email: string }>>;
+  smartLogin: (username: string, password: string, tenantId: string) => Promise<void>;
   registerTenant: (data: TenantRegistrationData) => Promise<{ tenantId: string; trialDaysRemaining: number }>;
   logout: () => void;
   activateLicense: (licenseKey: string) => Promise<void>;
@@ -382,22 +379,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [logout]);
 
   /**
-   * Smart login - auto-resolves tenant from email/username
+   * Lookup tenants by organization email (Step 1 of login flow)
    */
-  const smartLogin = useCallback(async (identifier: string, password: string, tenantId?: string) => {
+  const lookupTenants = useCallback(async (organizationEmail: string) => {
+    logger.logCategory('auth', '🔍 Looking up tenants for email:', organizationEmail.substring(0, 10) + '...');
+
+    try {
+      const response = await apiClient.post<{
+        tenants: Array<{ id: string; name: string; company_name: string; email: string }>;
+      }>('/auth/lookup-tenants', {
+        organizationEmail,
+      });
+
+      logger.logCategory('auth', '📥 Received tenant lookup response:', {
+        tenantsCount: response.tenants?.length || 0
+      });
+
+      return response.tenants || [];
+    } catch (error: any) {
+      logger.errorCategory('auth', '❌ Tenant lookup error:', {
+        error: error,
+        message: error?.message,
+        status: error?.status,
+        errorProperty: error?.error
+      });
+      throw error;
+    }
+  }, []);
+
+  /**
+   * Smart login - requires tenantId (Step 2 of login flow)
+   */
+  const smartLogin = useCallback(async (username: string, password: string, tenantId: string) => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
-    logger.logCategory('auth', '🔐 Starting smart login:', { identifier: identifier.substring(0, 10) + '...', hasPassword: !!password, tenantId });
+    logger.logCategory('auth', '🔐 Starting smart login:', { username: username.substring(0, 10) + '...', hasPassword: !!password, tenantId });
 
     try {
       logger.logCategory('auth', '📤 Sending login request to server...');
       const response = await apiClient.post<{
-        token?: string;
-        user?: User;
-        tenant?: Tenant;
-        requiresTenantSelection?: boolean;
-        tenants?: Array<{ id: string; name: string; company_name: string; email: string }>;
+        token: string;
+        user: User;
+        tenant: Tenant;
       }>('/auth/smart-login', {
-        identifier,
+        username,
         password,
         tenantId,
       });
@@ -405,27 +429,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       logger.logCategory('auth', '📥 Received login response:', {
         hasToken: !!response.token,
         hasUser: !!response.user,
-        hasTenant: !!response.tenant,
-        requiresTenantSelection: response.requiresTenantSelection,
-        tenantsCount: response.tenants?.length || 0
+        hasTenant: !!response.tenant
       });
 
-      // If multiple tenants found, return them for selection
-      if (response.requiresTenantSelection && response.tenants) {
-        logger.logCategory('auth', '✅ Multiple tenants found, showing selection');
-        setState(prev => ({ ...prev, isLoading: false }));
-        return {
-          requiresTenantSelection: true,
-          tenants: response.tenants,
-        };
-      }
-
-      // Single tenant - proceed with login
       if (response.token && response.user && response.tenant) {
         logger.logCategory('auth', '✅ Login successful, processing response...');
-        // Store last used tenant in localStorage
+        
+        // Store tenant info in localStorage for post-login session management
         localStorage.setItem('last_tenant_id', response.tenant.id);
-        localStorage.setItem('last_identifier', identifier);
+        localStorage.setItem('last_username', username);
 
         // Set authentication
         apiClient.setAuth(response.token, response.tenant.id);
@@ -456,14 +468,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         logger.logCategory('auth', '✅ Login completed successfully');
-        return {
-          requiresTenantSelection: false,
-          success: true,
-        };
+      } else {
+        logger.errorCategory('auth', '❌ Invalid response from server:', { response });
+        throw new Error('Invalid response from server - missing token, user, or tenant');
       }
-
-      logger.errorCategory('auth', '❌ Invalid response from server:', { response });
-      throw new Error('Invalid response from server - missing token, user, or tenant');
     } catch (error: any) {
       logger.errorCategory('auth', '❌ Login error caught:', {
         error: error,
@@ -627,6 +635,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         ...state,
         login,
+        lookupTenants,
         smartLogin,
         registerTenant,
         logout,

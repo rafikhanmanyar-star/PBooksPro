@@ -7,234 +7,134 @@ const router = Router();
 // Lazy initialization - get database service when needed, not at module load
 const getDb = () => getDatabaseService();
 
-// Smart login - auto-resolves tenant from email/username
+// Simple rate limiting map (in production, use Redis or proper rate limiting middleware)
+const lookupRateLimit = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 5;
+
+// Lookup tenants by organization email (Step 1 of login flow)
+router.post('/lookup-tenants', async (req, res) => {
+  try {
+    const db = getDb();
+    const { organizationEmail } = req.body;
+    
+    if (!organizationEmail) {
+      return res.status(400).json({ error: 'Organization email is required' });
+    }
+
+    // Basic email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(organizationEmail)) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+
+    // Rate limiting - prevent email enumeration attacks
+    const clientIp = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+    const now = Date.now();
+    const rateLimitKey = `lookup_${clientIp}`;
+    const rateLimit = lookupRateLimit.get(rateLimitKey);
+
+    if (rateLimit && rateLimit.resetAt > now) {
+      if (rateLimit.count >= RATE_LIMIT_MAX_REQUESTS) {
+        return res.status(429).json({ 
+          error: 'Too many requests', 
+          message: 'Please wait a moment before trying again.' 
+        });
+      }
+      rateLimit.count++;
+    } else {
+      lookupRateLimit.set(rateLimitKey, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    }
+
+    // Clean up old rate limit entries periodically
+    if (Math.random() < 0.1) { // 10% chance to cleanup
+      for (const [key, value] of lookupRateLimit.entries()) {
+        if (value.resetAt <= now) {
+          lookupRateLimit.delete(key);
+        }
+      }
+    }
+
+    // Lookup tenants by email (case-insensitive)
+    const tenants = await db.query(
+      'SELECT id, name, company_name, email FROM tenants WHERE LOWER(email) = LOWER($1)',
+      [organizationEmail]
+    );
+
+    // Return empty array if no match (don't reveal if email exists for security)
+    // Only return safe fields (no license info, settings, etc.)
+    res.json({
+      tenants: tenants.map(t => ({
+        id: t.id,
+        name: t.name,
+        company_name: t.company_name,
+        email: t.email
+      }))
+    });
+  } catch (error: any) {
+    console.error('Tenant lookup error:', error);
+    res.status(500).json({ 
+      error: 'Lookup failed',
+      message: 'An error occurred while looking up organizations. Please try again.'
+    });
+  }
+});
+
+// Smart login - requires tenantId (Step 2 of login flow)
 router.post('/smart-login', async (req, res) => {
   try {
     const db = getDb();
-    const { identifier, password, tenantId } = req.body; // identifier can be email or username
+    const { username, password, tenantId } = req.body;
     
-    if (!identifier || !password) {
-      return res.status(400).json({ error: 'Email/username and password are required' });
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    console.log('🔐 Smart login attempt:', { identifier: identifier.substring(0, 10) + '...', hasPassword: !!password, tenantId });
-
-    const isEmail = identifier.includes('@');
-    let matchedTenants: any[] = [];
-    let matchedUsers: any[] = [];
-
-    if (tenantId) {
-      // If tenantId is provided, use the existing login flow
-      const tenants = await db.query(
-        'SELECT * FROM tenants WHERE id = $1',
-        [tenantId]
-      );
-      
-      if (tenants.length === 0) {
-        // Tenant not found - fall back to auto-resolve mode
-        // This handles cases where localStorage has a stale tenantId
-        console.log('⚠️ Smart login: Tenant not found, falling back to auto-resolve:', tenantId);
-        // Continue to auto-resolve logic below (don't return error)
-      } else {
-        const tenant = tenants[0];
-        
-        // First check if user exists (without is_active check) for better error messages
-        // Use case-insensitive comparison for username
-        const allUsers = await db.query(
-          'SELECT * FROM users WHERE LOWER(username) = LOWER($1) AND tenant_id = $2',
-          [identifier, tenantId]
-        );
-        
-        if (allUsers.length === 0) {
-          console.log('❌ Smart login: User not found:', { identifier, tenantId });
-          // Additional diagnostic: check if user exists with different case
-          const diagnosticUsers = await db.query(
-            'SELECT username FROM users WHERE tenant_id = $1 AND LOWER(username) LIKE LOWER($2)',
-            [tenantId, `%${identifier}%`]
-          );
-          if (diagnosticUsers.length > 0) {
-            console.log('🔍 Diagnostic: Found similar usernames:', diagnosticUsers.map((u: any) => u.username));
-          }
-          return res.status(401).json({ error: 'Invalid credentials', message: 'User not found' });
-        }
-        
-        // Check if user is active
-        const users = allUsers.filter(u => u.is_active === true || u.is_active === null);
-        
-        if (users.length === 0) {
-          console.log('❌ Smart login: User is inactive:', { identifier, tenantId, is_active: allUsers[0]?.is_active });
-          return res.status(403).json({ error: 'Account disabled', message: 'Your account has been disabled. Please contact your administrator.' });
-        }
-
-        matchedTenants = [tenant];
-        matchedUsers = users;
-      }
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant ID is required. Please select an organization first.' });
     }
+
+    console.log('🔐 Smart login attempt:', { username: username.substring(0, 10) + '...', hasPassword: !!password, tenantId });
+
+    // Verify tenant exists
+    const tenants = await db.query(
+      'SELECT * FROM tenants WHERE id = $1',
+      [tenantId]
+    );
     
-    // Auto-resolve tenant (if tenantId was not provided, or if provided tenantId was invalid)
-    if (matchedUsers.length === 0) {
-      // Auto-resolve tenant
-      if (isEmail) {
-        // Search by email - check tenant email first, then user emails
-        const tenantsByEmail = await db.query(
-          'SELECT * FROM tenants WHERE email = $1',
-          [identifier]
-        );
-        
-        if (tenantsByEmail.length > 0) {
-          // Found tenant by email, now find user by email in that tenant
-          for (const tenant of tenantsByEmail) {
-            const allUsers = await db.query(
-              'SELECT * FROM users WHERE email = $1 AND tenant_id = $2',
-              [identifier, tenant.id]
-            );
-            // Filter for active users
-            const users = allUsers.filter((u: any) => u.is_active === true || u.is_active === null);
-            if (users.length > 0) {
-              matchedTenants.push(tenant);
-              matchedUsers.push(...users);
-            }
-          }
-        } else {
-          // Check if email matches any user email - use explicit column selection to avoid conflicts
-          const usersByEmail = await db.query(
-            `SELECT u.id, u.username, u.name, u.role, u.email, u.password, u.tenant_id, u.is_active,
-                    t.id as tenant_id_col, t.name as tenant_name, t.company_name, t.email as tenant_email 
-             FROM users u 
-             JOIN tenants t ON u.tenant_id = t.id 
-             WHERE u.email = $1`,
-            [identifier]
-          );
-          
-          console.log('🔍 Smart login: Email lookup result:', { 
-            email: identifier, 
-            foundUsers: usersByEmail.length,
-            users: usersByEmail.map((u: any) => ({ id: u.id, username: u.username, email: u.email, is_active: u.is_active }))
-          });
-          
-          // Filter for active users
-          const activeUsersByEmail = usersByEmail.filter((row: any) => row.is_active === true || row.is_active === null);
-          
-          if (activeUsersByEmail.length > 0) {
-            matchedUsers = activeUsersByEmail.map((row: any) => ({
-              id: row.id,
-              username: row.username,
-              name: row.name,
-              role: row.role,
-              email: row.email,
-              password: row.password,
-              tenant_id: row.tenant_id
-            }));
-            matchedTenants = activeUsersByEmail.map((row: any) => ({
-              id: row.tenant_id,
-              name: row.tenant_name,
-              company_name: row.company_name,
-              email: row.tenant_email
-            }));
-          } else if (usersByEmail.length > 0) {
-            // User exists but is inactive
-            console.log('❌ Smart login: User found but inactive:', { email: identifier, is_active: usersByEmail[0]?.is_active });
-            return res.status(403).json({ error: 'Account disabled', message: 'Your account has been disabled. Please contact your administrator.' });
-          }
-        }
-      } else {
-        // Search by username across all tenants (check all users first, then filter active)
-        // Use case-insensitive comparison for username
-        console.log('🔍 Smart login: Searching by username:', identifier);
-        const allUsersByUsername = await db.query(
-          `SELECT u.id, u.username, u.name, u.role, u.email, u.password, u.tenant_id, u.is_active,
-                  t.id as t_id, t.name as tenant_name, t.company_name, t.email as tenant_email 
-           FROM users u 
-           JOIN tenants t ON u.tenant_id = t.id 
-           WHERE LOWER(u.username) = LOWER($1)`,
-          [identifier]
-        );
-        
-        console.log('🔍 Smart login: Username lookup result:', { 
-          username: identifier, 
-          foundUsers: allUsersByUsername.length,
-          users: allUsersByUsername.map((u: any) => ({ id: u.id, username: u.username, email: u.email, is_active: u.is_active, tenant_id: u.tenant_id }))
-        });
-        
-        // Filter for active users
-        const usersByUsername = allUsersByUsername.filter((row: any) => row.is_active === true || row.is_active === null);
-        
-        if (usersByUsername.length > 0) {
-          console.log('✅ Smart login: Found active users:', usersByUsername.length);
-          matchedUsers = usersByUsername.map((row: any) => ({
-            id: row.id,
-            username: row.username,
-            name: row.name,
-            role: row.role,
-            email: row.email,
-            password: row.password,
-            tenant_id: row.tenant_id
-          }));
-          
-          // Group by tenant to avoid duplicates
-          const tenantMap = new Map();
-          usersByUsername.forEach((row: any) => {
-            if (!tenantMap.has(row.tenant_id)) {
-              tenantMap.set(row.tenant_id, {
-                id: row.t_id,
-                name: row.tenant_name,
-                company_name: row.company_name,
-                email: row.tenant_email
-              });
-            }
-          });
-          matchedTenants = Array.from(tenantMap.values());
-        } else if (allUsersByUsername.length > 0) {
-          // User exists but is inactive
-          console.log('❌ Smart login: User found but inactive:', { username: identifier, is_active: allUsersByUsername[0]?.is_active });
-          return res.status(403).json({ error: 'Account disabled', message: 'Your account has been disabled. Please contact your administrator.' });
-        }
-      }
-    }
-
-    // If no matches found
-    if (matchedUsers.length === 0) {
-      console.log('❌ Smart login: No matching users found:', { 
-        identifier: identifier.substring(0, 20) + '...', 
-        isEmail,
-        fullIdentifier: identifier,
-        matchedTenantsCount: matchedTenants.length
-      });
-      
-      // If it's an email, provide more helpful error message
-      if (isEmail) {
-        return res.status(401).json({ 
-          error: 'Invalid credentials', 
-          message: `No user found with email "${identifier}". Please check your email address or contact your administrator.` 
-        });
-      } else {
-        return res.status(401).json({ 
-          error: 'Invalid credentials', 
-          message: `No user found with username "${identifier}". Please check your username or contact your administrator.` 
-        });
-      }
-    }
-
-    // If multiple tenants found, return them for selection
-    if (matchedTenants.length > 1) {
-      return res.status(200).json({
-        requiresTenantSelection: true,
-        tenants: matchedTenants.map(t => ({
-          id: t.id,
-          name: t.name,
-          company_name: t.company_name,
-          email: t.email
-        }))
+    if (tenants.length === 0) {
+      return res.status(401).json({ 
+        error: 'Invalid tenant',
+        message: 'The selected organization does not exist. Please try again.'
       });
     }
 
-    // Single tenant found - verify password
-    const user = matchedUsers[0];
-    const tenant = matchedTenants[0];
+    const tenant = tenants[0];
+    
+    // Find user within tenant (case-insensitive username comparison)
+    const allUsers = await db.query(
+      'SELECT * FROM users WHERE LOWER(username) = LOWER($1) AND tenant_id = $2',
+      [username, tenantId]
+    );
+    
+    if (allUsers.length === 0) {
+      console.log('❌ Smart login: User not found:', { username, tenantId });
+      return res.status(401).json({ error: 'Invalid credentials', message: 'User not found' });
+    }
+    
+    // Check if user is active
+    const users = allUsers.filter(u => u.is_active === true || u.is_active === null);
+    
+    if (users.length === 0) {
+      console.log('❌ Smart login: User is inactive:', { username, tenantId, is_active: allUsers[0]?.is_active });
+      return res.status(403).json({ error: 'Account disabled', message: 'Your account has been disabled. Please contact your administrator.' });
+    }
+
+    const user = users[0];
 
     // Verify password
     if (!user.password || !await bcrypt.compare(password, user.password)) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ error: 'Invalid credentials', message: 'Incorrect password' });
     }
 
     // Check login_status flag - primary check for duplicate logins
