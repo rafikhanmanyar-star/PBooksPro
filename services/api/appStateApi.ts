@@ -590,21 +590,95 @@ export class AppStateApiService {
         children: t.children || undefined
       }));
 
+      // Normalize accounts from API
+      const normalizedAccounts = accounts.map((a: any) => ({
+        id: a.id,
+        name: a.name || '',
+        type: a.type,
+        balance: typeof a.balance === 'number' ? a.balance : parseFloat(String(a.balance || '0')),
+        isPermanent: a.is_permanent === true || a.is_permanent === 1 || a.isPermanent === true || false,
+        description: a.description || undefined,
+        parentAccountId: a.parent_account_id || a.parentAccountId || undefined
+      }));
+
+      // Normalize contacts from API
+      const normalizedContacts = contacts.map((c: any) => ({
+        id: c.id,
+        name: c.name || '',
+        type: c.type,
+        description: c.description || undefined,
+        contactNo: c.contact_no || c.contactNo || undefined,
+        companyName: c.company_name || c.companyName || undefined,
+        address: c.address || undefined
+      }));
+
+      // Normalize projects from API
+      const normalizedProjects = projects.map((p: any) => ({
+        id: p.id,
+        name: p.name || '',
+        description: p.description || undefined,
+        color: p.color || undefined,
+        status: p.status || 'Active',
+        installmentConfig: (() => {
+          const config = p.installment_config || p.installmentConfig;
+          if (!config) return undefined;
+          if (typeof config === 'string') {
+            try {
+              return JSON.parse(config);
+            } catch {
+              return undefined;
+            }
+          }
+          return config;
+        })(),
+        pmConfig: (() => {
+          const config = p.pm_config || p.pmConfig;
+          if (!config) return undefined;
+          if (typeof config === 'string') {
+            try {
+              return JSON.parse(config);
+            } catch {
+              return undefined;
+            }
+          }
+          return config;
+        })()
+      }));
+
+      // Normalize buildings from API
+      const normalizedBuildings = buildings.map((b: any) => ({
+        id: b.id,
+        name: b.name || '',
+        description: b.description || undefined,
+        color: b.color || undefined
+      }));
+
+      // Normalize budgets from API
+      const normalizedBudgets = budgets.map((b: any) => ({
+        id: b.id,
+        categoryId: b.category_id || b.categoryId || '',
+        amount: typeof b.amount === 'number' ? b.amount : parseFloat(String(b.amount || '0')),
+        projectId: b.project_id || b.projectId || undefined
+      }));
+
+      // Normalize rental agreements from API (transform snake_case to camelCase)
+      const normalizedRentalAgreements = rentalAgreements.map((ra: any) => this.normalizeRentalAgreement(ra));
+
       // Return partial state with API-loaded data
       // Other entities will remain from initial state or be loaded separately
       return {
-        accounts,
-        contacts,
+        accounts: normalizedAccounts,
+        contacts: normalizedContacts,
         transactions: normalizedTransactions,
         categories: normalizedCategories,
-        projects,
-        buildings,
+        projects: normalizedProjects,
+        buildings: normalizedBuildings,
         properties: normalizedProperties,
         units: normalizedUnits,
         invoices: normalizedInvoices,
         bills: normalizedBills,
-        budgets,
-        rentalAgreements,
+        budgets: normalizedBudgets,
+        rentalAgreements: normalizedRentalAgreements,
         projectAgreements: normalizedProjectAgreements,
         contracts: normalizedContracts,
         salesReturns: normalizedSalesReturns,
@@ -655,7 +729,18 @@ export class AppStateApiService {
       id: account.id || `account_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
     logger.logCategory('sync', `💾 Syncing account (POST upsert): ${accountWithId.id} - ${accountWithId.name}`);
-    return this.accountsRepo.create(accountWithId);
+    const saved = await this.accountsRepo.create(accountWithId);
+    
+    // Normalize the response (server returns snake_case, client expects camelCase)
+    return {
+      id: saved.id,
+      name: saved.name || '',
+      type: saved.type,
+      balance: typeof saved.balance === 'number' ? saved.balance : parseFloat(String(saved.balance || '0')),
+      isPermanent: (saved as any).is_permanent === true || (saved as any).is_permanent === 1 || saved.isPermanent === true || false,
+      description: saved.description || undefined,
+      parentAccountId: (saved as any).parent_account_id || saved.parentAccountId || undefined
+    };
   }
 
   /**
@@ -696,19 +781,28 @@ export class AppStateApiService {
       };
       
       // Always use POST endpoint for contacts - it handles upserts automatically
-      // The server-side POST endpoint checks if contact exists and updates it, or creates it if new
-      // This avoids the "Contact not found" error when syncing new contacts that have IDs but don't exist in DB yet
       logger.logCategory('sync', `💾 Syncing contact (POST upsert): ${contactWithId.id} - ${contactWithId.name}`);
-      const result = await this.contactsRepo.create(contactWithId);
+      const saved = await this.contactsRepo.create(contactWithId);
       
+      // Normalize the response
+      const normalized = {
+        id: saved.id,
+        name: saved.name || '',
+        type: saved.type,
+        description: saved.description || undefined,
+        contactNo: (saved as any).contact_no || saved.contactNo || undefined,
+        companyName: (saved as any).company_name || saved.companyName || undefined,
+        address: saved.address || undefined
+      };
+
       // Log whether it was created or updated based on whether we had an existing ID
       if (contact.id) {
-        logger.logCategory('sync', `✅ Contact synced (upsert) successfully: ${result.name} (${result.id})`);
+        logger.logCategory('sync', `✅ Contact synced (upsert) successfully: ${normalized.name} (${normalized.id})`);
       } else {
-        logger.logCategory('sync', `✅ Contact created successfully: ${result.name} (${result.id})`);
+        logger.logCategory('sync', `✅ Contact created successfully: ${normalized.name} (${normalized.id})`);
       }
       
-      return result;
+      return normalized;
     } catch (error: any) {
       logger.errorCategory('sync', '❌ AppStateApiService.saveContact failed:', {
         error: error,
@@ -788,7 +882,18 @@ export class AppStateApiService {
       id: category.id || `category_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
     logger.logCategory('sync', `💾 Syncing category (POST upsert): ${categoryWithId.id} - ${categoryWithId.name}`);
-    return this.categoriesRepo.create(categoryWithId);
+    const saved = await this.categoriesRepo.create(categoryWithId);
+    
+    // Normalize the response
+    return {
+      id: saved.id,
+      name: saved.name || '',
+      type: saved.type,
+      description: saved.description || undefined,
+      isPermanent: (saved as any).is_permanent === true || (saved as any).is_permanent === 1 || saved.isPermanent === true || false,
+      isRental: (saved as any).is_rental === true || (saved as any).is_rental === 1 || saved.isRental === true || false,
+      parentCategoryId: (saved as any).parent_category_id || saved.parentCategoryId || undefined
+    };
   }
 
   /**
@@ -808,7 +913,40 @@ export class AppStateApiService {
       id: project.id || `project_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
     logger.logCategory('sync', `💾 Syncing project (POST upsert): ${projectWithId.id} - ${projectWithId.name}`);
-    return this.projectsRepo.create(projectWithId);
+    const saved = await this.projectsRepo.create(projectWithId);
+    
+    // Normalize the response
+    return {
+      id: saved.id,
+      name: saved.name || '',
+      description: saved.description || undefined,
+      color: saved.color || undefined,
+      status: (saved as any).status || saved.status || 'Active',
+      installmentConfig: (() => {
+        const config = (saved as any).installment_config || saved.installmentConfig;
+        if (!config) return undefined;
+        if (typeof config === 'string') {
+          try {
+            return JSON.parse(config);
+          } catch {
+            return undefined;
+          }
+        }
+        return config;
+      })(),
+      pmConfig: (() => {
+        const config = (saved as any).pm_config || saved.pmConfig;
+        if (!config) return undefined;
+        if (typeof config === 'string') {
+          try {
+            return JSON.parse(config);
+          } catch {
+            return undefined;
+          }
+        }
+        return config;
+      })()
+    };
   }
 
   /**
@@ -828,7 +966,15 @@ export class AppStateApiService {
       id: building.id || `building_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
     logger.logCategory('sync', `💾 Syncing building (POST upsert): ${buildingWithId.id} - ${buildingWithId.name}`);
-    return this.buildingsRepo.create(buildingWithId);
+    const saved = await this.buildingsRepo.create(buildingWithId);
+    
+    // Normalize the response
+    return {
+      id: saved.id,
+      name: saved.name || '',
+      description: saved.description || undefined,
+      color: saved.color || undefined
+    };
   }
 
   /**
@@ -882,7 +1028,21 @@ export class AppStateApiService {
       id: unit.id || `unit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
     logger.logCategory('sync', `💾 Syncing unit (POST upsert): ${unitWithId.id} - ${unitWithId.name}`);
-    return this.unitsRepo.create(unitWithId);
+    const saved = await this.unitsRepo.create(unitWithId);
+    
+    // Normalize the response
+    return {
+      id: saved.id,
+      name: saved.name || '',
+      projectId: (saved as any).project_id || saved.projectId || '',
+      contactId: (saved as any).contact_id || saved.contactId || undefined,
+      salePrice: (() => {
+        const price = (saved as any).sale_price ?? saved.salePrice;
+        if (price == null) return undefined;
+        return typeof price === 'number' ? price : parseFloat(String(price));
+      })(),
+      description: saved.description || undefined
+    };
   }
 
   /**
@@ -902,7 +1062,34 @@ export class AppStateApiService {
       id: invoice.id || `invoice_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
     logger.logCategory('sync', `💾 Syncing invoice (POST upsert): ${invoiceWithId.id} - ${invoiceWithId.invoiceNumber}`);
-    return this.invoicesRepo.create(invoiceWithId);
+    const saved = await this.invoicesRepo.create(invoiceWithId);
+    
+    // Normalize the response (server returns snake_case, client expects camelCase)
+    return {
+      id: saved.id,
+      invoiceNumber: (saved as any).invoice_number || saved.invoiceNumber || `INV-${saved.id}`,
+      contactId: (saved as any).contact_id || saved.contactId || '',
+      amount: typeof saved.amount === 'number' ? saved.amount : parseFloat(saved.amount || '0'),
+      paidAmount: typeof (saved as any).paid_amount === 'number' ? (saved as any).paid_amount : (typeof saved.paidAmount === 'number' ? saved.paidAmount : parseFloat((saved as any).paid_amount || saved.paidAmount || '0')),
+      status: (saved as any).status || saved.status || 'Unpaid',
+      issueDate: (saved as any).issue_date || saved.issueDate || new Date().toISOString().split('T')[0],
+      dueDate: (saved as any).due_date || saved.dueDate || undefined,
+      invoiceType: (saved as any).invoice_type || saved.invoiceType || 'Rental',
+      description: saved.description || undefined,
+      projectId: (saved as any).project_id || saved.projectId || undefined,
+      buildingId: (saved as any).building_id || saved.buildingId || undefined,
+      propertyId: (saved as any).property_id || saved.propertyId || undefined,
+      unitId: (saved as any).unit_id || saved.unitId || undefined,
+      categoryId: (saved as any).category_id || saved.categoryId || undefined,
+      agreementId: (saved as any).agreement_id || saved.agreementId || undefined,
+      securityDepositCharge: (saved as any).security_deposit_charge !== undefined && (saved as any).security_deposit_charge !== null
+        ? (typeof (saved as any).security_deposit_charge === 'number' ? (saved as any).security_deposit_charge : parseFloat((saved as any).security_deposit_charge || '0'))
+        : (saved.securityDepositCharge !== undefined && saved.securityDepositCharge !== null ? saved.securityDepositCharge : undefined),
+      serviceCharges: (saved as any).service_charges !== undefined && (saved as any).service_charges !== null
+        ? (typeof (saved as any).service_charges === 'number' ? (saved as any).service_charges : parseFloat((saved as any).service_charges || '0'))
+        : (saved.serviceCharges !== undefined && saved.serviceCharges !== null ? saved.serviceCharges : undefined),
+      rentalMonth: (saved as any).rental_month || saved.rentalMonth || undefined
+    };
   }
 
   /**
@@ -976,7 +1163,15 @@ export class AppStateApiService {
       id: budget.id || `budget_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
     logger.logCategory('sync', `💾 Syncing budget (POST upsert): ${budgetWithId.id} - Category: ${budgetWithId.categoryId}`);
-    return this.budgetsRepo.create(budgetWithId);
+    const saved = await this.budgetsRepo.create(budgetWithId);
+    
+    // Normalize the response
+    return {
+      id: saved.id,
+      categoryId: (saved as any).category_id || saved.categoryId || '',
+      amount: typeof saved.amount === 'number' ? saved.amount : parseFloat(String(saved.amount || '0')),
+      projectId: (saved as any).project_id || saved.projectId || undefined
+    };
   }
 
   /**
@@ -996,7 +1191,34 @@ export class AppStateApiService {
       id: agreement.id || `rental_agreement_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
     logger.logCategory('sync', `💾 Syncing rental agreement (POST upsert): ${agreementWithId.id} - ${agreementWithId.agreementNumber}`);
-    return this.rentalAgreementsRepo.create(agreementWithId);
+    const saved = await this.rentalAgreementsRepo.create(agreementWithId);
+    return this.normalizeRentalAgreement(saved);
+  }
+
+  /**
+   * Helper to normalize rental agreement data from API
+   */
+  private normalizeRentalAgreement(ra: any): AppState['rentalAgreements'][0] {
+    return {
+      id: ra.id,
+      agreementNumber: ra.agreement_number || ra.agreementNumber || '',
+      tenantId: ra.tenant_id || ra.tenantId || '',
+      propertyId: ra.property_id || ra.propertyId || '',
+      startDate: ra.start_date || ra.startDate || '',
+      endDate: ra.end_date || ra.endDate || '',
+      monthlyRent: typeof ra.monthly_rent === 'number' ? ra.monthly_rent : (typeof ra.monthlyRent === 'number' ? ra.monthlyRent : parseFloat(ra.monthly_rent || ra.monthlyRent || '0')),
+      rentDueDate: typeof ra.rent_due_date === 'number' ? ra.rent_due_date : (typeof ra.rentDueDate === 'number' ? ra.rentDueDate : parseInt(ra.rent_due_date || ra.rentDueDate || '1')),
+      status: ra.status || 'Active',
+      description: ra.description || undefined,
+      securityDeposit: ra.security_deposit !== undefined && ra.security_deposit !== null
+        ? (typeof ra.security_deposit === 'number' ? ra.security_deposit : parseFloat(String(ra.security_deposit)))
+        : (ra.securityDeposit !== undefined && ra.securityDeposit !== null ? ra.securityDeposit : undefined),
+      brokerId: ra.broker_id || ra.brokerId || undefined,
+      brokerFee: ra.broker_fee !== undefined && ra.broker_fee !== null
+        ? (typeof ra.broker_fee === 'number' ? ra.broker_fee : parseFloat(String(ra.broker_fee)))
+        : (ra.brokerFee !== undefined && ra.brokerFee !== null ? ra.brokerFee : undefined),
+      ownerId: ra.owner_id || ra.ownerId || undefined
+    };
   }
 
   /**
@@ -1016,7 +1238,63 @@ export class AppStateApiService {
       id: agreement.id || `project_agreement_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     };
     logger.logCategory('sync', `💾 Syncing project agreement (POST upsert): ${agreementWithId.id} - ${agreementWithId.agreementNumber}`);
-    return this.projectAgreementsRepo.create(agreementWithId);
+    const saved = await this.projectAgreementsRepo.create(agreementWithId);
+    
+    // Normalize the response (server returns snake_case, client expects camelCase)
+    return {
+      id: saved.id,
+      agreementNumber: (saved as any).agreement_number || saved.agreementNumber || '',
+      clientId: (saved as any).client_id || saved.clientId || '',
+      projectId: (saved as any).project_id || saved.projectId || '',
+      unitIds: (() => {
+        const ids = (saved as any).unit_ids || saved.unitIds;
+        if (!ids) return [];
+        if (Array.isArray(ids)) return ids;
+        if (typeof ids === 'string') {
+          try {
+            return JSON.parse(ids);
+          } catch {
+            return [];
+          }
+        }
+        return [];
+      })(),
+      listPrice: typeof (saved as any).list_price === 'number' ? (saved as any).list_price : (typeof saved.listPrice === 'number' ? saved.listPrice : parseFloat((saved as any).list_price || saved.listPrice || '0')),
+      customerDiscount: typeof (saved as any).customer_discount === 'number' ? (saved as any).customer_discount : (typeof saved.customerDiscount === 'number' ? saved.customerDiscount : parseFloat((saved as any).customer_discount || saved.customerDiscount || '0')),
+      floorDiscount: typeof (saved as any).floor_discount === 'number' ? (saved as any).floor_discount : (typeof saved.floorDiscount === 'number' ? saved.floorDiscount : parseFloat((saved as any).floor_discount || saved.floorDiscount || '0')),
+      lumpSumDiscount: typeof (saved as any).lump_sum_discount === 'number' ? (saved as any).lump_sum_discount : (typeof saved.lumpSumDiscount === 'number' ? saved.lumpSumDiscount : parseFloat((saved as any).lump_sum_discount || saved.lumpSumDiscount || '0')),
+      miscDiscount: typeof (saved as any).misc_discount === 'number' ? (saved as any).misc_discount : (typeof saved.miscDiscount === 'number' ? saved.miscDiscount : parseFloat((saved as any).misc_discount || saved.miscDiscount || '0')),
+      sellingPrice: typeof (saved as any).selling_price === 'number' ? (saved as any).selling_price : (typeof saved.sellingPrice === 'number' ? saved.sellingPrice : parseFloat((saved as any).selling_price || saved.sellingPrice || '0')),
+      rebateAmount: (() => {
+        const amount = (saved as any).rebate_amount ?? saved.rebateAmount;
+        if (amount == null) return undefined;
+        return typeof amount === 'number' ? amount : parseFloat(String(amount));
+      })(),
+      rebateBrokerId: (saved as any).rebate_broker_id || saved.rebateBrokerId || undefined,
+      issueDate: (saved as any).issue_date || saved.issueDate || new Date().toISOString().split('T')[0],
+      description: saved.description || undefined,
+      status: saved.status || 'Active',
+      cancellationDetails: (() => {
+        const details = (saved as any).cancellation_details || saved.cancellationDetails;
+        if (!details) return undefined;
+        if (typeof details === 'string') {
+          try {
+            return JSON.parse(details);
+          } catch {
+            return undefined;
+          }
+        }
+        if (typeof details === 'object') return details;
+        return undefined;
+      })(),
+      listPriceCategoryId: (saved as any).list_price_category_id || saved.listPriceCategoryId || undefined,
+      customerDiscountCategoryId: (saved as any).customer_discount_category_id || saved.customerDiscountCategoryId || undefined,
+      floorDiscountCategoryId: (saved as any).floor_discount_category_id || saved.floorDiscountCategoryId || undefined,
+      lumpSumDiscountCategoryId: (saved as any).lump_sum_discount_category_id || saved.lumpSumDiscountCategoryId || undefined,
+      miscDiscountCategoryId: (saved as any).misc_discount_category_id || saved.miscDiscountCategoryId || undefined,
+      sellingPriceCategoryId: (saved as any).selling_price_category_id || saved.sellingPriceCategoryId || undefined,
+      rebateCategoryId: (saved as any).rebate_category_id || saved.rebateCategoryId || undefined
+    };
   }
 
   /**
