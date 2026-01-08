@@ -347,6 +347,75 @@ const RentalBillsPage: React.FC = () => {
         setIsPaymentModalOpen(true);
     };
 
+    // Prepare transaction data for bill payment, handling tenant-allocated bills
+    const paymentTransactionData = useMemo(() => {
+        if (!paymentBill) {
+            return {
+                id: '',
+                type: TransactionType.EXPENSE,
+                amount: 0,
+                date: new Date().toISOString().split('T')[0],
+                accountId: '',
+            } as any;
+        }
+
+        // Check if this is a tenant-allocated bill
+        let tenantId: string | undefined = undefined;
+        let tenantCategoryId: string | undefined = undefined;
+
+        // Check if bill has a rental agreement (tenant bill)
+        if (paymentBill.projectAgreementId) {
+            const rentalAgreement = state.rentalAgreements.find(ra => ra.id === paymentBill.projectAgreementId);
+            if (rentalAgreement) {
+                tenantId = rentalAgreement.tenantId;
+            }
+        }
+
+        // If no rental agreement found via projectAgreementId, check propertyId
+        if (!tenantId && paymentBill.propertyId) {
+            const rentalAgreement = state.rentalAgreements.find(ra => 
+                ra.propertyId === paymentBill.propertyId && ra.status === 'Active'
+            );
+            if (rentalAgreement) {
+                tenantId = rentalAgreement.tenantId;
+            }
+        }
+
+        // If this is a tenant-allocated bill, update category to include "(Tenant)" suffix
+        if (tenantId && paymentBill.categoryId) {
+            const originalCategory = state.categories.find(c => c.id === paymentBill.categoryId);
+            if (originalCategory) {
+                // Find or use category with "(Tenant)" suffix
+                const tenantCategoryName = `${originalCategory.name} (Tenant)`;
+                let tenantCategory = state.categories.find(c => 
+                    c.name === tenantCategoryName && c.type === TransactionType.EXPENSE
+                );
+                
+                // If category doesn't exist, use the original category ID
+                // The system will identify it as tenant charge based on contactId being tenant
+                tenantCategoryId = tenantCategory?.id || paymentBill.categoryId;
+            }
+        }
+
+        return {
+            id: '',
+            type: TransactionType.EXPENSE,
+            amount: paymentBill.amount - paymentBill.paidAmount,
+            date: paymentBill.issueDate ? new Date(paymentBill.issueDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+            accountId: '',
+            billId: paymentBill.id,
+            // For tenant-allocated bills, use tenant contactId; otherwise use vendor contactId
+            contactId: tenantId || paymentBill.contactId,
+            projectId: paymentBill.projectId,
+            buildingId: paymentBill.buildingId,
+            propertyId: paymentBill.propertyId,
+            // Use tenant category if available, otherwise use original category
+            categoryId: tenantCategoryId || paymentBill.categoryId,
+            contractId: paymentBill.contractId,
+            description: paymentBill.description || `Payment for Bill #${paymentBill.billNumber}`,
+        } as any;
+    }, [paymentBill, state.rentalAgreements, state.categories]);
+
     const handleDuplicate = (data: Partial<Bill>) => {
         const { id, paidAmount, status, ...rest } = data;
         setDuplicateBillData({ ...rest, paidAmount: 0, status: undefined });
@@ -683,21 +752,7 @@ const RentalBillsPage: React.FC = () => {
                 <TransactionForm
                     onClose={() => setIsPaymentModalOpen(false)}
                     transactionTypeForNew={TransactionType.EXPENSE}
-                    transactionToEdit={{
-                        id: '',
-                        type: TransactionType.EXPENSE,
-                        amount: paymentBill ? (paymentBill.amount - paymentBill.paidAmount) : 0,
-                        date: paymentBill?.issueDate ? new Date(paymentBill.issueDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-                        accountId: '',
-                        billId: paymentBill?.id,
-                        contactId: paymentBill?.contactId,
-                        projectId: paymentBill?.projectId,
-                        buildingId: paymentBill?.buildingId,
-                        propertyId: paymentBill?.propertyId,
-                        categoryId: paymentBill?.categoryId,
-                        contractId: paymentBill?.contractId,
-                        description: paymentBill?.description || `Payment for Bill #${paymentBill?.billNumber}`,
-                    } as any}
+                    transactionToEdit={paymentTransactionData}
                     onShowDeleteWarning={() => {}}
                 />
             </Modal>

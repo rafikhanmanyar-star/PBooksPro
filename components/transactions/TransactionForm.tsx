@@ -532,8 +532,50 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                                             if (bill.projectId) setProjectId(bill.projectId);
                                             if (bill.buildingId) setBuildingId(bill.buildingId);
                                             if (bill.propertyId) setPropertyId(bill.propertyId);
-                                            if (bill.contactId) setContactId(bill.contactId);
-                                            if (bill.categoryId) setCategoryId(bill.categoryId);
+                                            
+                                            // Check if this is a tenant-allocated bill
+                                            let tenantId: string | undefined = undefined;
+                                            
+                                            // Check if bill has a rental agreement (tenant bill)
+                                            if (bill.projectAgreementId) {
+                                                const rentalAgreement = state.rentalAgreements.find(ra => ra.id === bill.projectAgreementId);
+                                                if (rentalAgreement) {
+                                                    tenantId = rentalAgreement.tenantId;
+                                                }
+                                            }
+                                            
+                                            // If no rental agreement found via projectAgreementId, check propertyId
+                                            if (!tenantId && bill.propertyId) {
+                                                const rentalAgreement = state.rentalAgreements.find(ra => 
+                                                    ra.propertyId === bill.propertyId && ra.status === 'Active'
+                                                );
+                                                if (rentalAgreement) {
+                                                    tenantId = rentalAgreement.tenantId;
+                                                }
+                                            }
+                                            
+                                            // For tenant-allocated bills, use tenant contactId; otherwise use vendor contactId
+                                            if (tenantId) {
+                                                setContactId(tenantId);
+                                                // Update category to include "(Tenant)" suffix if original category exists
+                                                if (bill.categoryId) {
+                                                    const originalCategory = state.categories.find(c => c.id === bill.categoryId);
+                                                    if (originalCategory) {
+                                                        const tenantCategoryName = `${originalCategory.name} (Tenant)`;
+                                                        const tenantCategory = state.categories.find(c => 
+                                                            c.name === tenantCategoryName && c.type === TransactionType.EXPENSE
+                                                        );
+                                                        setCategoryId(tenantCategory?.id || bill.categoryId);
+                                                    } else {
+                                                        setCategoryId(bill.categoryId);
+                                                    }
+                                                }
+                                            } else {
+                                                // Not a tenant bill - use vendor contactId
+                                                if (bill.contactId) setContactId(bill.contactId);
+                                                if (bill.categoryId) setCategoryId(bill.categoryId);
+                                            }
+                                            
                                             if (bill.contractId) setContractId(bill.contractId);
                                         }
                                     }

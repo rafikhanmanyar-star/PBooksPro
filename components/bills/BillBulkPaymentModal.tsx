@@ -99,6 +99,41 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
         selectedBills.forEach(bill => {
             const payAmount = parseFloat(payments[bill.id] || '0');
             if (payAmount > 0) {
+                // Check if this is a tenant-allocated bill
+                let tenantId: string | undefined = undefined;
+                let tenantCategoryId: string | undefined = undefined;
+
+                // Check if bill has a rental agreement (tenant bill)
+                if (bill.projectAgreementId) {
+                    const rentalAgreement = state.rentalAgreements.find(ra => ra.id === bill.projectAgreementId);
+                    if (rentalAgreement) {
+                        tenantId = rentalAgreement.tenantId;
+                    }
+                }
+
+                // If no rental agreement found via projectAgreementId, check propertyId
+                if (!tenantId && bill.propertyId) {
+                    const rentalAgreement = state.rentalAgreements.find(ra => 
+                        ra.propertyId === bill.propertyId && ra.status === 'Active'
+                    );
+                    if (rentalAgreement) {
+                        tenantId = rentalAgreement.tenantId;
+                    }
+                }
+
+                // If this is a tenant-allocated bill, update category to include "(Tenant)" suffix
+                if (tenantId && bill.categoryId) {
+                    const originalCategory = state.categories.find(c => c.id === bill.categoryId);
+                    if (originalCategory) {
+                        // Find or use category with "(Tenant)" suffix
+                        const tenantCategoryName = `${originalCategory.name} (Tenant)`;
+                        const tenantCategory = state.categories.find(c => 
+                            c.name === tenantCategoryName && c.type === TransactionType.EXPENSE
+                        );
+                        tenantCategoryId = tenantCategory?.id || bill.categoryId;
+                    }
+                }
+
                 transactions.push({
                     id: `txn-bulk-${Date.now()}-${bill.id}`,
                     type: TransactionType.EXPENSE,
@@ -106,11 +141,13 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
                     date: paymentDate,
                     description: `Bulk Payment: ${reference || 'Bills'} (Bill #${bill.billNumber})`,
                     accountId,
-                    contactId: bill.contactId,
+                    // For tenant-allocated bills, use tenant contactId; otherwise use vendor contactId
+                    contactId: tenantId || bill.contactId,
                     projectId: bill.projectId,
                     buildingId: bill.buildingId,
                     propertyId: bill.propertyId,
-                    categoryId: bill.categoryId,
+                    // Use tenant category if available, otherwise use original category
+                    categoryId: tenantCategoryId || bill.categoryId,
                     contractId: bill.contractId,
                     billId: bill.id,
                     batchId: batchId
