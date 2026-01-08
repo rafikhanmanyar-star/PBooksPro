@@ -27,7 +27,7 @@ interface InvoiceBillFormProps {
   projectContext?: boolean; // When true, bill form is opened from project management - simplifies to project-only allocation
 }
 
-type BillAllocationType = 'project' | 'building' | 'owner' | 'tenant' | 'staff';
+type BillAllocationType = 'project' | 'building' | 'owner' | 'staff';
 type RootBillType = 'project' | 'building' | 'staff';
 
 const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemToEdit, invoiceTypeForNew, agreementForInvoice, initialContactId, rentalContext, onDuplicate, initialData, projectContext = false }) => {
@@ -76,12 +76,12 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       if (type === 'bill' && defaults) {
           const bill = defaults as Bill;
           if (bill.staffId) return 'staff';
-          // Check if projectAgreementId is a rental agreement (tenant bill)
+          // Check if projectAgreementId is a rental agreement
           if (bill.projectAgreementId) {
               const rentalAgreement = state.rentalAgreements.find(ra => ra.id === bill.projectAgreementId);
               if (rentalAgreement) {
-                  // It's a rental agreement, so it's a tenant bill
-                  return 'tenant';
+                  // Tenant bills are removed, default to building (service)
+                  return 'building';
               }
               // It's a project agreement, so it's a project bill (not tenant in building context)
               return 'project';
@@ -218,7 +218,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                       setBuildingId(property.buildingId);
                   }
                   setAgreementId(rentalAgreement.id);
-                  setBillAllocationType('tenant');
+                  setBillAllocationType('building');
                   if (!bill.projectId && !bill.staffId) {
                       setRootAllocationType('building');
                   }
@@ -1470,19 +1470,12 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                                 <div className="flex gap-2">
                                     <button type="button" onClick={() => setBillAllocationType('building')} className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${billAllocationType === 'building' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}>Service</button>
                                     <button type="button" onClick={() => setBillAllocationType('owner')} className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${billAllocationType === 'owner' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}>Owner</button>
-                                    <button type="button" onClick={() => setBillAllocationType('tenant')} className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${billAllocationType === 'tenant' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}>Tenant</button>
                                 </div>
                               </div>
 
                               {billAllocationType === 'owner' && (
                                   <div className="animate-fade-in">
                                       <ComboBox label="Property" items={propertyItems} selectedId={propertyId || ''} onSelect={(item) => setPropertyId(item?.id || '')} placeholder="Search properties..." allowAddNew={false} />
-                                  </div>
-                              )}
-                              
-                              {billAllocationType === 'tenant' && (
-                                  <div className="animate-fade-in">
-                                      <ComboBox label="Tenant" items={filteredTenants} selectedId={tenantId || ''} onSelect={(item) => handleTenantSelect(item)} placeholder="Search tenants..." allowAddNew={false} />
                                   </div>
                               )}
                             </>
