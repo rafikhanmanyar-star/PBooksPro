@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '../../services/adminApi';
-import { Search, Eye, Ban, CheckCircle, Edit2, Save, X, Trash2, Users, Key, LogOut, UserX } from 'lucide-react';
+import { Search, Eye, Ban, CheckCircle, Edit2, Save, X, Trash2, Users, Key, LogOut, UserX, RefreshCw } from 'lucide-react';
 
 interface Tenant {
   id: string;
@@ -728,6 +728,19 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                 <Users size={18} />
                 Organization Users ({users.length})
               </h3>
+              <button
+                className="btn btn-secondary"
+                onClick={loadUsers}
+                disabled={loadingUsers}
+                style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                title="Refresh Users"
+              >
+                <RefreshCw size={16} style={{ 
+                  opacity: loadingUsers ? 0.6 : 1,
+                  cursor: loadingUsers ? 'not-allowed' : 'pointer'
+                }} />
+                {loadingUsers ? 'Loading...' : 'Refresh'}
+              </button>
             </div>
 
             {loadingUsers ? (
@@ -744,6 +757,7 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                       <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Type</th>
                       <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Role</th>
                       <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Status</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Last Login</th>
                       <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Actions</th>
                     </tr>
                   </thead>
@@ -810,6 +824,18 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                               </span>
                             )}
                           </div>
+                        </td>
+                        <td style={{ padding: '0.75rem', fontSize: '0.875rem', color: '#6b7280' }}>
+                          {user.last_login ? (
+                            <div>
+                              <div>{new Date(user.last_login).toLocaleDateString()}</div>
+                              <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+                                {new Date(user.last_login).toLocaleTimeString()}
+                              </div>
+                            </div>
+                          ) : (
+                            <span style={{ color: '#9ca3af' }}>Never</span>
+                          )}
                         </td>
                         <td style={{ padding: '0.75rem' }}>
                           <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
