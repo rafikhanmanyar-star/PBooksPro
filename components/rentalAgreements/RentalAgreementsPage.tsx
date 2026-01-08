@@ -274,7 +274,7 @@ const RentalAgreementsPage: React.FC = () => {
                 case 'tenant': valA = a.tenantName; valB = b.tenantName; break;
                 case 'owner': valA = a.ownerName; valB = b.ownerName; break;
                 case 'property': valA = a.propertyName; valB = b.propertyName; break;
-                case 'rent': valA = a.monthlyRent; valB = b.monthlyRent; break;
+                case 'rent': valA = a.monthlyRent || 0; valB = b.monthlyRent || 0; break;
                 case 'security': valA = a.securityDeposit || 0; valB = b.securityDeposit || 0; break;
                 case 'startDate': valA = new Date(a.startDate).getTime(); valB = new Date(b.startDate).getTime(); break;
                 case 'endDate': valA = new Date(a.endDate).getTime(); valB = new Date(b.endDate).getTime(); break;
@@ -457,8 +457,8 @@ const RentalAgreementsPage: React.FC = () => {
                                         <td className="px-4 py-3 font-medium text-slate-800 truncate max-w-[150px]" title={agreement.tenantName}>{agreement.tenantName}</td>
                                         <td className="px-4 py-3 text-slate-600 truncate max-w-[150px]" title={agreement.propertyName}>{agreement.propertyName}</td>
                                         <td className="px-4 py-3 text-slate-500 truncate max-w-[150px]">{agreement.ownerName}</td>
-                                        <td className="px-4 py-3 text-right font-medium text-slate-700">{CURRENCY} {agreement.monthlyRent.toLocaleString()}</td>
-                                        <td className="px-4 py-3 text-right text-slate-500">{agreement.securityDeposit ? `${CURRENCY} ${agreement.securityDeposit.toLocaleString()}` : '-'}</td>
+                                        <td className="px-4 py-3 text-right font-medium text-slate-700">{CURRENCY} {(agreement.monthlyRent || 0).toLocaleString()}</td>
+                                        <td className="px-4 py-3 text-right text-slate-500">{agreement.securityDeposit ? `${CURRENCY} ${(agreement.securityDeposit || 0).toLocaleString()}` : '-'}</td>
                                         <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{formatDate(agreement.startDate)}</td>
                                         <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{formatDate(agreement.endDate)}</td>
                                         <td className="px-4 py-3 text-center">
