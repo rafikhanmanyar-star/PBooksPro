@@ -89,6 +89,113 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   /**
+   * Heartbeat mechanism - keeps session alive by updating last_activity
+   */
+  useEffect(() => {
+    if (!state.isAuthenticated) return;
+
+    const HEARTBEAT_INTERVAL = 2 * 60 * 1000; // 2 minutes
+    let heartbeatInterval: NodeJS.Timeout | null = null;
+
+    const sendHeartbeat = async () => {
+      try {
+        await apiClient.post('/auth/heartbeat', {});
+      } catch (error) {
+        // If heartbeat fails, session might be invalid - don't log as error
+        // The middleware will handle invalid sessions
+        logger.logCategory('auth', 'Heartbeat failed (session may be invalid)');
+      }
+    };
+
+    // Send heartbeat immediately, then every 2 minutes
+    sendHeartbeat();
+    heartbeatInterval = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
+
+    return () => {
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+      }
+    };
+  }, [state.isAuthenticated]);
+
+  /**
+   * Handle app close/refresh - attempt to logout gracefully
+   */
+  useEffect(() => {
+    if (!state.isAuthenticated) return;
+
+    const handleBeforeUnload = async (event: BeforeUnloadEvent) => {
+      // Attempt to logout when app is closing
+      // Note: This is best-effort - may not complete if page closes too quickly
+      try {
+        // Use sendBeacon for more reliable delivery during page unload
+        const token = apiClient.getToken();
+        if (token && typeof navigator !== 'undefined' && navigator.sendBeacon) {
+          // Construct logout URL (API base URL is hardcoded in client)
+          const API_BASE_URL = 'https://pbookspro-api.onrender.com/api';
+          const logoutUrl = `${API_BASE_URL}/auth/logout`;
+          
+          // Create headers with token
+          const headers = new Headers();
+          headers.append('Authorization', `Bearer ${token}`);
+          headers.append('Content-Type', 'application/json');
+          
+          // sendBeacon doesn't support custom headers, so we'll use fetch with keepalive
+          fetch(logoutUrl, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({}),
+            keepalive: true, // This allows the request to continue after page unload
+          }).catch(() => {
+            // Ignore errors - page is closing anyway
+          });
+        } else {
+          // Fallback: try regular API call (may not complete if page closes quickly)
+          await apiClient.post('/auth/logout', {}).catch(() => {
+            // Ignore errors - page is closing anyway
+          });
+        }
+      } catch (error) {
+        // Ignore errors during page unload
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', handleBeforeUnload);
+      return () => {
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+      };
+    }
+  }, [state.isAuthenticated]);
+
+  /**
+   * Network disconnect detection
+   */
+  useEffect(() => {
+    if (!state.isAuthenticated) return;
+
+    const handleOnline = () => {
+      logger.logCategory('auth', 'Network connection restored');
+      // Session will be validated on next API call
+    };
+
+    const handleOffline = () => {
+      logger.logCategory('auth', 'Network connection lost - session will be marked inactive');
+      // Session will be marked inactive by middleware after 30 minutes of no activity
+      // No need to do anything here - the heartbeat will fail and session will become stale
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+      return () => {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+      };
+    }
+  }, [state.isAuthenticated]);
+
+  /**
    * Check if user is already authenticated (from localStorage)
    */
   useEffect(() => {

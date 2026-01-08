@@ -237,21 +237,38 @@ router.post('/smart-login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Restrict duplicate logins: if the user already has an active session in this tenant,
-    // do not allow logging in again. Return a clear message for the UI to display.
+    // Check for existing sessions and handle stale sessions (improper app closure)
+    // If session exists but last_activity is > 5 minutes old, consider it stale and cleanup
+    const STALE_SESSION_THRESHOLD_MINUTES = 5;
     const activeSessions = await db.query(
-      `SELECT id FROM user_sessions
+      `SELECT id, last_activity FROM user_sessions
        WHERE user_id = $1 AND tenant_id = $2 AND expires_at > NOW()
        LIMIT 1`,
       [user.id, user.tenant_id]
     );
 
     if (activeSessions.length > 0) {
-      return res.status(409).json({
-        error: 'User is already logged in. Please logout first.',
-        message: 'This account is already logged in for this organization. Please logout from the other session/device and try again.',
-        code: 'ALREADY_LOGGED_IN'
-      });
+      const session = activeSessions[0] as any;
+      const lastActivity = new Date(session.last_activity);
+      const thresholdDate = new Date();
+      thresholdDate.setMinutes(thresholdDate.getMinutes() - STALE_SESSION_THRESHOLD_MINUTES);
+
+      // If session is stale (likely from improper app closure), cleanup and allow login
+      if (lastActivity < thresholdDate) {
+        console.log(`🧹 Cleaning up stale session (last activity: ${lastActivity.toISOString()})`);
+        await db.query(
+          'DELETE FROM user_sessions WHERE user_id = $1 AND tenant_id = $2',
+          [user.id, user.tenant_id]
+        );
+        // Continue with login - session was cleaned up
+      } else {
+        // Session is still active (recent activity)
+        return res.status(409).json({
+          error: 'User is already logged in. Please logout first.',
+          message: 'This account is already logged in for this organization. Please logout from the other session/device and try again.',
+          code: 'ALREADY_LOGGED_IN'
+        });
+      }
     }
 
     // Update last login
@@ -419,21 +436,38 @@ router.post('/login', async (req, res) => {
     
     console.log('✅ Login: Password verified for user:', { userId: user.id, username: user.username, role: user.role });
 
-    // Restrict duplicate logins: if the user already has an active session in this tenant,
-    // do not allow logging in again. Return a clear message for the UI to display.
+    // Check for existing sessions and handle stale sessions (improper app closure)
+    // If session exists but last_activity is > 5 minutes old, consider it stale and cleanup
+    const STALE_SESSION_THRESHOLD_MINUTES = 5;
     const activeSessions = await db.query(
-      `SELECT id FROM user_sessions
+      `SELECT id, last_activity FROM user_sessions
        WHERE user_id = $1 AND tenant_id = $2 AND expires_at > NOW()
        LIMIT 1`,
       [user.id, user.tenant_id]
     );
 
     if (activeSessions.length > 0) {
-      return res.status(409).json({
-        error: 'User is already logged in. Please logout first.',
-        message: 'This account is already logged in for this organization. Please logout from the other session/device and try again.',
-        code: 'ALREADY_LOGGED_IN'
-      });
+      const session = activeSessions[0] as any;
+      const lastActivity = new Date(session.last_activity);
+      const thresholdDate = new Date();
+      thresholdDate.setMinutes(thresholdDate.getMinutes() - STALE_SESSION_THRESHOLD_MINUTES);
+
+      // If session is stale (likely from improper app closure), cleanup and allow login
+      if (lastActivity < thresholdDate) {
+        console.log(`🧹 Cleaning up stale session (last activity: ${lastActivity.toISOString()})`);
+        await db.query(
+          'DELETE FROM user_sessions WHERE user_id = $1 AND tenant_id = $2',
+          [user.id, user.tenant_id]
+        );
+        // Continue with login - session was cleaned up
+      } else {
+        // Session is still active (recent activity)
+        return res.status(409).json({
+          error: 'User is already logged in. Please logout first.',
+          message: 'This account is already logged in for this organization. Please logout from the other session/device and try again.',
+          code: 'ALREADY_LOGGED_IN'
+        });
+      }
     }
 
     // Update last login
@@ -660,10 +694,10 @@ router.post('/logout', async (req, res) => {
       try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
         
-        // Delete session
+        // Delete session by token or by user_id + tenant_id (more reliable)
         await db.query(
-          'DELETE FROM user_sessions WHERE token = $1',
-          [token]
+          'DELETE FROM user_sessions WHERE token = $1 OR (user_id = $2 AND tenant_id = $3)',
+          [token, decoded.userId, decoded.tenantId]
         );
         
         res.json({ success: true, message: 'Logged out successfully' });
@@ -677,6 +711,49 @@ router.post('/logout', async (req, res) => {
   } catch (error) {
     console.error('Logout error:', error);
     res.status(500).json({ error: 'Logout failed' });
+  }
+});
+
+// Heartbeat endpoint - updates session last_activity to keep session alive
+router.post('/heartbeat', async (req, res) => {
+  try {
+    const db = getDb();
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No authentication token' });
+    }
+    
+    const token = authHeader.substring(7);
+    
+    try {
+      // Verify token is valid
+      const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+      
+      // Update last_activity for this session
+      const result = await db.query(
+        'UPDATE user_sessions SET last_activity = NOW() WHERE token = $1 AND user_id = $2 AND tenant_id = $3',
+        [token, decoded.userId, decoded.tenantId]
+      );
+      
+      if (result.length === 0) {
+        // Session doesn't exist or was deleted
+        return res.status(401).json({ 
+          error: 'Session not found',
+          code: 'SESSION_NOT_FOUND'
+        });
+      }
+      
+      res.json({ success: true, message: 'Heartbeat received' });
+    } catch (jwtError) {
+      return res.status(401).json({ 
+        error: 'Invalid token',
+        code: 'INVALID_TOKEN'
+      });
+    }
+  } catch (error) {
+    console.error('Heartbeat error:', error);
+    res.status(500).json({ error: 'Heartbeat failed' });
   }
 });
 

@@ -372,4 +372,3 @@ flowchart TD
 ## Notes
 
 - This upgrade maintains backward compatibility
-- Existing functionality is preserved
