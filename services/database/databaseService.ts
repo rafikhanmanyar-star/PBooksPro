@@ -314,6 +314,10 @@ class DatabaseService {
      * Execute a SQL query and return results
      */
     query<T = any>(sql: string, params: any[] = []): T[] {
+        if (!this.isReady()) {
+            console.warn(`⚠️ Database not ready for query: ${sql.substring(0, 50)}...`);
+            return [];
+        }
         const db = this.getDatabase();
         const stmt = db.prepare(sql);
         stmt.bind(params);
@@ -329,6 +333,10 @@ class DatabaseService {
      * Execute a SQL statement (INSERT, UPDATE, DELETE)
      */
     execute(sql: string, params: any[] = []): void {
+        if (!this.isReady()) {
+            console.warn(`⚠️ Database not ready for execution: ${sql.substring(0, 50)}...`);
+            return;
+        }
         try {
             const db = this.getDatabase();
             db.run(sql, params);

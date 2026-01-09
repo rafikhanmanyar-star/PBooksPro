@@ -10,6 +10,7 @@ import packageJson from '../../package.json';
 import ChatModal from '../chat/ChatModal';
 import { getWebSocketClient } from '../../services/websocket/websocketClient';
 import { ChatMessagesRepository } from '../../services/database/repositories';
+import { getDatabaseService } from '../../services/database/databaseService';
 import Modal from '../ui/Modal';
 
 interface SidebarProps {
@@ -97,6 +98,13 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const checkUnreadMessages = useCallback(() => {
         if (currentUserId) {
             try {
+                // Check if database is ready before querying
+                const dbService = getDatabaseService();
+                if (!dbService.isReady()) {
+                    // Database not ready yet, skip check (will be retried by interval)
+                    return;
+                }
+                
                 const count = chatRepo.getUnreadCount(currentUserId);
                 setUnreadMessageCount(count);
             } catch (error) {
@@ -554,7 +562,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                     isOpen={isLicenseModalOpen}
                     onClose={() => setIsLicenseModalOpen(false)}
                     title="License & Subscription"
-                    className="max-w-3xl"
+                    size="lg"
                 >
                     <LicenseManagement />
                 </Modal>
