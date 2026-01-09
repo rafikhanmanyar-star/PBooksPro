@@ -77,10 +77,10 @@ const Modal: React.FC<ModalProps> = ({
     }
     
     const baseSizes = {
-      md: 'max-w-2xl w-full',
-      lg: 'max-w-4xl w-full',
-      xl: 'max-w-6xl w-full',
-      full: 'max-w-[95vw] w-full'
+      md: 'w-full mx-4 sm:max-w-2xl sm:mx-0',
+      lg: 'w-full mx-4 sm:max-w-4xl sm:mx-0',
+      xl: 'w-full mx-4 sm:max-w-6xl sm:mx-0',
+      full: 'w-full mx-2 sm:max-w-[95vw] sm:mx-0'
     };
     
     return baseSizes[size as keyof typeof baseSizes] || baseSizes.md;
@@ -97,23 +97,23 @@ const Modal: React.FC<ModalProps> = ({
     }
     
     // Use CSS classes for responsive max-height
-    // Mobile: calc(100vh - 2rem), Desktop: calc(100vh - 4rem)
-    return 'max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-4rem)]';
+    // Mobile: calc(100vh - 2rem), Tablet: calc(100vh - 3rem), Desktop: calc(100vh - 4rem)
+    return 'max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)] md:max-h-[calc(100vh-4rem)]';
   })();
 
   const maxHeightStyle: React.CSSProperties = maxContentHeight 
     ? { maxHeight: `${maxContentHeight}px` }
     : {};
 
-  // Responsive padding classes (CSS-only)
-  const paddingClasses = 'p-4 sm:p-6 lg:p-8';
+  // Responsive padding classes (CSS-only) - optimized for forms and content
+  const paddingClasses = 'p-3 sm:p-4 md:p-6 lg:p-8';
 
   // Container alignment - bottom sheet on mobile, centered on desktop (CSS-only)
   const containerClasses = fullScreen
     ? 'items-stretch justify-stretch sm:items-center sm:justify-center'
     : 'items-end sm:items-center justify-center';
 
-  // Modal positioning (CSS-only)
+  // Modal positioning (CSS-only) - smooth transitions between mobile/desktop
   const modalPositionClasses = fullScreen
     ? 'rounded-none sm:rounded-xl'
     : 'rounded-t-2xl sm:rounded-xl';
@@ -187,18 +187,18 @@ const Modal: React.FC<ModalProps> = ({
         onMouseDown={handleModalContentMouseDown}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-between items-center p-4 border-b border-gray-200 flex-shrink-0 bg-white">
-          <h2 id="modal-title" className="text-lg font-bold text-gray-800 truncate pr-4">{title}</h2>
+        <div className="flex justify-between items-center p-3 sm:p-4 border-b border-gray-200 flex-shrink-0 bg-white">
+          <h2 id="modal-title" className="text-base sm:text-lg font-bold text-gray-800 truncate pr-2 sm:pr-4">{title}</h2>
           <button 
             onClick={onClose} 
-            className="text-gray-400 hover:text-gray-800 p-2 rounded-full hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-200 min-w-[var(--touch-target-min)] min-h-[var(--touch-target-min)] flex items-center justify-center"
+            className="text-gray-400 hover:text-gray-800 p-2 rounded-full hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-200 min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
             aria-label="Close modal"
           >
             <span className="text-2xl leading-none">&times;</span>
           </button>
         </div>
         <div 
-          className={`flex-grow min-h-0 ${disableScroll ? 'overflow-hidden flex flex-col' : 'overflow-y-auto scroll-smooth'} ${!disableScroll ? paddingClasses : ''} ${!disableScroll ? 'pb-[calc(var(--safe-area-bottom,0px)+1rem)] sm:pb-[calc(var(--safe-area-bottom,0px)+1.5rem)]' : ''}`}
+          className={`flex-grow min-h-0 ${disableScroll ? 'overflow-hidden flex flex-col' : 'overflow-y-auto scroll-smooth overscroll-contain'} ${!disableScroll ? paddingClasses : ''} ${!disableScroll ? 'pb-[calc(var(--safe-area-bottom,0px)+0.75rem)] sm:pb-[calc(var(--safe-area-bottom,0px)+1rem)] md:pb-[calc(var(--safe-area-bottom,0px)+1.5rem)]' : ''}`}
         >
           {children}
         </div>

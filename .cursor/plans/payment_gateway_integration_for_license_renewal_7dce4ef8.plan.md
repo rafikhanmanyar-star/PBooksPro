@@ -240,6 +240,3 @@ WEBHOOK_SECRET=your_webhook_secret
 5. Monitor webhook logs initially
 
 ## Implementation Order
-
-1. Database schema migration
-2. Payment service and gateway adapter (start with PayFast)

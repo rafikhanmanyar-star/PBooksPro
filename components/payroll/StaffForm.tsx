@@ -265,7 +265,7 @@ const StaffForm: React.FC<StaffFormProps> = ({ onClose, staffToEdit }) => {
                 )}
 
                 {activeTab === 'Bank' && (
-                    <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <Input label="Bank Name" value={bankName} onChange={e => setBankName(e.target.value)} />
                         <Input label="Account Title" value={accountTitle} onChange={e => setAccountTitle(e.target.value)} />
                         <Input label="Account Number" value={accountNumber} onChange={e => setAccountNumber(e.target.value)} />

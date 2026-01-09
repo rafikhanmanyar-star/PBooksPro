@@ -280,7 +280,7 @@ const LedgerTable: React.FC<LedgerTableProps> = ({
     return (
         <div ref={tableRef} className="w-full flex flex-col">
             {/* Header */}
-            <div className="flex-shrink-0 overflow-x-auto border-b border-slate-200 bg-white">
+            <div className="flex-shrink-0 overflow-x-auto scroll-container-x border-b border-slate-200 bg-white">
                 <table className="w-full table-fixed min-w-[1200px] border-separate border-spacing-0">
                     <thead>
                         <tr className="bg-slate-50/50">
@@ -342,7 +342,7 @@ const LedgerTable: React.FC<LedgerTableProps> = ({
             </div>
 
             {/* Body */}
-            <div className="flex-1 overflow-x-auto min-w-[1200px]">
+            <div className="flex-1 overflow-x-auto scroll-container-x min-w-[1200px]">
                 <table className="w-full table-fixed border-separate border-spacing-0">
                     <tbody className="divide-y divide-slate-100">
                         {groups.map((group) => (

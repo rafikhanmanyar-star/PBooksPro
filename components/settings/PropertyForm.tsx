@@ -122,49 +122,53 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelet
     
     return (
         <>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                    <Input label="Property Name (e.g., Unit 101)" value={name} onChange={e => setName(e.target.value)} required autoFocus/>
-                    {nameError && <p className="text-red-500 text-xs mt-1">{nameError}</p>}
-                </div>
-                <ComboBox 
-                    label="Owner" 
-                    items={owners} 
-                    selectedId={ownerId} 
-                    onSelect={(item) => setOwnerId(item?.id || '')}
-                    placeholder="Search or add new owner..."
-                    entityType="contact"
-                    onAddNew={(entityType, name) => {
-                        entityFormModal.openForm('contact', name, ContactType.OWNER, undefined, (newId) => {
-                            setOwnerId(newId);
-                        });
-                    }}
-                />
-                <ComboBox 
-                    label="Building" 
-                    items={buildings} 
-                    selectedId={buildingId} 
-                    onSelect={(item) => setBuildingId(item?.id || '')}
-                    placeholder="Search or add new building..."
-                    entityType="building"
-                    onAddNew={(entityType, name) => {
+            <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0">
+                <div className="flex-grow min-h-0 overflow-y-auto space-y-4">
+                    <div>
+                        <Input label="Property Name (e.g., Unit 101)" value={name} onChange={e => setName(e.target.value)} required autoFocus/>
+                        {nameError && <p className="text-red-500 text-xs mt-1">{nameError}</p>}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <ComboBox 
+                            label="Owner" 
+                            items={owners} 
+                            selectedId={ownerId} 
+                            onSelect={(item) => setOwnerId(item?.id || '')}
+                            placeholder="Search or add new owner..."
+                            entityType="contact"
+                            onAddNew={(entityType, name) => {
+                                entityFormModal.openForm('contact', name, ContactType.OWNER, undefined, (newId) => {
+                                    setOwnerId(newId);
+                                });
+                            }}
+                        />
+                        <ComboBox 
+                            label="Building" 
+                            items={buildings} 
+                            selectedId={buildingId} 
+                            onSelect={(item) => setBuildingId(item?.id || '')}
+                            placeholder="Search or add new building..."
+                            entityType="building"
+                            onAddNew={(entityType, name) => {
                         entityFormModal.openForm('building', name, undefined, undefined, (newId) => {
                             setBuildingId(newId);
                         });
                     }}
-                />
-                <Input 
-                    label="Monthly Service Charge (for Rental Auto-Run)" 
-                    type="text"
-                    inputMode="decimal"
-                    value={monthlyServiceCharge} 
-                    onChange={e => setMonthlyServiceCharge(e.target.value)} 
-                    placeholder="e.g. 1500"
-                    helperText="Amount deducted from owner's rental income when running monthly service charges."
-                />
-                <Textarea label="Description (Optional)" value={description} onChange={e => setDescription(e.target.value)} placeholder="Property details, notes, etc." />
+                        />
+                    </div>
+                    <Input 
+                        label="Monthly Service Charge (for Rental Auto-Run)" 
+                        type="text"
+                        inputMode="decimal"
+                        value={monthlyServiceCharge} 
+                        onChange={e => setMonthlyServiceCharge(e.target.value)} 
+                        placeholder="e.g. 1500"
+                        helperText="Amount deducted from owner's rental income when running monthly service charges."
+                    />
+                    <Textarea label="Description (Optional)" value={description} onChange={e => setDescription(e.target.value)} placeholder="Property details, notes, etc." />
+                </div>
                 
-                <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4">
+                <div className="flex-shrink-0 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 mt-auto border-t">
                     <div>
                         {propertyToEdit && onDelete && (
                             <Button type="button" variant="danger" onClick={onDelete} className="w-full sm:w-auto">Delete</Button>

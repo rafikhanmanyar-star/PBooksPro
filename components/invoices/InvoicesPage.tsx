@@ -637,7 +637,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
 
                     {/* Top Control Bar */}
                     <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
-                        <div className="flex items-center gap-3 flex-1 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+                        <div className="flex items-center gap-3 flex-1 w-full md:w-auto overflow-x-auto scroll-container-x pb-1 md:pb-0">
                             {/* Search */}
                             <div className="relative min-w-[200px]">
                                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">

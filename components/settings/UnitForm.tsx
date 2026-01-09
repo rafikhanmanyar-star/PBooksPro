@@ -62,44 +62,48 @@ const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitT
 
     return (
         <>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                    <Input label="Unit Name (e.g., Apt 101, Shop 5)" value={name} onChange={e => setName(e.target.value)} required autoFocus />
-                    {nameError && <p className="text-red-500 text-xs mt-1">{nameError}</p>}
+            <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0">
+                <div className="flex-grow min-h-0 overflow-y-auto space-y-4">
+                    <div>
+                        <Input label="Unit Name (e.g., Apt 101, Shop 5)" value={name} onChange={e => setName(e.target.value)} required autoFocus />
+                        {nameError && <p className="text-red-500 text-xs mt-1">{nameError}</p>}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <ComboBox 
+                            label="Project" 
+                            items={state.projects} 
+                            selectedId={projectId} 
+                            onSelect={(item) => setProjectId(item?.id || '')}
+                            placeholder="Select a project"
+                            required
+                            allowAddNew={false}
+                        />
+                        <ComboBox 
+                            label="Owner (Optional)" 
+                            items={owners} 
+                            selectedId={contactId} 
+                            onSelect={(item) => setContactId(item?.id || '')}
+                            placeholder="Assign to an owner"
+                            entityType="contact"
+                            onAddNew={(entityType, name) => {
+                                entityFormModal.openForm('contact', name, ContactType.OWNER, undefined, (newId) => {
+                                    setContactId(newId);
+                                });
+                            }}
+                        />
+                    </div>
+                    <Input label="Sale Price (Optional)" type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" value={salePrice} onChange={e => setSalePrice(e.target.value)} />
                 </div>
-                <ComboBox 
-                    label="Project" 
-                    items={state.projects} 
-                    selectedId={projectId} 
-                    onSelect={(item) => setProjectId(item?.id || '')}
-                    placeholder="Select a project"
-                    required
-                    allowAddNew={false}
-                />
-                <ComboBox 
-                    label="Owner (Optional)" 
-                    items={owners} 
-                    selectedId={contactId} 
-                    onSelect={(item) => setContactId(item?.id || '')}
-                    placeholder="Assign to an owner"
-                    entityType="contact"
-                    onAddNew={(entityType, name) => {
-                        entityFormModal.openForm('contact', name, ContactType.OWNER, undefined, (newId) => {
-                            setContactId(newId);
-                        });
-                    }}
-                />
-                <Input label="Sale Price (Optional)" type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" value={salePrice} onChange={e => setSalePrice(e.target.value)} />
 
-                <div className="flex justify-between items-center pt-4">
+                <div className="flex-shrink-0 flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 mt-auto border-t">
                     <div>
                         {unitToEdit && onDelete && (
-                            <Button type="button" variant="danger" onClick={onDelete}>Delete</Button>
+                            <Button type="button" variant="danger" onClick={onDelete} className="w-full sm:w-auto">Delete</Button>
                         )}
                     </div>
-                    <div className="flex justify-end gap-2">
-                        <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
-                        <Button type="submit">{unitToEdit ? 'Update' : 'Save'} Unit</Button>
+                    <div className="flex flex-col sm:flex-row justify-end gap-2 w-full sm:w-auto">
+                        <Button type="button" variant="secondary" onClick={onCancel} className="w-full sm:w-auto">Cancel</Button>
+                        <Button type="submit" className="w-full sm:w-auto">{unitToEdit ? 'Update' : 'Save'} Unit</Button>
                     </div>
                 </div>
             </form>

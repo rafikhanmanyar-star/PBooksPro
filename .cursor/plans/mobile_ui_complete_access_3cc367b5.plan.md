@@ -295,9 +295,3 @@ const { isMobile, isTablet, isDesktop } = useViewport();
 
 1. [`components/layout/Sidebar.tsx`](components/layout/Sidebar.tsx) - Add mobile drawer (desktop sidebar untouched)
 2. 30+ page components - Add mobile-specific classes to existing elements
-
-**Files NOT to change:**
-
-- Desktop sidebar logic/styling
-- Desktop header logic (hamburger already works)
-- Desktop footer (doesn't show on desktop anyway)

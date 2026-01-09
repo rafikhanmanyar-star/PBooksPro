@@ -46,34 +46,36 @@ const BuildingForm: React.FC<BuildingFormProps> = ({ onSubmit, onCancel, onDelet
         onSubmit({ name, description, color });
     };
     return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="flex gap-4">
-                <div className="flex-grow">
-                    <Input label="Building Name" value={name} onChange={e => setName(e.target.value)} required autoFocus/>
-                    {nameError && <p className="text-red-500 text-xs mt-1">{nameError}</p>}
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-1">Color</label>
-                    <div className="flex items-center gap-2">
-                        <input 
-                            type="color" 
-                            value={color} 
-                            onChange={(e) => setColor(e.target.value)}
-                            className="h-10 w-20 rounded-md cursor-pointer border border-slate-300 p-1 bg-white"
-                        />
+        <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0">
+            <div className="flex-grow min-h-0 overflow-y-auto space-y-4">
+                <div className="flex flex-col sm:flex-row gap-4">
+                    <div className="flex-grow">
+                        <Input label="Building Name" value={name} onChange={e => setName(e.target.value)} required autoFocus/>
+                        {nameError && <p className="text-red-500 text-xs mt-1">{nameError}</p>}
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-600 mb-1">Color</label>
+                        <div className="flex items-center gap-2">
+                            <input 
+                                type="color" 
+                                value={color} 
+                                onChange={(e) => setColor(e.target.value)}
+                                className="h-10 w-20 sm:w-20 rounded-md cursor-pointer border border-slate-300 p-1 bg-white touch-manipulation"
+                            />
+                        </div>
                     </div>
                 </div>
+                <Textarea label="Description (Optional)" value={description} onChange={e => setDescription(e.target.value)} placeholder="Building details, address, etc." />
             </div>
-            <Textarea label="Description (Optional)" value={description} onChange={e => setDescription(e.target.value)} placeholder="Building details, address, etc." />
-            <div className="flex justify-between items-center pt-4">
+            <div className="flex-shrink-0 flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 mt-auto border-t">
                 <div>
                     {buildingToEdit && onDelete && (
-                        <Button type="button" variant="danger" onClick={onDelete}>Delete</Button>
+                        <Button type="button" variant="danger" onClick={onDelete} className="w-full sm:w-auto">Delete</Button>
                     )}
                 </div>
-                <div className="flex justify-end gap-2">
-                    <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
-                    <Button type="submit">{buildingToEdit ? 'Update' : 'Save'} Building</Button>
+                <div className="flex flex-col sm:flex-row justify-end gap-2 w-full sm:w-auto">
+                    <Button type="button" variant="secondary" onClick={onCancel} className="w-full sm:w-auto">Cancel</Button>
+                    <Button type="submit" className="w-full sm:w-auto">{buildingToEdit ? 'Update' : 'Save'} Building</Button>
                 </div>
             </div>
         </form>

@@ -362,9 +362,3 @@ flowchart TD
 ### Tables & Lists
 
 - All table components
-- All list components
-
-### Global
-
-- `index.css`
-- `hooks/useViewport.ts` (new)

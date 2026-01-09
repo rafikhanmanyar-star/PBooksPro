@@ -297,7 +297,7 @@ const App: React.FC = () => {
     return (
       <div
         key={groupKey}
-        className={`absolute inset-0 ${overflowClass} overflow-x-hidden p-2 sm:p-4 md:p-6 lg:p-8 scroll-smooth overscroll-none ${bgClass} ${shouldHideFooter ? 'pb-2 sm:pb-4' : 'pb-24 sm:pb-24 md:pb-6'} ${isActive ? 'opacity-100 pointer-events-auto z-10 visible' : 'opacity-0 pointer-events-none z-0 invisible'}`}
+        className={`absolute inset-0 ${overflowClass} overflow-x-hidden p-2 sm:p-3 md:p-4 lg:p-6 xl:p-8 scroll-smooth overscroll-none ${bgClass} ${shouldHideFooter ? 'pb-2 sm:pb-3 md:pb-4' : 'pb-20 sm:pb-24 md:pb-6'} ${isActive ? 'opacity-100 pointer-events-auto z-10 visible' : 'opacity-0 pointer-events-none z-0 invisible'}`}
         style={{
           transition: 'opacity 0.15s ease-in-out, visibility 0.15s ease-in-out'
         }}

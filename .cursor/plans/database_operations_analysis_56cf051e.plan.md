@@ -260,10 +260,3 @@ await db.query(
 
 - [ ] All tables created in PostgreSQL
 - [ ] All routes respond correctly
-- [ ] Tenant isolation working (users can't see other tenant data)
-- [ ] User ID tracking working for all operations
-- [ ] RLS policies enforcing tenant isolation
-- [ ] Indexes created for performance
-- [ ] Foreign key constraints working
-- [ ] Frontend API repositories working
-- [ ] Sync working between local and cloud
