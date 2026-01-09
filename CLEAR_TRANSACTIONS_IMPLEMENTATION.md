@@ -37,9 +37,10 @@ Implemented a secure and comprehensive "Clear All Transactions" feature that pro
 
 - Added new method: `clearTransactionData()`
 - Clears the same transaction tables from local SQL.js database
-- Resets account balances to 0
+- **Also deletes accounts** (to avoid duplicate key errors on reload - they'll be re-synced from cloud)
 - Resets auto-increment counters
 - Uses transaction with proper error handling and rollback
+- On next login, all data (including accounts) will be reloaded from cloud database
 
 ### 3. Confirmation Modal with Typed Verification
 **File:** `components/settings/ClearTransactionsModal.tsx`

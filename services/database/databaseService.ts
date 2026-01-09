@@ -578,8 +578,9 @@ class DatabaseService {
 
     /**
      * Clear all transaction-related data (keeps configuration and master data)
-     * Preserves: Accounts, contacts, categories, projects, buildings, properties, units, settings
-     * Clears: Transactions, invoices, bills, contracts, agreements, sales returns, payslips
+     * Preserves: Contacts, categories, projects, buildings, properties, units, settings
+     * Clears: Transactions, invoices, bills, contracts, agreements, sales returns, payslips, accounts
+     * Note: Accounts are deleted (not just reset) to avoid duplicate key errors on reload
      */
     clearTransactionData(): void {
         const db = this.getDatabase();
@@ -594,7 +595,8 @@ class DatabaseService {
             'payslips',
             'legacy_payslips',
             'quotations',
-            'recurring_invoice_templates'
+            'recurring_invoice_templates',
+            'accounts'  // Also clear accounts to avoid duplicate key errors on reload
         ];
 
         db.run('BEGIN TRANSACTION');
@@ -602,7 +604,7 @@ class DatabaseService {
             // Disable foreign keys temporarily
             db.run('PRAGMA foreign_keys = OFF');
             
-            // Clear transaction-related tables
+            // Clear transaction-related tables (including accounts)
             transactionTables.forEach(table => {
                 try {
                     db.run(`DELETE FROM ${table}`);
@@ -611,14 +613,6 @@ class DatabaseService {
                     console.warn(`⚠️ Could not clear ${table}:`, error);
                 }
             });
-
-            // Reset account balances to 0 (preserve accounts but reset balances)
-            try {
-                db.run(`UPDATE accounts SET balance = 0`);
-                console.log(`✓ Reset account balances`);
-            } catch (error) {
-                console.warn(`⚠️ Could not reset account balances:`, error);
-            }
 
             // Reset auto-increment counters for cleared tables
             transactionTables.forEach(table => {
@@ -636,6 +630,7 @@ class DatabaseService {
             this.save();
             
             console.log('✅ Successfully cleared all transaction data from local database');
+            console.log('ℹ️  Accounts will be reloaded from cloud on next sync');
         } catch (error) {
             db.run('ROLLBACK');
             console.error('❌ Error clearing transaction data:', error);
