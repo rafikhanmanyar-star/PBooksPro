@@ -8,13 +8,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { Task } from '../types';
 import { getDatabaseService } from '../services/database/databaseService';
 
-let dbInitialized = false;
-
 async function ensureDatabaseInitialized(): Promise<void> {
-    if (dbInitialized) return;
     const dbService = getDatabaseService();
-    await dbService.initialize();
-    dbInitialized = true;
+    if (!dbService.isReady()) {
+        await dbService.initialize();
+    }
 }
 
 export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
@@ -31,6 +29,17 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
                 if (!isMounted) return;
 
                 const dbService = getDatabaseService();
+                
+                // Double-check database is ready
+                if (!dbService.isReady()) {
+                    console.warn('Database not ready, retrying...');
+                    await dbService.initialize();
+                    if (!isMounted) return;
+                }
+
+                // Ensure tasks table exists (safety check)
+                dbService.ensureAllTablesExist();
+
                 const results = dbService.query<{
                     id: string;
                     text: string;
@@ -67,12 +76,26 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
         };
     }, []);
 
-    // Save tasks to database
+    // Save tasks to database with optimistic updates
     const saveTasks = useCallback(async (newTasks: Task[]) => {
+        // Optimistic update: Update UI immediately
+        setTasks(newTasks);
+
+        // Save to database in the background
         try {
             await ensureDatabaseInitialized();
             const dbService = getDatabaseService();
 
+            // Double-check database is ready
+            if (!dbService.isReady()) {
+                console.warn('Database not ready for save, initializing...');
+                await dbService.initialize();
+            }
+
+            // Ensure tasks table exists (safety check)
+            dbService.ensureAllTablesExist();
+
+            // Start transaction-like operation
             // Delete all existing tasks
             dbService.execute('DELETE FROM tasks');
 
@@ -91,10 +114,38 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
                 );
             });
 
-            dbService.save();
-            setTasks(newTasks);
+            // Persist to storage and wait for completion
+            await dbService.saveAsync();
+            
+            console.log(`Successfully saved ${newTasks.length} task(s) to database`);
         } catch (error) {
-            console.error('Failed to save tasks:', error);
+            console.error('Failed to save tasks to database:', error);
+            // On error, reload from database to ensure consistency
+            try {
+                const dbService = getDatabaseService();
+                if (dbService.isReady()) {
+                    const results = dbService.query<{
+                        id: string;
+                        text: string;
+                        completed: number;
+                        priority: string;
+                        created_at: number;
+                    }>('SELECT * FROM tasks ORDER BY created_at DESC');
+
+                    const loadedTasks: Task[] = results.map(row => ({
+                        id: row.id,
+                        text: row.text,
+                        completed: row.completed === 1,
+                        priority: row.priority as 'low' | 'medium' | 'high',
+                        createdAt: row.created_at
+                    }));
+
+                    // Revert to actual database state on error
+                    setTasks(loadedTasks);
+                }
+            } catch (reloadError) {
+                console.error('Failed to reload tasks after save error:', reloadError);
+            }
         }
     }, []);
 
