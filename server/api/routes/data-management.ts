@@ -26,7 +26,7 @@ router.delete('/clear-transactions', async (req: TenantRequest, res) => {
     console.log(`🗑️ Admin ${username} (${userId}) is clearing all transactions for tenant ${tenantId}`);
 
     // Execute deletion in a transaction
-    const result = await db.withTransaction(async (client: any) => {
+    const result = await db.transaction(async (client) => {
       // Tables to clear (transaction-related data only)
       const tablesToClear = [
         'transactions',
