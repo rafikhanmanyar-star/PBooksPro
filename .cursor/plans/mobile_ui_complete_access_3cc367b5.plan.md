@@ -115,8 +115,6 @@ For EVERY component, use this pattern:
 //              ↑ mobile      ↑ desktop     ↑ mobile  ↑ desktop
 ```
 
-
-
 ### 2.2 Dashboard & KPI Components
 
 **Files:**
@@ -234,8 +232,6 @@ return (
 /* Keep all existing styles unchanged */
 ```
 
-
-
 ### 3.2 Use Existing useViewport Hook
 
 **File: [`hooks/useViewport.ts`](hooks/useViewport.ts)**Already perfect - use it throughout:
@@ -244,8 +240,6 @@ return (
 const { isMobile, isTablet, isDesktop } = useViewport();
 // Conditionally render different layouts
 ```
-
-
 
 ### 3.3 Shared UI Components
 
@@ -286,8 +280,6 @@ const { isMobile, isTablet, isDesktop } = useViewport();
   @apply px-3;  /* Forces 3 everywhere - DON'T DO THIS */
 }
 ```
-
-
 
 ## File Modification Summary
 

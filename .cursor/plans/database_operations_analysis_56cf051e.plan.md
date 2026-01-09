@@ -195,8 +195,6 @@ app.use('/api/documents', tenantMiddleware, documentsRouter);
 // ... etc
 ```
 
-
-
 #### Phase 4: Create API Repository Services (Frontend)
 
 **Directory:** `services/api/repositories/`Create API repository classes that mirror the local repositories:
@@ -234,8 +232,6 @@ await db.query(
   [entityId, req.tenantId, userId, ...]
 );
 ```
-
-
 
 ### Key Implementation Details
 

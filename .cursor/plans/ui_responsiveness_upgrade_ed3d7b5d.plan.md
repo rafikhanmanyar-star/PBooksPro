@@ -73,8 +73,6 @@ flowchart TD
     F --> Q[Max Content Width]
 ```
 
-
-
 ### Dynamic Sizing Strategy
 
 1. **Viewport-Based Calculations**: Use CSS custom properties and viewport units
@@ -139,8 +137,6 @@ flowchart TD
   <div className="flex-shrink-0">{/* Actions */}</div>
 </form>
 ```
-
-
 
 ### 3. Viewport Detection Hook
 
@@ -247,8 +243,6 @@ flowchart TD
   --safe-area-bottom: env(safe-area-inset-bottom);
 }
 ```
-
-
 
 ### 9. Form Field Component Updates
 

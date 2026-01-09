@@ -1521,6 +1521,21 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           </div>
       )}
 
+      {/* Amount Field for Project Invoices (INSTALLMENT) */}
+      {type === 'invoice' && invoiceType === InvoiceType.INSTALLMENT && (
+          <Input
+            label="Amount"
+            type="text"
+            inputMode="decimal"
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            required
+            disabled={isAgreementCancelled}
+            placeholder="0.00"
+            helperText={agreementForInvoice ? `Max: ${CURRENCY} ${agreementBalance.toLocaleString()}` : undefined}
+          />
+      )}
+
       {/* Expense Category Items (for Bills) or Category (for Invoices) */}
       {type === 'bill' ? (
         <div className="border border-gray-200 rounded-lg p-2 bg-gray-50 flex flex-col min-h-0" style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '200px' }}>

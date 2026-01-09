@@ -74,9 +74,6 @@ This approach:
             }
   ```
 
-
-
-
 - **Logic**:
 - Case-insensitive email lookup: `SELECT * FROM tenants WHERE LOWER(email) = LOWER($1)`
 - Return only safe fields (id, name, company_name, email)

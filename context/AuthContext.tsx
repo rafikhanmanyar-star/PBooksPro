@@ -473,6 +473,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         logger.logCategory('auth', '✅ Login completed successfully');
+
+        // Load settings from cloud database after successful login
+        try {
+          logger.logCategory('auth', '📥 Loading settings from cloud database...');
+          const { settingsSyncService } = await import('../services/settingsSyncService');
+          const cloudSettings = await settingsSyncService.syncFromCloud();
+          
+          // Dispatch settings to AppContext if available
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('load-cloud-settings', {
+              detail: cloudSettings
+            }));
+          }
+          
+          logger.logCategory('auth', '✅ Settings loaded from cloud database');
+        } catch (settingsError) {
+          logger.warnCategory('auth', '⚠️ Failed to load settings from cloud, will use local settings:', settingsError);
+        }
       } else {
         logger.errorCategory('auth', '❌ Invalid response from server:', { response });
         throw new Error('Invalid response from server - missing token, user, or tenant');

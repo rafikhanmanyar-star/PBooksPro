@@ -127,7 +127,7 @@ const SettingsPage: React.FC = () => {
                 { id: 'projects', label: 'Projects', icon: ICONS.archive },
                 { id: 'buildings', label: 'Buildings', icon: ICONS.building },
                 { id: 'properties', label: 'Properties', icon: ICONS.home },
-                { id: 'units', label: 'Units', icon: ICONS.list }, // Changed Icon
+                { id: 'units', label: 'Units', icon: ICONS.layers },
             ]
         },
         {

@@ -133,8 +133,28 @@ export class AppStateRepository {
         const quotations = this.quotationsRepo.findAll();
         const documents = this.documentsRepo.findAll();
 
-        // Load settings
-        const settings = this.appSettingsRepo.loadAllSettings();
+        // Load settings - try cloud first, then fallback to local
+        let settings: any = {};
+        try {
+            // Try to load from cloud if authenticated
+            const { apiClient } = await import('../../api/client');
+            if (apiClient.isAuthenticated()) {
+                const { settingsSyncService } = await import('../../settingsSyncService');
+                const cloudSettings = await settingsSyncService.loadSettings();
+                // Merge cloud settings with local settings (cloud takes precedence)
+                const localSettings = this.appSettingsRepo.loadAllSettings();
+                settings = { ...localSettings, ...cloudSettings };
+                console.log('✅ Loaded settings from cloud database');
+            } else {
+                // Not authenticated, use local settings only
+                settings = this.appSettingsRepo.loadAllSettings();
+                console.log('💾 Loaded settings from local database (not authenticated)');
+            }
+        } catch (error) {
+            // Fallback to local settings if cloud load fails
+            console.warn('⚠️ Failed to load settings from cloud, using local settings:', error);
+            settings = this.appSettingsRepo.loadAllSettings();
+        }
 
         // Separate project and rental staff
         const projectStaff = staff.filter(s => s.staff_type === 'project');

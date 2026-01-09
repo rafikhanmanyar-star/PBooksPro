@@ -30,8 +30,6 @@ flowchart TD
     I --> M[Notify Tenant of Failure]
 ```
 
-
-
 ## Database Schema Changes
 
 ### New Tables
@@ -183,8 +181,6 @@ PAYMOB_INTEGRATION_ID=your_integration_id
 # Webhook Security
 WEBHOOK_SECRET=your_webhook_secret
 ```
-
-
 
 ## Pricing Configuration
 

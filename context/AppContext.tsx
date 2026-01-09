@@ -1903,7 +1903,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 'ADD_CONTRACT',
                 'UPDATE_CONTRACT',
                 'DELETE_CONTRACT',
-                // Organization settings (NOT user preferences)
+                // Organization settings (communication settings)
                 'UPDATE_AGREEMENT_SETTINGS',
                 'UPDATE_PROJECT_AGREEMENT_SETTINGS',
                 'UPDATE_RENTAL_INVOICE_SETTINGS',
@@ -1914,6 +1914,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 'UPDATE_INSTALLMENT_PLAN',
                 'DELETE_INSTALLMENT_PLAN',
                 'UPDATE_PM_COST_PERCENTAGE',
+                // General settings (user-based settings in organization)
+                'TOGGLE_SYSTEM_TRANSACTIONS',
+                'TOGGLE_COLOR_CODING',
+                'TOGGLE_BEEP_ON_SAVE',
+                'TOGGLE_DATE_PRESERVATION',
+                'UPDATE_DEFAULT_PROJECT',
+                'UPDATE_DOCUMENT_STORAGE_PATH',
+                'UPDATE_DASHBOARD_CONFIG',
                 // PM Cycle Allocations
                 'ADD_PM_CYCLE_ALLOCATION',
                 'UPDATE_PM_CYCLE_ALLOCATION',
@@ -2288,6 +2296,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             await apiService.deletePMCycleAllocation(allocationId);
                             logger.logCategory('sync', '✅ Synced PM cycle allocation deletion to API:', allocationId);
                         }
+
+                        // Handle settings changes (both general and communication settings)
+                        const { settingsSyncService } = await import('../services/settingsSyncService');
+                        if (action.type === 'UPDATE_PRINT_SETTINGS') {
+                            await settingsSyncService.saveSetting('printSettings', action.payload);
+                            logger.logCategory('sync', '✅ Synced print settings to cloud');
+                        } else if (action.type === 'UPDATE_WHATSAPP_TEMPLATES') {
+                            await settingsSyncService.saveSetting('whatsAppTemplates', action.payload);
+                            logger.logCategory('sync', '✅ Synced WhatsApp templates to cloud');
+                        } else if (action.type === 'TOGGLE_SYSTEM_TRANSACTIONS') {
+                            await settingsSyncService.saveSetting('showSystemTransactions', action.payload);
+                            logger.logCategory('sync', '✅ Synced showSystemTransactions to cloud');
+                        } else if (action.type === 'TOGGLE_COLOR_CODING') {
+                            await settingsSyncService.saveSetting('enableColorCoding', action.payload);
+                            logger.logCategory('sync', '✅ Synced enableColorCoding to cloud');
+                        } else if (action.type === 'TOGGLE_BEEP_ON_SAVE') {
+                            await settingsSyncService.saveSetting('enableBeepOnSave', action.payload);
+                            logger.logCategory('sync', '✅ Synced enableBeepOnSave to cloud');
+                        } else if (action.type === 'TOGGLE_DATE_PRESERVATION') {
+                            await settingsSyncService.saveSetting('enableDatePreservation', action.payload);
+                            logger.logCategory('sync', '✅ Synced enableDatePreservation to cloud');
+                        } else if (action.type === 'UPDATE_DEFAULT_PROJECT') {
+                            await settingsSyncService.saveSetting('defaultProjectId', action.payload);
+                            logger.logCategory('sync', '✅ Synced defaultProjectId to cloud');
+                        } else if (action.type === 'UPDATE_DOCUMENT_STORAGE_PATH') {
+                            await settingsSyncService.saveSetting('documentStoragePath', action.payload);
+                            logger.logCategory('sync', '✅ Synced documentStoragePath to cloud');
+                        } else if (action.type === 'UPDATE_DASHBOARD_CONFIG') {
+                            await settingsSyncService.saveSetting('dashboardConfig', action.payload);
+                            logger.logCategory('sync', '✅ Synced dashboardConfig to cloud');
+                        } else if (action.type === 'UPDATE_AGREEMENT_SETTINGS') {
+                            await settingsSyncService.saveSetting('agreementSettings', action.payload);
+                            logger.logCategory('sync', '✅ Synced agreementSettings to cloud');
+                        } else if (action.type === 'UPDATE_PROJECT_AGREEMENT_SETTINGS') {
+                            await settingsSyncService.saveSetting('projectAgreementSettings', action.payload);
+                            logger.logCategory('sync', '✅ Synced projectAgreementSettings to cloud');
+                        } else if (action.type === 'UPDATE_RENTAL_INVOICE_SETTINGS') {
+                            await settingsSyncService.saveSetting('rentalInvoiceSettings', action.payload);
+                            logger.logCategory('sync', '✅ Synced rentalInvoiceSettings to cloud');
+                        } else if (action.type === 'UPDATE_PROJECT_INVOICE_SETTINGS') {
+                            await settingsSyncService.saveSetting('projectInvoiceSettings', action.payload);
+                            logger.logCategory('sync', '✅ Synced projectInvoiceSettings to cloud');
+                        }
                     } catch (error: any) {
                         // Log error but don't block UI - state is already updated locally
                         logger.errorCategory('sync', '❌ CRITICAL: Failed to sync to API in syncToApi:', {
@@ -2489,6 +2540,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             refreshFromApiRef.current();
         }
     }, [isAuthenticated]); // Only depend on isAuthenticated, not refreshFromApi
+
+    // Listen for cloud settings loaded after login
+    useEffect(() => {
+        const handleCloudSettingsLoaded = async (event: CustomEvent) => {
+            const cloudSettings = event.detail;
+            if (!cloudSettings || typeof cloudSettings !== 'object') return;
+
+            console.log('📥 Received cloud settings, applying to state...');
+            
+            // Apply settings to state
+            if (cloudSettings.printSettings) {
+                dispatch({ type: 'UPDATE_PRINT_SETTINGS', payload: cloudSettings.printSettings });
+            }
+            if (cloudSettings.whatsAppTemplates) {
+                dispatch({ type: 'UPDATE_WHATSAPP_TEMPLATES', payload: cloudSettings.whatsAppTemplates });
+            }
+            if (cloudSettings.showSystemTransactions !== undefined) {
+                dispatch({ type: 'TOGGLE_SYSTEM_TRANSACTIONS', payload: cloudSettings.showSystemTransactions });
+            }
+            if (cloudSettings.enableColorCoding !== undefined) {
+                dispatch({ type: 'TOGGLE_COLOR_CODING', payload: cloudSettings.enableColorCoding });
+            }
+            if (cloudSettings.enableBeepOnSave !== undefined) {
+                dispatch({ type: 'TOGGLE_BEEP_ON_SAVE', payload: cloudSettings.enableBeepOnSave });
+            }
+            if (cloudSettings.enableDatePreservation !== undefined) {
+                dispatch({ type: 'TOGGLE_DATE_PRESERVATION', payload: cloudSettings.enableDatePreservation });
+            }
+            if (cloudSettings.defaultProjectId !== undefined) {
+                dispatch({ type: 'UPDATE_DEFAULT_PROJECT', payload: cloudSettings.defaultProjectId });
+            }
+            if (cloudSettings.documentStoragePath !== undefined) {
+                dispatch({ type: 'UPDATE_DOCUMENT_STORAGE_PATH', payload: cloudSettings.documentStoragePath });
+            }
+            if (cloudSettings.dashboardConfig) {
+                dispatch({ type: 'UPDATE_DASHBOARD_CONFIG', payload: cloudSettings.dashboardConfig });
+            }
+            if (cloudSettings.agreementSettings) {
+                dispatch({ type: 'UPDATE_AGREEMENT_SETTINGS', payload: cloudSettings.agreementSettings });
+            }
+            if (cloudSettings.projectAgreementSettings) {
+                dispatch({ type: 'UPDATE_PROJECT_AGREEMENT_SETTINGS', payload: cloudSettings.projectAgreementSettings });
+            }
+            if (cloudSettings.rentalInvoiceSettings) {
+                dispatch({ type: 'UPDATE_RENTAL_INVOICE_SETTINGS', payload: cloudSettings.rentalInvoiceSettings });
+            }
+            if (cloudSettings.projectInvoiceSettings) {
+                dispatch({ type: 'UPDATE_PROJECT_INVOICE_SETTINGS', payload: cloudSettings.projectInvoiceSettings });
+            }
+
+            console.log('✅ Cloud settings applied to state');
+        };
+
+        window.addEventListener('load-cloud-settings', handleCloudSettingsLoaded as EventListener);
+        return () => {
+            window.removeEventListener('load-cloud-settings', handleCloudSettingsLoaded as EventListener);
+        };
+    }, [dispatch]);
 
     // Real-time sync via WebSocket events
     useEffect(() => {
