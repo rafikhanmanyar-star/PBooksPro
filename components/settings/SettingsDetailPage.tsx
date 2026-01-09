@@ -137,8 +137,8 @@ const SettingsDetailPage: React.FC<SettingsDetailPageProps> = ({ goBack: propGoB
     };
 
     return (
-        <div className="w-full h-full flex flex-col">
-            <div className="flex items-center gap-2 mb-4 flex-shrink-0">
+        <div className="w-full min-h-full flex flex-col">
+            <div className="flex items-center gap-2 mb-3 md:mb-4 flex-shrink-0">
                 <button onClick={goBack} className="p-1 rounded-full hover:bg-slate-100 text-slate-600 transition-colors" aria-label="Go back">
                     <div className="w-6 h-6">{ICONS.chevronLeft}</div>
                 </button>

@@ -206,7 +206,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ payrollType }) => {
     };
 
     return (
-        <div className="space-y-4 h-full flex flex-col">
+        <div className="space-y-3 md:space-y-4 min-h-full flex flex-col">
             {/* Top Toolbar */}
             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex-shrink-0">
                 <div className="flex-grow relative max-w-md">

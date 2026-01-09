@@ -317,9 +317,9 @@ const VendorDirectoryPage: React.FC = () => {
     };
 
     return (
-        <div className="flex flex-col h-full bg-slate-50">
+        <div className="flex flex-col min-h-full bg-slate-50">
             <AddVendorSection optionsView={optionsView} setOptionsView={setOptionsView} setSelectedVendorId={setSelectedVendorId} />
-            <div className="flex-grow flex flex-col md:flex-row gap-4 p-4 min-h-0">
+            <div className="flex-grow flex flex-col md:flex-row gap-3 md:gap-4 p-3 md:p-4 min-h-0">
                 {/* Vendor List Sidebar */}
                 <div
                     className="hidden md:flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 h-full flex-shrink-0 overflow-hidden z-10"

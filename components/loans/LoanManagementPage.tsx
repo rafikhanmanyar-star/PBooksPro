@@ -239,9 +239,9 @@ const LoanManagementPage: React.FC = () => {
     );
 
     return (
-        <div className="h-full flex flex-col space-y-4">
+        <div className="min-h-full flex flex-col space-y-3 md:space-y-4">
             {/* Top Bar */}
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex-shrink-0 no-print">
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-3 md:gap-4 bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex-shrink-0 no-print">
                 <div className="relative flex-grow w-full sm:w-auto sm:max-w-md">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                         <span className="h-5 w-5">{ICONS.search}</span>

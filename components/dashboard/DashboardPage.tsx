@@ -111,7 +111,20 @@ const DashboardPage: React.FC = () => {
                 </div>
             </div>
 
-            {/* Bento Grid Layout */}
+            {/* Overview Reports & Bank Accounts - Top Section */}
+            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                <Tabs
+                    tabs={['Overview Reports', 'Bank Accounts']}
+                    activeTab={activeReportTab}
+                    onTabClick={setActiveReportTab}
+                    className="border-b border-slate-100 px-4 pt-2"
+                />
+                <div className="p-4">
+                    {activeReportTab === 'Overview Reports' ? <ProjectBuildingFundsReport /> : <BankAccountsReport />}
+                </div>
+            </div>
+
+            {/* Custom KPIs & Dashboard Widgets Section */}
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-6">
 
                 {/* KPI Cards Row */}
@@ -209,21 +222,6 @@ const DashboardPage: React.FC = () => {
                         </div>
                     </div>
 
-                </div>
-
-                {/* Reports Tabs Row */}
-                <div className="col-span-1 md:col-span-3 lg:col-span-4">
-                    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                        <Tabs
-                            tabs={['Overview Reports', 'Bank Accounts']}
-                            activeTab={activeReportTab}
-                            onTabClick={setActiveReportTab}
-                            className="border-b border-slate-100 px-4 pt-2"
-                        />
-                        <div className="p-4">
-                            {activeReportTab === 'Overview Reports' ? <ProjectBuildingFundsReport /> : <BankAccountsReport />}
-                        </div>
-                    </div>
                 </div>
 
             </div>

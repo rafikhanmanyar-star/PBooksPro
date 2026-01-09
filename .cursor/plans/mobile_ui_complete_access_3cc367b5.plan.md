@@ -301,4 +301,3 @@ const { isMobile, isTablet, isDesktop } = useViewport();
 - Desktop sidebar logic/styling
 - Desktop header logic (hamburger already works)
 - Desktop footer (doesn't show on desktop anyway)
-- Any core business logic

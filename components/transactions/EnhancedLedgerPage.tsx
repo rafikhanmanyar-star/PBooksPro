@@ -487,7 +487,7 @@ const EnhancedLedgerPage: React.FC = () => {
     }, [filters]);
 
     return (
-        <div className="flex flex-col h-full bg-slate-50/50 p-2 sm:p-4 gap-2 sm:gap-4 overflow-hidden">
+        <div className="flex flex-col min-h-full bg-slate-50/50 gap-2 sm:gap-4">
             {/* Header Section */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0">
                 <div>
@@ -613,7 +613,7 @@ const EnhancedLedgerPage: React.FC = () => {
             </div>
 
             {/* Main Table Area */}
-            <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col relative">
+            <div className="min-h-[400px] md:min-h-[500px] bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col relative">
                 {isLoadingTransactions && paginatedTransactions.length === 0 ? (
                     <div className="flex-1 flex flex-col items-center justify-center bg-slate-50/10">
                         <div className="relative w-12 h-12 mb-4">
