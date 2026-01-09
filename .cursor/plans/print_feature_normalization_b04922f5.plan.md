@@ -306,8 +306,6 @@ export const getPrintTemplateWrapper = (
 export const STANDARD_PRINT_STYLES = `...` // Centralized CSS
 ```
 
-
-
 ### Print Hook Structure
 
 ```typescript
@@ -325,8 +323,6 @@ export const usePrint = (printType: 'data' | 'template', options?: PrintOptions)
 }
 ```
 
-
-
 ### Print Button Component
 
 ```typescript
@@ -338,8 +334,6 @@ interface PrintButtonProps {
   disabled?: boolean;
 }
 ```
-
-
 
 ## Benefits
 
@@ -400,5 +394,3 @@ interface PrintButtonProps {
 - Consistent branding across all printed documents (reports, invoices, payslips, contracts, etc.)
 
 ### Implementation Approach
-
-1. Print service will automatically fetch print settings from app context

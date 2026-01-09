@@ -331,3 +331,4 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({
 
 export default InitializationScreen;
 
+

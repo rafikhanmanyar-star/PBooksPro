@@ -129,11 +129,9 @@ const ProjectUnitReport: React.FC = () => {
             acc.totalBalanceDue += item.balanceDue;
             return acc;
         }, { totalSaleValue: 0, totalAmountReceived: 0, totalBalanceDue: 0 });
-    }, [reportData]);
-
-    const handlePrint = () => { window.print(); };
-
-    const handleExport = () => {
+      }, [reportData]);
+  
+      const handleExport = () => {
         const dataToExport = reportData.map(item => ({
             'Project': item.projectName,
             'Unit': item.unitName,
