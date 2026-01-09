@@ -92,21 +92,25 @@ export default defineConfig({
       }
     },
     {
-      name: 'copy-icon',
+      name: 'copy-icons',
       closeBundle() {
-        // Copy icon.ico from build folder to dist folder (optional - for production)
-        // Icon.ico is not required during testing - will be added during production stage
-        const iconSource = join(process.cwd(), 'build', 'icon.ico')
-        const iconDest = join(process.cwd(), 'dist', 'icon.ico')
-        if (existsSync(iconSource)) {
-          try {
-            copyFileSync(iconSource, iconDest)
-            console.log('✅ Copied icon.ico to dist folder')
-          } catch (error) {
-            // Silently ignore - icon.ico is optional during testing
+        // Copy icon files to dist folder
+        const iconsToCheck = [
+          { source: join(process.cwd(), 'build', 'icon.ico'), dest: join(process.cwd(), 'dist', 'icon.ico') },
+          { source: join(process.cwd(), 'public', 'icon.svg'), dest: join(process.cwd(), 'dist', 'assets', 'icon.svg') },
+          { source: join(process.cwd(), 'icon.svg'), dest: join(process.cwd(), 'dist', 'icon.svg') }
+        ];
+        
+        iconsToCheck.forEach(({ source, dest }) => {
+          if (existsSync(source)) {
+            try {
+              copyFileSync(source, dest);
+              console.log(`✅ Copied ${source.split(/[/\\]/).pop()} to dist folder`);
+            } catch (error) {
+              // Silently ignore - icons are optional during testing
+            }
           }
-        }
-        // No warning if icon.ico doesn't exist - it's optional for testing
+        });
       }
     },
   ],
