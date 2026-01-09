@@ -937,4 +937,3 @@ addFeatureFlag(exampleFeature);
 ## Timeline Estimate
 
 - Phase 1-2 (Git & Render Config): 1 hour
-- Phase 3-4 (Database & Backend): 2-3 hours

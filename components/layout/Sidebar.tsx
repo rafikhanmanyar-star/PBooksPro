@@ -372,7 +372,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                             </div>
 
                             {/* Online Users & Chat - Mobile */}
-                            {onlineUsers !== null && onlineUsers > 0 && (
+                            {onlineUsers !== null && onlineUsers > 1 && (
                                 <button
                                     onClick={() => {
                                         setIsChatModalOpen(true);
@@ -512,7 +512,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                         </div>
 
                         {/* Online Users Info */}
-                        {onlineUsers !== null && (
+                        {onlineUsers !== null && onlineUsers > 1 && (
                             <div className="space-y-2">
                                 <div className="px-3 py-2 rounded-lg bg-slate-800/30 border border-slate-700/30">
                                     <div className="flex items-center gap-2">
@@ -526,25 +526,23 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                         </span>
                                     </div>
                                 </div>
-                                {onlineUsers > 0 && (
-                                    <button
-                                        onClick={() => setIsChatModalOpen(true)}
-                                        className={`w-full px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition-colors flex items-center justify-center gap-2 relative ${
-                                            unreadMessageCount > 0 ? 'animate-pulse' : ''
-                                        }`}
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                                        </svg>
-                                        Chat
-                                        {unreadMessageCount > 0 && (
-                                            <>
-                                                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
-                                                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
-                                            </>
-                                        )}
-                                    </button>
-                                )}
+                                <button
+                                    onClick={() => setIsChatModalOpen(true)}
+                                    className={`w-full px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition-colors flex items-center justify-center gap-2 relative ${
+                                        unreadMessageCount > 0 ? 'animate-pulse' : ''
+                                    }`}
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                                    </svg>
+                                    Chat
+                                    {unreadMessageCount > 0 && (
+                                        <>
+                                            <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
+                                            <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
+                                        </>
+                                    )}
+                                </button>
                             </div>
                         )}
                     </div>

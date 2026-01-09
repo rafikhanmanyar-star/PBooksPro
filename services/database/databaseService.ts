@@ -577,6 +577,73 @@ class DatabaseService {
     }
 
     /**
+     * Clear all transaction-related data (keeps configuration and master data)
+     * Preserves: Accounts, contacts, categories, projects, buildings, properties, units, settings
+     * Clears: Transactions, invoices, bills, contracts, agreements, sales returns, payslips
+     */
+    clearTransactionData(): void {
+        const db = this.getDatabase();
+        const transactionTables = [
+            'transactions',
+            'invoices',
+            'bills',
+            'contracts',
+            'rental_agreements',
+            'project_agreements',
+            'sales_returns',
+            'payslips',
+            'legacy_payslips',
+            'quotations',
+            'recurring_invoice_templates'
+        ];
+
+        db.run('BEGIN TRANSACTION');
+        try {
+            // Disable foreign keys temporarily
+            db.run('PRAGMA foreign_keys = OFF');
+            
+            // Clear transaction-related tables
+            transactionTables.forEach(table => {
+                try {
+                    db.run(`DELETE FROM ${table}`);
+                    console.log(`✓ Cleared ${table}`);
+                } catch (error) {
+                    console.warn(`⚠️ Could not clear ${table}:`, error);
+                }
+            });
+
+            // Reset account balances to 0 (preserve accounts but reset balances)
+            try {
+                db.run(`UPDATE accounts SET balance = 0`);
+                console.log(`✓ Reset account balances`);
+            } catch (error) {
+                console.warn(`⚠️ Could not reset account balances:`, error);
+            }
+
+            // Reset auto-increment counters for cleared tables
+            transactionTables.forEach(table => {
+                try {
+                    db.run(`DELETE FROM sqlite_sequence WHERE name = ?`, [table]);
+                } catch (error) {
+                    // Ignore - table might not have auto-increment
+                }
+            });
+
+            // Re-enable foreign keys
+            db.run('PRAGMA foreign_keys = ON');
+            
+            db.run('COMMIT');
+            this.save();
+            
+            console.log('✅ Successfully cleared all transaction data from local database');
+        } catch (error) {
+            db.run('ROLLBACK');
+            console.error('❌ Error clearing transaction data:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Clear all data (keeps schema)
      */
     clearAllData(): void {

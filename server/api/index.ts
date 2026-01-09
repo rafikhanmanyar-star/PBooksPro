@@ -73,6 +73,7 @@ import statutoryConfigurationsRouter from './routes/statutory-configurations.js'
 import errorLogRouter from './routes/error-log.js';
 import appSettingsRouter from './routes/app-settings.js';
 import pmCycleAllocationsRouter from './routes/pm-cycle-allocations.js';
+import dataManagementRouter from './routes/data-management.js';
 import { tenantMiddleware } from '../middleware/tenantMiddleware.js';
 import { licenseMiddleware } from '../middleware/licenseMiddleware.js';
 
@@ -634,6 +635,7 @@ app.use('/api/statutory-configurations', statutoryConfigurationsRouter); // Stat
 app.use('/api/error-log', errorLogRouter); // Error Log
 app.use('/api/app-settings', appSettingsRouter); // App Settings
 app.use('/api/pm-cycle-allocations', pmCycleAllocationsRouter); // PM Cycle Allocations
+app.use('/api/data-management', dataManagementRouter); // Data Management (Admin only)
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

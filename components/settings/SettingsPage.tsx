@@ -27,6 +27,9 @@ import PropertyTransferModal from './PropertyTransferModal';
 import MigratAIWizard from './MigratAIWizard';
 import LicenseManagement from '../license/LicenseManagement';
 import { Property } from '../../types';
+import ClearTransactionsModal from './ClearTransactionsModal';
+import { dataManagementApi } from '../../services/api/repositories/dataManagementApi';
+import { getDatabaseService } from '../../services/database/databaseService';
 
 interface TableRowData {
     id: string;
@@ -94,6 +97,7 @@ const SettingsPage: React.FC = () => {
     const [propertyToTransfer, setPropertyToTransfer] = useState<Property | null>(null);
     const [isMigrationWizardOpen, setIsMigrationWizardOpen] = useState(false);
     const [isAddNewMenuOpen, setIsAddNewMenuOpen] = useState(false);
+    const [isClearTransactionsModalOpen, setIsClearTransactionsModalOpen] = useState(false);
 
     // Check if user is admin - use AuthContext user (cloud auth) or fallback to AppContext currentUser (local)
     const isAdmin = authUser?.role === 'Admin' || state.currentUser?.role === 'Admin';
@@ -399,10 +403,40 @@ const SettingsPage: React.FC = () => {
             setVisibleKpiIds(DEFAULT_VISIBLE_KPIS);
         }
     };
+
     const handleClearTransactions = async () => {
-        if (await showConfirm('Are you sure you want to delete ALL transaction-related data?\n\nThis will clear:\n• All transactions \n• All invoices\n• All bills\n• All contracts\n• All agreements\n• All sales returns\n• All payslips\n\nPreserves:\n• Accounts, contacts, categories\n• Projects, buildings, properties, units\n• All settings\n\nThis action is irreversible.', { title: 'Clear All Transactions', confirmLabel: 'Clear Data', cancelLabel: 'Cancel' })) {
+        try {
+            console.log('🗑️ Starting clear transactions process...');
+            
+            // Step 1: Clear from cloud database (server)
+            console.log('📡 Clearing transactions from cloud database...');
+            const result = await dataManagementApi.clearTransactions();
+            console.log('✅ Cloud database cleared:', result.details);
+
+            // Step 2: Clear from local database
+            console.log('💾 Clearing transactions from local database...');
+            const dbService = getDatabaseService();
+            if (dbService.isReady()) {
+                dbService.clearTransactionData();
+                console.log('✅ Local database cleared');
+            }
+
+            // Step 3: Update in-memory state
+            console.log('🔄 Updating application state...');
             dispatch({ type: 'RESET_TRANSACTIONS' });
-            showToast('All transactions have been cleared.', 'success');
+            console.log('✅ Application state updated');
+
+            showToast(
+                `Successfully cleared ${result.details.recordsDeleted} transaction records from local and cloud databases.`,
+                'success'
+            );
+        } catch (error: any) {
+            console.error('❌ Error clearing transactions:', error);
+            showAlert(
+                error?.message || 'Failed to clear transactions. Please try again.',
+                'error'
+            );
+            throw error; // Re-throw so modal knows operation failed
         }
     };
     const handleFactoryReset = async () => {
@@ -653,10 +687,13 @@ const SettingsPage: React.FC = () => {
             <div className="bg-white rounded-xl border border-rose-100 shadow-sm p-6">
                 <h3 className="font-bold text-lg mb-4 text-rose-800 flex items-center gap-2">{ICONS.alertTriangle} Danger Zone</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <button onClick={handleClearTransactions} className="p-4 bg-rose-50 border border-rose-100 rounded-xl hover:bg-rose-100 hover:border-rose-300 transition-all text-left group">
-                        <div className="font-bold text-rose-700 mb-1 flex items-center gap-2">{ICONS.trash} Clear Transactions</div>
-                        <p className="text-xs text-rose-600/80 leading-relaxed">Deletes all financial data but keeps your entity structure (Accounts, Projects, etc.) intact.</p>
-                    </button>
+                    {isAdmin && (
+                        <button onClick={() => setIsClearTransactionsModalOpen(true)} className="p-4 bg-rose-50 border border-rose-100 rounded-xl hover:bg-rose-100 hover:border-rose-300 transition-all text-left group">
+                            <div className="font-bold text-rose-700 mb-1 flex items-center gap-2">{ICONS.trash} Clear Transactions</div>
+                            <p className="text-xs text-rose-600/80 leading-relaxed">Deletes all financial data but keeps your entity structure (Accounts, Projects, etc.) intact.</p>
+                            <p className="text-xs text-rose-500 mt-2 font-semibold">⚠️ Admin Only</p>
+                        </button>
+                    )}
                     <button onClick={handleFactoryReset} className="p-4 bg-slate-800 border border-slate-700 rounded-xl hover:bg-slate-900 transition-all text-left group">
                         <div className="font-bold text-white mb-1 flex items-center gap-2">{ICONS.alertTriangle} Factory Reset</div>
                         <p className="text-xs text-slate-400 leading-relaxed">Completely wipes ALL data and restores the application to a fresh install state.</p>
@@ -838,6 +875,12 @@ const SettingsPage: React.FC = () => {
                     <MigratAIWizard onClose={() => setIsMigrationWizardOpen(false)} />
                 </div>
             </Modal>
+
+            <ClearTransactionsModal
+                isOpen={isClearTransactionsModalOpen}
+                onClose={() => setIsClearTransactionsModalOpen(false)}
+                onConfirm={handleClearTransactions}
+            />
         </div>
     );
 };
