@@ -21,6 +21,13 @@ export interface CorrectionRequest {
     missingFields: string[];
 }
 
+// Helper to generate unique ID for imported records
+const generateImportId = (prefix: string, index: number): string => {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substr(2, 9);
+    return `imp-${prefix}-${timestamp}-${index}-${random}`;
+};
+
 // Helper to generate transaction ID for bills and invoices
 const generateTransactionId = (type: 'bill' | 'invoice', number: string, id: string): string => {
     const normalizedNumber = String(number).trim().replace(/\s+/g, '-');
@@ -1546,7 +1553,7 @@ export const runImportProcess = async (
                     }
 
                     const newComp: SalaryComponent = {
-                        id: row.id || `imp-sal-${Date.now()}-${index}`,
+                        id: generateImportId('sal', index),
                         name: row.name,
                         type: row.type,
                         isTaxable: row.isTaxable === true || String(row.isTaxable).toLowerCase() === 'true',
@@ -1582,7 +1589,7 @@ export const runImportProcess = async (
                     );
 
                     const newAccount: Account = {
-                        id: row.id || `imp-acc-${Date.now()}-${index}`,
+                        id: generateImportId('acc', index),
                         name: row.name,
                         type: row.type as AccountType,
                         balance: parseFloat(row.balance) || 0,
@@ -1624,7 +1631,7 @@ export const runImportProcess = async (
                     }
 
                     const newContact: Contact = {
-                        id: row.id || `imp-con-${Date.now()}-${index}`,
+                        id: generateImportId('con', index),
                         name: row.name, type,
                         description: row.description, contactNo: row.contactNo,
                         companyName: row.companyName, address: row.address
@@ -1660,7 +1667,7 @@ export const runImportProcess = async (
                     );
 
                     const newCat: Category = {
-                        id: row.id || `imp-cat-${Date.now()}-${index}`,
+                        id: generateImportId('cat', index),
                         name: row.name, type: row.type, description: row.description,
                         parentCategoryId: parentId
                     };
@@ -1683,7 +1690,7 @@ export const runImportProcess = async (
                     }
 
                     const newProj: Project = {
-                        id: row.id || `imp-proj-${Date.now()}-${index}`,
+                        id: generateImportId('proj', index),
                         name: row.name, description: row.description,
                         color: row.color,
                         status: row.status,
@@ -1709,7 +1716,7 @@ export const runImportProcess = async (
                     }
 
                     const newBldg: Building = {
-                        id: row.id || `imp-bldg-${Date.now()}-${index}`,
+                        id: generateImportId('bldg', index),
                         name: row.name, description: row.description, color: row.color
                     };
                     tempState.buildings.push(newBldg);
@@ -1759,7 +1766,7 @@ export const runImportProcess = async (
                     }
 
                     const newProp: Property = {
-                        id: row.id || `imp-prop-${Date.now()}-${index}`,
+                        id: generateImportId('prop', index),
                         name: row.name, ownerId, buildingId,
                         description: row.description,
                         monthlyServiceCharge: parseFloat(row.monthlyServiceCharge)
@@ -1799,7 +1806,7 @@ export const runImportProcess = async (
                     }
 
                     const newUnit: Unit = {
-                        id: row.id || `imp-unit-${Date.now()}-${index}`,
+                        id: generateImportId('unit', index),
                         name: row.name, projectId, contactId: ownerId,
                         salePrice: parseFloat(row.salePrice), description: row.description
                     };
@@ -1858,7 +1865,7 @@ export const runImportProcess = async (
                         }
 
                         const newAgr: RentalAgreement = {
-                            id: row.id || `imp-ra-${Date.now()}-${index}`,
+                            id: generateImportId('ra', index),
                             agreementNumber: row.agreementNumber,
                             tenantId, propertyId, brokerId,
                             startDate: new Date(row.startDate).toISOString(),
@@ -1930,7 +1937,7 @@ export const runImportProcess = async (
                         }
 
                         const newPa: ProjectAgreement = {
-                            id: row.id || `imp-pa-${Date.now()}-${index}`,
+                            id: generateImportId('pa', index),
                             agreementNumber: row.agreementNumber,
                             clientId, projectId, unitIds,
                             listPrice: parseFloat(row.listPrice),
@@ -2049,7 +2056,7 @@ export const runImportProcess = async (
                     // Parse expenseCategoryItems from separate columns (new format) or JSON (old format)
                     const expenseCategoryItems = parseExpenseCategoryItems(row, maps, normalizeNameForComparison);
 
-                    const contractId = row.id || `imp-ctr-${Date.now()}-${index}`;
+                    const contractId = generateImportId('ctr', index);
                     const newContract: Contract = {
                         id: contractId,
                         contractNumber,
@@ -2097,7 +2104,7 @@ export const runImportProcess = async (
                             continue;
                         }
 
-                        const invoiceId = row.id || `imp-inv-${Date.now()}-${index}`;
+                        const invoiceId = generateImportId('inv', index);
                         // Transaction ID is system-generated only (used for logging)
                         const transactionId = generateTransactionId('invoice', row.invoiceNumber, invoiceId);
 
@@ -2148,7 +2155,7 @@ export const runImportProcess = async (
                             continue;
                         }
 
-                        const billId = row.id || `imp-bill-${Date.now()}-${index}`;
+                        const billId = generateImportId('bill', index);
                         // Transaction ID is system-generated only (used for logging)
                         const transactionId = generateTransactionId('bill', row.billNumber, billId);
 
@@ -2214,7 +2221,7 @@ export const runImportProcess = async (
                         continue;
                     }
 
-                    const billId = row.id || `imp-pbill-${Date.now()}-${index}`;
+                    const billId = generateImportId('pbill', index);
                     // Transaction ID is system-generated only (used for logging)
                     const transactionId = generateTransactionId('bill', row.billNumber, billId);
 
@@ -2270,7 +2277,7 @@ export const runImportProcess = async (
                         continue;
                     }
 
-                    const billId = row.id || `imp-rbill-${Date.now()}-${index}`;
+                    const billId = generateImportId('rbill', index);
                     // Transaction ID is system-generated only (used for logging)
                     const transactionId = generateTransactionId('bill', row.billNumber, billId);
 
@@ -2304,7 +2311,7 @@ export const runImportProcess = async (
 
                     if (contactId && propertyId) {
                         const t: RecurringInvoiceTemplate = {
-                            id: row.id || `imp-rec-${Date.now()}-${index}`,
+                            id: generateImportId('rec', index),
                             contactId, propertyId,
                             buildingId: resolveId(maps.buildings, row, 'buildingName', 'BuildingName', 'building', 'Building') || '',
                             amount: parseFloat(row.amount),
@@ -2322,11 +2329,7 @@ export const runImportProcess = async (
 
                 // --- BUDGETS ---
                 else if (sheetName === 'Budgets') {
-                    // Check if budget ID already exists (prevents re-importing exported files)
-                    if (row.id && tempState.budgets.find(b => b.id === String(row.id).trim())) {
-                        log(sheetName, rowNum, 'Skipped', `Duplicate entry: Budget with ID "${row.id}" already exists in the system. This entry appears to be from an exported file.`, row);
-                        continue;
-                    }
+                    // IDs are no longer imported, so skip duplicate check by ID
 
                     // Support either categoryId (advanced) or categoryName (friendly)
                     const categoryId =
@@ -2376,7 +2379,7 @@ export const runImportProcess = async (
                     }
 
                     const newBudget: Budget = {
-                        id: row.id || `imp-bud-${Date.now()}-${index}`,
+                        id: generateImportId('bud', index),
                         categoryId: String(categoryId),
                         amount: parseFloat(row.amount) || 0,
                         projectId: projectId || undefined
@@ -2409,7 +2412,7 @@ export const runImportProcess = async (
                         const netSalary = parseFloat(row.netSalary) || 0;
 
                         const newSlip: Payslip = {
-                            id: row.id || `imp-pay-${Date.now()}-${index}`,
+                            id: generateImportId('pay', index),
                             employeeId: staffId, // legacy payroll links staff to Contact id
                             staffId,
                             payrollCycleId: '',
@@ -2593,7 +2596,7 @@ export const runImportProcess = async (
                     }
 
                     // Generate transaction ID first (needed for duplicate detection)
-                    const transactionId = row.id || `imp-tx-${Date.now()}-${index}`;
+                    const transactionId = generateImportId('tx', index);
                     let txId: string;
 
                     // Dependencies + overpayment for invoice/bill payments

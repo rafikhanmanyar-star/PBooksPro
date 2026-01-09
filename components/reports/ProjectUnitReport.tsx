@@ -9,6 +9,8 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import ReportToolbar from './ReportToolbar';
+import { usePrint } from '../../hooks/usePrint';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface ReportRow {
     id: string;
@@ -23,6 +25,7 @@ interface ReportRow {
 
 const ProjectUnitReport: React.FC = () => {
     const { state } = useAppContext();
+    const { handlePrint } = usePrint();
     const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || 'all');
     const [searchQuery, setSearchQuery] = useState('');
     const [groupBy, setGroupBy] = useState('');
@@ -159,55 +162,7 @@ const ProjectUnitReport: React.FC = () => {
 
     return (
         <>
-            <style>{`
-                @media print {
-                    @page {
-                        size: A4;
-                        margin: 12.7mm;
-                    }
-                    html, body {
-                        height: auto !important;
-                        overflow: visible !important;
-                    }
-                    body * {
-                        visibility: hidden;
-                    }
-                    .printable-area, .printable-area * {
-                        visibility: visible !important;
-                    }
-                    .printable-area {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
-                        height: auto !important;
-                        overflow: visible !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        background-color: white;
-                        z-index: 9999;
-                    }
-                    .no-print {
-                        display: none !important;
-                    }
-                    ::-webkit-scrollbar {
-                        display: none;
-                    }
-                    table {
-                        page-break-inside: auto;
-                    }
-                    tr {
-                        page-break-inside: avoid;
-                        page-break-after: auto;
-                    }
-                    thead {
-                        display: table-header-group;
-                    }
-                    tfoot {
-                        display: table-footer-group;
-                    }
-                }
-            `}</style>
+            <style>{STANDARD_PRINT_STYLES}</style>
             <div className="flex flex-col h-full space-y-4">
                 <div className="flex-shrink-0">
                     <ReportToolbar
@@ -227,7 +182,7 @@ const ProjectUnitReport: React.FC = () => {
                     </ReportToolbar>
                 </div>
 
-                <div className="flex-grow overflow-y-auto printable-area min-h-0">
+                <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
                     <Card className="min-h-full flex flex-col">
                          <ReportHeader />
                         <div className="text-center mb-6 flex-shrink-0">

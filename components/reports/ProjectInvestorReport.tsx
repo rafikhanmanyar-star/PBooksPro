@@ -13,6 +13,8 @@ import { formatDate } from '../../utils/dateUtils';
 import { useNotification } from '../../context/NotificationContext';
 import InvestorHistoryModal from './InvestorHistoryModal';
 import { WhatsAppService } from '../../services/whatsappService';
+import { usePrint } from '../../hooks/usePrint';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface InvestorRow {
     accountId: string;
@@ -27,6 +29,7 @@ interface InvestorRow {
 const ProjectInvestorReport: React.FC = () => {
     const { state } = useAppContext();
     const { showAlert } = useNotification();
+    const { handlePrint } = usePrint();
     const [dateRange, setDateRange] = useState<ReportDateRange>('all');
     const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]); // Not used for calculation but for UI state
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
@@ -232,13 +235,14 @@ const ProjectInvestorReport: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full space-y-4">
+            <style>{STANDARD_PRINT_STYLES}</style>
             <div className="flex-shrink-0">
                 <ReportToolbar
                     startDate={startDate}
                     endDate={endDate}
                     onDateChange={(_, end) => { setEndDate(end); setDateRange('custom'); }}
                     onExport={handleExport}
-                    onPrint={() => window.print()}
+                    onPrint={handlePrint}
                     onWhatsApp={handleWhatsApp}
                     disableWhatsApp={selectedInvestorId === 'all'}
                     hideGroup={true}
@@ -260,7 +264,7 @@ const ProjectInvestorReport: React.FC = () => {
                 </ReportToolbar>
             </div>
 
-            <div className="flex-grow overflow-y-auto printable-area min-h-0">
+            <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
                 <Card className="min-h-full">
                     <ReportHeader />
                     <div className="text-center mb-6">

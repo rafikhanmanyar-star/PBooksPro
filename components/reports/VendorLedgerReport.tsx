@@ -15,6 +15,9 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import { formatDate } from '../../utils/dateUtils';
+import { usePrint } from '../../hooks/usePrint';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import PrintButton from '../ui/PrintButton';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 
@@ -39,6 +42,7 @@ type SortKey = 'date' | 'vendorName' | 'particulars' | 'billAmount' | 'paidAmoun
 
 const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
     const { state } = useAppContext();
+    const { handlePrint } = usePrint();
     
     // Filters
     const [dateRange, setDateRange] = useState<DateRangeOption>('all');
@@ -280,7 +284,6 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
         exportJsonToExcel(data, 'vendor-ledger.xlsx', 'Vendor Ledger');
     };
 
-    const handlePrint = () => window.print();
 
     const SortIcon = ({ column }: { column: SortKey }) => (
         <span className="ml-1 text-[10px] text-slate-400">
@@ -290,55 +293,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
 
     return (
         <div className="flex flex-col h-full space-y-4">
-            <style>{`
-                @media print {
-                    @page {
-                        size: A4;
-                        margin: 12.7mm;
-                    }
-                    html, body {
-                        height: auto !important;
-                        overflow: visible !important;
-                    }
-                    body * {
-                        visibility: hidden;
-                    }
-                    .printable-area, .printable-area * {
-                        visibility: visible !important;
-                    }
-                    .printable-area {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
-                        height: auto !important;
-                        overflow: visible !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        background-color: white;
-                        z-index: 9999;
-                    }
-                    .no-print {
-                        display: none !important;
-                    }
-                    ::-webkit-scrollbar {
-                        display: none;
-                    }
-                    table {
-                        page-break-inside: auto;
-                    }
-                    tr {
-                        page-break-inside: avoid;
-                        page-break-after: auto;
-                    }
-                    thead {
-                        display: table-header-group;
-                    }
-                    tfoot {
-                        display: table-footer-group;
-                    }
-                }
-            `}</style>
+            <style>{STANDARD_PRINT_STYLES}</style>
             {/* Custom Toolbar */}
             <div className="flex-shrink-0">
                 {/* Custom Toolbar - All controls in first row */}
@@ -421,15 +376,18 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                             <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
                                 <div className="w-4 h-4 mr-1">{ICONS.export}</div> Export
                             </Button>
-                            <Button variant="secondary" size="sm" onClick={handlePrint} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
-                                <div className="w-4 h-4 mr-1">{ICONS.print}</div> Print
-                            </Button>
+                            <PrintButton
+                                variant="secondary"
+                                size="sm"
+                                onPrint={handlePrint}
+                                className="whitespace-nowrap"
+                            />
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div className="flex-grow overflow-y-auto printable-area min-h-0">
+            <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
                 <Card className="min-h-full">
                     <ReportHeader />
                     <h3 className="text-2xl font-bold text-center mb-4">

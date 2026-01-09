@@ -8,6 +8,8 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import ReportToolbar from './ReportToolbar';
+import { usePrint } from '../../hooks/usePrint';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface LoanReportRow {
     contactId: string;
@@ -19,6 +21,7 @@ interface LoanReportRow {
 
 const LoanAnalysisReport: React.FC = () => {
     const { state } = useAppContext();
+    const { handlePrint } = usePrint();
     const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
     const [searchQuery, setSearchQuery] = useState('');
@@ -91,10 +94,10 @@ const LoanAnalysisReport: React.FC = () => {
         exportJsonToExcel(data, 'loan-analysis-report.xlsx', 'Loan Analysis');
     };
 
-    const handlePrint = () => window.print();
 
     return (
         <div className="flex flex-col h-full space-y-4">
+            <style>{STANDARD_PRINT_STYLES}</style>
             <div className="flex-shrink-0">
                 <ReportToolbar
                     startDate={startDate}
@@ -107,7 +110,7 @@ const LoanAnalysisReport: React.FC = () => {
                     hideGroup={true}
                 />
             </div>
-            <div className="flex-grow overflow-y-auto printable-area min-h-0">
+            <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
                 <Card className="min-h-full">
                     <ReportHeader />
                     <h3 className="text-2xl font-bold text-center mb-6">Loan Analysis Report</h3>

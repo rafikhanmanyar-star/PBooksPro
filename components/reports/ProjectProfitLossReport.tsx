@@ -11,6 +11,8 @@ import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import ComboBox from '../ui/ComboBox';
 import { formatDate } from '../../utils/dateUtils';
 import ProjectTransactionModal from '../dashboard/ProjectTransactionModal';
+import { usePrint } from '../../hooks/usePrint';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface ReportRow {
     id: string;
@@ -31,6 +33,7 @@ interface PLData {
 
 const ProjectProfitLossReport: React.FC = () => {
     const { state } = useAppContext();
+    const { handlePrint } = usePrint();
     
     // Default to 'This Month' or 'Till Today' as preferred
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
@@ -390,13 +393,14 @@ const ProjectProfitLossReport: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full space-y-4">
+            <style>{STANDARD_PRINT_STYLES}</style>
             <div className="flex-shrink-0">
                 <ReportToolbar
                     startDate={startDate}
                     endDate={endDate}
                     onDateChange={handleDateChange}
                     onExport={handleExport}
-                    onPrint={() => window.print()}
+                    onPrint={handlePrint}
                     hideGroup={true}
                     showDateFilterPills={true}
                     activeDateRange={dateRange}
@@ -414,7 +418,7 @@ const ProjectProfitLossReport: React.FC = () => {
                     </div>
                 </ReportToolbar>
             </div>
-            <div className="flex-grow overflow-y-auto printable-area min-h-0">
+            <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
                 <Card className="min-h-full">
                     <ReportHeader />
                     <h3 className="text-2xl font-bold text-center mb-2 text-slate-800">Profit & Loss Statement</h3>

@@ -12,6 +12,8 @@ import ReportFooter from './ReportFooter';
 import ProjectTransactionModal from '../dashboard/ProjectTransactionModal';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import { formatDate } from '../../utils/dateUtils';
+import { usePrint } from '../../hooks/usePrint';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface CategorySummary {
     categoryId: string;
@@ -73,6 +75,7 @@ type SortKey = 'categoryName' | 'count' | 'amount' | 'percentage';
 
 const ProjectCategoryReport: React.FC<ProjectCategoryReportProps> = ({ type }) => {
     const { state } = useAppContext();
+    const { handlePrint } = usePrint();
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
     const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
     const [endDate, setEndDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]);
@@ -316,55 +319,7 @@ const ProjectCategoryReport: React.FC<ProjectCategoryReportProps> = ({ type }) =
 
     return (
         <>
-             <style>{`
-                @media print {
-                    @page {
-                        size: A4;
-                        margin: 12.7mm;
-                    }
-                    html, body {
-                        height: auto !important;
-                        overflow: visible !important;
-                    }
-                    body * {
-                        visibility: hidden;
-                    }
-                    .printable-area, .printable-area * {
-                        visibility: visible !important;
-                    }
-                    .printable-area {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
-                        height: auto !important;
-                        overflow: visible !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        background-color: white;
-                        z-index: 9999;
-                    }
-                    .no-print {
-                        display: none !important;
-                    }
-                    ::-webkit-scrollbar {
-                        display: none;
-                    }
-                    table {
-                        page-break-inside: auto;
-                    }
-                    tr {
-                        page-break-inside: avoid;
-                        page-break-after: auto;
-                    }
-                    thead {
-                        display: table-header-group;
-                    }
-                    tfoot {
-                        display: table-footer-group;
-                    }
-                }
-            `}</style>
+             <style>{STANDARD_PRINT_STYLES}</style>
             <div className="flex flex-col h-full space-y-4">
                 <div className="flex-shrink-0">
                     <ReportToolbar
@@ -372,7 +327,7 @@ const ProjectCategoryReport: React.FC<ProjectCategoryReportProps> = ({ type }) =
                         endDate={endDate}
                         onDateChange={handleDateChange}
                         onExport={handleExport}
-                        onPrint={() => window.print()}
+                        onPrint={handlePrint}
                         hideGroup={true}
                         showDateFilterPills={true}
                         activeDateRange={dateRange}
@@ -389,7 +344,7 @@ const ProjectCategoryReport: React.FC<ProjectCategoryReportProps> = ({ type }) =
                     </ReportToolbar>
                 </div>
                 
-                <div className="flex-grow overflow-y-auto printable-area min-h-0">
+                <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
                     <Card className="min-h-full flex flex-col">
                          <ReportHeader />
                          <div className="text-center mb-6">

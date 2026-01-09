@@ -6,6 +6,9 @@ import { InvoiceStatus, TransactionType } from '../../types';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import Button from '../ui/Button';
+import PrintButton from '../ui/PrintButton';
+import { usePrint } from '../../hooks/usePrint';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface UnitBoxData {
     id: string;
@@ -34,6 +37,7 @@ interface ProjectLayoutData {
 
 const ProjectLayoutReport: React.FC = () => {
     const { state } = useAppContext();
+    const { handlePrint } = usePrint();
 
     // --- Helper: Parse Unit Name (Project Context) ---
     const parseUnit = (name: string): { floorIndex: number, floorLabel: string, unitIndex: number, isUnconventional: boolean, type: string } => {
@@ -158,7 +162,6 @@ const ProjectLayoutReport: React.FC = () => {
         };
     }, [state]);
 
-    const handlePrint = () => window.print();
 
     const getColorClasses = (unit: UnitBoxData) => {
         if (unit.status === 'Available') return 'bg-slate-50 border-slate-300 opacity-80';
@@ -219,31 +222,15 @@ const ProjectLayoutReport: React.FC = () => {
 
     return (
         <div className="h-full flex flex-col space-y-4">
-             <style>{`
-                @media print {
-                    @page {
-                        size: A4;
-                        margin: 12.7mm;
-                    }
-                    body * { visibility: hidden; }
-                    .printable-area, .printable-area * { visibility: visible; }
-                    .printable-area { position: absolute; left: 0; top: 0; width: 100%; height: auto; }
-                    .no-print { display: none !important; }
-                    .break-inside-avoid { break-inside: avoid; }
-                    /* Reset scrollbar for print */
-                    .overflow-y-auto { overflow: visible !important; height: auto !important; }
-                    .flex-col.h-full { height: auto !important; display: block !important; }
-                    .flex-grow { flex-grow: 0 !important; }
-                }
-            `}</style>
+             <style>{STANDARD_PRINT_STYLES}</style>
 
             <div className="flex flex-col sm:flex-row justify-end items-center gap-4 mb-2 no-print flex-shrink-0">
                 <div className="ml-auto">
-                    <Button onClick={handlePrint}>Print Layout</Button>
+                    <PrintButton onPrint={handlePrint} label="Print Layout" />
                 </div>
             </div>
 
-            <div className="flex-grow overflow-y-auto printable-area pb-10">
+            <div className="flex-grow overflow-y-auto printable-area pb-10" id="printable-area">
                 <ReportHeader />
                 <div className="text-center mb-6">
                     <h2 className="text-2xl font-bold text-slate-800">Project Visual Layout</h2>

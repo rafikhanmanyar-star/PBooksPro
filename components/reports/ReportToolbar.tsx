@@ -2,6 +2,7 @@ import React from 'react';
 import { ICONS } from '../../constants';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import PrintButton from '../ui/PrintButton';
 import DatePicker from '../ui/DatePicker';
 import Select from '../ui/Select';
 
@@ -118,9 +119,13 @@ const ReportToolbar: React.FC<ReportToolbarProps> = ({
                         </Button>
                     )}
                     {onPrint && (
-                        <Button variant="secondary" size="sm" onClick={onPrint} className="bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300 px-2 sm:px-3 h-8" title="Print">
-                            <div className="w-4 h-4">{ICONS.print}</div> <span className="hidden sm:inline ml-1">Print</span>
-                        </Button>
+                        <PrintButton
+                            variant="secondary"
+                            size="sm"
+                            onPrint={onPrint}
+                            className="px-2 sm:px-3 h-8"
+                            showLabel={true}
+                        />
                     )}
                 </div>
             </div>

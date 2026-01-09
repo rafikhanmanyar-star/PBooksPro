@@ -6,6 +6,15 @@ import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
 const router = Router();
 const getDb = () => getDatabaseService();
 
+// System accounts that can be auto-created if missing
+const SYSTEM_ACCOUNTS: { [key: string]: { name: string; type: string; description: string } } = {
+  'sys-acc-cash': { name: 'Cash', type: 'Bank', description: 'Default cash account' },
+  'sys-acc-ar': { name: 'Accounts Receivable', type: 'Asset', description: 'System account for unpaid invoices' },
+  'sys-acc-ap': { name: 'Accounts Payable', type: 'Liability', description: 'System account for unpaid bills and salaries' },
+  'sys-acc-equity': { name: 'Owner Equity', type: 'Equity', description: 'System account for owner capital and equity' },
+  'sys-acc-clearing': { name: 'Internal Clearing', type: 'Bank', description: 'System account for internal transfers and equity clearing' }
+};
+
 // Helper function to log transaction audit
 async function logTransactionAudit(
   db: any,
@@ -195,15 +204,7 @@ router.post('/', async (req: TenantRequest, res) => {
       
       if (accountCheck.rows.length === 0) {
         // Check if it's a system account that should be auto-created
-        const systemAccounts: { [key: string]: { name: string; type: string; description: string } } = {
-          'sys-acc-cash': { name: 'Cash', type: 'Bank', description: 'Default cash account' },
-          'sys-acc-ar': { name: 'Accounts Receivable', type: 'Asset', description: 'System account for unpaid invoices' },
-          'sys-acc-ap': { name: 'Accounts Payable', type: 'Liability', description: 'System account for unpaid bills and salaries' },
-          'sys-acc-equity': { name: 'Owner Equity', type: 'Equity', description: 'System account for owner capital and equity' },
-          'sys-acc-clearing': { name: 'Internal Clearing', type: 'Bank', description: 'System account for internal transfers and equity clearing' }
-        };
-        
-        const systemAccount = systemAccounts[transaction.accountId];
+        const systemAccount = SYSTEM_ACCOUNTS[transaction.accountId];
         if (systemAccount) {
           // Auto-create system account
           console.log(`🔧 POST /transactions - Auto-creating missing system account: ${transaction.accountId}`);
@@ -232,11 +233,26 @@ router.post('/', async (req: TenantRequest, res) => {
         );
         
         if (fromAccountCheck.rows.length === 0) {
-          throw {
-            code: 'ACCOUNT_NOT_FOUND',
-            message: `From account with ID "${transaction.fromAccountId}" does not exist. Please select a valid account.`,
-            accountId: transaction.fromAccountId
-          };
+          // Check if it's a system account that should be auto-created
+          const systemAccount = SYSTEM_ACCOUNTS[transaction.fromAccountId];
+          if (systemAccount) {
+            // Auto-create system account
+            console.log(`🔧 POST /transactions - Auto-creating missing system account (fromAccount): ${transaction.fromAccountId}`);
+            await client.query(
+              `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, 0, TRUE, $5, NOW(), NOW())
+               ON CONFLICT (id) DO NOTHING`,
+              [transaction.fromAccountId, req.tenantId, systemAccount.name, systemAccount.type, systemAccount.description]
+            );
+            console.log(`✅ POST /transactions - System account created (fromAccount): ${transaction.fromAccountId}`);
+          } else {
+            // Not a system account - return error
+            throw {
+              code: 'ACCOUNT_NOT_FOUND',
+              message: `From account with ID "${transaction.fromAccountId}" does not exist. Please select a valid account.`,
+              accountId: transaction.fromAccountId
+            };
+          }
         }
       }
       
@@ -248,11 +264,26 @@ router.post('/', async (req: TenantRequest, res) => {
         );
         
         if (toAccountCheck.rows.length === 0) {
-          throw {
-            code: 'ACCOUNT_NOT_FOUND',
-            message: `To account with ID "${transaction.toAccountId}" does not exist. Please select a valid account.`,
-            accountId: transaction.toAccountId
-          };
+          // Check if it's a system account that should be auto-created
+          const systemAccount = SYSTEM_ACCOUNTS[transaction.toAccountId];
+          if (systemAccount) {
+            // Auto-create system account
+            console.log(`🔧 POST /transactions - Auto-creating missing system account (toAccount): ${transaction.toAccountId}`);
+            await client.query(
+              `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, 0, TRUE, $5, NOW(), NOW())
+               ON CONFLICT (id) DO NOTHING`,
+              [transaction.toAccountId, req.tenantId, systemAccount.name, systemAccount.type, systemAccount.description]
+            );
+            console.log(`✅ POST /transactions - System account created (toAccount): ${transaction.toAccountId}`);
+          } else {
+            // Not a system account - return error
+            throw {
+              code: 'ACCOUNT_NOT_FOUND',
+              message: `To account with ID "${transaction.toAccountId}" does not exist. Please select a valid account.`,
+              accountId: transaction.toAccountId
+            };
+          }
         }
       }
       
@@ -1178,15 +1209,7 @@ router.post('/batch', async (req: TenantRequest, res) => {
           
           if (accountCheck.rows.length === 0) {
             // Check if it's a system account that should be auto-created
-            const systemAccounts: { [key: string]: { name: string; type: string; description: string } } = {
-              'sys-acc-cash': { name: 'Cash', type: 'Bank', description: 'Default cash account' },
-              'sys-acc-ar': { name: 'Accounts Receivable', type: 'Asset', description: 'System account for unpaid invoices' },
-              'sys-acc-ap': { name: 'Accounts Payable', type: 'Liability', description: 'System account for unpaid bills and salaries' },
-              'sys-acc-equity': { name: 'Owner Equity', type: 'Equity', description: 'System account for owner capital and equity' },
-              'sys-acc-clearing': { name: 'Internal Clearing', type: 'Bank', description: 'System account for internal transfers and equity clearing' }
-            };
-            
-            const systemAccount = systemAccounts[transaction.accountId];
+            const systemAccount = SYSTEM_ACCOUNTS[transaction.accountId];
             if (systemAccount) {
               // Auto-create system account
               await client.query(
@@ -1201,6 +1224,58 @@ router.post('/batch', async (req: TenantRequest, res) => {
                 message: `Account with ID "${transaction.accountId}" does not exist. Please select a valid account.`,
                 accountId: transaction.accountId
               };
+            }
+          }
+          
+          // Validate from_account_id if provided (for transfers)
+          if (transaction.fromAccountId) {
+            const fromAccountCheck = await client.query(
+              'SELECT id FROM accounts WHERE id = $1 AND tenant_id = $2',
+              [transaction.fromAccountId, req.tenantId]
+            );
+            
+            if (fromAccountCheck.rows.length === 0) {
+              const systemAccount = SYSTEM_ACCOUNTS[transaction.fromAccountId];
+              if (systemAccount) {
+                await client.query(
+                  `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, 0, TRUE, $5, NOW(), NOW())
+                   ON CONFLICT (id) DO NOTHING`,
+                  [transaction.fromAccountId, req.tenantId, systemAccount.name, systemAccount.type, systemAccount.description]
+                );
+              } else {
+                throw {
+                  code: 'ACCOUNT_NOT_FOUND',
+                  message: `From account with ID "${transaction.fromAccountId}" does not exist. Please select a valid account.`,
+                  accountId: transaction.fromAccountId
+                };
+              }
+            }
+          }
+          
+          // Validate to_account_id if provided (for transfers)
+          if (transaction.toAccountId) {
+            const toAccountCheck = await client.query(
+              'SELECT id FROM accounts WHERE id = $1 AND tenant_id = $2',
+              [transaction.toAccountId, req.tenantId]
+            );
+            
+            if (toAccountCheck.rows.length === 0) {
+              const systemAccount = SYSTEM_ACCOUNTS[transaction.toAccountId];
+              if (systemAccount) {
+                await client.query(
+                  `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, 0, TRUE, $5, NOW(), NOW())
+                   ON CONFLICT (id) DO NOTHING`,
+                  [transaction.toAccountId, req.tenantId, systemAccount.name, systemAccount.type, systemAccount.description]
+                );
+              } else {
+                throw {
+                  code: 'ACCOUNT_NOT_FOUND',
+                  message: `To account with ID "${transaction.toAccountId}" does not exist. Please select a valid account.`,
+                  accountId: transaction.toAccountId
+                };
+              }
             }
           }
           

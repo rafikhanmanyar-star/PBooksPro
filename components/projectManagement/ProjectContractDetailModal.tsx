@@ -4,10 +4,13 @@ import { Contract } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import { CURRENCY, ICONS } from '../../constants';
 import Button from '../ui/Button';
+import PrintButton from '../ui/PrintButton';
 import { formatDate } from '../../utils/dateUtils';
 import ReportHeader from '../reports/ReportHeader';
 import ReportFooter from '../reports/ReportFooter';
 import { WhatsAppService } from '../../services/whatsappService';
+import { usePrint } from '../../hooks/usePrint';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface ProjectContractDetailModalProps {
     contract: Contract;
@@ -17,6 +20,7 @@ interface ProjectContractDetailModalProps {
 
 const ProjectContractDetailModal: React.FC<ProjectContractDetailModalProps> = ({ contract, onClose, onEdit }) => {
     const { state } = useAppContext();
+    const { handlePrint } = usePrint();
     
     const project = state.projects.find(p => p.id === contract.projectId);
     const vendor = state.contacts.find(c => c.id === contract.vendorId);
@@ -32,7 +36,6 @@ const ProjectContractDetailModal: React.FC<ProjectContractDetailModalProps> = ({
     const balance = totalAmount - totalPaid;
     const progress = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
 
-    const handlePrint = () => window.print();
 
     const handleWhatsApp = () => {
         if (!vendor?.contactNo) {
@@ -61,62 +64,9 @@ const ProjectContractDetailModal: React.FC<ProjectContractDetailModalProps> = ({
 
     return (
         <div className="h-full flex flex-col">
-             <style>{`
-                @media print {
-                    @page {
-                        size: A4;
-                        margin: 12.7mm;
-                    }
-                    html, body {
-                        height: auto !important;
-                        overflow: visible !important;
-                        background: white !important;
-                    }
-                    body * { 
-                        visibility: hidden; 
-                    }
-                    .printable-area, .printable-area * { 
-                        visibility: visible !important; 
-                    }
-                    .printable-area { 
-                        position: absolute; 
-                        left: 0; 
-                        top: 0; 
-                        width: 100%; 
-                        height: auto !important;
-                        overflow: visible !important;
-                        margin: 0 !important;
-                        padding: 15mm !important;
-                        background: white; 
-                        z-index: 9999;
-                        box-sizing: border-box;
-                    }
-                    .no-print { 
-                        display: none !important; 
-                    }
-                    /* Ensure colors print */
-                    * {
-                        -webkit-print-color-adjust: exact !important;
-                        print-color-adjust: exact !important;
-                    }
-                    /* Prevent page breaks inside important sections */
-                    .printable-area > div {
-                        page-break-inside: avoid;
-                    }
-                    /* Ensure proper text wrapping */
-                    .printable-area p,
-                    .printable-area div {
-                        word-wrap: break-word;
-                        overflow-wrap: break-word;
-                    }
-                    /* Grid adjustments for print */
-                    .printable-area .grid {
-                        display: grid !important;
-                    }
-                }
-            `}</style>
+             <style>{STANDARD_PRINT_STYLES}</style>
 
-            <div className="flex-grow overflow-y-auto printable-area p-4 bg-white">
+            <div className="flex-grow overflow-y-auto printable-area p-4 bg-white" id="printable-area">
                 <ReportHeader />
                 
                 <div className="border-b-2 border-slate-800 pb-4 mb-6">
@@ -215,9 +165,10 @@ const ProjectContractDetailModal: React.FC<ProjectContractDetailModalProps> = ({
                     <Button variant="secondary" onClick={handleWhatsApp} className="text-green-600 bg-green-50 border-green-200 hover:bg-green-100">
                         <div className="w-4 h-4 mr-2">{ICONS.whatsapp}</div> Share
                     </Button>
-                    <Button onClick={handlePrint} className="bg-slate-800 text-white">
-                        <div className="w-4 h-4 mr-2">{ICONS.print}</div> Print
-                    </Button>
+                    <PrintButton
+                        variant="primary"
+                        onPrint={handlePrint}
+                    />
                     <Button variant="secondary" onClick={onClose}>Close</Button>
                 </div>
             </div>

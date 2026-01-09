@@ -10,6 +10,8 @@ import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import ComboBox from '../ui/ComboBox';
 import { formatDate } from '../../utils/dateUtils';
+import { usePrint } from '../../hooks/usePrint';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface CashFlowItem {
     label: string;
@@ -34,6 +36,7 @@ interface CashFlowData {
 
 const ProjectCashFlowReport: React.FC = () => {
     const { state } = useAppContext();
+    const { handlePrint } = usePrint();
     
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
     const [startDate, setStartDate] = useState(() => {
@@ -506,7 +509,6 @@ const ProjectCashFlowReport: React.FC = () => {
         exportJsonToExcel(exportData, 'cash-flow-report.xlsx', 'Cash Flow Statement');
     };
 
-    const handlePrint = () => window.print();
 
     const renderSection = (section: CashFlowSection) => (
         <div className="mb-8">
@@ -546,42 +548,7 @@ const ProjectCashFlowReport: React.FC = () => {
 
     return (
         <>
-            <style>{`
-                @media print {
-                    @page {
-                        size: A4;
-                        margin: 12.7mm;
-                    }
-                    html, body {
-                        height: auto !important;
-                        overflow: visible !important;
-                    }
-                    body * {
-                        visibility: hidden;
-                    }
-                    .printable-area, .printable-area * {
-                        visibility: visible !important;
-                    }
-                    .printable-area {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
-                        height: auto !important;
-                        overflow: visible !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        background-color: white;
-                        z-index: 9999;
-                    }
-                    .no-print {
-                        display: none !important;
-                    }
-                    ::-webkit-scrollbar {
-                        display: none;
-                    }
-                }
-            `}</style>
+            <style>{STANDARD_PRINT_STYLES}</style>
             <div className="flex flex-col h-full space-y-4">
                 <div className="flex-shrink-0">
                     <ReportToolbar
@@ -605,7 +572,7 @@ const ProjectCashFlowReport: React.FC = () => {
                     </ReportToolbar>
                 </div>
                 
-                <div className="flex-grow overflow-y-auto printable-area min-h-0">
+                <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
                     <Card className="min-h-full">
                         <ReportHeader />
                         <div className="text-center mb-8">

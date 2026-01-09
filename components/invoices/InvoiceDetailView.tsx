@@ -4,12 +4,14 @@ import { Invoice, InvoiceStatus, InvoiceType, ProjectAgreementStatus, RecurringI
 import { CURRENCY, ICONS } from '../../constants';
 import { useAppContext } from '../../context/AppContext';
 import Button from '../ui/Button';
+import PrintButton from '../ui/PrintButton';
 import Card from '../ui/Card';
 import { useNotification } from '../../context/NotificationContext';
 import { formatDate } from '../../utils/dateUtils';
 import TransactionItem from '../transactions/TransactionItem';
 import { WhatsAppService } from '../../services/whatsappService';
 import { formatCurrency } from '../../utils/numberUtils';
+import { printFromTemplate } from '../../services/printService';
 
 interface InvoiceDetailViewProps {
   invoice: Invoice;
@@ -157,18 +159,8 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
             html = html.split(key).join(value);
         }
 
-        // Open Print Window
-        const printWindow = window.open('', '_blank', 'width=900,height=800');
-        if (printWindow) {
-            printWindow.document.write(html);
-            printWindow.document.close();
-            printWindow.focus();
-            // Allow image to load if any
-            setTimeout(() => {
-                printWindow.print();
-                printWindow.close();
-            }, 500);
-        }
+        // Use centralized print service
+        printFromTemplate(html, printSettings);
     };
 
     const handleSendWhatsApp = async () => {
@@ -396,14 +388,11 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
                                 {hasMadePayment ? 'Receipt' : 'WhatsApp'}
                             </Button>
                         )}
-                         <Button
-                                variant="ghost"
-                                onClick={handlePrint}
+                         <PrintButton
+                                variant="secondary"
+                                onPrint={handlePrint}
                                 className="!bg-slate-100 !text-slate-700 hover:!bg-slate-200"
-                            >
-                                <div className="w-5 h-5">{ICONS.fileText}</div>
-                                Print
-                        </Button>
+                            />
                     </div>
                     
                     {status !== InvoiceStatus.PAID && !isAgreementCancelled && (

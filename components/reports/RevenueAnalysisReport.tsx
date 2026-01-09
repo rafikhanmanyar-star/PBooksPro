@@ -8,6 +8,8 @@ import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import Card from '../ui/Card';
 import { formatDate } from '../../utils/dateUtils';
+import { usePrint } from '../../hooks/usePrint';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface RevenueRow {
     agreementId: string;
@@ -27,6 +29,7 @@ type SortKey = 'agreementNumber' | 'projectName' | 'ownerName' | 'listPrice' | '
 
 const RevenueAnalysisReport: React.FC = () => {
     const { state } = useAppContext();
+    const { handlePrint } = usePrint();
     
     // Filter State
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
@@ -154,7 +157,6 @@ const RevenueAnalysisReport: React.FC = () => {
         exportJsonToExcel(data, 'revenue-analysis.xlsx', 'Revenue');
     };
 
-    const handlePrint = () => window.print();
     
     const SortIcon = ({ column }: { column: SortKey }) => (
         <span className="ml-1 text-[10px] text-slate-400">
@@ -164,55 +166,7 @@ const RevenueAnalysisReport: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full space-y-4">
-            <style>{`
-                @media print {
-                    @page {
-                        size: A4;
-                        margin: 12.7mm;
-                    }
-                    html, body {
-                        height: auto !important;
-                        overflow: visible !important;
-                    }
-                    body * {
-                        visibility: hidden;
-                    }
-                    .printable-area, .printable-area * {
-                        visibility: visible !important;
-                    }
-                    .printable-area {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
-                        height: auto !important;
-                        overflow: visible !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        background-color: white;
-                        z-index: 9999;
-                    }
-                    .no-print {
-                        display: none !important;
-                    }
-                    ::-webkit-scrollbar {
-                        display: none;
-                    }
-                    table {
-                        page-break-inside: auto;
-                    }
-                    tr {
-                        page-break-inside: avoid;
-                        page-break-after: auto;
-                    }
-                    thead {
-                        display: table-header-group;
-                    }
-                    tfoot {
-                        display: table-footer-group;
-                    }
-                }
-            `}</style>
+            <style>{STANDARD_PRINT_STYLES}</style>
             <div className="flex-shrink-0">
                 <ReportToolbar
                     startDate={startDate}
@@ -228,7 +182,7 @@ const RevenueAnalysisReport: React.FC = () => {
                     onRangeChange={handleRangeChange}
                 />
             </div>
-            <div className="flex-grow overflow-y-auto printable-area min-h-0">
+            <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
                 <Card className="min-h-full">
                     <ReportHeader />
                     <h3 className="text-2xl font-bold text-center mb-6">Revenue Analysis Report</h3>

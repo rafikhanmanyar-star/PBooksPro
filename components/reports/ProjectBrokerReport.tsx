@@ -10,6 +10,8 @@ import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import ComboBox from '../ui/ComboBox';
 import { formatDate } from '../../utils/dateUtils';
+import { usePrint } from '../../hooks/usePrint';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface ReportRow {
     id: string;
@@ -26,6 +28,7 @@ type SortKey = 'date' | 'brokerName' | 'projectName' | 'particulars' | 'accrued'
 
 const ProjectBrokerReport: React.FC = () => {
     const { state } = useAppContext();
+    const { handlePrint } = usePrint();
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
     const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
     const [endDate, setEndDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]);
@@ -180,62 +183,14 @@ const ProjectBrokerReport: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full space-y-4">
-            <style>{`
-                @media print {
-                    @page {
-                        size: A4;
-                        margin: 12.7mm;
-                    }
-                    html, body {
-                        height: auto !important;
-                        overflow: visible !important;
-                    }
-                    body * {
-                        visibility: hidden;
-                    }
-                    .printable-area, .printable-area * {
-                        visibility: visible !important;
-                    }
-                    .printable-area {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
-                        height: auto !important;
-                        overflow: visible !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        background-color: white;
-                        z-index: 9999;
-                    }
-                    .no-print {
-                        display: none !important;
-                    }
-                    ::-webkit-scrollbar {
-                        display: none;
-                    }
-                    table {
-                        page-break-inside: auto;
-                    }
-                    tr {
-                        page-break-inside: avoid;
-                        page-break-after: auto;
-                    }
-                    thead {
-                        display: table-header-group;
-                    }
-                    tfoot {
-                        display: table-footer-group;
-                    }
-                }
-            `}</style>
+            <style>{STANDARD_PRINT_STYLES}</style>
             <div className="flex-shrink-0">
                 <ReportToolbar
                     startDate={startDate}
                     endDate={endDate}
                     onDateChange={handleDateChange}
                     onExport={handleExport}
-                    onPrint={() => window.print()}
+                    onPrint={handlePrint}
                     hideGroup={true}
                     hideSearch={true}
                     showDateFilterPills={true}
@@ -245,7 +200,7 @@ const ProjectBrokerReport: React.FC = () => {
                     <ComboBox label="Broker" items={brokerItems} selectedId={selectedBrokerId} onSelect={(item) => setSelectedBrokerId(item?.id || 'all')} allowAddNew={false} />
                 </ReportToolbar>
             </div>
-            <div className="flex-grow overflow-y-auto printable-area min-h-0">
+            <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
                 <Card className="min-h-full">
                     <ReportHeader />
                     <h3 className="text-2xl font-bold text-center mb-6">Project Broker Commission Report</h3>

@@ -12,6 +12,8 @@ import { useNotification } from '../../context/NotificationContext';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import { formatDate } from '../../utils/dateUtils';
 import { WhatsAppService } from '../../services/whatsappService';
+import { usePrint } from '../../hooks/usePrint';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface LedgerItem {
     id: string;
@@ -40,6 +42,7 @@ interface AgreementSummary {
 const ClientLedgerReport: React.FC = () => {
     const { state } = useAppContext();
     const { showAlert } = useNotification();
+    const { handlePrint } = usePrint();
     
     // Date Filter State
     const [dateRangeType, setDateRangeType] = useState<'total' | 'thisMonth' | 'lastMonth' | 'custom'>('thisMonth');
@@ -362,7 +365,6 @@ const ClientLedgerReport: React.FC = () => {
         }, { debit: 0, credit: 0 });
     }, [reportData]);
 
-    const handlePrint = () => { window.print(); };
 
     const handleExport = () => {
         const data = reportData.map(item => ({
@@ -465,127 +467,7 @@ const ClientLedgerReport: React.FC = () => {
 
     return (
         <>
-            <style>{`
-                @media print {
-                    @page {
-                        size: A4;
-                        margin: 12.7mm;
-                    }
-                    html, body {
-                        height: auto !important;
-                        overflow: visible !important;
-                    }
-                    body * {
-                        visibility: hidden;
-                    }
-                    .printable-area, .printable-area * {
-                        visibility: visible !important;
-                    }
-                    .printable-area {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
-                        height: auto !important;
-                        overflow: visible !important;
-                        margin: 0 !important;
-                        padding: 10px !important;
-                        background-color: white;
-                        z-index: 9999;
-                        box-sizing: border-box;
-                    }
-                    .no-print {
-                        display: none !important;
-                    }
-                    ::-webkit-scrollbar {
-                        display: none;
-                    }
-                    table {
-                        page-break-inside: auto;
-                        width: 100% !important;
-                        table-layout: auto;
-                        font-size: 11px;
-                    }
-                    tr {
-                        page-break-inside: avoid;
-                        page-break-after: auto;
-                    }
-                    thead {
-                        display: table-header-group;
-                    }
-                    tfoot {
-                        display: table-footer-group;
-                    }
-                    /* Ensure table cells don't overflow */
-                    td, th {
-                        padding: 6px 8px !important;
-                        word-wrap: break-word;
-                        overflow-wrap: break-word;
-                        max-width: 0;
-                    }
-                    /* Prevent text truncation in print */
-                    .truncate,
-                    .max-w-xs {
-                        white-space: normal !important;
-                        overflow: visible !important;
-                        text-overflow: clip !important;
-                        max-width: none !important;
-                    }
-                    /* Ensure all text is visible */
-                    .printable-area td {
-                        white-space: normal !important;
-                        word-wrap: break-word !important;
-                        overflow-wrap: break-word !important;
-                    }
-                    /* Ensure all columns are visible */
-                    .printable-area table {
-                        width: 100% !important;
-                        max-width: 100% !important;
-                    }
-                    /* Prevent overflow in table container */
-                    .printable-area .overflow-auto {
-                        overflow: visible !important;
-                    }
-                    /* Adjust column widths for better fit */
-                    .printable-area table th:nth-child(1),
-                    .printable-area table td:nth-child(1) {
-                        width: 10% !important;
-                        min-width: 80px;
-                    }
-                    .printable-area table th:nth-child(2),
-                    .printable-area table td:nth-child(2) {
-                        width: 15% !important;
-                        min-width: 100px;
-                    }
-                    .printable-area table th:nth-child(3),
-                    .printable-area table td:nth-child(3) {
-                        width: 12% !important;
-                        min-width: 80px;
-                    }
-                    .printable-area table th:nth-child(4),
-                    .printable-area table td:nth-child(4) {
-                        width: 25% !important;
-                        min-width: 150px;
-                    }
-                    .printable-area table th:nth-child(5),
-                    .printable-area table td:nth-child(5),
-                    .printable-area table th:nth-child(6),
-                    .printable-area table td:nth-child(6),
-                    .printable-area table th:nth-child(7),
-                    .printable-area table td:nth-child(7) {
-                        width: 12% !important;
-                        min-width: 90px;
-                    }
-                    /* Ensure summary sections print correctly */
-                    .printable-area .grid {
-                        display: grid !important;
-                    }
-                    /* Prevent text from being cut off in summary cards */
-                    .printable-area .bg-white {
-                        page-break-inside: avoid;
-                    }
-                }
-            `}</style>
+            <style>{STANDARD_PRINT_STYLES}</style>
             <div className="flex flex-col h-full space-y-4">
                 <div className="flex-shrink-0">
                     <ReportToolbar
@@ -628,7 +510,7 @@ const ClientLedgerReport: React.FC = () => {
                     </ReportToolbar>
                 </div>
 
-                <div className="flex-grow overflow-y-auto printable-area min-h-0">
+                <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
                     <Card className="min-h-full flex flex-col">
                         <ReportHeader />
                         <div className="text-center mb-6 flex-shrink-0">

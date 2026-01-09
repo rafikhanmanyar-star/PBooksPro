@@ -10,6 +10,8 @@ import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import ComboBox from '../ui/ComboBox';
 import { formatDate } from '../../utils/dateUtils';
+import { usePrint } from '../../hooks/usePrint';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface AccountBalance {
     id: string;
@@ -45,6 +47,7 @@ interface BalanceSheetData {
 
 const ProjectBalanceSheetReport: React.FC = () => {
     const { state } = useAppContext();
+    const { handlePrint } = usePrint();
     const [dateRange, setDateRange] = useState<ReportDateRange>('all');
     const [asOfDate, setAsOfDate] = useState(new Date().toISOString().split('T')[0]);
     const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || 'all');
@@ -434,7 +437,6 @@ const ProjectBalanceSheetReport: React.FC = () => {
 
     }, [state, asOfDate, selectedProjectId]);
 
-    const handlePrint = () => window.print();
 
     const handleExport = () => {
         const data = [
@@ -492,6 +494,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full space-y-4">
+            <style>{STANDARD_PRINT_STYLES}</style>
             <div className="flex-shrink-0">
                 <ReportToolbar
                     startDate={asOfDate}
@@ -518,7 +521,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
                 </ReportToolbar>
             </div>
 
-            <div className="flex-grow overflow-y-auto printable-area min-h-0">
+            <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
                 <Card className="min-h-full">
                     <ReportHeader />
                     <div className="text-center mb-8">

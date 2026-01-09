@@ -6,8 +6,11 @@ import { InvoiceStatus, TransactionType, InvoiceType, RentalAgreementStatus } fr
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import Button from '../ui/Button';
+import PrintButton from '../ui/PrintButton';
 import ComboBox from '../ui/ComboBox';
 import PropertyHistoryModal from './PropertyHistoryModal';
+import { usePrint } from '../../hooks/usePrint';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface UnitBoxData {
     id: string;
@@ -62,6 +65,7 @@ interface ProjectLayoutData {
 
 const PropertyLayoutReport: React.FC = () => {
     const { state } = useAppContext();
+    const { handlePrint } = usePrint();
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [selectedProperty, setSelectedProperty] = useState<{ id: string, name: string } | null>(null);
 
@@ -360,7 +364,6 @@ const PropertyLayoutReport: React.FC = () => {
         }
     }, [state, selectedBuildingId]);
 
-    const handlePrint = () => window.print();
 
     const getColorClasses = (unit: any, mode: 'RENTAL' | 'PROJECT') => {
         if (mode === 'RENTAL') {
@@ -475,19 +478,7 @@ const PropertyLayoutReport: React.FC = () => {
 
     return (
         <div className="space-y-6">
-             <style>{`
-                @media print {
-                    @page {
-                        size: A4;
-                        margin: 12.7mm;
-                    }
-                    body * { visibility: hidden; }
-                    .printable-area, .printable-area * { visibility: visible; }
-                    .printable-area { position: absolute; left: 0; top: 0; width: 100%; }
-                    .no-print { display: none; }
-                    .break-inside-avoid { break-inside: avoid; }
-                }
-            `}</style>
+             <style>{STANDARD_PRINT_STYLES}</style>
 
             {/* Custom Toolbar - All controls in first row */}
             <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm no-print mb-4">
@@ -506,14 +497,18 @@ const PropertyLayoutReport: React.FC = () => {
                     )}
                     {/* Actions Group */}
                     <div className="flex items-center gap-2 ml-auto">
-                        <Button variant="secondary" size="sm" onClick={handlePrint} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
-                            <div className="w-4 h-4 mr-1">{ICONS.print}</div> Print Layout
-                        </Button>
+                        <PrintButton
+                            variant="secondary"
+                            size="sm"
+                            onPrint={handlePrint}
+                            className="whitespace-nowrap"
+                            label="Print Layout"
+                        />
                     </div>
                 </div>
             </div>
 
-            <div className="printable-area">
+            <div className="printable-area" id="printable-area">
                 <ReportHeader />
                 <div className="text-center mb-4">
                     <h2 className="text-2xl font-bold text-slate-800">{data.type === 'RENTAL' ? 'Property' : 'Project'} Visual Layout</h2>

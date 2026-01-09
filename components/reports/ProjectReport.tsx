@@ -12,6 +12,9 @@ import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from 'recha
 import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
+import PrintButton from '../ui/PrintButton';
+import { usePrint } from '../../hooks/usePrint';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface ProjectSummary {
     projectId: string;
@@ -80,6 +83,7 @@ const ProjectPieChart = React.memo(({ data, title }: { data: any[], title: strin
 
 const ProjectSummaryReport: React.FC = () => {
     const { state } = useAppContext();
+    const { handlePrint } = usePrint();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [viewMode, setViewMode] = useState<'month' | 'range'>('month');
     const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
@@ -184,7 +188,6 @@ const ProjectSummaryReport: React.FC = () => {
             .map(p => ({ name: p.projectName, value: p.expense }));
     }, [reportData]);
 
-    const handlePrint = () => window.print();
 
     const handleExport = () => {
         const dataToExport = reportData.map(item => ({
@@ -198,18 +201,7 @@ const ProjectSummaryReport: React.FC = () => {
 
     return (
         <>
-             <style>{`
-                @media print {
-                    @page {
-                        size: A4;
-                        margin: 12.7mm;
-                    }
-                    body * { visibility: hidden; }
-                    .printable-area, .printable-area * { visibility: visible; }
-                    .printable-area { position: absolute; left: 0; top: 0; width: 100%; }
-                    .no-print { display: none; }
-                }
-            `}</style>
+             <style>{STANDARD_PRINT_STYLES}</style>
             <div className="space-y-4">
                 <Card className="no-print">
                      <div className="flex flex-wrap items-center justify-between gap-4">
@@ -228,12 +220,12 @@ const ProjectSummaryReport: React.FC = () => {
                         )}
                         <div className="flex gap-2">
                              <Button onClick={handleExport} variant="secondary">Export</Button>
-                             <Button onClick={handlePrint}>Print</Button>
+                             <PrintButton onPrint={handlePrint} />
                         </div>
                     </div>
                 </Card>
                 
-                <div className="printable-area">
+                <div className="printable-area" id="printable-area">
                     <Card>
                          <ReportHeader />
                          <div className="text-center mb-6">

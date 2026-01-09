@@ -10,6 +10,8 @@ import ReportFooter from './ReportFooter';
 import ReportToolbar from './ReportToolbar';
 import ComboBox from '../ui/ComboBox';
 import { formatDate } from '../../utils/dateUtils';
+import { usePrint } from '../../hooks/usePrint';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface ContractReportRow {
     contractId: string;
@@ -26,6 +28,7 @@ interface ContractReportRow {
 
 const ProjectContractReport: React.FC = () => {
     const { state } = useAppContext();
+    const { handlePrint } = usePrint();
     const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || 'all');
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -88,22 +91,10 @@ const ProjectContractReport: React.FC = () => {
         exportJsonToExcel(data, 'contract-report.xlsx', 'Contracts');
     };
 
-    const handlePrint = () => window.print();
 
     return (
         <div className="flex flex-col h-full space-y-4">
-             <style>{`
-                @media print {
-                    @page {
-                        size: A4;
-                        margin: 12.7mm;
-                    }
-                    body * { visibility: hidden; }
-                    .printable-area, .printable-area * { visibility: visible; }
-                    .printable-area { position: absolute; left: 0; top: 0; width: 100%; }
-                    .no-print { display: none !important; }
-                }
-            `}</style>
+             <style>{STANDARD_PRINT_STYLES}</style>
             <div className="flex-shrink-0">
                 <ReportToolbar
                     searchQuery={searchQuery}
@@ -123,7 +114,7 @@ const ProjectContractReport: React.FC = () => {
                 </ReportToolbar>
             </div>
 
-            <div className="flex-grow overflow-y-auto printable-area min-h-0">
+            <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
                 <Card className="min-h-full">
                     <ReportHeader />
                     <div className="text-center mb-6">

@@ -9,6 +9,7 @@ import Button from '../ui/Button';
 import Modal from '../ui/Modal';
 import Tabs from '../ui/Tabs';
 import { Project, Building } from '../../types';
+import ExportDataModal from './ExportDataModal';
 
 const BackupRestorePage: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -20,6 +21,7 @@ const BackupRestorePage: React.FC = () => {
     const [selectedBuilding, setSelectedBuilding] = useState<Building | null>(null);
     const [isProjectPickerOpen, setIsProjectPickerOpen] = useState(false);
     const [isBuildingPickerOpen, setIsBuildingPickerOpen] = useState(false);
+    const [isExportDataModalOpen, setIsExportDataModalOpen] = useState(false);
     
     const fullBackupFileRef = useRef<HTMLInputElement>(null);
     const projectBackupFileRef = useRef<HTMLInputElement>(null);
@@ -289,16 +291,29 @@ const BackupRestorePage: React.FC = () => {
                     </svg>
                     Excel Data Import & Export
                 </h4>
-                <p className="text-sm text-slate-600 mb-4">Import and export data in Excel format for easy editing and bulk operations.</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <p className="text-sm text-slate-600 mb-4">Import and export data in Excel or CSV format for easy editing and bulk operations.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                     <button onClick={handleImportExcel} className="p-3 bg-white border border-slate-200 rounded-lg hover:bg-emerald-50 hover:border-emerald-200 hover:shadow-sm transition-all text-left group">
                         <div className="font-semibold text-slate-700 group-hover:text-emerald-700 mb-1">Bulk Import</div>
                         <p className="text-xs text-slate-500">Bulk import accounts & transactions from Excel</p>
                     </button>
 
                     <button onClick={handleExportExcel} className="p-3 bg-white border border-slate-200 rounded-lg hover:bg-emerald-50 hover:border-emerald-200 hover:shadow-sm transition-all text-left group">
-                        <div className="font-semibold text-slate-700 group-hover:text-emerald-700 mb-1">Export to Excel</div>
+                        <div className="font-semibold text-slate-700 group-hover:text-emerald-700 mb-1">Export All to Excel</div>
                         <p className="text-xs text-slate-500">Download all data as .xlsx file</p>
+                    </button>
+                </div>
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <button onClick={() => setIsExportDataModalOpen(true)} className="w-full p-3 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 hover:shadow-sm transition-all text-left group">
+                        <div className="font-semibold text-slate-700 group-hover:text-blue-700 mb-1 flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="7 10 12 15 17 10"></polyline>
+                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                            </svg>
+                            Selective Export
+                        </div>
+                        <p className="text-xs text-slate-500">Select specific data types to export in CSV or Excel format</p>
                     </button>
                 </div>
             </div>
@@ -384,6 +399,12 @@ const BackupRestorePage: React.FC = () => {
                     <Button variant="secondary" onClick={() => setIsBuildingPickerOpen(false)}>Cancel</Button>
                 </div>
             </Modal>
+
+            {/* Export Data Modal */}
+            <ExportDataModal
+                isOpen={isExportDataModalOpen}
+                onClose={() => setIsExportDataModalOpen(false)}
+            />
         </div>
     );
 };

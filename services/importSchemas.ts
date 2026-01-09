@@ -123,8 +123,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'SalaryComponents',
         version: '1.0',
         requiredFields: ['name', 'type'],
-        optionalFields: ['id', 'isTaxable', 'isSystem'],
-        allowedFields: new Set(['id', 'name', 'type', 'isTaxable', 'isSystem'])
+        optionalFields: ['isTaxable', 'isSystem'],
+        allowedFields: new Set(['name', 'type', 'isTaxable', 'isSystem'])
     };
 
     // Accounts
@@ -132,8 +132,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'Accounts',
         version: '1.0',
         requiredFields: ['name', 'type'],
-        optionalFields: ['id', 'balance', 'isPermanent', 'description', 'parentAccount', 'parentAccountName', 'parentAccountId'],
-        allowedFields: new Set(['id', 'name', 'type', 'balance', 'isPermanent', 'description', 'parentAccount', 'parentAccountName', 'parentAccountId'])
+        optionalFields: ['balance', 'isPermanent', 'description', 'parentAccount', 'parentAccountName', 'parentAccountId'],
+        allowedFields: new Set(['name', 'type', 'balance', 'isPermanent', 'description', 'parentAccount', 'parentAccountName', 'parentAccountId'])
     };
 
     // Contacts
@@ -141,8 +141,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'Contacts',
         version: '1.0',
         requiredFields: ['name'],
-        optionalFields: ['id', 'type', 'description', 'contactNo', 'companyName', 'address'],
-        allowedFields: new Set(['id', 'name', 'type', 'description', 'contactNo', 'companyName', 'address'])
+        optionalFields: ['type', 'description', 'contactNo', 'companyName', 'address'],
+        allowedFields: new Set(['name', 'type', 'description', 'contactNo', 'companyName', 'address'])
     };
 
     // Categories
@@ -150,8 +150,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'Categories',
         version: '1.0',
         requiredFields: ['name', 'type'],
-        optionalFields: ['id', 'description', 'parentCategory', 'parentCategoryName', 'isPermanent', 'isRental'],
-        allowedFields: new Set(['id', 'name', 'type', 'description', 'parentCategory', 'parentCategoryName', 'isPermanent', 'isRental'])
+        optionalFields: ['description', 'parentCategory', 'parentCategoryName', 'isPermanent', 'isRental'],
+        allowedFields: new Set(['name', 'type', 'description', 'parentCategory', 'parentCategoryName', 'isPermanent', 'isRental'])
     };
 
     // Projects
@@ -159,8 +159,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'Projects',
         version: '1.0',
         requiredFields: ['name'],
-        optionalFields: ['id', 'description', 'color', 'status', 'pmConfig', 'installmentConfig'],
-        allowedFields: new Set(['id', 'name', 'description', 'color', 'status', 'pmConfig', 'installmentConfig'])
+        optionalFields: ['description', 'color', 'status', 'pmConfig', 'installmentConfig'],
+        allowedFields: new Set(['name', 'description', 'color', 'status', 'pmConfig', 'installmentConfig'])
     };
 
     // Buildings
@@ -168,8 +168,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'Buildings',
         version: '1.0',
         requiredFields: ['name'],
-        optionalFields: ['id', 'description', 'color'],
-        allowedFields: new Set(['id', 'name', 'description', 'color'])
+        optionalFields: ['description', 'color'],
+        allowedFields: new Set(['name', 'description', 'color'])
     };
 
     // Properties
@@ -177,8 +177,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'Properties',
         version: '1.0',
         requiredFields: ['name'],
-        optionalFields: ['id', 'ownerName', 'owner', 'buildingName', 'building', 'description', 'monthlyServiceCharge'],
-        allowedFields: new Set(['id', 'name', 'ownerName', 'owner', 'buildingName', 'building', 'description', 'monthlyServiceCharge'])
+        optionalFields: ['ownerName', 'owner', 'buildingName', 'building', 'description', 'monthlyServiceCharge'],
+        allowedFields: new Set(['name', 'ownerName', 'owner', 'buildingName', 'building', 'description', 'monthlyServiceCharge'])
     };
 
     // Units
@@ -186,8 +186,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'Units',
         version: '1.0',
         requiredFields: ['name'],
-        optionalFields: ['id', 'projectName', 'project', 'ownerName', 'clientName', 'owner', 'salePrice', 'description', 'tenantName', 'tenant'],
-        allowedFields: new Set(['id', 'name', 'projectName', 'project', 'ownerName', 'clientName', 'owner', 'salePrice', 'description', 'tenantName', 'tenant'])
+        optionalFields: ['projectName', 'project', 'ownerName', 'clientName', 'owner', 'salePrice', 'description', 'tenantName', 'tenant'],
+        allowedFields: new Set(['name', 'projectName', 'project', 'ownerName', 'clientName', 'owner', 'salePrice', 'description', 'tenantName', 'tenant'])
     };
 
     // Staff
@@ -195,8 +195,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'Staff',
         version: '1.0',
         requiredFields: ['Name', 'StaffName'],
-        optionalFields: ['id', 'employeeId', 'designation', 'basicSalary', 'joiningDate', 'status', 'email', 'ProjectName', 'Project', 'BuildingName', 'Building', 'salaryStructure', 'bankDetails', 'history', 'exitDetails', 'advanceBalance'],
-        allowedFields: new Set(['id', 'Name', 'StaffName', 'employeeId', 'designation', 'basicSalary', 'joiningDate', 'status', 'email', 'ProjectName', 'Project', 'BuildingName', 'Building', 'salaryStructure', 'bankDetails', 'history', 'exitDetails', 'advanceBalance'])
+        optionalFields: ['employeeId', 'designation', 'basicSalary', 'joiningDate', 'status', 'email', 'ProjectName', 'Project', 'BuildingName', 'Building', 'salaryStructure', 'bankDetails', 'history', 'exitDetails', 'advanceBalance'],
+        allowedFields: new Set(['Name', 'StaffName', 'employeeId', 'designation', 'basicSalary', 'joiningDate', 'status', 'email', 'ProjectName', 'Project', 'BuildingName', 'Building', 'salaryStructure', 'bankDetails', 'history', 'exitDetails', 'advanceBalance'])
     };
 
     // RentalAgreements
@@ -204,8 +204,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'RentalAgreements',
         version: '1.0',
         requiredFields: ['agreementNumber', 'startDate', 'endDate', 'monthlyRent'],
-        optionalFields: ['id', 'tenantName', 'tenant', 'propertyName', 'property', 'rentDueDate', 'status', 'description', 'securityDeposit', 'brokerName', 'broker', 'brokerFee'],
-        allowedFields: new Set(['id', 'agreementNumber', 'tenantName', 'tenant', 'propertyName', 'property', 'startDate', 'endDate', 'monthlyRent', 'rentDueDate', 'status', 'description', 'securityDeposit', 'brokerName', 'broker', 'brokerFee'])
+        optionalFields: ['tenantName', 'tenant', 'propertyName', 'property', 'rentDueDate', 'status', 'description', 'securityDeposit', 'brokerName', 'broker', 'brokerFee'],
+        allowedFields: new Set(['agreementNumber', 'tenantName', 'tenant', 'propertyName', 'property', 'startDate', 'endDate', 'monthlyRent', 'rentDueDate', 'status', 'description', 'securityDeposit', 'brokerName', 'broker', 'brokerFee'])
     };
 
     // ProjectAgreements
@@ -214,7 +214,7 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         version: '1.0',
         requiredFields: ['agreementNumber', 'sellingPrice'],
         optionalFields: [
-            'id', 'clientName', 'client', 'ownerName', 'owner', 'projectName', 'project',
+            'clientName', 'client', 'ownerName', 'owner', 'projectName', 'project',
             'UnitNames', 'issueDate', 'status', 'description', 'cancellationDetails',
             'listPrice', 'customerDiscount', 'floorDiscount', 'lumpSumDiscount', 'miscDiscount',
             'rebateAmount', 'rebateBrokerName', 'rebate Broker',
@@ -222,7 +222,7 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
             'lumpSumDiscountCategoryName', 'miscDiscountCategoryName', 'sellingPriceCategoryName', 'rebateCategoryName'
         ],
         allowedFields: new Set([
-            'id', 'agreementNumber', 'clientName', 'client', 'ownerName', 'owner',
+            'agreementNumber', 'clientName', 'client', 'ownerName', 'owner',
             'projectName', 'project', 'UnitNames', 'issueDate', 'status', 'description', 'cancellationDetails',
             'listPrice', 'customerDiscount', 'floorDiscount', 'lumpSumDiscount', 'miscDiscount', 'sellingPrice',
             'rebateAmount', 'rebateBrokerName', 'rebate Broker',
@@ -237,14 +237,14 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         version: '1.1',
         requiredFields: ['contractNumber', 'name', 'totalAmount', 'startDate', 'endDate'],
         optionalFields: [
-            'id', 'projectName', 'project', 'vendorName', 'vendor', 'area', 'rate', 'status',
+            'projectName', 'project', 'vendorName', 'vendor', 'area', 'rate', 'status',
             'categoryNames', 'CategoryNames', 'expenseCategoryItems', 'ExpenseCategoryItems',
             'expenseCategoryNames', 'ExpenseCategoryNames', 'expenseQuantities', 'ExpenseQuantities',
             'expensePricePerUnits', 'ExpensePricePerUnits', 'expenseNetValues', 'ExpenseNetValues',
             'expenseUnits', 'ExpenseUnits', 'paymentTerms', 'PaymentTerms', 'termsAndConditions', 'description'
         ],
         allowedFields: new Set([
-            'id', 'contractNumber', 'name', 'projectName', 'project', 'vendorName', 'vendor',
+            'contractNumber', 'name', 'projectName', 'project', 'vendorName', 'vendor',
             'totalAmount', 'area', 'rate', 'startDate', 'endDate', 'status', 'categoryNames', 'CategoryNames',
             'expenseCategoryItems', 'ExpenseCategoryItems', 'expenseCategoryNames', 'ExpenseCategoryNames',
             'expenseQuantities', 'ExpenseQuantities', 'expensePricePerUnits', 'ExpensePricePerUnits',
@@ -303,8 +303,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'RecurringTemplates',
         version: '1.0',
         requiredFields: [],
-        optionalFields: ['id', 'contactName', 'contact', 'propertyName', 'property', 'buildingName', 'building', 'agreementId', 'agreementNumber', 'AgreementNumber', 'amount', 'descriptionTemplate', 'dayOfMonth', 'nextDueDate', 'active'],
-        allowedFields: new Set(['id', 'contactName', 'contact', 'propertyName', 'property', 'buildingName', 'building', 'agreementId', 'agreementNumber', 'AgreementNumber', 'amount', 'descriptionTemplate', 'dayOfMonth', 'nextDueDate', 'active'])
+        optionalFields: ['contactName', 'contact', 'propertyName', 'property', 'buildingName', 'building', 'agreementId', 'agreementNumber', 'AgreementNumber', 'amount', 'descriptionTemplate', 'dayOfMonth', 'nextDueDate', 'active'],
+        allowedFields: new Set(['contactName', 'contact', 'propertyName', 'property', 'buildingName', 'building', 'agreementId', 'agreementNumber', 'AgreementNumber', 'amount', 'descriptionTemplate', 'dayOfMonth', 'nextDueDate', 'active'])
     };
 
     // Invoices
@@ -312,8 +312,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'Invoices',
         version: '1.0',
         requiredFields: ['invoiceNumber', 'amount', 'issueDate'],
-        optionalFields: ['id', 'contactName', 'contact', 'paidAmount', 'status', 'dueDate', 'invoiceType', 'description', 'projectName', 'project', 'buildingName', 'building', 'propertyName', 'property', 'unitName', 'unit', 'categoryName', 'agreementNumber', 'securityDepositCharge', 'serviceCharges', 'rentalMonth'],
-        allowedFields: new Set(['id', 'invoiceNumber', 'contactName', 'contact', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'invoiceType', 'description', 'projectName', 'project', 'buildingName', 'building', 'propertyName', 'property', 'unitName', 'unit', 'categoryName', 'agreementNumber', 'securityDepositCharge', 'serviceCharges', 'rentalMonth'])
+        optionalFields: ['contactName', 'contact', 'paidAmount', 'status', 'dueDate', 'invoiceType', 'description', 'projectName', 'project', 'buildingName', 'building', 'propertyName', 'property', 'unitName', 'unit', 'categoryName', 'agreementNumber', 'securityDepositCharge', 'serviceCharges', 'rentalMonth'],
+        allowedFields: new Set(['invoiceNumber', 'contactName', 'contact', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'invoiceType', 'description', 'projectName', 'project', 'buildingName', 'building', 'propertyName', 'property', 'unitName', 'unit', 'categoryName', 'agreementNumber', 'securityDepositCharge', 'serviceCharges', 'rentalMonth'])
     };
 
     // ProjectBills
@@ -322,7 +322,7 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         version: '1.1',
         requiredFields: ['billNumber', 'amount', 'issueDate'],
         optionalFields: [
-            'id', 'contactName', 'contact', 'paidAmount', 'status', 'dueDate', 'description',
+            'contactName', 'contact', 'paidAmount', 'status', 'dueDate', 'description',
             'categoryName', 'projectName', 'project', 'contractNumber', 'contract',
             'agreementNumber', 'projectAgreementId',
             'expenseCategoryItems', 'ExpenseCategoryItems', 'expenseCategoryNames', 'ExpenseCategoryNames',
@@ -330,7 +330,7 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
             'expenseNetValues', 'ExpenseNetValues', 'expenseUnits', 'ExpenseUnits'
         ],
         allowedFields: new Set([
-            'id', 'billNumber', 'contactName', 'contact', 'amount', 'paidAmount', 'status',
+            'billNumber', 'contactName', 'contact', 'amount', 'paidAmount', 'status',
             'issueDate', 'dueDate', 'description', 'categoryName', 'projectName', 'project',
             'contractNumber', 'contract', 'agreementNumber', 'projectAgreementId',
             'expenseCategoryItems', 'ExpenseCategoryItems', 'expenseCategoryNames', 'ExpenseCategoryNames',
@@ -345,7 +345,7 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         version: '1.1',
         requiredFields: ['billNumber', 'amount', 'issueDate'],
         optionalFields: [
-            'id', 'contactName', 'contact', 'paidAmount', 'status', 'dueDate', 'description',
+            'contactName', 'contact', 'paidAmount', 'status', 'dueDate', 'description',
             'categoryName', 'buildingName', 'building', 'propertyName', 'property',
             'staffName', 'staff', 'staffId',
             'expenseCategoryItems', 'ExpenseCategoryItems', 'expenseCategoryNames', 'ExpenseCategoryNames',
@@ -353,7 +353,7 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
             'expenseNetValues', 'ExpenseNetValues', 'expenseUnits', 'ExpenseUnits'
         ],
         allowedFields: new Set([
-            'id', 'billNumber', 'contactName', 'contact', 'amount', 'paidAmount', 'status',
+            'billNumber', 'contactName', 'contact', 'amount', 'paidAmount', 'status',
             'issueDate', 'dueDate', 'description', 'categoryName', 'buildingName', 'building',
             'propertyName', 'property', 'staffName', 'staff', 'staffId',
             'expenseCategoryItems', 'ExpenseCategoryItems', 'expenseCategoryNames', 'ExpenseCategoryNames',
@@ -368,7 +368,7 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         version: '1.1',
         requiredFields: ['billNumber', 'amount', 'issueDate'],
         optionalFields: [
-            'id', 'contactName', 'contact', 'paidAmount', 'status', 'dueDate', 'description',
+            'contactName', 'contact', 'paidAmount', 'status', 'dueDate', 'description',
             'categoryName', 'projectName', 'project', 'buildingName', 'building',
             'propertyName', 'property', 'projectAgreementId', 'agreementId', 'agreementNumber',
             'contractId', 'contractNumber', 'staffId', 'staff',
@@ -377,7 +377,7 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
             'expenseNetValues', 'ExpenseNetValues', 'expenseUnits', 'ExpenseUnits'
         ],
         allowedFields: new Set([
-            'id', 'billNumber', 'contactName', 'contact', 'amount', 'paidAmount', 'status',
+            'billNumber', 'contactName', 'contact', 'amount', 'paidAmount', 'status',
             'issueDate', 'dueDate', 'description', 'categoryName', 'projectName', 'project',
             'buildingName', 'building', 'propertyName', 'property', 'projectAgreementId',
             'agreementId', 'agreementNumber', 'contractId', 'contractNumber', 'staffId', 'staff',
@@ -392,8 +392,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'Budgets',
         version: '1.0',
         requiredFields: ['amount'],
-        optionalFields: ['id', 'categoryId', 'categoryName', 'projectId', 'projectName'],
-        allowedFields: new Set(['id', 'categoryId', 'categoryName', 'projectId', 'projectName', 'amount'])
+        optionalFields: ['categoryId', 'categoryName', 'projectId', 'projectName'],
+        allowedFields: new Set(['categoryId', 'categoryName', 'projectId', 'projectName', 'amount'])
     };
 
     // Payslips
@@ -401,8 +401,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'Payslips',
         version: '1.0',
         requiredFields: [],
-        optionalFields: ['id', 'staffName', 'staff', 'month', 'issueDate', 'basicSalary', 'allowances', 'deductions', 'bonuses', 'totalAllowances', 'totalDeductions', 'totalBonuses', 'grossSalary', 'netSalary', 'status'],
-        allowedFields: new Set(['id', 'staffName', 'staff', 'month', 'issueDate', 'basicSalary', 'allowances', 'deductions', 'bonuses', 'totalAllowances', 'totalDeductions', 'totalBonuses', 'grossSalary', 'netSalary', 'status'])
+        optionalFields: ['staffName', 'staff', 'month', 'issueDate', 'basicSalary', 'allowances', 'deductions', 'bonuses', 'totalAllowances', 'totalDeductions', 'totalBonuses', 'grossSalary', 'netSalary', 'status'],
+        allowedFields: new Set(['staffName', 'staff', 'month', 'issueDate', 'basicSalary', 'allowances', 'deductions', 'bonuses', 'totalAllowances', 'totalDeductions', 'totalBonuses', 'grossSalary', 'netSalary', 'status'])
     };
 
     // Transactions
@@ -411,7 +411,7 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         version: '1.0',
         requiredFields: ['type', 'amount', 'date'],
         optionalFields: [
-            'id', 'subtype', 'description',
+            'subtype', 'description',
             'accountName', 'AccountName', 'fromAccountName', 'FromAccountName', 'toAccountName', 'ToAccountName',
             'contactName', 'ContactName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName',
             'propertyName', 'PropertyName', 'unitName', 'UnitName', 'categoryName', 'CategoryName',
@@ -419,7 +419,7 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
             'agreementNumber', 'AgreementNumber', 'payslipId', 'batchId'
         ],
         allowedFields: new Set([
-            'id', 'type', 'subtype', 'amount', 'date', 'description',
+            'type', 'subtype', 'amount', 'date', 'description',
             'accountName', 'AccountName', 'fromAccountName', 'FromAccountName', 'toAccountName', 'ToAccountName',
             'contactName', 'ContactName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName',
             'propertyName', 'PropertyName', 'unitName', 'UnitName', 'categoryName', 'CategoryName',
@@ -433,8 +433,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'RentalInvoicePayments',
         version: '1.0',
         requiredFields: ['amount', 'date', 'invoiceNumber'],
-        optionalFields: ['id', 'description', 'accountName', 'AccountName', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName', 'propertyName', 'PropertyName', 'unitName', 'UnitName', 'contractNumber', 'ContractNumber', 'agreementNumber', 'AgreementNumber'],
-        allowedFields: new Set(['id', 'amount', 'date', 'description', 'accountName', 'AccountName', 'invoiceNumber', 'InvoiceNumber', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName', 'propertyName', 'PropertyName', 'unitName', 'UnitName', 'contractNumber', 'ContractNumber', 'agreementNumber', 'AgreementNumber'])
+        optionalFields: ['description', 'accountName', 'AccountName', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName', 'propertyName', 'PropertyName', 'unitName', 'UnitName', 'contractNumber', 'ContractNumber', 'agreementNumber', 'AgreementNumber'],
+        allowedFields: new Set(['amount', 'date', 'description', 'accountName', 'AccountName', 'invoiceNumber', 'InvoiceNumber', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName', 'propertyName', 'PropertyName', 'unitName', 'UnitName', 'contractNumber', 'ContractNumber', 'agreementNumber', 'AgreementNumber'])
     };
 
     // ProjectInvoicePayments
@@ -442,8 +442,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'ProjectInvoicePayments',
         version: '1.0',
         requiredFields: ['amount', 'date', 'invoiceNumber'],
-        optionalFields: ['id', 'description', 'accountName', 'AccountName', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName', 'propertyName', 'PropertyName', 'unitName', 'UnitName', 'contractNumber', 'ContractNumber', 'agreementNumber', 'AgreementNumber'],
-        allowedFields: new Set(['id', 'amount', 'date', 'description', 'accountName', 'AccountName', 'invoiceNumber', 'InvoiceNumber', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName', 'propertyName', 'PropertyName', 'unitName', 'UnitName', 'contractNumber', 'ContractNumber', 'agreementNumber', 'AgreementNumber'])
+        optionalFields: ['description', 'accountName', 'AccountName', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName', 'propertyName', 'PropertyName', 'unitName', 'UnitName', 'contractNumber', 'ContractNumber', 'agreementNumber', 'AgreementNumber'],
+        allowedFields: new Set(['amount', 'date', 'description', 'accountName', 'AccountName', 'invoiceNumber', 'InvoiceNumber', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName', 'propertyName', 'PropertyName', 'unitName', 'UnitName', 'contractNumber', 'ContractNumber', 'agreementNumber', 'AgreementNumber'])
     };
 
     // RentalBillPayments
@@ -451,8 +451,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'RentalBillPayments',
         version: '1.0',
         requiredFields: ['amount', 'date', 'billNumber'],
-        optionalFields: ['id', 'description', 'accountName', 'AccountName', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName', 'propertyName', 'PropertyName', 'unitName', 'UnitName', 'contractNumber', 'ContractNumber', 'agreementNumber', 'AgreementNumber'],
-        allowedFields: new Set(['id', 'amount', 'date', 'description', 'accountName', 'AccountName', 'billNumber', 'BillNumber', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName', 'propertyName', 'PropertyName', 'unitName', 'UnitName', 'contractNumber', 'ContractNumber', 'agreementNumber', 'AgreementNumber'])
+        optionalFields: ['description', 'accountName', 'AccountName', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName', 'propertyName', 'PropertyName', 'unitName', 'UnitName', 'contractNumber', 'ContractNumber', 'agreementNumber', 'AgreementNumber'],
+        allowedFields: new Set(['amount', 'date', 'description', 'accountName', 'AccountName', 'billNumber', 'BillNumber', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName', 'propertyName', 'PropertyName', 'unitName', 'UnitName', 'contractNumber', 'ContractNumber', 'agreementNumber', 'AgreementNumber'])
     };
 
     // ProjectBillPayments
@@ -460,8 +460,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'ProjectBillPayments',
         version: '1.0',
         requiredFields: ['amount', 'date', 'billNumber'],
-        optionalFields: ['id', 'description', 'accountName', 'AccountName', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName', 'propertyName', 'PropertyName', 'unitName', 'UnitName', 'contractNumber', 'ContractNumber', 'agreementNumber', 'AgreementNumber'],
-        allowedFields: new Set(['id', 'amount', 'date', 'description', 'accountName', 'AccountName', 'billNumber', 'BillNumber', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName', 'propertyName', 'PropertyName', 'unitName', 'UnitName', 'contractNumber', 'ContractNumber', 'agreementNumber', 'AgreementNumber'])
+        optionalFields: ['description', 'accountName', 'AccountName', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName', 'propertyName', 'PropertyName', 'unitName', 'UnitName', 'contractNumber', 'ContractNumber', 'agreementNumber', 'AgreementNumber'],
+        allowedFields: new Set(['amount', 'date', 'description', 'accountName', 'AccountName', 'billNumber', 'BillNumber', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName', 'propertyName', 'PropertyName', 'unitName', 'UnitName', 'contractNumber', 'ContractNumber', 'agreementNumber', 'AgreementNumber'])
     };
 
     // LoanTransactions
@@ -469,8 +469,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'LoanTransactions',
         version: '1.0',
         requiredFields: ['subtype', 'amount', 'date'],
-        optionalFields: ['id', 'description', 'accountName', 'AccountName', 'contactName', 'ContactName'],
-        allowedFields: new Set(['id', 'subtype', 'amount', 'date', 'description', 'accountName', 'AccountName', 'contactName', 'ContactName'])
+        optionalFields: ['description', 'accountName', 'AccountName', 'contactName', 'ContactName'],
+        allowedFields: new Set(['subtype', 'amount', 'date', 'description', 'accountName', 'AccountName', 'contactName', 'ContactName'])
     };
 
     // EquityTransactions
@@ -478,8 +478,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'EquityTransactions',
         version: '1.0',
         requiredFields: ['amount', 'date'],
-        optionalFields: ['id', 'description', 'fromAccountName', 'FromAccountName', 'toAccountName', 'ToAccountName', 'projectName', 'ProjectName', 'projectId', 'ProjectId'],
-        allowedFields: new Set(['id', 'amount', 'date', 'description', 'fromAccountName', 'FromAccountName', 'toAccountName', 'ToAccountName', 'projectName', 'ProjectName', 'projectId', 'ProjectId'])
+        optionalFields: ['description', 'fromAccountName', 'FromAccountName', 'toAccountName', 'ToAccountName', 'projectName', 'ProjectName', 'projectId', 'ProjectId'],
+        allowedFields: new Set(['amount', 'date', 'description', 'fromAccountName', 'FromAccountName', 'toAccountName', 'ToAccountName', 'projectName', 'ProjectName', 'projectId', 'ProjectId'])
     };
 
     // TransferTransactions
@@ -487,8 +487,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'TransferTransactions',
         version: '1.0',
         requiredFields: ['amount', 'date'],
-        optionalFields: ['id', 'description', 'fromAccountName', 'FromAccountName', 'toAccountName', 'ToAccountName'],
-        allowedFields: new Set(['id', 'amount', 'date', 'description', 'fromAccountName', 'FromAccountName', 'toAccountName', 'ToAccountName'])
+        optionalFields: ['description', 'fromAccountName', 'FromAccountName', 'toAccountName', 'ToAccountName'],
+        allowedFields: new Set(['amount', 'date', 'description', 'fromAccountName', 'FromAccountName', 'toAccountName', 'ToAccountName'])
     };
 
     // IncomeTransactions
@@ -496,8 +496,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'IncomeTransactions',
         version: '1.0',
         requiredFields: ['amount', 'date'],
-        optionalFields: ['id', 'description', 'accountName', 'AccountName', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName'],
-        allowedFields: new Set(['id', 'amount', 'date', 'description', 'accountName', 'AccountName', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName'])
+        optionalFields: ['description', 'accountName', 'AccountName', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName'],
+        allowedFields: new Set(['amount', 'date', 'description', 'accountName', 'AccountName', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName'])
     };
 
     // ExpenseTransactions
@@ -505,8 +505,8 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         sheetName: 'ExpenseTransactions',
         version: '1.0',
         requiredFields: ['amount', 'date'],
-        optionalFields: ['id', 'description', 'accountName', 'AccountName', 'contactName', 'ContactName', 'categoryName', 'CategoryName'],
-        allowedFields: new Set(['id', 'amount', 'date', 'description', 'accountName', 'AccountName', 'contactName', 'ContactName', 'categoryName', 'CategoryName'])
+        optionalFields: ['description', 'accountName', 'AccountName', 'contactName', 'ContactName', 'categoryName', 'CategoryName'],
+        allowedFields: new Set(['amount', 'date', 'description', 'accountName', 'AccountName', 'contactName', 'ContactName', 'categoryName', 'CategoryName'])
     };
 
     return schemas;

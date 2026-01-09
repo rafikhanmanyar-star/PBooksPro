@@ -5,9 +5,12 @@ import { Payslip, Staff, PayslipStatus } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import { CURRENCY, ICONS } from '../../constants';
 import Button from '../ui/Button';
+import PrintButton from '../ui/PrintButton';
 import { formatDate } from '../../utils/dateUtils';
 import Input from '../ui/Input';
 import { useNotification } from '../../context/NotificationContext';
+import { usePrint } from '../../hooks/usePrint';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface PayslipDetailModalProps {
     isOpen: boolean;
@@ -19,6 +22,7 @@ interface PayslipDetailModalProps {
 const PayslipDetailModal: React.FC<PayslipDetailModalProps> = ({ isOpen, onClose, payslip, onPay }) => {
     const { state, dispatch } = useAppContext();
     const { showToast, showConfirm } = useNotification();
+    const { handlePrint } = usePrint();
     // Support both old (staffId) and new (employeeId) payslip structures
     const employeeId = (payslip as any).employeeId || (payslip as any).staffId;
     const staff = [...state.projectStaff, ...state.rentalStaff].find(s => s.id === employeeId);
@@ -52,9 +56,6 @@ const PayslipDetailModal: React.FC<PayslipDetailModalProps> = ({ isOpen, onClose
         }
     }, [isOpen, payslip]);
 
-    const handlePrint = () => {
-        window.print();
-    };
 
     const handleDelete = async () => {
         const isPaid = payslip.status === PayslipStatus.PAID || (payslip.paidAmount && payslip.paidAmount > 0);
@@ -143,63 +144,10 @@ const PayslipDetailModal: React.FC<PayslipDetailModalProps> = ({ isOpen, onClose
             <div className="p-4 bg-white">
                 
                 {/* Styles for printing - robust isolation of the printable area */}
-                <style>{`
-                    @media print {
-                        @page {
-                            size: A4;
-                            margin: 12.7mm;
-                        }
-                        
-                        html, body {
-                            height: auto;
-                            overflow: visible;
-                            background-color: #ffffff;
-                        }
-
-                        /* Hide everything in the document */
-                        body * {
-                            visibility: hidden;
-                        }
-
-                        /* Make the printable area and its children visible */
-                        .printable-area, .printable-area * {
-                            visibility: visible !important;
-                        }
-
-                        /* Position the printable area at the top-left of the page 
-                           This breaks it out of the modal flow and overlays everything else */
-                        .printable-area {
-                            position: fixed;
-                            left: 0;
-                            top: 0;
-                            width: 100%;
-                            margin: 0;
-                            padding: 0;
-                            background-color: white;
-                            z-index: 9999;
-                            color: #0f172a; /* Ensure text is dark slate (approx slate-900) */
-                        }
-
-                        /* Ensure background colors (like the slate-50 boxes) print */
-                        * {
-                            -webkit-print-color-adjust: exact !important;
-                            print-color-adjust: exact !important;
-                        }
-
-                        /* Hide UI elements explicitly marked as no-print */
-                        .no-print {
-                            display: none !important;
-                        }
-                        
-                        /* Remove shadows for cleaner print */
-                        .shadow-sm, .shadow-md, .shadow-lg {
-                            box-shadow: none !important;
-                        }
-                    }
-                `}</style>
+                <style>{STANDARD_PRINT_STYLES}</style>
 
                 {/* Printable Content Area */}
-                <div className="printable-area border p-8 rounded-lg border-slate-300 relative bg-white">
+                <div className="printable-area border p-8 rounded-lg border-slate-300 relative bg-white" id="printable-area">
                     
                     {/* Header */}
                     <div className="flex justify-between items-start border-b-2 border-slate-800 pb-6 mb-6">
@@ -490,9 +438,10 @@ const PayslipDetailModal: React.FC<PayslipDetailModalProps> = ({ isOpen, onClose
                                     <Button onClick={onPay} className="bg-emerald-600 hover:bg-emerald-700">Mark as Paid</Button>
                                 )}
                                 <Button variant="secondary" onClick={onClose}>Close</Button>
-                                <Button onClick={handlePrint} className="bg-slate-800 text-white hover:bg-slate-900">
-                                    <div className="w-4 h-4 mr-2">{ICONS.print}</div> Print
-                                </Button>
+                                <PrintButton
+                                    variant="primary"
+                                    onPrint={handlePrint}
+                                />
                             </>
                         )}
                     </div>

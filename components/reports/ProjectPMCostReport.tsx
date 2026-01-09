@@ -10,6 +10,8 @@ import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import ComboBox from '../ui/ComboBox';
 import { formatDate } from '../../utils/dateUtils';
+import { usePrint } from '../../hooks/usePrint';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface PMCostRow {
     projectId: string;
@@ -27,6 +29,7 @@ type SortKey = 'month' | 'projectName' | 'totalExpense' | 'excludedCosts' | 'net
 
 const ProjectPMCostReport: React.FC = () => {
     const { state } = useAppContext();
+    const { handlePrint } = usePrint();
     
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
     const [startDate, setStartDate] = useState(() => {
@@ -207,13 +210,14 @@ const ProjectPMCostReport: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full space-y-4">
+            <style>{STANDARD_PRINT_STYLES}</style>
             <div className="flex-shrink-0">
                 <ReportToolbar
                     startDate={startDate}
                     endDate={endDate}
                     onDateChange={handleDateChange}
                     onExport={handleExport}
-                    onPrint={() => window.print()}
+                    onPrint={handlePrint}
                     hideGroup={true}
                     showDateFilterPills={true}
                     activeDateRange={dateRange}
@@ -233,7 +237,7 @@ const ProjectPMCostReport: React.FC = () => {
                 </ReportToolbar>
             </div>
 
-            <div className="flex-grow overflow-y-auto printable-area min-h-0">
+            <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
                 <Card className="min-h-full">
                     <ReportHeader />
                     <div className="text-center mb-6">

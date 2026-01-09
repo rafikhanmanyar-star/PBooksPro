@@ -9,6 +9,9 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import { formatDate } from '../../utils/dateUtils';
+import PrintButton from '../ui/PrintButton';
+import { usePrint } from '../../hooks/usePrint';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface CategoryVendorComparison {
     categoryId: string;
@@ -29,6 +32,7 @@ interface VendorComparisonReportProps {
 
 const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context }) => {
     const { state } = useAppContext();
+    const { handlePrint } = usePrint();
     const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
 
     // Get all expense categories
@@ -149,46 +153,10 @@ const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context
         exportJsonToExcel(data, 'vendor-comparison.xlsx', 'Vendor Comparison Report');
     };
 
-    const handlePrint = () => window.print();
 
     return (
         <div className="flex flex-col h-full space-y-4">
-            <style>{`
-                @media print {
-                    @page {
-                        size: A4;
-                        margin: 12.7mm;
-                    }
-                    html, body {
-                        height: auto !important;
-                        overflow: visible !important;
-                    }
-                    body * {
-                        visibility: hidden;
-                    }
-                    .printable-area, .printable-area * {
-                        visibility: visible !important;
-                    }
-                    .printable-area {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
-                        height: auto !important;
-                        overflow: visible !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        background-color: white;
-                        z-index: 9999;
-                    }
-                    .no-print {
-                        display: none !important;
-                    }
-                    ::-webkit-scrollbar {
-                        display: none;
-                    }
-                }
-            `}</style>
+            <style>{STANDARD_PRINT_STYLES}</style>
             
             {/* Toolbar */}
             <div className="flex-shrink-0">
@@ -208,15 +176,18 @@ const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context
                             <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
                                 <div className="w-4 h-4 mr-1">{ICONS.export}</div> Export
                             </Button>
-                            <Button variant="secondary" size="sm" onClick={handlePrint} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
-                                <div className="w-4 h-4 mr-1">{ICONS.print}</div> Print
-                            </Button>
+                            <PrintButton
+                                variant="secondary"
+                                size="sm"
+                                onPrint={handlePrint}
+                                className="whitespace-nowrap"
+                            />
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div className="flex-grow overflow-y-auto printable-area min-h-0">
+            <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
                 <Card className="min-h-full">
                     <ReportHeader />
                     <h3 className="text-2xl font-bold text-center mb-4">
