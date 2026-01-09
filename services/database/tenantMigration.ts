@@ -10,7 +10,8 @@ import { getCurrentUserId } from './userUtils';
 
 /**
  * Tables that should have tenant_id column
- * Excludes: metadata, error_log, app_settings, license_settings, tasks (global tables)
+ * Excludes: metadata, error_log, app_settings, license_settings (global tables)
+ * Note: tasks is now user/tenant-specific
  */
 const TABLES_WITH_TENANT_ID = [
     'users',
@@ -43,7 +44,8 @@ const TABLES_WITH_TENANT_ID = [
     'attendance_records',
     'tax_configurations',
     'statutory_configurations',
-    'transaction_log'
+    'transaction_log',
+    'tasks' // Tasks are now user and tenant-specific
 ];
 
 /**

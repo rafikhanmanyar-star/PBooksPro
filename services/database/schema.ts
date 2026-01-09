@@ -753,7 +753,9 @@ CREATE TABLE IF NOT EXISTS tasks (
     completed INTEGER NOT NULL DEFAULT 0,
     priority TEXT NOT NULL DEFAULT 'medium',
     created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    tenant_id TEXT,
+    user_id TEXT
 );
 
 -- App Settings table (for various settings)
@@ -804,6 +806,9 @@ CREATE INDEX IF NOT EXISTS idx_payslips_employee ON payslips(employee_id);
 CREATE INDEX IF NOT EXISTS idx_payslips_month ON payslips(month);
 CREATE INDEX IF NOT EXISTS idx_attendance_employee_date ON attendance_records(employee_id, date);
 CREATE INDEX IF NOT EXISTS idx_tasks_completed ON tasks(completed);
+CREATE INDEX IF NOT EXISTS idx_tasks_tenant_id ON tasks(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_tenant_user ON tasks(tenant_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_sender ON chat_messages(sender_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_recipient ON chat_messages(recipient_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at);
@@ -868,4 +873,7 @@ CREATE INDEX IF NOT EXISTS idx_tax_configurations_tenant_id ON tax_configuration
 CREATE INDEX IF NOT EXISTS idx_tax_configurations_user_id ON tax_configurations(user_id);
 CREATE INDEX IF NOT EXISTS idx_statutory_configurations_tenant_id ON statutory_configurations(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_statutory_configurations_user_id ON statutory_configurations(user_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_tenant_id ON tasks(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_tenant_user ON tasks(tenant_id, user_id);
 `;

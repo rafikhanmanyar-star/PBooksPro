@@ -15,7 +15,23 @@ const RATE_LIMIT_MAX_REQUESTS = 5;
 // Lookup tenants by organization email (Step 1 of login flow)
 router.post('/lookup-tenants', async (req, res) => {
   try {
-    const db = getDb();
+    // Check database connection first
+    let db;
+    try {
+      db = getDb();
+    } catch (dbError: any) {
+      console.error('❌ [API] Failed to get database service:', {
+        message: dbError?.message || String(dbError),
+        code: dbError?.code,
+        stack: dbError?.stack
+      });
+      return res.status(500).json({ 
+        error: 'Database connection failed',
+        message: 'Unable to connect to database. Please check server configuration.',
+        code: 'DATABASE_CONNECTION_ERROR'
+      });
+    }
+
     const { organizationEmail } = req.body;
     
     if (!organizationEmail) {
@@ -56,10 +72,26 @@ router.post('/lookup-tenants', async (req, res) => {
     }
 
     // Lookup tenants by email (case-insensitive)
-    const tenants = await db.query(
-      'SELECT id, name, company_name, email FROM tenants WHERE LOWER(email) = LOWER($1)',
-      [organizationEmail]
-    );
+    let tenants;
+    try {
+      tenants = await db.query(
+        'SELECT id, name, company_name, email FROM tenants WHERE LOWER(email) = LOWER($1)',
+        [organizationEmail]
+      );
+    } catch (queryError: any) {
+      console.error('❌ [API] Database query error in lookup-tenants:', {
+        message: queryError?.message || String(queryError),
+        code: queryError?.code,
+        detail: queryError?.detail,
+        hint: queryError?.hint,
+        stack: queryError?.stack
+      });
+      return res.status(500).json({ 
+        error: 'Database query failed',
+        message: 'An error occurred while querying the database. Please try again.',
+        code: 'DATABASE_QUERY_ERROR'
+      });
+    }
 
     // Return empty array if no match (don't reveal if email exists for security)
     // Only return safe fields (no license info, settings, etc.)
@@ -72,10 +104,21 @@ router.post('/lookup-tenants', async (req, res) => {
       }))
     });
   } catch (error: any) {
-    console.error('Tenant lookup error:', error);
+    // Log detailed error information
+    console.error('❌ [API] Error response for /auth/lookup-tenants:', {
+      message: error?.message || String(error),
+      code: error?.code,
+      name: error?.name,
+      stack: error?.stack,
+      detail: error?.detail,
+      hint: error?.hint
+    });
+    
+    // Return properly formatted error response
     res.status(500).json({ 
       error: 'Lookup failed',
-      message: 'An error occurred while looking up organizations. Please try again.'
+      message: error?.message || 'An error occurred while looking up organizations. Please try again.',
+      code: error?.code || 'UNKNOWN_ERROR'
     });
   }
 });
