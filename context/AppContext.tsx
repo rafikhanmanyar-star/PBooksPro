@@ -10,6 +10,7 @@ import { getAppStateApiService } from '../services/api/appStateApi';
 import { logger } from '../services/logger';
 import packageJson from '../package.json';
 import { shouldSyncAction } from '../services/sync/dataFilter';
+import InitializationScreen from '../components/InitializationScreen';
 
 // Lazy import AppStateRepository to avoid initialization issues during module load
 // It will be imported when actually needed
@@ -3014,114 +3015,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Show loading/initialization state
     if (isInitializing) {
         return (
-            <div style={{
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                height: '100vh',
-                flexDirection: 'column',
-                gap: '1.5rem',
-                background: '#ffffff',
-                color: '#1f2937',
-                fontFamily: 'system-ui, -apple-system, sans-serif'
-            }}>
-                <div style={{
-                    background: '#ffffff',
-                    padding: '2rem 3rem',
-                    borderRadius: '1rem',
-                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
-                    border: '1px solid #e5e7eb',
-                    minWidth: '400px',
-                    textAlign: 'center'
-                }}>
-                    <div style={{
-                        fontSize: '2rem',
-                        fontWeight: 'bold',
-                        marginBottom: '1rem',
-                        color: '#16a34a'
-                    }}>
-                        PBooksPro
-                    </div>
-
-                    <div style={{
-                        fontSize: '1rem',
-                        marginBottom: '1.5rem',
-                        color: '#6b7280'
-                    }}>
-                        {initMessage}
-                    </div>
-
-                    {/* Progress Bar */}
-                    <div style={{
-                        width: '100%',
-                        height: '8px',
-                        background: '#e5e7eb',
-                        borderRadius: '4px',
-                        overflow: 'hidden',
-                        marginBottom: '0.5rem'
-                    }}>
-                        <div style={{
-                            width: `${initProgress}%`,
-                            height: '100%',
-                            background: '#16a34a',
-                            borderRadius: '4px',
-                            transition: 'width 0.3s ease',
-                            boxShadow: '0 0 10px rgba(22, 163, 74, 0.3)'
-                        }} />
-                    </div>
-
-                    <div style={{
-                        fontSize: '0.875rem',
-                        color: '#6b7280'
-                    }}>
-                        {Math.round(initProgress)}%
-                    </div>
-
-                    {/* Spinner */}
-                    {initProgress < 100 && (
-                        <div style={{
-                            marginTop: '1.5rem',
-                            display: 'flex',
-                            justifyContent: 'center'
-                        }}>
-                            <div style={{
-                                width: '40px',
-                                height: '40px',
-                                border: '4px solid #e5e7eb',
-                                borderTop: '4px solid #16a34a',
-                                borderRadius: '50%',
-                                animation: 'spin 1s linear infinite'
-                            }} />
-                        </div>
-                    )}
-
-                    {/* Debug info in development */}
-                    {process.env.NODE_ENV === 'development' && (
-                        <div style={{
-                            marginTop: '1.5rem',
-                            padding: '0.75rem',
-                            background: '#f3f4f6',
-                            borderRadius: '0.5rem',
-                            fontSize: '0.75rem',
-                            textAlign: 'left',
-                            fontFamily: 'monospace',
-                            color: '#374151',
-                            border: '1px solid #e5e7eb'
-                        }}>
-                            <div>Mode: {useFallback ? 'localStorage (fallback)' : 'SQL Database'}</div>
-                            <div>Progress: {initProgress}%</div>
-                            <div>Message: {initMessage}</div>
-                        </div>
-                    )}
-                </div>
-
-                <style>{`
-                    @keyframes spin {
-                        0% { transform: rotate(0deg); }
-                        100% { transform: rotate(360deg); }
-                    }
-                `}</style>
-            </div>
+            <InitializationScreen 
+                initMessage={initMessage}
+                initProgress={initProgress}
+                useFallback={useFallback}
+            />
         );
     }
 

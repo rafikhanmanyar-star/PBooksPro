@@ -8,32 +8,65 @@ const rootElement = document.getElementById('root');
 if (rootElement) {
   rootElement.innerHTML = `
     <div style="
-      min-height: 100vh;
       display: flex;
-      align-items: center;
       justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%);
+      background-size: 400% 400%;
+      animation: gradient 15s ease infinite;
       padding: 2rem;
       font-family: system-ui, -apple-system, sans-serif;
-      background: #ffffff;
-      color: #1f2937;
     ">
       <div style="
-        background: #ffffff;
-        padding: 2rem 3rem;
-        border-radius: 1rem;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-        border: 1px solid #e5e7eb;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        padding: 3rem;
+        border-radius: 1.5rem;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        max-width: 500px;
+        width: 100%;
         text-align: center;
       ">
-        <div style="font-size: 2rem; font-weight: bold; margin-bottom: 1rem; color: #16a34a;">
+        <div style="
+          font-size: 2.5rem;
+          font-weight: bold;
+          margin-bottom: 0.5rem;
+          background: linear-gradient(135deg, #16a34a 0%, #0891b2 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          animation: pulse 2s ease-in-out infinite;
+        ">
           PBooksPro
         </div>
-        <div style="font-size: 1rem; margin-bottom: 1.5rem; color: #6b7280;">
-          Loading application...
+        <div style="
+          font-size: 0.875rem;
+          color: #6b7280;
+          margin-bottom: 2rem;
+          font-weight: 500;
+        ">
+          Professional Business Management Suite
         </div>
         <div style="
-          width: 40px;
-          height: 40px;
+          background: linear-gradient(135deg, #f0f9ff 0%, #f5f3ff 100%);
+          border-radius: 1rem;
+          padding: 2rem;
+          margin-bottom: 1.5rem;
+          border: 2px solid rgba(255, 255, 255, 0.8);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        ">
+          <div style="font-size: 3rem; margin-bottom: 1rem; animation: bounce 2s ease-in-out infinite;">
+            🚀
+          </div>
+          <div style="font-size: 0.875rem; color: #374151; font-weight: 500;">
+            Starting application...
+          </div>
+        </div>
+        <div style="
+          width: 50px;
+          height: 50px;
           border: 4px solid #e5e7eb;
           border-top: 4px solid #16a34a;
           border-radius: 50%;
@@ -44,6 +77,19 @@ if (rootElement) {
           @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
+          }
+          @keyframes gradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+          }
+          @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+          }
+          @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
           }
         </style>
       </div>
