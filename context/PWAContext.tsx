@@ -119,7 +119,13 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const applyUpdate = () => {
       if (registration && registration.waiting) {
+          // Send message to service worker to skip waiting
           registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+          
+          // Reload page after a short delay to allow service worker to activate
+          setTimeout(() => {
+              window.location.reload();
+          }, 500);
       }
   };
 

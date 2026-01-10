@@ -1,6 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import path from 'path';
+import path, { resolve } from 'path';
+import { readFileSync } from 'fs';
+
+// Read version from package.json (parent directory)
+const packageJson = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf-8'));
 
 // Get environment variable during build
 // This will be replaced by Vite's built-in env variable replacement
@@ -46,7 +50,9 @@ export default defineConfig({
   define: {
     'import.meta.env.VITE_ADMIN_API_URL': JSON.stringify(adminApiUrl),
     // Also try without the import.meta.env prefix (some Vite versions need this)
-    'process.env.VITE_ADMIN_API_URL': JSON.stringify(adminApiUrl)
+    'process.env.VITE_ADMIN_API_URL': JSON.stringify(adminApiUrl),
+    // Inject application version at build time
+    'import.meta.env.APP_VERSION': JSON.stringify(packageJson.version),
   }
 });
 

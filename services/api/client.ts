@@ -5,9 +5,8 @@
  * Handles authentication, error handling, and request/response transformation.
  */
 
-// HARDCODED: Always use production API URL
-// This ensures the deployed version always uses the correct URL
-const API_BASE_URL = 'https://pbookspro-api.onrender.com/api';
+// Use environment variable with fallback to production for backwards compatibility
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://pbookspro-api.onrender.com/api';
 
 import { logger } from '../logger';
 

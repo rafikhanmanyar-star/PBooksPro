@@ -20,8 +20,8 @@ self.addEventListener('install', (event) => {
         console.error('Cache install failed:', err);
       })
   );
-  // Force the waiting service worker to become the active service worker
-  self.skipWaiting();
+  // REMOVED: self.skipWaiting() - Don't automatically take control
+  // The service worker will wait until user chooses to update
 });
 
 // Activate event - clean up old caches
@@ -38,8 +38,8 @@ self.addEventListener('activate', (event) => {
       );
     })
   );
-  // Take control of all pages immediately
-  return self.clients.claim();
+  // REMOVED: self.clients.claim() - Don't automatically take control
+  // Wait for user action before activating new version
 });
 
 // Fetch event - serve from cache, fallback to network
@@ -65,9 +65,10 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Handle skip waiting message
+// Listen for SKIP_WAITING message from client (user-initiated update)
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
+    // User requested update - now take control
     self.skipWaiting();
   }
 });

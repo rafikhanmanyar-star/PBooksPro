@@ -1,6 +1,5 @@
-// HARDCODED: Always use production API URL
-// This ensures the deployed version always uses the correct URL
-const ADMIN_API_URL = 'https://pbookspro-api.onrender.com/api/admin';
+// Use environment variable with fallback to production for backwards compatibility
+const ADMIN_API_URL = import.meta.env.VITE_ADMIN_API_URL || 'https://pbookspro-api.onrender.com/api/admin';
 
 // Debug: Log the API URL being used
 console.log('🔧 Admin API URL:', ADMIN_API_URL);

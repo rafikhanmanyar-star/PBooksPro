@@ -1,8 +1,11 @@
 
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { copyFileSync, existsSync } from 'fs'
-import { join } from 'path'
+import { copyFileSync, existsSync, readFileSync } from 'fs'
+import { join, resolve } from 'path'
+
+// Read version from package.json
+const packageJson = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'));
 
 // Plugin to suppress sql.js Node.js module warnings
 // These warnings are harmless - sql.js handles Node.js modules internally
@@ -37,6 +40,8 @@ export default defineConfig({
     // Expose environment variables to the client
     'process.env.API_KEY': JSON.stringify(process.env.API_KEY || process.env.VITE_API_KEY || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || ''),
     'process.env.GEMINI_API_KEY': JSON.stringify(process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || process.env.API_KEY || process.env.VITE_API_KEY || ''),
+    // Inject application version at build time
+    'import.meta.env.APP_VERSION': JSON.stringify(packageJson.version),
   },
   assetsInclude: ['**/*.wasm'], // Include WASM files as assets
   optimizeDeps: {

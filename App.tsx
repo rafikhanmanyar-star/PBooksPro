@@ -20,6 +20,7 @@ import { useAuth } from './context/AuthContext';
 import CloudLoginPage from './components/auth/CloudLoginPage';
 // Initialize Sync Service removed
 import UpdateNotification from './components/ui/UpdateNotification';
+import { VersionUpdateNotification } from './components/ui/VersionUpdateNotification';
 import { createBackup, restoreBackup } from './services/backupService';
 import { useProgress } from './context/ProgressContext';
 import { usePagePreloader } from './hooks/usePagePreloader';
@@ -406,6 +407,23 @@ const App: React.FC = () => {
       <ProgressDisplay />
 
       <UpdateNotification />
+      <VersionUpdateNotification onUpdateRequested={() => {
+        // Use PWA context to apply update if available
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistration().then(registration => {
+            if (registration?.waiting) {
+              registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+              setTimeout(() => window.location.reload(), 500);
+            } else {
+              // Fallback: just reload
+              window.location.reload();
+            }
+          });
+        } else {
+          // Fallback: just reload
+          window.location.reload();
+        }
+      }} />
 
       {isCustomKeyboardOpen && (
         <div className="fixed bottom-0 left-0 right-0 z-50 animate-slide-up">

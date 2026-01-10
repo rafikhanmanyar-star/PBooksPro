@@ -74,6 +74,7 @@ import errorLogRouter from './routes/error-log.js';
 import appSettingsRouter from './routes/app-settings.js';
 import pmCycleAllocationsRouter from './routes/pm-cycle-allocations.js';
 import dataManagementRouter from './routes/data-management.js';
+import appInfoRouter from './routes/app-info.js';
 import { tenantMiddleware } from '../middleware/tenantMiddleware.js';
 import { licenseMiddleware } from '../middleware/licenseMiddleware.js';
 
@@ -202,6 +203,7 @@ app.get('/health', (req, res) => {
 });
 
 // Public routes (no authentication required)
+app.use('/api/app-info', appInfoRouter); // Version info (public)
 app.use('/api/auth', authRouter);
 // Tenant registration endpoint (also accessible via auth router)
 app.post('/api/tenants/register', async (req, res, next) => {

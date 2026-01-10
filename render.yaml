@@ -1,9 +1,16 @@
+databases:
+  - name: pbookspro-db-staging
+    databaseName: pbookspro_staging
+    user: pbookspro_staging
+    plan: starter
+
 services:
   # Backend API Server
   - type: web
     name: pbookspro-api
     env: node
     plan: starter
+    branch: main
     buildCommand: cd server && npm install --include=dev && npm run build
     startCommand: cd server && npm start
     envVars:
@@ -32,6 +39,7 @@ services:
   - type: web
     name: pbookspro-client
     runtime: static
+    branch: main
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
     envVars:
@@ -42,9 +50,61 @@ services:
   - type: web
     name: pbookspro-admin
     runtime: static
+    branch: main
     buildCommand: cd admin && npm install && npm run build
     staticPublishPath: ./admin/dist
     envVars:
       - key: VITE_ADMIN_API_URL
         value: https://pbookspro-api.onrender.com/api/admin
 
+  # Staging API Server
+  - type: web
+    name: pbookspro-api-staging
+    env: node
+    plan: starter
+    branch: staging
+    buildCommand: cd server && npm install --include=dev && npm run build
+    startCommand: cd server && npm start
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pbookspro-db-staging
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: LICENSE_SECRET_SALT
+        value: PBOOKSPRO_SECURE_SALT_2024_STAGING
+      - key: NODE_ENV
+        value: staging
+      - key: PORT
+        value: 3000
+      - key: CORS_ORIGIN
+        value: https://pbookspro-client-staging.onrender.com,https://pbookspro-admin-staging.onrender.com,http://localhost:5173,http://localhost:5174
+      - key: API_URL
+        value: https://pbookspro-api-staging.onrender.com
+      - key: SERVER_URL
+        value: https://pbookspro-api-staging.onrender.com
+      - key: CLIENT_URL
+        value: https://pbookspro-client-staging.onrender.com
+
+  # Staging Client Application
+  - type: web
+    name: pbookspro-client-staging
+    runtime: static
+    branch: staging
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://pbookspro-api-staging.onrender.com/api
+
+  # Staging Admin Application
+  - type: web
+    name: pbookspro-admin-staging
+    runtime: static
+    branch: staging
+    buildCommand: cd admin && npm install && npm run build
+    staticPublishPath: ./admin/dist
+    envVars:
+      - key: VITE_ADMIN_API_URL
+        value: https://pbookspro-api-staging.onrender.com/api/admin
