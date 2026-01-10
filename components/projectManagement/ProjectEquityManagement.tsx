@@ -833,8 +833,64 @@ const ProjectEquityManagement: React.FC = () => {
             {activeTab === 'Ledger' && (
                 <>
                     <style>{STANDARD_PRINT_STYLES}</style>
-                    <div className="flex-grow flex h-full gap-4 overflow-hidden">
-                        <div className="hidden md:flex flex-col h-full flex-shrink-0 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden no-print" style={{ width: sidebarWidth }}>
+                    {/* Printable area for print mode - hidden in screen, visible in print */}
+                    <div className="hidden print:block printable-area" id="printable-area">
+                        <ReportHeader />
+                        <div className="mb-4">
+                            <h2 className="text-xl font-bold text-slate-900 text-center">Equity Ledger</h2>
+                            {selectedTreeType === 'staff' && selectedTreeId && (
+                                <p className="text-center text-sm text-slate-600 mt-2">
+                                    Investor: {state.accounts.find(a => a.id === selectedTreeId)?.name || 'N/A'}
+                                </p>
+                            )}
+                            {selectedTreeType === 'project' && selectedTreeId && (
+                                <p className="text-center text-sm text-slate-600 mt-2">
+                                    Project: {state.projects.find(p => p.id === selectedTreeId)?.name || 'N/A'}
+                                </p>
+                            )}
+                        </div>
+                        <table className="min-w-full divide-y divide-slate-200 text-sm">
+                            <thead className="bg-slate-50">
+                                <tr>
+                                    <th className="px-4 py-3 text-left font-semibold text-slate-600">Date</th>
+                                    <th className="px-4 py-3 text-left font-semibold text-slate-600">Type</th>
+                                    <th className="px-4 py-3 text-left font-semibold text-slate-600">Description</th>
+                                    <th className="px-4 py-3 text-left font-semibold text-slate-600">Info</th>
+                                    <th className="px-4 py-3 text-right font-semibold text-slate-600">Amount</th>
+                                    <th className="px-4 py-3 text-right font-semibold text-slate-600">Balance</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 bg-white">
+                                {ledgerData.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                                            No transactions found
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    ledgerData.map(tx => (
+                                        <tr key={tx.id}>
+                                            <td className="px-4 py-2 text-slate-700">{formatDate(tx.date)}</td>
+                                            <td className="px-4 py-2">
+                                                <span className={`px-3 py-1 font-medium rounded-full inline-block ${tx.paymentTypeColor}`}>
+                                                    {tx.paymentType}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-2 text-slate-600 whitespace-normal">{tx.description}</td>
+                                            <td className="px-4 py-2 text-xs text-slate-500 whitespace-normal">{tx.info}</td>
+                                            <td className={`px-4 py-2 text-right font-bold ${tx.isDeposit ? 'text-emerald-600' : 'text-rose-600'}`}>{tx.isDeposit ? '+' : '-'}{CURRENCY} {Math.abs(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                            <td className={`px-4 py-2 text-right font-mono ${tx.balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{tx.balance >= 0 ? '' : '-'}{CURRENCY} {Math.abs(tx.balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                        <ReportFooter />
+                    </div>
+                    
+                    {/* Screen view - hidden in print */}
+                    <div className="flex-grow flex h-full gap-4 overflow-hidden no-print">
+                        <div className="hidden md:flex flex-col h-full flex-shrink-0 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden" style={{ width: sidebarWidth }}>
                             <div className="p-3 border-b bg-slate-50 font-bold text-slate-700 flex justify-between">
                                 <span>Projects & Investors</span>
                                 {selectedTreeId && <button onClick={() => { setSelectedTreeId(null); setSelectedTreeType(null); setSelectedParentId(null); }} className="text-xs text-accent hover:underline">Clear</button>}
@@ -843,12 +899,11 @@ const ProjectEquityManagement: React.FC = () => {
                                 <PayrollTreeView treeData={treeData} selectedId={selectedTreeId} onSelect={(id, type, parentId) => { setSelectedTreeId(id); setSelectedTreeType(type as any); setSelectedParentId(parentId || null); }} />
                             </div>
                         </div>
-                        <div className="hidden md:block h-full no-print">
+                        <div className="hidden md:block h-full">
                             <ResizeHandle onMouseDown={startResizing} />
                         </div>
-                        <div className="flex-grow flex flex-col bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden printable-area" id="printable-area">
-                            <div className="hidden print:block mb-6"><ReportHeader /></div>
-                            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 no-print">
+                        <div className="flex-grow flex flex-col bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+                            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                                 <div><h2 className="text-lg font-bold text-slate-800">Equity Overview</h2></div>
                                 <div className="flex gap-2">
                                     <Button size="sm" variant="secondary" onClick={handleExport}>{ICONS.export} Export</Button>
@@ -856,19 +911,6 @@ const ProjectEquityManagement: React.FC = () => {
                                     <Button size="sm" onClick={() => handleOpenModal('INVEST')} className="bg-emerald-600 hover:bg-emerald-700">{ICONS.plus} Invest</Button>
                                     <Button size="sm" variant="secondary" onClick={() => handleOpenModal('WITHDRAW')}>{ICONS.minus} Withdraw</Button>
                                 </div>
-                            </div>
-                            <div className="hidden print:block mb-4">
-                                <h2 className="text-xl font-bold text-slate-900 text-center">Equity Ledger</h2>
-                                {selectedTreeType === 'staff' && selectedTreeId && (
-                                    <p className="text-center text-sm text-slate-600 mt-2">
-                                        Investor: {state.accounts.find(a => a.id === selectedTreeId)?.name || 'N/A'}
-                                    </p>
-                                )}
-                                {selectedTreeType === 'project' && selectedTreeId && (
-                                    <p className="text-center text-sm text-slate-600 mt-2">
-                                        Project: {state.projects.find(p => p.id === selectedTreeId)?.name || 'N/A'}
-                                    </p>
-                                )}
                             </div>
                             <div className="flex-grow overflow-y-auto">
                                 <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -893,7 +935,7 @@ const ProjectEquityManagement: React.FC = () => {
                                             ledgerData.map(tx => (
                                                 <tr 
                                                     key={tx.id} 
-                                                    className="hover:bg-slate-50 cursor-pointer transition-colors no-print print:hover:bg-transparent"
+                                                    className="hover:bg-slate-50 cursor-pointer transition-colors"
                                                     onClick={() => handleRowClick(tx)}
                                                 >
                                                     <td className="px-4 py-2 text-slate-700">{formatDate(tx.date)}</td>
@@ -905,8 +947,8 @@ const ProjectEquityManagement: React.FC = () => {
                                                             {tx.paymentType}
                                                         </span>
                                                     </td>
-                                                    <td className="px-4 py-2 text-slate-600 whitespace-normal">{tx.description}</td>
-                                                    <td className="px-4 py-2 text-xs text-slate-500 whitespace-normal">{tx.info}</td>
+                                                    <td className="px-4 py-2 max-w-xs truncate text-slate-600">{tx.description}</td>
+                                                    <td className="px-4 py-2 text-xs text-slate-500">{tx.info}</td>
                                                     <td className={`px-4 py-2 text-right font-bold ${tx.isDeposit ? 'text-emerald-600' : 'text-rose-600'}`}>{tx.isDeposit ? '+' : '-'}{CURRENCY} {Math.abs(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                                     <td className={`px-4 py-2 text-right font-mono ${tx.balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{tx.balance >= 0 ? '' : '-'}{CURRENCY} {Math.abs(tx.balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                                 </tr>
@@ -915,7 +957,6 @@ const ProjectEquityManagement: React.FC = () => {
                                     </tbody>
                                 </table>
                             </div>
-                            <div className="hidden print:block mt-8"><ReportFooter /></div>
                         </div>
                     </div>
                 </>
@@ -946,7 +987,7 @@ const ProjectEquityManagement: React.FC = () => {
                     {distStep === 2 && (
                          <div className="space-y-6 max-w-4xl mx-auto">
                             <div className="flex justify-between items-center">
-                                <h3 className="text-xl font-bold">Confirm Distribution</h3>
+                            <h3 className="text-xl font-bold">Confirm Distribution</h3>
                                 <Button variant="secondary" onClick={() => { setDistStep(1); setDistributions([]); }}>Back</Button>
                             </div>
                             

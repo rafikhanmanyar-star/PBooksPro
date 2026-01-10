@@ -31,27 +31,74 @@ export const getPrintStyles = (options: PrintStyleOptions = {}): string => {
         overflow: visible !important;
         background: white !important;
       }
-      body * {
-        visibility: hidden;
+      /* Hide non-printable elements - use display instead of visibility to avoid inheritance issues */
+      .no-print {
+        display: none !important;
+        visibility: hidden !important;
       }
-      .printable-area, .printable-area * {
+      /* Ensure printable area is always displayed in print mode, even if it has 'hidden' class */
+      .printable-area.hidden,
+      [id="printable-area"].hidden,
+      .hidden.printable-area,
+      [id="printable-area"][class*="hidden"] {
+        display: block !important;
         visibility: visible !important;
       }
-      .printable-area {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
+      /* Ensure printable area and all its content is visible */
+      .printable-area,
+      [id="printable-area"],
+      .printable-area *,
+      [id="printable-area"] * {
+        visibility: visible !important;
+      }
+      /* Use relative positioning instead of fixed for better compatibility */
+      .printable-area,
+      [id="printable-area"] {
+        position: relative !important;
+        width: 100% !important;
         height: auto !important;
         overflow: visible !important;
         margin: 0 !important;
-        padding: 0 !important;
-        background-color: white;
-        z-index: 9999;
-        box-sizing: border-box;
+        padding: 20px !important;
+        background-color: white !important;
+        box-sizing: border-box !important;
+        max-height: none !important;
+      }
+      /* Ensure all nested containers within printable area allow overflow */
+      .printable-area *,
+      [id="printable-area"] * {
+        overflow: visible !important;
+        max-height: none !important;
+        height: auto !important;
+        visibility: visible !important;
+      }
+      /* Ensure table elements display correctly in print */
+      .printable-area table,
+      [id="printable-area"] table {
+        display: table !important;
+        width: 100% !important;
+      }
+      .printable-area thead,
+      [id="printable-area"] thead {
+        display: table-header-group !important;
+      }
+      .printable-area tbody,
+      [id="printable-area"] tbody {
+        display: table-row-group !important;
+      }
+      .printable-area tr,
+      [id="printable-area"] tr {
+        display: table-row !important;
+      }
+      .printable-area td,
+      [id="printable-area"] td,
+      .printable-area th,
+      [id="printable-area"] th {
+        display: table-cell !important;
       }
       .no-print {
         display: none !important;
+        visibility: hidden !important;
       }
       ::-webkit-scrollbar {
         display: none;

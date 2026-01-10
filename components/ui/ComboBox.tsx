@@ -1,6 +1,5 @@
-
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ICONS } from '../../constants';
 
 interface ComboBoxItem {
@@ -29,8 +28,11 @@ interface ComboBoxProps {
 const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect, onQueryChange, placeholder, disabled = false, allowAddNew = true, required = false, id, name, entityType, onAddNew, className = '', compact = false }) => {
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLUListElement>(null);
   const shouldSelectOnFocusRef = useRef(true);
   const lastUserTypedValueRef = useRef<string | null>(null);
 
@@ -38,6 +40,73 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
   const inputId = id || (label ? `combobox-${name || label.toLowerCase().replace(/\s+/g, '-')}` : undefined);
 
   const selectedItem = useMemo(() => items.find(item => item.id === selectedId), [items, selectedId]);
+
+  // Mount check for portal
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
+  // Calculate dropdown position when opening with smart positioning
+  useEffect(() => {
+    if (isOpen && inputRef.current && mounted) {
+      const inputRect = inputRef.current.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const viewportWidth = window.innerWidth;
+      const dropdownMaxHeight = 240; // max-h-60 = 240px
+      
+      // Calculate available space below and above input
+      const spaceBelow = viewportHeight - inputRect.bottom;
+      const spaceAbove = inputRect.top;
+      
+      let top: number;
+      // If not enough space below but more space above, position above
+      if (spaceBelow < dropdownMaxHeight && spaceAbove > spaceBelow) {
+        top = inputRect.top + window.scrollY - dropdownMaxHeight - 4; // 4px gap above
+      } else {
+        top = inputRect.bottom + window.scrollY + 4; // 4px gap below
+      }
+      
+      // Ensure dropdown doesn't go off-screen horizontally
+      const minMargin = 8; // Minimum margin from screen edges
+      const minWidth = 200; // Minimum dropdown width
+      let left = inputRect.left + window.scrollX;
+      let width = inputRect.width;
+      
+      // Adjust if dropdown would go off right edge
+      const maxRight = viewportWidth + window.scrollX - minMargin;
+      if (left + width > maxRight) {
+        width = Math.max(minWidth, maxRight - left);
+      }
+      
+      // Adjust if dropdown would go off left edge
+      const minLeft = window.scrollX + minMargin;
+      if (left < minLeft) {
+        const adjustment = minLeft - left;
+        left = minLeft;
+        // Try to maintain width by extending right if possible
+        const newRight = left + width;
+        const availableRight = viewportWidth + window.scrollX - minMargin;
+        if (newRight <= availableRight) {
+          // Width is fine, just adjust left
+        } else {
+          // Need to reduce width to fit
+          width = Math.max(minWidth, availableRight - left);
+        }
+      }
+      
+      // Final check: ensure width meets minimum
+      width = Math.max(width, minWidth);
+      
+      setDropdownPosition({
+        top: Math.max(4, top), // Ensure at least 4px from top
+        left,
+        width
+      });
+    } else {
+      setDropdownPosition(null);
+    }
+  }, [isOpen, mounted]);
 
   useEffect(() => {
     // Only sync query from selectedItem if user hasn't typed anything
@@ -78,7 +147,13 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        wrapperRef.current && 
+        !wrapperRef.current.contains(target) &&
+        dropdownRef.current &&
+        !dropdownRef.current.contains(target)
+      ) {
         setIsOpen(false);
         const revertedQuery = selectedItem ? selectedItem.name : '';
         if (query !== revertedQuery) {
@@ -86,11 +161,36 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
         }
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
+    const handleScroll = () => {
+      // Update position on scroll
+      if (isOpen && inputRef.current) {
+        const inputRect = inputRef.current.getBoundingClientRect();
+        setDropdownPosition({
+          top: inputRect.bottom + window.scrollY + 4,
+          left: inputRect.left + window.scrollX,
+          width: inputRect.width
+        });
+      }
+    };
+    const handleResize = () => {
+      // Close on resize to prevent positioning issues
+      if (isOpen) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      window.addEventListener('scroll', handleScroll, true); // Capture phase to catch scroll in nested containers
+      window.addEventListener('resize', handleResize);
+    }
+
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('resize', handleResize);
     };
-  }, [wrapperRef, selectedItem, query]);
+  }, [isOpen, wrapperRef, selectedItem, query]);
 
   const filteredItems = useMemo(() => {
     if (!query || (selectedItem && query === selectedItem.name)) {
@@ -217,12 +317,22 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
         autoComplete="off"
         spellCheck={true}
       />
-      {isOpen && !disabled && (
-        <ul className="absolute z-20 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto mt-1">
+      {isOpen && !disabled && mounted && dropdownPosition && createPortal(
+        <ul
+          ref={dropdownRef}
+          className="fixed z-[10000] bg-white border border-gray-300 rounded-md shadow-xl max-h-60 overflow-auto"
+          style={{
+            top: `${dropdownPosition.top}px`,
+            left: `${dropdownPosition.left}px`,
+            width: `${dropdownPosition.width}px`,
+            // Ensure dropdown appears above everything
+            position: 'fixed'
+          }}
+        >
           {filteredItems.length > 0 && filteredItems.map(item => (
             <li
               key={item.id}
-              className="px-3 py-2 cursor-pointer hover:bg-gray-50"
+              className="px-3 py-2 cursor-pointer hover:bg-gray-50 transition-colors"
               onClick={() => handleSelect(item)}
             >
               {item.name}
@@ -230,7 +340,7 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
           ))}
           {shouldShowAddOption && (
             <li
-              className="px-3 py-2 cursor-pointer hover:bg-green-50 flex items-center gap-2 text-green-600 font-medium border-t border-gray-200"
+              className="px-3 py-2 cursor-pointer hover:bg-green-50 flex items-center gap-2 text-green-600 font-medium border-t border-gray-200 transition-colors"
               onMouseDown={(e) => {
                 e.preventDefault(); // Prevent input blur
                 handleAddNew();
@@ -242,7 +352,8 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
               )}
             </li>
           )}
-        </ul>
+        </ul>,
+        document.body
       )}
     </div>
   );
