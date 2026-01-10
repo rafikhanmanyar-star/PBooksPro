@@ -38,6 +38,7 @@ import { TaxConfigurationsApiRepository } from './repositories/taxConfigurations
 import { StatutoryConfigurationsApiRepository } from './repositories/statutoryConfigurationsApi';
 import { AppSettingsApiRepository } from './repositories/appSettingsApi';
 import { PMCycleAllocationsApiRepository } from './repositories/pmCycleAllocationsApi';
+import { TransactionLogApiRepository } from './repositories/transactionLogApi';
 import { logger } from '../logger';
 
 export class AppStateApiService {
@@ -73,6 +74,7 @@ export class AppStateApiService {
   private statutoryConfigurationsRepo: StatutoryConfigurationsApiRepository;
   private appSettingsRepo: AppSettingsApiRepository;
   private pmCycleAllocationsRepo: PMCycleAllocationsApiRepository;
+  private transactionLogRepo: TransactionLogApiRepository;
 
   constructor() {
     this.accountsRepo = new AccountsApiRepository();
@@ -107,6 +109,7 @@ export class AppStateApiService {
     this.statutoryConfigurationsRepo = new StatutoryConfigurationsApiRepository();
     this.appSettingsRepo = new AppSettingsApiRepository();
     this.pmCycleAllocationsRepo = new PMCycleAllocationsApiRepository();
+    this.transactionLogRepo = new TransactionLogApiRepository();
   }
 
   /**
@@ -149,7 +152,8 @@ export class AppStateApiService {
         attendanceRecords,
         taxConfigurations,
         statutoryConfigurations,
-        pmCycleAllocations
+        pmCycleAllocations,
+        transactionLog
       ] = await Promise.all([
         this.accountsRepo.findAll().catch(err => {
           logger.errorCategory('sync', 'Error loading accounts from API:', err);
@@ -273,6 +277,10 @@ export class AppStateApiService {
         }),
         this.pmCycleAllocationsRepo.findAll().catch(err => {
           console.error('Error loading PM cycle allocations from API:', err);
+          return [];
+        }),
+        this.transactionLogRepo.findAll().catch(err => {
+          console.error('Error loading transaction logs from API:', err);
           return [];
         }),
       ]);
@@ -698,6 +706,7 @@ export class AppStateApiService {
         taxConfigurations: taxConfigurations || [],
         statutoryConfigurations: statutoryConfigurations || [],
         pmCycleAllocations: pmCycleAllocations || [],
+        transactionLog: transactionLog || [],
       };
     } catch (error) {
       logger.errorCategory('sync', '❌ Error loading state from API:', error);

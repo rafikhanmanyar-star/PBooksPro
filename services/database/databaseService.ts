@@ -597,18 +597,24 @@ class DatabaseService {
      */
     clearTransactionData(): void {
         const db = this.getDatabase();
+        // ORDER MATTERS: Delete child tables before parent tables to respect foreign key constraints
         const transactionTables = [
             'transactions',
+            'sales_returns',
+            'pm_cycle_allocations',
             'invoices',
             'bills',
+            'payslips',
+            'legacy_payslips',
+            'bonus_records',
+            'payroll_adjustments',
+            'loan_advance_records',
+            'attendance_records',
+            'quotations',
+            'recurring_invoice_templates',
             'contracts',
             'rental_agreements',
             'project_agreements',
-            'sales_returns',
-            'payslips',
-            'legacy_payslips',
-            'quotations',
-            'recurring_invoice_templates',
             'accounts'  // Also clear accounts to avoid duplicate key errors on reload
         ];
 
@@ -659,13 +665,13 @@ class DatabaseService {
         const tables = [
             'users', 'accounts', 'contacts', 'categories', 'projects', 'buildings',
             'properties', 'units', 'transactions', 'invoices', 'bills', 'budgets',
-            'rental_agreements', 'project_agreements', 'contracts',
+            'rental_agreements', 'project_agreements', 'sales_returns', 'contracts',
             'recurring_invoice_templates', 'salary_components', 'staff',
             'employees', 'payroll_cycles', 'payslips', 'legacy_payslips',
             'bonus_records', 'payroll_adjustments', 'loan_advance_records',
             'attendance_records', 'tax_configurations', 'statutory_configurations',
             'transaction_log', 'error_log', 'tasks', 'app_settings', 'license_settings',
-            'project_agreement_units', 'contract_categories'
+            'project_agreement_units', 'contract_categories', 'pm_cycle_allocations'
         ];
 
         db.run('BEGIN TRANSACTION');

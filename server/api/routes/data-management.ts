@@ -28,18 +28,24 @@ router.delete('/clear-transactions', async (req: TenantRequest, res) => {
     // Execute deletion in a transaction
     const result = await db.transaction(async (client) => {
       // Tables to clear (transaction-related data only)
+      // ORDER MATTERS: Delete child tables before parent tables to respect foreign key constraints
       const tablesToClear = [
         'transactions',
+        'sales_returns',
+        'pm_cycle_allocations',
         'invoices',
         'bills',
-        'contracts',
-        'rental_agreements',
-        'project_agreements',
-        'sales_returns',
         'payslips',
         'legacy_payslips',
+        'bonus_records',
+        'payroll_adjustments',
+        'loan_advance_records',
+        'attendance_records',
         'quotations',
-        'recurring_invoice_templates'
+        'recurring_invoice_templates',
+        'contracts',
+        'rental_agreements',
+        'project_agreements'
       ];
 
       let totalDeleted = 0;
@@ -62,22 +68,24 @@ router.delete('/clear-transactions', async (req: TenantRequest, res) => {
       );
       console.log(`   ✓ Reset ${accountsResult.rowCount} account balances to 0`);
 
-      // Log this action in transaction_log (if the table exists)
+      // Log this action in transaction_audit_log (if the table exists)
       try {
         await client.query(
-          `INSERT INTO transaction_log (
-            id, tenant_id, action_type, entity_type, entity_id, description,
-            user_id, user_name, created_at
+          `INSERT INTO transaction_audit_log (
+            id, tenant_id, action, transaction_type, transaction_id, description,
+            user_id, user_name, user_role, created_at
           ) VALUES (
-            gen_random_uuid(), $1, $2, $3, NULL, $4, $5, $6, NOW()
+            $1, $2, $3, $4, NULL, $5, $6, $7, $8, NOW()
           )`,
           [
+            `audit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             tenantId,
             'CLEAR_ALL',
             'Transactions',
             `Admin cleared all transaction-related data. Total ${totalDeleted} records deleted.`,
             userId,
-            username
+            username,
+            req.user?.role || 'Admin'
           ]
         );
       } catch (logError) {

@@ -1740,6 +1740,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                         projectAgreements: apiState.projectAgreements || [],
                                         contracts: apiState.contracts || [],
                                         pmCycleAllocations: apiState.pmCycleAllocations || [],
+                                        transactionLog: apiState.transactionLog || [],
                                     };
                                     
                                     // Save API data to local database with proper tenant_id (async, don't await)
