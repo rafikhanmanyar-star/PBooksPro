@@ -916,7 +916,8 @@ router.post('/register-tenant', async (req, res) => {
       });
     }
 
-    // Create admin user
+    // Create admin user (using transaction-like approach for data integrity)
+    let userId: string;
     try {
       // Safety check: Ensure no admin user already exists for this tenant
       // (This shouldn't happen since we prevent re-registration, but check for safety)
@@ -927,7 +928,13 @@ router.post('/register-tenant', async (req, res) => {
       
       if (existingAdmin.length > 0) {
         // Admin already exists - this shouldn't happen, but if it does, clean up tenant and reject
-        await db.query('DELETE FROM tenants WHERE id = $1', [tenantId]);
+        console.warn('⚠️ Admin user already exists for tenant, cleaning up...');
+        try {
+          await db.query('DELETE FROM tenants WHERE id = $1', [tenantId]);
+          console.log('✅ Cleaned up orphaned tenant');
+        } catch (cleanupError: any) {
+          console.error('❌ Failed to clean up tenant:', cleanupError);
+        }
         return res.status(409).json({
           error: 'Admin user already exists',
           message: 'This organization already has an admin user. Registration cannot be completed.'
@@ -950,6 +957,13 @@ router.post('/register-tenant', async (req, res) => {
       // During registration, we're creating the first user, so this should always pass
       // But we check anyway for safety
       if (currentUserCount >= maxUsers) {
+        console.error('❌ User limit reached for tenant during registration');
+        try {
+          await db.query('DELETE FROM tenants WHERE id = $1', [tenantId]);
+          console.log('✅ Cleaned up tenant after user limit error');
+        } catch (cleanupError: any) {
+          console.error('❌ Failed to clean up tenant:', cleanupError);
+        }
         return res.status(403).json({
           error: 'User limit reached',
           message: `This organization has reached its maximum user limit of ${maxUsers}. Please contact support to increase the limit.`
@@ -957,7 +971,15 @@ router.post('/register-tenant', async (req, res) => {
       }
       
       const hashedPassword = await bcrypt.hash(adminPassword, 10);
-      const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      console.log('📝 Creating admin user:', {
+        userId,
+        tenantId,
+        username: adminUsername,
+        email,
+        role: 'Admin'
+      });
       
       // Create the admin user (only one admin per organization)
       // Explicitly set is_active = TRUE to ensure user can login
@@ -966,18 +988,52 @@ router.post('/register-tenant', async (req, res) => {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [userId, tenantId, adminUsername, adminName || 'Administrator', 'Admin', hashedPassword, email, true]
       );
-      console.log('Admin user created:', userId);
+      
+      // Verify user was created
+      const verifyUser = await db.query(
+        'SELECT id, username, email, role, is_active FROM users WHERE id = $1',
+        [userId]
+      );
+      
+      if (verifyUser.length === 0) {
+        throw new Error('User creation verification failed - user not found after insert');
+      }
+      
+      console.log('✅ Admin user created successfully:', {
+        userId: verifyUser[0].id,
+        username: verifyUser[0].username,
+        email: verifyUser[0].email,
+        role: verifyUser[0].role,
+        is_active: verifyUser[0].is_active
+      });
+      
     } catch (userError: any) {
-      console.error('Error creating admin user:', userError);
+      console.error('❌ Error creating admin user:', {
+        message: userError?.message || String(userError),
+        code: userError?.code,
+        detail: userError?.detail,
+        stack: userError?.stack,
+        tenantId
+      });
+      
       // Try to clean up tenant if user creation fails
       try {
-        await db.query('DELETE FROM tenants WHERE id = $1', [tenantId]);
-      } catch (cleanupError) {
-        console.error('Error cleaning up tenant:', cleanupError);
+        const deleteResult = await db.query('DELETE FROM tenants WHERE id = $1', [tenantId]);
+        console.log('✅ Cleaned up tenant after user creation failure');
+      } catch (cleanupError: any) {
+        console.error('❌ Failed to clean up tenant after user creation error:', {
+          message: cleanupError?.message || String(cleanupError),
+          code: cleanupError?.code,
+          tenantId
+        });
+        // Log this critical error - orphaned tenant exists
+        console.error('⚠️ CRITICAL: Orphaned tenant created (tenant exists but user creation failed):', tenantId);
       }
+      
       return res.status(500).json({ 
         error: 'Failed to create admin user',
-        message: userError.message || 'An error occurred while creating your admin account'
+        message: userError.message || 'An error occurred while creating your admin account',
+        details: process.env.NODE_ENV === 'development' ? userError.message : undefined
       });
     }
 
