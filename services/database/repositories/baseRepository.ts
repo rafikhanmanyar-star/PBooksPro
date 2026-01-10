@@ -342,6 +342,12 @@ export abstract class BaseRepository<T> {
      * Count records
      */
     count(): number {
+        // Check if database is ready before querying
+        if (!this.db.isReady()) {
+            // Return 0 silently if database not ready (avoids console warnings during initialization)
+            return 0;
+        }
+        
         let sql = `SELECT COUNT(*) as count FROM ${this.tableName}`;
         const params: any[] = [];
         
@@ -363,6 +369,12 @@ export abstract class BaseRepository<T> {
      * Check if record exists
      */
     exists(id: string): boolean {
+        // Check if database is ready before querying
+        if (!this.db.isReady()) {
+            // Return false silently if database not ready (avoids console warnings during initialization)
+            return false;
+        }
+        
         const primaryKeyColumn = camelToSnake(this.primaryKey);
         const results = this.db.query<{ count: number }>(
             `SELECT COUNT(*) as count FROM ${this.tableName} WHERE ${primaryKeyColumn} = ?`,

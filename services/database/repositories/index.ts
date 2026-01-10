@@ -173,6 +173,16 @@ export class TransactionsRepository extends BaseRepository<any> {
             }
         }
 
+        // Ensure database is ready before querying
+        if (!this.db.isReady()) {
+            try {
+                await this.db.initialize();
+            } catch (error) {
+                // Database initialization failed, return 0 instead of warning
+                return 0;
+            }
+        }
+
         // Fallback to sql.js
         const sql = `SELECT COUNT(*) as count FROM transactions ${params.projectId ? 'WHERE project_id = ?' : ''}`;
         const results = this.db.query<{ count: number }>(sql, params.projectId ? [params.projectId] : []);

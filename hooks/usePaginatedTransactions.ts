@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Transaction } from '../types';
 import { TransactionsRepository } from '../services/database/repositories';
 import { useAppContext } from '../context/AppContext';
+import { getDatabaseService } from '../services/database/databaseService';
 
 interface UsePaginatedTransactionsOptions {
   projectId?: string | null;
@@ -67,8 +68,24 @@ export function usePaginatedTransactions(
 
     try {
       // Always fetch count on first page or when it's null
+      // Only fetch if database is ready to avoid warnings
       if (page === 0 || totalCount === null) {
-        repo.getCount({ projectId }).then(count => setTotalCount(count));
+        const dbService = getDatabaseService();
+        if (dbService.isReady()) {
+          try {
+            const count = await repo.getCount({ projectId });
+            setTotalCount(count);
+          } catch (error) {
+            // Silently handle count errors during initialization
+            console.debug('Count query failed:', error);
+          }
+        } else {
+          // Database not ready yet, will retry on next render or when database becomes ready
+          // For now, use state transactions length as fallback
+          if (!shouldUseNative) {
+            setTotalCount(state.transactions.length);
+          }
+        }
       }
 
       if (shouldUseNative) {

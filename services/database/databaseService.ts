@@ -315,7 +315,12 @@ class DatabaseService {
      */
     query<T = any>(sql: string, params: any[] = []): T[] {
         if (!this.isReady()) {
-            console.warn(`⚠️ Database not ready for query: ${sql.substring(0, 50)}...`);
+            // Suppress warnings for COUNT queries - they're expected during initialization/navigation
+            // Only log warnings for other queries that might indicate a real issue
+            const isCountQuery = sql.trim().toUpperCase().startsWith('SELECT COUNT(*)');
+            if (!isCountQuery) {
+                console.warn(`⚠️ Database not ready for query: ${sql.substring(0, 50)}...`);
+            }
             return [];
         }
         const db = this.getDatabase();
