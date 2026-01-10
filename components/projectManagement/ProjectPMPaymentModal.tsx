@@ -253,6 +253,18 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                     const successfulBillIds = new Set(savedTransactions.map(tx => tx.billId).filter(Boolean));
                     billsToUpdate.filter(bill => successfulBillIds.has(bill.id)).forEach(bill => {
                         dispatch({ type: 'UPDATE_BILL', payload: bill });
+                        
+                        // Update related PM cycle allocation to sync paid amount
+                        const relatedAllocation = state.pmCycleAllocations?.find(a => a.billId === bill.id);
+                        if (relatedAllocation) {
+                            const updatedAllocation = {
+                                ...relatedAllocation,
+                                paidAmount: bill.paidAmount || 0,
+                                status: bill.status === InvoiceStatus.PAID ? 'paid' : 
+                                       bill.status === InvoiceStatus.PARTIALLY_PAID ? 'partially_paid' : 'unpaid'
+                            };
+                            dispatch({ type: 'UPDATE_PM_CYCLE_ALLOCATION', payload: updatedAllocation });
+                        }
                     });
                     
                     if (failedBills.length > 0) {

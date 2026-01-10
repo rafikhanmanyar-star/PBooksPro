@@ -602,6 +602,23 @@ const reducer = (state: AppState, action: AppAction): AppState => {
 
             let newState = { ...state, bills: state.bills.map(b => b.id === updatedBill.id ? updatedBill : b) };
 
+            // Update related PM cycle allocation when bill payment status changes
+            const paymentChanged = originalBill.paidAmount !== updatedBill.paidAmount || originalBill.status !== updatedBill.status;
+            if (paymentChanged && state.pmCycleAllocations) {
+                const relatedAllocation = state.pmCycleAllocations.find(a => a.billId === updatedBill.id);
+                if (relatedAllocation) {
+                    const updatedAllocation = {
+                        ...relatedAllocation,
+                        paidAmount: updatedBill.paidAmount || 0,
+                        status: updatedBill.status === InvoiceStatus.PAID ? 'paid' : 
+                               updatedBill.status === InvoiceStatus.PARTIALLY_PAID ? 'partially_paid' : 'unpaid'
+                    };
+                    newState.pmCycleAllocations = newState.pmCycleAllocations.map(a => 
+                        a.id === updatedAllocation.id ? updatedAllocation : a
+                    );
+                }
+            }
+
             // If contractId is being added or changed, update existing transactions
             const contractIdChanged = updatedBill.contractId !== originalBill.contractId;
             const hasPayments = updatedBill.paidAmount > 0;
@@ -2797,7 +2814,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     if (!normalized) return;
                     const existing = stateRef.current.bills.find(b => b.id === normalized.id);
                     const merged = existing ? { ...existing, ...normalized } : normalized;
-                    dispatch({ type: existing ? 'UPDATE_BILL' : 'ADD_BILL', payload: merged } as any);
+                    
+                    // Mark as remote to prevent sync loop
+                    dispatch({ 
+                        type: existing ? 'UPDATE_BILL' : 'ADD_BILL', 
+                        payload: merged,
+                        _isRemote: true 
+                    } as any);
+                    
+                    // Update related PM cycle allocation when bill payment status changes
+                    if (existing && (existing.paidAmount !== merged.paidAmount || existing.status !== merged.status)) {
+                        const relatedAllocation = stateRef.current.pmCycleAllocations?.find(
+                            (a: any) => a.billId === merged.id
+                        );
+                        if (relatedAllocation) {
+                            const updatedAllocation = {
+                                ...relatedAllocation,
+                                paidAmount: merged.paidAmount || 0,
+                                status: merged.status === 'Paid' ? 'paid' : 
+                                       merged.status === 'Partially Paid' ? 'partially_paid' : 'unpaid'
+                            };
+                            dispatch({
+                                type: 'UPDATE_PM_CYCLE_ALLOCATION',
+                                payload: updatedAllocation,
+                                _isRemote: true
+                            } as any);
+                        }
+                    }
                 }));
                 unsubSpecific.push(ws.on('bill:created', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
@@ -2805,13 +2848,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const normalized = normalizeBillFromEvent(payloadBill);
                     if (!normalized) return;
                     const exists = stateRef.current.bills.some(b => b.id === normalized.id);
-                    if (!exists) dispatch({ type: 'ADD_BILL', payload: normalized } as any);
+                    if (!exists) {
+                        dispatch({ 
+                            type: 'ADD_BILL', 
+                            payload: normalized,
+                            _isRemote: true 
+                        } as any);
+                    }
                 }));
                 unsubSpecific.push(ws.on('bill:deleted', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const id = data?.billId ?? data?.id;
                     if (!id) return;
-                    dispatch({ type: 'DELETE_BILL', payload: id } as any);
+                    dispatch({ 
+                        type: 'DELETE_BILL', 
+                        payload: id,
+                        _isRemote: true 
+                    } as any);
                 }));
 
                 // Transaction events (so payments appear immediately)
@@ -2821,20 +2874,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const normalizedTx = normalizeTransactionFromEvent(payloadTx);
                     if (!normalizedTx) return;
                     const exists = stateRef.current.transactions.some(t => t.id === normalizedTx.id);
-                    if (!exists) dispatch({ type: 'ADD_TRANSACTION', payload: normalizedTx } as any);
+                    if (!exists) {
+                        dispatch({ 
+                            type: 'ADD_TRANSACTION', 
+                            payload: normalizedTx,
+                            _isRemote: true 
+                        } as any);
+                    }
                 }));
                 unsubSpecific.push(ws.on('transaction:updated', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const payloadTx = data?.transaction ?? data;
                     const normalizedTx = normalizeTransactionFromEvent(payloadTx);
                     if (!normalizedTx) return;
-                    dispatch({ type: 'UPDATE_TRANSACTION', payload: normalizedTx } as any);
+                    dispatch({ 
+                        type: 'UPDATE_TRANSACTION', 
+                        payload: normalizedTx,
+                        _isRemote: true 
+                    } as any);
                 }));
                 unsubSpecific.push(ws.on('transaction:deleted', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const id = data?.transactionId ?? data?.id;
                     if (!id) return;
-                    dispatch({ type: 'DELETE_TRANSACTION', payload: id } as any);
+                    dispatch({ 
+                        type: 'DELETE_TRANSACTION', 
+                        payload: id,
+                        _isRemote: true 
+                    } as any);
                 }));
 
                 cleanup = () => {
