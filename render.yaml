@@ -2,7 +2,8 @@ databases:
   - name: pbookspro-db-staging
     databaseName: pbookspro_staging
     user: pbookspro_staging
-    plan: starter
+    # Note: 'plan' field removed - Render will prompt for plan during Blueprint creation
+    # You can select plan in the Blueprint creation dialog
 
 services:
   # Backend API Server
