@@ -9,9 +9,14 @@ async function createAdminUser() {
     throw new Error('DATABASE_URL environment variable is not set');
   }
 
+  // Enable SSL for production, staging, and any Render database URLs
+  const shouldUseSSL = process.env.NODE_ENV === 'production' || 
+                       process.env.NODE_ENV === 'staging' ||
+                       (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('.render.com'));
+
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    ssl: shouldUseSSL ? { rejectUnauthorized: false } : false,
   });
 
   try {
