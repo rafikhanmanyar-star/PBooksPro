@@ -728,7 +728,9 @@ const ProjectEquityManagement: React.FC = () => {
                 const acc = state.accounts.find(a => a.id === investorId);
                 const share = amount / totalCapital;
                 const profit = profitToDistribute * share;
-                return { investorId, investorName: acc?.name || 'Unknown', principal: amount, sharePercentage: share, profitShare: profit, newEquityBalance: (acc?.balance || 0) + profit };
+                // newEquityBalance shows the new project-specific equity after distribution (principal + new profit)
+                const newEquityBalance = amount + profit;
+                return { investorId, investorName: acc?.name || 'Unknown', principal: amount, sharePercentage: share, profitShare: profit, newEquityBalance };
             });
         setDistributions(calculatedDistributions);
         setDistProfit(profitToDistribute.toString());
@@ -922,9 +924,62 @@ const ProjectEquityManagement: React.FC = () => {
                         </div>
                     )}
                     {distStep === 2 && (
-                         <div className="space-y-4">
-                            <h3 className="text-xl font-bold">Confirm Distribution</h3>
-                             <Button onClick={handleDistCommit}>Distribute</Button>
+                         <div className="space-y-6 max-w-4xl mx-auto">
+                            <div className="flex justify-between items-center">
+                                <h3 className="text-xl font-bold">Confirm Distribution</h3>
+                                <Button variant="secondary" onClick={() => { setDistStep(1); setDistributions([]); }}>Back</Button>
+                            </div>
+                            
+                            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                                <p className="text-sm text-slate-600 mb-4">
+                                    Review how the <strong className="text-slate-900">{CURRENCY} {parseFloat(distProfit || '0').toLocaleString()}</strong> profit will be allocated based on investor equity share.
+                                </p>
+                                
+                                <div className="overflow-x-auto border rounded-lg bg-white">
+                                    <table className="min-w-full divide-y divide-slate-200">
+                                        <thead className="bg-slate-50">
+                                            <tr>
+                                                <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Investor</th>
+                                                <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Principal Investment</th>
+                                                <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Share %</th>
+                                                <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Profit Share</th>
+                                                <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">New Equity Balance</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 bg-white">
+                                            {distributions.map((dist, idx) => (
+                                                <tr key={dist.investorId} className={`hover:bg-slate-50 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}`}>
+                                                    <td className="px-4 py-3 text-sm font-medium text-slate-700">{dist.investorName}</td>
+                                                    <td className="px-4 py-3 text-sm text-right font-mono text-slate-600">{CURRENCY} {dist.principal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td className="px-4 py-3 text-sm text-right font-medium text-slate-700">{(dist.sharePercentage * 100).toFixed(2)}%</td>
+                                                    <td className="px-4 py-3 text-sm text-right font-bold text-emerald-600 font-mono">{CURRENCY} {dist.profitShare.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td className="px-4 py-3 text-sm text-right font-bold text-indigo-600 font-mono">{CURRENCY} {dist.newEquityBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot className="bg-slate-100 border-t-2 border-slate-300">
+                                            <tr>
+                                                <td className="px-4 py-3 text-sm font-bold text-slate-900">Total</td>
+                                                <td className="px-4 py-3 text-sm text-right font-bold font-mono text-slate-900">
+                                                    {CURRENCY} {distributions.reduce((sum, d) => sum + d.principal, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </td>
+                                                <td className="px-4 py-3 text-sm text-right font-bold text-slate-900">100.00%</td>
+                                                <td className="px-4 py-3 text-sm text-right font-bold text-emerald-700 font-mono">
+                                                    {CURRENCY} {distributions.reduce((sum, d) => sum + d.profitShare, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </td>
+                                                <td className="px-4 py-3 text-sm text-right font-bold text-slate-600 font-mono">
+                                                    {CURRENCY} {distributions.reduce((sum, d) => sum + d.newEquityBalance, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+                                <Button variant="secondary" onClick={() => { setDistStep(1); setDistributions([]); }}>Cancel</Button>
+                                <Button onClick={handleDistCommit} className="bg-emerald-600 hover:bg-emerald-700">Confirm & Distribute</Button>
+                            </div>
                          </div>
                     )}
                 </div>
@@ -938,9 +993,14 @@ const ProjectEquityManagement: React.FC = () => {
                         </div>
                     )}
                     {transferStep === 2 && (
-                         <div className="flex flex-col h-full overflow-hidden space-y-4">
-                            <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-                                <div className="flex gap-4 mb-3">
+                         <div className="flex flex-col h-full overflow-hidden space-y-4 max-w-5xl mx-auto w-full">
+                            <div className="flex justify-between items-center">
+                                <h3 className="text-xl font-bold">Equity Transfer</h3>
+                                <Button variant="secondary" onClick={() => { setTransferStep(1); setTransferRows([]); }}>Back</Button>
+                            </div>
+                            
+                            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                                <div className="flex gap-4 mb-4">
                                     <label className="flex items-center cursor-pointer">
                                         <input type="radio" name="transferType" checked={transferType === 'PROJECT'} onChange={() => setTransferType('PROJECT')} className="text-indigo-600" />
                                         <span className="ml-2 text-sm font-medium text-slate-700">Transfer to Another Project</span>
@@ -956,7 +1016,128 @@ const ProjectEquityManagement: React.FC = () => {
                                     <ComboBox label="Pay From Account" items={bankAccounts} selectedId={payoutAccountId} onSelect={(item) => setPayoutAccountId(item?.id || '')} placeholder="Select Bank/Cash Account" allowAddNew={false} />
                                 )}
                             </div>
-                            <Button onClick={handleTransferCommit}>Confirm</Button>
+
+                            <div className="bg-white border rounded-lg shadow-sm overflow-hidden">
+                                <div className="p-3 bg-slate-50 border-b flex justify-between items-center">
+                                    <h4 className="font-semibold text-slate-700">Select Investors to Transfer</h4>
+                                    <button
+                                        onClick={() => {
+                                            const allSelected = transferRows.every(r => r.isSelected);
+                                            setTransferRows(transferRows.map(r => ({ ...r, isSelected: !allSelected })));
+                                        }}
+                                        className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                                    >
+                                        {transferRows.every(r => r.isSelected) ? 'Deselect All' : 'Select All'}
+                                    </button>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full divide-y divide-slate-200">
+                                        <thead className="bg-slate-50">
+                                            <tr>
+                                                <th className="px-4 py-3 text-left w-12">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={transferRows.length > 0 && transferRows.every(r => r.isSelected)}
+                                                        onChange={(e) => setTransferRows(transferRows.map(r => ({ ...r, isSelected: e.target.checked })))}
+                                                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                    />
+                                                </th>
+                                                <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Investor</th>
+                                                <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Current Equity</th>
+                                                <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Transfer Amount</th>
+                                                <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Remaining Equity</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 bg-white">
+                                            {transferRows.map((row, idx) => {
+                                                const transferAmt = parseFloat(row.transferAmount) || 0;
+                                                const remaining = row.currentEquity - transferAmt;
+                                                return (
+                                                    <tr 
+                                                        key={row.investorId} 
+                                                        className={`hover:bg-slate-50 transition-colors ${row.isSelected ? 'bg-indigo-50/50' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}`}
+                                                    >
+                                                        <td className="px-4 py-3">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={row.isSelected} 
+                                                                onChange={() => {
+                                                                    const newRows = [...transferRows];
+                                                                    newRows[idx].isSelected = !newRows[idx].isSelected;
+                                                                    setTransferRows(newRows);
+                                                                }}
+                                                                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                            />
+                                                        </td>
+                                                        <td className="px-4 py-3 text-sm font-medium text-slate-700">{row.investorName}</td>
+                                                        <td className="px-4 py-3 text-sm text-right font-mono text-slate-600">{CURRENCY} {row.currentEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                        <td className="px-4 py-3 text-sm text-right">
+                                                            <input 
+                                                                type="number" 
+                                                                step="0.01"
+                                                                min="0"
+                                                                max={row.currentEquity}
+                                                                className={`w-32 text-right border rounded px-2 py-1 font-mono text-sm ${row.isSelected ? 'border-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500' : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                                                                value={row.transferAmount} 
+                                                                onChange={(e) => {
+                                                                    const val = parseFloat(e.target.value) || 0;
+                                                                    const clamped = Math.min(Math.max(0, val), row.currentEquity);
+                                                                    const newRows = [...transferRows];
+                                                                    newRows[idx].transferAmount = clamped.toString();
+                                                                    setTransferRows(newRows);
+                                                                }}
+                                                                disabled={!row.isSelected}
+                                                            />
+                                                        </td>
+                                                        <td className={`px-4 py-3 text-sm text-right font-mono font-medium ${remaining >= 0 ? 'text-slate-700' : 'text-rose-600'}`}>
+                                                            {CURRENCY} {remaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                        <tfoot className="bg-slate-100 border-t-2 border-slate-300">
+                                            <tr>
+                                                <td colSpan={2} className="px-4 py-3 text-sm font-bold text-slate-900">Total Selected</td>
+                                                <td className="px-4 py-3 text-sm text-right font-bold font-mono text-slate-600">
+                                                    {CURRENCY} {transferRows.filter(r => r.isSelected).reduce((sum, r) => sum + r.currentEquity, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </td>
+                                                <td className="px-4 py-3 text-sm text-right font-bold font-mono text-emerald-700">
+                                                    {CURRENCY} {transferRows.filter(r => r.isSelected).reduce((sum, r) => sum + (parseFloat(r.transferAmount) || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </td>
+                                                <td className="px-4 py-3 text-sm text-right font-bold font-mono text-slate-700">
+                                                    {CURRENCY} {transferRows.filter(r => r.isSelected).reduce((sum, r) => {
+                                                        const transferAmt = parseFloat(r.transferAmount) || 0;
+                                                        return sum + (r.currentEquity - transferAmt);
+                                                    }, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {transferType === 'PROJECT' && !destProjectId && (
+                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                                    Please select a destination project before confirming the transfer.
+                                </div>
+                            )}
+                            {transferType === 'PAYOUT' && !payoutAccountId && (
+                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                                    Please select a payout account before confirming the transfer.
+                                </div>
+                            )}
+
+                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+                                <Button variant="secondary" onClick={() => { setTransferStep(1); setTransferRows([]); }}>Cancel</Button>
+                                <Button 
+                                    onClick={handleTransferCommit} 
+                                    disabled={(transferType === 'PROJECT' && !destProjectId) || (transferType === 'PAYOUT' && !payoutAccountId) || transferRows.filter(r => r.isSelected && parseFloat(r.transferAmount) > 0).length === 0}
+                                    className="bg-indigo-600 hover:bg-indigo-700"
+                                >
+                                    Execute Transfer
+                                </Button>
+                            </div>
                         </div>
                     )}
                 </div>
