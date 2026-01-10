@@ -20,7 +20,7 @@ import {
     LoanAdvanceRecordsRepository, AttendanceRecordsRepository,
     TaxConfigurationsRepository, StatutoryConfigurationsRepository,
     TransactionLogRepository, ErrorLogRepository, TasksRepository, AppSettingsRepository,
-    QuotationsRepository, DocumentsRepository
+    QuotationsRepository, DocumentsRepository, PMCycleAllocationsRepository
 } from './index';
 import { migrateTenantColumns } from '../tenantMigration';
 
@@ -62,6 +62,7 @@ export class AppStateRepository {
     private tasksRepo = new TasksRepository();
     private quotationsRepo = new QuotationsRepository();
     private documentsRepo = new DocumentsRepository();
+    private pmCycleAllocationsRepo = new PMCycleAllocationsRepository();
     private appSettingsRepo = new AppSettingsRepository();
 
     /**
@@ -132,6 +133,7 @@ export class AppStateRepository {
         const tasks = this.tasksRepo.findAll();
         const quotations = this.quotationsRepo.findAll();
         const documents = this.documentsRepo.findAll();
+        const pmCycleAllocations = this.pmCycleAllocationsRepo.findAll();
 
         // Load settings - try cloud first, then fallback to local
         let settings: any = {};
@@ -310,6 +312,12 @@ export class AppStateRepository {
                 items: typeof q.items === 'string' ? JSON.parse(q.items) : q.items
             })),
             documents,
+            pmCycleAllocations: pmCycleAllocations.map(pm => ({
+                ...pm,
+                excludedCategoryIds: pm.excludedCategoryIds 
+                    ? (typeof pm.excludedCategoryIds === 'string' ? JSON.parse(pm.excludedCategoryIds) : pm.excludedCategoryIds)
+                    : (pm.excluded_category_ids ? (typeof pm.excluded_category_ids === 'string' ? JSON.parse(pm.excluded_category_ids) : pm.excluded_category_ids) : [])
+            })),
             budgets,
             rentalAgreements,
             projectAgreements: projectAgreements.map(pa => {
@@ -621,6 +629,12 @@ export class AppStateRepository {
                         
                         try {
                             this.documentsRepo.saveAll(state.documents);
+                            this.pmCycleAllocationsRepo.saveAll((state.pmCycleAllocations || []).map(pm => ({
+                                ...pm,
+                                excludedCategoryIds: pm.excludedCategoryIds 
+                                    ? (typeof pm.excludedCategoryIds === 'string' ? pm.excludedCategoryIds : JSON.stringify(pm.excludedCategoryIds))
+                                    : undefined
+                            })));
                             this.budgetsRepo.saveAll(state.budgets);
                             this.rentalAgreementsRepo.saveAll(state.rentalAgreements);
                             this.projectAgreementsRepo.saveAll(state.projectAgreements);

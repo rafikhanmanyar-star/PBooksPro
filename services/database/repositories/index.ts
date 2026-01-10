@@ -289,6 +289,10 @@ export class DocumentsRepository extends BaseRepository<any> {
     constructor() { super('documents'); }
 }
 
+export class PMCycleAllocationsRepository extends BaseRepository<any> {
+    constructor() { super('pm_cycle_allocations'); }
+}
+
 export class ChatMessagesRepository extends BaseRepository<any> {
     constructor() { 
         super('chat_messages'); 

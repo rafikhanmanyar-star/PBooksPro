@@ -722,6 +722,33 @@ CREATE TABLE IF NOT EXISTS statutory_configurations (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- PM Cycle Allocations table
+CREATE TABLE IF NOT EXISTS pm_cycle_allocations (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    cycle_id TEXT NOT NULL,
+    cycle_label TEXT NOT NULL,
+    frequency TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    allocation_date TEXT NOT NULL,
+    amount REAL NOT NULL,
+    paid_amount REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'unpaid',
+    bill_id TEXT,
+    description TEXT,
+    expense_total REAL NOT NULL DEFAULT 0,
+    fee_rate REAL NOT NULL,
+    excluded_category_ids TEXT, -- JSON string
+    tenant_id TEXT,
+    user_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (bill_id) REFERENCES bills(id) ON DELETE SET NULL,
+    UNIQUE(tenant_id, project_id, cycle_id)
+);
+
 -- Transaction Log table
 CREATE TABLE IF NOT EXISTS transaction_log (
     id TEXT PRIMARY KEY,
@@ -809,6 +836,11 @@ CREATE INDEX IF NOT EXISTS idx_tasks_completed ON tasks(completed);
 CREATE INDEX IF NOT EXISTS idx_tasks_tenant_id ON tasks(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_tenant_user ON tasks(tenant_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_tenant_id ON pm_cycle_allocations(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_user_id ON pm_cycle_allocations(user_id);
+CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_tenant_user ON pm_cycle_allocations(tenant_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_project_id ON pm_cycle_allocations(project_id);
+CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_cycle_id ON pm_cycle_allocations(cycle_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_sender ON chat_messages(sender_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_recipient ON chat_messages(recipient_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at);

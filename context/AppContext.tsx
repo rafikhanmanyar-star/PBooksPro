@@ -1614,7 +1614,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                             CategoriesRepository, ProjectsRepository, BuildingsRepository,
                                             PropertiesRepository, UnitsRepository, InvoicesRepository,
                                             BillsRepository, BudgetsRepository, RentalAgreementsRepository,
-                                            ProjectAgreementsRepository, ContractsRepository } = await import('../services/database/repositories/index');
+                                            ProjectAgreementsRepository, ContractsRepository,
+                                            QuotationsRepository, DocumentsRepository, TasksRepository,
+                                            RecurringTemplatesRepository, SalaryComponentsRepository,
+                                            StaffRepository, EmployeesRepository, PayrollCyclesRepository,
+                                            PayslipsRepository, LegacyPayslipsRepository, BonusRecordsRepository,
+                                            PayrollAdjustmentsRepository, LoanAdvanceRecordsRepository,
+                                            AttendanceRecordsRepository, TaxConfigurationsRepository,
+                                            StatutoryConfigurationsRepository, PMCycleAllocationsRepository } = await import('../services/database/repositories/index');
                                     
                                     // Clear all tenant-specific data to start fresh
                                     // This ensures no cross-tenant data leakage
@@ -1632,6 +1639,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     const rentalAgreementsRepo = new RentalAgreementsRepository();
                                     const projectAgreementsRepo = new ProjectAgreementsRepository();
                                     const contractsRepo = new ContractsRepository();
+                                    const quotationsRepo = new QuotationsRepository();
+                                    const documentsRepo = new DocumentsRepository();
+                                    const tasksRepo = new TasksRepository();
+                                    const recurringTemplatesRepo = new RecurringTemplatesRepository();
+                                    const salaryComponentsRepo = new SalaryComponentsRepository();
+                                    const staffRepo = new StaffRepository();
+                                    const employeesRepo = new EmployeesRepository();
+                                    const payrollCyclesRepo = new PayrollCyclesRepository();
+                                    const payslipsRepo = new PayslipsRepository();
+                                    const legacyPayslipsRepo = new LegacyPayslipsRepository();
+                                    const bonusRecordsRepo = new BonusRecordsRepository();
+                                    const payrollAdjustmentsRepo = new PayrollAdjustmentsRepository();
+                                    const loanAdvanceRecordsRepo = new LoanAdvanceRecordsRepository();
+                                    const attendanceRecordsRepo = new AttendanceRecordsRepository();
+                                    const taxConfigurationsRepo = new TaxConfigurationsRepository();
+                                    const statutoryConfigurationsRepo = new StatutoryConfigurationsRepository();
+                                    const pmCycleAllocationsRepo = new PMCycleAllocationsRepository();
                                     
                             // Delete ALL data (from all tenants) to ensure clean state when switching tenants
                             // Use deleteAllUnfiltered to bypass tenant filtering and clear everything
@@ -1649,6 +1673,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             rentalAgreementsRepo.deleteAllUnfiltered();
                             projectAgreementsRepo.deleteAllUnfiltered();
                             contractsRepo.deleteAllUnfiltered();
+                            quotationsRepo.deleteAllUnfiltered();
+                            documentsRepo.deleteAllUnfiltered();
+                            tasksRepo.deleteAllUnfiltered();
+                            recurringTemplatesRepo.deleteAllUnfiltered();
+                            salaryComponentsRepo.deleteAllUnfiltered();
+                            staffRepo.deleteAllUnfiltered();
+                            employeesRepo.deleteAllUnfiltered();
+                            payrollCyclesRepo.deleteAllUnfiltered();
+                            payslipsRepo.deleteAllUnfiltered();
+                            legacyPayslipsRepo.deleteAllUnfiltered();
+                            bonusRecordsRepo.deleteAllUnfiltered();
+                            payrollAdjustmentsRepo.deleteAllUnfiltered();
+                            loanAdvanceRecordsRepo.deleteAllUnfiltered();
+                            attendanceRecordsRepo.deleteAllUnfiltered();
+                            taxConfigurationsRepo.deleteAllUnfiltered();
+                            statutoryConfigurationsRepo.deleteAllUnfiltered();
+                            pmCycleAllocationsRepo.deleteAllUnfiltered();
                                     
                                     console.log('🗑️ Cleared local database data to prevent cross-tenant leakage');
                                 }
@@ -1681,6 +1722,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                         rentalAgreements: apiState.rentalAgreements || [],
                                         projectAgreements: apiState.projectAgreements || [],
                                         contracts: apiState.contracts || [],
+                                        pmCycleAllocations: apiState.pmCycleAllocations || [],
                                     };
                                     
                                     // Save API data to local database with proper tenant_id (async, don't await)

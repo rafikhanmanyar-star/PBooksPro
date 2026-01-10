@@ -45,7 +45,8 @@ const TABLES_WITH_TENANT_ID = [
     'tax_configurations',
     'statutory_configurations',
     'transaction_log',
-    'tasks' // Tasks are now user and tenant-specific
+    'tasks', // Tasks are now user and tenant-specific
+    'pm_cycle_allocations'
 ];
 
 /**

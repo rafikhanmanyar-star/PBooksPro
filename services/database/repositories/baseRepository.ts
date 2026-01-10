@@ -110,10 +110,20 @@ export abstract class BaseRepository<T> {
      * Find by condition
      */
     findBy(condition: string, params: any[] = []): T[] {
-        const results = this.db.query<Record<string, any>>(
-            `SELECT * FROM ${this.tableName} WHERE ${condition}`,
-            params
-        );
+        let sql = `SELECT * FROM ${this.tableName} WHERE ${condition}`;
+        const queryParams = [...params];
+        
+        // Add tenant_id filter if tenant is logged in
+        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
+            const tenantId = getCurrentTenantId();
+            if (tenantId) {
+                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                sql += ` AND ${tenantColumn} = ?`;
+                queryParams.push(tenantId);
+            }
+        }
+        
+        const results = this.db.query<Record<string, any>>(sql, queryParams);
         return results.map(row => dbToObjectFormat<T>(row));
     }
 
