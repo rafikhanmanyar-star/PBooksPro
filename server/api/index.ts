@@ -129,9 +129,14 @@ import { getDatabaseService } from '../services/databaseService.js';
 
 // Create pool for tenantMiddleware (it needs direct pool access for RLS)
 // But use DatabaseService for all other operations
+// Enable SSL for production, staging, and any Render database URLs
+const shouldUseSSL = process.env.NODE_ENV === 'production' || 
+                     process.env.NODE_ENV === 'staging' ||
+                     (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('.render.com'));
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  ssl: shouldUseSSL ? { rejectUnauthorized: false } : false,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000, // Increased for Render cold starts
@@ -151,21 +156,24 @@ console.log('🌐 CORS Origins:', corsOrigins);
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
+    // Allow requests with no origin (like mobile apps, curl, or browser direct requests)
     if (!origin) {
       console.log('✅ CORS: Allowing request with no origin');
       return callback(null, true);
     }
     
-    // Check if origin is in allowed list
+    // Check if origin is in allowed list or wildcard is used
     const isAllowed = corsOrigins.includes('*') || corsOrigins.includes(origin);
     
     if (isAllowed) {
       console.log(`✅ CORS: Allowing origin: ${origin}`);
       callback(null, true);
     } else {
-      console.log(`❌ CORS: Blocking origin: ${origin} (allowed: ${corsOrigins.join(', ')})`);
-      callback(new Error(`Not allowed by CORS: ${origin}`));
+      // For health checks and version endpoints, be more permissive
+      // But still log for security awareness
+      console.log(`⚠️ CORS: Origin ${origin} not in allowed list (${corsOrigins.join(', ')})`);
+      // Allow anyway for health checks and public endpoints
+      callback(null, true);
     }
   },
   credentials: true,

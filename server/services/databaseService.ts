@@ -14,9 +14,14 @@ export class DatabaseService {
       console.warn('   Expected format: postgresql://user:pass@dpg-xxx-a.region-postgres.render.com:5432/dbname');
     }
     
+    // Enable SSL for production, staging, and any Render database URLs
+    const shouldUseSSL = process.env.NODE_ENV === 'production' || 
+                         process.env.NODE_ENV === 'staging' ||
+                         (connectionString && connectionString.includes('.render.com'));
+    
     this.pool = new Pool({
       connectionString,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      ssl: shouldUseSSL ? { rejectUnauthorized: false } : false,
       max: 20, // Maximum number of clients in the pool
       idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
       connectionTimeoutMillis: 10000, // Increased to 10 seconds for Render cold starts
