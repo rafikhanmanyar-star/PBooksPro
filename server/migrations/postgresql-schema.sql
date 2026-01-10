@@ -1036,14 +1036,20 @@ CREATE TABLE IF NOT EXISTS user_sessions (
 -- Enforce ONE active session row per (user_id, tenant_id)
 -- If older duplicates exist from previous versions, keep the newest and delete the rest.
 -- This makes it safe to add a UNIQUE index for single-session enforcement.
-DELETE FROM user_sessions a
-USING user_sessions b
-WHERE a.user_id = b.user_id
-  AND a.tenant_id = b.tenant_id
-  AND (
-    a.created_at < b.created_at
-    OR (a.created_at = b.created_at AND a.id < b.id)
-  );
+-- Only run this cleanup if the table exists and has data
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'user_sessions') THEN
+    DELETE FROM user_sessions a
+    USING user_sessions b
+    WHERE a.user_id = b.user_id
+      AND a.tenant_id = b.tenant_id
+      AND (
+        a.created_at < b.created_at
+        OR (a.created_at = b.created_at AND a.id < b.id)
+      );
+  END IF;
+END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_user_sessions_user_tenant ON user_sessions(user_id, tenant_id);
 

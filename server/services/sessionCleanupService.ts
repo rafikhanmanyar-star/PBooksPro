@@ -30,6 +30,23 @@ export async function cleanupInactiveSessions(): Promise<number> {
 
   try {
     const db = getDatabaseService();
+    
+    // Check if user_sessions table exists before trying to use it
+    try {
+      const tableCheck = await db.query(
+        `SELECT 1 FROM information_schema.tables 
+         WHERE table_schema = 'public' AND table_name = 'user_sessions'`
+      );
+      
+      if (tableCheck.length === 0) {
+        console.log('ℹ️  user_sessions table does not exist yet (migrations may still be running), skipping cleanup');
+        return 0;
+      }
+    } catch (checkError) {
+      console.warn('⚠️  Could not check if user_sessions table exists:', checkError);
+      // Continue anyway - might work on next attempt
+    }
+    
     const thresholdDate = new Date();
     thresholdDate.setMinutes(thresholdDate.getMinutes() - INACTIVITY_THRESHOLD_MINUTES);
 
@@ -69,6 +86,13 @@ export async function cleanupInactiveSessions(): Promise<number> {
     }
 
   } catch (error: any) {
+    // Handle table not found error gracefully (migrations might still be running)
+    if (error?.code === '42P01' && error?.message?.includes('user_sessions')) {
+      console.log('ℹ️  user_sessions table does not exist yet (migrations may still be running), skipping cleanup');
+      // This is not a critical error - table will be created by migrations
+      return 0;
+    }
+    
     console.error('❌ Error during session cleanup:', error);
     console.error('   Error details:', {
       message: error?.message,
@@ -124,6 +148,23 @@ export function stopSessionCleanupService(): void {
 export async function isSessionInactive(sessionToken: string): Promise<boolean> {
   try {
     const db = getDatabaseService();
+    
+    // Check if user_sessions table exists
+    try {
+      const tableCheck = await db.query(
+        `SELECT 1 FROM information_schema.tables 
+         WHERE table_schema = 'public' AND table_name = 'user_sessions'`
+      );
+      
+      if (tableCheck.length === 0) {
+        // Table doesn't exist - assume session is inactive (user needs to re-login)
+        return true;
+      }
+    } catch (checkError) {
+      // If we can't check, assume table doesn't exist and session is inactive
+      return true;
+    }
+    
     const thresholdDate = new Date();
     thresholdDate.setMinutes(thresholdDate.getMinutes() - INACTIVITY_THRESHOLD_MINUTES);
 
@@ -146,9 +187,15 @@ export async function isSessionInactive(sessionToken: string): Promise<boolean> 
     // 1. last_activity is older than threshold, OR
     // 2. Session has expired
     return lastActivity < thresholdDate || expiresAt < now;
-  } catch (error) {
+  } catch (error: any) {
+    // Handle table not found error gracefully
+    if (error?.code === '42P01' && error?.message?.includes('user_sessions')) {
+      // Table doesn't exist - assume session is inactive
+      return true;
+    }
+    
     console.error('Error checking session inactivity:', error);
-    // On error, assume session is active to avoid false positives
+    // On error, assume session is active to avoid false positives (except for missing table)
     return false;
   }
 }
