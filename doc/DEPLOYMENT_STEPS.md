@@ -109,12 +109,30 @@ Before deploying, test the version checking locally:
 
 ---
 
-### Step 4: Monitor Staging Deployment (5-15 minutes)
+### Step 4: Create Staging Services in Render (First Time Only)
+
+**IMPORTANT**: Render does NOT automatically create services from `render.yaml`. You need to create them manually or apply a Blueprint.
+
+**Choose one option:**
+
+**Option A: Apply Blueprint (Recommended)**
+1. Go to Render Dashboard: https://dashboard.render.com
+2. Click **"New +"** → **"Blueprint"**
+3. Connect GitHub repository: `rafikhanmanyar-star/PBooksPro`
+4. Click **"Apply"** - This creates all services from render.yaml
+5. Configure each staging service to use `staging` branch (Settings → Branch)
+
+**Option B: Create Services Manually**
+- See detailed instructions: `doc/RENDER_MANUAL_SETUP_STAGING.md`
+- Create each service manually in Render dashboard
+- Ensure branch is set to `staging` for all `-staging` services
+
+### Step 5: Monitor Staging Deployment (5-15 minutes)
 
 1. **Go to Render Dashboard**: https://dashboard.render.com
 
 2. **Check deployment status**:
-   - Look for new services being created:
+   - Look for staging services:
      - `pbookspro-api-staging`
      - `pbookspro-client-staging`
      - `pbookspro-admin-staging`
@@ -132,7 +150,7 @@ Before deploying, test the version checking locally:
 
 ---
 
-### Step 5: Test Staging Environment (10 minutes)
+### Step 6: Test Staging Environment (10 minutes)
 
 1. **Access staging URLs**:
    - Client: `https://pbookspro-client-staging.onrender.com`
@@ -157,7 +175,7 @@ Before deploying, test the version checking locally:
 
 ---
 
-### Step 6: Initialize Staging Database (5 minutes)
+### Step 7: Initialize Staging Database (5 minutes)
 
 The staging database will be empty. Run migrations:
 
@@ -178,7 +196,7 @@ The staging database will be empty. Run migrations:
 
 ---
 
-### Step 7: Merge to Production (2 minutes)
+### Step 8: Merge to Production (2 minutes)
 
 Once staging is tested and working:
 
@@ -204,7 +222,7 @@ Once staging is tested and working:
 
 ---
 
-### Step 8: Monitor Production Deployment (5-15 minutes)
+### Step 9: Monitor Production Deployment (5-15 minutes)
 
 1. **Check Render Dashboard**:
    - Monitor production service deployments
@@ -217,7 +235,7 @@ Once staging is tested and working:
 
 ---
 
-### Step 9: Test Version Update System (5 minutes)
+### Step 10: Test Version Update System (5 minutes)
 
 To verify the update notification system works:
 
@@ -250,9 +268,12 @@ To verify the update notification system works:
 
 ### Staging services not appearing in Render
 
-- **Check**: Are you on the `staging` branch?
-- **Check**: Does `render.yaml` have correct `branch: staging` for staging services?
-- **Check**: Did you push to `origin staging`?
+- **IMPORTANT**: Render does NOT automatically create services from render.yaml
+- **Solution**: You must either:
+  1. Create a Blueprint (New + → Blueprint) to apply render.yaml
+  2. Manually create each staging service (see `doc/RENDER_MANUAL_SETUP_STAGING.md`)
+- **Check**: Did you create the services in Render dashboard?
+- **Check**: Are services configured with branch: `staging`?
 
 ### Database connection errors
 

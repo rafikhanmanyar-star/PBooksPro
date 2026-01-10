@@ -225,6 +225,20 @@ class DatabaseService {
                 } catch (tenantError) {
                     console.warn('⚠️ Tenant column migration failed during init (continuing):', tenantError);
                 }
+                
+                // Ensure license_settings table doesn't have tenant_id (it's a global table)
+                try {
+                    const columns = this.query<{ name: string }>('PRAGMA table_info(license_settings)');
+                    const hasTenantId = columns.some(col => col.name === 'tenant_id');
+                    if (hasTenantId) {
+                        // Note: SQLite doesn't support DROP COLUMN easily, but license_settings shouldn't have tenant_id
+                        // If it does, we'll need to recreate the table. For now, just warn.
+                        console.warn('⚠️ license_settings table has tenant_id column (should be global table)');
+                        // The queries should still work, just ignore tenant_id column if present
+                    }
+                } catch (checkError) {
+                    // Ignore if table doesn't exist yet or other errors
+                }
                 // Ensure all tables are present (for existing databases)
                 this.ensureAllTablesExist();
                 // Ensure contracts table has new columns

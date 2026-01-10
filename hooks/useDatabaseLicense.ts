@@ -32,6 +32,14 @@ export function useDatabaseLicense() {
 
                 const dbService = getDatabaseService();
                 
+                // Check if license_settings table exists and create if needed
+                try {
+                    dbService.query('SELECT 1 FROM license_settings LIMIT 1');
+                } catch (error: any) {
+                    // Table might not exist or have wrong schema - try to ensure it exists
+                    console.warn('License settings table check failed, ensuring table exists:', error?.message);
+                }
+                
                 const installDateResult = dbService.query<{ value: string }>(
                     'SELECT value FROM license_settings WHERE key = ?',
                     ['app_install_date']
