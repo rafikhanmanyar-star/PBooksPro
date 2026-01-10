@@ -120,6 +120,24 @@ async function runMigrations() {
     // Run additional migrations
     console.log('🔄 Running additional migrations...');
     
+    // Migration: Add payment_id column to license_history (if missing)
+    try {
+      const columnCheck = await pool.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'license_history' AND column_name = 'payment_id'
+      `);
+      
+      if (columnCheck.rows.length === 0) {
+        console.log('📋 Adding payment_id column to license_history...');
+        await pool.query('ALTER TABLE license_history ADD COLUMN payment_id TEXT');
+        console.log('✅ Added payment_id column to license_history');
+      }
+    } catch (migrationError: any) {
+      console.warn('   ⚠️  payment_id migration warning:', migrationError.message);
+      // Don't throw - migration might already be applied or table might not exist yet
+    }
+    
     // Migration: Make transaction_audit_log.user_id nullable
     const auditLogMigrationPath = join(__dirname, '../migrations/make-audit-log-user-id-nullable.sql');
     const auditLogMigrationAltPath = join(process.cwd(), 'server/migrations/make-audit-log-user-id-nullable.sql');

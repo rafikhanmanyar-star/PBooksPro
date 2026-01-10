@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS license_history (
     to_status TEXT,
     from_type TEXT,
     to_type TEXT,
+    payment_id TEXT,
     performed_by TEXT,
     notes TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
