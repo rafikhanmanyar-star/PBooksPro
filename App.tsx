@@ -239,7 +239,7 @@ const App: React.FC = () => {
       case 'ownerPayouts': return 'Owner Payouts';
       case 'projectManagement': return 'Project Management';
       case 'projectInvoices': return 'Project Invoices';
-      case 'investmentManagement': return 'Investment Management';
+      case 'investmentManagement': return 'Inv. Cycle';
       case 'pmConfig': return 'PM Config.';
       case 'settings': return 'Configuration';
       case 'import': return 'Import Data';

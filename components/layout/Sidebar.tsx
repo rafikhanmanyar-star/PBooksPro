@@ -157,6 +157,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
 
     // Determine allowed pages based on role
     const isAccountsOnly = currentUser?.role === 'Accounts';
+    const isAdmin = userRole === 'Admin' || currentUser?.role === 'Admin';
 
     const navGroups = [
         {
@@ -171,7 +172,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
             items: [
                 { page: 'transactions', label: 'General Ledger', icon: ICONS.trendingUp },
                 { page: 'budgets', label: 'Budget Planner', icon: ICONS.barChart },
-                { page: 'investmentManagement', label: 'Investments', icon: ICONS.dollarSign },
                 { page: 'loans', label: 'Loan Manager', icon: ICONS.loan },
             ]
         },
@@ -181,6 +181,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 { page: 'projectManagement', label: 'Projects', icon: ICONS.archive },
                 { page: 'rentalManagement', label: 'Rentals', icon: ICONS.building },
                 { page: 'vendorDirectory', label: 'Vendors', icon: ICONS.briefcase },
+                ...(isAdmin ? [{ page: 'investmentManagement', label: 'Inv. Cycle', icon: ICONS.dollarSign }] : []),
                 { page: 'pmConfig', label: 'PM Cycle', icon: ICONS.filter },
             ]
         },
