@@ -1211,7 +1211,8 @@ export class AppStateApiService {
     return {
       id: ra.id,
       agreementNumber: ra.agreement_number || ra.agreementNumber || '',
-      tenantId: ra.tenant_id || ra.tenantId || '',
+      // API route transforms contact_id to tenantId, so check tenantId first (not tenant_id which is organization ID)
+      tenantId: ra.tenantId || ra.contact_id || ra.tenant_id || '',
       propertyId: ra.property_id || ra.propertyId || '',
       startDate: ra.start_date || ra.startDate || '',
       endDate: ra.end_date || ra.endDate || '',
