@@ -190,5 +190,10 @@ export const WS_EVENTS = {
   PM_CYCLE_ALLOCATION_CREATED: 'pm_cycle_allocation:created',
   PM_CYCLE_ALLOCATION_UPDATED: 'pm_cycle_allocation:updated',
   PM_CYCLE_ALLOCATION_DELETED: 'pm_cycle_allocation:deleted',
+  
+  // WhatsApp Messages
+  WHATSAPP_MESSAGE_RECEIVED: 'whatsapp:message:received',
+  WHATSAPP_MESSAGE_SENT: 'whatsapp:message:sent',
+  WHATSAPP_MESSAGE_STATUS: 'whatsapp:message:status',
 } as const;
 
