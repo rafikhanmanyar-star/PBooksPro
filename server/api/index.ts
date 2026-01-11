@@ -75,8 +75,6 @@ import appSettingsRouter from './routes/app-settings.js';
 import pmCycleAllocationsRouter from './routes/pm-cycle-allocations.js';
 import dataManagementRouter from './routes/data-management.js';
 import appInfoRouter from './routes/app-info.js';
-import whatsappRouter from './routes/whatsapp.js';
-import whatsappWebhookRouter from './routes/whatsapp-webhook.js';
 import { tenantMiddleware } from '../middleware/tenantMiddleware.js';
 import { licenseMiddleware } from '../middleware/licenseMiddleware.js';
 
@@ -238,10 +236,6 @@ app.post('/api/payments/webhook/:gateway', async (req, res, next) => {
     res.status(200).send('OK');
   }
 });
-
-// WhatsApp webhook endpoint (public, no auth required)
-// Must be defined BEFORE tenantMiddleware to allow Meta callbacks
-app.use('/api/whatsapp/webhook', whatsappWebhookRouter);
 
 // Mock payment page (public route for testing)
 // This serves an HTML page that simulates a payment gateway
@@ -652,7 +646,6 @@ app.use('/api/error-log', errorLogRouter); // Error Log
 app.use('/api/app-settings', appSettingsRouter); // App Settings
 app.use('/api/pm-cycle-allocations', pmCycleAllocationsRouter); // PM Cycle Allocations
 app.use('/api/data-management', dataManagementRouter); // Data Management (Admin only)
-app.use('/api/whatsapp', whatsappRouter); // WhatsApp API (requires authentication)
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

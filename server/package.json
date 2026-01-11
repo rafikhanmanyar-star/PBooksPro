@@ -12,28 +12,27 @@
     "check-db": "tsx scripts/check-database-connection.ts",
     "create-admin": "tsx scripts/create-admin-user.ts",
     "reset-admin": "tsx scripts/reset-admin-password.ts",
-    "test-admin": "tsx scripts/test-admin-login.ts",
-    "test-whatsapp": "tsx scripts/test-whatsapp-api.ts"
+    "test-admin": "tsx scripts/test-admin-login.ts"
   },
   "dependencies": {
-    "axios": "^1.13.2",
-    "bcryptjs": "^2.4.3",
+    "express": "^4.18.2",
+    "pg": "^8.11.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "express": "^4.18.2",
+    "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2",
-    "pg": "^8.11.3",
     "socket.io": "^4.7.2"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
-    "@types/jsonwebtoken": "^9.0.5",
     "@types/node": "^22.14.0",
     "@types/pg": "^8.10.9",
+    "@types/cors": "^2.8.17",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.5",
     "@types/socket.io": "^3.0.2",
     "tsx": "^4.7.0",
     "typescript": "~5.8.2"
   }
 }
+
