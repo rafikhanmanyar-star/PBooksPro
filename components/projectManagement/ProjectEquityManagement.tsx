@@ -18,6 +18,7 @@ import ReportFooter from '../reports/ReportFooter';
 import ProjectInvestorReport from '../reports/ProjectInvestorReport';
 import { printFromTemplate, getPrintTemplateWrapper } from '../../services/printService';
 import { formatCurrency } from '../../utils/numberUtils';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface InvestorDistribution {
     investorId: string;

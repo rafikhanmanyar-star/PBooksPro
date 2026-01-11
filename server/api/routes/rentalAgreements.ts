@@ -7,12 +7,15 @@ const router = Router();
 const getDb = () => getDatabaseService();
 
 // Helper function to transform database row to API response format
-// Maps contact_id (database) to tenantId (API response)
+// IMPORTANT: There are TWO different "tenant ID" concepts in the system:
+// 1. Organization tenant_id (for multi-tenancy) - used for data isolation (NOT transformed here)
+// 2. Contact tenant ID (tenant contact person in rental management) - stored as contact_id in DB, exposed as tenantId in API
+// This function maps contact_id (database column) to tenantId (API response field)
 function transformRentalAgreement(row: any): any {
   const transformed = { ...row };
   if (row.contact_id !== undefined) {
     transformed.tenantId = row.contact_id;
-    // Keep contact_id for backward compatibility, but tenantId is the primary field
+    // Keep contact_id for backward compatibility, but tenantId is the primary field for contact tenant ID
   }
   return transformed;
 }
@@ -136,9 +139,9 @@ router.post('/', async (req: TenantRequest, res) => {
       RETURNING *`,
       [
         agreementId,
-        req.tenantId,
+        req.tenantId, // Organization tenant_id (for multi-tenancy isolation)
         agreement.agreementNumber,
-        agreement.tenantId || null,
+        agreement.tenantId || null, // Contact tenant ID (the tenant contact person, stored as contact_id in DB)
         agreement.propertyId,
         agreement.startDate,
         agreement.endDate,
@@ -197,7 +200,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
        RETURNING *`,
       [
         agreement.agreementNumber,
-        agreement.tenantId || null,
+        agreement.tenantId || null, // Contact tenant ID (the tenant contact person, stored as contact_id in DB)
         agreement.propertyId,
         agreement.startDate,
         agreement.endDate,
