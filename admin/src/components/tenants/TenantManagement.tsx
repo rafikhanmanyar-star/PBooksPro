@@ -470,118 +470,141 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 1000
+      zIndex: 1000,
+      padding: '1rem'
     }} onClick={onClose}>
-      <div className="card" style={{ maxWidth: '1000px', width: '95%', maxHeight: '90vh', overflow: 'auto' }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>Tenant Details</h2>
+      <div className="card" style={{ 
+        maxWidth: '900px', 
+        width: '100%', 
+        maxHeight: '95vh', 
+        overflow: 'auto',
+        padding: '1rem'
+      }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Tenant Details</h2>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             {!isEditing && (
               <button
                 className="btn btn-secondary"
                 onClick={() => setIsEditing(true)}
-                style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
               >
-                <Edit2 size={16} style={{ marginRight: '0.5rem' }} />
+                <Edit2 size={14} style={{ marginRight: '0.375rem' }} />
                 Edit
               </button>
             )}
-            <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: '0.25rem' }}>×</button>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: '0.25rem', lineHeight: 1 }}>×</button>
           </div>
         </div>
 
         {error && (
-          <div style={{ marginBottom: '1rem', padding: '0.75rem', backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: '0.5rem', fontSize: '0.875rem' }}>
+          <div style={{ marginBottom: '0.75rem', padding: '0.625rem', backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: '0.375rem', fontSize: '0.8125rem' }}>
             {error}
           </div>
         )}
 
-        <div style={{ display: 'grid', gap: '1rem' }}>
-          {/* Basic Information */}
-          <div>
-            <label style={{ fontSize: '0.875rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Name *</label>
-            {isEditing ? (
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="input"
-                required
-              />
-            ) : (
-              <div style={{ fontWeight: 500 }}>{tenantDetails.name}</div>
-            )}
+        <div style={{ display: 'grid', gap: '0.75rem' }}>
+          {/* Basic Information - Compact Grid */}
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+            gap: '0.75rem',
+            paddingBottom: '0.75rem',
+            borderBottom: '1px solid #e5e7eb'
+          }}>
+            <div>
+              <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Name *</label>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="input"
+                  required
+                  style={{ padding: '0.375rem', fontSize: '0.8125rem' }}
+                />
+              ) : (
+                <div style={{ fontWeight: 500, fontSize: '0.875rem' }}>{tenantDetails.name}</div>
+              )}
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Company Name</label>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={formData.companyName}
+                  onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+                  className="input"
+                  style={{ padding: '0.375rem', fontSize: '0.8125rem' }}
+                />
+              ) : (
+                <div style={{ fontSize: '0.875rem' }}>{tenantDetails.company_name || 'N/A'}</div>
+              )}
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Email *</label>
+              {isEditing ? (
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="input"
+                  required
+                  style={{ padding: '0.375rem', fontSize: '0.8125rem' }}
+                />
+              ) : (
+                <div style={{ fontSize: '0.875rem' }}>{tenantDetails.email}</div>
+              )}
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Phone</label>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  className="input"
+                  style={{ padding: '0.375rem', fontSize: '0.8125rem' }}
+                />
+              ) : (
+                <div style={{ fontSize: '0.875rem' }}>{tenantDetails.phone || 'N/A'}</div>
+              )}
+            </div>
           </div>
 
           <div>
-            <label style={{ fontSize: '0.875rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Company Name</label>
-            {isEditing ? (
-              <input
-                type="text"
-                value={formData.companyName}
-                onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
-                className="input"
-              />
-            ) : (
-              <div>{tenantDetails.company_name || 'N/A'}</div>
-            )}
-          </div>
-
-          <div>
-            <label style={{ fontSize: '0.875rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Email *</label>
-            {isEditing ? (
-              <input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="input"
-                required
-              />
-            ) : (
-              <div>{tenantDetails.email}</div>
-            )}
-          </div>
-
-          <div>
-            <label style={{ fontSize: '0.875rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Phone</label>
-            {isEditing ? (
-              <input
-                type="text"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                className="input"
-              />
-            ) : (
-              <div>{tenantDetails.phone || 'N/A'}</div>
-            )}
-          </div>
-
-          <div>
-            <label style={{ fontSize: '0.875rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Address</label>
+            <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Address</label>
             {isEditing ? (
               <textarea
                 value={formData.address}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                 className="input"
-                rows={3}
+                rows={2}
+                style={{ padding: '0.375rem', fontSize: '0.8125rem' }}
               />
             ) : (
-              <div>{tenantDetails.address || 'N/A'}</div>
+              <div style={{ fontSize: '0.875rem' }}>{tenantDetails.address || 'N/A'}</div>
             )}
           </div>
 
-          {/* License Information */}
-          <div style={{ marginTop: '0.5rem', paddingTop: '1rem', borderTop: '1px solid #e5e7eb' }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '1rem' }}>License Information</h3>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+          {/* License & Subscription Information - Compact Grid */}
+          <div style={{ paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
+              gap: '0.75rem' 
+            }}>
               <div>
-                <label style={{ fontSize: '0.875rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>License Type</label>
+                <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>License Type</label>
                 {isEditing ? (
                   <select
                     value={formData.licenseType}
                     onChange={(e) => setFormData({ ...formData, licenseType: e.target.value })}
                     className="input"
+                    style={{ padding: '0.375rem', fontSize: '0.8125rem' }}
                   >
                     <option value="trial">Trial</option>
                     <option value="monthly">Monthly</option>
@@ -589,17 +612,18 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                     <option value="perpetual">Perpetual</option>
                   </select>
                 ) : (
-                  <div>{tenantDetails.license_type}</div>
+                  <div style={{ fontSize: '0.875rem', fontWeight: 500 }}>{tenantDetails.license_type}</div>
                 )}
               </div>
 
               <div>
-                <label style={{ fontSize: '0.875rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>License Status</label>
+                <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>License Status</label>
                 {isEditing ? (
                   <select
                     value={formData.licenseStatus}
                     onChange={(e) => setFormData({ ...formData, licenseStatus: e.target.value })}
                     className="input"
+                    style={{ padding: '0.375rem', fontSize: '0.8125rem' }}
                   >
                     <option value="active">Active</option>
                     <option value="expired">Expired</option>
@@ -607,19 +631,12 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                     <option value="cancelled">Cancelled</option>
                   </select>
                 ) : (
-                  <div>{tenantDetails.license_status}</div>
+                  <div style={{ fontSize: '0.875rem', fontWeight: 500 }}>{tenantDetails.license_status}</div>
                 )}
               </div>
-            </div>
-          </div>
 
-          {/* Subscription Settings */}
-          <div style={{ marginTop: '0.5rem', paddingTop: '1rem', borderTop: '1px solid #e5e7eb' }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '1rem' }}>Subscription Settings</h3>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
               <div>
-                <label style={{ fontSize: '0.875rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Maximum Users</label>
+                <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Max Users</label>
                 {isEditing ? (
                   <div>
                     <input
@@ -628,22 +645,22 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                       value={formData.maxUsers}
                       onChange={(e) => setFormData({ ...formData, maxUsers: parseInt(e.target.value) || 1 })}
                       className="input"
-                      style={{ width: '100%' }}
+                      style={{ padding: '0.375rem', fontSize: '0.8125rem' }}
                     />
                     {stats && (
-                      <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', color: '#6b7280' }}>
-                        Current: {stats.userCount} / {formData.maxUsers}
+                      <div style={{ marginTop: '0.25rem', fontSize: '0.6875rem', color: '#6b7280' }}>
+                        {stats.userCount} / {formData.maxUsers}
                       </div>
                     )}
                   </div>
                 ) : (
                   <div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>{tenantDetails.max_users || 5}</div>
+                    <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>{tenantDetails.max_users || 5}</div>
                     {stats && (
-                      <div style={{ marginTop: '0.25rem', fontSize: '0.875rem', color: '#6b7280' }}>
-                        Current: {stats.userCount} / {tenantDetails.max_users || 5}
+                      <div style={{ marginTop: '0.25rem', fontSize: '0.6875rem', color: '#6b7280' }}>
+                        {stats.userCount} / {tenantDetails.max_users || 5}
                         {stats.userCount >= (tenantDetails.max_users || 5) && (
-                          <span style={{ marginLeft: '0.5rem', color: '#dc2626', fontWeight: 'bold' }}>• Limit Reached</span>
+                          <span style={{ marginLeft: '0.375rem', color: '#dc2626', fontWeight: 600 }}>• Limit</span>
                         )}
                       </div>
                     )}
@@ -652,12 +669,13 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
               </div>
 
               <div>
-                <label style={{ fontSize: '0.875rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Subscription Tier</label>
+                <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Subscription Tier</label>
                 {isEditing ? (
                   <select
                     value={formData.subscriptionTier}
                     onChange={(e) => setFormData({ ...formData, subscriptionTier: e.target.value })}
                     className="input"
+                    style={{ padding: '0.375rem', fontSize: '0.8125rem' }}
                   >
                     <option value="free">Free</option>
                     <option value="basic">Basic</option>
@@ -665,77 +683,82 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                     <option value="enterprise">Enterprise</option>
                   </select>
                 ) : (
-                  <div>{tenantDetails.subscription_tier || 'free'}</div>
+                  <div style={{ fontSize: '0.875rem', fontWeight: 500 }}>{tenantDetails.subscription_tier || 'free'}</div>
                 )}
               </div>
             </div>
           </div>
 
+          {/* Statistics - Compact Grid */}
+          {stats && (
+            <div style={{ paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
+              <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem', color: '#374151' }}>Statistics</h3>
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', 
+                gap: '0.75rem' 
+              }}>
+                <div>
+                  <div style={{ fontSize: '0.6875rem', color: '#6b7280', marginBottom: '0.125rem' }}>Users</div>
+                  <div style={{ fontSize: '0.9375rem', fontWeight: 600 }}>
+                    {stats.userCount} / {tenantDetails.max_users || 5}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.6875rem', color: '#6b7280', marginBottom: '0.125rem' }}>Transactions</div>
+                  <div style={{ fontSize: '0.9375rem', fontWeight: 600 }}>{stats.transactionCount}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.6875rem', color: '#6b7280', marginBottom: '0.125rem' }}>Accounts</div>
+                  <div style={{ fontSize: '0.9375rem', fontWeight: 600 }}>{stats.accountCount}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.6875rem', color: '#6b7280', marginBottom: '0.125rem' }}>Contacts</div>
+                  <div style={{ fontSize: '0.9375rem', fontWeight: 600 }}>{stats.contactCount}</div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Action Buttons */}
           {isEditing && (
-            <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+            <div style={{ paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               <button
                 className="btn btn-secondary"
                 onClick={handleCancel}
                 disabled={isSaving}
-                style={{ padding: '0.5rem 1rem' }}
+                style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
               >
-                <X size={16} style={{ marginRight: '0.5rem' }} />
+                <X size={14} style={{ marginRight: '0.375rem' }} />
                 Cancel
               </button>
               <button
                 className="btn btn-primary"
                 onClick={handleSave}
                 disabled={isSaving}
-                style={{ padding: '0.5rem 1rem' }}
+                style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
               >
-                <Save size={16} style={{ marginRight: '0.5rem' }} />
-                {isSaving ? 'Saving...' : 'Save Changes'}
+                <Save size={14} style={{ marginRight: '0.375rem' }} />
+                {isSaving ? 'Saving...' : 'Save'}
               </button>
             </div>
           )}
 
-          {stats && (
-            <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #e5e7eb' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '0.75rem' }}>Statistics</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-                <div>
-                  <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Users</div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>
-                    {stats.userCount} / {tenantDetails.max_users || 5}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Transactions</div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>{stats.transactionCount}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Accounts</div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>{stats.accountCount}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Contacts</div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>{stats.contactCount}</div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Users Section */}
-          <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e5e7eb' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Users size={18} />
-                Organization Users ({users.length})
+          <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <h3 style={{ fontSize: '0.875rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.375rem', color: '#374151' }}>
+                <Users size={16} />
+                Users ({users.length})
               </h3>
               <button
                 className="btn btn-secondary"
                 onClick={loadUsers}
                 disabled={loadingUsers}
-                style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                style={{ padding: '0.375rem 0.625rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}
                 title="Refresh Users"
               >
-                <RefreshCw size={16} style={{ 
+                <RefreshCw size={14} style={{ 
                   opacity: loadingUsers ? 0.6 : 1,
                   cursor: loadingUsers ? 'not-allowed' : 'pointer'
                 }} />
@@ -744,65 +767,65 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
             </div>
 
             {loadingUsers ? (
-              <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>Loading users...</div>
+              <div style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280', fontSize: '0.8125rem' }}>Loading users...</div>
             ) : users.length === 0 ? (
-              <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>No users found</div>
+              <div style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280', fontSize: '0.8125rem' }}>No users found</div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                      <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Name</th>
-                      <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Username</th>
-                      <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Type</th>
-                      <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Role</th>
-                      <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Status</th>
-                      <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Last Login</th>
-                      <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Actions</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>Name</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>Username</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>Type</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>Role</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>Status</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>Last Login</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {users.map((user) => (
                       <tr key={user.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                        <td style={{ padding: '0.75rem' }}>
-                          <div style={{ fontWeight: 500 }}>{user.name}</div>
+                        <td style={{ padding: '0.5rem' }}>
+                          <div style={{ fontWeight: 500, fontSize: '0.8125rem' }}>{user.name}</div>
                           {user.email && (
-                            <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{user.email}</div>
+                            <div style={{ fontSize: '0.6875rem', color: '#6b7280' }}>{user.email}</div>
                           )}
                         </td>
-                        <td style={{ padding: '0.75rem', fontSize: '0.875rem' }}>{user.username}</td>
-                        <td style={{ padding: '0.75rem' }}>
+                        <td style={{ padding: '0.5rem', fontSize: '0.8125rem' }}>{user.username}</td>
+                        <td style={{ padding: '0.5rem' }}>
                           {user.is_tenant_admin ? (
                             <span style={{ 
-                              padding: '0.25rem 0.5rem', 
+                              padding: '0.1875rem 0.375rem', 
                               borderRadius: '0.25rem', 
-                              fontSize: '0.75rem', 
+                              fontSize: '0.6875rem', 
                               fontWeight: 600,
                               backgroundColor: '#dbeafe', 
                               color: '#1e40af' 
                             }}>
-                              Tenant Admin
+                              Admin
                             </span>
                           ) : (
                             <span style={{ 
-                              padding: '0.25rem 0.5rem', 
+                              padding: '0.1875rem 0.375rem', 
                               borderRadius: '0.25rem', 
-                              fontSize: '0.75rem', 
+                              fontSize: '0.6875rem', 
                               fontWeight: 600,
                               backgroundColor: '#f3f4f6', 
                               color: '#4b5563' 
                             }}>
-                              Sub User
+                              User
                             </span>
                           )}
                         </td>
-                        <td style={{ padding: '0.75rem', fontSize: '0.875rem' }}>{user.role}</td>
-                        <td style={{ padding: '0.75rem' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <td style={{ padding: '0.5rem', fontSize: '0.8125rem' }}>{user.role}</td>
+                        <td style={{ padding: '0.5rem' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1875rem' }}>
                             <span style={{ 
-                              padding: '0.125rem 0.5rem', 
+                              padding: '0.125rem 0.375rem', 
                               borderRadius: '0.25rem', 
-                              fontSize: '0.75rem', 
+                              fontSize: '0.6875rem', 
                               fontWeight: 500,
                               backgroundColor: user.is_active ? '#d1fae5' : '#fee2e2', 
                               color: user.is_active ? '#065f46' : '#991b1b',
@@ -812,32 +835,32 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                             </span>
                             {user.login_status && (
                               <span style={{ 
-                                padding: '0.125rem 0.5rem', 
+                                padding: '0.125rem 0.375rem', 
                                 borderRadius: '0.25rem', 
-                                fontSize: '0.75rem', 
+                                fontSize: '0.6875rem', 
                                 fontWeight: 500,
                                 backgroundColor: '#dbeafe', 
                                 color: '#1e40af',
                                 width: 'fit-content'
                               }}>
-                                Logged In
+                                Online
                               </span>
                             )}
                           </div>
                         </td>
-                        <td style={{ padding: '0.75rem', fontSize: '0.875rem', color: '#6b7280' }}>
+                        <td style={{ padding: '0.5rem', fontSize: '0.8125rem', color: '#6b7280' }}>
                           {user.last_login ? (
                             <div>
-                              <div>{new Date(user.last_login).toLocaleDateString()}</div>
-                              <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
-                                {new Date(user.last_login).toLocaleTimeString()}
+                              <div style={{ fontSize: '0.75rem' }}>{new Date(user.last_login).toLocaleDateString()}</div>
+                              <div style={{ fontSize: '0.6875rem', color: '#9ca3af' }}>
+                                {new Date(user.last_login).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </div>
                             </div>
                           ) : (
-                            <span style={{ color: '#9ca3af' }}>Never</span>
+                            <span style={{ color: '#9ca3af', fontSize: '0.75rem' }}>Never</span>
                           )}
                         </td>
-                        <td style={{ padding: '0.75rem' }}>
+                        <td style={{ padding: '0.5rem' }}>
                           <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
                             <button
                               className="btn btn-secondary"
@@ -846,28 +869,28 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                                 setShowPasswordReset(true);
                                 setNewPassword('');
                               }}
-                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                              style={{ padding: '0.25rem 0.375rem', fontSize: '0.6875rem' }}
                               title="Reset Password"
                             >
-                              <Key size={14} />
+                              <Key size={12} />
                             </button>
                             {user.login_status && (
                               <button
                                 className="btn btn-warning"
                                 onClick={() => handleForceLogout(user)}
-                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                                style={{ padding: '0.25rem 0.375rem', fontSize: '0.6875rem' }}
                                 title="Force Logout"
                               >
-                                <LogOut size={14} />
+                                <LogOut size={12} />
                               </button>
                             )}
                             <button
                               className="btn btn-danger"
                               onClick={() => handleDeleteUser(user)}
-                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                              style={{ padding: '0.25rem 0.375rem', fontSize: '0.6875rem' }}
                               title="Delete User"
                             >
-                              <UserX size={14} />
+                              <UserX size={12} />
                             </button>
                           </div>
                         </td>
@@ -890,26 +913,27 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 2000
+          zIndex: 2000,
+          padding: '1rem'
         }} onClick={() => {
           setShowPasswordReset(false);
           setSelectedUser(null);
           setNewPassword('');
         }}>
-          <div className="card" style={{ maxWidth: '400px', width: '90%' }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ fontSize: '1.125rem', fontWeight: 'bold' }}>Reset Password</h3>
+          <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '1rem' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Reset Password</h3>
               <button onClick={() => {
                 setShowPasswordReset(false);
                 setSelectedUser(null);
                 setNewPassword('');
-              }} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: '0.25rem' }}>×</button>
+              }} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: '0.25rem', lineHeight: 1 }}>×</button>
             </div>
-            <div style={{ marginBottom: '1rem' }}>
-              <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.5rem' }}>
+            <div style={{ marginBottom: '0.75rem' }}>
+              <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.5rem' }}>
                 Reset password for: <strong>{selectedUser.name}</strong> ({selectedUser.username})
               </p>
-              <label style={{ fontSize: '0.875rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>
+              <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>
                 New Password *
               </label>
               <input
@@ -918,14 +942,14 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                 onChange={(e) => setNewPassword(e.target.value)}
                 className="input"
                 placeholder="Enter new password (min 6 characters)"
-                style={{ width: '100%' }}
+                style={{ width: '100%', padding: '0.375rem', fontSize: '0.8125rem' }}
                 autoFocus
               />
-              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+              <div style={{ fontSize: '0.6875rem', color: '#6b7280', marginTop: '0.25rem' }}>
                 Password must be at least 6 characters long
               </div>
             </div>
-            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               <button
                 className="btn btn-secondary"
                 onClick={() => {
@@ -934,7 +958,7 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                   setNewPassword('');
                 }}
                 disabled={resettingPassword}
-                style={{ padding: '0.5rem 1rem' }}
+                style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
               >
                 Cancel
               </button>
@@ -942,9 +966,9 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                 className="btn btn-primary"
                 onClick={handleResetPassword}
                 disabled={resettingPassword || !newPassword || newPassword.length < 6}
-                style={{ padding: '0.5rem 1rem' }}
+                style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
               >
-                {resettingPassword ? 'Resetting...' : 'Reset Password'}
+                {resettingPassword ? 'Resetting...' : 'Reset'}
               </button>
             </div>
           </div>

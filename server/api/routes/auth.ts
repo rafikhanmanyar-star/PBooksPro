@@ -683,18 +683,22 @@ router.post('/logout', async (req, res) => {
           [token, decoded.userId, decoded.tenantId]
         );
         
-        // Set login_status = false
+        // Set login_status = FALSE to allow user to login again immediately
+        // This is critical for allowing re-login after logout
         await db.query(
           'UPDATE users SET login_status = FALSE WHERE id = $1',
           [decoded.userId]
         );
         
+        console.log(`✅ User ${decoded.userId} logged out, login_status set to FALSE`);
         res.json({ success: true, message: 'Logged out successfully' });
       } catch (jwtError) {
-        // Token invalid, but still return success
+        // Token invalid, but still return success (user is logged out locally anyway)
+        console.log('⚠️ Invalid token during logout, but allowing logout to proceed');
         res.json({ success: true, message: 'Logged out successfully' });
       }
     } else {
+      // No auth header - user already logged out locally
       res.json({ success: true, message: 'Logged out successfully' });
     }
   } catch (error) {
