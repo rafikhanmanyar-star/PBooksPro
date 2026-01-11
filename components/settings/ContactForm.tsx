@@ -53,7 +53,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
 
   const showTypeSelector = !isEditing && !fixedTypeForNew && availableTypes.length > 1;
 
-  const isDuplicateName = (newName: string, newType: ContactType): Contact | null => {
+  const isDuplicateName = (newName: string): Contact | null => {
     if (!newName || !newName.trim()) return null;
     const normalize = (n: string) => String(n).trim().replace(/\s+/g, ' ').toLowerCase();
     const normalizedNew = normalize(newName);
@@ -63,7 +63,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
       if (!c.name || !c.name.trim()) return false;
 
       const normalizedExisting = normalize(c.name);
-      return normalizedExisting === normalizedNew && c.type === newType;
+      return normalizedExisting === normalizedNew;
     }) || null;
   };
 
@@ -75,12 +75,12 @@ const ContactForm: React.FC<ContactFormProps> = ({
       return;
     }
 
-    const duplicate = isDuplicateName(trimmedName, type);
+    const duplicate = isDuplicateName(trimmedName);
     if (duplicate) {
       await showAlert(
-        `Duplicate Contact Detected\n\n` +
-        `"${duplicate.name}" is already registered as a ${duplicate.type}.\n` +
-        `Please use a different name or edit the existing contact.`
+        `Duplicate Contact Name\n\n` +
+        `A contact with the name "${duplicate.name}" already exists.\n` +
+        `Contact names must be unique. Please use a different name or edit the existing contact.`
       );
       return;
     }
