@@ -391,7 +391,7 @@ export interface Document {
 export interface RentalAgreement {
   id: string;
   agreementNumber: string;
-  tenantId: string;
+  tenantId: string; // Contact tenant ID (the tenant contact person in rental management, NOT the organization tenant_id for multi-tenancy)
   propertyId: string;
   startDate: string;
   endDate: string;
