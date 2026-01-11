@@ -11,7 +11,7 @@ const getDb = () => getDatabaseService();
  * Webhook verification (Meta requirement)
  * This endpoint is called by Meta to verify the webhook URL
  */
-router.get('/webhook', async (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
     const mode = req.query['hub.mode'] as string;
     const token = req.query['hub.verify_token'] as string;
@@ -52,7 +52,7 @@ router.get('/webhook', async (req: Request, res: Response) => {
  * POST /api/whatsapp/webhook
  * Receive webhook events from Meta
  */
-router.post('/webhook', async (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
   try {
     // Verify webhook signature (if provided)
     const signature = req.headers['x-hub-signature-256'] as string;

@@ -31,18 +31,18 @@ todos:
       - whatsapp-api-service
   - id: whatsapp-config-form
     content: Create WhatsAppConfigForm component for settings page with API key, phone number ID, and test connection functionality
-    status: pending
+    status: completed
   - id: settings-integration
     content: Add WhatsApp Integration section to Settings page with icon card that opens WhatsAppConfigForm
-    status: pending
+    status: completed
     dependencies:
       - whatsapp-config-form
   - id: whatsapp-chat-service
     content: Create whatsappChatService.ts frontend service for API communication (send, receive, status, unread count)
-    status: pending
+    status: completed
   - id: chat-window-component
     content: Create WhatsAppChatWindow component with message list, input area, real-time updates, and message status indicators
-    status: pending
+    status: in_progress
     dependencies:
       - whatsapp-chat-service
   - id: notification-bell
