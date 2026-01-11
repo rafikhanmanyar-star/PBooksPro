@@ -74,7 +74,7 @@ export class WhatsAppApiService {
         return null;
       }
 
-      const config = configs[0];
+      const config = configs[0] as any; // Database returns snake_case, map to camelCase
 
       // Decrypt API key
       const decryptedApiKey = encryptionService.decrypt(config.api_key);

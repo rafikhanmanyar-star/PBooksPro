@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import type { CipherGCM, DecipherGCM } from 'crypto';
 
 /**
  * Encryption Service
@@ -54,7 +55,7 @@ export class EncryptionService {
     const key = this.deriveKey(masterKey, salt);
     const iv = crypto.randomBytes(this.ivLength);
 
-    const cipher = crypto.createCipheriv(this.algorithm, key, iv);
+    const cipher = crypto.createCipheriv(this.algorithm, key, iv) as CipherGCM;
     cipher.setAAD(Buffer.from('whatsapp-api-key', 'utf8')); // Additional authenticated data
 
     let encrypted = cipher.update(plaintext, 'utf8');
@@ -89,7 +90,7 @@ export class EncryptionService {
 
       const key = this.deriveKey(masterKey, salt);
 
-      const decipher = crypto.createDecipheriv(this.algorithm, key, iv);
+      const decipher = crypto.createDecipheriv(this.algorithm, key, iv) as DecipherGCM;
       decipher.setAuthTag(tag);
       decipher.setAAD(Buffer.from('whatsapp-api-key', 'utf8'));
 
