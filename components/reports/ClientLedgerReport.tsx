@@ -12,6 +12,7 @@ import { useNotification } from '../../context/NotificationContext';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import { formatDate } from '../../utils/dateUtils';
 import { WhatsAppService } from '../../services/whatsappService';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 import { usePrint } from '../../hooks/usePrint';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
@@ -43,6 +44,7 @@ const ClientLedgerReport: React.FC = () => {
     const { state } = useAppContext();
     const { showAlert } = useNotification();
     const { handlePrint } = usePrint();
+    const { openChat } = useWhatsApp();
     
     // Date Filter State
     const [dateRangeType, setDateRangeType] = useState<'total' | 'thisMonth' | 'lastMonth' | 'custom'>('thisMonth');

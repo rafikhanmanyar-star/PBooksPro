@@ -16,6 +16,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { formatDate } from '../../utils/dateUtils';
 import { WhatsAppService } from '../../services/whatsappService';
 import { usePrint } from '../../hooks/usePrint';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
@@ -34,6 +35,7 @@ const BrokerFeeReport: React.FC = () => {
     const { state } = useAppContext();
     const { showAlert } = useNotification();
     const { handlePrint } = usePrint();
+    const { openChat } = useWhatsApp();
     
     const [dateRangeType, setDateRangeType] = useState<DateRangeOption>('all');
     const [startDate, setStartDate] = useState('2000-01-01');
@@ -231,7 +233,21 @@ const BrokerFeeReport: React.FC = () => {
             message += `Balance Due: *${CURRENCY} ${finalBalance.toLocaleString()}*\n\n`;
             message += `This is an automated summary from PBooksPro.`;
         
-            WhatsAppService.sendMessage({ contact: selectedBroker, message });
+            // Check if WhatsApp API is configured, if yes use chat window, otherwise use wa.me
+            try {
+                const { WhatsAppChatService } = await import('../../services/whatsappChatService');
+                const isConfigured = await WhatsAppChatService.isConfigured();
+                if (isConfigured) {
+                    // Open chat window
+                    openChat(selectedBroker);
+                } else {
+                    // Fallback to wa.me URL scheme
+                    WhatsAppService.sendMessage({ contact: selectedBroker, message });
+                }
+            } catch (error) {
+                // Fallback to wa.me URL scheme if API check fails
+                WhatsAppService.sendMessage({ contact: selectedBroker, message });
+            }
         } catch (error) {
             await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
         }

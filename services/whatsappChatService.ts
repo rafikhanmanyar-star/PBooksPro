@@ -76,7 +76,7 @@ export class WhatsAppChatService {
    */
   static async sendMessage(request: SendMessageRequest): Promise<SendMessageResponse> {
     try {
-      const response = await apiClient.post<{ messageId?: string }>('/whatsapp/send', {
+      const response = await apiClient.post<{ messageId?: string; success?: boolean }>('/whatsapp/send', {
         phoneNumber: request.phoneNumber,
         message: request.message,
         contactId: request.contactId,

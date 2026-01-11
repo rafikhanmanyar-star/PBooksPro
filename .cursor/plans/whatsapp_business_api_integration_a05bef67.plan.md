@@ -42,12 +42,12 @@ todos:
     status: completed
   - id: chat-window-component
     content: Create WhatsAppChatWindow component with message list, input area, real-time updates, and message status indicators
-    status: in_progress
+    status: completed
     dependencies:
       - whatsapp-chat-service
   - id: notification-bell
     content: Update Header notification bell with unread count badge, click handler to open notifications list, and real-time updates
-    status: pending
+    status: completed
     dependencies:
       - whatsapp-chat-service
   - id: notifications-list
@@ -57,7 +57,7 @@ todos:
       - chat-window-component
   - id: update-existing-handlers
     content: Update all existing WhatsApp icon click handlers in ContactsPage, VendorDirectoryPage, InvoiceDetailView, Reports, etc. to use new chat window
-    status: pending
+    status: completed
     dependencies:
       - chat-window-component
   - id: update-whatsapp-service

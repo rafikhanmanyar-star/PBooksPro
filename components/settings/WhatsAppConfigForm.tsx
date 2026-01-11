@@ -256,8 +256,8 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
             label="Webhook URL"
             value={webhookUrl}
             onChange={(e) => setWebhookUrl(e.target.value)}
-            placeholder="https://your-domain.com/api/whatsapp/webhook"
-            helperText="The public URL where Meta will send webhook events. Configure this in Meta App Dashboard."
+            placeholder="https://your-api-server.com/api/whatsapp/webhook"
+            helperText="Your public API server URL (staging or production) + /api/whatsapp/webhook. Example: https://pbookspro-api-staging.onrender.com/api/whatsapp/webhook"
           />
         </div>
       </div>
@@ -267,8 +267,9 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
         <ol className="list-decimal list-inside space-y-1 text-sm text-blue-800">
           <li>Get your API credentials from Meta App Dashboard</li>
           <li>Enter your Access Token and Phone Number ID above</li>
+          <li>Enter your Webhook URL (your API server URL + /api/whatsapp/webhook, e.g., https://pbookspro-api-staging.onrender.com/api/whatsapp/webhook)</li>
           <li>Copy the Webhook Verify Token and use it in Meta Dashboard</li>
-          <li>Set the Webhook URL in Meta Dashboard to: <code className="bg-blue-100 px-1 rounded">{webhookUrl || 'https://your-domain.com/api/whatsapp/webhook'}</code></li>
+          <li>In Meta App Dashboard, set the Webhook URL and Verify Token from above</li>
           <li>Click "Test Connection" to verify your credentials</li>
           <li>Click "Save Configuration" when ready</li>
         </ol>
