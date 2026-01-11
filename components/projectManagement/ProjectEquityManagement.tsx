@@ -16,8 +16,8 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from '../reports/ReportHeader';
 import ReportFooter from '../reports/ReportFooter';
 import ProjectInvestorReport from '../reports/ProjectInvestorReport';
-import { usePrint } from '../../hooks/usePrint';
-import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import { printFromTemplate, getPrintTemplateWrapper } from '../../services/printService';
+import { formatCurrency } from '../../utils/numberUtils';
 
 interface InvestorDistribution {
     investorId: string;
@@ -661,7 +661,62 @@ const ProjectEquityManagement: React.FC = () => {
         setIsActionModalOpen(false);
     };
     
-    const { handlePrint } = usePrint();
+    const handlePrint = () => {
+        const { printSettings } = state;
+        
+        // Generate table rows HTML
+        let tableRows = '';
+        if (ledgerData.length === 0) {
+            tableRows = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: #64748b;">No transactions found</td></tr>';
+        } else {
+            tableRows = ledgerData.map(tx => {
+                const amountSign = tx.isDeposit ? '+' : '-';
+                const amountColor = tx.isDeposit ? '#10b981' : '#ef4444';
+                const balanceColor = tx.balance >= 0 ? '#10b981' : '#ef4444';
+                const amountStr = `${amountSign}${CURRENCY} ${Math.abs(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                const balanceStr = `${tx.balance >= 0 ? '' : '-'}${CURRENCY} ${Math.abs(tx.balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                
+                return `
+                    <tr>
+                        <td style="padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e7eb;">${formatDate(tx.date)}</td>
+                        <td style="padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e7eb;">${tx.paymentType}</td>
+                        <td style="padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e7eb;">${tx.description || ''}</td>
+                        <td style="padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e7eb; font-size: 0.75rem; color: #6b7280;">${tx.info || ''}</td>
+                        <td style="padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600; color: ${amountColor}; font-family: monospace;">${amountStr}</td>
+                        <td style="padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600; color: ${balanceColor}; font-family: monospace;">${balanceStr}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Generate table HTML
+        const tableHtml = `
+            <div style="margin-bottom: 2rem;">
+                <h2 style="font-size: 1.5rem; font-weight: 700; color: #1e293b; margin-bottom: 1.5rem; text-align: center;">Equity Ledger</h2>
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+                    <thead>
+                        <tr style="background-color: #f8fafc; border-bottom: 2px solid #e2e8f0;">
+                            <th style="padding: 0.75rem; text-align: left; font-weight: 600; color: #475569; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em;">Date</th>
+                            <th style="padding: 0.75rem; text-align: left; font-weight: 600; color: #475569; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em;">Type</th>
+                            <th style="padding: 0.75rem; text-align: left; font-weight: 600; color: #475569; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em;">Description</th>
+                            <th style="padding: 0.75rem; text-align: left; font-weight: 600; color: #475569; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em;">Info</th>
+                            <th style="padding: 0.75rem; text-align: right; font-weight: 600; color: #475569; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em;">Amount</th>
+                            <th style="padding: 0.75rem; text-align: right; font-weight: 600; color: #475569; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em;">Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tableRows}
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        // Wrap with print template
+        const html = getPrintTemplateWrapper(tableHtml, printSettings);
+        
+        // Print using template
+        printFromTemplate(html, printSettings);
+    };
 
     const handleExport = () => {
         const data = ledgerData.map(r => ({

@@ -71,6 +71,15 @@ code {
   background-color: #15803d;
 }
 
+.btn-warning {
+  background-color: #f59e0b;
+  color: white;
+}
+
+.btn-warning:hover {
+  background-color: #d97706;
+}
+
 .input {
   width: 100%;
   padding: 0.5rem;

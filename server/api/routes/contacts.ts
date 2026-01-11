@@ -53,6 +53,25 @@ router.post('/', async (req: TenantRequest, res) => {
       });
     }
     
+    // Check for duplicate contact name (case-insensitive, trimmed)
+    const trimmedName = contact.name.trim();
+    const existingContactByName = await db.query(
+      'SELECT id, name, type FROM contacts WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+      [req.tenantId, trimmedName]
+    );
+    
+    if (existingContactByName.length > 0) {
+      console.error('❌ POST /contacts - Duplicate contact name:', {
+        name: trimmedName,
+        existingContactId: existingContactByName[0].id,
+        tenantId: req.tenantId
+      });
+      return res.status(409).json({ 
+        error: 'Duplicate contact name',
+        message: `A contact with the name "${trimmedName}" already exists. Contact names must be unique.`
+      });
+    }
+    
     // Generate ID if not provided
     const contactId = contact.id || `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     console.log('📝 POST /contacts - Using contact ID:', contactId);
@@ -210,6 +229,26 @@ router.put('/:id', async (req: TenantRequest, res) => {
       return res.status(400).json({ 
         error: 'Validation error',
         message: 'Name and type are required fields'
+      });
+    }
+    
+    // Check for duplicate contact name (case-insensitive, trimmed), excluding the current contact
+    const trimmedName = contact.name.trim();
+    const existingContactByName = await db.query(
+      'SELECT id, name, type FROM contacts WHERE tenant_id = $1 AND id != $2 AND LOWER(TRIM(name)) = LOWER($3)',
+      [req.tenantId, req.params.id, trimmedName]
+    );
+    
+    if (existingContactByName.length > 0) {
+      console.error('❌ PUT /contacts/:id - Duplicate contact name:', {
+        name: trimmedName,
+        contactId: req.params.id,
+        existingContactId: existingContactByName[0].id,
+        tenantId: req.tenantId
+      });
+      return res.status(409).json({ 
+        error: 'Duplicate contact name',
+        message: `A contact with the name "${trimmedName}" already exists. Contact names must be unique.`
       });
     }
     

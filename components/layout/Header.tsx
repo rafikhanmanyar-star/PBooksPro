@@ -1,7 +1,9 @@
-import React, { useState, memo } from 'react';
+import React, { useState, memo, useEffect, useCallback } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import SearchModal from './SearchModal';
 import HelpModal from './HelpModal';
+import { WhatsAppChatService } from '../../services/whatsappChatService';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 
 interface HeaderProps {
   title: string;
@@ -14,6 +16,32 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // For mobile menu logic if needed
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+  const [whatsappUnreadCount, setWhatsappUnreadCount] = useState(0);
+  const { openChat } = useWhatsApp();
+
+  // Load WhatsApp unread count
+  useEffect(() => {
+    const loadUnreadCount = async () => {
+      try {
+        const count = await WhatsAppChatService.getUnreadCount();
+        setWhatsappUnreadCount(count);
+      } catch (error) {
+        // Silently fail if WhatsApp is not configured
+        setWhatsappUnreadCount(0);
+      }
+    };
+
+    loadUnreadCount();
+    // Refresh every 30 seconds
+    const interval = setInterval(loadUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleWhatsAppNotificationClick = useCallback(() => {
+    // Open chat window - if there are unread messages, we could show a list
+    // For now, just open the chat window (user can select contact)
+    openChat();
+  }, [openChat]);
 
   // Format breadcrumbs based on current page
   const getBreadcrumbs = () => {
@@ -72,12 +100,17 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
           <div className="flex items-center gap-2 sm:gap-4 justify-end flex-1">
 
             <button
+              onClick={handleWhatsAppNotificationClick}
               className="p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors relative group hidden sm:block min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
-              title="Notifications"
-              aria-label="Notifications"
+              title={whatsappUnreadCount > 0 ? `${whatsappUnreadCount} unread WhatsApp messages` : 'WhatsApp Messages'}
+              aria-label="WhatsApp Messages"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 0 0 1 1-3.46 0"></path></svg>
-              <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>
+              {whatsappUnreadCount > 0 && (
+                <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1.5 bg-green-500 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center">
+                  {whatsappUnreadCount > 99 ? '99+' : whatsappUnreadCount}
+                </span>
+              )}
             </button>
 
             <button

@@ -67,8 +67,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const logout = useCallback(async () => {
     try {
-      // Call logout API to clear session on server
+      // Save all data to database before logout
+      logger.logCategory('auth', '💾 Saving data before logout...');
+      
+      // Dispatch event to trigger state save and wait for completion
+      const savePromise = new Promise<void>((resolve) => {
+        const handleSaveComplete = () => {
+          window.removeEventListener('state-saved-for-logout', handleSaveComplete);
+          resolve();
+        };
+        window.addEventListener('state-saved-for-logout', handleSaveComplete);
+        
+        // Dispatch event to trigger save
+        window.dispatchEvent(new CustomEvent('save-state-before-logout'));
+        
+        // Timeout after 5 seconds to prevent hanging
+        setTimeout(() => {
+          window.removeEventListener('state-saved-for-logout', handleSaveComplete);
+          logger.warnCategory('auth', '⚠️ State save timeout, proceeding with logout');
+          resolve();
+        }, 5000);
+      });
+      
+      await savePromise;
+      logger.logCategory('auth', '✅ Data saved, proceeding with logout');
+      
+      // Call logout API to clear session on server and update login_status = FALSE
       await apiClient.post('/auth/logout', {});
+      logger.logCategory('auth', '✅ Logout API call completed, user status updated in cloud DB');
     } catch (error) {
       logger.errorCategory('auth', 'Logout API error:', error);
       // Continue with local logout even if API fails

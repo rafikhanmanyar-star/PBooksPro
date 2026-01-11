@@ -115,6 +115,7 @@ type SortDirection = 'asc' | 'desc';
 const VendorDirectoryPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { showConfirm, showAlert } = useNotification();
+    const { openChat } = useWhatsApp();
     const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isCreateBillModalOpen, setIsCreateBillModalOpen] = useState(false);
@@ -485,8 +486,17 @@ const VendorDirectoryPage: React.FC = () => {
                                                     <button
                                                         onClick={async () => {
                                                             try {
-                                                                const message = WhatsAppService.generateVendorGreeting(state.whatsAppTemplates.vendorGreeting, selectedVendor);
-                                                                WhatsAppService.sendMessage({ contact: selectedVendor, message });
+                                                                // Check if WhatsApp API is configured, if yes use chat window, otherwise use wa.me
+                                                                const { WhatsAppChatService } = await import('../../services/whatsappChatService');
+                                                                const isConfigured = await WhatsAppChatService.isConfigured();
+                                                                if (isConfigured) {
+                                                                    // Open chat window
+                                                                    openChat(selectedVendor);
+                                                                } else {
+                                                                    // Fallback to wa.me URL scheme
+                                                                    const message = WhatsAppService.generateVendorGreeting(state.whatsAppTemplates.vendorGreeting, selectedVendor);
+                                                                    WhatsAppService.sendMessage({ contact: selectedVendor, message });
+                                                                }
                                                             } catch (error) {
                                                                 await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
                                                             }

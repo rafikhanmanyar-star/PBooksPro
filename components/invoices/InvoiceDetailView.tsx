@@ -10,6 +10,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { formatDate } from '../../utils/dateUtils';
 import TransactionItem from '../transactions/TransactionItem';
 import { WhatsAppService } from '../../services/whatsappService';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 import { formatCurrency } from '../../utils/numberUtils';
 import { printFromTemplate } from '../../services/printService';
 
@@ -31,6 +32,7 @@ const DetailRow: React.FC<{ label: string; value: string | React.ReactNode; clas
 const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecordPayment, onEdit, onDelete }) => {
     const { state, dispatch } = useAppContext();
     const { showAlert, showToast } = useNotification();
+    const { openChat } = useWhatsApp();
     const { contactId, amount, paidAmount, issueDate, status, description, invoiceNumber, dueDate, invoiceType, propertyId, projectId, unitId, agreementId } = invoice;
     const buildingId = invoice.buildingId;
     
@@ -207,7 +209,23 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
                 );
             }
 
-            WhatsAppService.sendMessage({ contact, message });
+            // Check if WhatsApp API is configured, if yes use chat window, otherwise use wa.me
+            try {
+                const { WhatsAppChatService } = await import('../../services/whatsappChatService');
+                const isConfigured = await WhatsAppChatService.isConfigured();
+                if (isConfigured) {
+                    // Open chat window with pre-filled message
+                    openChat(contact);
+                    // Note: We could pre-fill the message, but for now just open the chat
+                    // The user can see the message history and send the message
+                } else {
+                    // Fallback to wa.me URL scheme
+                    WhatsAppService.sendMessage({ contact, message });
+                }
+            } catch (error) {
+                // Fallback to wa.me URL scheme if API check fails
+                WhatsAppService.sendMessage({ contact, message });
+            }
         } catch (error) {
             await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
         }

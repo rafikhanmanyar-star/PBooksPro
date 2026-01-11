@@ -3078,6 +3078,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
     }, [state.currentUser, isInitializing, state]);
 
+    // Listen for logout event to save state before logout
+    useEffect(() => {
+        const handleSaveStateBeforeLogout = async (event: CustomEvent) => {
+            try {
+                logger.logCategory('database', '💾 Saving state before logout...');
+                const dbService = getDatabaseService();
+                if (dbService.isReady()) {
+                    const appStateRepo = await getAppStateRepository();
+                    await appStateRepo.saveState(state);
+                    logger.logCategory('database', '✅ State saved successfully before logout');
+                } else {
+                    logger.warnCategory('database', '⚠️ Database not ready, skipping save before logout');
+                }
+                // Dispatch event to indicate save is complete
+                window.dispatchEvent(new CustomEvent('state-saved-for-logout'));
+            } catch (error) {
+                logger.errorCategory('database', '❌ Failed to save state before logout:', error);
+                // Still dispatch event even if save fails, so logout can proceed
+                window.dispatchEvent(new CustomEvent('state-saved-for-logout'));
+            }
+        };
+
+        if (typeof window !== 'undefined') {
+            window.addEventListener('save-state-before-logout', handleSaveStateBeforeLogout as EventListener);
+            return () => {
+                window.removeEventListener('save-state-before-logout', handleSaveStateBeforeLogout as EventListener);
+            };
+        }
+    }, [state]);
+
     // Auto-sync local data to API when user re-authenticates
     useEffect(() => {
         // Detect when user transitions from not authenticated to authenticated

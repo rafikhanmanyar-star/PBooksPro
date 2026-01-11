@@ -37,10 +37,15 @@ async function migrateToPostgreSQL() {
     throw urlError;
   }
 
+  // Enable SSL for production, staging, and any Render database URLs
+  const shouldUseSSL = process.env.NODE_ENV === 'production' || 
+                       process.env.NODE_ENV === 'staging' ||
+                       (dbUrl && dbUrl.includes('.render.com'));
+
   console.log('🔗 Connecting to database...');
   const pool = new Pool({
     connectionString: dbUrl,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    ssl: shouldUseSSL ? { rejectUnauthorized: false } : false,
   });
 
   try {
@@ -59,20 +64,29 @@ async function migrateToPostgreSQL() {
     const bcrypt = await import('bcryptjs');
     const defaultPassword = await bcrypt.default.hash('admin123', 10);
     
-    await pool.query(
-      `INSERT INTO admin_users (id, username, name, email, password, role)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (username) DO NOTHING`,
-      [
-        'admin_1',
-        'admin',
-        'Super Admin',
-        'admin@pbookspro.com',
-        defaultPassword,
-        'super_admin'
-      ]
-    );
-    console.log('✅ Default admin user created (username: admin, password: admin123)');
+    try {
+      await pool.query(
+        `INSERT INTO admin_users (id, username, name, email, password, role)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (id) DO NOTHING`,
+        [
+          'admin_1',
+          'admin',
+          'Super Admin',
+          'admin@pbookspro.com',
+          defaultPassword,
+          'super_admin'
+        ]
+      );
+      console.log('✅ Default admin user verified/created (username: admin, password: admin123)');
+    } catch (error: any) {
+      // If admin user already exists (different error), that's okay
+      if (error.code === '23505') {
+        console.log('ℹ️  Admin user already exists (skipping)');
+      } else {
+        throw error;
+      }
+    }
 
     // 3. If you have existing SQLite data, export and import it here
     // This would require reading from your SQLite database

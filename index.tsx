@@ -220,6 +220,7 @@ try {
     import('./context/KeyboardContext'),
     import('./context/KPIContext'),
     import('./context/NotificationContext'),
+    import('./context/WhatsAppContext'),
     import('./context/LicenseContext'),
     import('./context/PWAContext'),
     import('./context/UpdateContext'),
@@ -232,6 +233,7 @@ try {
     { KeyboardProvider },
     { KPIProvider },
     { NotificationProvider },
+    { WhatsAppProvider },
     { LicenseProvider },
     { PWAProvider },
     { UpdateProvider },
@@ -264,7 +266,9 @@ try {
                       <KeyboardProvider>
                         <KPIProvider>
                           <NotificationProvider>
-                            <App />
+                            <WhatsAppProvider>
+                              <App />
+                            </WhatsAppProvider>
                           </NotificationProvider>
                         </KPIProvider>
                       </KeyboardProvider>
