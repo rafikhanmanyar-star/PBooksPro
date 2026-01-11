@@ -11,6 +11,7 @@ import TransactionForm from '../transactions/TransactionForm';
 import VendorBillPaymentModal from './VendorBillPaymentModal';
 import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarningModal';
 import { useNotification } from '../../context/NotificationContext';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 import Input from '../ui/Input';
 import { WhatsAppService } from '../../services/whatsappService';
 import VendorBills from './VendorBills';
