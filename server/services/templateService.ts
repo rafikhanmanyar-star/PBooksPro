@@ -10,12 +10,13 @@ export interface TemplateOptions {
 // Define import order
 export const IMPORT_ORDER = [
   { name: 'Accounts', dependencies: [], description: 'Import accounts first' },
-  { name: 'Contacts', dependencies: [], description: 'Import contacts (required for Properties and Units)' },
+  { name: 'Contacts', dependencies: [], description: 'Import contacts (required for Properties, Units, and Rental Agreements)' },
   { name: 'Categories', dependencies: [], description: 'Import categories' },
   { name: 'Projects', dependencies: [], description: 'Import projects (required for Units)' },
   { name: 'Buildings', dependencies: [], description: 'Import buildings (required for Properties)' },
   { name: 'Units', dependencies: ['Projects', 'Contacts'], description: 'Import units (depends on Projects and Contacts)' },
-  { name: 'Properties', dependencies: ['Contacts', 'Buildings'], description: 'Import properties (depends on Contacts and Buildings)' }
+  { name: 'Properties', dependencies: ['Contacts', 'Buildings'], description: 'Import properties (depends on Contacts and Buildings)' },
+  { name: 'RentalAgreements', dependencies: ['Properties', 'Contacts'], description: 'Import rental agreements (depends on Properties and Contacts)' }
 ];
 
 /**

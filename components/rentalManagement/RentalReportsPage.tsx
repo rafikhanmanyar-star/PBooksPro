@@ -13,9 +13,11 @@ import BrokerFeeReport from '../reports/BrokerFeeReport';
 import PropertyLayoutReport from '../reports/PropertyLayoutReport';
 import ServiceChargesDeductionReport from '../reports/ServiceChargesDeductionReport';
 import BMAnalysisReport from '../reports/BMAnalysisReport';
+import AgreementExpiryReport from '../reports/AgreementExpiryReport';
 
 const PRIMARY_REPORTS = ['Visual Layout', 'Tabular Layout'];
 const REPORT_MENU_OPTIONS = [
+    'Agreement Expiry',
     'Building Analysis',
     'BM Analysis',
     'Owner Income',
@@ -47,6 +49,8 @@ const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => 
                 return <PropertyLayoutReport />;
             case 'Tabular Layout':
                 return <UnitStatusReport />;
+            case 'Agreement Expiry':
+                return <AgreementExpiryReport />;
             case 'Building Analysis':
                 return <BuildingAccountsReport />;
             case 'BM Analysis':

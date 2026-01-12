@@ -71,7 +71,7 @@ export async function importData(
   let duplicateRows = 0;
 
   // Define import order with dependencies
-  // Order: Accounts → Contacts → Categories → Projects → Buildings → Units → Properties
+  // Order: Accounts → Contacts → Categories → Projects → Buildings → Units → Properties → RentalAgreements
   const importOrder = [
     { name: 'Accounts', dependencies: [] },
     { name: 'Contacts', dependencies: [] },
@@ -79,7 +79,8 @@ export async function importData(
     { name: 'Projects', dependencies: [] },
     { name: 'Buildings', dependencies: [] },
     { name: 'Units', dependencies: ['Projects', 'Contacts'] }, // Contacts is optional
-    { name: 'Properties', dependencies: ['Contacts', 'Buildings'] }
+    { name: 'Properties', dependencies: ['Contacts', 'Buildings'] },
+    { name: 'RentalAgreements', dependencies: ['Properties', 'Contacts'] }
   ];
 
   // If single sheet import, filter to that sheet only
@@ -147,6 +148,7 @@ export async function importData(
     units: any[];
     categories: any[];
     accounts: any[];
+    rentalAgreements: any[];
   } = {
     contacts: [],
     projects: [],
@@ -154,7 +156,8 @@ export async function importData(
     properties: [],
     units: [],
     categories: [],
-    accounts: []
+    accounts: [],
+    rentalAgreements: []
   };
 
   const sheetErrors: { [sheetName: string]: ValidationError[] } = {};
@@ -434,6 +437,29 @@ export async function importData(
               importedRows++;
             }
             break;
+
+          case 'RentalAgreements':
+            for (const agreement of validatedData.rentalAgreements) {
+              const existing = await client.query(
+                'SELECT id FROM rental_agreements WHERE tenant_id = $1 AND LOWER(TRIM(agreement_number)) = LOWER($2)',
+                [tenantId, agreement.agreement_number.trim()]
+              );
+              if (existing.rows.length > 0) {
+                imported.rentalAgreements.skipped++;
+                sheetSkipped++;
+                continue;
+              }
+              const id = `rental_agreement_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              await client.query(
+                `INSERT INTO rental_agreements (id, tenant_id, agreement_number, property_id, owner_id, broker_id, start_date, end_date, monthly_rent, rent_due_date, status, security_deposit, broker_fee, description, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())`,
+                [id, tenantId, agreement.agreement_number.trim(), agreement.property_id, agreement.owner_id, agreement.broker_id, agreement.start_date, agreement.end_date, agreement.monthly_rent, agreement.rent_due_date, agreement.status, agreement.security_deposit, agreement.broker_fee, agreement.description]
+              );
+              imported.rentalAgreements.count++;
+              sheetImported++;
+              importedRows++;
+            }
+            break;
         }
 
         // Record sheet result
@@ -532,6 +558,9 @@ async function validateSheet(
         break;
       case 'Accounts':
         await validateAccountRow(row, excelRow, db, tenantId, validatedData.accounts, validationErrors, duplicates);
+        break;
+      case 'RentalAgreements':
+        await validateRentalAgreementRow(row, excelRow, db, tenantId, validatedData.rentalAgreements, validationErrors, duplicates);
         break;
     }
   }
@@ -1003,5 +1032,224 @@ async function validateAccountRow(
     is_permanent: row.is_permanent === true || row.is_permanent === 'true' || row.is_permanent === 'TRUE' || row.is_permanent === 1 || row.is_permanent === '1',
     description: row.description ? row.description.toString().trim() : null,
     parent_account_id: parentAccountId
+  });
+}
+
+async function validateRentalAgreementRow(
+  row: any,
+  excelRow: number,
+  db: any,
+  tenantId: string,
+  validatedData: any[],
+  errors: ValidationError[],
+  duplicates: DuplicateEntry[]
+): Promise<void> {
+  // Required fields
+  if (!row.agreement_number || !row.agreement_number.toString().trim()) {
+    errors.push({
+      sheet: 'RentalAgreements',
+      row: excelRow,
+      field: 'agreement_number',
+      value: row.agreement_number,
+      message: 'Agreement number is required'
+    });
+    return;
+  }
+
+  if (!row.property_name || !row.property_name.toString().trim()) {
+    errors.push({
+      sheet: 'RentalAgreements',
+      row: excelRow,
+      field: 'property_name',
+      value: row.property_name,
+      message: 'Property name is required'
+    });
+    return;
+  }
+
+  if (!row.start_date) {
+    errors.push({
+      sheet: 'RentalAgreements',
+      row: excelRow,
+      field: 'start_date',
+      value: row.start_date,
+      message: 'Start date is required'
+    });
+    return;
+  }
+
+  if (!row.end_date) {
+    errors.push({
+      sheet: 'RentalAgreements',
+      row: excelRow,
+      field: 'end_date',
+      value: row.end_date,
+      message: 'End date is required'
+    });
+    return;
+  }
+
+  if (!row.monthly_rent) {
+    errors.push({
+      sheet: 'RentalAgreements',
+      row: excelRow,
+      field: 'monthly_rent',
+      value: row.monthly_rent,
+      message: 'Monthly rent is required'
+    });
+    return;
+  }
+
+  if (!row.rent_due_date) {
+    errors.push({
+      sheet: 'RentalAgreements',
+      row: excelRow,
+      field: 'rent_due_date',
+      value: row.rent_due_date,
+      message: 'Rent due date (day of month) is required'
+    });
+    return;
+  }
+
+  if (!row.status || !row.status.toString().trim()) {
+    errors.push({
+      sheet: 'RentalAgreements',
+      row: excelRow,
+      field: 'status',
+      value: row.status,
+      message: 'Status is required'
+    });
+    return;
+  }
+
+  // Check for duplicates
+  const existing = await db.query(
+    'SELECT id FROM rental_agreements WHERE tenant_id = $1 AND LOWER(TRIM(agreement_number)) = LOWER($2)',
+    [tenantId, row.agreement_number.toString().trim()]
+  );
+  if (existing.length > 0) {
+    duplicates.push({
+      sheet: 'RentalAgreements',
+      row: excelRow,
+      name: row.agreement_number.toString().trim(),
+      reason: 'Rental agreement with this number already exists'
+    });
+    return;
+  }
+
+  // Resolve foreign keys
+  const property = await db.query(
+    'SELECT id FROM properties WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+    [tenantId, row.property_name.toString().trim()]
+  );
+  if (property.length === 0) {
+    errors.push({
+      sheet: 'RentalAgreements',
+      row: excelRow,
+      field: 'property_name',
+      value: row.property_name,
+      message: `Property "${row.property_name}" not found in Properties`
+    });
+    return;
+  }
+
+  let ownerId = null;
+  if (row.owner_name && row.owner_name.toString().trim()) {
+    const owner = await db.query(
+      'SELECT id FROM contacts WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+      [tenantId, row.owner_name.toString().trim()]
+    );
+    if (owner.length === 0) {
+      errors.push({
+        sheet: 'RentalAgreements',
+        row: excelRow,
+        field: 'owner_name',
+        value: row.owner_name,
+        message: `Owner "${row.owner_name}" not found in Contacts`
+      });
+      return;
+    }
+    ownerId = owner[0].id;
+  }
+
+  let brokerId = null;
+  if (row.broker_name && row.broker_name.toString().trim()) {
+    const broker = await db.query(
+      'SELECT id FROM contacts WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+      [tenantId, row.broker_name.toString().trim()]
+    );
+    if (broker.length === 0) {
+      errors.push({
+        sheet: 'RentalAgreements',
+        row: excelRow,
+        field: 'broker_name',
+        value: row.broker_name,
+        message: `Broker "${row.broker_name}" not found in Contacts`
+      });
+      return;
+    }
+    brokerId = broker[0].id;
+  }
+
+  // Validate dates
+  const startDate = new Date(row.start_date.toString());
+  const endDate = new Date(row.end_date.toString());
+  if (isNaN(startDate.getTime())) {
+    errors.push({
+      sheet: 'RentalAgreements',
+      row: excelRow,
+      field: 'start_date',
+      value: row.start_date,
+      message: 'Invalid start date format'
+    });
+    return;
+  }
+  if (isNaN(endDate.getTime())) {
+    errors.push({
+      sheet: 'RentalAgreements',
+      row: excelRow,
+      field: 'end_date',
+      value: row.end_date,
+      message: 'Invalid end date format'
+    });
+    return;
+  }
+  if (endDate <= startDate) {
+    errors.push({
+      sheet: 'RentalAgreements',
+      row: excelRow,
+      field: 'end_date',
+      value: row.end_date,
+      message: 'End date must be after start date'
+    });
+    return;
+  }
+
+  // Validate rent due date (1-31)
+  const rentDueDate = parseInt(row.rent_due_date.toString());
+  if (isNaN(rentDueDate) || rentDueDate < 1 || rentDueDate > 31) {
+    errors.push({
+      sheet: 'RentalAgreements',
+      row: excelRow,
+      field: 'rent_due_date',
+      value: row.rent_due_date,
+      message: 'Rent due date must be between 1 and 31'
+    });
+    return;
+  }
+
+  validatedData.push({
+    agreement_number: row.agreement_number.toString().trim(),
+    property_id: property[0].id,
+    owner_id: ownerId,
+    broker_id: brokerId,
+    start_date: startDate.toISOString().split('T')[0],
+    end_date: endDate.toISOString().split('T')[0],
+    monthly_rent: parseFloat(row.monthly_rent.toString()) || 0,
+    rent_due_date: rentDueDate,
+    status: row.status.toString().trim(),
+    security_deposit: row.security_deposit ? parseFloat(row.security_deposit.toString()) || null : null,
+    broker_fee: row.broker_fee ? parseFloat(row.broker_fee.toString()) || null : null,
+    description: row.description ? row.description.toString().trim() : null
   });
 }
