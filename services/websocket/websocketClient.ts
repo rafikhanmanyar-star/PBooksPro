@@ -49,6 +49,14 @@ class WebSocketClientService {
         this.isConnecting = false;
         this.reconnectAttempts = 0;
         
+        // Clear only custom event listeners to prevent duplicates
+        // Don't remove system listeners like 'connect', 'disconnect', etc.
+        if (this.socket) {
+          this.listeners.forEach((callbacks, event) => {
+            this.socket?.removeAllListeners(event);
+          });
+        }
+        
         // Set up all registered listeners after connection
         this.listeners.forEach((callbacks, event) => {
           callbacks.forEach(callback => {
@@ -98,7 +106,14 @@ class WebSocketClientService {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set());
     }
-    this.listeners.get(event)!.add(callback);
+    
+    // Check if this callback is already registered to prevent duplicates
+    const callbacks = this.listeners.get(event)!;
+    if (callbacks.has(callback)) {
+      return; // Already registered, skip
+    }
+    
+    callbacks.add(callback);
 
     // If socket is already connected, register the listener immediately
     if (this.socket?.connected) {
