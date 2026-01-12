@@ -44,6 +44,7 @@ type ActionType = 'template' | 'export' | 'import' | null;
 const ImportExportWizard: React.FC = () => {
   const { dispatch } = useAppContext();
   const [currentStep, setCurrentStep] = useState<WizardStep>('choose');
+  const [stepHistory, setStepHistory] = useState<WizardStep[]>(['choose']);
   const [actionType, setActionType] = useState<ActionType>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState<string>('');
@@ -53,15 +54,48 @@ const ImportExportWizard: React.FC = () => {
 
   const goBack = () => dispatch({ type: 'SET_PAGE', payload: 'settings' });
 
+  const goToStep = (step: WizardStep) => {
+    setStepHistory(prev => [...prev, step]);
+    setCurrentStep(step);
+  };
+
+  const goToPreviousStep = () => {
+    if (stepHistory.length > 1) {
+      const newHistory = [...stepHistory];
+      newHistory.pop(); // Remove current step
+      const previousStep = newHistory[newHistory.length - 1];
+      setStepHistory(newHistory);
+      setCurrentStep(previousStep);
+    } else {
+      goBack(); // If no previous step, go back to settings
+    }
+  };
+
   const handleActionSelect = (action: ActionType) => {
     setActionType(action);
     if (action === 'template') {
-      setCurrentStep('template');
+      goToStep('template');
     } else if (action === 'export') {
-      setCurrentStep('export');
+      goToStep('export');
     } else if (action === 'import') {
-      setCurrentStep('import');
+      goToStep('import');
     }
+  };
+
+  const getStepTitle = (step: WizardStep): string => {
+    switch (step) {
+      case 'choose': return 'Choose Action';
+      case 'template': return 'Download Template';
+      case 'export': return 'Export Data';
+      case 'import': return 'Import Data';
+      case 'results': return 'Import Results';
+      default: return 'Import/Export Data';
+    }
+  };
+
+  const getBreadcrumb = (): string => {
+    const breadcrumbs = stepHistory.map(step => getStepTitle(step));
+    return breadcrumbs.join(' > ');
   };
 
   const handleDownloadTemplate = async () => {
@@ -69,19 +103,43 @@ const ImportExportWizard: React.FC = () => {
       setIsLoading(true);
       // Get base URL from environment or use default
       const baseUrl = import.meta.env.VITE_API_URL || 'https://pbookspro-api.onrender.com/api';
+      const token = localStorage.getItem('token') || '';
+      const tenantId = localStorage.getItem('tenantId') || '';
+      
+      if (!token || !tenantId) {
+        throw new Error('Authentication required. Please login again.');
+      }
+
       const response = await fetch(`${baseUrl}/data-import-export/template`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
-          'X-Tenant-ID': localStorage.getItem('tenantId') || ''
+          'Authorization': `Bearer ${token}`,
+          'X-Tenant-ID': tenantId
         }
       });
 
       if (!response.ok) {
-        throw new Error('Failed to download template');
+        // Try to parse error message from JSON response
+        let errorMessage = 'Failed to download template';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch (e) {
+          // If response is not JSON, use status text
+          errorMessage = response.statusText || `HTTP ${response.status}`;
+        }
+        throw new Error(errorMessage);
       }
 
       const blob = await response.blob();
+      
+      // Check if blob is actually an error (sometimes server returns JSON error as blob)
+      if (blob.type === 'application/json') {
+        const text = await blob.text();
+        const errorData = JSON.parse(text);
+        throw new Error(errorData.message || errorData.error || 'Failed to download template');
+      }
+
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -91,7 +149,8 @@ const ImportExportWizard: React.FC = () => {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (error: any) {
-      alert(`Error downloading template: ${error.message}`);
+      console.error('Template download error:', error);
+      alert(`Error downloading template: ${error.message || 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
@@ -102,19 +161,43 @@ const ImportExportWizard: React.FC = () => {
       setIsLoading(true);
       // Get base URL from environment or use default
       const baseUrl = import.meta.env.VITE_API_URL || 'https://pbookspro-api.onrender.com/api';
+      const token = localStorage.getItem('token') || '';
+      const tenantId = localStorage.getItem('tenantId') || '';
+      
+      if (!token || !tenantId) {
+        throw new Error('Authentication required. Please login again.');
+      }
+
       const response = await fetch(`${baseUrl}/data-import-export/export`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
-          'X-Tenant-ID': localStorage.getItem('tenantId') || ''
+          'Authorization': `Bearer ${token}`,
+          'X-Tenant-ID': tenantId
         }
       });
 
       if (!response.ok) {
-        throw new Error('Failed to export data');
+        // Try to parse error message from JSON response
+        let errorMessage = 'Failed to export data';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch (e) {
+          // If response is not JSON, use status text
+          errorMessage = response.statusText || `HTTP ${response.status}`;
+        }
+        throw new Error(errorMessage);
       }
 
       const blob = await response.blob();
+      
+      // Check if blob is actually an error (sometimes server returns JSON error as blob)
+      if (blob.type === 'application/json') {
+        const text = await blob.text();
+        const errorData = JSON.parse(text);
+        throw new Error(errorData.message || errorData.error || 'Failed to export data');
+      }
+
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -124,7 +207,8 @@ const ImportExportWizard: React.FC = () => {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (error: any) {
-      alert(`Error exporting data: ${error.message}`);
+      console.error('Export error:', error);
+      alert(`Error exporting data: ${error.message || 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
@@ -183,7 +267,7 @@ const ImportExportWizard: React.FC = () => {
       });
 
       setImportResult(result);
-      setCurrentStep('results');
+      goToStep('results');
     } catch (error: any) {
       alert(`Error importing data: ${error.message || 'Unknown error'}`);
     } finally {
@@ -193,6 +277,7 @@ const ImportExportWizard: React.FC = () => {
 
   const handleReset = () => {
     setCurrentStep('choose');
+    setStepHistory(['choose']);
     setActionType(null);
     setSelectedFile(null);
     setFileName('');
@@ -207,7 +292,10 @@ const ImportExportWizard: React.FC = () => {
     return (
       <div className="flex flex-col h-full bg-white">
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
-          <h1 className="text-2xl font-bold text-slate-800">Import/Export Data</h1>
+          <div className="flex-1">
+            <div className="text-sm text-slate-500 mb-1">Settings > Import/Export Data</div>
+            <h1 className="text-2xl font-bold text-slate-800">Import/Export Data</h1>
+          </div>
           <Button variant="ghost" onClick={goBack}>
             <div className="w-4 h-4">{ICONS.x}</div>
             <span className="hidden sm:inline">Close</span>
@@ -221,7 +309,7 @@ const ImportExportWizard: React.FC = () => {
               <p className="text-slate-600">Select what you would like to do with your data</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <button
                 onClick={() => handleActionSelect('template')}
                 className="p-6 border-2 border-slate-200 rounded-lg hover:border-green-500 hover:bg-green-50 transition-all text-left"
@@ -229,7 +317,7 @@ const ImportExportWizard: React.FC = () => {
                 <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
                   <div className="w-6 h-6 text-blue-600">{ICONS.download}</div>
                 </div>
-                <h3 className="font-semibold text-slate-800 mb-2">Download Template</h3>
+                <h3 className="font-semibold text-slate-800 mb-2">Download Template (Optional)</h3>
                 <p className="text-sm text-slate-600">Get an empty Excel template with all required columns</p>
               </button>
 
@@ -246,14 +334,23 @@ const ImportExportWizard: React.FC = () => {
 
               <button
                 onClick={() => handleActionSelect('import')}
-                className="p-6 border-2 border-slate-200 rounded-lg hover:border-green-500 hover:bg-green-50 transition-all text-left"
+                className="p-6 border-2 border-slate-200 rounded-lg hover:border-green-500 hover:bg-green-50 transition-all text-left border-green-500 bg-green-50"
               >
                 <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
                   <div className="w-6 h-6 text-purple-600">{ICONS.upload}</div>
                 </div>
                 <h3 className="font-semibold text-slate-800 mb-2">Import Data</h3>
-                <p className="text-sm text-slate-600">Upload Excel file to import new data</p>
+                <p className="text-sm text-slate-600">Upload Excel file to import new data directly</p>
               </button>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h4 className="font-semibold text-blue-900 mb-2">💡 Quick Start</h4>
+              <p className="text-sm text-blue-800">
+                You can <strong>directly import your Excel file</strong> without downloading a template first. 
+                Just make sure your Excel file has sheets named: <strong>Contacts, Projects, Buildings, Properties, Units, Categories, Accounts</strong> 
+                with the correct column headers. Click "Import Data" to get started.
+              </p>
             </div>
           </div>
         </div>
@@ -266,9 +363,12 @@ const ImportExportWizard: React.FC = () => {
     return (
       <div className="flex flex-col h-full bg-white">
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
-          <h1 className="text-2xl font-bold text-slate-800">Download Template</h1>
-          <Button variant="ghost" onClick={handleReset}>
-            <div className="w-4 h-4">{ICONS.x}</div>
+          <div className="flex-1">
+            <div className="text-sm text-slate-500 mb-1">Settings > {getBreadcrumb()}</div>
+            <h1 className="text-2xl font-bold text-slate-800">Download Template</h1>
+          </div>
+          <Button variant="ghost" onClick={goToPreviousStep}>
+            <div className="w-4 h-4">{ICONS.chevronLeft}</div>
             <span className="hidden sm:inline">Back</span>
           </Button>
         </div>
@@ -301,9 +401,12 @@ const ImportExportWizard: React.FC = () => {
     return (
       <div className="flex flex-col h-full bg-white">
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
-          <h1 className="text-2xl font-bold text-slate-800">Export Current Data</h1>
-          <Button variant="ghost" onClick={handleReset}>
-            <div className="w-4 h-4">{ICONS.x}</div>
+          <div className="flex-1">
+            <div className="text-sm text-slate-500 mb-1">Settings > {getBreadcrumb()}</div>
+            <h1 className="text-2xl font-bold text-slate-800">Export Current Data</h1>
+          </div>
+          <Button variant="ghost" onClick={goToPreviousStep}>
+            <div className="w-4 h-4">{ICONS.chevronLeft}</div>
             <span className="hidden sm:inline">Back</span>
           </Button>
         </div>
@@ -336,9 +439,12 @@ const ImportExportWizard: React.FC = () => {
     return (
       <div className="flex flex-col h-full bg-white">
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
-          <h1 className="text-2xl font-bold text-slate-800">Import Data</h1>
-          <Button variant="ghost" onClick={handleReset}>
-            <div className="w-4 h-4">{ICONS.x}</div>
+          <div className="flex-1">
+            <div className="text-sm text-slate-500 mb-1">Settings > {getBreadcrumb()}</div>
+            <h1 className="text-2xl font-bold text-slate-800">Import Data</h1>
+          </div>
+          <Button variant="ghost" onClick={goToPreviousStep}>
+            <div className="w-4 h-4">{ICONS.chevronLeft}</div>
             <span className="hidden sm:inline">Back</span>
           </Button>
         </div>
@@ -347,10 +453,28 @@ const ImportExportWizard: React.FC = () => {
           <div className="max-w-2xl mx-auto">
             <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
               <h3 className="font-semibold text-purple-900 mb-2">Import Information</h3>
-              <p className="text-sm text-purple-800">
+              <p className="text-sm text-purple-800 mb-2">
                 Upload an Excel file with your data. The system will validate all rows before making any changes.
                 If there are any errors, you'll need to correct them in Excel and re-upload.
               </p>
+              <p className="text-sm text-purple-800">
+                <strong>Required sheets:</strong> Contacts, Projects, Buildings, Properties, Units, Categories, Accounts
+              </p>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-6">
+              <h4 className="font-semibold text-slate-800 mb-2">Need a template? (Optional)</h4>
+              <p className="text-sm text-slate-700 mb-3">
+                If you don't have a properly formatted Excel file, you can download a template with all required columns.
+              </p>
+              <Button
+                variant="outline"
+                onClick={handleDownloadTemplate}
+                disabled={isLoading}
+                className="w-full"
+              >
+                {isLoading ? 'Downloading...' : 'Download Template'}
+              </Button>
             </div>
 
             <input
@@ -396,10 +520,13 @@ const ImportExportWizard: React.FC = () => {
     return (
       <div className="flex flex-col h-full bg-white">
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
-          <h1 className="text-2xl font-bold text-slate-800">Import Results</h1>
-          <Button variant="ghost" onClick={handleReset}>
-            <div className="w-4 h-4">{ICONS.x}</div>
-            <span className="hidden sm:inline">Close</span>
+          <div className="flex-1">
+            <div className="text-sm text-slate-500 mb-1">Settings > {getBreadcrumb()}</div>
+            <h1 className="text-2xl font-bold text-slate-800">Import Results</h1>
+          </div>
+          <Button variant="ghost" onClick={goToPreviousStep}>
+            <div className="w-4 h-4">{ICONS.chevronLeft}</div>
+            <span className="hidden sm:inline">Back</span>
           </Button>
         </div>
 

@@ -11,11 +11,12 @@ export interface TemplateOptions {
  * Each sheet contains headers and optionally sample data
  */
 export async function generateTemplate(options: TemplateOptions): Promise<Buffer> {
-  const workbook = XLSX.utils.book_new();
-  const db = getDatabaseService();
+  try {
+    const workbook = XLSX.utils.book_new();
+    const db = getDatabaseService();
 
-  // Define sheet structures
-  const sheets = [
+    // Define sheet structures
+    const sheets = [
     {
       name: 'Contacts',
       headers: ['name', 'type', 'description', 'contact_no', 'company_name', 'address'],
@@ -176,7 +177,11 @@ export async function generateTemplate(options: TemplateOptions): Promise<Buffer
     XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name);
   }
 
-  // Convert to buffer
-  const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-  return buffer;
+    // Convert to buffer
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    return buffer;
+  } catch (error: any) {
+    console.error('Error in generateTemplate:', error);
+    throw new Error(`Failed to generate template: ${error.message || 'Unknown error'}`);
+  }
 }
