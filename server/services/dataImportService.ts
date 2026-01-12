@@ -160,7 +160,7 @@ export async function importData(
         'SELECT id FROM contacts WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
         [tenantId, contact.name.trim()]
       );
-      if (existing.length > 0) {
+      if (existing.rows.length > 0) {
         imported.contacts.skipped++;
         continue;
       }
@@ -180,7 +180,7 @@ export async function importData(
         'SELECT id FROM projects WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
         [tenantId, project.name.trim()]
       );
-      if (existing.length > 0) {
+      if (existing.rows.length > 0) {
         imported.projects.skipped++;
         continue;
       }
@@ -200,7 +200,7 @@ export async function importData(
         'SELECT id FROM buildings WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
         [tenantId, building.name.trim()]
       );
-      if (existing.length > 0) {
+      if (existing.rows.length > 0) {
         imported.buildings.skipped++;
         continue;
       }
@@ -220,7 +220,7 @@ export async function importData(
         'SELECT id FROM properties WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
         [tenantId, property.name.trim()]
       );
-      if (existing.length > 0) {
+      if (existing.rows.length > 0) {
         imported.properties.skipped++;
         continue;
       }
@@ -240,7 +240,7 @@ export async function importData(
         'SELECT id FROM units WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
         [tenantId, unit.name.trim()]
       );
-      if (existing.length > 0) {
+      if (existing.rows.length > 0) {
         imported.units.skipped++;
         continue;
       }
@@ -260,7 +260,7 @@ export async function importData(
         'SELECT id FROM categories WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2) AND type = $3',
         [tenantId, category.name.trim(), category.type]
       );
-      if (existing.length > 0) {
+      if (existing.rows.length > 0) {
         imported.categories.skipped++;
         continue;
       }
@@ -280,7 +280,7 @@ export async function importData(
         'SELECT id FROM accounts WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2) AND type = $3',
         [tenantId, account.name.trim(), account.type]
       );
-      if (existing.length > 0) {
+      if (existing.rows.length > 0) {
         imported.accounts.skipped++;
         continue;
       }

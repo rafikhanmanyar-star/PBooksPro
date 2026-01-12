@@ -93,9 +93,18 @@ const ImportExportWizard: React.FC = () => {
     }
   };
 
-  const getBreadcrumb = (): string => {
+  const getBreadcrumb = (): React.ReactNode => {
     const breadcrumbs = stepHistory.map(step => getStepTitle(step));
-    return breadcrumbs.join(' > ');
+    return (
+      <>
+        {breadcrumbs.map((title, index) => (
+          <React.Fragment key={index}>
+            {index > 0 && <span className="mx-1">›</span>}
+            <span>{title}</span>
+          </React.Fragment>
+        ))}
+      </>
+    );
   };
 
   const handleDownloadTemplate = async () => {
@@ -293,7 +302,7 @@ const ImportExportWizard: React.FC = () => {
       <div className="flex flex-col h-full bg-white">
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
           <div className="flex-1">
-            <div className="text-sm text-slate-500 mb-1">Settings > Import/Export Data</div>
+            <div className="text-sm text-slate-500 mb-1">Settings › Import/Export Data</div>
             <h1 className="text-2xl font-bold text-slate-800">Import/Export Data</h1>
           </div>
           <Button variant="ghost" onClick={goBack}>
@@ -364,7 +373,9 @@ const ImportExportWizard: React.FC = () => {
       <div className="flex flex-col h-full bg-white">
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
           <div className="flex-1">
-            <div className="text-sm text-slate-500 mb-1">Settings > {getBreadcrumb()}</div>
+            <div className="text-sm text-slate-500 mb-1">
+              Settings › {getBreadcrumb()}
+            </div>
             <h1 className="text-2xl font-bold text-slate-800">Download Template</h1>
           </div>
           <Button variant="ghost" onClick={goToPreviousStep}>
@@ -402,7 +413,9 @@ const ImportExportWizard: React.FC = () => {
       <div className="flex flex-col h-full bg-white">
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
           <div className="flex-1">
-            <div className="text-sm text-slate-500 mb-1">Settings > {getBreadcrumb()}</div>
+            <div className="text-sm text-slate-500 mb-1">
+              Settings › {getBreadcrumb()}
+            </div>
             <h1 className="text-2xl font-bold text-slate-800">Export Current Data</h1>
           </div>
           <Button variant="ghost" onClick={goToPreviousStep}>
@@ -440,7 +453,9 @@ const ImportExportWizard: React.FC = () => {
       <div className="flex flex-col h-full bg-white">
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
           <div className="flex-1">
-            <div className="text-sm text-slate-500 mb-1">Settings > {getBreadcrumb()}</div>
+            <div className="text-sm text-slate-500 mb-1">
+              Settings › {getBreadcrumb()}
+            </div>
             <h1 className="text-2xl font-bold text-slate-800">Import Data</h1>
           </div>
           <Button variant="ghost" onClick={goToPreviousStep}>
@@ -521,7 +536,9 @@ const ImportExportWizard: React.FC = () => {
       <div className="flex flex-col h-full bg-white">
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
           <div className="flex-1">
-            <div className="text-sm text-slate-500 mb-1">Settings > {getBreadcrumb()}</div>
+            <div className="text-sm text-slate-500 mb-1">
+              Settings › {getBreadcrumb()}
+            </div>
             <h1 className="text-2xl font-bold text-slate-800">Import Results</h1>
           </div>
           <Button variant="ghost" onClick={goToPreviousStep}>
