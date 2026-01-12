@@ -28,8 +28,8 @@ export async function generateTemplate(options: TemplateOptions): Promise<Buffer
     const workbook = XLSX.utils.book_new();
     const db = getDatabaseService();
 
-  // Define sheet structures
-  const allSheets = [
+    // Define sheet structures
+    const allSheets = [
     {
       name: 'Contacts',
       headers: ['name', 'type', 'description', 'contact_no', 'company_name', 'address'],
@@ -190,12 +190,14 @@ export async function generateTemplate(options: TemplateOptions): Promise<Buffer
   ];
 
   // Filter to single sheet if requested
-  const sheets = options.sheetName 
-    ? allSheets.filter(s => s.name === options.sheetName)
-    : allSheets;
-
-  if (options.sheetName && sheets.length === 0) {
-    throw new Error(`Invalid sheet name: ${options.sheetName}`);
+  let sheets = allSheets;
+  if (options.sheetName) {
+    sheets = allSheets.filter(s => s.name === options.sheetName);
+    if (sheets.length === 0) {
+      const availableSheets = allSheets.map(s => s.name).join(', ');
+      console.error(`Template generation error: Sheet "${options.sheetName}" not found. Available sheets: ${availableSheets}`);
+      throw new Error(`Invalid sheet name: "${options.sheetName}". Available sheets: ${availableSheets}`);
+    }
   }
 
   // Generate each sheet
