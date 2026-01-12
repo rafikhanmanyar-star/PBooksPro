@@ -182,15 +182,15 @@ const ImportExportWizard: React.FC = () => {
         throw new Error(errorData.message || errorData.error || 'Failed to download template');
       }
 
-      const url = window.URL.createObjectURL(blob);
+      const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
+      a.href = blobUrl;
       a.download = sheetName 
         ? `import-template-${sheetName.toLowerCase()}.xlsx`
         : 'import-template.xlsx';
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(blobUrl);
       document.body.removeChild(a);
     } catch (error: any) {
       console.error('Template download error:', error);
