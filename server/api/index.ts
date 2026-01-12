@@ -74,6 +74,7 @@ import errorLogRouter from './routes/error-log.js';
 import appSettingsRouter from './routes/app-settings.js';
 import pmCycleAllocationsRouter from './routes/pm-cycle-allocations.js';
 import dataManagementRouter from './routes/data-management.js';
+import dataImportExportRouter from './routes/data-import-export.js';
 import appInfoRouter from './routes/app-info.js';
 import whatsappRouter from './routes/whatsapp.js';
 import whatsappWebhookRouter from './routes/whatsapp-webhook.js';
@@ -652,6 +653,7 @@ app.use('/api/error-log', errorLogRouter); // Error Log
 app.use('/api/app-settings', appSettingsRouter); // App Settings
 app.use('/api/pm-cycle-allocations', pmCycleAllocationsRouter); // PM Cycle Allocations
 app.use('/api/data-management', dataManagementRouter); // Data Management (Admin only)
+app.use('/api/data-import-export', dataImportExportRouter); // Data Import/Export
 app.use('/api/whatsapp', whatsappRouter); // WhatsApp API (requires authentication)
 
 // Error handling middleware

@@ -1,3 +1,14 @@
+/**
+ * @deprecated This component is deprecated. Use ImportExportWizard instead.
+ * This file is kept for reference only. The new import/export system provides:
+ * - Wizard-style UI
+ * - All-or-nothing validation
+ * - Better error handling
+ * - Unified template/export/import flow
+ * 
+ * To use the new system, navigate to Settings > Data Management > Import/Export
+ * or use the 'import' page which now loads ImportExportWizard.
+ */
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Page, ImportLogEntry } from '../../types';

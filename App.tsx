@@ -31,7 +31,9 @@ import Loading from './components/ui/Loading';
 const DashboardPage = React.lazy(() => import('./components/dashboard/DashboardPage'));
 const EnhancedLedgerPage = React.lazy(() => import('./components/transactions/EnhancedLedgerPage'));
 const SettingsPage = React.lazy(() => import('./components/settings/SettingsPage'));
-const ImportPage = React.lazy(() => import('./components/settings/ImportPage'));
+const ImportExportWizard = React.lazy(() => import('./components/settings/ImportExportWizard'));
+// DEPRECATED: Old ImportPage kept for reference but not used
+// const ImportPage = React.lazy(() => import('./components/settings/ImportPage'));
 const RentalManagementPage = React.lazy(() => import('./components/rentalManagement/RentalManagementPage'));
 const ProjectManagementPage = React.lazy(() => import('./components/projectManagement/ProjectManagementPage'));
 const InvestmentManagementPage = React.lazy(() => import('./components/investmentManagement/InvestmentManagementPage'));
@@ -369,7 +371,7 @@ const App: React.FC = () => {
             {renderPersistentPage('PM_CONFIG', <PMConfigPage />)}
             {renderPersistentPage('PAYROLL', <GlobalPayrollPage />)}
             {renderPersistentPage('SETTINGS', <SettingsPage />)}
-            {renderPersistentPage('IMPORT', <ImportPage />)}
+            {renderPersistentPage('IMPORT', <ImportExportWizard />)}
           </ErrorBoundary>
 
           {/* Loading Overlay - Shows when navigating between pages (excluded for PROJECT, RENTAL, INVESTMENT, and PM_CONFIG groups to avoid duplicates with Suspense) */}
