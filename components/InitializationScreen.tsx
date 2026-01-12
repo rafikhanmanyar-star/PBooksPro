@@ -58,7 +58,7 @@ const APP_FEATURES = [
  * InitializationScreen Component
  * 
  * A premium, full-screen loading screen that appears while the application initializes.
- * Features animated gradient background, rotating feature highlights, and smooth progress bar.
+ * Features gradient background, rotating feature highlights, and smooth progress bar.
  * 
  * @param initMessage - Loading status message (not displayed but kept for compatibility)
  * @param initProgress - Loading progress (0-100)
@@ -98,11 +98,6 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({
             className={`fixed inset-0 z-50 flex flex-col bg-gradient-to-br from-indigo-600 via-blue-600 to-cyan-500 overflow-hidden transition-opacity duration-500 ${
                 isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
             }`}
-            style={{
-                background: 'linear-gradient(135deg, #4f46e5 0%, #2563eb 25%, #0891b2 50%, #06b6d4 75%, #22d3ee 100%)',
-                backgroundSize: '400% 400%',
-                animation: 'gradientShift 20s ease infinite'
-            }}
         >
             {/* Main Content Container */}
             <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 text-center">
@@ -159,15 +154,6 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({
 
             {/* Custom Animations */}
             <style>{`
-                @keyframes gradientShift {
-                    0%, 100% {
-                        background-position: 0% 50%;
-                    }
-                    50% {
-                        background-position: 100% 50%;
-                    }
-                }
-
                 @keyframes fade-in {
                     from {
                         opacity: 0;
