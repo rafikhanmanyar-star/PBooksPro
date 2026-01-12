@@ -4,6 +4,21 @@ import { ICONS } from '../../constants';
 import Button from '../ui/Button';
 import { apiClient } from '../../services/api/client';
 
+interface SheetResult {
+  sheet: string;
+  success: boolean;
+  imported: number;
+  skipped: number;
+  errors: number;
+  errorDetails?: Array<{
+    sheet: string;
+    row: number;
+    field: string;
+    value: any;
+    message: string;
+  }>;
+}
+
 interface ImportResult {
   success: boolean;
   canProceed: boolean;
@@ -20,6 +35,7 @@ interface ImportResult {
     name: string;
     reason: string;
   }>;
+  sheetResults?: SheetResult[];
   imported?: {
     contacts: { count: number; skipped: number };
     projects: { count: number; skipped: number };
@@ -112,8 +128,8 @@ const ImportExportWizard: React.FC = () => {
       setIsLoading(true);
       // Get base URL from environment or use default
       const baseUrl = import.meta.env.VITE_API_URL || 'https://pbookspro-api.onrender.com/api';
-      const token = localStorage.getItem('token') || '';
-      const tenantId = localStorage.getItem('tenantId') || '';
+      const token = localStorage.getItem('auth_token') || '';
+      const tenantId = localStorage.getItem('tenant_id') || '';
       
       if (!token || !tenantId) {
         throw new Error('Authentication required. Please login again.');
@@ -170,8 +186,8 @@ const ImportExportWizard: React.FC = () => {
       setIsLoading(true);
       // Get base URL from environment or use default
       const baseUrl = import.meta.env.VITE_API_URL || 'https://pbookspro-api.onrender.com/api';
-      const token = localStorage.getItem('token') || '';
-      const tenantId = localStorage.getItem('tenantId') || '';
+      const token = localStorage.getItem('auth_token') || '';
+      const tenantId = localStorage.getItem('tenant_id') || '';
       
       if (!token || !tenantId) {
         throw new Error('Authentication required. Please login again.');
@@ -549,6 +565,64 @@ const ImportExportWizard: React.FC = () => {
 
         <div className="flex-1 overflow-y-auto p-6">
           <div className="max-w-4xl mx-auto">
+            {/* Sheet-wise Results */}
+            {importResult.sheetResults && importResult.sheetResults.length > 0 && (
+              <div className="mb-6">
+                <h3 className="font-semibold text-slate-800 mb-3">Sheet-wise Import Results</h3>
+                <div className="space-y-3">
+                  {importResult.sheetResults.map((sheetResult, idx) => (
+                    <div
+                      key={idx}
+                      className={`border rounded-lg p-4 ${
+                        sheetResult.success
+                          ? 'bg-green-50 border-green-200'
+                          : 'bg-red-50 border-red-200'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-semibold text-slate-800">{sheetResult.sheet}</h4>
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                            sheetResult.success
+                              ? 'bg-green-200 text-green-800'
+                              : 'bg-red-200 text-red-800'
+                          }`}
+                        >
+                          {sheetResult.success ? '✓ Success' : '✗ Failed'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4 text-sm">
+                        <div>
+                          <span className="text-slate-600">Imported:</span>{' '}
+                          <span className="font-semibold text-green-700">{sheetResult.imported}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-600">Skipped:</span>{' '}
+                          <span className="font-semibold text-amber-700">{sheetResult.skipped}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-600">Errors:</span>{' '}
+                          <span className="font-semibold text-red-700">{sheetResult.errors}</span>
+                        </div>
+                      </div>
+                      {sheetResult.errorDetails && sheetResult.errorDetails.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-red-200">
+                          <div className="text-xs text-red-700 space-y-1">
+                            {sheetResult.errorDetails.map((error, errorIdx) => (
+                              <div key={errorIdx}>
+                                {error.row > 0 && `Row ${error.row}: `}
+                                {error.message}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {hasErrors ? (
               <>
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">

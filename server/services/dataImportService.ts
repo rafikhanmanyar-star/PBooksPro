@@ -16,11 +16,21 @@ export interface DuplicateEntry {
   reason: string;
 }
 
+export interface SheetResult {
+  sheet: string;
+  success: boolean;
+  imported: number;
+  skipped: number;
+  errors: number;
+  errorDetails?: ValidationError[];
+}
+
 export interface ImportResult {
   success: boolean;
   canProceed: boolean;
   validationErrors: ValidationError[];
   duplicates: DuplicateEntry[];
+  sheetResults?: SheetResult[];
   imported?: {
     contacts: { count: number; skipped: number };
     projects: { count: number; skipped: number };
@@ -58,18 +68,27 @@ export async function importData(
   let errorRows = 0;
   let duplicateRows = 0;
 
-  // Required sheets
-  const requiredSheets = ['Contacts', 'Projects', 'Buildings', 'Properties', 'Units', 'Categories', 'Accounts'];
+  // Define import order with dependencies
+  // Order: Accounts → Contacts → Categories → Projects → Buildings → Units → Properties
+  const importOrder = [
+    { name: 'Accounts', dependencies: [] },
+    { name: 'Contacts', dependencies: [] },
+    { name: 'Categories', dependencies: [] },
+    { name: 'Projects', dependencies: [] },
+    { name: 'Buildings', dependencies: [] },
+    { name: 'Units', dependencies: ['Projects', 'Contacts'] }, // Contacts is optional
+    { name: 'Properties', dependencies: ['Contacts', 'Buildings'] }
+  ];
   
   // Validate sheet structure
-  for (const sheetName of requiredSheets) {
-    if (!workbook.SheetNames.includes(sheetName)) {
+  for (const sheet of importOrder) {
+    if (!workbook.SheetNames.includes(sheet.name)) {
       validationErrors.push({
-        sheet: sheetName,
+        sheet: sheet.name,
         row: 0,
         field: 'sheet',
         value: null,
-        message: `Required sheet "${sheetName}" is missing`
+        message: `Required sheet "${sheet.name}" is missing`
       });
     }
   }
@@ -91,6 +110,7 @@ export async function importData(
   }
 
   // Validation phase - collect all errors before any DB writes
+  // Process sheets in order and track which sheets have errors
   const validatedData: {
     contacts: any[];
     projects: any[];
@@ -109,14 +129,38 @@ export async function importData(
     accounts: []
   };
 
-  // Validate and process each sheet
-  await validateSheet('Contacts', workbook, db, tenantId, validatedData, validationErrors, duplicates);
-  await validateSheet('Projects', workbook, db, tenantId, validatedData, validationErrors, duplicates);
-  await validateSheet('Buildings', workbook, db, tenantId, validatedData, validationErrors, duplicates);
-  await validateSheet('Properties', workbook, db, tenantId, validatedData, validationErrors, duplicates);
-  await validateSheet('Units', workbook, db, tenantId, validatedData, validationErrors, duplicates);
-  await validateSheet('Categories', workbook, db, tenantId, validatedData, validationErrors, duplicates);
-  await validateSheet('Accounts', workbook, db, tenantId, validatedData, validationErrors, duplicates);
+  const sheetErrors: { [sheetName: string]: ValidationError[] } = {};
+  const failedSheets = new Set<string>();
+
+  // Validate sheets in order
+  for (const sheet of importOrder) {
+    // Check if dependencies failed
+    const dependencyFailed = sheet.dependencies.some(dep => failedSheets.has(dep));
+    if (dependencyFailed) {
+      // Skip validation for this sheet since dependency failed
+      const depList = sheet.dependencies.filter(d => failedSheets.has(d)).join(', ');
+      validationErrors.push({
+        sheet: sheet.name,
+        row: 0,
+        field: 'dependencies',
+        value: null,
+        message: `Cannot import ${sheet.name} because dependencies failed: ${depList}`
+      });
+      failedSheets.add(sheet.name);
+      continue;
+    }
+
+    // Validate this sheet
+    const beforeErrorCount = validationErrors.length;
+    await validateSheet(sheet.name, workbook, db, tenantId, validatedData, validationErrors, duplicates);
+    
+    // Check if this sheet has errors
+    const sheetErrorCount = validationErrors.length - beforeErrorCount;
+    if (sheetErrorCount > 0) {
+      sheetErrors[sheet.name] = validationErrors.slice(beforeErrorCount);
+      failedSheets.add(sheet.name);
+    }
+  }
 
   // Count rows
   totalRows = Object.values(validatedData).reduce((sum, arr) => sum + arr.length, 0);
@@ -125,11 +169,26 @@ export async function importData(
 
   // Decision point: If ANY validation errors exist, STOP
   if (validationErrors.length > 0) {
+    // Create sheet-wise results
+    const sheetResults: SheetResult[] = importOrder.map(sheet => {
+      const errors = sheetErrors[sheet.name] || [];
+      const hasErrors = failedSheets.has(sheet.name);
+      return {
+        sheet: sheet.name,
+        success: !hasErrors && errors.length === 0,
+        imported: 0,
+        skipped: 0,
+        errors: errors.length,
+        errorDetails: errors.length > 0 ? errors : undefined
+      };
+    });
+
     return {
       success: false,
       canProceed: false,
       validationErrors,
       duplicates,
+      sheetResults,
       summary: {
         totalRows,
         validRows: totalRows - errorRows - duplicateRows,
@@ -139,7 +198,7 @@ export async function importData(
     };
   }
 
-  // Import phase - only if validation passed completely
+  // Import phase - process sheets in order, stop if dependency fails
   const imported = {
     contacts: { count: 0, skipped: 0 },
     projects: { count: 0, skipped: 0 },
@@ -150,148 +209,238 @@ export async function importData(
     accounts: { count: 0, skipped: 0 }
   };
 
+  const sheetResults: SheetResult[] = [];
   let importedRows = 0;
+  const importFailedSheets = new Set<string>();
 
   // Use transaction for atomicity
   await db.transaction(async (client) => {
-    // Import Contacts
-    for (const contact of validatedData.contacts) {
-      const existing = await client.query(
-        'SELECT id FROM contacts WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
-        [tenantId, contact.name.trim()]
-      );
-      if (existing.rows.length > 0) {
-        imported.contacts.skipped++;
+    // Import in order: Accounts → Contacts → Categories → Projects → Buildings → Units → Properties
+    for (const sheet of importOrder) {
+      // Check if dependencies failed
+      const dependencyFailed = sheet.dependencies.some(dep => importFailedSheets.has(dep));
+      if (dependencyFailed) {
+        const depList = sheet.dependencies.filter(d => importFailedSheets.has(d)).join(', ');
+        sheetResults.push({
+          sheet: sheet.name,
+          success: false,
+          imported: 0,
+          skipped: 0,
+          errors: 0,
+          errorDetails: [{
+            sheet: sheet.name,
+            row: 0,
+            field: 'dependencies',
+            value: null,
+            message: `Skipped ${sheet.name} because dependencies failed: ${depList}`
+          }]
+        });
+        importFailedSheets.add(sheet.name);
         continue;
       }
-      const id = `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      await client.query(
-        `INSERT INTO contacts (id, tenant_id, name, type, description, contact_no, company_name, address, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
-        [id, tenantId, contact.name.trim(), contact.type, contact.description || null, contact.contact_no || null, contact.company_name || null, contact.address || null]
-      );
-      imported.contacts.count++;
-      importedRows++;
-    }
 
-    // Import Projects
-    for (const project of validatedData.projects) {
-      const existing = await client.query(
-        'SELECT id FROM projects WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
-        [tenantId, project.name.trim()]
-      );
-      if (existing.rows.length > 0) {
-        imported.projects.skipped++;
-        continue;
-      }
-      const id = `project_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      await client.query(
-        `INSERT INTO projects (id, tenant_id, name, description, color, status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`,
-        [id, tenantId, project.name.trim(), project.description || null, project.color || null, project.status || null]
-      );
-      imported.projects.count++;
-      importedRows++;
-    }
+      // Import this sheet
+      let sheetImported = 0;
+      let sheetSkipped = 0;
+      let sheetErrors: ValidationError[] = [];
 
-    // Import Buildings
-    for (const building of validatedData.buildings) {
-      const existing = await client.query(
-        'SELECT id FROM buildings WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
-        [tenantId, building.name.trim()]
-      );
-      if (existing.rows.length > 0) {
-        imported.buildings.skipped++;
-        continue;
-      }
-      const id = `building_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      await client.query(
-        `INSERT INTO buildings (id, tenant_id, name, description, color, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
-        [id, tenantId, building.name.trim(), building.description || null, building.color || null]
-      );
-      imported.buildings.count++;
-      importedRows++;
-    }
+      try {
+        switch (sheet.name) {
+          case 'Accounts':
+            for (const account of validatedData.accounts) {
+              const existing = await client.query(
+                'SELECT id FROM accounts WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2) AND type = $3',
+                [tenantId, account.name.trim(), account.type]
+              );
+              if (existing.rows.length > 0) {
+                imported.accounts.skipped++;
+                sheetSkipped++;
+                continue;
+              }
+              const accountId = `account_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              await client.query(
+                `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, parent_account_id, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
+                [accountId, tenantId, account.name.trim(), account.type, account.balance || 0, account.is_permanent || false, account.description || null, account.parent_account_id || null]
+              );
+              imported.accounts.count++;
+              sheetImported++;
+              importedRows++;
+            }
+            break;
 
-    // Import Properties
-    for (const property of validatedData.properties) {
-      const existing = await client.query(
-        'SELECT id FROM properties WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
-        [tenantId, property.name.trim()]
-      );
-      if (existing.rows.length > 0) {
-        imported.properties.skipped++;
-        continue;
-      }
-      const id = `property_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      await client.query(
-        `INSERT INTO properties (id, tenant_id, name, owner_id, building_id, description, monthly_service_charge, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
-        [id, tenantId, property.name.trim(), property.owner_id, property.building_id, property.description || null, property.monthly_service_charge || null]
-      );
-      imported.properties.count++;
-      importedRows++;
-    }
+          case 'Contacts':
+            for (const contact of validatedData.contacts) {
+              const existing = await client.query(
+                'SELECT id FROM contacts WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+                [tenantId, contact.name.trim()]
+              );
+              if (existing.rows.length > 0) {
+                imported.contacts.skipped++;
+                sheetSkipped++;
+                continue;
+              }
+              const id = `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              await client.query(
+                `INSERT INTO contacts (id, tenant_id, name, type, description, contact_no, company_name, address, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
+                [id, tenantId, contact.name.trim(), contact.type, contact.description || null, contact.contact_no || null, contact.company_name || null, contact.address || null]
+              );
+              imported.contacts.count++;
+              sheetImported++;
+              importedRows++;
+            }
+            break;
 
-    // Import Units
-    for (const unit of validatedData.units) {
-      const existing = await client.query(
-        'SELECT id FROM units WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
-        [tenantId, unit.name.trim()]
-      );
-      if (existing.rows.length > 0) {
-        imported.units.skipped++;
-        continue;
-      }
-      const id = `unit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      await client.query(
-        `INSERT INTO units (id, tenant_id, name, project_id, contact_id, sale_price, description, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
-        [id, tenantId, unit.name.trim(), unit.project_id, unit.contact_id || null, unit.sale_price || null, unit.description || null]
-      );
-      imported.units.count++;
-      importedRows++;
-    }
+          case 'Categories':
+            for (const category of validatedData.categories) {
+              const existing = await client.query(
+                'SELECT id FROM categories WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2) AND type = $3',
+                [tenantId, category.name.trim(), category.type]
+              );
+              if (existing.rows.length > 0) {
+                imported.categories.skipped++;
+                sheetSkipped++;
+                continue;
+              }
+              const id = `category_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              await client.query(
+                `INSERT INTO categories (id, tenant_id, name, type, description, is_permanent, is_rental, parent_category_id, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
+                [id, tenantId, category.name.trim(), category.type, category.description || null, category.is_permanent || false, category.is_rental || false, category.parent_category_id || null]
+              );
+              imported.categories.count++;
+              sheetImported++;
+              importedRows++;
+            }
+            break;
 
-    // Import Categories
-    for (const category of validatedData.categories) {
-      const existing = await client.query(
-        'SELECT id FROM categories WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2) AND type = $3',
-        [tenantId, category.name.trim(), category.type]
-      );
-      if (existing.rows.length > 0) {
-        imported.categories.skipped++;
-        continue;
-      }
-      const id = `category_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      await client.query(
-        `INSERT INTO categories (id, tenant_id, name, type, description, is_permanent, is_rental, parent_category_id, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
-        [id, tenantId, category.name.trim(), category.type, category.description || null, category.is_permanent || false, category.is_rental || false, category.parent_category_id || null]
-      );
-      imported.categories.count++;
-      importedRows++;
-    }
+          case 'Projects':
+            for (const project of validatedData.projects) {
+              const existing = await client.query(
+                'SELECT id FROM projects WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+                [tenantId, project.name.trim()]
+              );
+              if (existing.rows.length > 0) {
+                imported.projects.skipped++;
+                sheetSkipped++;
+                continue;
+              }
+              const id = `project_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              await client.query(
+                `INSERT INTO projects (id, tenant_id, name, description, color, status, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`,
+                [id, tenantId, project.name.trim(), project.description || null, project.color || null, project.status || null]
+              );
+              imported.projects.count++;
+              sheetImported++;
+              importedRows++;
+            }
+            break;
 
-    // Import Accounts
-    for (const account of validatedData.accounts) {
-      const existing = await client.query(
-        'SELECT id FROM accounts WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2) AND type = $3',
-        [tenantId, account.name.trim(), account.type]
-      );
-      if (existing.rows.length > 0) {
-        imported.accounts.skipped++;
-        continue;
+          case 'Buildings':
+            for (const building of validatedData.buildings) {
+              const existing = await client.query(
+                'SELECT id FROM buildings WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+                [tenantId, building.name.trim()]
+              );
+              if (existing.rows.length > 0) {
+                imported.buildings.skipped++;
+                sheetSkipped++;
+                continue;
+              }
+              const id = `building_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              await client.query(
+                `INSERT INTO buildings (id, tenant_id, name, description, color, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+                [id, tenantId, building.name.trim(), building.description || null, building.color || null]
+              );
+              imported.buildings.count++;
+              sheetImported++;
+              importedRows++;
+            }
+            break;
+
+          case 'Units':
+            for (const unit of validatedData.units) {
+              const existing = await client.query(
+                'SELECT id FROM units WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+                [tenantId, unit.name.trim()]
+              );
+              if (existing.rows.length > 0) {
+                imported.units.skipped++;
+                sheetSkipped++;
+                continue;
+              }
+              const id = `unit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              await client.query(
+                `INSERT INTO units (id, tenant_id, name, project_id, contact_id, sale_price, description, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
+                [id, tenantId, unit.name.trim(), unit.project_id, unit.contact_id || null, unit.sale_price || null, unit.description || null]
+              );
+              imported.units.count++;
+              sheetImported++;
+              importedRows++;
+            }
+            break;
+
+          case 'Properties':
+            for (const property of validatedData.properties) {
+              const existing = await client.query(
+                'SELECT id FROM properties WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+                [tenantId, property.name.trim()]
+              );
+              if (existing.rows.length > 0) {
+                imported.properties.skipped++;
+                sheetSkipped++;
+                continue;
+              }
+              const id = `property_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              await client.query(
+                `INSERT INTO properties (id, tenant_id, name, owner_id, building_id, description, monthly_service_charge, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
+                [id, tenantId, property.name.trim(), property.owner_id, property.building_id, property.description || null, property.monthly_service_charge || null]
+              );
+              imported.properties.count++;
+              sheetImported++;
+              importedRows++;
+            }
+            break;
+        }
+
+        // Record sheet result
+        sheetResults.push({
+          sheet: sheet.name,
+          success: sheetErrors.length === 0,
+          imported: sheetImported,
+          skipped: sheetSkipped,
+          errors: sheetErrors.length,
+          errorDetails: sheetErrors.length > 0 ? sheetErrors : undefined
+        });
+
+        // If this sheet had errors, mark it as failed
+        if (sheetErrors.length > 0) {
+          importFailedSheets.add(sheet.name);
+        }
+      } catch (error: any) {
+        // Record error for this sheet
+        sheetErrors.push({
+          sheet: sheet.name,
+          row: 0,
+          field: 'import',
+          value: null,
+          message: `Import failed: ${error.message || 'Unknown error'}`
+        });
+        sheetResults.push({
+          sheet: sheet.name,
+          success: false,
+          imported: sheetImported,
+          skipped: sheetSkipped,
+          errors: sheetErrors.length,
+          errorDetails: sheetErrors
+        });
+        importFailedSheets.add(sheet.name);
       }
-      const id = `account_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      await client.query(
-        `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, parent_account_id, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
-        [id, tenantId, account.name.trim(), account.type, account.balance || 0, account.is_permanent || false, account.description || null, account.parent_account_id || null]
-      );
-      imported.accounts.count++;
-      importedRows++;
     }
   });
 
@@ -300,6 +449,7 @@ export async function importData(
     canProceed: true,
     validationErrors: [],
     duplicates,
+    sheetResults,
     imported,
     summary: {
       totalRows,
