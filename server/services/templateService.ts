@@ -156,6 +156,36 @@ export async function generateTemplate(options: TemplateOptions): Promise<Buffer
         );
         return accounts.length > 0 ? [accounts[0]] : [];
       }
+    },
+    {
+      name: 'RentalAgreements',
+      headers: ['agreement_number', 'property_name', 'owner_name', 'broker_name', 'start_date', 'end_date', 'monthly_rent', 'rent_due_date', 'status', 'security_deposit', 'broker_fee', 'description'],
+      required: ['agreement_number', 'property_name', 'start_date', 'end_date', 'monthly_rent', 'rent_due_date', 'status'],
+      getSampleData: async () => {
+        if (!options.includeSampleData) return [];
+        const agreements = await db.query(
+          `SELECT 
+            ra.agreement_number,
+            p.name as property_name,
+            o.name as owner_name,
+            b.name as broker_name,
+            ra.start_date,
+            ra.end_date,
+            ra.monthly_rent,
+            ra.rent_due_date,
+            ra.status,
+            ra.security_deposit,
+            ra.broker_fee,
+            ra.description
+          FROM rental_agreements ra
+          JOIN properties p ON ra.property_id = p.id
+          LEFT JOIN contacts o ON ra.owner_id = o.id
+          LEFT JOIN contacts b ON ra.broker_id = b.id
+          WHERE ra.tenant_id = $1 LIMIT 1`,
+          [options.tenantId]
+        );
+        return agreements.length > 0 ? [agreements[0]] : [];
+      }
     }
   ];
 
