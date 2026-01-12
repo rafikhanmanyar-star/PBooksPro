@@ -3,6 +3,7 @@ import { useAppContext } from '../../context/AppContext';
 import { ICONS } from '../../constants';
 import Button from '../ui/Button';
 import { apiClient } from '../../services/api/client';
+import { getAppStateApiService } from '../../services/api/appStateApi';
 
 interface SheetResult {
   sheet: string;
@@ -69,7 +70,7 @@ const IMPORT_ORDER = [
 ];
 
 const ImportExportWizard: React.FC = () => {
-  const { dispatch } = useAppContext();
+  const { dispatch, state } = useAppContext();
   const [currentStep, setCurrentStep] = useState<WizardStep>('choose');
   const [stepHistory, setStepHistory] = useState<WizardStep[]>(['choose']);
   const [actionType, setActionType] = useState<ActionType>(null);
@@ -322,6 +323,44 @@ const ImportExportWizard: React.FC = () => {
       // If successful, mark sheet as imported and move to next
       if (result.success) {
         setImportedSheets(prev => new Set([...prev, currentSheet.name]));
+        
+        // Refresh app state to show newly imported data
+        try {
+          const apiService = getAppStateApiService();
+          const apiState = await apiService.loadState();
+          
+          // Merge the new data into the current state
+          const mergeById = <T extends { id: string }>(current: T[], api: T[]): T[] => {
+            if (!api || api.length === 0) return current;
+            const apiMap = new Map(api.map(item => [item.id, item]));
+            const currentMap = new Map(current.map(item => [item.id, item]));
+            const merged = new Map<string, T>();
+            current.forEach(item => merged.set(item.id, item));
+            api.forEach(item => merged.set(item.id, item));
+            return Array.from(merged.values());
+          };
+
+          const updates: any = {};
+          const currentState = state;
+          
+          if (apiState.contacts) updates.contacts = mergeById(currentState.contacts, apiState.contacts);
+          if (apiState.accounts) updates.accounts = mergeById(currentState.accounts, apiState.accounts);
+          if (apiState.categories) updates.categories = mergeById(currentState.categories, apiState.categories);
+          if (apiState.projects) updates.projects = mergeById(currentState.projects, apiState.projects);
+          if (apiState.buildings) updates.buildings = mergeById(currentState.buildings, apiState.buildings);
+          if (apiState.properties) updates.properties = mergeById(currentState.properties, apiState.properties);
+          if (apiState.units) updates.units = mergeById(currentState.units, apiState.units);
+
+          if (Object.keys(updates).length > 0) {
+            dispatch({
+              type: 'SET_STATE',
+              payload: updates
+            });
+          }
+        } catch (refreshError) {
+          console.error('Failed to refresh data after import:', refreshError);
+          // Don't block the import success flow if refresh fails
+        }
         
         // Check if there are more sheets
         if (currentSheetIndex < IMPORT_ORDER.length - 1) {
