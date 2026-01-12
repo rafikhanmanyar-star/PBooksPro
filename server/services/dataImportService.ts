@@ -52,11 +52,13 @@ export interface ImportResult {
 /**
  * Import data from Excel file with all-or-nothing validation
  * Returns detailed results including validation errors and duplicates
+ * @param sheetName - If provided, imports only this sheet
  */
 export async function importData(
   fileBuffer: Buffer,
   tenantId: string,
-  userId: string
+  userId: string,
+  sheetName?: string
 ): Promise<ImportResult> {
   const db = getDatabaseService();
   
@@ -79,9 +81,35 @@ export async function importData(
     { name: 'Units', dependencies: ['Projects', 'Contacts'] }, // Contacts is optional
     { name: 'Properties', dependencies: ['Contacts', 'Buildings'] }
   ];
+
+  // If single sheet import, filter to that sheet only
+  const sheetsToProcess = sheetName 
+    ? importOrder.filter(s => s.name === sheetName)
+    : importOrder;
+
+  if (sheetName && sheetsToProcess.length === 0) {
+    return {
+      success: false,
+      canProceed: false,
+      validationErrors: [{
+        sheet: sheetName,
+        row: 0,
+        field: 'sheet',
+        value: null,
+        message: `Invalid sheet name: ${sheetName}. Valid sheets: ${importOrder.map(s => s.name).join(', ')}`
+      }],
+      duplicates: [],
+      summary: {
+        totalRows: 0,
+        validRows: 0,
+        errorRows: 1,
+        duplicateRows: 0
+      }
+    };
+  }
   
   // Validate sheet structure
-  for (const sheet of importOrder) {
+  for (const sheet of sheetsToProcess) {
     if (!workbook.SheetNames.includes(sheet.name)) {
       validationErrors.push({
         sheet: sheet.name,
@@ -133,7 +161,7 @@ export async function importData(
   const failedSheets = new Set<string>();
 
   // Validate sheets in order
-  for (const sheet of importOrder) {
+  for (const sheet of sheetsToProcess) {
     // Check if dependencies failed
     const dependencyFailed = sheet.dependencies.some(dep => failedSheets.has(dep));
     if (dependencyFailed) {
@@ -216,7 +244,7 @@ export async function importData(
   // Use transaction for atomicity
   await db.transaction(async (client) => {
     // Import in order: Accounts → Contacts → Categories → Projects → Buildings → Units → Properties
-    for (const sheet of importOrder) {
+    for (const sheet of sheetsToProcess) {
       // Check if dependencies failed
       const dependencyFailed = sheet.dependencies.some(dep => importFailedSheets.has(dep));
       if (dependencyFailed) {

@@ -57,6 +57,17 @@ interface ImportResult {
 type WizardStep = 'choose' | 'template' | 'export' | 'import' | 'results';
 type ActionType = 'template' | 'export' | 'import' | null;
 
+// Import order matching backend
+const IMPORT_ORDER = [
+  { name: 'Accounts', dependencies: [], description: 'Import accounts first' },
+  { name: 'Contacts', dependencies: [], description: 'Import contacts (required for Properties and Units)' },
+  { name: 'Categories', dependencies: [], description: 'Import categories' },
+  { name: 'Projects', dependencies: [], description: 'Import projects (required for Units)' },
+  { name: 'Buildings', dependencies: [], description: 'Import buildings (required for Properties)' },
+  { name: 'Units', dependencies: ['Projects', 'Contacts'], description: 'Import units (depends on Projects and Contacts)' },
+  { name: 'Properties', dependencies: ['Contacts', 'Buildings'], description: 'Import properties (depends on Contacts and Buildings)' }
+];
+
 const ImportExportWizard: React.FC = () => {
   const { dispatch } = useAppContext();
   const [currentStep, setCurrentStep] = useState<WizardStep>('choose');
@@ -66,6 +77,8 @@ const ImportExportWizard: React.FC = () => {
   const [fileName, setFileName] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [currentSheetIndex, setCurrentSheetIndex] = useState<number>(0);
+  const [importedSheets, setImportedSheets] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const goBack = () => dispatch({ type: 'SET_PAGE', payload: 'settings' });
@@ -123,7 +136,7 @@ const ImportExportWizard: React.FC = () => {
     );
   };
 
-  const handleDownloadTemplate = async () => {
+  const handleDownloadTemplate = async (sheetName?: string) => {
     try {
       setIsLoading(true);
       // Get base URL from environment or use default
@@ -135,7 +148,11 @@ const ImportExportWizard: React.FC = () => {
         throw new Error('Authentication required. Please login again.');
       }
 
-      const response = await fetch(`${baseUrl}/data-import-export/template`, {
+      const url = sheetName 
+        ? `${baseUrl}/data-import-export/template?sheet=${encodeURIComponent(sheetName)}`
+        : `${baseUrl}/data-import-export/template`;
+
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -168,7 +185,9 @@ const ImportExportWizard: React.FC = () => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'import-template.xlsx';
+      a.download = sheetName 
+        ? `import-template-${sheetName.toLowerCase()}.xlsx`
+        : 'import-template.xlsx';
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -280,23 +299,77 @@ const ImportExportWizard: React.FC = () => {
       return;
     }
 
+    const currentSheet = IMPORT_ORDER[currentSheetIndex];
+    if (!currentSheet) {
+      alert('No sheet selected');
+      return;
+    }
+
     try {
       setIsLoading(true);
       
       // Convert file to base64
       const base64Data = await convertFileToBase64(selectedFile);
       
-      // Send to API
+      // Send to API with sheet name
       const result = await apiClient.post<ImportResult>('/data-import-export/import', {
-        file: base64Data
+        file: base64Data,
+        sheetName: currentSheet.name
       });
 
       setImportResult(result);
-      goToStep('results');
+      
+      // If successful, mark sheet as imported and move to next
+      if (result.success) {
+        setImportedSheets(prev => new Set([...prev, currentSheet.name]));
+        
+        // Check if there are more sheets
+        if (currentSheetIndex < IMPORT_ORDER.length - 1) {
+          // Move to next sheet
+          setCurrentSheetIndex(currentSheetIndex + 1);
+          setSelectedFile(null);
+          setFileName('');
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
+          // Show success message but stay on import step
+          alert(`✅ ${currentSheet.name} imported successfully! Please import the next sheet: ${IMPORT_ORDER[currentSheetIndex + 1].name}`);
+        } else {
+          // All sheets imported
+          goToStep('results');
+        }
+      } else {
+        // Show errors
+        goToStep('results');
+      }
     } catch (error: any) {
       alert(`Error importing data: ${error.message || 'Unknown error'}`);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleNextSheet = () => {
+    if (currentSheetIndex < IMPORT_ORDER.length - 1) {
+      setCurrentSheetIndex(currentSheetIndex + 1);
+      setSelectedFile(null);
+      setFileName('');
+      setImportResult(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handlePreviousSheet = () => {
+    if (currentSheetIndex > 0) {
+      setCurrentSheetIndex(currentSheetIndex - 1);
+      setSelectedFile(null);
+      setFileName('');
+      setImportResult(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -465,6 +538,11 @@ const ImportExportWizard: React.FC = () => {
 
   // Step 2c: Import Data
   if (currentStep === 'import') {
+    const currentSheet = IMPORT_ORDER[currentSheetIndex];
+    const progress = ((currentSheetIndex + 1) / IMPORT_ORDER.length) * 100;
+    const canGoNext = currentSheetIndex < IMPORT_ORDER.length - 1;
+    const canGoPrevious = currentSheetIndex > 0;
+
     return (
       <div className="flex flex-col h-full bg-white">
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
@@ -472,7 +550,7 @@ const ImportExportWizard: React.FC = () => {
             <div className="text-sm text-slate-500 mb-1">
               Settings › {getBreadcrumb()}
             </div>
-            <h1 className="text-2xl font-bold text-slate-800">Import Data</h1>
+            <h1 className="text-2xl font-bold text-slate-800">Import Data - Step {currentSheetIndex + 1} of {IMPORT_ORDER.length}</h1>
           </div>
           <Button variant="ghost" onClick={goToPreviousStep}>
             <div className="w-4 h-4">{ICONS.chevronLeft}</div>
@@ -482,30 +560,102 @@ const ImportExportWizard: React.FC = () => {
 
         <div className="flex-1 overflow-y-auto p-6">
           <div className="max-w-2xl mx-auto">
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
-              <h3 className="font-semibold text-purple-900 mb-2">Import Information</h3>
-              <p className="text-sm text-purple-800 mb-2">
-                Upload an Excel file with your data. The system will validate all rows before making any changes.
-                If there are any errors, you'll need to correct them in Excel and re-upload.
-              </p>
-              <p className="text-sm text-purple-800">
-                <strong>Required sheets:</strong> Contacts, Projects, Buildings, Properties, Units, Categories, Accounts
-              </p>
+            {/* Progress Bar */}
+            <div className="mb-6">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm font-semibold text-slate-700">
+                  Progress: {currentSheetIndex + 1} / {IMPORT_ORDER.length}
+                </span>
+                <span className="text-sm text-slate-600">{Math.round(progress)}%</span>
+              </div>
+              <div className="w-full bg-slate-200 rounded-full h-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
             </div>
 
-            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-6">
-              <h4 className="font-semibold text-slate-800 mb-2">Need a template? (Optional)</h4>
-              <p className="text-sm text-slate-700 mb-3">
-                If you don't have a properly formatted Excel file, you can download a template with all required columns.
+            {/* Sheet List */}
+            <div className="mb-6">
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">Import Order</h3>
+              <div className="space-y-2">
+                {IMPORT_ORDER.map((sheet, idx) => {
+                  const isCurrent = idx === currentSheetIndex;
+                  const isImported = importedSheets.has(sheet.name);
+                  const isCompleted = idx < currentSheetIndex;
+                  const canImport = idx === 0 || IMPORT_ORDER.slice(0, idx).every(s => importedSheets.has(s.name));
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`flex items-center p-3 rounded-lg border ${
+                        isCurrent
+                          ? 'bg-blue-50 border-blue-300'
+                          : isImported
+                          ? 'bg-green-50 border-green-300'
+                          : canImport
+                          ? 'bg-slate-50 border-slate-200'
+                          : 'bg-amber-50 border-amber-200 opacity-60'
+                      }`}
+                    >
+                      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-3 font-semibold text-sm ${
+                        isCurrent
+                          ? 'bg-blue-600 text-white'
+                          : isImported
+                          ? 'bg-green-600 text-white'
+                          : canImport
+                          ? 'bg-slate-400 text-white'
+                          : 'bg-amber-400 text-white'
+                      }`}>
+                        {isImported ? '✓' : idx + 1}
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-semibold text-slate-800">{sheet.name}</div>
+                        <div className="text-xs text-slate-600">{sheet.description}</div>
+                        {sheet.dependencies.length > 0 && (
+                          <div className="text-xs text-amber-600 mt-1">
+                            Depends on: {sheet.dependencies.join(', ')}
+                          </div>
+                        )}
+                      </div>
+                      {isImported && (
+                        <div className="text-green-600 font-semibold text-sm">✓ Done</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Current Sheet Info */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <h3 className="font-semibold text-blue-900 mb-2">Current Step: {currentSheet.name}</h3>
+              <p className="text-sm text-blue-800 mb-3">
+                {currentSheet.description}
               </p>
+              {currentSheet.dependencies.length > 0 && (
+                <div className="text-xs text-amber-700 bg-amber-100 p-2 rounded mb-2">
+                  ⚠️ Make sure you have already imported: {currentSheet.dependencies.join(', ')}
+                </div>
+              )}
               <Button
                 variant="outline"
-                onClick={handleDownloadTemplate}
+                onClick={() => handleDownloadTemplate(currentSheet.name)}
                 disabled={isLoading}
                 className="w-full"
               >
-                {isLoading ? 'Downloading...' : 'Download Template'}
+                {isLoading ? 'Downloading...' : `Download ${currentSheet.name} Template`}
               </Button>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-6">
+              <h3 className="font-semibold text-slate-900 mb-2">Upload Instructions</h3>
+              <p className="text-sm text-slate-700">
+                Upload an Excel file (.xlsx) with the <strong>{currentSheet.name}</strong> sheet.
+                The file should match the template format. All data will be validated before import.
+                If any errors are found, no data will be imported.
+              </p>
             </div>
 
             <input
@@ -530,13 +680,35 @@ const ImportExportWizard: React.FC = () => {
               )}
             </div>
 
-            <Button
-              onClick={handleImport}
-              disabled={!selectedFile || isLoading}
-              className="w-full"
-            >
-              {isLoading ? 'Importing...' : 'Validate & Import'}
-            </Button>
+            <div className="flex gap-3">
+              {canGoPrevious && (
+                <Button
+                  variant="outline"
+                  onClick={handlePreviousSheet}
+                  disabled={isLoading}
+                  className="flex-1"
+                >
+                  ← Previous Sheet
+                </Button>
+              )}
+              <Button
+                onClick={handleImport}
+                disabled={!selectedFile || isLoading}
+                className={canGoPrevious ? "flex-1" : "w-full"}
+              >
+                {isLoading ? 'Importing...' : `Import ${currentSheet.name}`}
+              </Button>
+              {canGoNext && importedSheets.has(currentSheet.name) && (
+                <Button
+                  variant="outline"
+                  onClick={handleNextSheet}
+                  disabled={isLoading}
+                  className="flex-1"
+                >
+                  Next Sheet →
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>

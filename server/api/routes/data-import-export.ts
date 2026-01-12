@@ -8,7 +8,8 @@ const router = Router();
 
 /**
  * GET /api/data-import-export/template
- * Download empty Excel template with all entity sheets
+ * Download Excel template - either single sheet or all sheets
+ * Query params: ?sheet=SheetName (optional, if provided generates only that sheet)
  */
 router.get('/template', async (req: TenantRequest, res) => {
   try {
@@ -16,13 +17,19 @@ router.get('/template', async (req: TenantRequest, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
+    const sheetName = req.query.sheet as string | undefined;
     const buffer = await generateTemplate({
       tenantId: req.tenantId,
-      includeSampleData: false
+      includeSampleData: false,
+      sheetName
     });
 
+    const filename = sheetName 
+      ? `import-template-${sheetName.toLowerCase()}.xlsx`
+      : 'import-template.xlsx';
+
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename="import-template.xlsx"');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buffer);
   } catch (error: any) {
     console.error('Error generating template:', error);
@@ -60,8 +67,8 @@ router.get('/export', async (req: TenantRequest, res) => {
 /**
  * POST /api/data-import-export/import
  * Import Excel file with validation and duplicate checking
- * Accepts file as base64 string in JSON body: { file: "base64string" }
- * Or as FormData with file field (handled by express.json middleware)
+ * Accepts file as base64 string in JSON body: { file: "base64string", sheetName?: "SheetName" }
+ * If sheetName is provided, imports only that sheet
  */
 router.post('/import', async (req: TenantRequest, res) => {
   try {
@@ -109,10 +116,12 @@ router.post('/import', async (req: TenantRequest, res) => {
       });
     }
 
+    const sheetName = req.body.sheetName as string | undefined;
     const result = await importData(
       fileBuffer,
       req.tenantId,
-      req.user.userId
+      req.user.userId,
+      sheetName
     );
 
     res.json(result);

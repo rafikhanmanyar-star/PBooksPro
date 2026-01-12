@@ -4,10 +4,22 @@ import { getDatabaseService } from './databaseService.js';
 export interface TemplateOptions {
   includeSampleData?: boolean;
   tenantId: string;
+  sheetName?: string; // If provided, generate only this sheet
 }
 
+// Define import order
+export const IMPORT_ORDER = [
+  { name: 'Accounts', dependencies: [], description: 'Import accounts first' },
+  { name: 'Contacts', dependencies: [], description: 'Import contacts (required for Properties and Units)' },
+  { name: 'Categories', dependencies: [], description: 'Import categories' },
+  { name: 'Projects', dependencies: [], description: 'Import projects (required for Units)' },
+  { name: 'Buildings', dependencies: [], description: 'Import buildings (required for Properties)' },
+  { name: 'Units', dependencies: ['Projects', 'Contacts'], description: 'Import units (depends on Projects and Contacts)' },
+  { name: 'Properties', dependencies: ['Contacts', 'Buildings'], description: 'Import properties (depends on Contacts and Buildings)' }
+];
+
 /**
- * Generate Excel template with all entity sheets
+ * Generate Excel template - either single sheet or all sheets
  * Each sheet contains headers and optionally sample data
  */
 export async function generateTemplate(options: TemplateOptions): Promise<Buffer> {
@@ -15,8 +27,8 @@ export async function generateTemplate(options: TemplateOptions): Promise<Buffer
     const workbook = XLSX.utils.book_new();
     const db = getDatabaseService();
 
-    // Define sheet structures
-    const sheets = [
+  // Define sheet structures
+  const allSheets = [
     {
       name: 'Contacts',
       headers: ['name', 'type', 'description', 'contact_no', 'company_name', 'address'],
@@ -145,6 +157,15 @@ export async function generateTemplate(options: TemplateOptions): Promise<Buffer
       }
     }
   ];
+
+  // Filter to single sheet if requested
+  const sheets = options.sheetName 
+    ? allSheets.filter(s => s.name === options.sheetName)
+    : allSheets;
+
+  if (options.sheetName && sheets.length === 0) {
+    throw new Error(`Invalid sheet name: ${options.sheetName}`);
+  }
 
   // Generate each sheet
   for (const sheet of sheets) {
