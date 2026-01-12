@@ -192,10 +192,13 @@ export async function generateTemplate(options: TemplateOptions): Promise<Buffer
   // Filter to single sheet if requested
   let sheets = allSheets;
   if (options.sheetName) {
+    console.log(`[TemplateService] Requested sheet: "${options.sheetName}"`);
+    console.log(`[TemplateService] Available sheets:`, allSheets.map(s => s.name));
     sheets = allSheets.filter(s => s.name === options.sheetName);
+    console.log(`[TemplateService] Filtered sheets count:`, sheets.length);
     if (sheets.length === 0) {
       const availableSheets = allSheets.map(s => s.name).join(', ');
-      console.error(`Template generation error: Sheet "${options.sheetName}" not found. Available sheets: ${availableSheets}`);
+      console.error(`[TemplateService] ERROR: Sheet "${options.sheetName}" not found. Available sheets: ${availableSheets}`);
       throw new Error(`Invalid sheet name: "${options.sheetName}". Available sheets: ${availableSheets}`);
     }
   }
