@@ -6,10 +6,18 @@
 ALTER TABLE rental_agreements 
 ADD COLUMN IF NOT EXISTS contact_id TEXT;
 
--- Add foreign key constraint
-ALTER TABLE rental_agreements
-ADD CONSTRAINT fk_rental_agreements_contact_id 
-FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE RESTRICT;
+-- Add foreign key constraint (if it doesn't already exist)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'fk_rental_agreements_contact_id'
+    ) THEN
+        ALTER TABLE rental_agreements
+        ADD CONSTRAINT fk_rental_agreements_contact_id 
+        FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE RESTRICT;
+    END IF;
+END $$;
 
 -- Create index for better query performance
 CREATE INDEX IF NOT EXISTS idx_rental_agreements_contact_id ON rental_agreements(contact_id);
