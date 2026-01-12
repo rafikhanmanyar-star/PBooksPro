@@ -8,7 +8,6 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { APP_LOGO } from '../../constants';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import TenantRegistration from './TenantRegistration';
@@ -159,7 +158,6 @@ const CloudLoginPage: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
       <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-200">
         <div className="text-center mb-8">
-          <img src={APP_LOGO} alt="Logo" className="w-16 h-16 mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-slate-800">PBooksPro</h1>
           <p className="text-slate-500 mt-2">
             {step === 'lookup' ? 'Find your organization' : 'Sign in to continue'}

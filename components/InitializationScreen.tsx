@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { APP_LOGO } from '../constants';
 
 interface InitializationScreenProps {
     initMessage: string;
@@ -101,13 +100,8 @@ const InitializationScreen: React.FC<InitializationScreenProps> = ({
         >
             {/* Main Content Container */}
             <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 text-center">
-                {/* Logo and Branding Section */}
+                {/* Branding Section */}
                 <div className="mb-8 sm:mb-12 animate-fade-in">
-                    <img 
-                        src={APP_LOGO} 
-                        alt="PBooksPro Logo" 
-                        className="w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-4 drop-shadow-lg"
-                    />
                     <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-2 drop-shadow-md">
                         PBooksPro
                     </h1>
