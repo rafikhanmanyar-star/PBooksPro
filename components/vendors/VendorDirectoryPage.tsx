@@ -13,6 +13,7 @@ import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarn
 import { useNotification } from '../../context/NotificationContext';
 import Input from '../ui/Input';
 import { WhatsAppService } from '../../services/whatsappService';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 import VendorBills from './VendorBills';
 import VendorQuotationsTable from './VendorQuotationsTable';
 import QuotationForm from './QuotationForm';

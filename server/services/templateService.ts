@@ -180,7 +180,7 @@ export async function generateTemplate(options: TemplateOptions): Promise<Buffer
             ra.description
           FROM rental_agreements ra
           JOIN properties p ON ra.property_id = p.id
-          JOIN contacts t ON ra.tenant_id = t.id
+          LEFT JOIN contacts t ON ra.contact_id = t.id
           LEFT JOIN contacts o ON ra.owner_id = o.id
           LEFT JOIN contacts b ON ra.broker_id = b.id
           WHERE ra.tenant_id = $1 LIMIT 1`,
