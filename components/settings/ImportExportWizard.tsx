@@ -358,6 +358,7 @@ const ImportExportWizard: React.FC = () => {
           if (apiState.properties) updates.properties = mergeById(currentState.properties, apiState.properties);
           if (apiState.units) updates.units = mergeById(currentState.units, apiState.units);
           if (apiState.rentalAgreements) updates.rentalAgreements = mergeById(currentState.rentalAgreements, apiState.rentalAgreements);
+          if (apiState.invoices) updates.invoices = mergeById(currentState.invoices, apiState.invoices);
 
           if (Object.keys(updates).length > 0) {
             dispatch({

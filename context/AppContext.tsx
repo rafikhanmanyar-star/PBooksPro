@@ -3211,7 +3211,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }
             }
         }
-    }, [state.contacts.length, state.transactions.length, state.bills.length, isInitializing, state]);
+    }, [state.contacts.length, state.transactions.length, state.bills.length, state.invoices.length, isInitializing, state]);
 
     useEffect(() => {
         if (!isInitializing && state.currentUser) {
