@@ -42,52 +42,137 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
 // Form Handling with Netlify Forms
 // Netlify Forms will handle submission automatically, but we add client-side validation and success handling
 
+// Function to show success message
+function showSuccessMessage(form, message) {
+    // Hide the form
+    form.style.display = 'none';
+    
+    // Create success message element
+    const successDiv = document.createElement('div');
+    successDiv.className = 'form-success';
+    successDiv.style.cssText = `
+        padding: 2rem;
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+        border-radius: 8px;
+        color: #155724;
+        text-align: center;
+        margin: 2rem 0;
+    `;
+    successDiv.innerHTML = `
+        <i class="fas fa-check-circle" style="font-size: 3rem; margin-bottom: 1rem; color: #28a745;"></i>
+        <h3 style="margin-bottom: 0.5rem; color: #155724;">${message}</h3>
+        <p style="color: #155724; margin: 0;">We'll get back to you soon!</p>
+    `;
+    
+    // Insert success message before the form's parent
+    form.parentNode.insertBefore(successDiv, form);
+    
+    // Scroll to success message
+    successDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 const contactForm = document.getElementById('contactForm');
 if (contactForm) {
-    contactForm.addEventListener('submit', (e) => {
-        // Let Netlify handle the submission
-        // Show loading state
+    contactForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
         const submitBtn = contactForm.querySelector('button[type="submit"]');
         const originalText = submitBtn.textContent;
         submitBtn.textContent = 'Sending...';
         submitBtn.disabled = true;
         
-        // After form submission, Netlify will redirect or show success
-        // If you want to handle it manually, you can add:
-        setTimeout(() => {
+        try {
+            const formData = new FormData(contactForm);
+            // Encode form data for Netlify Forms
+            const encodedData = new URLSearchParams(formData).toString();
+            
+            const response = await fetch('/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: encodedData
+            });
+            
+            // Check if response is ok or if it's a redirect (Netlify returns 200 or redirects)
+            if (response.ok || response.status === 200 || response.redirected) {
+                showSuccessMessage(contactForm, 'Thank you! Your message has been sent successfully.');
+            } else {
+                throw new Error('Form submission failed');
+            }
+        } catch (error) {
+            console.error('Form submission error:', error);
             submitBtn.textContent = originalText;
             submitBtn.disabled = false;
-        }, 2000);
+            alert('There was an error sending your message. Please try again or contact us directly at support@pbookspro.com');
+        }
     });
 }
 
 const demoForm = document.getElementById('demoForm');
 if (demoForm) {
-    demoForm.addEventListener('submit', (e) => {
+    demoForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
         const submitBtn = demoForm.querySelector('button[type="submit"]');
         const originalText = submitBtn.textContent;
         submitBtn.textContent = 'Submitting...';
         submitBtn.disabled = true;
         
-        setTimeout(() => {
+        try {
+            const formData = new FormData(demoForm);
+            const encodedData = new URLSearchParams(formData).toString();
+            
+            const response = await fetch('/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: encodedData
+            });
+            
+            if (response.ok || response.status === 200 || response.redirected) {
+                showSuccessMessage(demoForm, 'Thank you! Your demo request has been received. We\'ll contact you within 24 hours to schedule your demo.');
+            } else {
+                throw new Error('Form submission failed');
+            }
+        } catch (error) {
+            console.error('Form submission error:', error);
             submitBtn.textContent = originalText;
             submitBtn.disabled = false;
-        }, 2000);
+            alert('There was an error submitting your request. Please try again or contact us directly at support@pbookspro.com');
+        }
     });
 }
 
 const downloadForm = document.getElementById('downloadForm');
 if (downloadForm) {
-    downloadForm.addEventListener('submit', (e) => {
+    downloadForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
         const submitBtn = downloadForm.querySelector('button[type="submit"]');
-        const originalText = submitBtn.textContent;
+        const originalText = submitBtn.innerHTML;
         submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
         submitBtn.disabled = true;
         
-        setTimeout(() => {
+        try {
+            const formData = new FormData(downloadForm);
+            const encodedData = new URLSearchParams(formData).toString();
+            
+            const response = await fetch('/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: encodedData
+            });
+            
+            if (response.ok || response.status === 200 || response.redirected) {
+                showSuccessMessage(downloadForm, 'Thank you! Your trial signup was successful. Check your email for the download link and instructions.');
+            } else {
+                throw new Error('Form submission failed');
+            }
+        } catch (error) {
+            console.error('Form submission error:', error);
             submitBtn.innerHTML = originalText;
             submitBtn.disabled = false;
-        }, 2000);
+            alert('There was an error processing your request. Please try again or contact us directly at support@pbookspro.com');
+        }
     });
 }
 
