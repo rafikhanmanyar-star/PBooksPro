@@ -175,7 +175,7 @@ export const exportData = async (
                 
                 // Create worksheet
                 const worksheet = data.length > 0
-                    ? XLSX.utils.json_to_sheet(data, { header: schema.headers, skipHeader: false })
+                    ? XLSX.utils.json_to_sheet(data, { header: schema.headers })
                     : XLSX.utils.aoa_to_sheet([schema.headers]);
                 
                 // Add sheet to workbook (limit sheet name to 31 characters for Excel compatibility)
