@@ -50,9 +50,64 @@ git push origin main
 
 ### Step 1: Configure DNS Records
 
-At your domain registrar (where `pbookspro.com` is registered), add the following CNAME records:
+At your domain registrar or DNS provider (where `pbookspro.com` is managed), add DNS records:
 
-#### CNAME Records to Add:
+#### Option A: Using Cloudflare (Recommended for SSL/TLS)
+
+If you're using Cloudflare as your DNS provider, you need to use **A records** with IPv4 addresses instead of CNAME records.
+
+**First, get the IPv4 addresses from Render:**
+
+1. Go to Render Dashboard → Your service (e.g., `pbookspro-website`)
+2. Go to **Settings** → **Custom Domains**
+3. Click **Add Custom Domain** and enter your domain (e.g., `www.pbookspro.com`)
+4. Render will show you the IPv4 address(es) to use, or you can use Render's load balancer IP: `216.24.57.1`
+5. Note: Render may provide different IPs for different services, check each service's custom domain settings
+
+**Then, add A records in Cloudflare:**
+
+1. Log in to [Cloudflare Dashboard](https://dash.cloudflare.com)
+2. Select your domain `pbookspro.com`
+3. Go to **DNS** → **Records**
+4. Add the following **A records**:
+
+   **For Website (`www.pbookspro.com`):**
+   - **Type**: A
+   - **Name**: `www`
+   - **IPv4 address**: `216.24.57.1` (or the IP shown in Render)
+   - **Proxy status**: 🟠 Proxied (orange cloud) - **IMPORTANT for SSL**
+   - **TTL**: Auto
+
+   **For Client App (`www.app.pbookspro.com`):**
+   - **Type**: A
+   - **Name**: `www.app`
+   - **IPv4 address**: `216.24.57.1` (or the IP shown in Render)
+   - **Proxy status**: 🟠 Proxied (orange cloud)
+   - **TTL**: Auto
+   
+   **Note**: If Cloudflare doesn't accept `www.app`, create two records:
+   - First: `app` → `216.24.57.1` (A record, Proxied)
+   - Then: `www` under `app` subdomain (may require using `app` as the name and `www` as a subdomain)
+
+   **For Admin App (`admin.pbookspro.com`):**
+   - **Type**: A
+   - **Name**: `admin`
+   - **IPv4 address**: `216.24.57.1` (or the IP shown in Render)
+   - **Proxy status**: 🟠 Proxied (orange cloud)
+   - **TTL**: Auto
+
+   **For API Server (`api.pbookspro.com`):**
+   - **Type**: A
+   - **Name**: `api`
+   - **IPv4 address**: `216.24.57.1` (or the IP shown in Render)
+   - **Proxy status**: 🟠 Proxied (orange cloud)
+   - **TTL**: Auto
+
+**Important**: The 🟠 **Proxied** (orange cloud) status is required for Cloudflare's SSL/TLS to work. If you set it to 🟢 **DNS only** (gray cloud), SSL won't work through Cloudflare.
+
+#### Option B: Using Other DNS Providers (CNAME Records)
+
+If you're using a different DNS provider (not Cloudflare), you can use CNAME records:
 
 1. **For Website:**
    - **Type**: CNAME
@@ -69,8 +124,6 @@ At your domain registrar (where `pbookspro.com` is registered), add the followin
    **Note**: Some DNS providers require creating the `app` subdomain first:
    - First create: `app` → `pbookspro-client.onrender.com`
    - Then create: `www.app` → `pbookspro-client.onrender.com`
-   
-   Or check if your provider supports nested subdomains directly.
 
 3. **For Admin App:**
    - **Type**: CNAME
@@ -102,11 +155,66 @@ Or use online tools:
 
 **Note**: DNS propagation can take 24-48 hours, but often completes within minutes to a few hours.
 
-### Step 2: Add Custom Domains in Render Dashboard
+### Step 2: Configure SSL/TLS in Cloudflare (If Using Cloudflare)
+
+If you're using Cloudflare as your DNS provider, you need to configure SSL/TLS settings:
+
+1. **Log in to Cloudflare Dashboard**
+   - Go to [https://dash.cloudflare.com](https://dash.cloudflare.com)
+   - Select your domain `pbookspro.com`
+
+2. **Go to SSL/TLS Settings**
+   - Click on **SSL/TLS** in the left sidebar
+   - You'll see the SSL/TLS encryption mode
+
+3. **Set SSL/TLS Encryption Mode**
+   
+   **Recommended: "Full (strict)"** - This provides end-to-end encryption:
+   - **Full (strict)**: ✅ **Recommended**
+     - Cloudflare encrypts traffic between visitors and Cloudflare
+     - Cloudflare encrypts traffic between Cloudflare and Render
+     - Requires valid SSL certificate on Render (which Render auto-provisions)
+     - Provides the highest security
+   
+   **Alternative: "Full"** - If "Full (strict)" doesn't work initially:
+   - **Full**: 
+     - Cloudflare encrypts traffic between visitors and Cloudflare
+     - Cloudflare encrypts traffic between Cloudflare and Render
+     - Works even if Render's SSL certificate is self-signed or not yet valid
+     - You can switch to "Full (strict)" once Render's SSL is fully provisioned
+   
+   **Not Recommended:**
+   - **Flexible**: Only encrypts visitor → Cloudflare (not Cloudflare → Render)
+   - **Off**: No encryption (not secure)
+
+4. **Enable Always Use HTTPS (Optional but Recommended)**
+   - Go to **SSL/TLS** → **Edge Certificates** tab
+   - Scroll down to **Always Use HTTPS**
+   - Toggle it **ON**
+   - This automatically redirects HTTP to HTTPS
+
+5. **Enable Automatic HTTPS Rewrites (Optional)**
+   - In **Edge Certificates** tab
+   - Scroll to **Automatic HTTPS Rewrites**
+   - Toggle it **ON**
+   - This rewrites HTTP links to HTTPS in your website content
+
+6. **Wait for SSL Certificate Provisioning**
+   - Cloudflare will automatically provision SSL certificates for your domains
+   - This usually takes a few minutes
+   - You can check certificate status in **SSL/TLS** → **Edge Certificates**
+
+**Important Notes:**
+- Make sure all your DNS records have the 🟠 **Proxied** (orange cloud) status enabled
+- SSL certificates are automatically provisioned by Cloudflare (free)
+- If you see SSL errors, wait a few minutes for certificate provisioning
+- "Full (strict)" mode requires Render to have a valid SSL certificate (which Render provides automatically)
+
+### Step 3: Add Custom Domains in Render Dashboard
 
 After DNS records are configured and propagated, add custom domains in Render:
 
-#### 2.1: Website Service
+#### 3.1: Website Service
 
 1. Go to Render Dashboard → **pbookspro-website** service
 2. Click **Settings** tab
@@ -118,7 +226,7 @@ After DNS records are configured and propagated, add custom domains in Render:
 8. Wait for verification status to show "Verified" (green checkmark)
 9. SSL certificate will be auto-provisioned (may take a few minutes to hours)
 
-#### 2.2: Client App
+#### 3.2: Client App
 
 1. Go to Render Dashboard → **pbookspro-client** service
 2. Click **Settings** tab
@@ -129,7 +237,7 @@ After DNS records are configured and propagated, add custom domains in Render:
 7. Wait for DNS verification
 8. Wait for SSL certificate provisioning
 
-#### 2.3: Admin App
+#### 3.3: Admin App
 
 1. Go to Render Dashboard → **pbookspro-admin** service
 2. Click **Settings** tab
@@ -140,7 +248,7 @@ After DNS records are configured and propagated, add custom domains in Render:
 7. Wait for DNS verification
 8. Wait for SSL certificate provisioning
 
-#### 2.4: API Server
+#### 3.4: API Server
 
 1. Go to Render Dashboard → **pbookspro-api** service
 2. Click **Settings** tab
@@ -151,11 +259,11 @@ After DNS records are configured and propagated, add custom domains in Render:
 7. Wait for DNS verification
 8. Wait for SSL certificate provisioning
 
-### Step 3: Update Environment Variables in Render Dashboard
+### Step 4: Update Environment Variables in Render Dashboard
 
 After all custom domains are verified, update environment variables:
 
-#### 3.1: API Server (pbookspro-api)
+#### 4.1: API Server (pbookspro-api)
 
 1. Go to **pbookspro-api** service → **Environment** tab
 2. Update the following environment variables:
@@ -172,7 +280,7 @@ After all custom domains are verified, update environment variables:
 
 3. Click **Save Changes** (service will automatically restart)
 
-#### 3.2: Client App (pbookspro-client)
+#### 4.2: Client App (pbookspro-client)
 
 1. Go to **pbookspro-client** service → **Environment** tab
 2. Update:
@@ -183,7 +291,7 @@ After all custom domains are verified, update environment variables:
 6. Wait for rebuild to complete (2-5 minutes)
    - This is required because Vite embeds environment variables at build time
 
-#### 3.3: Admin App (pbookspro-admin)
+#### 4.3: Admin App (pbookspro-admin)
 
 1. Go to **pbookspro-admin** service → **Environment** tab
 2. Update:
@@ -193,11 +301,11 @@ After all custom domains are verified, update environment variables:
 5. Click **Manual Deploy** → **Deploy latest commit**
 6. Wait for rebuild to complete (2-5 minutes)
 
-### Step 4: Verification and Testing
+### Step 5: Verification and Testing
 
 Test all services on their new custom domains:
 
-#### 4.1: Website Verification
+#### 5.1: Website Verification
 
 1. Visit `https://www.pbookspro.com`
 2. Verify:
@@ -208,7 +316,7 @@ Test all services on their new custom domains:
    - ✅ Navigation works
    - ✅ Forms work (if applicable)
 
-#### 4.2: Client App Verification
+#### 5.2: Client App Verification
 
 1. Visit `https://www.app.pbookspro.com`
 2. Open browser DevTools (F12) → **Network** tab
@@ -221,7 +329,7 @@ Test all services on their new custom domains:
    - ✅ Login works
    - ✅ Core features work
 
-#### 4.3: Admin App Verification
+#### 5.3: Admin App Verification
 
 1. Visit `https://admin.pbookspro.com`
 2. Open browser DevTools (F12) → **Network** tab
@@ -234,7 +342,7 @@ Test all services on their new custom domains:
    - ✅ Admin login works
    - ✅ Admin features work
 
-#### 4.4: API Server Verification
+#### 5.4: API Server Verification
 
 1. Test API endpoint:
    - Visit: `https://api.pbookspro.com/api/health` (or similar endpoint)
@@ -244,7 +352,7 @@ Test all services on their new custom domains:
    - ✅ SSL certificate is valid
    - ✅ CORS headers allow requests from new domains
 
-#### 4.5: End-to-End Testing
+#### 5.5: End-to-End Testing
 
 1. Test complete user workflows:
    - User registration/login
@@ -261,7 +369,7 @@ Test all services on their new custom domains:
    - Network tab for failed requests
    - API logs in Render Dashboard
 
-### Step 5: Cleanup (Optional - After Full Verification)
+### Step 6: Cleanup (Optional - After Full Verification)
 
 Once everything is verified and working for at least 24-48 hours:
 
@@ -289,21 +397,36 @@ Once everything is verified and working for at least 24-48 hours:
 **Problem**: Custom domain shows "DNS not verified" in Render
 
 **Solutions**:
-- Wait longer for DNS propagation (can take up to 48 hours)
-- Verify DNS records are correct at your registrar
-- Check DNS propagation using online tools (dnschecker.org)
-- Ensure CNAME records point to correct Render subdomains
-- For `www.app.pbookspro.com`, ensure `app` subdomain is created first
+- **If using Cloudflare:**
+  - Ensure you're using **A records** (not CNAME) with IPv4 address `216.24.57.1`
+  - Verify all records have 🟠 **Proxied** (orange cloud) status
+  - Check that DNS records are correctly configured in Cloudflare Dashboard
+  - Wait a few minutes for Cloudflare to propagate changes
+  
+- **If using other DNS providers:**
+  - Wait longer for DNS propagation (can take up to 48 hours)
+  - Verify DNS records are correct at your registrar
+  - Check DNS propagation using online tools (dnschecker.org)
+  - Ensure CNAME records point to correct Render subdomains
+  - For `www.app.pbookspro.com`, ensure `app` subdomain is created first
 
 ### SSL Certificate Not Provisioned
 
 **Problem**: HTTPS not working or certificate error
 
 **Solutions**:
-- Wait for SSL provisioning (can take a few hours after DNS verification)
-- Ensure DNS is fully propagated
-- Check Render Dashboard → Service → Custom Domains for SSL status
-- Try accessing the domain again after a few hours
+- **If using Cloudflare:**
+  - Ensure all DNS records have 🟠 **Proxied** (orange cloud) status enabled
+  - Go to Cloudflare Dashboard → **SSL/TLS** → Set encryption mode to **"Full"** or **"Full (strict)"**
+  - Wait for Cloudflare to provision SSL certificates (usually a few minutes)
+  - Check **SSL/TLS** → **Edge Certificates** for certificate status
+  - Enable **Always Use HTTPS** in Edge Certificates settings
+  
+- **If not using Cloudflare:**
+  - Wait for SSL provisioning (can take a few hours after DNS verification)
+  - Ensure DNS is fully propagated
+  - Check Render Dashboard → Service → Custom Domains for SSL status
+  - Try accessing the domain again after a few hours
 
 ### CORS Errors
 
