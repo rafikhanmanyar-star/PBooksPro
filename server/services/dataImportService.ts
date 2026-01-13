@@ -71,7 +71,7 @@ export async function importData(
   let duplicateRows = 0;
 
   // Define import order with dependencies
-  // Order: Accounts → Contacts → Categories → Projects → Buildings → Units → Properties → RentalAgreements
+  // Order: Accounts → Contacts → Categories → Projects → Buildings → Units → Properties → RentalAgreements → RentalInvoices
   const importOrder = [
     { name: 'Accounts', dependencies: [] },
     { name: 'Contacts', dependencies: [] },
@@ -80,7 +80,8 @@ export async function importData(
     { name: 'Buildings', dependencies: [] },
     { name: 'Units', dependencies: ['Projects', 'Contacts'] }, // Contacts is optional
     { name: 'Properties', dependencies: ['Contacts', 'Buildings'] },
-    { name: 'RentalAgreements', dependencies: ['Properties', 'Contacts'] }
+    { name: 'RentalAgreements', dependencies: ['Properties', 'Contacts'] },
+    { name: 'RentalInvoices', dependencies: ['RentalAgreements', 'Contacts', 'Properties'] }
   ];
 
   // If single sheet import, filter to that sheet only
@@ -149,6 +150,7 @@ export async function importData(
     categories: any[];
     accounts: any[];
     rentalAgreements: any[];
+    rentalInvoices: any[];
   } = {
     contacts: [],
     projects: [],
@@ -157,7 +159,8 @@ export async function importData(
     units: [],
     categories: [],
     accounts: [],
-    rentalAgreements: []
+    rentalAgreements: [],
+    rentalInvoices: []
   };
 
   const sheetErrors: { [sheetName: string]: ValidationError[] } = {};
@@ -238,7 +241,8 @@ export async function importData(
     units: { count: 0, skipped: 0 },
     categories: { count: 0, skipped: 0 },
     accounts: { count: 0, skipped: 0 },
-    rentalAgreements: { count: 0, skipped: 0 }
+    rentalAgreements: { count: 0, skipped: 0 },
+    rentalInvoices: { count: 0, skipped: 0 }
   };
 
   const sheetResults: SheetResult[] = [];
@@ -461,6 +465,29 @@ export async function importData(
               importedRows++;
             }
             break;
+
+          case 'RentalInvoices':
+            for (const invoice of validatedData.rentalInvoices) {
+              const existing = await client.query(
+                'SELECT id FROM invoices WHERE tenant_id = $1 AND LOWER(TRIM(invoice_number)) = LOWER($2)',
+                [tenantId, invoice.invoice_number.trim()]
+              );
+              if (existing.rows.length > 0) {
+                imported.rentalInvoices.skipped++;
+                sheetSkipped++;
+                continue;
+              }
+              const id = `invoice_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              await client.query(
+                `INSERT INTO invoices (id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date, invoice_type, description, property_id, agreement_id, security_deposit_charge, service_charges, rental_month, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())`,
+                [id, tenantId, invoice.invoice_number.trim(), invoice.contact_id, invoice.amount, invoice.paid_amount || 0, invoice.status, invoice.issue_date, invoice.due_date, 'Rental', invoice.description || null, invoice.property_id || null, invoice.agreement_id || null, invoice.security_deposit_charge || null, invoice.service_charges || null, invoice.rental_month || null]
+              );
+              imported.rentalInvoices.count++;
+              sheetImported++;
+              importedRows++;
+            }
+            break;
         }
 
         // Record sheet result
@@ -562,6 +589,9 @@ async function validateSheet(
         break;
       case 'RentalAgreements':
         await validateRentalAgreementRow(row, excelRow, db, tenantId, validatedData.rentalAgreements, validationErrors, duplicates);
+        break;
+      case 'RentalInvoices':
+        await validateRentalInvoiceRow(row, excelRow, db, tenantId, validatedData.rentalInvoices, validationErrors, duplicates);
         break;
     }
   }
@@ -1279,6 +1309,209 @@ async function validateRentalAgreementRow(
     status: row.status.toString().trim(),
     security_deposit: row.security_deposit ? parseFloat(row.security_deposit.toString()) || null : null,
     broker_fee: row.broker_fee ? parseFloat(row.broker_fee.toString()) || null : null,
+    description: row.description ? row.description.toString().trim() : null
+  });
+}
+
+async function validateRentalInvoiceRow(
+  row: any,
+  excelRow: number,
+  db: any,
+  tenantId: string,
+  validatedData: any[],
+  errors: ValidationError[],
+  duplicates: DuplicateEntry[]
+): Promise<void> {
+  // Required fields
+  if (!row.invoice_number || !row.invoice_number.toString().trim()) {
+    errors.push({
+      sheet: 'RentalInvoices',
+      row: excelRow,
+      field: 'invoice_number',
+      value: row.invoice_number,
+      message: 'Invoice number is required'
+    });
+    return;
+  }
+
+  if (!row.tenant_name || !row.tenant_name.toString().trim()) {
+    errors.push({
+      sheet: 'RentalInvoices',
+      row: excelRow,
+      field: 'tenant_name',
+      value: row.tenant_name,
+      message: 'Tenant name is required'
+    });
+    return;
+  }
+
+  if (!row.amount) {
+    errors.push({
+      sheet: 'RentalInvoices',
+      row: excelRow,
+      field: 'amount',
+      value: row.amount,
+      message: 'Amount is required'
+    });
+    return;
+  }
+
+  if (!row.status || !row.status.toString().trim()) {
+    errors.push({
+      sheet: 'RentalInvoices',
+      row: excelRow,
+      field: 'status',
+      value: row.status,
+      message: 'Status is required (e.g., Paid, Unpaid, Partially Paid)'
+    });
+    return;
+  }
+
+  if (!row.issue_date) {
+    errors.push({
+      sheet: 'RentalInvoices',
+      row: excelRow,
+      field: 'issue_date',
+      value: row.issue_date,
+      message: 'Issue date is required'
+    });
+    return;
+  }
+
+  if (!row.due_date) {
+    errors.push({
+      sheet: 'RentalInvoices',
+      row: excelRow,
+      field: 'due_date',
+      value: row.due_date,
+      message: 'Due date is required'
+    });
+    return;
+  }
+
+  // Check for duplicates
+  const existing = await db.query(
+    'SELECT id FROM invoices WHERE tenant_id = $1 AND LOWER(TRIM(invoice_number)) = LOWER($2)',
+    [tenantId, row.invoice_number.toString().trim()]
+  );
+  if (existing.length > 0) {
+    duplicates.push({
+      sheet: 'RentalInvoices',
+      row: excelRow,
+      name: row.invoice_number.toString().trim(),
+      reason: 'Invoice with this number already exists'
+    });
+    return;
+  }
+
+  // Resolve tenant contact (required)
+  const tenant = await db.query(
+    'SELECT id FROM contacts WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+    [tenantId, row.tenant_name.toString().trim()]
+  );
+  if (tenant.length === 0) {
+    errors.push({
+      sheet: 'RentalInvoices',
+      row: excelRow,
+      field: 'tenant_name',
+      value: row.tenant_name,
+      message: `Tenant "${row.tenant_name}" not found in Contacts`
+    });
+    return;
+  }
+
+  // Resolve property (optional, but recommended)
+  let propertyId = null;
+  if (row.property_name && row.property_name.toString().trim()) {
+    const property = await db.query(
+      'SELECT id FROM properties WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+      [tenantId, row.property_name.toString().trim()]
+    );
+    if (property.length === 0) {
+      errors.push({
+        sheet: 'RentalInvoices',
+        row: excelRow,
+        field: 'property_name',
+        value: row.property_name,
+        message: `Property "${row.property_name}" not found in Properties. Log: Property link will be skipped.`
+      });
+      // Don't return - we can proceed without property link
+    } else {
+      propertyId = property[0].id;
+    }
+  }
+
+  // Resolve rental agreement (optional but recommended for proper linking)
+  let agreementId = null;
+  if (row.agreement_number && row.agreement_number.toString().trim()) {
+    const agreement = await db.query(
+      'SELECT id FROM rental_agreements WHERE tenant_id = $1 AND LOWER(TRIM(agreement_number)) = LOWER($2)',
+      [tenantId, row.agreement_number.toString().trim()]
+    );
+    if (agreement.length === 0) {
+      errors.push({
+        sheet: 'RentalInvoices',
+        row: excelRow,
+        field: 'agreement_number',
+        value: row.agreement_number,
+        message: `Agreement "${row.agreement_number}" not found in Rental Agreements. Log: Invoice will be created without agreement link. Please ensure the agreement exists first.`
+      });
+      // Don't return - we can proceed without agreement link
+    } else {
+      agreementId = agreement[0].id;
+    }
+  }
+
+  // Validate dates
+  const issueDate = new Date(row.issue_date.toString());
+  const dueDate = new Date(row.due_date.toString());
+  if (isNaN(issueDate.getTime())) {
+    errors.push({
+      sheet: 'RentalInvoices',
+      row: excelRow,
+      field: 'issue_date',
+      value: row.issue_date,
+      message: 'Invalid issue date format (use YYYY-MM-DD)'
+    });
+    return;
+  }
+  if (isNaN(dueDate.getTime())) {
+    errors.push({
+      sheet: 'RentalInvoices',
+      row: excelRow,
+      field: 'due_date',
+      value: row.due_date,
+      message: 'Invalid due date format (use YYYY-MM-DD)'
+    });
+    return;
+  }
+
+  // Validate amount
+  const amount = parseFloat(row.amount.toString());
+  if (isNaN(amount) || amount < 0) {
+    errors.push({
+      sheet: 'RentalInvoices',
+      row: excelRow,
+      field: 'amount',
+      value: row.amount,
+      message: 'Amount must be a positive number'
+    });
+    return;
+  }
+
+  validatedData.push({
+    invoice_number: row.invoice_number.toString().trim(),
+    contact_id: tenant[0].id,
+    property_id: propertyId,
+    agreement_id: agreementId,
+    amount: amount,
+    paid_amount: row.paid_amount ? parseFloat(row.paid_amount.toString()) || 0 : 0,
+    status: row.status.toString().trim(),
+    issue_date: issueDate.toISOString().split('T')[0],
+    due_date: dueDate.toISOString().split('T')[0],
+    rental_month: row.rental_month ? row.rental_month.toString().trim() : null,
+    security_deposit_charge: row.security_deposit_charge ? parseFloat(row.security_deposit_charge.toString()) || null : null,
+    service_charges: row.service_charges ? parseFloat(row.service_charges.toString()) || null : null,
     description: row.description ? row.description.toString().trim() : null
   });
 }

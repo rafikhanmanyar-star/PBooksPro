@@ -16,7 +16,8 @@ export const IMPORT_ORDER = [
   { name: 'Buildings', dependencies: [], description: 'Import buildings (required for Properties)' },
   { name: 'Units', dependencies: ['Projects', 'Contacts'], description: 'Import units (depends on Projects and Contacts)' },
   { name: 'Properties', dependencies: ['Contacts', 'Buildings'], description: 'Import properties (depends on Contacts and Buildings)' },
-  { name: 'RentalAgreements', dependencies: ['Properties', 'Contacts'], description: 'Import rental agreements (depends on Properties and Contacts)' }
+  { name: 'RentalAgreements', dependencies: ['Properties', 'Contacts'], description: 'Import rental agreements (depends on Properties and Contacts)' },
+  { name: 'RentalInvoices', dependencies: ['RentalAgreements', 'Contacts', 'Properties'], description: 'Import rental invoices (depends on Rental Agreements, Contacts, and Properties)' }
 ];
 
 /**
@@ -187,6 +188,37 @@ export async function generateTemplate(options: TemplateOptions): Promise<Buffer
           [options.tenantId]
         );
         return agreements.length > 0 ? [agreements[0]] : [];
+      }
+    },
+    {
+      name: 'RentalInvoices',
+      headers: ['invoice_number', 'tenant_name', 'property_name', 'agreement_number', 'amount', 'paid_amount', 'status', 'issue_date', 'due_date', 'rental_month', 'security_deposit_charge', 'service_charges', 'description'],
+      required: ['invoice_number', 'tenant_name', 'amount', 'status', 'issue_date', 'due_date'],
+      getSampleData: async () => {
+        if (!options.includeSampleData) return [];
+        const invoices = await db.query(
+          `SELECT 
+            i.invoice_number,
+            c.name as tenant_name,
+            p.name as property_name,
+            ra.agreement_number,
+            i.amount,
+            i.paid_amount,
+            i.status,
+            i.issue_date,
+            i.due_date,
+            i.rental_month,
+            i.security_deposit_charge,
+            i.service_charges,
+            i.description
+          FROM invoices i
+          JOIN contacts c ON i.contact_id = c.id
+          LEFT JOIN properties p ON i.property_id = p.id
+          LEFT JOIN rental_agreements ra ON i.agreement_id = ra.id
+          WHERE i.tenant_id = $1 AND i.invoice_type = 'Rental' LIMIT 1`,
+          [options.tenantId]
+        );
+        return invoices.length > 0 ? [invoices[0]] : [];
       }
     }
   ];

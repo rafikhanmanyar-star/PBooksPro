@@ -169,6 +169,46 @@ async function runMigrations() {
       }
     }
     
+    // Migration: Add contact_id to rental_agreements table
+    const contactIdMigrationPaths = [
+      join(__dirname, '../migrations/add-contact-id-to-rental-agreements.sql'),
+      join(__dirname, '../../migrations/add-contact-id-to-rental-agreements.sql'),
+      join(process.cwd(), 'server/migrations/add-contact-id-to-rental-agreements.sql'),
+      join(process.cwd(), 'migrations/add-contact-id-to-rental-agreements.sql'),
+    ];
+    
+    let contactIdMigrationPath: string | null = null;
+    for (const path of contactIdMigrationPaths) {
+      try {
+        readFileSync(path, 'utf8');
+        contactIdMigrationPath = path;
+        break;
+      } catch (e) {
+        // Try next path
+      }
+    }
+    
+    if (contactIdMigrationPath) {
+      try {
+        console.log('📋 Running contact_id migration from:', contactIdMigrationPath);
+        const contactIdMigrationSQL = readFileSync(contactIdMigrationPath, 'utf8');
+        await pool.query(contactIdMigrationSQL);
+        console.log('✅ contact_id migration completed');
+      } catch (error: any) {
+        // If column already exists, that's okay
+        if (error.code === '42701' && error.message.includes('contact_id')) {
+          console.log('   ℹ️  contact_id column already exists (skipping)');
+        } else if (error.code === '42P07' && error.message.includes('idx_rental_agreements_contact_id')) {
+          console.log('   ℹ️  contact_id index already exists (skipping)');
+        } else {
+          console.warn('   ⚠️  contact_id migration warning:', error.message);
+          // Don't throw - migration might already be applied
+        }
+      }
+    } else {
+      console.warn('   ⚠️  Could not find add-contact-id-to-rental-agreements.sql migration file');
+    }
+    
     // Create default admin user if it doesn't exist
     console.log('👤 Ensuring admin user exists...');
     const bcrypt = await import('bcryptjs');

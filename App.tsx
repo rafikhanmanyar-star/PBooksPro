@@ -25,6 +25,8 @@ import { createBackup, restoreBackup } from './services/backupService';
 import { useProgress } from './context/ProgressContext';
 import { usePagePreloader } from './hooks/usePagePreloader';
 import Loading from './components/ui/Loading';
+import { OfflineProvider } from './context/OfflineContext';
+import SyncNotification from './components/ui/SyncNotification';
 
 
 // Lazy Load Components
@@ -341,98 +343,103 @@ const App: React.FC = () => {
   }
 
   return (
-    <div
-      className="flex h-screen bg-white overflow-hidden font-sans text-gray-900 overscroll-none"
-      onContextMenu={(e) => e.preventDefault()}
-    >
-      {/* Left Fixed Sidebar (Desktop) */}
-      <Sidebar currentPage={currentPage} setCurrentPage={handleSetPage} />
-
-      {/* Main Content Wrapper */}
+    <OfflineProvider>
       <div
-        className="flex-1 flex flex-col min-w-0 transition-all duration-300 ease-in-out md:pl-64"
-        style={{ marginRight: 'var(--right-sidebar-width, 0px)' }}
+        className="flex h-screen bg-white overflow-hidden font-sans text-gray-900 overscroll-none"
+        onContextMenu={(e) => e.preventDefault()}
       >
-        <Header title={getPageTitle(currentPage)} isNavigating={isPending} />
+        {/* Left Fixed Sidebar (Desktop) */}
+        <Sidebar currentPage={currentPage} setCurrentPage={handleSetPage} />
 
-        <main className="flex-1 relative overflow-hidden overscroll-none" id="main-container">
-          <ErrorBoundary dispatch={dispatch}>
-            {renderPersistentPage('DASHBOARD', <DashboardPage />)}
-            {renderPersistentPage('TRANSACTIONS', <EnhancedLedgerPage />)}
-            {renderPersistentPage('PAYMENTS', <MobilePaymentsPage />)}
-            {renderPersistentPage('LOANS', <LoanManagementPage />)}
-            {renderPersistentPage('VENDORS', <VendorDirectoryPage />)}
-            {renderPersistentPage('CONTACTS', <ContactsPage />)}
-            {renderPersistentPage('BUDGETS', <BudgetManagement />)}
-            {renderPersistentPage('TASKS', <TodoList />)}
-            {renderPersistentPage('RENTAL', <RentalManagementPage initialPage={currentPage} />)}
-            {renderPersistentPage('PROJECT', <ProjectManagementPage initialPage={currentPage} />)}
-            {renderPersistentPage('INVESTMENT', <InvestmentManagementPage />)}
-            {renderPersistentPage('PM_CONFIG', <PMConfigPage />)}
-            {renderPersistentPage('PAYROLL', <GlobalPayrollPage />)}
-            {renderPersistentPage('SETTINGS', <SettingsPage />)}
-            {renderPersistentPage('IMPORT', <ImportExportWizard />)}
-          </ErrorBoundary>
+        {/* Main Content Wrapper */}
+        <div
+          className="flex-1 flex flex-col min-w-0 transition-all duration-300 ease-in-out md:pl-64"
+          style={{ marginRight: 'var(--right-sidebar-width, 0px)' }}
+        >
+          <Header title={getPageTitle(currentPage)} isNavigating={isPending} />
 
-          {/* Loading Overlay - Shows when navigating between pages (excluded for PROJECT, RENTAL, INVESTMENT, and PM_CONFIG groups to avoid duplicates with Suspense) */}
-          {showLoadingOverlay && activeGroup !== 'PROJECT' && activeGroup !== 'RENTAL' && activeGroup !== 'INVESTMENT' && activeGroup !== 'PM_CONFIG' && (
-            <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-50 flex items-center justify-center transition-opacity duration-200 animate-fade-in">
-              <div className="flex flex-col items-center gap-4">
-                <div className="relative">
-                  <div className="w-16 h-16 border-4 border-gray-200 border-t-green-600 rounded-full animate-spin"></div>
-                  <div className="absolute inset-0 w-16 h-16 border-4 border-transparent border-r-green-400 rounded-full animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
-                </div>
-                <div className="text-center">
-                  <p className="text-gray-700 text-base font-semibold mb-1">Loading Records</p>
-                  <p className="text-gray-500 text-sm">{getPageTitle(currentPage)}</p>
-                </div>
-                {/* Progress dots animation */}
-                <div className="flex gap-1.5 mt-2">
-                  <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse" style={{ animationDelay: '0s' }}></div>
-                  <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-                  <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+          <main className="flex-1 relative overflow-hidden overscroll-none" id="main-container">
+            <ErrorBoundary dispatch={dispatch}>
+              {renderPersistentPage('DASHBOARD', <DashboardPage />)}
+              {renderPersistentPage('TRANSACTIONS', <EnhancedLedgerPage />)}
+              {renderPersistentPage('PAYMENTS', <MobilePaymentsPage />)}
+              {renderPersistentPage('LOANS', <LoanManagementPage />)}
+              {renderPersistentPage('VENDORS', <VendorDirectoryPage />)}
+              {renderPersistentPage('CONTACTS', <ContactsPage />)}
+              {renderPersistentPage('BUDGETS', <BudgetManagement />)}
+              {renderPersistentPage('TASKS', <TodoList />)}
+              {renderPersistentPage('RENTAL', <RentalManagementPage initialPage={currentPage} />)}
+              {renderPersistentPage('PROJECT', <ProjectManagementPage initialPage={currentPage} />)}
+              {renderPersistentPage('INVESTMENT', <InvestmentManagementPage />)}
+              {renderPersistentPage('PM_CONFIG', <PMConfigPage />)}
+              {renderPersistentPage('PAYROLL', <GlobalPayrollPage />)}
+              {renderPersistentPage('SETTINGS', <SettingsPage />)}
+              {renderPersistentPage('IMPORT', <ImportExportWizard />)}
+            </ErrorBoundary>
+
+            {/* Loading Overlay - Shows when navigating between pages (excluded for PROJECT, RENTAL, INVESTMENT, and PM_CONFIG groups to avoid duplicates with Suspense) */}
+            {showLoadingOverlay && activeGroup !== 'PROJECT' && activeGroup !== 'RENTAL' && activeGroup !== 'INVESTMENT' && activeGroup !== 'PM_CONFIG' && (
+              <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-50 flex items-center justify-center transition-opacity duration-200 animate-fade-in">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="relative">
+                    <div className="w-16 h-16 border-4 border-gray-200 border-t-green-600 rounded-full animate-spin"></div>
+                    <div className="absolute inset-0 w-16 h-16 border-4 border-transparent border-r-green-400 rounded-full animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-gray-700 text-base font-semibold mb-1">Loading Records</p>
+                    <p className="text-gray-500 text-sm">{getPageTitle(currentPage)}</p>
+                  </div>
+                  {/* Progress dots animation */}
+                  <div className="flex gap-1.5 mt-2">
+                    <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse" style={{ animationDelay: '0s' }}></div>
+                    <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                    <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        </main>
+            )}
+          </main>
 
-        {/* Mobile Footer Navigation */}
-        <div className={`md:hidden fixed bottom-0 left-0 right-0 z-40 transition-transform duration-300 ${shouldShowFooter ? 'translate-y-0' : 'translate-y-full'}`}>
-          <Footer isPanelOpen={isPanelOpen} onNavigate={handleSetPage} />
+          {/* Mobile Footer Navigation */}
+          <div className={`md:hidden fixed bottom-0 left-0 right-0 z-40 transition-transform duration-300 ${shouldShowFooter ? 'translate-y-0' : 'translate-y-full'}`}>
+            <Footer isPanelOpen={isPanelOpen} onNavigate={handleSetPage} />
+          </div>
         </div>
+
+        {/* Right Sidebar (KPI Panel) */}
+        <KPIPanel />
+        <KPIDrilldown />
+        <ProgressDisplay />
+
+        {/* Sync Notification */}
+        <SyncNotification />
+
+        <UpdateNotification />
+        <VersionUpdateNotification onUpdateRequested={() => {
+          // Use PWA context to apply update if available
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistration().then(registration => {
+              if (registration?.waiting) {
+                registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                setTimeout(() => window.location.reload(), 500);
+              } else {
+                // Fallback: just reload
+                window.location.reload();
+              }
+            });
+          } else {
+            // Fallback: just reload
+            window.location.reload();
+          }
+        }} />
+
+        {isCustomKeyboardOpen && (
+          <div className="fixed bottom-0 left-0 right-0 z-50 animate-slide-up">
+            <CustomKeyboard />
+          </div>
+        )}
       </div>
-
-      {/* Right Sidebar (KPI Panel) */}
-      <KPIPanel />
-      <KPIDrilldown />
-      <ProgressDisplay />
-
-      <UpdateNotification />
-      <VersionUpdateNotification onUpdateRequested={() => {
-        // Use PWA context to apply update if available
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.getRegistration().then(registration => {
-            if (registration?.waiting) {
-              registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-              setTimeout(() => window.location.reload(), 500);
-            } else {
-              // Fallback: just reload
-              window.location.reload();
-            }
-          });
-        } else {
-          // Fallback: just reload
-          window.location.reload();
-        }
-      }} />
-
-      {isCustomKeyboardOpen && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 animate-slide-up">
-          <CustomKeyboard />
-        </div>
-      )}
-    </div>
+    </OfflineProvider>
   );
 };
 

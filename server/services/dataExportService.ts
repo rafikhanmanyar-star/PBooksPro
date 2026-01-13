@@ -107,6 +107,34 @@ export async function exportData(tenantId: string): Promise<Buffer> {
     XLSX.utils.book_append_sheet(workbook, rentalAgreementsSheet, 'RentalAgreements');
   }
 
+  // Export Rental Invoices (with foreign key names resolved)
+  const rentalInvoices = await db.query(
+    `SELECT 
+      i.invoice_number,
+      c.name as tenant_name,
+      p.name as property_name,
+      ra.agreement_number,
+      i.amount,
+      i.paid_amount,
+      i.status,
+      i.issue_date,
+      i.due_date,
+      i.rental_month,
+      i.security_deposit_charge,
+      i.service_charges,
+      i.description
+    FROM invoices i
+    JOIN contacts c ON i.contact_id = c.id
+    LEFT JOIN properties p ON i.property_id = p.id
+    LEFT JOIN rental_agreements ra ON i.agreement_id = ra.id
+    WHERE i.tenant_id = $1 AND i.invoice_type = 'Rental' ORDER BY i.invoice_number`,
+    [tenantId]
+  );
+  if (rentalInvoices.length > 0) {
+    const rentalInvoicesSheet = XLSX.utils.json_to_sheet(rentalInvoices);
+    XLSX.utils.book_append_sheet(workbook, rentalInvoicesSheet, 'RentalInvoices');
+  }
+
   // Export Categories (with foreign key names resolved)
   const categories = await db.query(
     `SELECT 
