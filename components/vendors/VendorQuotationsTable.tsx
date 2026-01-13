@@ -133,7 +133,7 @@ const VendorQuotationsTable: React.FC<VendorQuotationsTableProps> = ({ vendorId,
     };
 
     return (
-        <div className="space-y-4 h-full flex flex-col">
+        <div className="space-y-4 h-full flex flex-col min-h-0">
             <div className="flex flex-col sm:flex-row gap-3 flex-shrink-0">
                 <div className="flex-grow relative">
                     <Input 
@@ -150,7 +150,7 @@ const VendorQuotationsTable: React.FC<VendorQuotationsTableProps> = ({ vendorId,
                 </div>
             </div>
 
-            <div className="overflow-auto border rounded-lg flex-grow bg-white shadow-sm">
+            <div className="flex-1 min-h-0 overflow-auto border rounded-lg bg-white shadow-sm">
                 <table className="min-w-full divide-y divide-slate-200 text-sm relative">
                     <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                         <tr>

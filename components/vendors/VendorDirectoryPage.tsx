@@ -320,15 +320,15 @@ const VendorDirectoryPage: React.FC = () => {
     };
 
     return (
-        <div className="flex flex-col min-h-full bg-slate-50">
+        <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
             <AddVendorSection optionsView={optionsView} setOptionsView={setOptionsView} setSelectedVendorId={setSelectedVendorId} />
-            <div className="flex-grow flex flex-col md:flex-row gap-3 md:gap-4 p-3 md:p-4 min-h-0">
+            <div className="flex-grow flex flex-col md:flex-row gap-3 md:gap-4 p-3 md:p-4 min-h-0 overflow-hidden">
                 {/* Vendor List Sidebar */}
                 <div
                     className="hidden md:flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 h-full flex-shrink-0 overflow-hidden z-10"
                     style={{ width: sidebarWidth }}
                 >
-                    <div className="p-3 border-b border-slate-100 bg-white z-10">
+                    <div className="p-3 border-b border-slate-100 bg-white z-10 flex-shrink-0">
                         <div className="flex items-center justify-between mb-3">
                             <h2 className="text-xs font-bold text-slate-800 uppercase tracking-tight">Vendors</h2>
                             <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full text-[10px] font-semibold">
@@ -370,7 +370,7 @@ const VendorDirectoryPage: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="overflow-y-auto flex-1 p-1 space-y-0.5 scrollbar-thin scrollbar-thumb-slate-200">
+                    <div className="flex-1 min-h-0 overflow-y-auto p-1 space-y-0.5 scrollbar-thin scrollbar-thumb-slate-200">
                         {vendorsWithPayable.length > 0 ? (
                             <ul className="space-y-0.5">
                                 {vendorsWithPayable.map(vendor => {
@@ -579,7 +579,7 @@ const VendorDirectoryPage: React.FC = () => {
 
                             {/* Content Area */}
                             <div className="flex-grow flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 min-h-0 overflow-hidden relative">
-                                <div className="flex-grow overflow-y-auto min-h-0 p-1">
+                                <div className="flex-grow min-h-0 p-1 overflow-hidden">
                                     {activeTab === 'Ledger' ? (
                                         <VendorLedger vendorId={selectedVendor.id} onItemClick={handleLedgerItemSelect} />
                                     ) : activeTab === 'Bills' ? (
@@ -648,7 +648,7 @@ const VendorDirectoryPage: React.FC = () => {
                     ) : (
                         <div className="flex-grow flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 min-h-0 overflow-hidden m-0">
                             {/* Options Content */}
-                            <div className="flex-grow overflow-y-auto min-h-0 p-4">
+                            <div className="flex-grow min-h-0 p-4 overflow-auto">
                                 {optionsView === 'Quotation' ? (
                                     <AllQuotationsTable
                                         onEditQuotation={(quotation) => {

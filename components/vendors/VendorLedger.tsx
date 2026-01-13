@@ -145,11 +145,11 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
     if (!vendorId) return null;
 
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full min-h-0">
             {ledgerItems.length === 0 ? (
                 <p className="text-gray-500 text-center mt-8">No transactions or bills for this vendor.</p>
             ) : (
-                <div className="flow-root flex-grow overflow-y-auto -mt-1">
+                <div className="flow-root flex-1 min-h-0 overflow-auto -mt-1">
                     <div className="-mx-2 overflow-x-auto">
                         <div className="inline-block min-w-full align-middle">
                             <table className="min-w-full divide-y divide-gray-200">
