@@ -163,7 +163,32 @@ if (downloadForm) {
             });
             
             if (response.ok || response.status === 200 || response.redirected) {
-                showSuccessMessage(downloadForm, 'Thank you! Your trial signup was successful. Check your email for the download link and instructions.');
+                // Show success message with application link
+                downloadForm.style.display = 'none';
+                
+                const successDiv = document.createElement('div');
+                successDiv.className = 'form-success';
+                successDiv.style.cssText = `
+                    padding: 2rem;
+                    background: #d4edda;
+                    border: 1px solid #c3e6cb;
+                    border-radius: 8px;
+                    color: #155724;
+                    text-align: center;
+                    margin: 2rem 0;
+                `;
+                successDiv.innerHTML = `
+                    <i class="fas fa-check-circle" style="font-size: 3rem; margin-bottom: 1rem; color: #28a745;"></i>
+                    <h3 style="margin-bottom: 1rem; color: #155724;">Thank you! Your trial signup was successful.</h3>
+                    <p style="color: #155724; margin-bottom: 1.5rem;">You can now access PBooksPro online. Click the button below to get started!</p>
+                    <a href="https://app.pbookspro.com/" target="_blank" class="btn btn-primary btn-large" style="display: inline-block; text-decoration: none; margin-top: 1rem;">
+                        <i class="fas fa-external-link-alt"></i> Access PBooksPro Application
+                    </a>
+                    <p style="color: #155724; margin-top: 1rem; font-size: 0.9rem;">Bookmark this link for easy access: <a href="https://app.pbookspro.com/" target="_blank" style="color: #155724; text-decoration: underline;">https://app.pbookspro.com/</a></p>
+                `;
+                
+                downloadForm.parentNode.insertBefore(successDiv, downloadForm);
+                successDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
             } else {
                 throw new Error('Form submission failed');
             }

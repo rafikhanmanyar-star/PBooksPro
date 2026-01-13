@@ -151,3 +151,11 @@ services:
     envVars:
       - key: VITE_ADMIN_API_URL
         value: https://pbookspro-api-staging.onrender.com/api/admin
+
+  # Staging Website (Marketing/Landing Page)
+  - type: web
+    name: pbookspro-website-staging
+    runtime: static
+    branch: staging
+    buildCommand: echo "No build needed for static site"
+    staticPublishPath: ./website/Website
