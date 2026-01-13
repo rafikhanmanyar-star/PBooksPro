@@ -20,6 +20,15 @@
    NODE_ENV=development
    PORT=3000
    CORS_ORIGIN=http://localhost:5173,http://localhost:5174
+   
+   # Payment Gateway Configuration (Optional - for license payments)
+   PAYMENT_GATEWAY=paddle
+   PAYMENT_SANDBOX=true
+   PADDLE_VENDOR_ID=your_vendor_id
+   PADDLE_API_KEY=your_sandbox_api_key
+   PADDLE_PUBLIC_KEY=your_sandbox_public_key
+   PADDLE_WEBHOOK_SECRET=your_webhook_secret
+   PADDLE_ENVIRONMENT=sandbox
    ```
 
 4. **Replace `YOUR_PASSWORD`** with the password you set during PostgreSQL installation
@@ -38,6 +47,15 @@ LICENSE_SECRET_SALT=PBOOKSPRO_SECURE_SALT_2024
 NODE_ENV=development
 PORT=3000
 CORS_ORIGIN=http://localhost:5173,http://localhost:5174
+
+# Payment Gateway Configuration (Optional - for license payments)
+PAYMENT_GATEWAY=paddle
+PAYMENT_SANDBOX=true
+PADDLE_VENDOR_ID=your_vendor_id
+PADDLE_API_KEY=your_sandbox_api_key
+PADDLE_PUBLIC_KEY=your_sandbox_public_key
+PADDLE_WEBHOOK_SECRET=your_webhook_secret
+PADDLE_ENVIRONMENT=sandbox
 "@ | Out-File -FilePath .env -Encoding utf8
 ```
 
@@ -54,6 +72,15 @@ CORS_ORIGIN=http://localhost:5173,http://localhost:5174
    NODE_ENV=development
    PORT=3000
    CORS_ORIGIN=http://localhost:5173,http://localhost:5174
+   
+   # Payment Gateway Configuration (Optional - for license payments)
+   PAYMENT_GATEWAY=paddle
+   PAYMENT_SANDBOX=true
+   PADDLE_VENDOR_ID=your_vendor_id
+   PADDLE_API_KEY=your_sandbox_api_key
+   PADDLE_PUBLIC_KEY=your_sandbox_public_key
+   PADDLE_WEBHOOK_SECRET=your_webhook_secret
+   PADDLE_ENVIRONMENT=sandbox
    ```
 3. Replace `YOUR_PASSWORD` with your PostgreSQL password
 4. Save as `.env` in the `server` folder
@@ -83,6 +110,15 @@ LICENSE_SECRET_SALT=PBOOKSPRO_SECURE_SALT_2024
 NODE_ENV=development
 PORT=3000
 CORS_ORIGIN=http://localhost:5173,http://localhost:5174
+
+# Payment Gateway Configuration (Optional - for license payments)
+PAYMENT_GATEWAY=paddle
+PAYMENT_SANDBOX=true
+PADDLE_VENDOR_ID=your_vendor_id
+PADDLE_API_KEY=your_sandbox_api_key
+PADDLE_PUBLIC_KEY=your_sandbox_public_key
+PADDLE_WEBHOOK_SECRET=your_webhook_secret
+PADDLE_ENVIRONMENT=sandbox
 ```
 
 ## Next Steps

@@ -1,114 +1,118 @@
-git # Git Commands: Merge Staging to Production
+# Git Commands: Merge Staging to Production
+
+This guide provides step-by-step git commands to merge the `staging` branch into `production` (or `main`) to upgrade production.
+
+## Prerequisites
+- Ensure you have a clean working directory (no uncommitted changes)
+- Ensure you have the latest changes from both branches
 
 ## Step-by-Step Commands
 
-### 1. Make sure staging changes are committed and pushed
-
-```powershell
-# Switch to staging branch
+### 1. Ensure you're on staging and it's up to date
+```bash
 git checkout staging
-
-# Check for uncommitted changes
-git status
-
-# If there are changes, commit them first:
-# git add .
-# git commit -m "Your commit message"
-# git push origin staging
-
-# Then pull latest staging from remote
 git pull origin staging
 ```
 
-### 2. Switch to main (production) branch
-
-```powershell
-# Switch back to main branch
+### 2. Switch to production branch (main)
+```bash
 git checkout main
+```
+*Note: If your production branch is named `master` or `production`, replace `main` with the appropriate branch name.*
 
-# Pull latest production code
+### 3. Pull latest changes from production
+```bash
 git pull origin main
 ```
+*This ensures you have the latest production code before merging.*
 
-### 3. Handle any local changes (if needed)
-
-If you have uncommitted changes you want to keep:
-```powershell
-# Option A: Stash them temporarily
-git stash push -m "Temporary stash before merge"
-
-# After merge, restore them:
-# git stash pop
+### 4. Merge staging into production
+```bash
+git merge staging
 ```
 
-If you want to discard local changes:
-```powershell
-# Option B: Discard changes (CAREFUL - this deletes uncommitted changes)
-git restore .
-```
-
-### 4. Merge staging into main
-
-```powershell
-# Merge staging branch into main
-git merge staging -m "Merge staging to production - [Your description]"
-
-# If there are conflicts, resolve them, then:
-# git add .
-# git commit -m "Resolve merge conflicts"
-```
-
-### 5. Push to production
-
-```powershell
-# Push merged changes to production
-git push origin main
-```
-
----
-
-## Quick One-Liner (if no conflicts expected)
-
-```powershell
-# Make sure you're on main and everything is clean
-git checkout main
-git pull origin main
-git merge staging -m "Merge staging to production"
-git push origin main
-```
-
----
-
-## After Merging
-
-1. **Monitor Render Dashboard** - Production services will auto-deploy
-2. **Check Production Logs** - Verify deployments are successful
-3. **Test Production URLs** - Ensure everything works
-
----
-
-## Troubleshooting
-
-### Merge Conflicts
-If you get conflicts:
-```powershell
-# See which files have conflicts
-git status
-
-# Resolve conflicts in your editor, then:
+### 5. If there are merge conflicts
+- Resolve conflicts manually in the affected files
+- After resolving, stage the resolved files:
+```bash
 git add .
-git commit -m "Resolve merge conflicts"
+```
+- Complete the merge:
+```bash
+git commit
+```
+
+### 6. Push the merged changes to production
+```bash
 git push origin main
 ```
 
-### If staging hasn't been pushed
-```powershell
-# On staging branch
-git checkout staging
-git push origin staging
+## Alternative: Using a single command sequence (PowerShell)
 
-# Then switch back to main and merge
+```powershell
+# Navigate to project directory
+cd "H:\AntiGravity projects\V1.1.3\MyProjectBooks"
+
+# Update staging branch
+git checkout staging
+git pull origin staging
+
+# Switch to production and merge
 git checkout main
+git pull origin main
+git merge staging
+
+# If merge is successful, push to production
+git push origin main
+```
+
+## Alternative: Using a single command sequence (Bash/Git Bash)
+
+```bash
+# Navigate to project directory
+cd "H:/AntiGravity projects/V1.1.3/MyProjectBooks"
+
+# Update staging branch
+git checkout staging
+git pull origin staging
+
+# Switch to production and merge
+git checkout main
+git pull origin main
+git merge staging
+
+# If merge is successful, push to production
+git push origin main
+```
+
+## Quick Reference (All Commands in Order)
+
+```bash
+git checkout staging
+git pull origin staging
+git checkout main
+git pull origin main
 git merge staging
 git push origin main
 ```
+
+## Important Notes
+
+1. **Branch Name**: If your production branch is named `master` or `production` instead of `main`, replace `main` with your actual production branch name in all commands above.
+
+2. **Merge Conflicts**: If conflicts occur during the merge, you'll need to:
+   - Resolve conflicts in the affected files
+   - Stage the resolved files with `git add .`
+   - Complete the merge with `git commit`
+   - Then push with `git push origin main`
+
+3. **Testing**: Consider testing the merge in a local environment before pushing to production.
+
+4. **Backup**: It's recommended to create a backup tag before merging:
+   ```bash
+   git checkout main
+   git tag backup-before-merge-$(Get-Date -Format "yyyyMMdd-HHmmss")
+   git push origin --tags
+   ```
+
+5. **Verification**: After pushing, verify the production deployment to ensure everything works correctly.

@@ -2,8 +2,10 @@ databases:
   - name: pbookspro-db-staging
     databaseName: pbookspro_staging
     user: pbookspro_staging
-    # Note: 'plan' field removed - Render will prompt for plan during Blueprint creation
-    # You can select plan in the Blueprint creation dialog
+  # Production database (already exists in Render)
+  - name: pbookspro-db
+    databaseName: pbookspro  # Update with your actual production DB name
+    user: pbookspro_user      # Update with your actual production DB user
 
 services:
   # Backend API Server
@@ -35,6 +37,22 @@ services:
         value: https://api.pbookspro.com
       - key: CLIENT_URL
         value: https://www.app.pbookspro.com
+      # Payment Gateway Configuration (Paddle)
+      # Add these in Render Dashboard → Environment tab
+      # - key: PAYMENT_GATEWAY
+      #   value: paddle
+      # - key: PAYMENT_SANDBOX
+      #   value: "false"
+      # - key: PADDLE_VENDOR_ID
+      #   value: your_live_vendor_id
+      # - key: PADDLE_API_KEY
+      #   value: your_live_api_key
+      # - key: PADDLE_PUBLIC_KEY
+      #   value: your_live_public_key
+      # - key: PADDLE_WEBHOOK_SECRET
+      #   value: your_webhook_secret
+      # - key: PADDLE_ENVIRONMENT
+      #   value: live
 
   # Client Application (Static Site)
   - type: web
@@ -95,6 +113,22 @@ services:
         value: https://pbookspro-api-staging.onrender.com
       - key: CLIENT_URL
         value: https://pbookspro-client-staging.onrender.com
+      # Payment Gateway Configuration (Paddle - Sandbox for testing)
+      # Add these in Render Dashboard → Environment tab
+      # - key: PAYMENT_GATEWAY
+      #   value: paddle
+      # - key: PAYMENT_SANDBOX
+      #   value: "true"
+      # - key: PADDLE_VENDOR_ID
+      #   value: your_vendor_id
+      # - key: PADDLE_API_KEY
+      #   value: your_sandbox_api_key
+      # - key: PADDLE_PUBLIC_KEY
+      #   value: your_sandbox_public_key
+      # - key: PADDLE_WEBHOOK_SECRET
+      #   value: your_webhook_secret
+      # - key: PADDLE_ENVIRONMENT
+      #   value: sandbox
 
   # Staging Client Application
   - type: web

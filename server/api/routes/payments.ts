@@ -94,7 +94,17 @@ router.post('/confirm', async (req: TenantRequest, res: Response) => {
 export async function handleWebhookRoute(req: Request, res: Response, next: NextFunction) {
   try {
     const { gateway } = req.params;
-    const signature = req.headers['x-signature'] || req.headers['x-payfast-signature'] || req.query.signature;
+    
+    // Get signature based on gateway type
+    let signature: string | undefined;
+    if (gateway === 'paddle') {
+      // Paddle uses Paddle-Signature header with format: ts=timestamp;h1=signature
+      signature = req.headers['paddle-signature'] as string;
+    } else if (gateway === 'payfast') {
+      signature = req.headers['x-payfast-signature'] as string || req.query.signature as string;
+    } else {
+      signature = req.headers['x-signature'] as string || req.query.signature as string;
+    }
 
     // Get raw body for signature verification
     // Note: body-parser may have already parsed it, so we might need raw body

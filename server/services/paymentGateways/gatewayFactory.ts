@@ -3,6 +3,7 @@
 import { BaseGateway } from './baseGateway.js';
 import { PayFastGateway } from './payfastGateway.js';
 import { PaymobGateway } from './paymobGateway.js';
+import { PaddleGateway } from './paddleGateway.js';
 import { MockGateway } from './mockGateway.js';
 
 // Re-export BaseGateway for use in other modules
@@ -17,6 +18,7 @@ export function createGateway(): BaseGateway {
                   (gatewayType !== 'mock' && 
                    !process.env.PAYFAST_MERCHANT_ID && 
                    !process.env.PAYMOB_API_KEY &&
+                   !process.env.PADDLE_API_KEY &&
                    process.env.NODE_ENV !== 'production');
 
   if (useMock || gatewayType === 'mock') {
@@ -61,8 +63,30 @@ export function createGateway(): BaseGateway {
         sandbox,
       });
 
+    case 'paddle':
+      const paddleVendorId = process.env.PADDLE_VENDOR_ID;
+      const paddleApiKey = process.env.PADDLE_API_KEY;
+      const paddlePublicKey = process.env.PADDLE_PUBLIC_KEY;
+      const paddleWebhookSecret = process.env.PADDLE_WEBHOOK_SECRET;
+
+      if (!paddleVendorId || !paddleApiKey || !paddlePublicKey || !paddleWebhookSecret) {
+        throw new Error('Paddle configuration missing: PADDLE_VENDOR_ID, PADDLE_API_KEY, PADDLE_PUBLIC_KEY, and PADDLE_WEBHOOK_SECRET are required');
+      }
+
+      // Use PADDLE_ENVIRONMENT or fallback to NODE_ENV
+      const paddleSandbox = process.env.PADDLE_ENVIRONMENT === 'sandbox' || 
+                           (process.env.PADDLE_ENVIRONMENT !== 'live' && sandbox);
+
+      return new PaddleGateway({
+        vendorId: paddleVendorId,
+        apiKey: paddleApiKey,
+        publicKey: paddlePublicKey,
+        webhookSecret: paddleWebhookSecret,
+        sandbox: paddleSandbox,
+      });
+
     default:
-      throw new Error(`Unsupported payment gateway: ${gatewayType}. Supported: payfast, paymob`);
+      throw new Error(`Unsupported payment gateway: ${gatewayType}. Supported: payfast, paymob, paddle`);
   }
 }
 
