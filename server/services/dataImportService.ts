@@ -237,7 +237,8 @@ export async function importData(
     properties: { count: 0, skipped: 0 },
     units: { count: 0, skipped: 0 },
     categories: { count: 0, skipped: 0 },
-    accounts: { count: 0, skipped: 0 }
+    accounts: { count: 0, skipped: 0 },
+    rentalAgreements: { count: 0, skipped: 0 }
   };
 
   const sheetResults: SheetResult[] = [];
