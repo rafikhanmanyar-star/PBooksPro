@@ -28,13 +28,13 @@ services:
       - key: PORT
         value: 3000
       - key: CORS_ORIGIN
-        value: https://pbookspro-client.onrender.com,https://pbookspro-client-8sn6.onrender.com,https://pbookspro-admin.onrender.com,https://pbookspro-admin-8sn6.onrender.com,http://localhost:5173,http://localhost:5174
+        value: https://www.pbookspro.com,https://www.app.pbookspro.com,https://admin.pbookspro.com,https://pbookspro-client.onrender.com,https://pbookspro-client-8sn6.onrender.com,https://pbookspro-admin.onrender.com,https://pbookspro-admin-8sn6.onrender.com,https://pbookspro-website.onrender.com,http://localhost:5173,http://localhost:5174
       - key: API_URL
-        value: https://pbookspro-api.onrender.com
+        value: https://api.pbookspro.com
       - key: SERVER_URL
-        value: https://pbookspro-api.onrender.com
+        value: https://api.pbookspro.com
       - key: CLIENT_URL
-        value: https://pbookspro-client.onrender.com
+        value: https://www.app.pbookspro.com
 
   # Client Application (Static Site)
   - type: web
@@ -45,7 +45,7 @@ services:
     staticPublishPath: ./dist
     envVars:
       - key: VITE_API_URL
-        value: https://pbookspro-api.onrender.com/api
+        value: https://api.pbookspro.com/api
 
   # Admin Application (Static Site)
   - type: web
@@ -56,7 +56,15 @@ services:
     staticPublishPath: ./admin/dist
     envVars:
       - key: VITE_ADMIN_API_URL
-        value: https://pbookspro-api.onrender.com/api/admin
+        value: https://api.pbookspro.com/api/admin
+
+  # Website (Marketing/Landing Page)
+  - type: web
+    name: pbookspro-website
+    runtime: static
+    branch: main
+    buildCommand: echo "No build needed for static site"
+    staticPublishPath: ./website/Website
 
   # Staging API Server
   - type: web
