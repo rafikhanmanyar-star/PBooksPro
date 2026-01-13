@@ -451,9 +451,9 @@ export async function importData(
               }
               const id = `rental_agreement_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
               await client.query(
-                `INSERT INTO rental_agreements (id, tenant_id, agreement_number, property_id, owner_id, broker_id, start_date, end_date, monthly_rent, rent_due_date, status, security_deposit, broker_fee, description, created_at, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())`,
-                [id, tenantId, agreement.agreement_number.trim(), agreement.property_id, agreement.owner_id, agreement.broker_id, agreement.start_date, agreement.end_date, agreement.monthly_rent, agreement.rent_due_date, agreement.status, agreement.security_deposit, agreement.broker_fee, agreement.description]
+                `INSERT INTO rental_agreements (id, tenant_id, agreement_number, property_id, contact_id, owner_id, broker_id, start_date, end_date, monthly_rent, rent_due_date, status, security_deposit, broker_fee, description, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())`,
+                [id, tenantId, agreement.agreement_number.trim(), agreement.property_id, agreement.tenant_id, agreement.owner_id, agreement.broker_id, agreement.start_date, agreement.end_date, agreement.monthly_rent, agreement.rent_due_date, agreement.status, agreement.security_deposit, agreement.broker_fee, agreement.description]
               );
               imported.rentalAgreements.count++;
               sheetImported++;
@@ -1067,6 +1067,17 @@ async function validateRentalAgreementRow(
     return;
   }
 
+  if (!row.tenant_name || !row.tenant_name.toString().trim()) {
+    errors.push({
+      sheet: 'RentalAgreements',
+      row: excelRow,
+      field: 'tenant_name',
+      value: row.tenant_name,
+      message: 'Tenant name is required'
+    });
+    return;
+  }
+
   if (!row.start_date) {
     errors.push({
       sheet: 'RentalAgreements',
@@ -1149,6 +1160,22 @@ async function validateRentalAgreementRow(
       field: 'property_name',
       value: row.property_name,
       message: `Property "${row.property_name}" not found in Properties`
+    });
+    return;
+  }
+
+  // Resolve tenant (required)
+  const tenant = await db.query(
+    'SELECT id FROM contacts WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+    [tenantId, row.tenant_name.toString().trim()]
+  );
+  if (tenant.length === 0) {
+    errors.push({
+      sheet: 'RentalAgreements',
+      row: excelRow,
+      field: 'tenant_name',
+      value: row.tenant_name,
+      message: `Tenant "${row.tenant_name}" not found in Contacts`
     });
     return;
   }
@@ -1241,6 +1268,7 @@ async function validateRentalAgreementRow(
   validatedData.push({
     agreement_number: row.agreement_number.toString().trim(),
     property_id: property[0].id,
+    tenant_id: tenant[0].id, // This will be mapped to contact_id in the database (tenant contact person)
     owner_id: ownerId,
     broker_id: brokerId,
     start_date: startDate.toISOString().split('T')[0],

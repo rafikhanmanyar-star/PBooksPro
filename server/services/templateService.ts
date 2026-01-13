@@ -159,14 +159,15 @@ export async function generateTemplate(options: TemplateOptions): Promise<Buffer
     },
     {
       name: 'RentalAgreements',
-      headers: ['agreement_number', 'property_name', 'owner_name', 'broker_name', 'start_date', 'end_date', 'monthly_rent', 'rent_due_date', 'status', 'security_deposit', 'broker_fee', 'description'],
-      required: ['agreement_number', 'property_name', 'start_date', 'end_date', 'monthly_rent', 'rent_due_date', 'status'],
+      headers: ['agreement_number', 'property_name', 'tenant_name', 'owner_name', 'broker_name', 'start_date', 'end_date', 'monthly_rent', 'rent_due_date', 'status', 'security_deposit', 'broker_fee', 'description'],
+      required: ['agreement_number', 'property_name', 'tenant_name', 'start_date', 'end_date', 'monthly_rent', 'rent_due_date', 'status'],
       getSampleData: async () => {
         if (!options.includeSampleData) return [];
         const agreements = await db.query(
           `SELECT 
             ra.agreement_number,
             p.name as property_name,
+            t.name as tenant_name,
             o.name as owner_name,
             b.name as broker_name,
             ra.start_date,
@@ -179,6 +180,7 @@ export async function generateTemplate(options: TemplateOptions): Promise<Buffer
             ra.description
           FROM rental_agreements ra
           JOIN properties p ON ra.property_id = p.id
+          JOIN contacts t ON ra.tenant_id = t.id
           LEFT JOIN contacts o ON ra.owner_id = o.id
           LEFT JOIN contacts b ON ra.broker_id = b.id
           WHERE ra.tenant_id = $1 LIMIT 1`,

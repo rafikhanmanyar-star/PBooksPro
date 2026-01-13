@@ -386,9 +386,9 @@ export const generateImportTemplate = (importType: ImportType): void => {
                 return [
                     {
                         sheetName: 'RentalAgreements',
-                        headers: ['agreementNumber', 'tenantName', 'propertyName', 'startDate', 'endDate', 'monthlyRent', 'rentDueDate', 'status', 'description', 'securityDeposit', 'brokerName', 'brokerFee'],
+                        headers: ['agreementNumber', 'propertyName', 'tenantName', 'ownerName', 'brokerName', 'startDate', 'endDate', 'monthlyRent', 'rentDueDate', 'status', 'securityDeposit', 'brokerFee', 'description'],
                         exampleRows: [
-                            { agreementNumber: 'RA-001', tenantName: 'Tenant One', propertyName: 'Property 101', startDate: '2024-01-01', endDate: '2024-12-31', monthlyRent: '10000', rentDueDate: '5', status: 'Active', description: 'Annual rental', securityDeposit: '30000', brokerName: '', brokerFee: '5000' }
+                            { agreementNumber: 'RA-001', propertyName: 'Property 101', tenantName: 'Tenant One', ownerName: 'Owner Name', brokerName: 'Broker Name', startDate: '2024-01-01', endDate: '2024-12-31', monthlyRent: '10000', rentDueDate: '5', status: 'Active', securityDeposit: '30000', brokerFee: '5000', description: 'Annual rental' }
                         ]
                     },
                     {
