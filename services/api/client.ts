@@ -356,13 +356,26 @@ export class ApiClient {
       console.error('API Request Error:', error);
       
       if (error instanceof Error) {
-          // Check if it's a network error
-        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('Network request failed') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+        // Check if it's a network error
+        if (error.message.includes('Failed to fetch') || 
+            error.message.includes('NetworkError') || 
+            error.message.includes('Network request failed') || 
+            error.message.includes('ERR_CONNECTION_REFUSED') ||
+            error.message.includes('ERR_INTERNET_DISCONNECTED') ||
+            error.name === 'TypeError') {
+          
           // Only log network errors during login/transaction operations
           if (shouldLogThisRequest) {
             logger.errorCategory('api', 'Network error:', error.message);
           }
-          throw new Error('Network error: Unable to connect to server. Please check your connection.');
+          
+          // Throw a specific network error (don't logout user)
+          const networkError: ApiError = {
+            error: 'NetworkError',
+            message: 'No internet connection. Changes saved locally and will sync when online.',
+            status: 0 // Special status code for network errors
+          };
+          throw networkError;
         }
         // If it's already an ApiError, throw it as-is
         if ('error' in error && 'status' in error) {

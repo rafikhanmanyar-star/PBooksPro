@@ -11,6 +11,9 @@ import { logger } from '../services/logger';
 import packageJson from '../package.json';
 import { shouldSyncAction } from '../services/sync/dataFilter';
 import InitializationScreen from '../components/InitializationScreen';
+import { getSyncQueue } from '../services/syncQueue';
+import { getConnectionMonitor } from '../services/connectionMonitor';
+import { SyncOperationType } from '../types/sync';
 
 // Lazy import AppStateRepository to avoid initialization issues during module load
 // It will be imported when actually needed
@@ -2027,6 +2030,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             logger.warnCategory('sync', '⚠️ Could not verify token, skipping API sync:', tokenCheckError);
                             return;
                         }
+
+                        // Check online status - queue operation if offline
+                        const connectionMonitor = getConnectionMonitor();
+                        if (!connectionMonitor.isOnline()) {
+                            logger.logCategory('sync', '📴 Device is offline, queuing operation for later sync');
+                            await queueOperationForSync(action);
+                            return;
+                        }
                         
                         const apiService = getAppStateApiService();
 
@@ -2416,6 +2427,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             } : undefined
                         });
                         
+                        // Check if it's a network error (status 0)
+                        if (error?.status === 0 || error?.error === 'NetworkError') {
+                            logger.warnCategory('sync', '📴 Network error detected, queuing operation for later sync');
+                            await queueOperationForSync(action);
+                            return;
+                        }
+
                         // Show user-friendly notification for expired token
                         if (error?.status === 401) {
                             // Only show notification once per session to avoid spam
@@ -2435,6 +2453,143 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         }
                     }
                 };
+
+            // Helper function to queue operations for offline sync
+            const queueOperationForSync = async (action: AppAction) => {
+                try {
+                    const syncQueue = getSyncQueue();
+                    const tenantId = user?.tenant?.id;
+                    const userId = user?.id;
+                    
+                    if (!tenantId || !userId) {
+                        logger.warnCategory('sync', '⚠️ Cannot queue operation: missing tenant or user ID');
+                        return;
+                    }
+
+                    // Map action type to sync operation type and extract data
+                    const mapping = mapActionToSyncOperation(action);
+                    if (!mapping) {
+                        logger.warnCategory('sync', `⚠️ Unknown action type for queue: ${action.type}`);
+                        return;
+                    }
+
+                    await syncQueue.enqueue(
+                        tenantId,
+                        userId,
+                        mapping.type,
+                        mapping.action,
+                        mapping.data
+                    );
+
+                    logger.logCategory('sync', `✅ Queued ${mapping.action} ${mapping.type} for sync when online`);
+                } catch (error) {
+                    console.error('Failed to queue operation:', error);
+                }
+            };
+
+            // Map AppAction to SyncOperation
+            const mapActionToSyncOperation = (action: AppAction): { type: SyncOperationType, action: 'create' | 'update' | 'delete', data: any } | null => {
+                switch (action.type) {
+                    case 'ADD_TRANSACTION':
+                        return { type: 'transaction', action: 'create', data: action.payload };
+                    case 'UPDATE_TRANSACTION':
+                        return { type: 'transaction', action: 'update', data: action.payload };
+                    case 'DELETE_TRANSACTION':
+                        return { type: 'transaction', action: 'delete', data: { id: action.payload } };
+                    case 'BATCH_ADD_TRANSACTIONS':
+                        return { type: 'transaction', action: 'create', data: (action.payload as Transaction[])[0] }; // Queue first one
+                    case 'RESTORE_TRANSACTION':
+                        return { type: 'transaction', action: 'update', data: action.payload };
+                    case 'ADD_CONTACT':
+                        return { type: 'contact', action: 'create', data: action.payload };
+                    case 'UPDATE_CONTACT':
+                        return { type: 'contact', action: 'update', data: action.payload };
+                    case 'DELETE_CONTACT':
+                        return { type: 'contact', action: 'delete', data: { id: action.payload } };
+                    case 'ADD_INVOICE':
+                        return { type: 'invoice', action: 'create', data: action.payload };
+                    case 'UPDATE_INVOICE':
+                        return { type: 'invoice', action: 'update', data: action.payload };
+                    case 'DELETE_INVOICE':
+                        return { type: 'invoice', action: 'delete', data: { id: action.payload } };
+                    case 'ADD_BILL':
+                        return { type: 'bill', action: 'create', data: action.payload };
+                    case 'UPDATE_BILL':
+                        return { type: 'bill', action: 'update', data: action.payload };
+                    case 'DELETE_BILL':
+                        return { type: 'bill', action: 'delete', data: { id: action.payload } };
+                    case 'ADD_ACCOUNT':
+                        return { type: 'account', action: 'create', data: action.payload };
+                    case 'UPDATE_ACCOUNT':
+                        return { type: 'account', action: 'update', data: action.payload };
+                    case 'DELETE_ACCOUNT':
+                        return { type: 'account', action: 'delete', data: { id: action.payload } };
+                    case 'ADD_CATEGORY':
+                        return { type: 'category', action: 'create', data: action.payload };
+                    case 'UPDATE_CATEGORY':
+                        return { type: 'category', action: 'update', data: action.payload };
+                    case 'DELETE_CATEGORY':
+                        return { type: 'category', action: 'delete', data: { id: action.payload } };
+                    case 'ADD_PROJECT':
+                        return { type: 'project', action: 'create', data: action.payload };
+                    case 'UPDATE_PROJECT':
+                        return { type: 'project', action: 'update', data: action.payload };
+                    case 'DELETE_PROJECT':
+                        return { type: 'project', action: 'delete', data: { id: action.payload } };
+                    case 'ADD_BUILDING':
+                        return { type: 'building', action: 'create', data: action.payload };
+                    case 'UPDATE_BUILDING':
+                        return { type: 'building', action: 'update', data: action.payload };
+                    case 'DELETE_BUILDING':
+                        return { type: 'building', action: 'delete', data: { id: action.payload } };
+                    case 'ADD_PROPERTY':
+                        return { type: 'property', action: 'create', data: action.payload };
+                    case 'UPDATE_PROPERTY':
+                        return { type: 'property', action: 'update', data: action.payload };
+                    case 'DELETE_PROPERTY':
+                        return { type: 'property', action: 'delete', data: { id: action.payload } };
+                    case 'ADD_UNIT':
+                        return { type: 'unit', action: 'create', data: action.payload };
+                    case 'UPDATE_UNIT':
+                        return { type: 'unit', action: 'update', data: action.payload };
+                    case 'DELETE_UNIT':
+                        return { type: 'unit', action: 'delete', data: { id: action.payload } };
+                    case 'ADD_BUDGET':
+                        return { type: 'budget', action: 'create', data: action.payload };
+                    case 'UPDATE_BUDGET':
+                        return { type: 'budget', action: 'update', data: action.payload };
+                    case 'DELETE_BUDGET':
+                        return { type: 'budget', action: 'delete', data: { id: action.payload } };
+                    case 'ADD_RENTAL_AGREEMENT':
+                        return { type: 'rental_agreement', action: 'create', data: action.payload };
+                    case 'UPDATE_RENTAL_AGREEMENT':
+                        return { type: 'rental_agreement', action: 'update', data: action.payload };
+                    case 'DELETE_RENTAL_AGREEMENT':
+                        return { type: 'rental_agreement', action: 'delete', data: { id: action.payload } };
+                    case 'ADD_PROJECT_AGREEMENT':
+                        return { type: 'project_agreement', action: 'create', data: action.payload };
+                    case 'UPDATE_PROJECT_AGREEMENT':
+                        return { type: 'project_agreement', action: 'update', data: action.payload };
+                    case 'DELETE_PROJECT_AGREEMENT':
+                    case 'CANCEL_PROJECT_AGREEMENT':
+                        return { type: 'project_agreement', action: 'update', data: action.payload };
+                    case 'ADD_CONTRACT':
+                        return { type: 'contract', action: 'create', data: action.payload };
+                    case 'UPDATE_CONTRACT':
+                        return { type: 'contract', action: 'update', data: action.payload };
+                    case 'DELETE_CONTRACT':
+                        return { type: 'contract', action: 'delete', data: { id: action.payload } };
+                    case 'ADD_SALES_RETURN':
+                        return { type: 'sales_return', action: 'create', data: action.payload };
+                    case 'UPDATE_SALES_RETURN':
+                    case 'MARK_RETURN_REFUNDED':
+                        return { type: 'sales_return', action: 'update', data: action.payload };
+                    case 'DELETE_SALES_RETURN':
+                        return { type: 'sales_return', action: 'delete', data: { id: action.payload } };
+                    default:
+                        return null;
+                }
+            };
 
             // Defer API sync to avoid blocking UI
             if ('requestIdleCallback' in window) {
@@ -3056,7 +3211,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }
             }
         }
-    }, [state.contacts.length, state.transactions.length, state.bills.length, isInitializing, state]);
+    }, [state.contacts.length, state.transactions.length, state.bills.length, state.invoices.length, isInitializing, state]);
 
     useEffect(() => {
         if (!isInitializing && state.currentUser) {
