@@ -228,6 +228,7 @@ const RentalAgreementsPage: React.FC = () => {
             const ownerId = ra.ownerId || property?.ownerId;
             const owner = ownerId ? state.contacts.find(c => c.id === ownerId) : null;
             const buildingId = property?.buildingId || 'unassigned';
+            const building = state.buildings.find(b => b.id === buildingId);
 
             return {
                 ...ra,
@@ -235,8 +236,11 @@ const RentalAgreementsPage: React.FC = () => {
                 tenantName: tenant?.name || 'Unknown',
                 ownerName: owner?.name || 'Unknown',
                 buildingId: buildingId,
+                buildingName: building?.name || (buildingId === 'unassigned' ? 'Unassigned' : 'Unknown Building'),
                 // For filter matching - use agreement's ownerId if available, otherwise property's ownerId
-                ownerId: ownerId
+                ownerId: ownerId,
+                unitLabel: ra.agreementNumber || '—',
+                typeLabel: ra.description || 'Rental'
             };
         });
 
@@ -306,90 +310,108 @@ const RentalAgreementsPage: React.FC = () => {
         </span>
     );
 
+    const getStatusBadge = (status: RentalAgreementStatus) => {
+        switch (status) {
+            case RentalAgreementStatus.ACTIVE:
+                return { label: 'Occupied', className: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' };
+            case RentalAgreementStatus.TERMINATED:
+            case RentalAgreementStatus.EXPIRED:
+                return { label: 'Vacant', className: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200' };
+            default:
+                return { label: status, className: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200' };
+        }
+    };
+
     return (
-        <div className="flex flex-col h-full space-y-4">
+        <div className="flex flex-col h-full gap-4">
             {/* Toolbar */}
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex flex-col gap-3 flex-shrink-0">
-                <div className="flex flex-wrap items-center gap-2">
-                    {/* Date Range Filter */}
-                    <div className="flex bg-slate-100 p-1 rounded-lg flex-shrink-0 overflow-x-auto">
-                        {(['all', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
-                            <button
-                                key={opt}
-                                onClick={() => handleRangeChange(opt)}
-                                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap capitalize ${
-                                    dateRange === opt 
-                                    ? 'bg-white text-accent shadow-sm font-bold' 
-                                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
-                                }`}
-                            >
-                                {opt === 'all' ? 'Total' : opt.replace(/([A-Z])/g, ' $1')}
-                            </button>
-                        ))}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-5 flex flex-col gap-4 flex-shrink-0">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Units</p>
+                        <h2 className="text-xl font-semibold text-slate-900">Rental Agreements</h2>
+                        <p className="text-sm text-slate-500">Keep tenants, properties, rent, and payouts aligned.</p>
                     </div>
-
-                    {dateRange === 'custom' && (
-                        <div className="flex items-center gap-2 animate-fade-in">
-                            <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(d.toISOString().split('T')[0], endDate)} />
-                            <span className="text-slate-400">-</span>
-                            <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, d.toISOString().split('T')[0])} />
-                        </div>
-                    )}
-                </div>
-
-                <div className="flex flex-col sm:flex-row items-center gap-4">
-                    <div className="relative flex-grow w-full sm:w-auto">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                            <div className="w-5 h-5">{ICONS.search}</div>
-                        </div>
-                        <Input 
-                            placeholder="Search agreements..." 
-                            value={searchQuery} 
-                            onChange={(e) => setSearchQuery(e.target.value)} 
-                            className="pl-10"
-                        />
-                        {searchQuery && (
-                            <button 
-                                type="button" 
-                                onClick={() => setSearchQuery('')} 
-                                className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
-                            >
-                                <div className="w-5 h-5">{ICONS.x}</div>
-                            </button>
-                        )}
-                    </div>
-                    
-                    <div className="flex items-center gap-2 flex-shrink-0 w-full sm:w-auto">
-                        <div className="w-full sm:w-48">
-                             <Select
-                                label=""
-                                value={groupBy}
-                                onChange={(e) => { 
-                                    setGroupBy(e.target.value as any); 
-                                    setSelectedTreeId(null); // Reset selection on group change
-                                }}
-                                className="py-2"
-                            >
-                                <option value="tenant">Group by Tenant</option>
-                                <option value="owner">Group by Owner</option>
-                                <option value="property">Group by Property</option>
-                            </Select>
-                        </div>
+                    <div className="flex flex-wrap gap-2">
                         <Button
                             variant="secondary"
                             onClick={() => {
                                 dispatch({ type: 'SET_INITIAL_IMPORT_TYPE', payload: ImportType.RENTAL_AGREEMENTS });
                                 dispatch({ type: 'SET_PAGE', payload: 'import' });
                             }}
-                            className="justify-center whitespace-nowrap"
+                            className="justify-center whitespace-nowrap px-4 h-10"
                         >
                             <div className="w-4 h-4 mr-2">{ICONS.download}</div>
-                            <span>Bulk Import</span>
+                            <span>Import</span>
                         </Button>
-                        <Button onClick={() => openModal()} className="justify-center whitespace-nowrap">
+                        <Button onClick={() => openModal()} className="justify-center whitespace-nowrap px-4 h-10">
                             <div className="w-4 h-4 mr-2">{ICONS.plus}</div>
-                            <span>Create New</span>
+                            <span>Create Agreement</span>
                         </Button>
+                    </div>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className="relative flex-1 min-w-[220px]">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                <div className="w-5 h-5">{ICONS.search}</div>
+                            </div>
+                            <Input 
+                                placeholder="Search tenants, properties, IDs..."
+                                value={searchQuery} 
+                                onChange={(e) => setSearchQuery(e.target.value)} 
+                                className="pl-10 pr-9 h-11 rounded-lg border-slate-200 focus:border-accent"
+                            />
+                            {searchQuery && (
+                                <button 
+                                    type="button" 
+                                    onClick={() => setSearchQuery('')} 
+                                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600"
+                                >
+                                    <div className="w-4 h-4">{ICONS.x}</div>
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="w-full sm:w-48">
+                            <Select
+                                label=""
+                                value={groupBy}
+                                onChange={(e) => { 
+                                    setGroupBy(e.target.value as any); 
+                                    setSelectedTreeId(null); // Reset selection on group change
+                                }}
+                                className="py-2 h-11"
+                            >
+                                <option value="tenant">Group by Tenant</option>
+                                <option value="owner">Group by Owner</option>
+                                <option value="property">Group by Property</option>
+                            </Select>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                        {(['all', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
+                            <button
+                                key={opt}
+                                onClick={() => handleRangeChange(opt)}
+                                className={`px-3 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap capitalize ring-1 ${
+                                    dateRange === opt 
+                                    ? 'bg-accent/10 text-accent ring-accent/30' 
+                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 ring-slate-200'
+                                }`}
+                            >
+                                {opt === 'all' ? 'Total' : opt.replace(/([A-Z])/g, ' $1')}
+                            </button>
+                        ))}
+                        {dateRange === 'custom' && (
+                            <div className="flex items-center gap-2 animate-fade-in">
+                                <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(d.toISOString().split('T')[0], endDate)} />
+                                <span className="text-slate-400">-</span>
+                                <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, d.toISOString().split('T')[0])} />
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -399,28 +421,33 @@ const RentalAgreementsPage: React.FC = () => {
                 
                 {/* Left Tree View */}
                 <div 
-                    className="hidden md:flex flex-col h-full flex-shrink-0"
+                    className="hidden md:flex flex-col h-full flex-shrink-0 bg-white border border-slate-200 rounded-xl shadow-sm"
                     style={{ width: sidebarWidth }}
                 >
-                    <div className="font-bold text-slate-700 mb-2 px-1 flex justify-between items-center">
-                        <span>Properties & Tenants</span>
+                    <div className="px-3 pt-3 pb-2 flex items-center justify-between">
+                        <div>
+                            <p className="text-xs font-semibold uppercase text-slate-400">Filter</p>
+                            <h3 className="text-sm font-semibold text-slate-800">Properties & Tenants</h3>
+                        </div>
                         {selectedTreeId && (
                             <button onClick={() => setSelectedTreeId(null)} className="text-xs text-accent hover:underline">Clear</button>
                         )}
                     </div>
-                    <PayrollTreeView 
-                        treeData={treeData} 
-                        selectedId={selectedTreeId} 
-                        onSelect={(id, type) => {
-                            if (selectedTreeId === id) {
-                                setSelectedTreeId(null);
-                                setSelectedTreeType(null);
-                            } else {
-                                setSelectedTreeId(id);
-                                setSelectedTreeType(type as any);
-                            }
-                        }} 
-                    />
+                    <div className="flex-1 overflow-auto px-2 pb-2">
+                        <PayrollTreeView 
+                            treeData={treeData} 
+                            selectedId={selectedTreeId} 
+                            onSelect={(id, type) => {
+                                if (selectedTreeId === id) {
+                                    setSelectedTreeId(null);
+                                    setSelectedTreeType(null);
+                                } else {
+                                    setSelectedTreeId(id);
+                                    setSelectedTreeType(type as any);
+                                }
+                            }} 
+                        />
+                    </div>
                 </div>
 
                 {/* Resizer Handle */}
@@ -429,57 +456,91 @@ const RentalAgreementsPage: React.FC = () => {
                 </div>
 
                 {/* Right Data Grid */}
-                <div className="flex-grow overflow-hidden flex flex-col bg-white rounded-lg border border-slate-200 shadow-sm">
+                <div className="flex-grow overflow-hidden flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm">
                     <div className="flex-grow overflow-y-auto">
                         <table className="min-w-full divide-y divide-slate-200 text-sm">
                             <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                                 <tr>
-                                    <th onClick={() => handleSort('agreementNumber')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">ID <SortIcon column="agreementNumber"/></th>
-                                    <th onClick={() => handleSort('tenant')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Tenant <SortIcon column="tenant"/></th>
                                     <th onClick={() => handleSort('property')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Property <SortIcon column="property"/></th>
-                                    <th onClick={() => handleSort('owner')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Owner <SortIcon column="owner"/></th>
-                                    <th onClick={() => handleSort('rent')} className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Monthly Rent <SortIcon column="rent"/></th>
-                                    <th onClick={() => handleSort('security')} className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Security <SortIcon column="security"/></th>
-                                    <th onClick={() => handleSort('startDate')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Start Date <SortIcon column="startDate"/></th>
-                                    <th onClick={() => handleSort('endDate')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">End Date <SortIcon column="endDate"/></th>
-                                    <th onClick={() => handleSort('status')} className="px-4 py-3 text-center font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Status <SortIcon column="status"/></th>
-                                    <th className="px-4 py-3"></th>
+                                    <th onClick={() => handleSort('agreementNumber')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Unit <SortIcon column="agreementNumber"/></th>
+                                    <th className="px-4 py-3 text-left font-semibold text-slate-600 whitespace-nowrap">Type</th>
+                                    <th onClick={() => handleSort('status')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Status <SortIcon column="status"/></th>
+                                    <th onClick={() => handleSort('tenant')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Tenant <SortIcon column="tenant"/></th>
+                                    <th onClick={() => handleSort('rent')} className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Market Rent <SortIcon column="rent"/></th>
+                                    <th onClick={() => handleSort('security')} className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap hidden lg:table-cell">Security <SortIcon column="security"/></th>
+                                    <th onClick={() => handleSort('startDate')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap hidden xl:table-cell">Start Date <SortIcon column="startDate"/></th>
+                                    <th onClick={() => handleSort('endDate')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap hidden xl:table-cell">End Date <SortIcon column="endDate"/></th>
+                                    <th className="px-4 py-3 text-right font-semibold text-slate-600 whitespace-nowrap">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200 bg-white">
-                                {filteredAgreements.length > 0 ? filteredAgreements.map(agreement => (
-                                    <tr 
-                                        key={agreement.id} 
-                                        onClick={() => openModal(agreement)}
-                                        className="hover:bg-slate-50 cursor-pointer transition-colors group"
-                                    >
-                                        <td className="px-4 py-3 font-mono text-xs font-medium text-slate-600">{agreement.agreementNumber}</td>
-                                        <td className="px-4 py-3 font-medium text-slate-800 truncate max-w-[150px]" title={agreement.tenantName}>{agreement.tenantName}</td>
-                                        <td className="px-4 py-3 text-slate-600 truncate max-w-[150px]" title={agreement.propertyName}>{agreement.propertyName}</td>
-                                        <td className="px-4 py-3 text-slate-500 truncate max-w-[150px]">{agreement.ownerName}</td>
-                                        <td className="px-4 py-3 text-right font-medium text-slate-700">{CURRENCY} {(agreement.monthlyRent || 0).toLocaleString()}</td>
-                                        <td className="px-4 py-3 text-right text-slate-500">{agreement.securityDeposit ? `${CURRENCY} ${(agreement.securityDeposit || 0).toLocaleString()}` : '-'}</td>
-                                        <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{formatDate(agreement.startDate)}</td>
-                                        <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{formatDate(agreement.endDate)}</td>
-                                        <td className="px-4 py-3 text-center">
-                                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                                                agreement.status === 'Active' ? 'bg-emerald-100 text-emerald-800' : 
-                                                agreement.status === 'Terminated' ? 'bg-rose-100 text-rose-800' : 
-                                                'bg-slate-100 text-slate-600'
-                                            }`}>
-                                                {agreement.status}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3 text-right">
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); openModal(agreement); }}
-                                                className="text-indigo-600 hover:text-indigo-900 p-1 rounded hover:bg-indigo-50"
-                                            >
-                                                <div className="w-4 h-4">{ICONS.edit}</div>
-                                            </button>
-                                        </td>
-                                    </tr>
-                                )) : (
+                                {filteredAgreements.length > 0 ? filteredAgreements.map(agreement => {
+                                    const badge = getStatusBadge(agreement.status);
+                                    const tenantInitial = agreement.tenantName?.[0]?.toUpperCase?.() || '?';
+                                    return (
+                                        <tr 
+                                            key={agreement.id} 
+                                            onClick={() => openModal(agreement)}
+                                            className="hover:bg-slate-50 cursor-pointer transition-colors group"
+                                        >
+                                            <td className="px-4 py-4">
+                                                <div className="flex items-start gap-3">
+                                                    <div className="h-10 w-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 font-semibold">
+                                                        {agreement.propertyName?.[0]?.toUpperCase?.() || 'P'}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <div className="text-sm font-semibold text-slate-900 leading-5 truncate" title={agreement.propertyName}>{agreement.propertyName}</div>
+                                                        <div className="text-xs text-slate-500 leading-4 truncate">
+                                                            {agreement.buildingName} · Owner: {agreement.ownerName}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-4 text-slate-700 font-medium whitespace-nowrap">{agreement.unitLabel}</td>
+                                            <td className="px-4 py-4 text-slate-600 whitespace-nowrap">{agreement.typeLabel}</td>
+                                            <td className="px-4 py-4">
+                                                <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ring-1 ${badge.className}`}>
+                                                    {badge.label}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-4">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="inline-flex h-8 w-8 rounded-full bg-slate-100 text-slate-600 font-semibold items-center justify-center border border-slate-200">
+                                                        {tenantInitial}
+                                                    </span>
+                                                    <div className="min-w-0">
+                                                        <div className="text-sm font-semibold text-slate-900 leading-5 truncate" title={agreement.tenantName}>{agreement.tenantName}</div>
+                                                        <div className="text-xs text-slate-500 leading-4 truncate">Rent due: {agreement.rentDueDate ? `Day ${agreement.rentDueDate}` : 'N/A'}</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-4 text-right font-semibold text-slate-900 whitespace-nowrap">{CURRENCY} {(agreement.monthlyRent || 0).toLocaleString()}</td>
+                                            <td className="px-4 py-4 text-right text-slate-600 whitespace-nowrap hidden lg:table-cell">
+                                                {agreement.securityDeposit ? `${CURRENCY} ${(agreement.securityDeposit || 0).toLocaleString()}` : '—'}
+                                            </td>
+                                            <td className="px-4 py-4 text-slate-600 whitespace-nowrap hidden xl:table-cell">{formatDate(agreement.startDate)}</td>
+                                            <td className="px-4 py-4 text-slate-600 whitespace-nowrap hidden xl:table-cell">{formatDate(agreement.endDate)}</td>
+                                            <td className="px-4 py-4 text-right">
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <Button
+                                                        variant="secondary"
+                                                        onClick={(e) => { e.stopPropagation(); openModal(agreement); }}
+                                                        className="h-9 px-3 text-sm"
+                                                    >
+                                                        View
+                                                    </Button>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); openModal(agreement); }}
+                                                        className="h-9 px-3 inline-flex items-center gap-1 rounded-md bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400"
+                                                    >
+                                                        <div className="w-4 h-4">{ICONS.edit}</div>
+                                                        Edit
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                }) : (
                                     <tr>
                                         <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
                                             No agreements found matching your criteria.
@@ -489,8 +550,9 @@ const RentalAgreementsPage: React.FC = () => {
                             </tbody>
                         </table>
                     </div>
-                    <div className="p-3 border-t border-slate-200 bg-slate-50 text-sm font-medium text-slate-600">
-                        Total Agreements: {filteredAgreements.length}
+                    <div className="p-3 border-t border-slate-200 bg-slate-50 text-sm font-medium text-slate-600 flex items-center justify-between">
+                        <span>Total Agreements: {filteredAgreements.length}</span>
+                        <span className="text-slate-500">UI only update · Existing logic preserved</span>
                     </div>
                 </div>
             </div>
