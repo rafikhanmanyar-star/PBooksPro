@@ -79,6 +79,13 @@ export class PaymentService {
                      process.env.API_BASE_URL || 
                      'http://localhost:3000';
 
+    // Get Paddle Price ID from environment variables (if configured)
+    // Format: PADDLE_PRICE_ID_MONTHLY and PADDLE_PRICE_ID_YEARLY
+    const priceIdEnvVar = request.licenseType === 'monthly' 
+      ? 'PADDLE_PRICE_ID_MONTHLY' 
+      : 'PADDLE_PRICE_ID_YEARLY';
+    const priceId = process.env[priceIdEnvVar] || undefined;
+
     // Create payment session with gateway
     const session = await this.gateway.createPaymentSession({
       amount,
@@ -92,6 +99,7 @@ export class PaymentService {
         licenseType: request.licenseType,
         customerName: tenant.name,
         customerEmail: tenant.email,
+        priceId, // Pass price ID if available
         serverUrl, // Pass server URL for mock gateway
         webhookUrl: `${serverUrl}/api/payments/webhook/${this.gateway.getName()}`,
       },

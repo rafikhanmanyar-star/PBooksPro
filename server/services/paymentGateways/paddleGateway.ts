@@ -104,9 +104,19 @@ export class PaddleGateway extends BaseGateway {
         items,
       };
 
-      // Add customer_id only if provided
-      if (params.metadata?.customerId) {
+      // Paddle may require customer information
+      // Try to create or use customer if email is available
+      if (params.metadata?.customerEmail) {
+        // Use customer email - Paddle can create customer on the fly
+        requestBody.customer_email = params.metadata.customerEmail;
+      } else if (params.metadata?.customerId) {
+        // Use existing Paddle customer ID
         requestBody.customer_id = params.metadata.customerId;
+      }
+      
+      // Add customer name if available
+      if (params.metadata?.customerName) {
+        requestBody.customer_name = params.metadata.customerName;
       }
 
       // Add custom_data only if we have data
@@ -153,29 +163,52 @@ export class PaddleGateway extends BaseGateway {
         },
       };
     } catch (error: any) {
-      // Enhanced error logging
-      const errorDetails = error.response?.data || {};
+      // Enhanced error logging - capture full response
+      const errorResponse = error.response;
+      const errorDetails = errorResponse?.data || {};
       const errorMessage = errorDetails.error?.detail || 
                           errorDetails.error?.message || 
+                          errorDetails.message ||
                           error.message || 
                           'Unknown error';
       
-      console.error('Paddle payment session creation error:', {
+      // Log full error details for debugging
+      console.error('Paddle payment session creation error - FULL DETAILS:', {
         message: errorMessage,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: errorDetails,
+        status: errorResponse?.status,
+        statusText: errorResponse?.statusText,
+        statusCode: errorResponse?.status,
+        fullErrorData: JSON.stringify(errorDetails, null, 2),
+        errorType: errorDetails.error?.type,
+        errorCode: errorDetails.error?.code,
+        errorDetail: errorDetails.error?.detail,
+        documentationUrl: errorDetails.error?.documentation_url,
+        requestId: errorDetails.meta?.request_id,
         url: `${this.apiUrl}/transactions`,
+        requestBody: JSON.stringify(requestBody, null, 2),
+        headers: {
+          hasAuth: !!this.config.apiKey,
+          authPrefix: this.config.apiKey?.substring(0, 10) + '...',
+        },
       });
       
       // Provide more helpful error message
       let userMessage = `Failed to create Paddle payment session: ${errorMessage}`;
       
-      if (error.response?.status === 400) {
-        userMessage = `Invalid request to Paddle: ${errorMessage}. Please check that products and prices are configured correctly in Paddle dashboard.`;
-      } else if (error.response?.status === 401) {
+      if (errorResponse?.status === 400) {
+        // Try to extract more specific error information
+        const specificError = errorDetails.error?.detail || errorDetails.error?.message || errorMessage;
+        userMessage = `Invalid request to Paddle: ${specificError}. `;
+        
+        // Add specific guidance based on error code
+        if (errorDetails.error?.code === 'invalid_field') {
+          userMessage += `Field '${errorDetails.error?.field || 'unknown'}' is invalid. `;
+        }
+        
+        userMessage += `Please check that products and prices are configured correctly in Paddle dashboard. Full error: ${JSON.stringify(errorDetails)}`;
+      } else if (errorResponse?.status === 401) {
         userMessage = `Paddle authentication failed. Please verify API key is correct.`;
-      } else if (error.response?.status === 404) {
+      } else if (errorResponse?.status === 404) {
         userMessage = `Paddle API endpoint not found. Please verify API URL is correct.`;
       }
       
