@@ -277,7 +277,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
         onClose();
     };
 
-    const handleDelete = () => {
+    const handleDelete = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
         if (transactionToEdit && transactionToEdit.id) {
             onShowDeleteWarning(transactionToEdit);
         }
