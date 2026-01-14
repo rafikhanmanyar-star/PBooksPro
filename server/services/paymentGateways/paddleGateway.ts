@@ -75,41 +75,61 @@ export class PaddleGateway extends BaseGateway {
     metadata?: Record<string, any>;
   }): Promise<PaymentSession> {
     try {
-      // Paddle uses transaction creation API
-      // First, create a price if needed, or use existing price
-      // For simplicity, we'll create a transaction directly
-      
-      const paymentIntentId = `paddle_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
-      
       // Convert amount to smallest currency unit (cents/paisa)
       const amountInCents = Math.round(params.amount * 100);
       
+      // Build items array - use price_id if provided, otherwise use unit_price
+      const priceId = params.metadata?.priceId;
+      const items: any[] = [
+        {
+          description: params.description,
+          quantity: 1,
+        },
+      ];
+
+      // Paddle requires either price_id OR unit_price, not both
+      if (priceId) {
+        // Use pre-configured price from Paddle
+        items[0].price_id = priceId;
+      } else {
+        // Use ad-hoc pricing
+        items[0].unit_price = {
+          amount: amountInCents.toString(),
+          currency_code: params.currency,
+        };
+      }
+
+      // Build request body
+      const requestBody: any = {
+        items,
+      };
+
+      // Add customer_id only if provided
+      if (params.metadata?.customerId) {
+        requestBody.customer_id = params.metadata.customerId;
+      }
+
+      // Add custom_data only if we have data
+      const customData: any = {};
+      if (params.metadata?.paymentId) customData.payment_id = params.metadata.paymentId;
+      if (params.metadata?.tenantId) customData.tenant_id = params.metadata.tenantId;
+      if (params.metadata?.licenseType) customData.license_type = params.metadata.licenseType;
+      
+      if (Object.keys(customData).length > 0) {
+        requestBody.custom_data = customData;
+      }
+
+      // Add checkout URLs only if provided
+      if (params.returnUrl || params.cancelUrl) {
+        requestBody.checkout = {};
+        if (params.returnUrl) requestBody.checkout.url = params.returnUrl;
+        if (params.cancelUrl) requestBody.checkout.cancel_url = params.cancelUrl;
+      }
+
       // Create transaction using Paddle API
       const transactionResponse = await axios.post(
         `${this.apiUrl}/transactions`,
-        {
-          items: [
-            {
-              price_id: params.metadata?.priceId || null, // If you have pre-configured prices
-              description: params.description,
-              quantity: 1,
-              unit_price: {
-                amount: amountInCents.toString(),
-                currency_code: params.currency,
-              },
-            },
-          ],
-          customer_id: params.metadata?.customerId || null,
-          custom_data: {
-            payment_id: params.metadata?.paymentId,
-            tenant_id: params.metadata?.tenantId,
-            license_type: params.metadata?.licenseType,
-          },
-          checkout: {
-            url: params.returnUrl || '',
-            cancel_url: params.cancelUrl || '',
-          },
-        },
+        requestBody,
         {
           headers: {
             'Authorization': `Bearer ${this.config.apiKey}`,
@@ -133,15 +153,33 @@ export class PaddleGateway extends BaseGateway {
         },
       };
     } catch (error: any) {
-      console.error('Paddle payment session creation error:', error.response?.data || error.message);
+      // Enhanced error logging
+      const errorDetails = error.response?.data || {};
+      const errorMessage = errorDetails.error?.detail || 
+                          errorDetails.error?.message || 
+                          error.message || 
+                          'Unknown error';
       
-      // Fallback: Create a simple checkout URL
-      // In production, you should handle this better
-      const paymentIntentId = `paddle_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
+      console.error('Paddle payment session creation error:', {
+        message: errorMessage,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: errorDetails,
+        url: `${this.apiUrl}/transactions`,
+      });
       
-      // For Paddle, you typically need to create a product/price first
-      // This is a simplified version - you may need to adjust based on your Paddle setup
-      throw new Error(`Failed to create Paddle payment session: ${error.response?.data?.error?.detail || error.message}`);
+      // Provide more helpful error message
+      let userMessage = `Failed to create Paddle payment session: ${errorMessage}`;
+      
+      if (error.response?.status === 400) {
+        userMessage = `Invalid request to Paddle: ${errorMessage}. Please check that products and prices are configured correctly in Paddle dashboard.`;
+      } else if (error.response?.status === 401) {
+        userMessage = `Paddle authentication failed. Please verify API key is correct.`;
+      } else if (error.response?.status === 404) {
+        userMessage = `Paddle API endpoint not found. Please verify API URL is correct.`;
+      }
+      
+      throw new Error(userMessage);
     }
   }
 
