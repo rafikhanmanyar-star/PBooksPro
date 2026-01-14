@@ -493,7 +493,7 @@ const PropertyLayoutReport: React.FC = () => {
                         unit.daysUntilExpiry < 0 
                             ? 'text-red-600' 
                             : unit.daysUntilExpiry <= 30 
-                            ? 'text-orange-600' 
+                            ? 'text-orange-600 animate-pulse' 
                             : 'text-slate-500'
                     }`}>
                         {unit.daysUntilExpiry < 0 
@@ -577,6 +577,27 @@ const PropertyLayoutReport: React.FC = () => {
                     <h2 className="text-xl font-bold text-slate-800 mr-4">
                         {data.type === 'RENTAL' ? 'Property' : 'Project'} Visual Layout
                     </h2>
+                    {/* Legend - Only for Rental */}
+                    {data.type === 'RENTAL' && (
+                        <div className="flex items-center gap-4 text-xs text-slate-600 border-l border-slate-300 pl-4">
+                            <div className="flex items-center gap-1.5">
+                                <span className="inline-block w-3 h-3 bg-white border-2 border-emerald-500 rounded"></span>
+                                <span>Good / Paid</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                <span className="inline-block w-3 h-3 bg-white border-2 border-orange-500 rounded"></span>
+                                <span>Low Debt</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                <span className="inline-block w-3 h-3 bg-white border-2 border-red-500 rounded"></span>
+                                <span>High Debt</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                <span className="inline-block w-3 h-3 bg-white border-2 border-slate-400 rounded"></span>
+                                <span>Vacant</span>
+                            </div>
+                        </div>
+                    )}
                     {/* Building Filter - Only for Rental */}
                     {data.type === 'RENTAL' && (
                         <div className="w-48 flex-shrink-0">
@@ -604,13 +625,6 @@ const PropertyLayoutReport: React.FC = () => {
 
             <div className="printable-area" id="printable-area">
                 <ReportHeader />
-                <div className="text-center mb-3">
-                    <p className="text-xs text-slate-500">
-                        <span className="inline-block w-2 h-2 bg-emerald-50 border border-emerald-300 mr-1"></span> Good / Paid
-                        <span className="inline-block w-2 h-2 bg-orange-50 border border-orange-300 ml-3 mr-1"></span> Low Debt
-                        <span className="inline-block w-2 h-2 bg-red-50 border border-red-400 ml-3 mr-1"></span> High Debt
-                    </p>
-                </div>
 
                 {data.data.length === 0 ? (
                     <div className="text-center py-10 text-slate-500">No project units found to display.</div>
