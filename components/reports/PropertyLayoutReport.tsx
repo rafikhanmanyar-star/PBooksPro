@@ -333,7 +333,20 @@ const PropertyLayoutReport: React.FC<PropertyLayoutReportProps> = ({ onReportCha
                 b.unconventional.sort((u1, u2) => u1.name.localeCompare(u2.name));
             });
 
-            return { type: 'RENTAL', data: sortedBuildings };
+            // Calculate maximum payoutDue for color saturation
+            let maxPayoutDue = 0;
+            sortedBuildings.forEach(b => {
+                b.floors.forEach(f => {
+                    f.units.forEach(u => {
+                        if (u.payoutDue > maxPayoutDue) maxPayoutDue = u.payoutDue;
+                    });
+                });
+                b.unconventional.forEach(u => {
+                    if (u.payoutDue > maxPayoutDue) maxPayoutDue = u.payoutDue;
+                });
+            });
+
+            return { type: 'RENTAL', data: sortedBuildings, maxPayoutDue };
         } 
         
         // --- PROJECT MODE ---
@@ -409,6 +422,24 @@ const PropertyLayoutReport: React.FC<PropertyLayoutReportProps> = ({ onReportCha
         return { text: 'VACANT', color: 'bg-slate-400' };
     };
 
+    const getBackgroundColorStyle = (payoutDue: number, maxPayoutDue: number): React.CSSProperties => {
+        if (maxPayoutDue === 0 || payoutDue === 0) {
+            return {};
+        }
+        
+        // Calculate saturation ratio (0 to 1)
+        const ratio = Math.min(payoutDue / maxPayoutDue, 1);
+        
+        // Map ratio to opacity for indigo background
+        // Higher payoutDue = more saturated (higher opacity) color
+        // Using opacity from 0.05 (very light) to 0.25 (more visible) for subtle background
+        const opacity = 0.05 + (ratio * 0.20); // Range: 0.05 to 0.25
+        
+        return {
+            backgroundColor: `rgba(99, 102, 241, ${opacity})` // indigo-500 with variable opacity
+        };
+    };
+
     const getColorClasses = (unit: any, mode: 'RENTAL' | 'PROJECT') => {
         if (mode === 'RENTAL') {
             // Use status-based border colors
@@ -427,8 +458,9 @@ const PropertyLayoutReport: React.FC<PropertyLayoutReportProps> = ({ onReportCha
         setSelectedProperty({ id: unit.id, name: unit.name });
     };
     
-    const renderBox = (unit: any, mode: 'RENTAL' | 'PROJECT') => {
+    const renderBox = (unit: any, mode: 'RENTAL' | 'PROJECT', maxPayoutDue: number = 0) => {
         const statusBadge = mode === 'RENTAL' ? getStatusBadge(unit) : null;
+        const backgroundColorStyle = mode === 'RENTAL' ? getBackgroundColorStyle(unit.payoutDue || 0, maxPayoutDue) : {};
         
         return (
             <div 
@@ -437,6 +469,7 @@ const PropertyLayoutReport: React.FC<PropertyLayoutReportProps> = ({ onReportCha
                 className={`relative rounded-xl bg-white border shadow-sm p-2 flex flex-col justify-between transition-all h-32 overflow-hidden cursor-pointer hover:shadow-md hover:scale-[1.02]
                     ${getColorClasses(unit, mode)}
                 `}
+                style={backgroundColorStyle}
                 title="Click to view details"
             >
                 {/* Header with Status Badge */}
@@ -672,14 +705,14 @@ const PropertyLayoutReport: React.FC<PropertyLayoutReportProps> = ({ onReportCha
                                                 {floor.label}
                                             </div>
                                             <div className="flex-grow grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
-                                                {floor.units.map((unit: any) => renderBox(unit, data.type as any))}
+                                                {floor.units.map((unit: any) => renderBox(unit, data.type as any, data.maxPayoutDue || 0))}
                                             </div>
                                         </div>
                                     ))}
                                     {group.unconventional.length > 0 && (
                                         <div className="mt-2 pt-2 border-t border-dashed border-slate-300">
                                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 md:pl-14">
-                                                  {group.unconventional.map((unit: any) => renderBox(unit, data.type as any))}
+                                                  {group.unconventional.map((unit: any) => renderBox(unit, data.type as any, data.maxPayoutDue || 0))}
                                              </div>
                                         </div>
                                     )}
