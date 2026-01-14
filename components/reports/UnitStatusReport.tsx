@@ -28,7 +28,12 @@ interface ReportRow {
 
 type SortKey = 'unitName' | 'buildingName' | 'ownerName' | 'tenantName' | 'status' | 'agreementEndDate' | 'expiryStatus';
 
-const UnitStatusReport: React.FC = () => {
+interface UnitStatusReportProps {
+    onReportChange?: (report: string) => void;
+    activeReport?: string;
+}
+
+const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, activeReport }) => {
     const { state } = useAppContext();
     const { handlePrint } = usePrint();
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
@@ -214,6 +219,32 @@ const UnitStatusReport: React.FC = () => {
                                 </button>
                             )}
                         </div>
+
+                        {/* Layout Toggle Buttons */}
+                        {onReportChange && (
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => onReportChange('Visual Layout')}
+                                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 whitespace-nowrap focus:outline-none ${
+                                        activeReport === 'Visual Layout'
+                                            ? 'bg-indigo-100 text-indigo-700 border-2 border-indigo-300 shadow-sm'
+                                            : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                                    }`}
+                                >
+                                    Visual Layout
+                                </button>
+                                <button
+                                    onClick={() => onReportChange('Tabular Layout')}
+                                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 whitespace-nowrap focus:outline-none ${
+                                        activeReport === 'Tabular Layout'
+                                            ? 'bg-indigo-100 text-indigo-700 border-2 border-indigo-300 shadow-sm'
+                                            : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                                    }`}
+                                >
+                                    Tabular Layout
+                                </button>
+                            </div>
+                        )}
 
                         {/* Actions Group */}
                         <div className="flex items-center gap-2 ml-auto">

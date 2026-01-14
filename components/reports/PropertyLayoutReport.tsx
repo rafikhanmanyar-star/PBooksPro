@@ -67,7 +67,12 @@ interface ProjectLayoutData {
     unconventional: UnitBoxData[];
 }
 
-const PropertyLayoutReport: React.FC = () => {
+interface PropertyLayoutReportProps {
+    onReportChange?: (report: string) => void;
+    activeReport?: string;
+}
+
+const PropertyLayoutReport: React.FC<PropertyLayoutReportProps> = ({ onReportChange, activeReport }) => {
     const { state } = useAppContext();
     const { handlePrint } = usePrint();
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
@@ -610,8 +615,33 @@ const PropertyLayoutReport: React.FC = () => {
                             />
                         </div>
                     )}
+                    {/* Layout Toggle Buttons */}
+                    {onReportChange && (
+                        <div className="flex gap-2 ml-auto">
+                            <button
+                                onClick={() => onReportChange('Visual Layout')}
+                                className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 whitespace-nowrap focus:outline-none ${
+                                    activeReport === 'Visual Layout'
+                                        ? 'bg-indigo-100 text-indigo-700 border-2 border-indigo-300 shadow-sm'
+                                        : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                                }`}
+                            >
+                                Visual Layout
+                            </button>
+                            <button
+                                onClick={() => onReportChange('Tabular Layout')}
+                                className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 whitespace-nowrap focus:outline-none ${
+                                    activeReport === 'Tabular Layout'
+                                        ? 'bg-indigo-100 text-indigo-700 border-2 border-indigo-300 shadow-sm'
+                                        : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                                }`}
+                            >
+                                Tabular Layout
+                            </button>
+                        </div>
+                    )}
                     {/* Actions Group */}
-                    <div className="flex items-center gap-2 ml-auto">
+                    <div className="flex items-center gap-2">
                         <PrintButton
                             variant="secondary"
                             size="sm"
@@ -638,7 +668,7 @@ const PropertyLayoutReport: React.FC = () => {
                                 <div className="flex flex-col gap-4">
                                     {group.floors.map((floor: any) => (
                                         <div key={floor.index} className="flex flex-col md:flex-row gap-2">
-                                            <div className="w-full md:w-12 h-8 md:h-auto flex-shrink-0 flex items-center justify-center bg-blue-500 text-white rounded-lg font-bold text-sm shadow-lg mb-2 md:mb-0">
+                                            <div className="w-full md:w-12 h-8 md:h-auto flex-shrink-0 flex items-center justify-center bg-indigo-600 text-white rounded-lg font-bold text-sm shadow-lg mb-2 md:mb-0">
                                                 {floor.label}
                                             </div>
                                             <div className="flex-grow grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">

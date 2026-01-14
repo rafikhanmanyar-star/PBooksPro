@@ -1,9 +1,8 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import OwnerPayoutsReport from '../reports/OwnerPayoutsReport';
 import UnitStatusReport from '../reports/UnitStatusReport';
 import TenantLedgerReport from '../reports/TenantLedgerReport';
-import Select from '../ui/Select';
 import EmployeePaymentReport from '../reports/EmployeePaymentReport';
 import BuildingAccountsReport from '../reports/BuildingAccountsReport';
 import VendorLedgerReport from '../reports/VendorLedgerReport';
@@ -15,8 +14,9 @@ import ServiceChargesDeductionReport from '../reports/ServiceChargesDeductionRep
 import BMAnalysisReport from '../reports/BMAnalysisReport';
 import AgreementExpiryReport from '../reports/AgreementExpiryReport';
 
-const PRIMARY_REPORTS = ['Visual Layout', 'Tabular Layout'];
-const REPORT_MENU_OPTIONS = [
+const ALL_REPORTS = [
+    'Visual Layout',
+    'Tabular Layout',
     'Agreement Expiry',
     'Building Analysis',
     'BM Analysis',
@@ -35,6 +35,8 @@ interface RentalReportsPageProps {
 
 const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => {
     const [activeReport, setActiveReport] = useState(initialTab || 'Visual Layout');
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (initialTab) {
@@ -42,11 +44,33 @@ const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => 
         }
     }, [initialTab]);
 
+    // Close menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setIsMenuOpen(false);
+            }
+        };
+
+        if (isMenuOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isMenuOpen]);
+
+
+    const handleReportSelect = (reportName: string) => {
+        setActiveReport(reportName);
+        setIsMenuOpen(false);
+    };
 
     const renderReport = () => {
         switch (activeReport) {
             case 'Visual Layout':
-                return <PropertyLayoutReport />;
+                return <PropertyLayoutReport onReportChange={setActiveReport} activeReport={activeReport} />;
             case 'Tabular Layout':
                 return <UnitStatusReport />;
             case 'Agreement Expiry':
@@ -77,43 +101,48 @@ const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => 
     return (
         <div className="flex flex-col h-full space-y-4">
             <div className="no-print flex flex-wrap items-center gap-3 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
-                {/* Primary Report Toggles */}
-                <div className="flex bg-slate-100 p-1 rounded-md border border-slate-200">
-                    {PRIMARY_REPORTS.map(reportName => (
-                        <button
-                            key={reportName}
-                            onClick={() => setActiveReport(reportName)}
-                            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-md transition-all duration-200 whitespace-nowrap focus:outline-none ${
-                                activeReport === reportName
-                                ? 'bg-white text-accent shadow-sm ring-1 ring-slate-200'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                            }`}
-                        >
-                            {reportName}
-                        </button>
-                    ))}
-                </div>
-
-                <div className="w-px h-6 bg-slate-200 hidden sm:block"></div>
-
-                {/* Report Menu Selector */}
-                <div className="flex-grow min-w-[200px] max-w-sm">
-                    <Select
-                        value={REPORT_MENU_OPTIONS.includes(activeReport) ? activeReport : ''}
-                        onChange={(e) => setActiveReport(e.target.value)}
+                {/* Reports Menu Button */}
+                <div className="relative" ref={menuRef}>
+                    <button
+                        onClick={() => setIsMenuOpen(!isMenuOpen)}
+                        className="px-4 py-2 text-sm font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md border border-slate-300 transition-colors flex items-center gap-2"
                     >
-                        <option value="" disabled>More Reports...</option>
-                        {REPORT_MENU_OPTIONS.map((report) => (
-                            <option key={report} value={report}>
-                                {report}
-                            </option>
-                        ))}
-                    </Select>
+                        <span>Reports</span>
+                        <svg 
+                            className={`w-4 h-4 transition-transform ${isMenuOpen ? 'rotate-180' : ''}`}
+                            fill="none" 
+                            stroke="currentColor" 
+                            viewBox="0 0 24 24"
+                        >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+
+                    {/* Dropdown Menu */}
+                    {isMenuOpen && (
+                        <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+                            <div className="py-1">
+                                {ALL_REPORTS.map((report) => (
+                                    <button
+                                        key={report}
+                                        onClick={() => handleReportSelect(report)}
+                                        className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-100 transition-colors ${
+                                            activeReport === report 
+                                                ? 'bg-indigo-50 text-indigo-700 font-semibold' 
+                                                : 'text-slate-700'
+                                        }`}
+                                    >
+                                        {report}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
-                {/* Active Report Badge (for menu reports) */}
-                {REPORT_MENU_OPTIONS.includes(activeReport) && (
-                    <div className="ml-auto px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs sm:text-sm font-bold rounded-full border border-indigo-100 whitespace-nowrap">
+                {/* Active Report Badge */}
+                {activeReport && (
+                    <div className="px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs sm:text-sm font-bold rounded-full border border-indigo-100 whitespace-nowrap">
                         {activeReport}
                     </div>
                 )}
