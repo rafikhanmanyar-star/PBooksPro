@@ -33,6 +33,8 @@ interface PropertyBoxData {
     tenantName: string;
     receivable: number;
     payoutDue: number;
+    securityDue: number;
+    lastUpdated: string;
     floorIndex: number;
     floorLabel: string;
     unitIndex: number;
@@ -212,9 +214,19 @@ const PropertyLayoutReport: React.FC = () => {
                 const parsed = parseProperty(prop.name, prop.id);
                 
                 // Financials
-                const receivable = state.invoices
-                    .filter(inv => inv.propertyId === prop.id && inv.status !== InvoiceStatus.PAID)
+                const propertyInvoices = state.invoices.filter(inv => inv.propertyId === prop.id);
+                const receivable = propertyInvoices
+                    .filter(inv => inv.status !== InvoiceStatus.PAID)
                     .reduce((sum, inv) => sum + (inv.amount - inv.paidAmount), 0);
+
+                // Calculate security deposit due from unpaid invoices
+                const securityDue = propertyInvoices
+                    .filter(inv => inv.status !== InvoiceStatus.PAID && inv.securityDepositCharge)
+                    .reduce((sum, inv) => {
+                        const outstanding = inv.amount - inv.paidAmount;
+                        const securityRatio = inv.securityDepositCharge / inv.amount;
+                        return sum + (outstanding * securityRatio);
+                    }, 0);
 
                 const propIncome = state.transactions
                     .filter(tx => tx.propertyId === prop.id && tx.type === TransactionType.INCOME)
@@ -230,6 +242,16 @@ const PropertyLayoutReport: React.FC = () => {
                 const owner = state.contacts.find(c => c.id === prop.ownerId);
                 const activeAgreement = state.rentalAgreements.find(ra => ra.propertyId === prop.id && ra.status === RentalAgreementStatus.ACTIVE);
                 const tenant = activeAgreement ? state.contacts.find(c => c.id === activeAgreement.tenantId) : null;
+
+                // Calculate last updated date
+                const propertyTransactions = state.transactions.filter(tx => tx.propertyId === prop.id);
+                const transactionDates = propertyTransactions.map(tx => tx.date);
+                const invoiceDates = propertyInvoices.map(inv => inv.issueDate);
+                const agreementDates = activeAgreement ? [activeAgreement.endDate] : [];
+                const allDates = [...transactionDates, ...invoiceDates, ...agreementDates];
+                const lastUpdated = allDates.length > 0 
+                    ? allDates.sort().reverse()[0] 
+                    : new Date().toISOString().split('T')[0];
                 
                 // Check all invoices for the current month
                 const currentMonthInvoices = state.invoices.filter(inv => 
@@ -263,6 +285,8 @@ const PropertyLayoutReport: React.FC = () => {
                     status: activeAgreement ? 'Occupied' : 'Vacant',
                     receivable,
                     payoutDue,
+                    securityDue,
+                    lastUpdated,
                     floorIndex: parsed.floorIndex,
                     floorLabel: parsed.floorLabel,
                     unitIndex: parsed.unitIndex,
@@ -365,16 +389,23 @@ const PropertyLayoutReport: React.FC = () => {
     }, [state, selectedBuildingId]);
 
 
+    const getStatusBadge = (unit: PropertyBoxData) => {
+        if (unit.isExpiringSoon) return { text: 'COMING', color: 'bg-orange-500' };
+        if (unit.status === 'Occupied') return { text: 'ACTIVE', color: 'bg-emerald-500' };
+        return { text: 'VACANT', color: 'bg-slate-400' };
+    };
+
     const getColorClasses = (unit: any, mode: 'RENTAL' | 'PROJECT') => {
         if (mode === 'RENTAL') {
-            if (unit.receivable <= 0) return 'bg-emerald-50 border-emerald-300'; 
-            if (unit.receivable < 10000) return 'bg-orange-50 border-orange-300'; 
-            return 'bg-red-50 border-red-400'; 
+            // Use status-based border colors
+            if (unit.isExpiringSoon) return 'border-orange-500';
+            if (unit.status === 'Occupied') return 'border-emerald-500';
+            return 'border-slate-400';
         } else {
-            if (unit.status === 'Available') return 'bg-slate-50 border-slate-300 opacity-80';
-            if (unit.receivable <= 0) return 'bg-emerald-50 border-emerald-300';
-            if (unit.receivable < 50000) return 'bg-orange-50 border-orange-300';
-            return 'bg-red-50 border-red-400'; 
+            if (unit.status === 'Available') return 'border-slate-300';
+            if (unit.receivable <= 0) return 'border-emerald-500';
+            if (unit.receivable < 50000) return 'border-orange-500';
+            return 'border-red-500'; 
         }
     };
 
@@ -382,99 +413,133 @@ const PropertyLayoutReport: React.FC = () => {
         setSelectedProperty({ id: unit.id, name: unit.name });
     };
     
-    const renderBox = (unit: any, mode: 'RENTAL' | 'PROJECT') => (
-        <div 
-            key={unit.id} 
-            onClick={() => handleCardClick(unit)}
-            className={`relative rounded border-2 shadow-sm p-2 flex flex-col justify-between transition-all h-32 overflow-hidden cursor-pointer hover:shadow-md hover:scale-[1.02]
-                ${getColorClasses(unit, mode)}
-            `}
-            title="Click to view details"
-        >
-            {/* Header */}
-            <div className="flex justify-between items-start mb-1 relative z-10">
-                <div className="min-w-0">
-                    <span className="font-bold text-sm text-slate-800 block truncate" title={unit.name}>{unit.name}</span>
-                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-tighter block">{unit.type}</span>
-                </div>
-                 {mode === 'RENTAL' && unit.status === 'Occupied' && (
-                    <div 
-                        className={`rounded-full bg-emerald-500 flex-shrink-0 mt-1 transition-all duration-300 
-                            ${unit.isExpiringSoon ? 'w-4 h-4 animate-pulse ring-2 ring-rose-500' : 'w-2 h-2'}
-                        `} 
-                        title={unit.isExpiringSoon ? "Agreement Expiring Soon!" : "Occupied"}
-                    ></div>
-                 )}
-                 {mode === 'PROJECT' && unit.status === 'Sold' && (
-                    <div className="rounded-full bg-emerald-500 flex-shrink-0 mt-1 w-2 h-2" title="Sold"></div>
-                 )}
-            </div>
-            
-            {mode === 'RENTAL' && unit.isCurrentMonthRentPaid && (
-                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 opacity-20 pointer-events-none select-none z-0">
-                    <div className="border-4 border-emerald-600 text-emerald-600 font-black text-3xl px-2 py-1 rounded rotate-[-15deg] tracking-widest">
-                        PAID
+    const renderBox = (unit: any, mode: 'RENTAL' | 'PROJECT') => {
+        const statusBadge = mode === 'RENTAL' ? getStatusBadge(unit) : null;
+        
+        return (
+            <div 
+                key={unit.id} 
+                onClick={() => handleCardClick(unit)}
+                className={`relative rounded bg-white border shadow-sm p-2.5 flex flex-col justify-between transition-all h-36 overflow-hidden cursor-pointer hover:shadow-md hover:scale-[1.02]
+                    ${getColorClasses(unit, mode)}
+                `}
+                title="Click to view details"
+            >
+                {/* Header with Status Badge */}
+                <div className="flex justify-between items-start mb-1.5 relative z-10">
+                    <div className="min-w-0 flex-1">
+                        <span className="font-bold text-sm text-slate-900 block truncate" title={unit.name}>{unit.name}</span>
                     </div>
+                    {mode === 'RENTAL' && statusBadge && (
+                        <div 
+                            className={`${statusBadge.color} text-white text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 ml-2`}
+                            title={statusBadge.text}
+                        >
+                            {statusBadge.text}
+                        </div>
+                    )}
+                    {mode === 'PROJECT' && unit.status === 'Sold' && (
+                        <div className="rounded-full bg-emerald-500 flex-shrink-0 mt-1 w-2 h-2" title="Sold"></div>
+                    )}
                 </div>
-            )}
-            
-            {/* Content */}
-            <div className="text-[10px] leading-tight space-y-0.5 flex-grow relative z-10">
-                {mode === 'RENTAL' ? (
-                    <>
-                        <div className="truncate text-slate-600" title={`Owner: ${unit.ownerName}`}>Own: {unit.ownerName}</div>
-                        <div className={`truncate font-medium ${unit.status === 'Vacant' ? 'text-red-600' : 'text-slate-800'}`} title={`Tenant: ${unit.tenantName}`}>Ten: {unit.tenantName}</div>
-                    </>
-                ) : (
-                    <>
+                
+                {mode === 'RENTAL' && unit.isCurrentMonthRentPaid && (
+                    <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 opacity-20 pointer-events-none select-none z-0">
+                        <div className="border-4 border-emerald-600 text-emerald-600 font-black text-3xl px-2 py-1 rounded rotate-[-15deg] tracking-widest">
+                            PAID
+                        </div>
+                    </div>
+                )}
+                
+                {/* Owner/Tenant Section */}
+                {mode === 'RENTAL' && (
+                    <div className="text-[10px] leading-tight space-y-0.5 mb-2 relative z-10">
+                        <div className="flex items-center gap-1 truncate text-slate-700" title={`Owner: ${unit.ownerName}`}>
+                            <svg className="w-3 h-3 text-slate-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
+                            </svg>
+                            <span className="truncate">{unit.ownerName}</span>
+                        </div>
+                        <div className={`flex items-center gap-1 truncate font-medium ${unit.status === 'Vacant' ? 'text-red-600' : 'text-slate-800'}`} title={`Tenant: ${unit.tenantName}`}>
+                            <span className="text-[9px] font-semibold text-slate-500 flex-shrink-0">T:</span>
+                            <span className="truncate">{unit.tenantName}</span>
+                        </div>
+                    </div>
+                )}
+
+                {mode === 'PROJECT' && (
+                    <div className="text-[10px] leading-tight space-y-0.5 mb-2 relative z-10">
                         <div className={`truncate font-medium ${unit.status === 'Available' ? 'text-slate-400 italic' : 'text-slate-800'}`} title={unit.clientName}>
                             {unit.clientName}
                         </div>
                         <div className={`text-[9px] uppercase font-bold ${unit.status === 'Available' ? 'text-slate-400' : 'text-slate-500'}`}>
                             {unit.status}
                         </div>
-                    </>
+                    </div>
                 )}
-            </div>
 
-            {/* Footer */}
-            <div className="mt-1 pt-1 border-t border-slate-300/50 text-[10px] flex justify-between items-center relative z-10">
-                {mode === 'RENTAL' ? (
-                    <>
-                        <div className="flex flex-col">
-                            <span className="text-slate-500 text-[9px] uppercase">A/R</span>
-                            <span className={`font-bold ${unit.receivable > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                                {unit.receivable > 0 ? (unit.receivable / 1000).toFixed(1) + 'k' : '0'}
-                            </span>
-                        </div>
-                        <div className="flex flex-col text-right">
-                            <span className="text-slate-500 text-[9px] uppercase">Payout</span>
-                            <span className="font-medium text-slate-700">
-                                {unit.payoutDue > 0 ? (unit.payoutDue / 1000).toFixed(1) + 'k' : '0'}
-                            </span>
-                        </div>
-                    </>
-                ) : (
-                    unit.status === 'Sold' && (
+                {/* Divider */}
+                <div className="border-t border-slate-200 my-1.5"></div>
+
+                {/* Financial Section */}
+                <div className="text-[10px] flex justify-between items-start relative z-10">
+                    {mode === 'RENTAL' ? (
                         <>
                             <div className="flex flex-col">
-                                <span className="text-slate-500 text-[9px] uppercase">Recv</span>
-                                <span className="font-medium text-emerald-700">
-                                    {(unit.received / 1000).toFixed(0)}k
-                                </span>
+                                <div className="flex flex-col mb-1">
+                                    <span className="text-red-600 text-[9px] font-semibold uppercase">RENT DUE</span>
+                                    <span className="font-bold text-base text-slate-900 leading-tight">
+                                        {unit.receivable > 0 ? (unit.receivable / 1000).toFixed(1) + 'k' : '0'}
+                                    </span>
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="text-red-600 text-[9px] font-semibold uppercase">SEC. DUE</span>
+                                    <span className="font-bold text-base text-slate-900 leading-tight">
+                                        {unit.securityDue > 0 ? (unit.securityDue / 1000).toFixed(1) + 'k' : '0'}
+                                    </span>
+                                </div>
                             </div>
                             <div className="flex flex-col text-right">
-                                <span className="text-slate-500 text-[9px] uppercase">Due</span>
-                                <span className={`font-bold ${unit.receivable > 0 ? 'text-red-600' : 'text-slate-400'}`}>
-                                    {(unit.receivable / 1000).toFixed(0)}k
-                                </span>
+                                <div className="flex flex-col mb-1">
+                                    <span className="text-slate-700 text-[9px] font-semibold uppercase">ACCT PAY</span>
+                                    <span className={`text-[9px] font-semibold uppercase ${unit.status === 'Vacant' ? 'text-slate-700' : 'text-blue-600'}`}>
+                                        {unit.status === 'Vacant' ? 'OWNR PAY' : 'ACCT PAY'}
+                                    </span>
+                                    <span className="font-bold text-base text-blue-600 leading-tight">
+                                        {unit.payoutDue > 0 ? (unit.payoutDue / 1000).toFixed(1) + 'k' : '0'}
+                                    </span>
+                                </div>
                             </div>
                         </>
-                    )
+                    ) : (
+                        unit.status === 'Sold' && (
+                            <>
+                                <div className="flex flex-col">
+                                    <span className="text-slate-500 text-[9px] uppercase">Recv</span>
+                                    <span className="font-medium text-emerald-700">
+                                        {(unit.received / 1000).toFixed(0)}k
+                                    </span>
+                                </div>
+                                <div className="flex flex-col text-right">
+                                    <span className="text-slate-500 text-[9px] uppercase">Due</span>
+                                    <span className={`font-bold ${unit.receivable > 0 ? 'text-red-600' : 'text-slate-400'}`}>
+                                        {(unit.receivable / 1000).toFixed(0)}k
+                                    </span>
+                                </div>
+                            </>
+                        )
+                    )}
+                </div>
+
+                {/* Last Updated Timestamp */}
+                {mode === 'RENTAL' && unit.lastUpdated && (
+                    <div className="text-[8px] text-slate-400 text-center mt-1.5 pt-1 border-t border-slate-100 relative z-10">
+                        Last: {unit.lastUpdated.split('T')[0]}
+                    </div>
                 )}
             </div>
-        </div>
-    );
+        );
+    };
 
     return (
         <div className="space-y-6">
