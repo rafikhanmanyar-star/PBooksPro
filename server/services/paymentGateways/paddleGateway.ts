@@ -74,6 +74,9 @@ export class PaddleGateway extends BaseGateway {
     cancelUrl?: string;
     metadata?: Record<string, any>;
   }): Promise<PaymentSession> {
+    // Declare requestBody outside try block so it's accessible in catch
+    let requestBody: any;
+    
     try {
       // Convert amount to smallest currency unit (cents/paisa)
       const amountInCents = Math.round(params.amount * 100);
@@ -100,7 +103,7 @@ export class PaddleGateway extends BaseGateway {
       }
 
       // Build request body
-      const requestBody: any = {
+      requestBody = {
         items,
       };
 
