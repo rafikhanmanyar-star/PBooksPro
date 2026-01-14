@@ -848,6 +848,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                     type="bill"
                     itemToEdit={billToEdit || undefined}
                     initialData={duplicateBillData || undefined}
+                    projectContext={projectContext}
                 />
             </Modal>
 

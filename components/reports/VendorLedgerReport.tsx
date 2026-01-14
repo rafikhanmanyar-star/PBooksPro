@@ -144,6 +144,9 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
         billsMap.forEach(bill => {
             const date = new Date(bill.issueDate);
             if (date >= start && date <= end) {
+                // Filter by vendor FIRST (at source)
+                if (selectedVendorId !== 'all' && bill.contactId !== selectedVendorId) return;
+
                 // Filter by context
                 if (context === 'Project' && !bill.projectId) return;
                 if (context === 'Rental' && (bill.projectId || (!bill.buildingId && !bill.propertyId))) return;
@@ -166,14 +169,22 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
 
         // 2. Payments (Debit - Liability Decreases)
         state.transactions.forEach(tx => {
-            if (tx.type === TransactionType.EXPENSE && tx.contactId) {
+            if (tx.type === TransactionType.EXPENSE) {
                 // Determine the actual vendor ID for this transaction
                 // For tenant-allocated bills, contactId is set to the tenant, so we look up the bill
-                let vendorId = tx.contactId;
+                let vendorId: string | undefined = tx.contactId;
                 if (tx.billId) {
                     const bill = state.bills.find(b => b.id === tx.billId);
-                    if (bill) vendorId = bill.contactId;
+                    if (bill) {
+                        vendorId = bill.contactId;
+                    }
                 }
+
+                // Skip if no vendor ID found
+                if (!vendorId) return;
+
+                // Filter by vendor FIRST (at source)
+                if (selectedVendorId !== 'all' && vendorId !== selectedVendorId) return;
 
                 const vendor = vendors.find(v => v.id === vendorId);
                 if (vendor) {
@@ -202,13 +213,11 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
         });
 
         // First, create rows with basic data (no balance yet)
+        // Note: Vendor filtering is already done at source above, so all items here are for the selected vendor
         let rows: VendorLedgerRow[] = [];
         
         items.forEach((item, index) => {
             const vendorName = vendors.find(v => v.id === item.vendorId)?.name || 'Unknown';
-            
-            // Filter by selected vendor
-            if (selectedVendorId !== 'all' && item.vendorId !== selectedVendorId) return;
 
             rows.push({
                 id: `${item.vendorId}-${index}`,
