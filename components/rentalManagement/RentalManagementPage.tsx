@@ -92,31 +92,12 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
     };
     
     return (
-        <div className="h-full overflow-auto bg-slate-50">
-            <div className="max-w-7xl mx-auto px-4 py-4 space-y-4">
-                <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-4 sm:p-5">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                        <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Portfolio</p>
-                            <h1 className="text-2xl font-semibold text-slate-900">Rental Management</h1>
-                            <p className="text-sm text-slate-500">Agreements, invoices, bills, payments, payouts, and reports in one place.</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span className="px-3 py-2 text-xs font-semibold uppercase rounded-full bg-slate-100 text-slate-600 border border-slate-200">UI refresh</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden flex flex-col min-h-[70vh]">
-                    <div className="px-3 sm:px-4 pt-3 border-b border-slate-200 bg-slate-50">
-                        <Tabs tabs={availableTabs} activeTab={activeTab} onTabClick={setActiveTab} />
-                    </div>
-                    <div className="flex-grow min-h-0 px-3 sm:px-4 py-3">
-                        <div className="h-full">
-                            {renderContent()}
-                        </div>
-                    </div>
-                </div>
+        <div className="flex flex-col h-full space-y-4">
+            <div className="flex-shrink-0">
+                <Tabs tabs={availableTabs} activeTab={activeTab} onTabClick={setActiveTab} />
+            </div>
+            <div className="flex-grow overflow-hidden relative">
+                {renderContent()}
             </div>
         </div>
     );
