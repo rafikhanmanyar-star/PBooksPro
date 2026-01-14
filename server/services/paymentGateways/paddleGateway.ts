@@ -6,7 +6,7 @@ import { BaseGateway, PaymentSession, PaymentConfirmation, WebhookEvent } from '
 interface PaddleConfig {
   vendorId: string;
   apiKey: string;
-  publicKey: string;
+  publicKey?: string; // Optional: Only needed for client-side Paddle.js integration
   webhookSecret: string;
   sandbox: boolean;
 }

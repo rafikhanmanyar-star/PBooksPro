@@ -66,11 +66,11 @@ export function createGateway(): BaseGateway {
     case 'paddle':
       const paddleVendorId = process.env.PADDLE_VENDOR_ID;
       const paddleApiKey = process.env.PADDLE_API_KEY;
-      const paddlePublicKey = process.env.PADDLE_PUBLIC_KEY;
+      const paddlePublicKey = process.env.PADDLE_PUBLIC_KEY; // Optional - only needed for client-side Paddle.js
       const paddleWebhookSecret = process.env.PADDLE_WEBHOOK_SECRET;
 
-      if (!paddleVendorId || !paddleApiKey || !paddlePublicKey || !paddleWebhookSecret) {
-        throw new Error('Paddle configuration missing: PADDLE_VENDOR_ID, PADDLE_API_KEY, PADDLE_PUBLIC_KEY, and PADDLE_WEBHOOK_SECRET are required');
+      if (!paddleVendorId || !paddleApiKey || !paddleWebhookSecret) {
+        throw new Error('Paddle configuration missing: PADDLE_VENDOR_ID, PADDLE_API_KEY, and PADDLE_WEBHOOK_SECRET are required');
       }
 
       // Use PADDLE_ENVIRONMENT or fallback to NODE_ENV
@@ -80,7 +80,7 @@ export function createGateway(): BaseGateway {
       return new PaddleGateway({
         vendorId: paddleVendorId,
         apiKey: paddleApiKey,
-        publicKey: paddlePublicKey,
+        publicKey: paddlePublicKey, // Optional - only for client-side integration
         webhookSecret: paddleWebhookSecret,
         sandbox: paddleSandbox,
       });
