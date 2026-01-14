@@ -32,6 +32,7 @@ interface VendorLedgerRow {
     balance: number;
     billId?: string; // Bill ID if this row represents a bill
     transactionId?: string; // Transaction ID if this row represents a payment
+    vendorId?: string; // Vendor ID for grouping
 }
 
 interface VendorLedgerReportProps {
@@ -53,8 +54,11 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
 
-    // Sorting
-    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
+    // Sorting - default to date ascending (oldest first) for Project context
+    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ 
+        key: 'date', 
+        direction: context === 'Project' ? 'asc' : 'desc' 
+    });
 
     // Editing state
     const [billToEdit, setBillToEdit] = useState<Bill | null>(null);
@@ -197,42 +201,31 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
             }
         });
 
+        // First, create rows with basic data (no balance yet)
         let rows: VendorLedgerRow[] = [];
-        let runningBalance = 0;
-        let currentVendor = '';
         
-        // Pre-sort for balance calculation grouping
-        const sortedByVendor = items.sort((a, b) => {
-            const vA = vendors.find(v => v.id === a.vendorId)?.name || '';
-            const vB = vendors.find(v => v.id === b.vendorId)?.name || '';
-            return vA.localeCompare(vB) || new Date(a.date).getTime() - new Date(b.date).getTime();
-        });
-
-        rows = sortedByVendor.map((item, index): VendorLedgerRow | null => {
-            if (selectedVendorId === 'all' && item.vendorId !== currentVendor) {
-                currentVendor = item.vendorId;
-                runningBalance = 0;
-            }
-            
-            runningBalance += item.bill - item.paid;
+        items.forEach((item, index) => {
             const vendorName = vendors.find(v => v.id === item.vendorId)?.name || 'Unknown';
             
-            if (selectedVendorId !== 'all' && item.vendorId !== selectedVendorId) return null;
+            // Filter by selected vendor
+            if (selectedVendorId !== 'all' && item.vendorId !== selectedVendorId) return;
 
-            return {
+            rows.push({
                 id: `${item.vendorId}-${index}`,
                 date: item.date,
                 vendorName,
                 particulars: item.particulars,
                 billAmount: item.bill,
                 paidAmount: item.paid,
-                balance: runningBalance,
+                balance: 0, // Will be calculated after sorting
                 buildingName: item.buildingName,
                 billId: item.billId,
-                transactionId: item.transactionId
-            };
-        }).filter((r): r is VendorLedgerRow => r !== null);
+                transactionId: item.transactionId,
+                vendorId: item.vendorId // Store for grouping
+            });
+        });
 
+        // Apply search filter
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
             rows = rows.filter(r => 
@@ -242,8 +235,15 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
             );
         }
 
-        // Final Visual Sort
-        return rows.sort((a, b) => {
+        // Sort rows first (before calculating balance)
+        rows.sort((a, b) => {
+            // Group by vendor when showing all vendors
+            if (selectedVendorId === 'all') {
+                const vendorCompare = a.vendorName.localeCompare(b.vendorName);
+                if (vendorCompare !== 0) return vendorCompare;
+            }
+            
+            // Then apply the sort config
             let valA: any = a[sortConfig.key];
             let valB: any = b[sortConfig.key];
 
@@ -259,6 +259,25 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
             if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
+
+        // Now calculate running balance in the sorted order
+        let runningBalance = 0;
+        let currentVendor = '';
+        
+        rows.forEach((row) => {
+            // Reset balance when vendor changes (only when showing all vendors)
+            if (selectedVendorId === 'all' && row.vendorId !== currentVendor) {
+                currentVendor = row.vendorId;
+                runningBalance = 0;
+            }
+            
+            // Calculate balance: bill increases payable, payment decreases payable
+            // Same logic as VendorLedger: credit (bill) - debit (paid)
+            runningBalance += row.billAmount - row.paidAmount;
+            row.balance = runningBalance;
+        });
+
+        return rows;
 
     }, [state, startDate, endDate, selectedVendorId, selectedBuildingId, searchQuery, context, vendors, sortConfig]);
 
@@ -399,7 +418,16 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                     </div>
                     
                     <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-slate-200 text-sm">
+                        <table className="w-full divide-y divide-slate-200 text-sm table-fixed" style={{ tableLayout: 'fixed' }}>
+                            <colgroup>
+                                <col style={{ width: '10%' }} />
+                                <col style={{ width: context !== 'Project' ? '15%' : '20%' }} />
+                                {context !== 'Project' && <col style={{ width: '12%' }} />}
+                                <col style={{ width: context !== 'Project' ? '28%' : '35%' }} />
+                                <col style={{ width: '12%' }} />
+                                <col style={{ width: '12%' }} />
+                                <col style={{ width: '11%' }} />
+                            </colgroup>
                             <thead className="bg-slate-50 sticky top-0 z-10">
                                 <tr>
                                     <th onClick={() => handleSort('date')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Date <SortIcon column="date"/></th>
@@ -428,10 +456,10 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                                                 }
                                             }}
                                         >
-                                            <td className="px-3 py-2 whitespace-nowrap text-slate-700">{formatDate(item.date)}</td>
-                                            <td className="px-3 py-2 whitespace-normal break-words text-slate-800">{item.vendorName}</td>
-                                            {context !== 'Project' && <td className="px-3 py-2 whitespace-normal break-words text-slate-600 text-xs">{item.buildingName || '-'}</td>}
-                                            <td className="px-3 py-2 max-w-xs whitespace-normal break-words text-slate-500">{item.particulars}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap text-slate-700 overflow-hidden text-ellipsis">{formatDate(item.date)}</td>
+                                            <td className="px-3 py-2 text-slate-800 overflow-hidden text-ellipsis" title={item.vendorName}>{item.vendorName}</td>
+                                            {context !== 'Project' && <td className="px-3 py-2 text-slate-600 text-xs overflow-hidden text-ellipsis" title={item.buildingName || '-'}>{item.buildingName || '-'}</td>}
+                                            <td className="px-3 py-2 text-slate-500 overflow-hidden text-ellipsis" title={item.particulars}>{item.particulars}</td>
                                             <td className="px-3 py-2 text-right text-slate-700 whitespace-nowrap">{item.billAmount > 0 ? `${CURRENCY} ${item.billAmount.toLocaleString()}` : '-'}</td>
                                             <td className="px-3 py-2 text-right text-success whitespace-nowrap">{item.paidAmount > 0 ? `${CURRENCY} ${item.paidAmount.toLocaleString()}` : '-'}</td>
                                             <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${item.balance > 0 ? 'text-danger' : 'text-slate-700'}`}>{CURRENCY} {item.balance.toLocaleString()}</td>
