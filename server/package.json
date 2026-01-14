@@ -10,6 +10,7 @@
     "start": "node dist/api/index.js",
     "migrate": "tsx migrations/migrate-to-postgresql.ts",
     "check-db": "tsx scripts/check-database-connection.ts",
+    "sync-staging": "tsx scripts/sync-staging-to-production.ts",
     "create-admin": "tsx scripts/create-admin-user.ts",
     "reset-admin": "tsx scripts/reset-admin-password.ts",
     "test-admin": "tsx scripts/test-admin-login.ts",
