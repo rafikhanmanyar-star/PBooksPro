@@ -213,17 +213,24 @@ export class PaymentService {
       ]
     );
 
-    // Verify signature
+    // Verify signature (allow explicit bypass for Paddle in staging)
+    const allowSkipSignature = process.env.PADDLE_SKIP_SIGNATURE === 'true' && gateway === 'paddle';
     if (signature) {
       const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
       if (!this.gateway.verifyWebhookSignature(payloadString, signature)) {
-        console.error(`Invalid webhook signature for ${webhookId}`);
-        await this.db.query(
-          `UPDATE payment_webhooks SET processed = true, error_message = $1 WHERE id = $2`,
-          ['Invalid signature', webhookId]
-        );
-        return;
+        if (allowSkipSignature) {
+          console.warn(`⚠️ Skipping Paddle signature verification for ${webhookId} (PADDLE_SKIP_SIGNATURE=true)`);
+        } else {
+          console.error(`Invalid webhook signature for ${webhookId}`);
+          await this.db.query(
+            `UPDATE payment_webhooks SET processed = true, error_message = $1 WHERE id = $2`,
+            ['Invalid signature', webhookId]
+          );
+          return;
+        }
       }
+    } else if (allowSkipSignature) {
+      console.warn(`⚠️ Missing Paddle signature for ${webhookId} (PADDLE_SKIP_SIGNATURE=true)`);
     }
 
     // Parse webhook event
