@@ -284,10 +284,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           // Verify token is still valid by checking license status
           try {
-            const licenseStatus = await apiClient.get<{ isValid: boolean }>('/tenants/license-status');
+            const licenseStatus = await apiClient.get<{
+              isValid?: boolean;
+              isExpired?: boolean;
+              licenseStatus?: string;
+            }>('/tenants/license-status');
             if (!isMounted) return;
-            
-            if (licenseStatus.isValid) {
+
+            const isValid = typeof licenseStatus.isValid === 'boolean'
+              ? licenseStatus.isValid
+              : !(licenseStatus.isExpired === true || licenseStatus.licenseStatus === 'expired');
+
+            if (isValid) {
               // Token is valid, restore session
               // Fetch user and tenant info from API
               try {
