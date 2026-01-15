@@ -132,10 +132,11 @@ export class PaddleGateway extends BaseGateway {
         requestBody.custom_data = customData;
       }
 
-      // Add checkout URLs only if provided
+      // Add checkout redirect URLs only if provided
+      // Use success_url/cancel_url so Paddle returns a hosted checkout URL
       if (params.returnUrl || params.cancelUrl) {
         requestBody.checkout = {};
-        if (params.returnUrl) requestBody.checkout.url = params.returnUrl;
+        if (params.returnUrl) requestBody.checkout.success_url = params.returnUrl;
         if (params.cancelUrl) requestBody.checkout.cancel_url = params.cancelUrl;
       }
 
@@ -152,6 +153,11 @@ export class PaddleGateway extends BaseGateway {
       );
 
       const transaction = transactionResponse.data.data;
+      console.log('✅ Paddle transaction created:', {
+        id: transaction?.id,
+        status: transaction?.status,
+        checkoutUrl: transaction?.checkout?.url,
+      });
 
       // Get checkout URL
       const checkoutUrl = transaction.checkout?.url || 
