@@ -392,79 +392,178 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
                 await dbService.initialize();
             }
 
-            // Ensure tasks table exists (safety check)
-            dbService.ensureAllTablesExist();
-            
-            // CRITICAL: Ensure tenant_id and user_id columns exist on tasks table
-            // Run migration BEFORE any queries that use these columns
-            try {
-                migrateTenantColumns();
-            } catch (migrationError) {
-                console.error('[useDatabaseTasks] Tenant column migration failed during save:', migrationError);
-                // Try to add columns directly as fallback
-                try {
-                    const tableCheck = dbService.query<{ name: string }>(
-                        "SELECT name FROM sqlite_master WHERE type='table' AND name='tasks'"
-                    );
-                    if (tableCheck.length > 0) {
-                        try {
-                            dbService.execute('ALTER TABLE tasks ADD COLUMN tenant_id TEXT');
-                        } catch (e: any) {
-                            if (!e?.message?.includes('duplicate column')) {
-                                console.warn('[useDatabaseTasks] Could not add tenant_id:', e);
-                            }
-                        }
-                        try {
-                            dbService.execute('ALTER TABLE tasks ADD COLUMN user_id TEXT');
-                        } catch (e: any) {
-                            if (!e?.message?.includes('duplicate column')) {
-                                console.warn('[useDatabaseTasks] Could not add user_id:', e);
-                            }
-                        }
-                    }
-                } catch (fallbackError) {
-                    console.error('[useDatabaseTasks] Fallback column addition failed:', fallbackError);
-                }
-            }
-
-            // Delete all existing tasks for this user and tenant (use normalized IDs)
+            // Normalize IDs first (needed for all operations)
             const normalizedTenantId = tenantId?.trim() || null;
             const normalizedUserId = userId?.trim() || null;
             
-            dbService.execute(
-                'DELETE FROM tasks WHERE tenant_id = ? AND user_id = ?',
-                [normalizedTenantId, normalizedUserId]
-            );
+            // Ensure tasks table exists (safety check)
+            dbService.ensureAllTablesExist();
+            
+            // CRITICAL: Verify columns exist before trying to INSERT
+            // Check columns using PRAGMA to avoid SQL.js schema cache issues
+            let hasTenantId = false;
+            let hasUserId = false;
+            
+            try {
+                const columnCheck = dbService.query<{ name: string }>('PRAGMA table_info(tasks)');
+                const columnNames = columnCheck.map(col => col.name);
+                hasTenantId = columnNames.includes('tenant_id');
+                hasUserId = columnNames.includes('user_id');
+                
+                console.log(`[useDatabaseTasks] Save: Tasks table columns: ${columnNames.join(', ')}`);
+                console.log(`[useDatabaseTasks] Save: Has tenant_id: ${hasTenantId}, Has user_id: ${hasUserId}`);
+                
+                // If columns don't exist, try to add them
+                if (!hasTenantId) {
+                    try {
+                        dbService.execute('ALTER TABLE tasks ADD COLUMN tenant_id TEXT');
+                        hasTenantId = true;
+                        console.log('[useDatabaseTasks] ✅ Added tenant_id column during save');
+                    } catch (e: any) {
+                        if (e?.message?.includes('duplicate column')) {
+                            hasTenantId = true; // Column exists, SQL.js cache issue
+                            console.log('[useDatabaseTasks] tenant_id exists (duplicate column error)');
+                        } else {
+                            console.error('[useDatabaseTasks] Failed to add tenant_id:', e);
+                        }
+                    }
+                }
+                
+                if (!hasUserId) {
+                    try {
+                        dbService.execute('ALTER TABLE tasks ADD COLUMN user_id TEXT');
+                        hasUserId = true;
+                        console.log('[useDatabaseTasks] ✅ Added user_id column during save');
+                    } catch (e: any) {
+                        if (e?.message?.includes('duplicate column')) {
+                            hasUserId = true; // Column exists, SQL.js cache issue
+                            console.log('[useDatabaseTasks] user_id exists (duplicate column error)');
+                        } else {
+                            console.error('[useDatabaseTasks] Failed to add user_id:', e);
+                        }
+                    }
+                }
+            } catch (pragmaError) {
+                console.error('[useDatabaseTasks] Could not check/add columns:', pragmaError);
+                // Try migration as fallback
+                try {
+                    migrateTenantColumns();
+                    // Re-check columns after migration
+                    const recheck = dbService.query<{ name: string }>('PRAGMA table_info(tasks)');
+                    hasTenantId = recheck.some(col => col.name === 'tenant_id');
+                    hasUserId = recheck.some(col => col.name === 'user_id');
+                } catch (migrationError) {
+                    console.error('[useDatabaseTasks] Migration also failed:', migrationError);
+                }
+            }
 
-            // Insert all tasks with tenant_id and user_id (already normalized above)
+            // Delete all existing tasks for this user and tenant
+            // Use column-aware delete query
+            if (hasTenantId && hasUserId) {
+                try {
+                    dbService.execute(
+                        'DELETE FROM tasks WHERE tenant_id = ? AND user_id = ?',
+                        [normalizedTenantId, normalizedUserId]
+                    );
+                } catch (deleteError: any) {
+                    if (deleteError?.message?.includes('no such column')) {
+                        console.warn('[useDatabaseTasks] Delete failed (columns missing), will delete all and re-insert');
+                        // Delete all tasks as fallback
+                        dbService.execute('DELETE FROM tasks');
+                    } else {
+                        throw deleteError;
+                    }
+                }
+            } else {
+                // Columns don't exist, delete all tasks (no filtering possible)
+                console.warn('[useDatabaseTasks] Columns missing, deleting all tasks (no filtering)');
+                dbService.execute('DELETE FROM tasks');
+            }
+
+            // Insert all tasks - use column-aware INSERT
             newTasks.forEach(task => {
-                dbService.execute(
-                    'INSERT INTO tasks (id, text, completed, priority, created_at, updated_at, tenant_id, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                    [
-                        task.id,
-                        task.text,
-                        task.completed ? 1 : 0,
-                        task.priority,
-                        task.createdAt,
-                        Date.now(),
-                        normalizedTenantId,
-                        normalizedUserId
-                    ]
-                );
+                if (hasTenantId && hasUserId) {
+                    // Columns exist, use full INSERT
+                    try {
+                        dbService.execute(
+                            'INSERT INTO tasks (id, text, completed, priority, created_at, updated_at, tenant_id, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                            [
+                                task.id,
+                                task.text,
+                                task.completed ? 1 : 0,
+                                task.priority,
+                                task.createdAt,
+                                Date.now(),
+                                normalizedTenantId,
+                                normalizedUserId
+                            ]
+                        );
+                    } catch (insertError: any) {
+                        if (insertError?.message?.includes('no such column')) {
+                            // Columns don't actually exist, try without them
+                            console.warn('[useDatabaseTasks] INSERT with columns failed, trying without tenant_id/user_id');
+                            dbService.execute(
+                                'INSERT INTO tasks (id, text, completed, priority, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+                                [
+                                    task.id,
+                                    task.text,
+                                    task.completed ? 1 : 0,
+                                    task.priority,
+                                    task.createdAt,
+                                    Date.now()
+                                ]
+                            );
+                        } else {
+                            throw insertError;
+                        }
+                    }
+                } else {
+                    // Columns don't exist, INSERT without them
+                    console.warn('[useDatabaseTasks] Inserting task without tenant_id/user_id (columns missing)');
+                    dbService.execute(
+                        'INSERT INTO tasks (id, text, completed, priority, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+                        [
+                            task.id,
+                            task.text,
+                            task.completed ? 1 : 0,
+                            task.priority,
+                            task.createdAt,
+                            Date.now()
+                        ]
+                    );
+                }
             });
 
             // Persist to storage and wait for completion
             await dbService.saveAsync();
             
-            // Verify the save by querying back (use normalized IDs)
-            const verifyResults = dbService.query<{
-                id: string;
-                tenant_id: string | null;
-                user_id: string | null;
-            }>(
-                'SELECT id, tenant_id, user_id FROM tasks WHERE tenant_id = ? AND user_id = ?',
-                [normalizedTenantId, normalizedUserId]
-            );
+            // Verify the save by querying back (use column-aware query)
+            let verifyResults: Array<{ id: string; tenant_id: string | null; user_id: string | null }> = [];
+            try {
+                if (hasTenantId && hasUserId) {
+                    verifyResults = dbService.query<{
+                        id: string;
+                        tenant_id: string | null;
+                        user_id: string | null;
+                    }>(
+                        'SELECT id, tenant_id, user_id FROM tasks WHERE tenant_id = ? AND user_id = ?',
+                        [normalizedTenantId, normalizedUserId]
+                    );
+                } else {
+                    // Columns don't exist, just count all tasks
+                    const allTasks = dbService.query<{ id: string }>('SELECT id FROM tasks');
+                    verifyResults = allTasks.map(t => ({ ...t, tenant_id: null, user_id: null }));
+                }
+            } catch (verifyError: any) {
+                if (verifyError?.message?.includes('no such column')) {
+                    // Fallback: just count tasks
+                    const allTasks = dbService.query<{ id: string }>('SELECT id FROM tasks');
+                    verifyResults = allTasks.map(t => ({ ...t, tenant_id: null, user_id: null }));
+                    console.warn('[useDatabaseTasks] Verification query failed (columns missing), using fallback');
+                } else {
+                    console.warn('[useDatabaseTasks] Verification query failed:', verifyError);
+                }
+            }
             
             console.log(`[useDatabaseTasks] ✅ Successfully saved ${newTasks.length} task(s) to local database`);
             console.log(`[useDatabaseTasks] Verification: Found ${verifyResults.length} tasks in DB after save`);
@@ -507,11 +606,12 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
             console.log('ℹ️ Not authenticated, tasks saved to local database only');
         }
 
-        // On error, reload from database to ensure consistency (use normalized IDs)
+        // On error, reload from database to ensure consistency (use column-aware query)
         try {
             const dbService = getDatabaseService();
             if (dbService.isReady() && normalizedTenantId && normalizedUserId) {
-                const results = dbService.query<{
+                // Check if columns exist before querying
+                let results: Array<{
                     id: string;
                     text: string;
                     completed: number;
@@ -519,10 +619,62 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
                     created_at: number;
                     tenant_id: string | null;
                     user_id: string | null;
-                }>(
-                    'SELECT * FROM tasks WHERE tenant_id = ? AND user_id = ? ORDER BY created_at DESC',
-                    [normalizedTenantId, normalizedUserId]
-                );
+                }> = [];
+                
+                try {
+                    const columnCheck = dbService.query<{ name: string }>('PRAGMA table_info(tasks)');
+                    const columnNames = columnCheck.map(col => col.name);
+                    const hasCols = columnNames.includes('tenant_id') && columnNames.includes('user_id');
+                    
+                    if (hasCols) {
+                        results = dbService.query<{
+                            id: string;
+                            text: string;
+                            completed: number;
+                            priority: string;
+                            created_at: number;
+                            tenant_id: string | null;
+                            user_id: string | null;
+                        }>(
+                            'SELECT id, text, completed, priority, created_at, tenant_id, user_id FROM tasks WHERE tenant_id = ? AND user_id = ? ORDER BY created_at DESC',
+                            [normalizedTenantId, normalizedUserId]
+                        );
+                    } else {
+                        // Columns missing, query all and filter in JS
+                        const allTasks = dbService.query<{
+                            id: string;
+                            text: string;
+                            completed: number;
+                            priority: string;
+                            created_at: number;
+                        }>('SELECT id, text, completed, priority, created_at FROM tasks ORDER BY created_at DESC');
+                        
+                        results = allTasks.map(t => ({
+                            ...t,
+                            tenant_id: null,
+                            user_id: null
+                        }));
+                    }
+                } catch (queryError: any) {
+                    if (queryError?.message?.includes('no such column')) {
+                        // Fallback: query without columns
+                        const allTasks = dbService.query<{
+                            id: string;
+                            text: string;
+                            completed: number;
+                            priority: string;
+                            created_at: number;
+                        }>('SELECT id, text, completed, priority, created_at FROM tasks ORDER BY created_at DESC');
+                        
+                        results = allTasks.map(t => ({
+                            ...t,
+                            tenant_id: null,
+                            user_id: null
+                        }));
+                    } else {
+                        throw queryError;
+                    }
+                }
 
                 const loadedTasks: Task[] = results.map(row => ({
                     id: row.id,
@@ -536,7 +688,7 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
                 setTasks(loadedTasks);
             }
         } catch (reloadError) {
-            console.error('Failed to reload tasks after save:', reloadError);
+            console.error('[useDatabaseTasks] Failed to reload tasks after save:', reloadError);
         }
     }, [tenantId, userId, user, tenant, isAuthenticated]);
 
