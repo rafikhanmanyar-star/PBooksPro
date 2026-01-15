@@ -14,6 +14,12 @@ interface DashboardStats {
     yearly: number;
     perpetual: number;
   };
+  licenseReport: {
+    renewalsDueIn30Days: number;
+    renewalsDueIn7Days: number;
+    paymentsTotalByCurrency: Record<string, { count: number; total: number }>;
+    paymentsLast30DaysByCurrency: Record<string, { count: number; total: number }>;
+  };
   usage: {
     totalUsers: number;
     totalTransactions: number;
@@ -124,6 +130,37 @@ const AdminDashboard: React.FC = () => {
     }
   ];
 
+  const formatCurrency = (currency: string, amount: number) => {
+    if (currency === 'PKR') {
+      return `PKR ${amount.toLocaleString()}`;
+    }
+    if (currency === 'USD') {
+      return `$${amount.toLocaleString()}`;
+    }
+    return `${currency} ${amount.toLocaleString()}`;
+  };
+
+  const renderCurrencyRows = (data: Record<string, { count: number; total: number }>) => {
+    const entries = Object.entries(data);
+    if (entries.length === 0) {
+      return (
+        <tr>
+          <td colSpan={3} style={{ color: '#6b7280', fontSize: '0.875rem' }}>
+            No payment data available
+          </td>
+        </tr>
+      );
+    }
+
+    return entries.map(([currency, values]) => (
+      <tr key={currency}>
+        <td style={{ fontWeight: 600 }}>{currency}</td>
+        <td>{values.count.toLocaleString()}</td>
+        <td>{formatCurrency(currency, values.total)}</td>
+      </tr>
+    ));
+  };
+
   return (
     <div>
       <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '2rem' }}>
@@ -188,6 +225,67 @@ const AdminDashboard: React.FC = () => {
                 ? ((stats.tenants.active - stats.tenants.trial) / stats.tenants.total * 100).toFixed(1)
                 : 0}%
             </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: '2rem' }}>
+        <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1rem' }}>
+          License & Renewal Report
+        </h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem', marginBottom: '1.5rem' }}>
+          <div>
+            <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+              Renewals Due (Next 7 Days)
+            </p>
+            <p style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
+              {stats.licenseReport.renewalsDueIn7Days.toLocaleString()}
+            </p>
+          </div>
+          <div>
+            <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+              Renewals Due (Next 30 Days)
+            </p>
+            <p style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
+              {stats.licenseReport.renewalsDueIn30Days.toLocaleString()}
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem' }}>
+          <div>
+            <p style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem' }}>
+              Completed Payments (All Time)
+            </p>
+            <table style={{ width: '100%', fontSize: '0.875rem' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', color: '#6b7280' }}>
+                  <th>Currency</th>
+                  <th>Count</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {renderCurrencyRows(stats.licenseReport.paymentsTotalByCurrency)}
+              </tbody>
+            </table>
+          </div>
+          <div>
+            <p style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem' }}>
+              Completed Payments (Last 30 Days)
+            </p>
+            <table style={{ width: '100%', fontSize: '0.875rem' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', color: '#6b7280' }}>
+                  <th>Currency</th>
+                  <th>Count</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {renderCurrencyRows(stats.licenseReport.paymentsLast30DaysByCurrency)}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>

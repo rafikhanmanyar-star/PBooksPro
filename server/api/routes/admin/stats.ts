@@ -21,7 +21,11 @@ router.get('/dashboard', async (req: AdminRequest, res) => {
       yearlyLicenses,
       perpetualLicenses,
       totalUsers,
-      totalTransactions
+      totalTransactions,
+      renewalsDue30,
+      renewalsDue7,
+      paymentsTotals,
+      paymentsLast30
     ] = await Promise.all([
       db.query('SELECT COUNT(*) as count FROM tenants').catch(err => {
         console.error('Error counting total tenants:', err);
@@ -58,8 +62,56 @@ router.get('/dashboard', async (req: AdminRequest, res) => {
       db.query('SELECT COUNT(*) as count FROM transactions').catch(err => {
         console.error('Error counting transactions:', err);
         return [{ count: '0' }];
+      }),
+      db.query(
+        `SELECT COUNT(*) as count 
+         FROM tenants 
+         WHERE license_status = 'active' 
+           AND license_expiry_date IS NOT NULL 
+           AND license_expiry_date <= NOW() + INTERVAL '30 days'`
+      ).catch(err => {
+        console.error('Error counting renewals due in 30 days:', err);
+        return [{ count: '0' }];
+      }),
+      db.query(
+        `SELECT COUNT(*) as count 
+         FROM tenants 
+         WHERE license_status = 'active' 
+           AND license_expiry_date IS NOT NULL 
+           AND license_expiry_date <= NOW() + INTERVAL '7 days'`
+      ).catch(err => {
+        console.error('Error counting renewals due in 7 days:', err);
+        return [{ count: '0' }];
+      }),
+      db.query(
+        `SELECT currency, COUNT(*) as count, COALESCE(SUM(amount), 0) as total
+         FROM payments
+         WHERE status = 'completed'
+         GROUP BY currency`
+      ).catch(err => {
+        console.error('Error aggregating payment totals:', err);
+        return [];
+      }),
+      db.query(
+        `SELECT currency, COUNT(*) as count, COALESCE(SUM(amount), 0) as total
+         FROM payments
+         WHERE status = 'completed' AND paid_at >= NOW() - INTERVAL '30 days'
+         GROUP BY currency`
+      ).catch(err => {
+        console.error('Error aggregating payment totals (30 days):', err);
+        return [];
       })
     ]);
+
+    const toCurrencyMap = (rows: any[]) =>
+      rows.reduce((acc: Record<string, { count: number; total: number }>, row: any) => {
+        const currency = row.currency || 'UNKNOWN';
+        acc[currency] = {
+          count: parseInt(row.count || '0', 10),
+          total: parseFloat(row.total || '0')
+        };
+        return acc;
+      }, {});
 
     const stats = {
       tenants: {
@@ -72,6 +124,12 @@ router.get('/dashboard', async (req: AdminRequest, res) => {
         monthly: parseInt(monthlyLicenses[0]?.count || '0', 10),
         yearly: parseInt(yearlyLicenses[0]?.count || '0', 10),
         perpetual: parseInt(perpetualLicenses[0]?.count || '0', 10)
+      },
+      licenseReport: {
+        renewalsDueIn30Days: parseInt(renewalsDue30[0]?.count || '0', 10),
+        renewalsDueIn7Days: parseInt(renewalsDue7[0]?.count || '0', 10),
+        paymentsTotalByCurrency: toCurrencyMap(paymentsTotals),
+        paymentsLast30DaysByCurrency: toCurrencyMap(paymentsLast30)
       },
       usage: {
         totalUsers: parseInt(totalUsers[0]?.count || '0', 10),

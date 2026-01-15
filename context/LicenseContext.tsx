@@ -2,6 +2,7 @@
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
 import useDatabaseLicense from '../hooks/useDatabaseLicense';
 import { validateLicenseKey } from '../services/licenseService';
+import { useAuth } from './AuthContext';
 
 interface LicenseContextType {
     isRegistered: boolean;
@@ -20,10 +21,37 @@ const TRIAL_DURATION_DAYS = 30;
 
 export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const { installDate, licenseKey, deviceId, setInstallDate, setLicenseKey, setDeviceId } = useDatabaseLicense();
+    const { isAuthenticated, checkLicenseStatus } = useAuth();
     
     const [isRegistered, setIsRegistered] = useState(false);
     const [daysRemaining, setDaysRemaining] = useState(0);
     const [isExpired, setIsExpired] = useState(false);
+    const [cloudLicense, setCloudLicense] = useState<{
+        licenseType?: string;
+        licenseStatus?: string;
+        expiryDate?: string | Date | null;
+        daysRemaining?: number;
+        isExpired?: boolean;
+    } | null>(null);
+
+    useEffect(() => {
+        if (!isAuthenticated) {
+            setCloudLicense(null);
+            return;
+        }
+
+        const loadCloudLicense = async () => {
+            try {
+                const status = await checkLicenseStatus();
+                setCloudLicense(status as any);
+            } catch (error) {
+                // Keep local license state if cloud check fails
+                console.error('Cloud license check failed:', error);
+            }
+        };
+
+        void loadCloudLicense();
+    }, [isAuthenticated, checkLicenseStatus]);
 
     useEffect(() => {
         // 1. Initialize Device ID if missing
@@ -60,7 +88,24 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
         setDaysRemaining(remaining > 0 ? remaining : 0);
         setIsExpired(!valid && remaining <= 0);
 
-    }, [installDate, licenseKey, deviceId]);
+        // 5. If user is authenticated and cloud license is active, override local status
+        if (isAuthenticated && cloudLicense) {
+            const cloudExpired = cloudLicense.isExpired === true || cloudLicense.licenseStatus === 'expired';
+            const cloudDays = typeof cloudLicense.daysRemaining === 'number'
+                ? cloudLicense.daysRemaining
+                : remaining;
+
+            const cloudRegistered =
+                !cloudExpired &&
+                cloudLicense.licenseType &&
+                cloudLicense.licenseType !== 'trial';
+
+            setIsRegistered(!!cloudRegistered);
+            setIsExpired(cloudExpired);
+            setDaysRemaining(cloudDays > 0 ? cloudDays : 0);
+        }
+
+    }, [installDate, licenseKey, deviceId, isAuthenticated, cloudLicense]);
 
     const registerApp = (key: string): boolean => {
         if (validateLicenseKey(key, deviceId)) {
