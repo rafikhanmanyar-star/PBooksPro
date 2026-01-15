@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useState, useRef } from 'react';
-import { AppState, AppAction, Transaction, TransactionType, Account, Category, AccountType, LoanSubtype, InvoiceStatus, TransactionLogEntry, Page, ContractStatus, User, UserRole, Staff, Payslip, PayslipStatus, SalaryComponent, SalaryComponentType, LifeCycleEvent, ProjectAgreementStatus, Bill, SalesReturn, SalesReturnStatus, SalesReturnReason } from '../types';
+import { AppState, AppAction, Transaction, TransactionType, Account, Category, AccountType, LoanSubtype, InvoiceStatus, TransactionLogEntry, Page, ContractStatus, User, UserRole, Staff, Payslip, PayslipStatus, SalaryComponent, SalaryComponentType, LifeCycleEvent, ProjectAgreementStatus, Bill, SalesReturn, SalesReturnStatus, SalesReturnReason, Contact, Invoice } from '../types';
 import useDatabaseState from '../hooks/useDatabaseState';
 import { useDatabaseStateFallback } from '../hooks/useDatabaseStateFallback';
 import { runAllMigrations, needsMigration } from '../services/database/migration';
@@ -1620,6 +1620,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             const { apiClient } = await import('../services/api/client');
                             const currentTenantId = apiClient.getTenantId();
                             
+                            // CRITICAL: Before clearing local data, restore offline transactions from sync queue
+                            // This ensures offline data is not lost on logout/login
+                            let offlineTransactions: Transaction[] = [];
+                            let offlineContacts: Contact[] = [];
+                            let offlineInvoices: Invoice[] = [];
+                            let offlineBills: Bill[] = [];
+                            let offlineAccounts: Account[] = [];
+                            let offlineCategories: Category[] = [];
+                            
+                            try {
+                                const syncQueue = getSyncQueue();
+                                if (currentTenantId) {
+                                    // Get all pending items from sync queue (these are offline operations)
+                                    const pendingItems = await syncQueue.getPendingItems(currentTenantId);
+                                    logger.logCategory('sync', `📦 Found ${pendingItems.length} pending sync items to restore`);
+                                    
+                                    // Extract transactions and other entities from sync queue
+                                    for (const item of pendingItems) {
+                                        if (item.type === 'transaction' && item.action === 'create') {
+                                            offlineTransactions.push(item.data as Transaction);
+                                        } else if (item.type === 'contact' && item.action === 'create') {
+                                            offlineContacts.push(item.data as Contact);
+                                        } else if (item.type === 'invoice' && item.action === 'create') {
+                                            offlineInvoices.push(item.data as Invoice);
+                                        } else if (item.type === 'bill' && item.action === 'create') {
+                                            offlineBills.push(item.data as Bill);
+                                        } else if (item.type === 'account' && item.action === 'create') {
+                                            offlineAccounts.push(item.data as Account);
+                                        } else if (item.type === 'category' && item.action === 'create') {
+                                            offlineCategories.push(item.data as Category);
+                                        }
+                                    }
+                                    
+                                    logger.logCategory('sync', `✅ Extracted offline data from sync queue:`, {
+                                        transactions: offlineTransactions.length,
+                                        contacts: offlineContacts.length,
+                                        invoices: offlineInvoices.length,
+                                        bills: offlineBills.length,
+                                        accounts: offlineAccounts.length,
+                                        categories: offlineCategories.length
+                                    });
+                                }
+                            } catch (syncQueueError) {
+                                logger.warnCategory('sync', '⚠️ Could not load sync queue items:', syncQueueError);
+                                // Continue anyway - offline data might be lost but app should still work
+                            }
+                            
                             // Clear local database data for previous tenant if tenant changed
                             // This prevents cross-tenant data leakage
                             try {
@@ -1721,23 +1768,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             const apiService = getAppStateApiService();
                             const apiState = await apiService.loadState();
                             
-                            // Replace state with fresh API data using functional update
+                            // Merge offline data with API data - offline data takes precedence for conflicts
+                            // Create maps for efficient lookup
+                            const apiTransactionsMap = new Map((apiState.transactions || []).map(tx => [tx.id, tx]));
+                            const apiContactsMap = new Map((apiState.contacts || []).map(c => [c.id, c]));
+                            const apiInvoicesMap = new Map((apiState.invoices || []).map(i => [i.id, i]));
+                            const apiBillsMap = new Map((apiState.bills || []).map(b => [b.id, b]));
+                            const apiAccountsMap = new Map((apiState.accounts || []).map(a => [a.id, a]));
+                            const apiCategoriesMap = new Map((apiState.categories || []).map(c => [c.id, c]));
+                            
+                            // Merge offline transactions (offline takes precedence)
+                            for (const offlineTx of offlineTransactions) {
+                                apiTransactionsMap.set(offlineTx.id, offlineTx);
+                            }
+                            
+                            // Merge offline contacts
+                            for (const offlineContact of offlineContacts) {
+                                apiContactsMap.set(offlineContact.id, offlineContact);
+                            }
+                            
+                            // Merge offline invoices
+                            for (const offlineInvoice of offlineInvoices) {
+                                apiInvoicesMap.set(offlineInvoice.id, offlineInvoice);
+                            }
+                            
+                            // Merge offline bills
+                            for (const offlineBill of offlineBills) {
+                                apiBillsMap.set(offlineBill.id, offlineBill);
+                            }
+                            
+                            // Merge offline accounts
+                            for (const offlineAccount of offlineAccounts) {
+                                apiAccountsMap.set(offlineAccount.id, offlineAccount);
+                            }
+                            
+                            // Merge offline categories
+                            for (const offlineCategory of offlineCategories) {
+                                apiCategoriesMap.set(offlineCategory.id, offlineCategory);
+                            }
+                            
+                            logger.logCategory('sync', `✅ Merged offline data with API data:`, {
+                                transactions: apiTransactionsMap.size,
+                                contacts: apiContactsMap.size,
+                                invoices: apiInvoicesMap.size,
+                                bills: apiBillsMap.size,
+                                accounts: apiAccountsMap.size,
+                                categories: apiCategoriesMap.size
+                            });
+                            
+                            // Replace state with merged data using functional update
                             // This ensures we access the current state value correctly
                             if (isMounted) {
                                 setStoredState(prev => {
                                     const fullState: AppState = {
                                         ...prev,
-                                        // Replace with API data to ensure synchronization across users in same tenant
-                                        accounts: apiState.accounts || [],
-                                        contacts: apiState.contacts || [],
-                                        transactions: apiState.transactions || [],
-                                        categories: apiState.categories || [],
+                                        // Use merged data - offline transactions are included
+                                        accounts: Array.from(apiAccountsMap.values()),
+                                        contacts: Array.from(apiContactsMap.values()),
+                                        transactions: Array.from(apiTransactionsMap.values()),
+                                        categories: Array.from(apiCategoriesMap.values()),
                                         projects: apiState.projects || [],
                                         buildings: apiState.buildings || [],
                                         properties: apiState.properties || [],
                                         units: apiState.units || [],
-                                        invoices: apiState.invoices || [],
-                                        bills: apiState.bills || [],
+                                        invoices: Array.from(apiInvoicesMap.values()),
+                                        bills: Array.from(apiBillsMap.values()),
                                         budgets: apiState.budgets || [],
                                         rentalAgreements: apiState.rentalAgreements || [],
                                         projectAgreements: apiState.projectAgreements || [],
@@ -1761,17 +1856,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     
                                     return fullState;
                                 });
-                                console.log('✅ Loaded data from API:', {
-                                    accounts: apiState.accounts?.length || 0,
-                                    contacts: apiState.contacts?.length || 0,
-                                    transactions: apiState.transactions?.length || 0,
-                                    categories: apiState.categories?.length || 0,
+                                console.log('✅ Loaded and merged data from API + offline sync queue:', {
+                                    accounts: Array.from(apiAccountsMap.values()).length,
+                                    contacts: Array.from(apiContactsMap.values()).length,
+                                    transactions: Array.from(apiTransactionsMap.values()).length,
+                                    offlineTransactionsRestored: offlineTransactions.length,
+                                    categories: Array.from(apiCategoriesMap.values()).length,
                                     projects: apiState.projects?.length || 0,
                                     buildings: apiState.buildings?.length || 0,
                                     properties: apiState.properties?.length || 0,
                                     units: apiState.units?.length || 0,
-                                    invoices: apiState.invoices?.length || 0,
-                                    bills: apiState.bills?.length || 0,
+                                    invoices: Array.from(apiInvoicesMap.values()).length,
+                                    bills: Array.from(apiBillsMap.values()).length,
                                     budgets: apiState.budgets?.length || 0,
                                     rentalAgreements: apiState.rentalAgreements?.length || 0,
                                     projectAgreements: apiState.projectAgreements?.length || 0,
