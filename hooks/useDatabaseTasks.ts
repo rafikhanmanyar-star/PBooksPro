@@ -131,56 +131,7 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
                     // Continue anyway - the query error handling will catch it
                 }
 
-                // Load from local database first
-                // First, let's check what tasks exist in the database (for debugging)
-                // Use a safe query that handles missing columns gracefully
-                let allTasks: Array<{ id: string; text: string; tenant_id: string | null; user_id: string | null }> = [];
-                try {
-                    allTasks = dbService.query<{
-                        id: string;
-                        text: string;
-                        tenant_id: string | null;
-                        user_id: string | null;
-                    }>('SELECT id, text, tenant_id, user_id FROM tasks LIMIT 10');
-                } catch (queryError: any) {
-                    // If columns don't exist, try to add them and retry
-                    if (queryError?.message?.includes('no such column')) {
-                        console.warn('[useDatabaseTasks] Columns missing, running migration again...');
-                        try {
-                            migrateTenantColumns();
-                            // Retry query
-                            allTasks = dbService.query<{
-                                id: string;
-                                text: string;
-                                tenant_id: string | null;
-                                user_id: string | null;
-                            }>('SELECT id, text, tenant_id, user_id FROM tasks LIMIT 10');
-                        } catch (retryError) {
-                            console.error('[useDatabaseTasks] Failed to add columns, using fallback query:', retryError);
-                            // Fallback: query without tenant_id/user_id
-                            try {
-                                const fallbackTasks = dbService.query<{ id: string; text: string }>('SELECT id, text FROM tasks LIMIT 10');
-                                allTasks = fallbackTasks.map(t => ({ ...t, tenant_id: null, user_id: null }));
-                            } catch (fallbackError) {
-                                console.error('[useDatabaseTasks] Fallback query also failed:', fallbackError);
-                            }
-                        }
-                    } else {
-                        throw queryError;
-                    }
-                }
-                
-                console.log(`[useDatabaseTasks] Total tasks in database: ${allTasks.length}`);
-                if (allTasks.length > 0) {
-                    console.log(`[useDatabaseTasks] Sample tasks in DB:`, allTasks.map(t => ({
-                        id: t.id,
-                        text: t.text?.substring(0, 20),
-                        tenant_id: t.tenant_id,
-                        user_id: t.user_id
-                    })));
-                }
-                
-                // Now query with filters - normalize IDs for query
+                // Load from local database - normalize IDs for query
                 const normalizedTenantId = tenantId?.trim() || null;
                 const normalizedUserId = userId?.trim() || null;
                 
@@ -194,26 +145,21 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
                     user_id: string | null;
                 }> = [];
                 
+                // Query strategy: First try to get all columns, then filter in JavaScript
+                // This avoids SQL.js schema cache issues
                 try {
-                    localResults = dbService.query<{
-                        id: string;
-                        text: string;
-                        completed: number;
-                        priority: string;
-                        created_at: number;
-                        tenant_id: string | null;
-                        user_id: string | null;
-                    }>(
-                        'SELECT * FROM tasks WHERE tenant_id = ? AND user_id = ? ORDER BY created_at DESC',
-                        [normalizedTenantId, normalizedUserId]
-                    );
-                } catch (queryError: any) {
-                    // If columns don't exist, try to add them and retry
-                    if (queryError?.message?.includes('no such column')) {
-                        console.warn('[useDatabaseTasks] tenant_id/user_id columns missing, running migration...');
+                    // First, verify columns exist by querying them explicitly
+                    const columnCheck = dbService.query<{ name: string }>('PRAGMA table_info(tasks)');
+                    const columnNames = columnCheck.map(col => col.name);
+                    const hasTenantId = columnNames.includes('tenant_id');
+                    const hasUserId = columnNames.includes('user_id');
+                    
+                    console.log(`[useDatabaseTasks] Tasks table columns: ${columnNames.join(', ')}`);
+                    console.log(`[useDatabaseTasks] Has tenant_id: ${hasTenantId}, Has user_id: ${hasUserId}`);
+                    
+                    if (hasTenantId && hasUserId) {
+                        // Columns exist, try filtered query
                         try {
-                            migrateTenantColumns();
-                            // Retry query
                             localResults = dbService.query<{
                                 id: string;
                                 text: string;
@@ -223,46 +169,94 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
                                 tenant_id: string | null;
                                 user_id: string | null;
                             }>(
-                                'SELECT * FROM tasks WHERE tenant_id = ? AND user_id = ? ORDER BY created_at DESC',
+                                'SELECT id, text, completed, priority, created_at, tenant_id, user_id FROM tasks WHERE tenant_id = ? AND user_id = ? ORDER BY created_at DESC',
                                 [normalizedTenantId, normalizedUserId]
                             );
-                        } catch (retryError) {
-                            console.error('[useDatabaseTasks] Failed to query after migration:', retryError);
-                            // Fallback: query all tasks (no filtering)
-                            try {
-                                const fallbackResults = dbService.query<{
-                                    id: string;
-                                    text: string;
-                                    completed: number;
-                                    priority: string;
-                                    created_at: number;
-                                }>('SELECT id, text, completed, priority, created_at FROM tasks ORDER BY created_at DESC');
-                                localResults = fallbackResults.map(t => ({
-                                    ...t,
-                                    tenant_id: null,
-                                    user_id: null
-                                }));
-                                console.warn('[useDatabaseTasks] Using fallback query (no tenant/user filtering)');
-                            } catch (fallbackError) {
-                                console.error('[useDatabaseTasks] Fallback query also failed:', fallbackError);
-                                throw fallbackError;
-                            }
+                            console.log(`[useDatabaseTasks] ✅ Filtered query successful: ${localResults.length} tasks`);
+                        } catch (filteredError: any) {
+                            console.warn('[useDatabaseTasks] Filtered query failed, trying unfiltered query:', filteredError);
+                            // Fallback: Query all tasks, filter in JavaScript
+                            const allTasks = dbService.query<{
+                                id: string;
+                                text: string;
+                                completed: number;
+                                priority: string;
+                                created_at: number;
+                                tenant_id: string | null;
+                                user_id: string | null;
+                            }>('SELECT id, text, completed, priority, created_at, tenant_id, user_id FROM tasks ORDER BY created_at DESC');
+                            
+                            // Filter in JavaScript
+                            localResults = allTasks.filter(task => 
+                                task.tenant_id === normalizedTenantId && 
+                                task.user_id === normalizedUserId
+                            );
+                            console.log(`[useDatabaseTasks] ✅ Unfiltered query + JS filter: ${allTasks.length} total, ${localResults.length} matching`);
                         }
                     } else {
-                        throw queryError;
+                        // Columns don't exist, query without them and filter in JS
+                        console.warn('[useDatabaseTasks] Columns missing, querying without tenant_id/user_id');
+                        const allTasks = dbService.query<{
+                            id: string;
+                            text: string;
+                            completed: number;
+                            priority: string;
+                            created_at: number;
+                        }>('SELECT id, text, completed, priority, created_at FROM tasks ORDER BY created_at DESC');
+                        
+                        localResults = allTasks.map(t => ({
+                            ...t,
+                            tenant_id: null,
+                            user_id: null
+                        }));
+                        console.log(`[useDatabaseTasks] ⚠️ Queried ${allTasks.length} tasks without tenant/user filtering (columns missing)`);
+                    }
+                } catch (queryError: any) {
+                    console.error('[useDatabaseTasks] Query failed:', queryError);
+                    // Last resort: Try basic query without tenant_id/user_id
+                    try {
+                        const basicTasks = dbService.query<{
+                            id: string;
+                            text: string;
+                            completed: number;
+                            priority: string;
+                            created_at: number;
+                        }>('SELECT id, text, completed, priority, created_at FROM tasks ORDER BY created_at DESC');
+                        
+                        localResults = basicTasks.map(t => ({
+                            ...t,
+                            tenant_id: null,
+                            user_id: null
+                        }));
+                        console.warn(`[useDatabaseTasks] ⚠️ Using basic query fallback: ${basicTasks.length} tasks`);
+                    } catch (fallbackError) {
+                        console.error('[useDatabaseTasks] All query attempts failed:', fallbackError);
+                        throw fallbackError;
                     }
                 }
 
-                console.log(`[useDatabaseTasks] Found ${localResults.length} tasks matching tenantId="${tenantId}" and userId="${userId}"`);
+                console.log(`[useDatabaseTasks] Found ${localResults.length} tasks matching tenantId="${normalizedTenantId}" and userId="${normalizedUserId}"`);
                 
-                // If no results but we have tasks in DB, check if IDs don't match
-                if (localResults.length === 0 && allTasks.length > 0) {
-                    console.warn(`[useDatabaseTasks] ⚠️ No tasks found with current IDs, but tasks exist in DB!`);
-                    console.warn(`[useDatabaseTasks] Current tenantId: "${tenantId}", Current userId: "${userId}"`);
-                    console.warn(`[useDatabaseTasks] Tasks in DB have:`, allTasks.map(t => ({
-                        tenant_id: `"${t.tenant_id}"`,
-                        user_id: `"${t.user_id}"`
-                    })));
+                // Debug: If no results, check what's in the database
+                if (localResults.length === 0) {
+                    try {
+                        const debugTasks = dbService.query<{
+                            id: string;
+                            tenant_id: string | null;
+                            user_id: string | null;
+                        }>('SELECT id, tenant_id, user_id FROM tasks LIMIT 5');
+                        if (debugTasks.length > 0) {
+                            console.warn(`[useDatabaseTasks] ⚠️ No tasks found with current IDs, but ${debugTasks.length} tasks exist in DB!`);
+                            console.warn(`[useDatabaseTasks] Current tenantId: "${normalizedTenantId}", Current userId: "${normalizedUserId}"`);
+                            console.warn(`[useDatabaseTasks] Sample tasks in DB:`, debugTasks.map(t => ({
+                                id: t.id,
+                                tenant_id: `"${t.tenant_id}"`,
+                                user_id: `"${t.user_id}"`
+                            })));
+                        }
+                    } catch (debugError) {
+                        // Ignore debug query errors
+                    }
                 }
                 
                 if (localResults.length > 0) {

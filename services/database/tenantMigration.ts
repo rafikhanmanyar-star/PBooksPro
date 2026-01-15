@@ -100,26 +100,53 @@ function addTenantIdColumn(tableName: string): void {
         
         // Add tenant_id column (use org_tenant_id for rental_agreements to avoid conflict)
         const columnName = tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+        let columnAdded = false;
+        
         try {
             db.execute(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} TEXT`);
             console.log(`✅ Added ${columnName} column to ${tableName}`);
-            
-            // If there's existing data and we have a current tenant, set it
-            const currentTenantId = getCurrentTenantId();
-            if (currentTenantId) {
-                try {
-                    db.execute(`UPDATE ${tableName} SET ${columnName} = ? WHERE ${columnName} IS NULL`, [currentTenantId]);
-                    console.log(`✅ Updated existing records in ${tableName} with tenant_id`);
-                } catch (updateError) {
-                    console.warn(`⚠️ Could not update existing records in ${tableName}:`, updateError);
-                }
-            }
+            columnAdded = true;
         } catch (addError: any) {
             // Column might already exist (race condition), ignore duplicate column errors
             if (addError?.message?.includes('duplicate column')) {
                 console.log(`ℹ️ Column ${columnName} already exists in ${tableName}`);
+                columnAdded = true; // Column exists, so we can update
             } else {
                 console.error(`❌ Error adding ${columnName} to ${tableName}:`, addError);
+                // Don't try to update if column addition failed
+                return;
+            }
+        }
+        
+        // Only update if column was successfully added or already exists
+        if (columnAdded) {
+            // Verify column exists before updating (double-check)
+            try {
+                const verifyColumns = db.query<{ name: string }>(`PRAGMA table_info(${tableName})`);
+                const columnExists = verifyColumns.some(col => col.name === columnName);
+                
+                if (!columnExists) {
+                    console.warn(`⚠️ Column ${columnName} was not found in ${tableName} after addition, skipping update`);
+                    return;
+                }
+                
+                // If there's existing data and we have a current tenant, set it
+                const currentTenantId = getCurrentTenantId();
+                if (currentTenantId) {
+                    try {
+                        db.execute(`UPDATE ${tableName} SET ${columnName} = ? WHERE ${columnName} IS NULL`, [currentTenantId]);
+                        console.log(`✅ Updated existing records in ${tableName} with tenant_id`);
+                    } catch (updateError: any) {
+                        // If update fails with "no such column", the column addition might have failed silently
+                        if (updateError?.message?.includes('no such column')) {
+                            console.error(`❌ Column ${columnName} does not exist in ${tableName} - ALTER TABLE may have failed silently`);
+                        } else {
+                            console.warn(`⚠️ Could not update existing records in ${tableName}:`, updateError);
+                        }
+                    }
+                }
+            } catch (verifyError) {
+                console.warn(`⚠️ Could not verify column ${columnName} in ${tableName}:`, verifyError);
             }
         }
     } catch (error) {
@@ -162,26 +189,53 @@ function addUserIdColumn(tableName: string): void {
         }
         
         // Add user_id column
+        let columnAdded = false;
+        
         try {
             db.execute(`ALTER TABLE ${tableName} ADD COLUMN user_id TEXT`);
             console.log(`✅ Added user_id column to ${tableName}`);
-            
-            // If there's existing data and we have a current user, set it
-            const currentUserId = getCurrentUserId();
-            if (currentUserId) {
-                try {
-                    db.execute(`UPDATE ${tableName} SET user_id = ? WHERE user_id IS NULL`, [currentUserId]);
-                    console.log(`✅ Updated existing records in ${tableName} with user_id`);
-                } catch (updateError) {
-                    console.warn(`⚠️ Could not update existing records in ${tableName}:`, updateError);
-                }
-            }
+            columnAdded = true;
         } catch (addError: any) {
             // Column might already exist (race condition), ignore duplicate column errors
             if (addError?.message?.includes('duplicate column')) {
                 console.log(`ℹ️ Column user_id already exists in ${tableName}`);
+                columnAdded = true; // Column exists, so we can update
             } else {
                 console.error(`❌ Error adding user_id to ${tableName}:`, addError);
+                // Don't try to update if column addition failed
+                return;
+            }
+        }
+        
+        // Only update if column was successfully added or already exists
+        if (columnAdded) {
+            // Verify column exists before updating (double-check)
+            try {
+                const verifyColumns = db.query<{ name: string }>(`PRAGMA table_info(${tableName})`);
+                const columnExists = verifyColumns.some(col => col.name === 'user_id');
+                
+                if (!columnExists) {
+                    console.warn(`⚠️ Column user_id was not found in ${tableName} after addition, skipping update`);
+                    return;
+                }
+                
+                // If there's existing data and we have a current user, set it
+                const currentUserId = getCurrentUserId();
+                if (currentUserId) {
+                    try {
+                        db.execute(`UPDATE ${tableName} SET user_id = ? WHERE user_id IS NULL`, [currentUserId]);
+                        console.log(`✅ Updated existing records in ${tableName} with user_id`);
+                    } catch (updateError: any) {
+                        // If update fails with "no such column", the column addition might have failed silently
+                        if (updateError?.message?.includes('no such column')) {
+                            console.error(`❌ Column user_id does not exist in ${tableName} - ALTER TABLE may have failed silently`);
+                        } else {
+                            console.warn(`⚠️ Could not update existing records in ${tableName}:`, updateError);
+                        }
+                    }
+                }
+            } catch (verifyError) {
+                console.warn(`⚠️ Could not verify column user_id in ${tableName}:`, verifyError);
             }
         }
     } catch (error) {
