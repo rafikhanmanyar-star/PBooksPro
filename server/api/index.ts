@@ -185,8 +185,20 @@ app.use(cors({
   exposedHeaders: ['Content-Type', 'Authorization'],
   maxAge: 86400 // 24 hours
 }));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({
+  limit: '50mb',
+  verify: (req, _res, buf) => {
+    // Capture raw body for webhook signature verification (e.g. Paddle)
+    (req as any).rawBody = buf;
+  }
+}));
+app.use(express.urlencoded({
+  extended: true,
+  limit: '50mb',
+  verify: (req, _res, buf) => {
+    (req as any).rawBody = buf;
+  }
+}));
 
 // Root route
 app.get('/', (req, res) => {

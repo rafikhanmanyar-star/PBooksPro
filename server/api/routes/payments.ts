@@ -106,9 +106,18 @@ export async function handleWebhookRoute(req: Request, res: Response, next: Next
       signature = req.headers['x-signature'] as string || req.query.signature as string;
     }
 
-    // Get raw body for signature verification
-    // Note: body-parser may have already parsed it, so we might need raw body
-    const payload = req.body;
+    // Use raw body for Paddle signature verification if available
+    const rawBody = (req as any).rawBody;
+    const payload = gateway === 'paddle' && rawBody
+      ? rawBody.toString('utf8')
+      : req.body;
+
+    console.log('🔔 Payment webhook received:', {
+      gateway,
+      hasSignature: !!signature,
+      hasRawBody: !!rawBody,
+      contentType: req.headers['content-type'],
+    });
 
     const db = getDb();
     const paymentService = new PaymentService(db);
