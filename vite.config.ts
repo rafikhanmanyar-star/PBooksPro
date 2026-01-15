@@ -35,7 +35,7 @@ const suppressSqlJsWarnings = () => {
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: './',
+  base: '/',
   define: {
     // Expose environment variables to the client
     'process.env.API_KEY': JSON.stringify(process.env.API_KEY || process.env.VITE_API_KEY || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || ''),
