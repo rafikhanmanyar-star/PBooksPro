@@ -16,6 +16,7 @@ import ScrollToTop from './components/ui/ScrollToTop';
 import { useLicense } from './context/LicenseContext';
 import LicenseLockScreen from './components/license/LicenseLockScreen';
 import PaymentSuccessPage from './components/license/PaymentSuccessPage';
+import PaddleCheckoutPage from './components/license/PaddleCheckoutPage';
 import { useAuth } from './context/AuthContext';
 import CloudLoginPage from './components/auth/CloudLoginPage';
 // Initialize Sync Service removed
@@ -89,6 +90,7 @@ const App: React.FC = () => {
 
   // Check for payment success page URL - MUST be before any early returns
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
+  const [showPaddleCheckout, setShowPaddleCheckout] = useState(false);
   
   useEffect(() => {
     // Check if current URL path matches payment success route
@@ -100,12 +102,20 @@ const App: React.FC = () => {
       searchParams.has('status') ||
       searchParams.has('_ptxn');
     
+    if (pathname === '/license/paddle-checkout' || pathname.endsWith('/license/paddle-checkout')) {
+      setShowPaddleCheckout(true);
+      setShowPaymentSuccess(false);
+      return;
+    }
+
     if (pathname === '/license/payment-success' || 
         pathname.endsWith('/license/payment-success') ||
         (pathname === '/' && hasPaymentParams)) {
       setShowPaymentSuccess(true);
+      setShowPaddleCheckout(false);
     } else {
       setShowPaymentSuccess(false);
+      setShowPaddleCheckout(false);
     }
   }, []);
 
@@ -327,6 +337,11 @@ const App: React.FC = () => {
   // Show loading while checking authentication
   if (authLoading) {
     return <Loading message="Checking authentication..." />;
+  }
+
+  // Show Paddle checkout page if URL matches
+  if (showPaddleCheckout) {
+    return <PaddleCheckoutPage />;
   }
 
   // Show payment success page if URL matches
