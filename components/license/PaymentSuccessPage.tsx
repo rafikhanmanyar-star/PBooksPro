@@ -16,8 +16,8 @@ const PaymentSuccessPage: React.FC = () => {
   useEffect(() => {
     // Parse URL parameters
     const params = new URLSearchParams(window.location.search);
-    const intent = params.get('payment_intent');
-    const paymentStatus = params.get('status');
+    const intent = params.get('payment_intent') || params.get('_ptxn');
+    const paymentStatus = params.get('status') || params.get('payment_status');
     
     setPaymentIntent(intent);
     setStatus(paymentStatus);
@@ -42,7 +42,8 @@ const PaymentSuccessPage: React.FC = () => {
       }
     };
 
-    if (paymentStatus === 'success' && intent) {
+    // Paddle returns only _ptxn on success for some setups
+    if ((paymentStatus === 'success' || (!!intent && !paymentStatus)) && intent) {
       refreshLicense();
     } else {
       setIsCheckingLicense(false);

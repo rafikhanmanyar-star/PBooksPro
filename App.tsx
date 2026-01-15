@@ -94,7 +94,11 @@ const App: React.FC = () => {
     // Check if current URL path matches payment success route
     const pathname = window.location.pathname;
     const searchParams = new URLSearchParams(window.location.search);
-    const hasPaymentParams = searchParams.has('payment_intent') || searchParams.has('status');
+    const hasPaymentParams =
+      searchParams.has('payment_intent') ||
+      searchParams.has('payment_status') ||
+      searchParams.has('status') ||
+      searchParams.has('_ptxn');
     
     if (pathname === '/license/payment-success' || 
         pathname.endsWith('/license/payment-success') ||
