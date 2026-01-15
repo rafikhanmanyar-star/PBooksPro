@@ -30,8 +30,16 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
     const { user, tenant, isAuthenticated } = useAuth();
 
     // Get tenant_id and user_id - prefer AuthContext, fallback to localStorage
-    const tenantId = tenant?.id || getCurrentTenantId();
-    const userId = user?.id || getCurrentUserId();
+    // Normalize IDs (trim whitespace, ensure string type)
+    const tenantId = (tenant?.id || getCurrentTenantId())?.trim() || null;
+    const userId = (user?.id || getCurrentUserId())?.trim() || null;
+    
+    // Debug: Log the IDs being used
+    useEffect(() => {
+        console.log(`[useDatabaseTasks] Current IDs - tenantId: "${tenantId}", userId: "${userId}"`);
+        console.log(`[useDatabaseTasks] AuthContext - tenant?.id: "${tenant?.id}", user?.id: "${user?.id}"`);
+        console.log(`[useDatabaseTasks] localStorage - tenant_id: "${getCurrentTenantId()}", user_id: "${getCurrentUserId()}"`);
+    }, [tenantId, userId, tenant?.id, user?.id]);
 
     // Load tasks from both local database and cloud API (when authenticated)
     useEffect(() => {
@@ -46,6 +54,8 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
 
         const loadTasks = async () => {
             try {
+                console.log(`[useDatabaseTasks] Loading tasks for tenantId: ${tenantId}, userId: ${userId}, isAuthenticated: ${isAuthenticated}`);
+                
                 await ensureDatabaseInitialized();
                 if (!isMounted) return;
 
@@ -62,6 +72,28 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
                 dbService.ensureAllTablesExist();
 
                 // Load from local database first
+                // First, let's check what tasks exist in the database (for debugging)
+                const allTasks = dbService.query<{
+                    id: string;
+                    text: string;
+                    tenant_id: string | null;
+                    user_id: string | null;
+                }>('SELECT id, text, tenant_id, user_id FROM tasks LIMIT 10');
+                
+                console.log(`[useDatabaseTasks] Total tasks in database: ${allTasks.length}`);
+                if (allTasks.length > 0) {
+                    console.log(`[useDatabaseTasks] Sample tasks in DB:`, allTasks.map(t => ({
+                        id: t.id,
+                        text: t.text?.substring(0, 20),
+                        tenant_id: t.tenant_id,
+                        user_id: t.user_id
+                    })));
+                }
+                
+                // Now query with filters - normalize IDs for query
+                const normalizedTenantId = tenantId?.trim() || null;
+                const normalizedUserId = userId?.trim() || null;
+                
                 const localResults = dbService.query<{
                     id: string;
                     text: string;
@@ -72,8 +104,29 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
                     user_id: string | null;
                 }>(
                     'SELECT * FROM tasks WHERE tenant_id = ? AND user_id = ? ORDER BY created_at DESC',
-                    [tenantId, userId]
+                    [normalizedTenantId, normalizedUserId]
                 );
+
+                console.log(`[useDatabaseTasks] Found ${localResults.length} tasks matching tenantId="${tenantId}" and userId="${userId}"`);
+                
+                // If no results but we have tasks in DB, check if IDs don't match
+                if (localResults.length === 0 && allTasks.length > 0) {
+                    console.warn(`[useDatabaseTasks] ⚠️ No tasks found with current IDs, but tasks exist in DB!`);
+                    console.warn(`[useDatabaseTasks] Current tenantId: "${tenantId}", Current userId: "${userId}"`);
+                    console.warn(`[useDatabaseTasks] Tasks in DB have:`, allTasks.map(t => ({
+                        tenant_id: `"${t.tenant_id}"`,
+                        user_id: `"${t.user_id}"`
+                    })));
+                }
+                
+                if (localResults.length > 0) {
+                    console.log(`[useDatabaseTasks] Sample local task:`, {
+                        id: localResults[0].id,
+                        text: localResults[0].text,
+                        tenant_id: localResults[0].tenant_id,
+                        user_id: localResults[0].user_id
+                    });
+                }
 
                 let loadedTasks: Task[] = localResults.map(row => ({
                     id: row.id,
@@ -86,8 +139,11 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
                 // If authenticated, also load from cloud API and merge
                 if (isAuthenticated && user && tenant) {
                     try {
+                        console.log(`[useDatabaseTasks] Loading from cloud API...`);
                         const tasksApiRepo = new TasksApiRepository();
                         const cloudTasks = await tasksApiRepo.findAll();
+                        
+                        console.log(`[useDatabaseTasks] Found ${cloudTasks.length} tasks in cloud API`);
                         
                         // Convert cloud tasks to Task format (cloud uses different timestamp format)
                         const cloudTasksFormatted: Task[] = cloudTasks.map(task => ({
@@ -105,15 +161,21 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
                         const localOnlyTasks = loadedTasks.filter(t => !cloudTaskIds.has(t.id));
                         loadedTasks = [...cloudTasksFormatted, ...localOnlyTasks];
 
-                        // Sync cloud tasks to local database for offline access
-                        if (cloudTasksFormatted.length > 0) {
-                            // Delete existing tasks for this user
+                        console.log(`[useDatabaseTasks] After merge: ${loadedTasks.length} total tasks (${cloudTasksFormatted.length} from cloud, ${localOnlyTasks.length} local-only)`);
+
+                        // Sync merged tasks to local database for offline access
+                        // Only update if we have tasks to sync (don't delete if cloud is empty)
+                        if (loadedTasks.length > 0) {
+                            // Delete existing tasks for this user (use normalized IDs)
+                            const normalizedTenantId = tenantId?.trim() || null;
+                            const normalizedUserId = userId?.trim() || null;
+                            
                             dbService.execute(
                                 'DELETE FROM tasks WHERE tenant_id = ? AND user_id = ?',
-                                [tenantId, userId]
+                                [normalizedTenantId, normalizedUserId]
                             );
 
-                            // Insert cloud tasks into local database
+                            // Insert merged tasks into local database (use normalized IDs)
                             loadedTasks.forEach(task => {
                                 dbService.execute(
                                     'INSERT OR REPLACE INTO tasks (id, text, completed, priority, created_at, updated_at, tenant_id, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
@@ -124,26 +186,32 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
                                         task.priority,
                                         task.createdAt,
                                         Date.now(),
-                                        tenantId,
-                                        userId
+                                        normalizedTenantId,
+                                        normalizedUserId
                                     ]
                                 );
                             });
 
                             await dbService.saveAsync();
+                            console.log(`[useDatabaseTasks] Synced ${loadedTasks.length} tasks to local database`);
+                        } else {
+                            console.log(`[useDatabaseTasks] No tasks to sync (cloud returned empty, keeping local)`);
                         }
                     } catch (apiError) {
-                        console.warn('Failed to load tasks from cloud API, using local only:', apiError);
-                        // Continue with local tasks only
+                        console.warn('[useDatabaseTasks] Failed to load tasks from cloud API, using local only:', apiError);
+                        // Continue with local tasks only - don't delete them!
                     }
+                } else {
+                    console.log(`[useDatabaseTasks] Not authenticated, using local tasks only`);
                 }
 
                 if (isMounted) {
+                    console.log(`[useDatabaseTasks] Setting ${loadedTasks.length} tasks in state`);
                     setTasks(loadedTasks);
                     setIsLoading(false);
                 }
             } catch (error) {
-                console.error('Failed to load tasks:', error);
+                console.error('[useDatabaseTasks] Failed to load tasks:', error);
                 if (isMounted) {
                     setTasks([]);
                     setIsLoading(false);
@@ -162,9 +230,11 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
     const saveTasks = useCallback(async (newTasks: Task[]) => {
         // Don't save if user/tenant not available
         if (!tenantId || !userId) {
-            console.warn('Cannot save tasks: user or tenant not available');
+            console.warn('[useDatabaseTasks] Cannot save tasks: user or tenant not available', { tenantId, userId });
             return;
         }
+
+        console.log(`[useDatabaseTasks] Saving ${newTasks.length} tasks for tenantId: ${tenantId}, userId: ${userId}`);
 
         // Optimistic update: Update UI immediately
         setTasks(newTasks);
@@ -185,13 +255,16 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
             // Ensure tasks table exists (safety check)
             dbService.ensureAllTablesExist();
 
-            // Delete all existing tasks for this user and tenant
+            // Delete all existing tasks for this user and tenant (use normalized IDs)
+            const normalizedTenantId = tenantId?.trim() || null;
+            const normalizedUserId = userId?.trim() || null;
+            
             dbService.execute(
                 'DELETE FROM tasks WHERE tenant_id = ? AND user_id = ?',
-                [tenantId, userId]
+                [normalizedTenantId, normalizedUserId]
             );
 
-            // Insert all tasks with tenant_id and user_id
+            // Insert all tasks with tenant_id and user_id (already normalized above)
             newTasks.forEach(task => {
                 dbService.execute(
                     'INSERT INTO tasks (id, text, completed, priority, created_at, updated_at, tenant_id, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
@@ -202,8 +275,8 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
                         task.priority,
                         task.createdAt,
                         Date.now(),
-                        tenantId,
-                        userId
+                        normalizedTenantId,
+                        normalizedUserId
                     ]
                 );
             });
@@ -211,7 +284,25 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
             // Persist to storage and wait for completion
             await dbService.saveAsync();
             
-            console.log(`✅ Successfully saved ${newTasks.length} task(s) to local database for user ${userId} in tenant ${tenantId}`);
+            // Verify the save by querying back (use normalized IDs)
+            const verifyResults = dbService.query<{
+                id: string;
+                tenant_id: string | null;
+                user_id: string | null;
+            }>(
+                'SELECT id, tenant_id, user_id FROM tasks WHERE tenant_id = ? AND user_id = ?',
+                [normalizedTenantId, normalizedUserId]
+            );
+            
+            console.log(`[useDatabaseTasks] ✅ Successfully saved ${newTasks.length} task(s) to local database`);
+            console.log(`[useDatabaseTasks] Verification: Found ${verifyResults.length} tasks in DB after save`);
+            if (verifyResults.length > 0) {
+                console.log(`[useDatabaseTasks] Sample saved task:`, {
+                    id: verifyResults[0].id,
+                    tenant_id: verifyResults[0].tenant_id,
+                    user_id: verifyResults[0].user_id
+                });
+            }
         } catch (error) {
             console.error('❌ Failed to save tasks to local database:', error);
             // Continue to try cloud save even if local fails
@@ -244,10 +335,10 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
             console.log('ℹ️ Not authenticated, tasks saved to local database only');
         }
 
-        // On error, reload from database to ensure consistency
+        // On error, reload from database to ensure consistency (use normalized IDs)
         try {
             const dbService = getDatabaseService();
-            if (dbService.isReady() && tenantId && userId) {
+            if (dbService.isReady() && normalizedTenantId && normalizedUserId) {
                 const results = dbService.query<{
                     id: string;
                     text: string;
@@ -258,7 +349,7 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
                     user_id: string | null;
                 }>(
                     'SELECT * FROM tasks WHERE tenant_id = ? AND user_id = ? ORDER BY created_at DESC',
-                    [tenantId, userId]
+                    [normalizedTenantId, normalizedUserId]
                 );
 
                 const loadedTasks: Task[] = results.map(row => ({
