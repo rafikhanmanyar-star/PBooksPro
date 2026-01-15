@@ -18,9 +18,10 @@ const PaymentSuccessPage: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     const intent = params.get('payment_intent') || params.get('_ptxn');
     const paymentStatus = params.get('status') || params.get('payment_status');
+    const inferredStatus = paymentStatus || (intent ? 'success' : null);
     
     setPaymentIntent(intent);
-    setStatus(paymentStatus);
+    setStatus(inferredStatus);
 
     // Refresh license status after payment
     const refreshLicense = async () => {
@@ -43,7 +44,7 @@ const PaymentSuccessPage: React.FC = () => {
     };
 
     // Paddle returns only _ptxn on success for some setups
-    if ((paymentStatus === 'success' || (!!intent && !paymentStatus)) && intent) {
+    if (inferredStatus === 'success' && intent) {
       refreshLicense();
     } else {
       setIsCheckingLicense(false);
