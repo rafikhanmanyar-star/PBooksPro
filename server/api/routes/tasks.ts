@@ -6,17 +6,23 @@ import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
 const router = Router();
 const getDb = () => getDatabaseService();
 
-// GET all tasks
+// GET all tasks (user-specific - only returns tasks for the current user)
 router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const { completed } = req.query;
+    const userId = req.user?.userId;
     
-    let query = 'SELECT * FROM tasks WHERE tenant_id = $1';
-    const params: any[] = [req.tenantId];
+    // Tasks are user-level records - filter by both tenant_id and user_id
+    if (!userId) {
+      return res.status(401).json({ error: 'User ID required' });
+    }
+    
+    let query = 'SELECT * FROM tasks WHERE tenant_id = $1 AND user_id = $2';
+    const params: any[] = [req.tenantId, userId];
     
     if (completed !== undefined) {
-      query += ' AND completed = $2';
+      query += ' AND completed = $3';
       params.push(completed === 'true');
     }
     

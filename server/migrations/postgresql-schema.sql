@@ -1124,6 +1124,12 @@ RETURNS TEXT AS $$
     SELECT current_setting('app.current_tenant_id', TRUE);
 $$ LANGUAGE sql STABLE;
 
+-- Function to get current user ID
+CREATE OR REPLACE FUNCTION get_current_user_id() 
+RETURNS TEXT AS $$
+    SELECT current_setting('app.current_user_id', TRUE);
+$$ LANGUAGE sql STABLE;
+
 -- RLS Policies
 -- Drop existing policies if they exist, then create them
 DROP POLICY IF EXISTS tenant_isolation_users ON users;
@@ -1229,10 +1235,17 @@ CREATE POLICY tenant_isolation_documents ON documents
     WITH CHECK (tenant_id = get_current_tenant_id());
 
 DROP POLICY IF EXISTS tenant_isolation_tasks ON tasks;
+-- Tasks are user-level records: users can only see their own tasks within their tenant
 CREATE POLICY tenant_isolation_tasks ON tasks
     FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
+    USING (
+        tenant_id = get_current_tenant_id() 
+        AND user_id = get_current_user_id()
+    )
+    WITH CHECK (
+        tenant_id = get_current_tenant_id() 
+        AND user_id = get_current_user_id()
+    );
 
 DROP POLICY IF EXISTS tenant_isolation_recurring_invoice_templates ON recurring_invoice_templates;
 CREATE POLICY tenant_isolation_recurring_invoice_templates ON recurring_invoice_templates
