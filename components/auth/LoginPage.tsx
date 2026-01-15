@@ -46,7 +46,7 @@ const LoginPage: React.FC = () => {
                     <p className="text-slate-500 mt-2">Sign in to continue</p>
                 </div>
 
-                <form onSubmit={handleLogin} className="space-y-6">
+                <form onSubmit={handleLogin} className="space-y-6" autoComplete="off" data-form-type="other">
                     <Input 
                         id="username"
                         name="username"
@@ -65,7 +65,8 @@ const LoginPage: React.FC = () => {
                         value={password} 
                         onChange={e => setPassword(e.target.value)} 
                         placeholder={username === 'admin' ? '(Default: No password)' : ''}
-                        autoComplete="current-password"
+                        autoComplete="off"
+                        data-form-type="other"
                     />
 
                     {error && (

@@ -359,6 +359,8 @@ const UserManagement: React.FC = () => {
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     required={!editingUser}
                     minLength={6}
+                    autoComplete="off"
+                    data-form-type="other"
                   />
                 </div>
 

@@ -944,6 +944,8 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                 placeholder="Enter new password (min 6 characters)"
                 style={{ width: '100%', padding: '0.375rem', fontSize: '0.8125rem' }}
                 autoFocus
+                autoComplete="off"
+                data-form-type="other"
               />
               <div style={{ fontSize: '0.6875rem', color: '#6b7280', marginTop: '0.25rem' }}>
                 Password must be at least 6 characters long

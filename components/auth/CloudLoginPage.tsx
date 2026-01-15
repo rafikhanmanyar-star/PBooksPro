@@ -166,7 +166,7 @@ const CloudLoginPage: React.FC = () => {
 
         {step === 'lookup' ? (
           // Step 1: Organization Email Lookup
-          <form onSubmit={handleLookup} className="space-y-6">
+          <form onSubmit={handleLookup} className="space-y-6" autoComplete="off" data-form-type="other">
             <Input
               id="organizationEmail"
               name="organizationEmail"
@@ -192,7 +192,7 @@ const CloudLoginPage: React.FC = () => {
           </form>
         ) : (
           // Step 2: Organization Selection + Login
-          <form onSubmit={handleLogin} className="space-y-6">
+          <form onSubmit={handleLogin} className="space-y-6" autoComplete="off" data-form-type="other">
             {/* Organization Selection */}
             <div className="space-y-2">
               <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -263,7 +263,8 @@ const CloudLoginPage: React.FC = () => {
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
-              autoComplete="current-password"
+              autoComplete="off"
+              data-form-type="other"
             />
 
             {(loginError || error) && (

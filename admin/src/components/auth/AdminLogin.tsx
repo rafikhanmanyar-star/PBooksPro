@@ -64,7 +64,7 @@ const AdminLogin: React.FC = () => {
           Sign in to access the admin portal
         </p>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} autoComplete="off" data-form-type="other">
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>
               Username
@@ -89,6 +89,8 @@ const AdminLogin: React.FC = () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              autoComplete="off"
+              data-form-type="other"
             />
           </div>
 

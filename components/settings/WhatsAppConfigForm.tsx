@@ -198,6 +198,8 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
             placeholder="Enter your WhatsApp Business API access token"
             required
             helperText="Get this from your Meta App Dashboard under WhatsApp > API Setup"
+            autoComplete="off"
+            data-form-type="other"
           />
         </div>
 
@@ -209,6 +211,8 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
             onChange={(e) => setApiSecret(e.target.value)}
             placeholder="Enter API secret if required"
             helperText="Optional: Only required if your API provider needs it"
+            autoComplete="off"
+            data-form-type="other"
           />
         </div>
 

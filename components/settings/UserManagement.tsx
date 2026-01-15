@@ -256,6 +256,8 @@ const UserManagement: React.FC = () => {
                             onChange={e => setPassword(e.target.value)}
                             placeholder={userToEdit ? "Leave blank to keep current" : ""}
                             required={!userToEdit}
+                            autoComplete="off"
+                            data-form-type="other"
                         />
                     </div>
 

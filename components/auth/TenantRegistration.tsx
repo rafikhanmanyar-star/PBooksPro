@@ -215,6 +215,8 @@ const TenantRegistration: React.FC<{ onSuccess?: () => void; onCancel?: () => vo
                 onChange={e => handleChange('adminPassword', e.target.value)}
                 required
                 error={validationErrors.adminPassword}
+                autoComplete="off"
+                data-form-type="other"
               />
             </div>
           </div>
