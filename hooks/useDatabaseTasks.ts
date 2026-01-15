@@ -64,7 +64,7 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
                 
                 // Double-check database is ready
                 if (!dbService.isReady()) {
-                    console.warn('Database not ready, retrying...');
+                    console.warn('[useDatabaseTasks] Database not ready, retrying...');
                     await dbService.initialize();
                     if (!isMounted) return;
                 }
@@ -73,11 +73,62 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
                 dbService.ensureAllTablesExist();
                 
                 // CRITICAL: Ensure tenant_id and user_id columns exist on tasks table
-                // This migration is idempotent and safe to run multiple times
+                // Check and add columns directly to avoid migration issues
                 try {
-                    migrateTenantColumns();
-                } catch (migrationError) {
-                    console.warn('[useDatabaseTasks] Tenant column migration failed, continuing anyway:', migrationError);
+                    // Check if table exists
+                    const tableCheck = dbService.query<{ name: string }>(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name='tasks'"
+                    );
+                    
+                    if (tableCheck.length > 0) {
+                        // Table exists, check if columns exist
+                        let columns: Array<{ name: string }> = [];
+                        try {
+                            columns = dbService.query<{ name: string }>('PRAGMA table_info(tasks)');
+                        } catch (pragmaError) {
+                            console.warn('[useDatabaseTasks] Could not check columns, will try to add them:', pragmaError);
+                        }
+                        
+                        const hasTenantId = columns.some(col => col.name === 'tenant_id');
+                        const hasUserId = columns.some(col => col.name === 'user_id');
+                        
+                        // Add missing columns
+                        if (!hasTenantId) {
+                            try {
+                                dbService.execute('ALTER TABLE tasks ADD COLUMN tenant_id TEXT');
+                                console.log('[useDatabaseTasks] ✅ Added tenant_id column to tasks table');
+                            } catch (e: any) {
+                                if (e?.message?.includes('duplicate column')) {
+                                    console.log('[useDatabaseTasks] tenant_id column already exists');
+                                } else {
+                                    console.error('[useDatabaseTasks] Failed to add tenant_id:', e);
+                                }
+                            }
+                        }
+                        
+                        if (!hasUserId) {
+                            try {
+                                dbService.execute('ALTER TABLE tasks ADD COLUMN user_id TEXT');
+                                console.log('[useDatabaseTasks] ✅ Added user_id column to tasks table');
+                            } catch (e: any) {
+                                if (e?.message?.includes('duplicate column')) {
+                                    console.log('[useDatabaseTasks] user_id column already exists');
+                                } else {
+                                    console.error('[useDatabaseTasks] Failed to add user_id:', e);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Also run the full migration for other tables
+                    try {
+                        migrateTenantColumns();
+                    } catch (migrationError) {
+                        console.warn('[useDatabaseTasks] Full migration failed (but tasks columns should be OK):', migrationError);
+                    }
+                } catch (error) {
+                    console.error('[useDatabaseTasks] Error ensuring tasks columns exist:', error);
+                    // Continue anyway - the query error handling will catch it
                 }
 
                 // Load from local database first
@@ -351,10 +402,35 @@ export function useDatabaseTasks(): [Task[], (tasks: Task[]) => void] {
             dbService.ensureAllTablesExist();
             
             // CRITICAL: Ensure tenant_id and user_id columns exist on tasks table
+            // Run migration BEFORE any queries that use these columns
             try {
                 migrateTenantColumns();
             } catch (migrationError) {
-                console.warn('[useDatabaseTasks] Tenant column migration failed during save, continuing anyway:', migrationError);
+                console.error('[useDatabaseTasks] Tenant column migration failed during save:', migrationError);
+                // Try to add columns directly as fallback
+                try {
+                    const tableCheck = dbService.query<{ name: string }>(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name='tasks'"
+                    );
+                    if (tableCheck.length > 0) {
+                        try {
+                            dbService.execute('ALTER TABLE tasks ADD COLUMN tenant_id TEXT');
+                        } catch (e: any) {
+                            if (!e?.message?.includes('duplicate column')) {
+                                console.warn('[useDatabaseTasks] Could not add tenant_id:', e);
+                            }
+                        }
+                        try {
+                            dbService.execute('ALTER TABLE tasks ADD COLUMN user_id TEXT');
+                        } catch (e: any) {
+                            if (!e?.message?.includes('duplicate column')) {
+                                console.warn('[useDatabaseTasks] Could not add user_id:', e);
+                            }
+                        }
+                    }
+                } catch (fallbackError) {
+                    console.error('[useDatabaseTasks] Fallback column addition failed:', fallbackError);
+                }
             }
 
             // Delete all existing tasks for this user and tenant (use normalized IDs)

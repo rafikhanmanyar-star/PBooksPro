@@ -56,8 +56,26 @@ function addTenantIdColumn(tableName: string): void {
     const db = getDatabaseService();
     
     try {
-        // Check if column already exists
-        const columns = db.query<{ name: string }>(`PRAGMA table_info(${tableName})`);
+        // Check if table exists first
+        const tableExists = db.query<{ name: string }>(
+            `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
+            [tableName]
+        );
+        
+        if (tableExists.length === 0) {
+            // Table doesn't exist yet, skip (it will be created with columns by schema)
+            return;
+        }
+        
+        // Check if column already exists - use try-catch in case of any query issues
+        let columns: Array<{ name: string }> = [];
+        try {
+            columns = db.query<{ name: string }>(`PRAGMA table_info(${tableName})`);
+        } catch (pragmaError) {
+            console.warn(`⚠️ Could not check columns for ${tableName}, attempting to add column anyway:`, pragmaError);
+            // Continue to try adding the column
+        }
+        
         const hasTenantId = columns.some(col => col.name === 'org_tenant_id' || col.name === 'tenant_id');
         
         if (hasTenantId) {
@@ -66,8 +84,15 @@ function addTenantIdColumn(tableName: string): void {
             if (!hasOrgTenantId && columns.some(col => col.name === 'tenant_id')) {
                 // For rental_agreements, tenant_id refers to contact, so we need org_tenant_id
                 if (tableName === 'rental_agreements') {
-                    db.execute(`ALTER TABLE ${tableName} ADD COLUMN org_tenant_id TEXT`);
-                    console.log(`✅ Added org_tenant_id column to ${tableName}`);
+                    try {
+                        db.execute(`ALTER TABLE ${tableName} ADD COLUMN org_tenant_id TEXT`);
+                        console.log(`✅ Added org_tenant_id column to ${tableName}`);
+                    } catch (addError: any) {
+                        // Column might already exist, ignore
+                        if (!addError?.message?.includes('duplicate column')) {
+                            console.warn(`⚠️ Could not add org_tenant_id to ${tableName}:`, addError);
+                        }
+                    }
                 }
             }
             return;
@@ -75,17 +100,26 @@ function addTenantIdColumn(tableName: string): void {
         
         // Add tenant_id column (use org_tenant_id for rental_agreements to avoid conflict)
         const columnName = tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
-        db.execute(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} TEXT`);
-        console.log(`✅ Added ${columnName} column to ${tableName}`);
-        
-        // If there's existing data and we have a current tenant, set it
-        const currentTenantId = getCurrentTenantId();
-        if (currentTenantId) {
-            try {
-                db.execute(`UPDATE ${tableName} SET ${columnName} = ? WHERE ${columnName} IS NULL`, [currentTenantId]);
-                console.log(`✅ Updated existing records in ${tableName} with tenant_id`);
-            } catch (updateError) {
-                console.warn(`⚠️ Could not update existing records in ${tableName}:`, updateError);
+        try {
+            db.execute(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} TEXT`);
+            console.log(`✅ Added ${columnName} column to ${tableName}`);
+            
+            // If there's existing data and we have a current tenant, set it
+            const currentTenantId = getCurrentTenantId();
+            if (currentTenantId) {
+                try {
+                    db.execute(`UPDATE ${tableName} SET ${columnName} = ? WHERE ${columnName} IS NULL`, [currentTenantId]);
+                    console.log(`✅ Updated existing records in ${tableName} with tenant_id`);
+                } catch (updateError) {
+                    console.warn(`⚠️ Could not update existing records in ${tableName}:`, updateError);
+                }
+            }
+        } catch (addError: any) {
+            // Column might already exist (race condition), ignore duplicate column errors
+            if (addError?.message?.includes('duplicate column')) {
+                console.log(`ℹ️ Column ${columnName} already exists in ${tableName}`);
+            } else {
+                console.error(`❌ Error adding ${columnName} to ${tableName}:`, addError);
             }
         }
     } catch (error) {
@@ -101,8 +135,26 @@ function addUserIdColumn(tableName: string): void {
     const db = getDatabaseService();
     
     try {
-        // Check if column already exists
-        const columns = db.query<{ name: string }>(`PRAGMA table_info(${tableName})`);
+        // Check if table exists first
+        const tableExists = db.query<{ name: string }>(
+            `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
+            [tableName]
+        );
+        
+        if (tableExists.length === 0) {
+            // Table doesn't exist yet, skip (it will be created with columns by schema)
+            return;
+        }
+        
+        // Check if column already exists - use try-catch in case of any query issues
+        let columns: Array<{ name: string }> = [];
+        try {
+            columns = db.query<{ name: string }>(`PRAGMA table_info(${tableName})`);
+        } catch (pragmaError) {
+            console.warn(`⚠️ Could not check columns for ${tableName}, attempting to add column anyway:`, pragmaError);
+            // Continue to try adding the column
+        }
+        
         const hasUserId = columns.some(col => col.name === 'user_id');
         
         if (hasUserId) {
@@ -110,17 +162,26 @@ function addUserIdColumn(tableName: string): void {
         }
         
         // Add user_id column
-        db.execute(`ALTER TABLE ${tableName} ADD COLUMN user_id TEXT`);
-        console.log(`✅ Added user_id column to ${tableName}`);
-        
-        // If there's existing data and we have a current user, set it
-        const currentUserId = getCurrentUserId();
-        if (currentUserId) {
-            try {
-                db.execute(`UPDATE ${tableName} SET user_id = ? WHERE user_id IS NULL`, [currentUserId]);
-                console.log(`✅ Updated existing records in ${tableName} with user_id`);
-            } catch (updateError) {
-                console.warn(`⚠️ Could not update existing records in ${tableName}:`, updateError);
+        try {
+            db.execute(`ALTER TABLE ${tableName} ADD COLUMN user_id TEXT`);
+            console.log(`✅ Added user_id column to ${tableName}`);
+            
+            // If there's existing data and we have a current user, set it
+            const currentUserId = getCurrentUserId();
+            if (currentUserId) {
+                try {
+                    db.execute(`UPDATE ${tableName} SET user_id = ? WHERE user_id IS NULL`, [currentUserId]);
+                    console.log(`✅ Updated existing records in ${tableName} with user_id`);
+                } catch (updateError) {
+                    console.warn(`⚠️ Could not update existing records in ${tableName}:`, updateError);
+                }
+            }
+        } catch (addError: any) {
+            // Column might already exist (race condition), ignore duplicate column errors
+            if (addError?.message?.includes('duplicate column')) {
+                console.log(`ℹ️ Column user_id already exists in ${tableName}`);
+            } else {
+                console.error(`❌ Error adding user_id to ${tableName}:`, addError);
             }
         }
     } catch (error) {
