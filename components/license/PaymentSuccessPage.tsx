@@ -163,6 +163,15 @@ const PaymentSuccessPage: React.FC = () => {
         </div>
 
         <div className="p-8 space-y-6">
+          {paymentIntent && (
+            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+              <p className="text-xs text-slate-500 uppercase font-bold mb-1">Payment Reference</p>
+              <code className="text-sm font-mono text-slate-800 break-all">{paymentIntent}</code>
+              <p className="text-xs text-slate-500 mt-2">
+                We received a payment reference but no status was provided. If this persists, contact support with the reference above.
+              </p>
+            </div>
+          )}
           <p className="text-slate-600 text-center">
             We couldn't determine the status of your payment. Please check your payment history or contact support.
           </p>
