@@ -18,6 +18,28 @@ if (result.error && !process.env.DATABASE_URL) {
   console.warn('   __dirname:', __dirname);
 }
 
+// Optional log filter for debugging (e.g., focus on payment logs)
+// Enable with LOG_ONLY_PAYMENT=true to suppress non-payment logs
+if (process.env.LOG_ONLY_PAYMENT === 'true') {
+  const shouldLog = (args: unknown[]) => {
+    const text = args
+      .map(arg => (arg instanceof Error ? arg.message : String(arg)))
+      .join(' ')
+      .toLowerCase();
+    return /payment|paddle|webhook/.test(text);
+  };
+
+  const wrap = (method: (...args: any[]) => void) => (...args: any[]) => {
+    if (shouldLog(args)) {
+      method(...args);
+    }
+  };
+
+  console.log = wrap(console.log);
+  console.warn = wrap(console.warn);
+  console.error = wrap(console.error);
+}
+
 // Run migrations on startup (non-blocking)
 (async () => {
   try {
