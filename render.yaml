@@ -63,6 +63,10 @@ services:
     branch: main
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
     envVars:
       - key: VITE_API_URL
         value: https://api.pbookspro.com/api
@@ -141,6 +145,10 @@ services:
     branch: staging
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
     envVars:
       - key: VITE_API_URL
         value: https://pbookspro-api-staging.onrender.com/api
