@@ -2940,8 +2940,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
                 if (!shouldEnableSync) return;
 
-                const { WebSocketClient } = await import('../services/websocketClient');
-                const ws = new WebSocketClient();
+                const { getWebSocketClient } = await import('../services/websocketClient');
+                const ws = getWebSocketClient();
                 ws.connect(token, tenantId);
 
                 // Throttle refresh to avoid bursts

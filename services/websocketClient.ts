@@ -9,7 +9,8 @@ import { io, Socket } from 'socket.io-client';
 import { logger } from './logger';
 
 // WebSocket server URL (same base as API)
-const WS_SERVER_URL = 'https://pbookspro-api.onrender.com';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://pbookspro-api.onrender.com/api';
+const WS_SERVER_URL = import.meta.env.VITE_WS_URL || API_BASE_URL.replace(/\/api\/?$/, '');
 
 export interface WebSocketEvent {
   type: string;
@@ -21,6 +22,21 @@ export interface WebSocketEvent {
 
 export type WebSocketEventHandler = (data: any) => void;
 
+export type WebSocketConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+
+export interface WebSocketDebugState {
+  status: WebSocketConnectionStatus;
+  serverUrl: string;
+  tenantId: string | null;
+  lastEvent?: {
+    type: string;
+    timestamp: string;
+    data: any;
+  };
+  lastStatusAt?: string;
+  lastError?: string;
+}
+
 export class WebSocketClient {
   private socket: Socket | null = null;
   private token: string | null = null;
@@ -31,11 +47,16 @@ export class WebSocketClient {
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 5;
   private reconnectDelay: number = 1000; // Start with 1 second
+  private debugState: WebSocketDebugState = {
+    status: 'disconnected',
+    serverUrl: WS_SERVER_URL,
+    tenantId: null,
+  };
 
   /**
    * Initialize WebSocket connection
    */
-  connect(token: string, tenantId: string): void {
+  connect(token?: string, tenantId?: string): void {
     if (this.socket?.connected) {
       logger.logCategory('websocket', 'WebSocket already connected');
       return;
@@ -46,8 +67,24 @@ export class WebSocketClient {
       return;
     }
 
-    this.token = token;
-    this.tenantId = tenantId;
+    const resolvedToken = token ?? (typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null);
+    const resolvedTenantId = tenantId ?? (typeof window !== 'undefined' ? localStorage.getItem('tenant_id') : null);
+
+    if (!resolvedToken || !resolvedTenantId) {
+      logger.warnCategory('websocket', 'Missing auth token or tenant ID, cannot connect WebSocket');
+      this.isConnecting = false;
+      return;
+    }
+
+    this.token = resolvedToken;
+    this.tenantId = resolvedTenantId;
+    this.debugState = {
+      ...this.debugState,
+      status: 'connecting',
+      tenantId: resolvedTenantId,
+      lastStatusAt: new Date().toISOString(),
+      lastError: undefined,
+    };
     this.isConnecting = true;
 
     logger.logCategory('websocket', '🔌 Connecting to WebSocket server...');
@@ -55,7 +92,7 @@ export class WebSocketClient {
     try {
       this.socket = io(WS_SERVER_URL, {
         auth: {
-          token: token,
+          token: resolvedToken,
         },
         transports: ['websocket', 'polling'],
         reconnection: true,
@@ -83,12 +120,24 @@ export class WebSocketClient {
       this.isConnecting = false;
       this.reconnectAttempts = 0;
       this.reconnectDelay = 1000;
+      this.debugState = {
+        ...this.debugState,
+        status: 'connected',
+        lastStatusAt: new Date().toISOString(),
+        lastError: undefined,
+      };
     });
 
     this.socket.on('disconnect', (reason) => {
       logger.warnCategory('websocket', '❌ WebSocket disconnected:', reason);
       this.isConnected = false;
       this.isConnecting = false;
+      this.debugState = {
+        ...this.debugState,
+        status: 'disconnected',
+        lastStatusAt: new Date().toISOString(),
+        lastError: reason ? String(reason) : undefined,
+      };
 
       if (reason === 'io server disconnect') {
         // Server disconnected, reconnect manually
@@ -100,6 +149,12 @@ export class WebSocketClient {
       logger.errorCategory('websocket', 'WebSocket connection error:', error);
       this.isConnecting = false;
       this.isConnected = false;
+      this.debugState = {
+        ...this.debugState,
+        status: 'error',
+        lastStatusAt: new Date().toISOString(),
+        lastError: error ? String(error) : undefined,
+      };
     });
 
     // Handle real-time events from server
@@ -300,6 +355,14 @@ export class WebSocketClient {
    */
   private handleEvent(eventType: string, data: any): void {
     logger.logCategory('websocket', `📨 Received event: ${eventType}`, data);
+    this.debugState = {
+      ...this.debugState,
+      lastEvent: {
+        type: eventType,
+        timestamp: new Date().toISOString(),
+        data,
+      },
+    };
     
     const handlers = this.eventHandlers.get(eventType);
     if (handlers) {
@@ -358,6 +421,11 @@ export class WebSocketClient {
       this.isConnected = false;
       this.isConnecting = false;
       this.eventHandlers.clear();
+      this.debugState = {
+        ...this.debugState,
+        status: 'disconnected',
+        lastStatusAt: new Date().toISOString(),
+      };
     }
   }
 
@@ -366,6 +434,16 @@ export class WebSocketClient {
    */
   isConnectedToServer(): boolean {
     return this.isConnected && this.socket?.connected === true;
+  }
+
+  /**
+   * Get current debug state snapshot
+   */
+  getDebugState(): WebSocketDebugState {
+    return {
+      ...this.debugState,
+      tenantId: this.tenantId,
+    };
   }
 
   /**

@@ -18,6 +18,7 @@ import LicenseLockScreen from './components/license/LicenseLockScreen';
 import PaymentSuccessPage from './components/license/PaymentSuccessPage';
 import PaddleCheckoutPage from './components/license/PaddleCheckoutPage';
 import { useAuth } from './context/AuthContext';
+import { apiClient } from './services/api/client';
 import CloudLoginPage from './components/auth/CloudLoginPage';
 // Initialize Sync Service removed
 import UpdateNotification from './components/ui/UpdateNotification';
@@ -37,6 +38,7 @@ import Loading from './components/ui/Loading';
 import { OfflineProvider } from './context/OfflineContext';
 import SyncNotification from './components/ui/SyncNotification';
 import MobileOfflineWarning from './components/ui/MobileOfflineWarning';
+import WebSocketDebugPanel from './components/ui/WebSocketDebugPanel';
 
 
 // Lazy Load Components
@@ -232,8 +234,14 @@ const App: React.FC = () => {
         // Connect WebSocket client (if authenticated)
         if (isAuthenticated) {
           const wsClient = getWebSocketClient();
-          wsClient.connect();
-          console.log('[App] ✅ WebSocket client connecting...');
+          const token = apiClient.getToken();
+          const tenantId = apiClient.getTenantId();
+          if (token && tenantId) {
+            wsClient.connect(token, tenantId);
+            console.log('[App] ✅ WebSocket client connecting...');
+          } else {
+            console.warn('[App] ⚠️ WebSocket not connected - missing token or tenant ID');
+          }
         }
 
         console.log('[App] ✅ Database services initialized successfully');
@@ -276,7 +284,13 @@ const App: React.FC = () => {
   useEffect(() => {
     if (isAuthenticated) {
       const wsClient = getWebSocketClient();
-      wsClient.connect();
+      const token = apiClient.getToken();
+      const tenantId = apiClient.getTenantId();
+      if (token && tenantId) {
+        wsClient.connect(token, tenantId);
+      } else {
+        console.warn('[App] ⚠️ WebSocket not connected - missing token or tenant ID');
+      }
       console.log('[App] ✅ WebSocket client connecting (authenticated)');
       
       // Set dispatch callback for real-time sync handler
@@ -559,6 +573,7 @@ const App: React.FC = () => {
 
         {/* Sync Notification */}
         <SyncNotification />
+        <WebSocketDebugPanel />
 
         <UpdateNotification />
         <VersionUpdateNotification onUpdateRequested={() => {
