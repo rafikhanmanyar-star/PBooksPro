@@ -473,6 +473,53 @@ export class ApiClient {
       body: data ? JSON.stringify(data) : undefined,
     });
   }
+
+  /**
+   * Refresh auth token
+   */
+  async refreshToken(): Promise<string | null> {
+    if (!this.token) return null;
+
+    const url = `${this.baseUrl}/auth/refresh-token`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw {
+        error: 'Token refresh failed',
+        status: response.status,
+      };
+    }
+
+    const data = await response.json();
+    const newToken = data?.token;
+    if (!newToken) {
+      throw {
+        error: 'Token refresh failed',
+        status: 401,
+      };
+    }
+
+    const tenantId =
+      this.tenantId ??
+      (typeof window !== 'undefined' ? localStorage.getItem('tenant_id') : null);
+
+    if (tenantId) {
+      this.setAuth(newToken, tenantId, false);
+    } else {
+      this.token = newToken;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('auth_token', newToken);
+      }
+    }
+
+    return newToken;
+  }
 }
 
 // Lazy singleton instance to avoid initialization issues during module load
