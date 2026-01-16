@@ -446,7 +446,7 @@ export async function importData(
           case 'RentalAgreements':
             for (const agreement of validatedData.rentalAgreements) {
               const existing = await client.query(
-                'SELECT id FROM rental_agreements WHERE tenant_id = $1 AND LOWER(TRIM(agreement_number)) = LOWER($2)',
+                'SELECT id FROM rental_agreements WHERE org_id = $1 AND LOWER(TRIM(agreement_number)) = LOWER($2)',
                 [tenantId, agreement.agreement_number.trim()]
               );
               if (existing.rows.length > 0) {
@@ -456,7 +456,7 @@ export async function importData(
               }
               const id = `rental_agreement_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
               await client.query(
-                `INSERT INTO rental_agreements (id, tenant_id, agreement_number, property_id, contact_id, owner_id, broker_id, start_date, end_date, monthly_rent, rent_due_date, status, security_deposit, broker_fee, description, created_at, updated_at)
+                `INSERT INTO rental_agreements (id, org_id, agreement_number, property_id, contact_id, owner_id, broker_id, start_date, end_date, monthly_rent, rent_due_date, status, security_deposit, broker_fee, description, created_at, updated_at)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())`,
                 [id, tenantId, agreement.agreement_number.trim(), agreement.property_id, agreement.tenant_id, agreement.owner_id, agreement.broker_id, agreement.start_date, agreement.end_date, agreement.monthly_rent, agreement.rent_due_date, agreement.status, agreement.security_deposit, agreement.broker_fee, agreement.description]
               );
@@ -1166,7 +1166,7 @@ async function validateRentalAgreementRow(
 
   // Check for duplicates
   const existing = await db.query(
-    'SELECT id FROM rental_agreements WHERE tenant_id = $1 AND LOWER(TRIM(agreement_number)) = LOWER($2)',
+    'SELECT id FROM rental_agreements WHERE org_id = $1 AND LOWER(TRIM(agreement_number)) = LOWER($2)',
     [tenantId, row.agreement_number.toString().trim()]
   );
   if (existing.length > 0) {
@@ -1445,7 +1445,7 @@ async function validateRentalInvoiceRow(
   let agreementId = null;
   if (row.agreement_number && row.agreement_number.toString().trim()) {
     const agreement = await db.query(
-      'SELECT id FROM rental_agreements WHERE tenant_id = $1 AND LOWER(TRIM(agreement_number)) = LOWER($2)',
+      'SELECT id FROM rental_agreements WHERE org_id = $1 AND LOWER(TRIM(agreement_number)) = LOWER($2)',
       [tenantId, row.agreement_number.toString().trim()]
     );
     if (agreement.length === 0) {

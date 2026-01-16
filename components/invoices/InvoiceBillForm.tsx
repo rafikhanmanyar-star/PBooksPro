@@ -208,7 +208,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
               const rentalAgreement = state.rentalAgreements.find(ra => ra.id === bill.projectAgreementId);
               if (rentalAgreement) {
                   // It's a rental agreement - restore tenant information
-                  setTenantId(rentalAgreement.tenantId);
+                  setTenantId(rentalAgreement.contactId);
                   // Only set propertyId if bill doesn't already have it (preserve existing)
                   if (!bill.propertyId) {
                       setPropertyId(rentalAgreement.propertyId);
@@ -622,7 +622,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     if (!contactId && invoiceType === InvoiceType.RENTAL) return [];
     const targetId = invoiceType === InvoiceType.RENTAL ? contactId : tenantId;
     if (!targetId) return [];
-    return state.rentalAgreements.filter(ra => ra.tenantId === targetId);
+    return state.rentalAgreements.filter(ra => ra.contactId === targetId);
   }, [contactId, tenantId, invoiceType, state.rentalAgreements]);
 
   useEffect(() => {
@@ -731,7 +731,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       // Need to check agreements that link to properties in this building
       if (item?.id && buildingId) {
           const agr = state.rentalAgreements.find(ra => {
-              if (ra.tenantId !== item.id || ra.status !== 'Active') return false;
+              if (ra.contactId !== item.id || ra.status !== 'Active') return false;
               const prop = state.properties.find(p => p.id === ra.propertyId);
               return prop && prop.buildingId === buildingId;
           });
@@ -1081,7 +1081,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       if (!buildingId) return state.contacts.filter(c => c.type === ContactType.TENANT);
       
       const relevantPropertyIds = new Set(state.properties.filter(p => p.buildingId === buildingId).map(p => p.id));
-      const relevantTenantIds = new Set(state.rentalAgreements.filter(ra => relevantPropertyIds.has(ra.propertyId)).map(ra => ra.tenantId));
+      const relevantTenantIds = new Set(state.rentalAgreements.filter(ra => relevantPropertyIds.has(ra.propertyId)).map(ra => ra.contactId));
       
       return state.contacts.filter(c => c.type === ContactType.TENANT && relevantTenantIds.has(c.id));
   }, [state.contacts, state.properties, state.rentalAgreements, buildingId]);

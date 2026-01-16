@@ -295,7 +295,7 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE TABLE IF NOT EXISTS rental_agreements (
     id TEXT PRIMARY KEY,
     agreement_number TEXT NOT NULL UNIQUE,
-    tenant_id TEXT NOT NULL,
+    contact_id TEXT NOT NULL,
     property_id TEXT NOT NULL,
     start_date TEXT NOT NULL,
     end_date TEXT NOT NULL,
@@ -306,11 +306,11 @@ CREATE TABLE IF NOT EXISTS rental_agreements (
     security_deposit REAL,
     broker_id TEXT,
     broker_fee REAL,
-    org_tenant_id TEXT,
+    org_id TEXT,
     user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (tenant_id) REFERENCES contacts(id) ON DELETE RESTRICT,
+    FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE RESTRICT,
     FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE RESTRICT,
     FOREIGN KEY (broker_id) REFERENCES contacts(id) ON DELETE SET NULL
 );
@@ -834,13 +834,8 @@ CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(type);
 CREATE INDEX IF NOT EXISTS idx_payslips_employee ON payslips(employee_id);
 CREATE INDEX IF NOT EXISTS idx_payslips_month ON payslips(month);
 CREATE INDEX IF NOT EXISTS idx_attendance_employee_date ON attendance_records(employee_id, date);
-CREATE INDEX IF NOT EXISTS idx_tasks_completed ON tasks(completed);
-CREATE INDEX IF NOT EXISTS idx_tasks_tenant_id ON tasks(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_tenant_user ON tasks(tenant_id, user_id);
-CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_tenant_id ON pm_cycle_allocations(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_user_id ON pm_cycle_allocations(user_id);
-CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_tenant_user ON pm_cycle_allocations(tenant_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_project_id ON pm_cycle_allocations(project_id);
+CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_cycle_id ON pm_cycle_allocations(cycle_id);
 CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_project_id ON pm_cycle_allocations(project_id);
 CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_cycle_id ON pm_cycle_allocations(cycle_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_sender ON chat_messages(sender_id);
@@ -875,7 +870,8 @@ CREATE INDEX IF NOT EXISTS idx_quotations_tenant_id ON quotations(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_quotations_user_id ON quotations(user_id);
 CREATE INDEX IF NOT EXISTS idx_documents_tenant_id ON documents(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);
-CREATE INDEX IF NOT EXISTS idx_rental_agreements_org_tenant_id ON rental_agreements(org_tenant_id);
+CREATE INDEX IF NOT EXISTS idx_rental_agreements_org_id ON rental_agreements(org_id);
+CREATE INDEX IF NOT EXISTS idx_rental_agreements_contact_id ON rental_agreements(contact_id);
 CREATE INDEX IF NOT EXISTS idx_rental_agreements_user_id ON rental_agreements(user_id);
 CREATE INDEX IF NOT EXISTS idx_project_agreements_tenant_id ON project_agreements(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_project_agreements_user_id ON project_agreements(user_id);
@@ -907,7 +903,4 @@ CREATE INDEX IF NOT EXISTS idx_tax_configurations_tenant_id ON tax_configuration
 CREATE INDEX IF NOT EXISTS idx_tax_configurations_user_id ON tax_configurations(user_id);
 CREATE INDEX IF NOT EXISTS idx_statutory_configurations_tenant_id ON statutory_configurations(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_statutory_configurations_user_id ON statutory_configurations(user_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_tenant_id ON tasks(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_tenant_user ON tasks(tenant_id, user_id);
 `;

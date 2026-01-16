@@ -666,7 +666,7 @@ const SettingsPage: React.FC = () => {
                 <div className="bg-gradient-to-br from-indigo-50 to-white rounded-xl border border-indigo-100 shadow-sm p-6 relative overflow-hidden">
                     <div className="relative z-10">
                         <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-2">Data Migration</h4>
-                        <p className="text-sm text-slate-600 mb-6">Import data from QuickBooks, Excel, or CSV with AI-powered mapping.</p>
+                        <p className="text-sm text-slate-600 mb-6">Import data from Excel or CSV with AI-powered mapping.</p>
                         <Button onClick={() => setIsMigrationWizardOpen(true)} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-md border-0">
                             Open Migration Wizard
                         </Button>

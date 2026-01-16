@@ -367,8 +367,9 @@ CREATE TABLE IF NOT EXISTS budgets (
 -- Rental Agreements table
 CREATE TABLE IF NOT EXISTS rental_agreements (
     id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
+    org_id TEXT NOT NULL,
     agreement_number TEXT NOT NULL,
+    contact_id TEXT NOT NULL,
     property_id TEXT NOT NULL,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
@@ -382,11 +383,12 @@ CREATE TABLE IF NOT EXISTS rental_agreements (
     owner_id TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (org_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE RESTRICT,
     FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
     FOREIGN KEY (broker_id) REFERENCES contacts(id) ON DELETE SET NULL,
     FOREIGN KEY (owner_id) REFERENCES contacts(id) ON DELETE SET NULL,
-    UNIQUE(tenant_id, agreement_number)
+    UNIQUE(org_id, agreement_number)
 );
 
 -- Project Agreements table
@@ -520,20 +522,6 @@ CREATE TABLE IF NOT EXISTS documents (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
--- Tasks table (Todo list items - tenant-specific)
-CREATE TABLE IF NOT EXISTS tasks (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    user_id TEXT,
-    text TEXT NOT NULL,
-    completed BOOLEAN NOT NULL DEFAULT FALSE,
-    priority TEXT NOT NULL DEFAULT 'medium',
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-    CONSTRAINT valid_priority CHECK (priority IN ('low', 'medium', 'high'))
-);
 
 -- Recurring Invoice Templates table
 CREATE TABLE IF NOT EXISTS recurring_invoice_templates (
@@ -954,7 +942,8 @@ CREATE INDEX IF NOT EXISTS idx_units_tenant_id ON units(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_tenant_id ON invoices(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_bills_tenant_id ON bills(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_budgets_tenant_id ON budgets(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_rental_agreements_tenant_id ON rental_agreements(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_rental_agreements_org_id ON rental_agreements(org_id);
+CREATE INDEX IF NOT EXISTS idx_rental_agreements_contact_id ON rental_agreements(contact_id);
 CREATE INDEX IF NOT EXISTS idx_project_agreements_tenant_id ON project_agreements(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_sales_returns_tenant_id ON sales_returns(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_sales_returns_agreement_id ON sales_returns(agreement_id);
@@ -965,8 +954,6 @@ CREATE INDEX IF NOT EXISTS idx_quotations_vendor_id ON quotations(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_documents_tenant_id ON documents(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);
 CREATE INDEX IF NOT EXISTS idx_documents_entity ON documents(entity_type, entity_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_tenant_id ON tasks(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
 CREATE INDEX IF NOT EXISTS idx_recurring_invoice_templates_tenant_id ON recurring_invoice_templates(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_salary_components_tenant_id ON salary_components(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_employees_tenant_id ON employees(tenant_id);
@@ -1100,7 +1087,6 @@ ALTER TABLE project_agreements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE contracts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE quotations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
-ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE recurring_invoice_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE salary_components ENABLE ROW LEVEL SECURITY;
 ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
@@ -1207,8 +1193,8 @@ CREATE POLICY tenant_isolation_budgets ON budgets
 DROP POLICY IF EXISTS tenant_isolation_rental_agreements ON rental_agreements;
 CREATE POLICY tenant_isolation_rental_agreements ON rental_agreements
     FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
+    USING (org_id = get_current_tenant_id())
+    WITH CHECK (org_id = get_current_tenant_id());
 
 DROP POLICY IF EXISTS tenant_isolation_project_agreements ON project_agreements;
 CREATE POLICY tenant_isolation_project_agreements ON project_agreements
@@ -1234,18 +1220,6 @@ CREATE POLICY tenant_isolation_documents ON documents
     USING (tenant_id = get_current_tenant_id())
     WITH CHECK (tenant_id = get_current_tenant_id());
 
-DROP POLICY IF EXISTS tenant_isolation_tasks ON tasks;
--- Tasks are user-level records: users can only see their own tasks within their tenant
-CREATE POLICY tenant_isolation_tasks ON tasks
-    FOR ALL
-    USING (
-        tenant_id = get_current_tenant_id() 
-        AND user_id = get_current_user_id()
-    )
-    WITH CHECK (
-        tenant_id = get_current_tenant_id() 
-        AND user_id = get_current_user_id()
-    );
 
 DROP POLICY IF EXISTS tenant_isolation_recurring_invoice_templates ON recurring_invoice_templates;
 CREATE POLICY tenant_isolation_recurring_invoice_templates ON recurring_invoice_templates

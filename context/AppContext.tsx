@@ -3046,7 +3046,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     'contract:created', 'contract:updated', 'contract:deleted',
                     'building:created', 'building:updated', 'building:deleted',
                     'property:created', 'property:updated', 'property:deleted',
-                    'unit:created', 'unit:updated', 'unit:deleted'
+                    'unit:created', 'unit:updated', 'unit:deleted',
+                    'loan_advance_record:created', 'loan_advance_record:updated', 'loan_advance_record:deleted'
                 ];
 
                 // Generic fallback subscription → schedule a full refresh
@@ -3149,6 +3150,80 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     if (!id) return;
                     dispatch({ 
                         type: 'DELETE_TRANSACTION', 
+                        payload: id,
+                        _isRemote: true 
+                    } as any);
+                }));
+
+                // Loan Advance Record events
+                unsubSpecific.push(ws.on('loan_advance_record:created', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const payloadRecord = data?.record ?? data;
+                    if (!payloadRecord || !payloadRecord.id) return;
+                    
+                    // Normalize snake_case to camelCase
+                    const normalized: any = {
+                        id: payloadRecord.id,
+                        employeeId: payloadRecord.employee_id || payloadRecord.employeeId,
+                        type: payloadRecord.type,
+                        amount: typeof payloadRecord.amount === 'number' ? payloadRecord.amount : parseFloat(payloadRecord.amount || '0'),
+                        issuedDate: payloadRecord.issued_date || payloadRecord.issuedDate,
+                        repaymentStartDate: payloadRecord.repayment_start_date || payloadRecord.repaymentStartDate,
+                        totalInstallments: payloadRecord.total_installments !== undefined ? payloadRecord.total_installments : payloadRecord.totalInstallments,
+                        installmentAmount: payloadRecord.installment_amount !== undefined ? payloadRecord.installment_amount : payloadRecord.installmentAmount,
+                        repaymentFrequency: payloadRecord.repayment_frequency || payloadRecord.repaymentFrequency || 'Monthly',
+                        outstandingBalance: typeof payloadRecord.outstanding_balance === 'number' ? payloadRecord.outstanding_balance : (typeof payloadRecord.outstandingBalance === 'number' ? payloadRecord.outstandingBalance : parseFloat(payloadRecord.outstanding_balance || payloadRecord.outstandingBalance || '0')),
+                        status: payloadRecord.status || 'Active',
+                        description: payloadRecord.description || undefined,
+                        transactionId: payloadRecord.transaction_id || payloadRecord.transactionId || undefined,
+                    };
+                    
+                    const exists = stateRef.current.loanAdvanceRecords?.some(r => r.id === normalized.id);
+                    if (!exists) {
+                        dispatch({ 
+                            type: 'ADD_LOAN_ADVANCE', 
+                            payload: normalized,
+                            _isRemote: true 
+                        } as any);
+                    }
+                }));
+                unsubSpecific.push(ws.on('loan_advance_record:updated', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const payloadRecord = data?.record ?? data;
+                    if (!payloadRecord || !payloadRecord.id) return;
+                    
+                    // Normalize snake_case to camelCase
+                    const normalized: any = {
+                        id: payloadRecord.id,
+                        employeeId: payloadRecord.employee_id || payloadRecord.employeeId,
+                        type: payloadRecord.type,
+                        amount: typeof payloadRecord.amount === 'number' ? payloadRecord.amount : parseFloat(payloadRecord.amount || '0'),
+                        issuedDate: payloadRecord.issued_date || payloadRecord.issuedDate,
+                        repaymentStartDate: payloadRecord.repayment_start_date || payloadRecord.repaymentStartDate,
+                        totalInstallments: payloadRecord.total_installments !== undefined ? payloadRecord.total_installments : payloadRecord.totalInstallments,
+                        installmentAmount: payloadRecord.installment_amount !== undefined ? payloadRecord.installment_amount : payloadRecord.installmentAmount,
+                        repaymentFrequency: payloadRecord.repayment_frequency || payloadRecord.repaymentFrequency || 'Monthly',
+                        outstandingBalance: typeof payloadRecord.outstanding_balance === 'number' ? payloadRecord.outstanding_balance : (typeof payloadRecord.outstandingBalance === 'number' ? payloadRecord.outstandingBalance : parseFloat(payloadRecord.outstanding_balance || payloadRecord.outstandingBalance || '0')),
+                        status: payloadRecord.status || 'Active',
+                        description: payloadRecord.description || undefined,
+                        transactionId: payloadRecord.transaction_id || payloadRecord.transactionId || undefined,
+                    };
+                    
+                    const existing = stateRef.current.loanAdvanceRecords?.find(r => r.id === normalized.id);
+                    const merged = existing ? { ...existing, ...normalized } : normalized;
+                    
+                    dispatch({ 
+                        type: existing ? 'UPDATE_LOAN_ADVANCE' : 'ADD_LOAN_ADVANCE', 
+                        payload: merged,
+                        _isRemote: true 
+                    } as any);
+                }));
+                unsubSpecific.push(ws.on('loan_advance_record:deleted', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const id = data?.recordId ?? data?.id;
+                    if (!id) return;
+                    dispatch({ 
+                        type: 'DELETE_LOAN_ADVANCE', 
                         payload: id,
                         _isRemote: true 
                     } as any);

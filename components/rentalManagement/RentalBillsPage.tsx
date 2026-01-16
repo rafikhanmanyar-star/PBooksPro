@@ -367,7 +367,7 @@ const RentalBillsPage: React.FC = () => {
         if (paymentBill.projectAgreementId) {
             const rentalAgreement = state.rentalAgreements.find(ra => ra.id === paymentBill.projectAgreementId);
             if (rentalAgreement) {
-                tenantId = rentalAgreement.tenantId;
+                tenantId = rentalAgreement.contactId;
             }
         }
 

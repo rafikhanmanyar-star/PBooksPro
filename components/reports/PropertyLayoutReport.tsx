@@ -248,7 +248,7 @@ const PropertyLayoutReport: React.FC<PropertyLayoutReportProps> = ({ onReportCha
                 // Owner & Tenant
                 const owner = state.contacts.find(c => c.id === prop.ownerId);
                 const activeAgreement = state.rentalAgreements.find(ra => ra.propertyId === prop.id && ra.status === RentalAgreementStatus.ACTIVE);
-                const tenant = activeAgreement ? state.contacts.find(c => c.id === activeAgreement.tenantId) : null;
+                const tenant = activeAgreement ? state.contacts.find(c => c.id === activeAgreement.contactId) : null;
 
                 // Calculate last updated date
                 const propertyTransactions = state.transactions.filter(tx => tx.propertyId === prop.id);

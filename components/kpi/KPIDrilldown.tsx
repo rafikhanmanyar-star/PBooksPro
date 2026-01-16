@@ -89,7 +89,7 @@ const KPIDrilldown: React.FC = () => {
             items = state.rentalAgreements.filter(ra => ra.status === RentalAgreementStatus.ACTIVE).map(ra => {
                 const property = state.properties.find(p => p.id === ra.propertyId);
                 return {
-                    id: ra.id, unitName: property?.name || 'N/A', tenantName: state.contacts.find(c => c.id === ra.tenantId)?.name || 'N/A',
+                    id: ra.id, unitName: property?.name || 'N/A', tenantName: state.contacts.find(c => c.id === ra.contactId)?.name || 'N/A',
                     endDate: ra.endDate, filter: { name: property?.name || '' }
                 };
             });

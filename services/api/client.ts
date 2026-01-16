@@ -29,6 +29,13 @@ export class ApiClient {
   }
 
   /**
+   * Get the base URL for API requests
+   */
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
+  /**
    * Enable logging for this request (for login/transaction operations)
    */
   enableLogging(): void {
@@ -246,14 +253,27 @@ export class ApiClient {
             logger.logCategory('api', `✅ Success response for ${endpoint}`);
           }
         } else {
-          // Always log errors, even if logging is disabled
-          logger.errorCategory('api', `❌ Error response for ${endpoint}:`, data);
+          // Suppress 401 errors for expected endpoints (schema/version before login)
+          const is401 = response.status === 401;
+          const isExpected401Endpoint = endpoint.includes('/schema/version');
+          
+          if (is401 && isExpected401Endpoint) {
+            // Silent - expected 401 before authentication
+          } else {
+            // Log other errors
+            logger.errorCategory('api', `❌ Error response for ${endpoint}:`, data);
+          }
         }
       } catch (jsonError) {
         // If JSON parsing fails, create error from response text
-        // Always log errors, even if logging is disabled
         const text = await response.text();
-        logger.errorCategory('api', `❌ Failed to parse JSON response for ${endpoint}:`, text);
+        // Only log if not a 401 on expected endpoint
+        const is401 = response.status === 401;
+        const isExpected401Endpoint = endpoint.includes('/schema/version');
+        
+        if (!(is401 && isExpected401Endpoint)) {
+          logger.errorCategory('api', `❌ Failed to parse JSON response for ${endpoint}:`, text);
+        }
         throw new Error(`Server error (${response.status}): ${text || response.statusText}`);
       }
 

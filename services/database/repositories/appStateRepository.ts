@@ -88,6 +88,17 @@ export class AppStateRepository {
             console.warn('⚠️ Tenant column migration failed during loadState (continuing):', err);
         }
         
+        // Run rental_agreements tenant_id → contact_id migration if needed
+        try {
+            const { runRentalTenantIdToContactIdMigration } = await import('../migrations/migrate-rental-tenant-id-to-contact-id');
+            const migrationResult = await runRentalTenantIdToContactIdMigration();
+            if (migrationResult.success && migrationResult.message.includes('Successfully migrated')) {
+                console.log('✅ Rental agreements migration completed:', migrationResult.message);
+            }
+        } catch (migrationError) {
+            console.warn('⚠️ Rental agreements migration failed during loadState (continuing):', migrationError);
+        }
+        
         // Run budget migration if needed (handles old backups with monthly budgets)
         try {
             const migrationResult = migrateBudgetsToNewStructure();

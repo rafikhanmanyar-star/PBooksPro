@@ -78,7 +78,7 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
 
             if (activeAgreement) {
                 status = 'Occupied';
-                const tenant = state.contacts.find(c => c.id === activeAgreement.tenantId);
+                const tenant = state.contacts.find(c => c.id === activeAgreement.contactId);
                 tenantName = tenant?.name || 'Unknown Tenant';
                 
                 if (activeAgreement.endDate) {

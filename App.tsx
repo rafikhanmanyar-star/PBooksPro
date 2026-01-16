@@ -21,6 +21,14 @@ import { useAuth } from './context/AuthContext';
 import CloudLoginPage from './components/auth/CloudLoginPage';
 // Initialize Sync Service removed
 import UpdateNotification from './components/ui/UpdateNotification';
+import { getUnifiedDatabaseService } from './services/database/unifiedDatabaseService';
+import { getConnectionMonitor } from './services/connection/connectionMonitor';
+import { getSyncManager } from './services/sync/syncManager';
+import { getLockManager } from './services/sync/lockManager';
+import { getOfflineLockManager } from './services/sync/offlineLockManager';
+import { getRealtimeSyncHandler } from './services/sync/realtimeSyncHandler';
+import { getSchemaSyncService } from './services/database/schemaSync';
+import { getWebSocketClient } from './services/websocket/websocketClient';
 import { VersionUpdateNotification } from './components/ui/VersionUpdateNotification';
 import { createBackup, restoreBackup } from './services/backupService';
 import { useProgress } from './context/ProgressContext';
@@ -28,6 +36,7 @@ import { usePagePreloader } from './hooks/usePagePreloader';
 import Loading from './components/ui/Loading';
 import { OfflineProvider } from './context/OfflineContext';
 import SyncNotification from './components/ui/SyncNotification';
+import MobileOfflineWarning from './components/ui/MobileOfflineWarning';
 
 
 // Lazy Load Components
@@ -71,7 +80,7 @@ const App: React.FC = () => {
   const { isPanelOpen } = useKpis();
   const { isExpired } = useLicense(); // License Check
   const progress = useProgress();
-  const { isAuthenticated, isLoading: authLoading } = useAuth(); // Cloud authentication
+  const { isAuthenticated, isLoading: authLoading, user, tenant } = useAuth(); // Cloud authentication
 
   // State to track if the native OS keyboard is likely open
   const [isNativeKeyboardOpen, setIsNativeKeyboardOpen] = useState(false);
@@ -160,6 +169,127 @@ const App: React.FC = () => {
 
   // Preload pages for instant navigation
   usePagePreloader();
+
+  // Initialize database services (unified database, connection monitor, sync manager)
+  useEffect(() => {
+    let isMounted = true;
+
+    const initializeServices = async () => {
+      try {
+        console.log('[App] Initializing database services...');
+        
+        // Initialize unified database service (platform-aware)
+        await getUnifiedDatabaseService().initialize();
+        
+        if (!isMounted) return;
+        console.log('[App] ✅ Unified database service initialized');
+
+        // Start connection monitoring
+        const connectionMonitor = getConnectionMonitor();
+        connectionMonitor.startMonitoring({
+          onStatusChange: (status) => {
+            console.log(`[App] Connection status changed: ${status}`);
+          },
+          onOnline: () => {
+            console.log('[App] ✅ Online - starting auto-sync');
+            const syncManager = getSyncManager();
+            syncManager.startAutoSync();
+          },
+          onOffline: () => {
+            console.log('[App] ⚠️ Offline - pausing sync');
+            const syncManager = getSyncManager();
+            syncManager.stopAutoSync();
+          },
+        });
+
+        // Check initial connection status and start sync if online
+        const initialStatus = await connectionMonitor.checkStatus();
+        if (initialStatus === 'online') {
+          const syncManager = getSyncManager();
+          syncManager.startAutoSync();
+          console.log('[App] ✅ Started auto-sync (already online)');
+        }
+
+        // Initialize lock manager
+        const lockManager = getLockManager();
+        console.log('[App] ✅ Lock manager initialized');
+
+        // Initialize offline lock manager
+        const offlineLockManager = getOfflineLockManager();
+        // Set user context when authenticated (will be set in useEffect below)
+        console.log('[App] ✅ Offline lock manager initialized');
+
+        // Initialize real-time sync handler
+        const realtimeSyncHandler = getRealtimeSyncHandler();
+        realtimeSyncHandler.initialize();
+        console.log('[App] ✅ Real-time sync handler initialized');
+
+        // Initialize schema sync service
+        const schemaSyncService = getSchemaSyncService();
+        await schemaSyncService.initialize();
+        console.log('[App] ✅ Schema sync service initialized');
+
+        // Connect WebSocket client (if authenticated)
+        if (isAuthenticated) {
+          const wsClient = getWebSocketClient();
+          wsClient.connect();
+          console.log('[App] ✅ WebSocket client connecting...');
+        }
+
+        console.log('[App] ✅ Database services initialized successfully');
+      } catch (error) {
+        console.error('[App] ❌ Failed to initialize database services:', error);
+        // Don't block app from loading - services will retry or work in degraded mode
+      }
+    };
+
+    initializeServices();
+
+    // Cleanup on unmount
+    return () => {
+      isMounted = false;
+      const syncManager = getSyncManager();
+      syncManager.destroy();
+      const connectionMonitor = getConnectionMonitor();
+      connectionMonitor.destroy();
+      const lockManager = getLockManager();
+      lockManager.destroy();
+      const offlineLockManager = getOfflineLockManager();
+      offlineLockManager.destroy();
+      const realtimeSyncHandler = getRealtimeSyncHandler();
+      realtimeSyncHandler.destroy();
+      const wsClient = getWebSocketClient();
+      wsClient.disconnect();
+    };
+  }, []); // Run once on mount
+
+  // Set user context for offline lock manager when authenticated
+  useEffect(() => {
+    if (isAuthenticated && user && tenant) {
+      const offlineLockManager = getOfflineLockManager();
+      offlineLockManager.setUserContext(user.id, tenant.id);
+      console.log('[App] ✅ Set user context for offline lock manager');
+    }
+  }, [isAuthenticated, user, tenant]);
+
+  // Connect WebSocket when authenticated and set up real-time sync
+  useEffect(() => {
+    if (isAuthenticated) {
+      const wsClient = getWebSocketClient();
+      wsClient.connect();
+      console.log('[App] ✅ WebSocket client connecting (authenticated)');
+      
+      // Set dispatch callback for real-time sync handler
+      const realtimeSyncHandler = getRealtimeSyncHandler();
+      realtimeSyncHandler.setDispatch(dispatch);
+      console.log('[App] ✅ Real-time sync handler connected to AppContext dispatch');
+      
+      return () => {
+        wsClient.disconnect();
+        realtimeSyncHandler.setDispatch(null);
+      };
+    }
+  }, [isAuthenticated, dispatch]);
 
   // Optimized navigation handler - uses startTransition for non-blocking updates
   const handleSetPage = useCallback((page: Page) => {
@@ -371,6 +501,9 @@ const App: React.FC = () => {
           style={{ marginRight: 'var(--right-sidebar-width, 0px)' }}
         >
           <Header title={getPageTitle(currentPage)} isNavigating={isPending} />
+          
+          {/* Mobile Offline Warning Banner */}
+          <MobileOfflineWarning />
 
           <main className="flex-1 relative overflow-hidden overscroll-none" id="main-container">
             <ErrorBoundary dispatch={dispatch}>

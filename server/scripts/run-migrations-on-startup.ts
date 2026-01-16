@@ -208,6 +208,48 @@ async function runMigrations() {
     } else {
       console.warn('   ⚠️  Could not find add-contact-id-to-rental-agreements.sql migration file');
     }
+
+    // Migration: Add org_id to rental_agreements table
+    const orgIdMigrationPaths = [
+      join(__dirname, '../migrations/add-org-id-to-rental-agreements.sql'),
+      join(__dirname, '../../migrations/add-org-id-to-rental-agreements.sql'),
+      join(process.cwd(), 'server/migrations/add-org-id-to-rental-agreements.sql'),
+      join(process.cwd(), 'migrations/add-org-id-to-rental-agreements.sql'),
+    ];
+
+    let orgIdMigrationPath: string | null = null;
+    for (const path of orgIdMigrationPaths) {
+      try {
+        readFileSync(path, 'utf8');
+        orgIdMigrationPath = path;
+        break;
+      } catch (e) {
+        // Try next path
+      }
+    }
+
+    if (orgIdMigrationPath) {
+      try {
+        console.log('📋 Running org_id migration from:', orgIdMigrationPath);
+        const orgIdMigrationSQL = readFileSync(orgIdMigrationPath, 'utf8');
+        await pool.query(orgIdMigrationSQL);
+        console.log('✅ org_id migration completed');
+      } catch (error: any) {
+        // If column/constraint already exists, that's okay
+        if (error.code === '42701' && error.message.includes('org_id')) {
+          console.log('   ℹ️  org_id column already exists (skipping)');
+        } else if (error.code === '42P07' && error.message.includes('idx_rental_agreements_org_id')) {
+          console.log('   ℹ️  org_id index already exists (skipping)');
+        } else if (error.code === '42710' && error.message.includes('rental_agreements_org_id_agreement_number_key')) {
+          console.log('   ℹ️  org_id unique constraint already exists (skipping)');
+        } else {
+          console.warn('   ⚠️  org_id migration warning:', error.message);
+          // Don't throw - migration might already be applied
+        }
+      }
+    } else {
+      console.warn('   ⚠️  Could not find add-org-id-to-rental-agreements.sql migration file');
+    }
     
     // Create default admin user if it doesn't exist
     console.log('👤 Ensuring admin user exists...');

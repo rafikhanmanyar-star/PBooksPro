@@ -269,7 +269,7 @@ function normalizeRentalAgreement(agreement: any): RentalAgreement {
     return {
         id: agreement.id,
         agreementNumber: agreement.agreementNumber || agreement.agreement_number || `RENT-${agreement.id}`,
-        tenantId: agreement.tenantId || agreement.tenant_id || '',
+        contactId: agreement.contactId || agreement.contact_id || agreement.tenantId || agreement.tenant_id || '',
         propertyId: agreement.propertyId || agreement.property_id || '',
         startDate: agreement.startDate || agreement.start_date || new Date().toISOString().split('T')[0],
         endDate: agreement.endDate || agreement.end_date || new Date().toISOString().split('T')[0],

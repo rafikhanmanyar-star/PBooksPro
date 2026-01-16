@@ -95,7 +95,7 @@ const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalP
                     description: `Security Deposit Refund - Agreement #${agreement.agreementNumber} (${notes || status})`,
                     accountId: refundAccountId,
                     categoryId: refundCategory.id,
-                    contactId: agreement.tenantId,
+                    contactId: agreement.contactId,
                     propertyId: agreement.propertyId,
                     agreementId: agreement.id
                 }

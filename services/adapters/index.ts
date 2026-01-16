@@ -58,5 +58,4 @@ export { BaseAdapter } from './baseAdapter';
 export type { AdapterResult, AdapterConfig } from './baseAdapter';
 export { ExcelAdapter } from './excelAdapter';
 export { CSVAdapter } from './csvAdapter';
-export { QuickBooksAdapter } from './quickbooksAdapter';
 

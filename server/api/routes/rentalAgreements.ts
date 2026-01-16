@@ -6,27 +6,13 @@ import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
 const router = Router();
 const getDb = () => getDatabaseService();
 
-// Helper function to transform database row to API response format
-// IMPORTANT: There are TWO different "tenant ID" concepts in the system:
-// 1. Organization tenant_id (for multi-tenancy) - used for data isolation (NOT transformed here)
-// 2. Contact tenant ID (tenant contact person in rental management) - stored as contact_id in DB, exposed as tenantId in API
-// This function maps contact_id (database column) to tenantId (API response field)
-function transformRentalAgreement(row: any): any {
-  const transformed = { ...row };
-  if (row.contact_id !== undefined) {
-    transformed.tenantId = row.contact_id;
-    // Keep contact_id for backward compatibility, but tenantId is the primary field for contact tenant ID
-  }
-  return transformed;
-}
-
 // GET all rental agreements
 router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const { status, propertyId } = req.query;
     
-    let query = 'SELECT * FROM rental_agreements WHERE tenant_id = $1';
+    let query = 'SELECT * FROM rental_agreements WHERE org_id = $1';
     const params: any[] = [req.tenantId];
     let paramIndex = 2;
 
@@ -42,9 +28,7 @@ router.get('/', async (req: TenantRequest, res) => {
     query += ' ORDER BY start_date DESC';
 
     const agreements = await db.query(query, params);
-    // Transform contact_id to tenantId for API response
-    const transformedAgreements = agreements.map(transformRentalAgreement);
-    res.json(transformedAgreements);
+    res.json(agreements);
   } catch (error) {
     console.error('Error fetching rental agreements:', error);
     res.status(500).json({ error: 'Failed to fetch rental agreements' });
@@ -56,7 +40,7 @@ router.get('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const agreements = await db.query(
-      'SELECT * FROM rental_agreements WHERE id = $1 AND tenant_id = $2',
+      'SELECT * FROM rental_agreements WHERE id = $1 AND org_id = $2',
       [req.params.id, req.tenantId]
     );
     
@@ -64,9 +48,7 @@ router.get('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Rental agreement not found' });
     }
     
-    // Transform contact_id to tenantId for API response
-    const transformed = transformRentalAgreement(agreements[0]);
-    res.json(transformed);
+    res.json(agreements[0]);
   } catch (error) {
     console.error('Error fetching rental agreement:', error);
     res.status(500).json({ error: 'Failed to fetch rental agreement' });
@@ -93,11 +75,11 @@ router.post('/', async (req: TenantRequest, res) => {
     // Check if agreement with this ID already exists and belongs to a different tenant
     if (agreement.id) {
       const existingAgreement = await db.query(
-        'SELECT tenant_id FROM rental_agreements WHERE id = $1',
+        'SELECT org_id FROM rental_agreements WHERE id = $1',
         [agreementId]
       );
       
-      if (existingAgreement.length > 0 && existingAgreement[0].tenant_id !== req.tenantId) {
+      if (existingAgreement.length > 0 && existingAgreement[0].org_id !== req.tenantId) {
         return res.status(403).json({ 
           error: 'Forbidden',
           message: 'A rental agreement with this ID already exists in another organization'
@@ -107,7 +89,7 @@ router.post('/', async (req: TenantRequest, res) => {
     
     // Check if agreement exists to determine if this is a create or update
     const existing = await db.query(
-      'SELECT id FROM rental_agreements WHERE id = $1 AND tenant_id = $2',
+      'SELECT id FROM rental_agreements WHERE id = $1 AND org_id = $2',
       [agreementId, req.tenantId]
     );
     const isUpdate = existing.length > 0;
@@ -115,7 +97,7 @@ router.post('/', async (req: TenantRequest, res) => {
     // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
     const result = await db.query(
       `INSERT INTO rental_agreements (
-        id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date,
+        id, org_id, agreement_number, contact_id, property_id, start_date, end_date,
         monthly_rent, rent_due_date, status, description, security_deposit,
         broker_id, broker_fee, owner_id, created_at, updated_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
@@ -139,9 +121,9 @@ router.post('/', async (req: TenantRequest, res) => {
       RETURNING *`,
       [
         agreementId,
-        req.tenantId, // Organization tenant_id (for multi-tenancy isolation)
+        req.tenantId, // Organization org_id (for multi-tenancy isolation)
         agreement.agreementNumber,
-        agreement.tenantId || null, // Contact tenant ID (the tenant contact person, stored as contact_id in DB)
+        agreement.contactId || null, // Contact ID (the tenant contact person)
         agreement.propertyId,
         agreement.startDate,
         agreement.endDate,
@@ -157,25 +139,22 @@ router.post('/', async (req: TenantRequest, res) => {
     );
     const saved = result[0];
     
-    // Transform contact_id to tenantId for API response
-    const transformed = transformRentalAgreement(saved);
-    
     // Emit WebSocket event for real-time sync
     if (isUpdate) {
       emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_UPDATED, {
-        agreement: transformed,
+        agreement: saved,
         userId: req.user?.userId,
         username: req.user?.username,
       });
     } else {
       emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_CREATED, {
-        agreement: transformed,
+        agreement: saved,
         userId: req.user?.userId,
         username: req.user?.username,
       });
     }
     
-    res.status(isUpdate ? 200 : 201).json(transformed);
+    res.status(isUpdate ? 200 : 201).json(saved);
   } catch (error: any) {
     console.error('Error creating/updating rental agreement:', error);
     if (error.code === '23505') { // Unique violation
@@ -196,11 +175,11 @@ router.put('/:id', async (req: TenantRequest, res) => {
            monthly_rent = $6, rent_due_date = $7, status = $8, description = $9,
            security_deposit = $10, broker_id = $11, broker_fee = $12, owner_id = $13,
            updated_at = NOW()
-       WHERE id = $14 AND tenant_id = $15
+       WHERE id = $14 AND org_id = $15
        RETURNING *`,
       [
         agreement.agreementNumber,
-        agreement.tenantId || null, // Contact tenant ID (the tenant contact person, stored as contact_id in DB)
+        agreement.contactId || null, // Contact ID (the tenant contact person)
         agreement.propertyId,
         agreement.startDate,
         agreement.endDate,
@@ -221,16 +200,13 @@ router.put('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Rental agreement not found' });
     }
     
-    // Transform contact_id to tenantId for API response
-    const transformed = transformRentalAgreement(result[0]);
-    
     emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_UPDATED, {
-      agreement: transformed,
+      agreement: result[0],
       userId: req.user?.userId,
       username: req.user?.username,
     });
 
-    res.json(transformed);
+    res.json(result[0]);
   } catch (error) {
     console.error('Error updating rental agreement:', error);
     res.status(500).json({ error: 'Failed to update rental agreement' });
@@ -242,7 +218,7 @@ router.delete('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const result = await db.query(
-      'DELETE FROM rental_agreements WHERE id = $1 AND tenant_id = $2 RETURNING id',
+      'DELETE FROM rental_agreements WHERE id = $1 AND org_id = $2 RETURNING id',
       [req.params.id, req.tenantId]
     );
     

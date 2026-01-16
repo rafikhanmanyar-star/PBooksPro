@@ -99,14 +99,15 @@ export default defineConfig({
     {
       name: 'copy-icons',
       closeBundle() {
-        // Copy icon files to dist folder
-        const iconsToCheck = [
+        // Copy icon files and service worker to dist folder
+        const filesToCopy = [
           { source: join(process.cwd(), 'build', 'icon.ico'), dest: join(process.cwd(), 'dist', 'icon.ico') },
           { source: join(process.cwd(), 'public', 'icon.svg'), dest: join(process.cwd(), 'dist', 'assets', 'icon.svg') },
-          { source: join(process.cwd(), 'icon.svg'), dest: join(process.cwd(), 'dist', 'icon.svg') }
+          { source: join(process.cwd(), 'icon.svg'), dest: join(process.cwd(), 'dist', 'icon.svg') },
+          { source: join(process.cwd(), 'sw.js'), dest: join(process.cwd(), 'dist', 'sw.js') }
         ];
         
-        iconsToCheck.forEach(({ source, dest }) => {
+        filesToCopy.forEach(({ source, dest }) => {
           if (existsSync(source)) {
             try {
               copyFileSync(source, dest);

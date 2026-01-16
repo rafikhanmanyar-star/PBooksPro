@@ -107,7 +107,7 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
                 if (bill.projectAgreementId) {
                     const rentalAgreement = state.rentalAgreements.find(ra => ra.id === bill.projectAgreementId);
                     if (rentalAgreement) {
-                        tenantId = rentalAgreement.tenantId;
+                        tenantId = rentalAgreement.contactId;
                     }
                 }
 

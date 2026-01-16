@@ -136,7 +136,6 @@ export class AppStateApiService {
         salesReturns,
         quotations,
         documents,
-        tasks,
         recurringInvoiceTemplates,
         salaryComponents,
         employees,
@@ -1202,12 +1201,9 @@ export class AppStateApiService {
     return {
       id: ra.id,
       agreementNumber: ra.agreement_number || ra.agreementNumber || '',
-      // IMPORTANT: There are TWO different "tenant ID" concepts in the system:
-      // 1. Organization tenant_id (for multi-tenancy) - NOT used here
-      // 2. Contact tenant ID (tenant contact person in rental management) - This is what tenantId represents
-      // API route transforms contact_id (database) to tenantId (API response), so check tenantId first
-      // DO NOT use ra.tenant_id (organization ID) as fallback - it's a completely different concept
-      tenantId: ra.tenantId || ra.contact_id || '',
+      // Contact ID (the tenant contact person in rental management)
+      // Backward compatibility: also check tenantId for old API responses
+      contactId: ra.contactId || ra.contact_id || ra.tenantId || '',
       propertyId: ra.property_id || ra.propertyId || '',
       startDate: ra.start_date || ra.startDate || '',
       endDate: ra.end_date || ra.endDate || '',

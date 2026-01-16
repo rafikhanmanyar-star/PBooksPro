@@ -8,6 +8,8 @@ import { getDatabaseService } from '../databaseService';
 import { objectToDbFormat, dbToObjectFormat, camelToSnake } from '../columnMapper';
 import { getCurrentTenantId, shouldFilterByTenant } from '../tenantUtils';
 import { getCurrentUserId, shouldTrackUserId } from '../userUtils';
+import { isMobileDevice } from '../../../utils/platformDetection';
+import { getSyncManager } from '../../sync/syncManager';
 
 export abstract class BaseRepository<T> {
     protected tableName: string;
@@ -20,6 +22,14 @@ export abstract class BaseRepository<T> {
     }
 
     protected get db() {
+        // BaseRepository is for local SQLite operations (desktop only)
+        // Mobile devices should use API repositories instead
+        if (isMobileDevice()) {
+            throw new Error(
+                `BaseRepository (local SQLite) is not available on mobile devices. ` +
+                `Use API repositories (e.g., ${this.tableName}ApiRepository) instead.`
+            );
+        }
         return getDatabaseService();
     }
 
@@ -44,8 +54,8 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                // Use org_tenant_id for rental_agreements, tenant_id for others
-                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                // Use org_id for rental_agreements, tenant_id for others
+                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_id' : 'tenant_id';
                 whereConditions.push(`${tenantColumn} = ?`);
                 whereParams.push(tenantId);
             }
@@ -96,7 +106,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_id' : 'tenant_id';
                 sql += ` AND ${tenantColumn} = ?`;
                 params.push(tenantId);
             }
@@ -117,7 +127,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_id' : 'tenant_id';
                 sql += ` AND ${tenantColumn} = ?`;
                 queryParams.push(tenantId);
             }
@@ -157,7 +167,7 @@ export abstract class BaseRepository<T> {
             if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
                 const tenantId = getCurrentTenantId();
                 if (tenantId) {
-                    const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                    const tenantColumn = this.tableName === 'rental_agreements' ? 'org_id' : 'tenant_id';
                     if (!dbData[tenantColumn] && columnsSet.has(tenantColumn)) {
                         dbData[tenantColumn] = tenantId;
                     }
@@ -209,6 +219,8 @@ export abstract class BaseRepository<T> {
 
                 if (!this.db.isInTransaction()) {
                     this.db.save();
+                    // Queue for sync to cloud (desktop only)
+                    this.queueForSync('create', id, data);
                 }
             } catch (executeError: any) {
                 // Check if this is a transaction-related error
@@ -243,7 +255,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_id' : 'tenant_id';
                 if (columnsSet.has(tenantColumn)) {
                     dbData[tenantColumn] = tenantId;
                 }
@@ -271,7 +283,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_id' : 'tenant_id';
                 sql += ` AND ${tenantColumn} = ?`;
                 values.push(tenantId);
             }
@@ -280,6 +292,8 @@ export abstract class BaseRepository<T> {
         this.db.execute(sql, values);
         if (!this.db.isInTransaction()) {
             this.db.save();
+            // Queue for sync to cloud (desktop only)
+            this.queueForSync('update', id, data);
         }
     }
 
@@ -295,7 +309,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_id' : 'tenant_id';
                 sql += ` AND ${tenantColumn} = ?`;
                 params.push(tenantId);
             }
@@ -304,6 +318,8 @@ export abstract class BaseRepository<T> {
         this.db.execute(sql, params);
         if (!this.db.isInTransaction()) {
             this.db.save();
+            // Queue for sync to cloud (desktop only)
+            this.queueForSync('delete', id, null);
         }
     }
 
@@ -314,7 +330,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_id' : 'tenant_id';
                 this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
             } else {
                 this.db.execute(`DELETE FROM ${this.tableName}`);
@@ -355,7 +371,7 @@ export abstract class BaseRepository<T> {
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
             if (tenantId) {
-                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                const tenantColumn = this.tableName === 'rental_agreements' ? 'org_id' : 'tenant_id';
                 sql += ` WHERE ${tenantColumn} = ?`;
                 params.push(tenantId);
             }
@@ -363,6 +379,24 @@ export abstract class BaseRepository<T> {
         
         const results = this.db.query<{ count: number }>(sql, params);
         return results[0]?.count || 0;
+    }
+
+    /**
+     * Queue operation for sync to cloud (desktop only)
+     */
+    private queueForSync(type: 'create' | 'update' | 'delete', entityId: string, data: any): void {
+        // Only queue on desktop (mobile uses cloud directly)
+        if (isMobileDevice()) {
+            return;
+        }
+
+        try {
+            const syncManager = getSyncManager();
+            syncManager.queueOperation(type, this.tableName, entityId, data || {});
+        } catch (error) {
+            // Sync manager might not be initialized yet, that's okay
+            console.debug(`[BaseRepository] Failed to queue sync for ${this.tableName}:${entityId}:`, error);
+        }
     }
 
     /**
@@ -417,7 +451,8 @@ export abstract class BaseRepository<T> {
                     if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
                         const tenantId = getCurrentTenantId();
                         if (tenantId) {
-                            this.db.execute(`DELETE FROM ${this.tableName} WHERE tenant_id = ?`, [tenantId]);
+                            const tenantColumn = this.tableName === 'rental_agreements' ? 'org_id' : 'tenant_id';
+                            this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
                             console.log(`🗑️ Deleted all existing records from ${this.tableName} for tenant ${tenantId}`);
                         }
                     } else {
@@ -431,7 +466,7 @@ export abstract class BaseRepository<T> {
                 if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
                     const tenantId = getCurrentTenantId();
                     if (tenantId) {
-                        const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                        const tenantColumn = this.tableName === 'rental_agreements' ? 'org_id' : 'tenant_id';
                         this.db.execute(`DELETE FROM ${this.tableName} WHERE ${tenantColumn} = ?`, [tenantId]);
                         console.log(`🗑️ Deleted all existing records from ${this.tableName} for tenant ${tenantId}`);
                     } else {
@@ -493,7 +528,7 @@ export abstract class BaseRepository<T> {
             if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
                 const tenantId = getCurrentTenantId();
                 if (tenantId) {
-                    const tenantColumn = this.tableName === 'rental_agreements' ? 'org_tenant_id' : 'tenant_id';
+                    const tenantColumn = this.tableName === 'rental_agreements' ? 'org_id' : 'tenant_id';
                     if (!dbData[tenantColumn] && columnsSet.has(tenantColumn)) {
                         dbData[tenantColumn] = tenantId;
                     }
@@ -531,6 +566,11 @@ export abstract class BaseRepository<T> {
 
                 if (!this.db.isInTransaction()) {
                     this.db.save();
+                    // Queue for sync to cloud (desktop only) - get ID from data
+                    const entityId = (data as any)?.id || (dbData as any)?.id;
+                    if (entityId) {
+                        this.queueForSync('create', entityId, data);
+                    }
                 }
             } catch (executeError: any) {
                 const errorMsg = (executeError?.message || String(executeError)).toLowerCase();
