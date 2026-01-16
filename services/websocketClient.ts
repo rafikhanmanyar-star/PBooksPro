@@ -7,6 +7,7 @@
 
 import { io, Socket } from 'socket.io-client';
 import { logger } from './logger';
+import { apiClient } from './api/client';
 
 // WebSocket server URL (same base as API)
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://pbookspro-api.onrender.com/api';
@@ -47,6 +48,7 @@ export class WebSocketClient {
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 5;
   private reconnectDelay: number = 1000; // Start with 1 second
+  private isRefreshingAuth: boolean = false;
   private debugState: WebSocketDebugState = {
     status: 'disconnected',
     serverUrl: WS_SERVER_URL,
@@ -155,6 +157,7 @@ export class WebSocketClient {
         lastStatusAt: new Date().toISOString(),
         lastError: error ? String(error) : undefined,
       };
+      this.tryRefreshAuth(error);
     });
 
     // Handle real-time events from server
@@ -348,6 +351,56 @@ export class WebSocketClient {
     this.socket.on('user:disconnected', (data: any) => {
       logger.logCategory('websocket', 'User disconnected:', data);
     });
+  }
+
+  /**
+   * Attempt token refresh on auth failures
+   */
+  private async tryRefreshAuth(error: any): Promise<void> {
+    if (this.isRefreshingAuth) return;
+    const errorMessage = error?.message || String(error || '');
+    const isAuthError = /auth|token|jwt|unauthorized/i.test(errorMessage);
+    if (!isAuthError) return;
+
+    const existingToken = this.token ?? (typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null);
+    const tenantId = this.tenantId ?? (typeof window !== 'undefined' ? localStorage.getItem('tenant_id') : null);
+    if (!existingToken || !tenantId) return;
+
+    this.isRefreshingAuth = true;
+    try {
+      const baseUrl = apiClient.getBaseUrl();
+      const response = await fetch(`${baseUrl}/auth/refresh-token`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${existingToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Refresh failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data?.token) {
+        throw new Error('Refresh failed: missing token');
+      }
+
+      apiClient.setAuth(data.token, tenantId, false);
+      this.token = data.token;
+      this.tenantId = tenantId;
+
+      if (this.socket) {
+        this.socket.auth = { token: data.token };
+        this.socket.connect();
+      } else {
+        this.connect(data.token, tenantId);
+      }
+    } catch (refreshError) {
+      logger.errorCategory('websocket', 'Token refresh failed:', refreshError);
+    } finally {
+      this.isRefreshingAuth = false;
+    }
   }
 
   /**

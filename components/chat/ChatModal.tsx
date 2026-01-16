@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Modal from '../ui/Modal';
 import { ChatMessagesRepository } from '../../services/database/repositories';
+import { getDatabaseService } from '../../services/database/databaseService';
 import { useAuth } from '../../context/AuthContext';
 import { useAppContext } from '../../context/AppContext';
 import { apiClient } from '../../services/api/client';
@@ -46,6 +47,20 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
     const chatRepo = new ChatMessagesRepository();
     const wsClient = getWebSocketClient();
 
+    const ensureChatDbReady = async (): Promise<boolean> => {
+        try {
+            const dbService = getDatabaseService();
+            if (!dbService.isReady()) {
+                await dbService.initialize();
+            }
+            dbService.ensureAllTablesExist();
+            return true;
+        } catch (error) {
+            console.error('Error initializing chat database:', error);
+            return false;
+        }
+    };
+
     // Connect to WebSocket on mount
     useEffect(() => {
         const token = apiClient.getToken();
@@ -60,10 +75,12 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
 
     // Listen for incoming chat messages
     useEffect(() => {
-        const handleChatMessage = (data: ChatMessage) => {
+        const handleChatMessage = async (data: ChatMessage) => {
             // Only process messages for current user
             if (data.recipientId === currentUserId || data.senderId === currentUserId) {
                 try {
+                    const ready = await ensureChatDbReady();
+                    if (!ready) return;
                     // Save message locally
                     chatRepo.insert(data);
                     
@@ -73,7 +90,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
                     }
                     
                     // Refresh conversations list
-                    loadConversations();
+                    await loadConversations();
                 } catch (error) {
                     console.error('Error saving incoming message:', error);
                 }
@@ -98,8 +115,6 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
     useEffect(() => {
         if (selectedUserId && currentUserId) {
             loadMessages(selectedUserId);
-            // Mark messages as read
-            chatRepo.markAsRead(selectedUserId, currentUserId);
         }
     }, [selectedUserId, currentUserId]);
 
@@ -108,8 +123,10 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
         scrollToBottom();
     }, [messages]);
 
-    const loadConversations = () => {
+    const loadConversations = async () => {
         try {
+            const ready = await ensureChatDbReady();
+            if (!ready) return;
             const convos = chatRepo.getConversationsForUser(currentUserId);
             setConversations(convos);
         } catch (error) {
@@ -117,10 +134,14 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
         }
     };
 
-    const loadMessages = (otherUserId: string) => {
+    const loadMessages = async (otherUserId: string) => {
         try {
+            const ready = await ensureChatDbReady();
+            if (!ready) return;
             const msgs = chatRepo.getConversation(currentUserId, otherUserId);
             setMessages(msgs);
+            // Mark messages as read after loading
+            chatRepo.markAsRead(otherUserId, currentUserId);
         } catch (error) {
             console.error('Error loading messages:', error);
         }
@@ -140,6 +161,8 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
         setNewMessage(''); // Clear input immediately for better UX
 
         try {
+            const ready = await ensureChatDbReady();
+            if (!ready) throw new Error('Chat database not ready');
             // Send message via API (which will broadcast via WebSocket)
             const response = await apiClient.post('/tenants/chat/send', {
                 recipientId: selectedUserId,
@@ -151,7 +174,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
             if (response.message) {
                 chatRepo.insert(response.message);
                 setMessages([...messages, response.message]);
-                loadConversations();
+                await loadConversations();
             }
         } catch (error) {
             console.error('Error sending message:', error);

@@ -19,7 +19,6 @@ export type SyncOperationType =
   | 'contract'
   | 'sales_return'
   | 'quotation'
-  | 'task'
   | 'document'
   | 'account'
   | 'category'

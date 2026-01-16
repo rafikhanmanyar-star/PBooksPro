@@ -154,10 +154,6 @@ export async function migrateFromLocalStorage(
 }
 
 /**
- * Migrate tasks from localStorage
- */
-
-/**
  * Migrate license settings from localStorage
  */
 export async function migrateLicenseSettings(): Promise<void> {
@@ -220,7 +216,6 @@ export async function runAllMigrations(
             return mainResult;
         }
 
-        // Migrate tasks
         if (mainResult.migrated) {
             onProgress?.(95, 'Migrating additional data...');
             await migrateLicenseSettings();

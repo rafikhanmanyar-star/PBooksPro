@@ -220,9 +220,6 @@ class SyncEngine {
       case 'quotation':
         await this.syncQuotation(item);
         break;
-      case 'task':
-        await this.syncTask(item);
-        break;
       case 'document':
         await this.syncDocument(item);
         break;
@@ -454,20 +451,6 @@ class SyncEngine {
         break;
       case 'delete':
         await this.apiService.deleteQuotation(item.data.id);
-        break;
-    }
-  }
-
-  private async syncTask(item: SyncQueueItem): Promise<void> {
-    switch (item.action) {
-      case 'create':
-        await this.apiService.saveTask(item.data);
-        break;
-      case 'update':
-        await this.apiService.saveTask(item.data);
-        break;
-      case 'delete':
-        await this.apiService.deleteTask(item.data.id);
         break;
     }
   }
