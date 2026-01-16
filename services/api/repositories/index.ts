@@ -36,4 +36,5 @@ export { StatutoryConfigurationsApiRepository } from './statutoryConfigurationsA
 export { AppSettingsApiRepository } from './appSettingsApi';
 export { PMCycleAllocationsApiRepository } from './pmCycleAllocationsApi';
 export { TransactionLogApiRepository } from './transactionLogApi';
+export { TasksApiRepository } from './tasksApi';
 

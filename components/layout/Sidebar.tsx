@@ -189,6 +189,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
             ]
         },
         {
+            title: 'Tasks',
+            items: [
+                { page: 'tasks', label: 'My Tasks', icon: ICONS.checkSquare },
+                { page: 'tasksCalendar', label: 'Calendar', icon: ICONS.calendar },
+                ...(isAdmin ? [{ page: 'teamRanking', label: 'Team Ranking', icon: ICONS.trophy }] : []),
+            ]
+        },
+        {
             title: 'People',
             items: [
                 { page: 'contacts', label: 'Contacts', icon: ICONS.addressBook },

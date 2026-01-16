@@ -799,6 +799,76 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     read_at TEXT
 );
 
+-- Tasks table
+CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    type TEXT NOT NULL CHECK (type IN ('Personal', 'Assigned')),
+    category TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('Not Started', 'In Progress', 'Review', 'Completed')),
+    start_date TEXT NOT NULL,
+    hard_deadline TEXT NOT NULL,
+    kpi_goal TEXT,
+    kpi_target_value REAL,
+    kpi_current_value REAL NOT NULL DEFAULT 0,
+    kpi_unit TEXT,
+    kpi_progress_percentage REAL NOT NULL DEFAULT 0 CHECK (kpi_progress_percentage >= 0 AND kpi_progress_percentage <= 100),
+    assigned_by_id TEXT,
+    assigned_to_id TEXT,
+    created_by_id TEXT NOT NULL,
+    user_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Task updates/comment history table
+CREATE TABLE IF NOT EXISTS task_updates (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    update_type TEXT NOT NULL CHECK (update_type IN ('Status Change', 'KPI Update', 'Comment', 'Check-in')),
+    status_before TEXT,
+    status_after TEXT,
+    kpi_value_before REAL,
+    kpi_value_after REAL,
+    comment TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+);
+
+-- Task performance scores table (for leaderboard)
+CREATE TABLE IF NOT EXISTS task_performance_scores (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    period_start TEXT NOT NULL,
+    period_end TEXT NOT NULL,
+    total_tasks INTEGER NOT NULL DEFAULT 0,
+    completed_tasks INTEGER NOT NULL DEFAULT 0,
+    on_time_completions INTEGER NOT NULL DEFAULT 0,
+    overdue_tasks INTEGER NOT NULL DEFAULT 0,
+    average_kpi_achievement REAL NOT NULL DEFAULT 0,
+    completion_rate REAL NOT NULL DEFAULT 0 CHECK (completion_rate >= 0 AND completion_rate <= 100),
+    deadline_adherence_rate REAL NOT NULL DEFAULT 0 CHECK (deadline_adherence_rate >= 0 AND deadline_adherence_rate <= 100),
+    performance_score REAL NOT NULL DEFAULT 0,
+    calculated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(tenant_id, user_id, period_start, period_end)
+);
+
+-- Task performance configuration (Admin-configurable weights)
+CREATE TABLE IF NOT EXISTS task_performance_config (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL UNIQUE,
+    completion_rate_weight REAL NOT NULL DEFAULT 0.33 CHECK (completion_rate_weight >= 0 AND completion_rate_weight <= 1),
+    deadline_adherence_weight REAL NOT NULL DEFAULT 0.33 CHECK (deadline_adherence_weight >= 0 AND deadline_adherence_weight <= 1),
+    kpi_achievement_weight REAL NOT NULL DEFAULT 0.34 CHECK (kpi_achievement_weight >= 0 AND kpi_achievement_weight <= 1),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    CHECK (ABS((completion_rate_weight + deadline_adherence_weight + kpi_achievement_weight) - 1.0) < 0.01)
+);
+
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
@@ -889,4 +959,16 @@ CREATE INDEX IF NOT EXISTS idx_tax_configurations_tenant_id ON tax_configuration
 CREATE INDEX IF NOT EXISTS idx_tax_configurations_user_id ON tax_configurations(user_id);
 CREATE INDEX IF NOT EXISTS idx_statutory_configurations_tenant_id ON statutory_configurations(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_statutory_configurations_user_id ON statutory_configurations(user_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_tenant_id ON tasks(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to_id ON tasks(assigned_to_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_created_by_id ON tasks(created_by_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_hard_deadline ON tasks(hard_deadline);
+CREATE INDEX IF NOT EXISTS idx_tasks_type ON tasks(type);
+CREATE INDEX IF NOT EXISTS idx_tasks_category ON tasks(category);
+CREATE INDEX IF NOT EXISTS idx_task_updates_task_id ON task_updates(task_id);
+CREATE INDEX IF NOT EXISTS idx_task_updates_tenant_id ON task_updates(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_task_updates_user_id ON task_updates(user_id);
+CREATE INDEX IF NOT EXISTS idx_task_performance_scores_tenant_id ON task_performance_scores(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_task_performance_scores_user_id ON task_performance_scores(user_id);
 `;

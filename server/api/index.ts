@@ -99,6 +99,7 @@ import dataImportExportRouter from './routes/data-import-export.js';
 import appInfoRouter from './routes/app-info.js';
 import whatsappRouter from './routes/whatsapp.js';
 import whatsappWebhookRouter from './routes/whatsapp-webhook.js';
+import tasksRouter from './routes/tasks.js';
 import { tenantMiddleware } from '../middleware/tenantMiddleware.js';
 import { licenseMiddleware } from '../middleware/licenseMiddleware.js';
 
@@ -687,6 +688,7 @@ app.use('/api/pm-cycle-allocations', pmCycleAllocationsRouter); // PM Cycle Allo
 app.use('/api/data-management', dataManagementRouter); // Data Management (Admin only)
 app.use('/api/data-import-export', dataImportExportRouter); // Data Import/Export
 app.use('/api/whatsapp', whatsappRouter); // WhatsApp API (requires authentication)
+app.use('/api/tasks', tasksRouter); // Task Management (requires authentication)
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

@@ -56,6 +56,9 @@ const ContactsPage = React.lazy(() => import('./components/contacts/ContactsPage
 const BudgetManagement = React.lazy(() => import('./components/settings/BudgetManagement'));
 const MobilePaymentsPage = React.lazy(() => import('./components/mobile/MobilePaymentsPage'));
 const GlobalPayrollPage = React.lazy(() => import('./components/payroll/GlobalPayrollPage')); // Added
+const TasksPage = React.lazy(() => import('./components/tasks/TasksPage'));
+const TasksCalendarView = React.lazy(() => import('./components/tasks/TasksCalendarView'));
+const TeamRankingPage = React.lazy(() => import('./components/tasks/TeamRankingPage'));
 
 // Define page groups to determine which component instance handles which routes
 const PAGE_GROUPS = {
@@ -71,6 +74,7 @@ const PAGE_GROUPS = {
   INVESTMENT: ['investmentManagement'],
   PM_CONFIG: ['pmConfig'],
   PAYROLL: ['payroll'], // Added Payroll Group
+  TASKS: ['tasks', 'tasksCalendar', 'teamRanking'],
   SETTINGS: ['settings'],
   IMPORT: ['import'],
 };
@@ -414,6 +418,9 @@ const App: React.FC = () => {
       case 'contacts': return 'Contacts';
       case 'budgets': return 'Budget Planner';
       case 'payroll': return 'Global Payroll';
+      case 'tasks': return 'My Tasks';
+      case 'tasksCalendar': return 'Task Calendar';
+      case 'teamRanking': return 'Team Ranking';
       default: return 'PBooks Pro';
     }
   };
@@ -541,6 +548,21 @@ const App: React.FC = () => {
               {renderPersistentPage('INVESTMENT', <InvestmentManagementPage />)}
               {renderPersistentPage('PM_CONFIG', <PMConfigPage />)}
               {renderPersistentPage('PAYROLL', <GlobalPayrollPage />)}
+              {currentPage === 'tasks' && (
+                <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-center"><div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-2"></div><p className="text-sm text-gray-600">Loading...</p></div></div>}>
+                  <TasksPage />
+                </Suspense>
+              )}
+              {currentPage === 'tasksCalendar' && (
+                <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-center"><div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-2"></div><p className="text-sm text-gray-600">Loading...</p></div></div>}>
+                  <TasksCalendarView />
+                </Suspense>
+              )}
+              {currentPage === 'teamRanking' && (
+                <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-center"><div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-2"></div><p className="text-sm text-gray-600">Loading...</p></div></div>}>
+                  <TeamRankingPage />
+                </Suspense>
+              )}
               {renderPersistentPage('SETTINGS', <SettingsPage />)}
               {renderPersistentPage('IMPORT', <ImportExportWizard />)}
             </ErrorBoundary>

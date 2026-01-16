@@ -250,6 +250,44 @@ async function runMigrations() {
     } else {
       console.warn('   ⚠️  Could not find add-org-id-to-rental-agreements.sql migration file');
     }
+
+    // Migration: Add Tasks Management Schema
+    const tasksMigrationPaths = [
+      join(__dirname, '../migrations/add-tasks-schema.sql'),
+      join(__dirname, '../../migrations/add-tasks-schema.sql'),
+      join(process.cwd(), 'server/migrations/add-tasks-schema.sql'),
+      join(process.cwd(), 'migrations/add-tasks-schema.sql'),
+    ];
+    
+    let tasksMigrationPath: string | null = null;
+    for (const path of tasksMigrationPaths) {
+      try {
+        readFileSync(path, 'utf8');
+        tasksMigrationPath = path;
+        break;
+      } catch (e) {
+        // Try next path
+      }
+    }
+    
+    if (tasksMigrationPath) {
+      try {
+        console.log('📋 Running tasks schema migration from:', tasksMigrationPath);
+        const tasksMigrationSQL = readFileSync(tasksMigrationPath, 'utf8');
+        await pool.query(tasksMigrationSQL);
+        console.log('✅ Tasks schema migration completed');
+      } catch (error: any) {
+        // If tables/columns already exist, that's okay
+        if (error.code === '42P07' || error.code === '42710' || error.message.includes('already exists')) {
+          console.log('   ℹ️  Tasks schema already exists (skipping)');
+        } else {
+          console.warn('   ⚠️  Tasks schema migration warning:', error.message);
+          // Don't throw - migration might already be applied
+        }
+      }
+    } else {
+      console.warn('   ⚠️  Could not find add-tasks-schema.sql migration file');
+    }
     
     // Create default admin user if it doesn't exist
     console.log('👤 Ensuring admin user exists...');
