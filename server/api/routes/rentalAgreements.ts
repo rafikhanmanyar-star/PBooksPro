@@ -6,6 +6,34 @@ import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
 const router = Router();
 const getDb = () => getDatabaseService();
 
+/**
+ * Transform database result (snake_case) to API response format (camelCase)
+ */
+function transformRentalAgreement(dbResult: any): any {
+  if (!dbResult) return dbResult;
+  
+  return {
+    id: dbResult.id,
+    agreementNumber: dbResult.agreement_number || dbResult.agreementNumber,
+    contactId: dbResult.contact_id || dbResult.contactId, // Contact ID (the tenant contact person)
+    propertyId: dbResult.property_id || dbResult.propertyId,
+    startDate: dbResult.start_date || dbResult.startDate,
+    endDate: dbResult.end_date || dbResult.endDate,
+    monthlyRent: dbResult.monthly_rent !== undefined ? dbResult.monthly_rent : dbResult.monthlyRent,
+    rentDueDate: dbResult.rent_due_date !== undefined ? dbResult.rent_due_date : dbResult.rentDueDate,
+    status: dbResult.status,
+    description: dbResult.description,
+    securityDeposit: dbResult.security_deposit !== undefined ? dbResult.security_deposit : dbResult.securityDeposit,
+    brokerId: dbResult.broker_id || dbResult.brokerId,
+    brokerFee: dbResult.broker_fee !== undefined ? dbResult.broker_fee : dbResult.brokerFee,
+    ownerId: dbResult.owner_id || dbResult.ownerId,
+    orgId: dbResult.org_id || dbResult.orgId,
+    userId: dbResult.user_id || dbResult.userId,
+    createdAt: dbResult.created_at || dbResult.createdAt,
+    updatedAt: dbResult.updated_at || dbResult.updatedAt
+  };
+}
+
 // GET all rental agreements
 router.get('/', async (req: TenantRequest, res) => {
   try {
@@ -28,7 +56,9 @@ router.get('/', async (req: TenantRequest, res) => {
     query += ' ORDER BY start_date DESC';
 
     const agreements = await db.query(query, params);
-    res.json(agreements);
+    // Transform database results to camelCase for API response
+    const transformedAgreements = agreements.map(transformRentalAgreement);
+    res.json(transformedAgreements);
   } catch (error) {
     console.error('Error fetching rental agreements:', error);
     res.status(500).json({ error: 'Failed to fetch rental agreements' });
@@ -48,7 +78,8 @@ router.get('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Rental agreement not found' });
     }
     
-    res.json(agreements[0]);
+    // Transform database result to camelCase for API response
+    res.json(transformRentalAgreement(agreements[0]));
   } catch (error) {
     console.error('Error fetching rental agreement:', error);
     res.status(500).json({ error: 'Failed to fetch rental agreement' });
@@ -138,23 +169,24 @@ router.post('/', async (req: TenantRequest, res) => {
       ]
     );
     const saved = result[0];
+    const transformedSaved = transformRentalAgreement(saved);
     
     // Emit WebSocket event for real-time sync
     if (isUpdate) {
       emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_UPDATED, {
-        agreement: saved,
+        agreement: transformedSaved,
         userId: req.user?.userId,
         username: req.user?.username,
       });
     } else {
       emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_CREATED, {
-        agreement: saved,
+        agreement: transformedSaved,
         userId: req.user?.userId,
         username: req.user?.username,
       });
     }
     
-    res.status(isUpdate ? 200 : 201).json(saved);
+    res.status(isUpdate ? 200 : 201).json(transformedSaved);
   } catch (error: any) {
     console.error('Error creating/updating rental agreement:', error);
     if (error.code === '23505') { // Unique violation
@@ -200,13 +232,15 @@ router.put('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Rental agreement not found' });
     }
     
+    const transformedResult = transformRentalAgreement(result[0]);
+    
     emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_UPDATED, {
-      agreement: result[0],
+      agreement: transformedResult,
       userId: req.user?.userId,
       username: req.user?.username,
     });
 
-    res.json(result[0]);
+    res.json(transformedResult);
   } catch (error) {
     console.error('Error updating rental agreement:', error);
     res.status(500).json({ error: 'Failed to update rental agreement' });

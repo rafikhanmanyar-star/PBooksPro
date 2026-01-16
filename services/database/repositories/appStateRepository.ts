@@ -5,7 +5,7 @@
  * This is the main entry point for state persistence.
  */
 
-import { AppState, Bill, Unit, Building, Property, ProjectAgreement, ProjectAgreementStatus } from '../../../types';
+import { AppState, Bill, Unit, Building, Property, RentalAgreement, ProjectAgreement, ProjectAgreementStatus } from '../../../types';
 import { getDatabaseService } from '../databaseService';
 import { objectToDbFormat } from '../columnMapper';
 import { migrateBudgetsToNewStructure, migrateBudgetsArray } from '../budgetMigration';
@@ -328,7 +328,47 @@ export class AppStateRepository {
                     : (pm.excluded_category_ids ? (typeof pm.excluded_category_ids === 'string' ? JSON.parse(pm.excluded_category_ids) : pm.excluded_category_ids) : [])
             })),
             budgets,
-            rentalAgreements,
+            rentalAgreements: rentalAgreements.map(ra => {
+                // Normalize rental agreement to ensure all fields are properly mapped
+                // Handle both camelCase and snake_case field names for backward compatibility
+                // Preserve null/undefined values explicitly to prevent data loss
+                // Use nullish coalescing (??) to preserve null values, only use || for defaults
+                const normalizedAgreement: RentalAgreement = {
+                    id: ra.id || '',
+                    agreementNumber: ra.agreementNumber ?? ra.agreement_number ?? '',
+                    // Contact ID (the tenant contact person in rental management, NOT the organization tenant_id)
+                    // Backward compatibility: also check tenantId/tenant_id for old data
+                    contactId: ra.contactId ?? ra.contact_id ?? ra.tenantId ?? ra.tenant_id ?? '',
+                    propertyId: ra.propertyId ?? ra.property_id ?? '',
+                    startDate: ra.startDate ?? ra.start_date ?? new Date().toISOString().split('T')[0],
+                    endDate: ra.endDate ?? ra.end_date ?? new Date().toISOString().split('T')[0],
+                    monthlyRent: typeof ra.monthlyRent === 'number' ? ra.monthlyRent : (typeof ra.monthly_rent === 'number' ? ra.monthly_rent : parseFloat(ra.monthly_rent || ra.monthlyRent || '0')),
+                    rentDueDate: typeof ra.rentDueDate === 'number' ? ra.rentDueDate : (typeof ra.rent_due_date === 'number' ? ra.rent_due_date : parseInt(ra.rent_due_date || ra.rentDueDate || '1')),
+                    status: ra.status || 'Active',
+                    description: (ra.description) || undefined,
+                    securityDeposit: ra.securityDeposit !== undefined && ra.securityDeposit !== null
+                        ? (typeof ra.securityDeposit === 'number' ? ra.securityDeposit : parseFloat(String(ra.securityDeposit)))
+                        : (ra.security_deposit !== undefined && ra.security_deposit !== null ? (typeof ra.security_deposit === 'number' ? ra.security_deposit : parseFloat(String(ra.security_deposit))) : undefined),
+                    brokerId: (ra.brokerId ?? ra.broker_id) || undefined,
+                    brokerFee: ra.brokerFee !== undefined && ra.brokerFee !== null
+                        ? (typeof ra.brokerFee === 'number' ? ra.brokerFee : parseFloat(String(ra.brokerFee)))
+                        : (ra.broker_fee !== undefined && ra.broker_fee !== null ? (typeof ra.broker_fee === 'number' ? ra.broker_fee : parseFloat(String(ra.broker_fee))) : undefined),
+                    ownerId: (ra.ownerId ?? ra.owner_id) || undefined
+                };
+                
+                // Debug: Log rental agreements that seem to be missing critical data
+                if (!normalizedAgreement.agreementNumber || !normalizedAgreement.contactId || !normalizedAgreement.propertyId) {
+                    console.warn('⚠️ Rental agreement normalization warning - missing critical fields:', {
+                        id: normalizedAgreement.id,
+                        agreementNumber: normalizedAgreement.agreementNumber,
+                        contactId: normalizedAgreement.contactId,
+                        propertyId: normalizedAgreement.propertyId,
+                        rawAgreement: ra
+                    });
+                }
+                
+                return normalizedAgreement;
+            }),
             projectAgreements: projectAgreements.map(pa => {
                 // Normalize project agreement to ensure all fields are properly mapped
                 // Handle both camelCase and snake_case field names for backward compatibility
