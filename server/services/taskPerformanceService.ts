@@ -113,9 +113,9 @@ export class TaskPerformanceService {
 
     // Calculate weighted score
     const score =
-      metrics.completion_rate * config.completion_rate_weight +
-      metrics.deadline_adherence_rate * config.deadline_adherence_weight +
-      metrics.average_kpi_achievement * config.kpi_achievement_weight;
+      metrics.completionRate * config.completion_rate_weight +
+      metrics.deadlineAdherenceRate * config.deadline_adherence_weight +
+      metrics.averageKpiAchievement * config.kpi_achievement_weight;
 
     return Math.round(score * 100) / 100; // Round to 2 decimal places
   }
