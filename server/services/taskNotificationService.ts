@@ -4,9 +4,9 @@
  * Handles notifications for task assignments and deadline warnings.
  */
 
-import { getDatabaseService } from './databaseService';
-import { getWebSocketService } from './websocketService';
-import { WS_EVENTS } from './websocketHelper';
+import { getDatabaseService } from './databaseService.js';
+import { getWebSocketService } from './websocketService.js';
+import { WS_EVENTS } from './websocketHelper.js';
 
 export class TaskNotificationService {
   private db: any;

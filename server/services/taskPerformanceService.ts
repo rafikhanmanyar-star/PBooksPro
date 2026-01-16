@@ -5,7 +5,7 @@
  * deadline adherence, and KPI achievement.
  */
 
-import { getDatabaseService } from './databaseService';
+import { getDatabaseService } from './databaseService.js';
 
 export interface PerformanceMetrics {
   totalTasks: number;

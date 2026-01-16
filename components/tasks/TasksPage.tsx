@@ -15,7 +15,10 @@ import Modal from '../ui/Modal';
 import Select from '../ui/Select';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import DatePicker from '../ui/DatePicker';
+import ComboBox from '../ui/ComboBox';
 import { useAppContext as usePageContext } from '../../context/AppContext';
+import { formatDate } from '../../utils/dateUtils';
 
 interface User {
   id: string;
@@ -40,8 +43,23 @@ const TasksPage: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Inline form state
+  const [isFormExpanded, setIsFormExpanded] = useState(false);
+  const [formTitle, setFormTitle] = useState('');
+  const [formDescription, setFormDescription] = useState('');
+  const [formType, setFormType] = useState<TaskType>('Personal');
+  const [formCategory, setFormCategory] = useState<TaskCategory | string>('Development');
+  const [formStatus, setFormStatus] = useState<TaskStatus>('Not Started');
+  const [formStartDate, setFormStartDate] = useState('');
+  const [formHardDeadline, setFormHardDeadline] = useState('');
+  const [formKpiGoal, setFormKpiGoal] = useState('');
+  const [formKpiTargetValue, setFormKpiTargetValue] = useState('');
+  const [formKpiUnit, setFormKpiUnit] = useState('');
+  const [formAssignedToId, setFormAssignedToId] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
   // Modals
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isCheckInModalOpen, setIsCheckInModalOpen] = useState(false);
@@ -79,6 +97,20 @@ const TasksPage: React.FC = () => {
     loadTasks();
     loadEmployees();
   }, []);
+
+  // Employees can only create personal tasks
+  useEffect(() => {
+    if (!isAdmin) {
+      setFormType('Personal');
+    }
+  }, [isAdmin]);
+
+  // Initialize form start date when form is expanded
+  useEffect(() => {
+    if (isFormExpanded && !formStartDate) {
+      setFormStartDate(formatDate(new Date()));
+    }
+  }, [isFormExpanded, formStartDate]);
 
   // Listen for WebSocket task notifications
   useEffect(() => {
@@ -135,9 +167,74 @@ const TasksPage: React.FC = () => {
     return Array.from(cats);
   }, [tasks]);
 
-  const handleCreateTask = () => {
-    setSelectedTask(null);
-    setIsCreateModalOpen(true);
+  const resetForm = () => {
+    setFormTitle('');
+    setFormDescription('');
+    setFormType('Personal');
+    setFormCategory('Development');
+    setFormStatus('Not Started');
+    setFormStartDate('');
+    setFormHardDeadline('');
+    setFormKpiGoal('');
+    setFormKpiTargetValue('');
+    setFormKpiUnit('');
+    setFormAssignedToId('');
+    setFormError(null);
+    setIsFormExpanded(false);
+  };
+
+  const handleCreateTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
+
+    // Validation
+    if (!formTitle.trim()) {
+      setFormError('Title is required');
+      return;
+    }
+    if (!formStartDate) {
+      setFormError('Start date is required');
+      return;
+    }
+    if (!formHardDeadline) {
+      setFormError('Hard deadline is required');
+      return;
+    }
+    if (new Date(formHardDeadline) < new Date(formStartDate)) {
+      setFormError('Deadline must be after start date');
+      return;
+    }
+    if (formType === 'Assigned' && !formAssignedToId) {
+      setFormError('Please select an employee to assign this task to');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const taskData: Partial<Task> = {
+        title: formTitle.trim(),
+        description: formDescription.trim() || undefined,
+        type: formType,
+        category: formCategory,
+        status: formStatus,
+        start_date: formStartDate,
+        hard_deadline: formHardDeadline,
+        kpi_goal: formKpiGoal.trim() || undefined,
+        kpi_target_value: formKpiTargetValue ? parseFloat(formKpiTargetValue) : undefined,
+        kpi_unit: formKpiUnit.trim() || undefined,
+        assigned_to_id: formType === 'Assigned' ? formAssignedToId : undefined,
+      };
+
+      await tasksApi.create(taskData);
+      showToast('Task created successfully', 'success');
+      await loadTasks();
+      resetForm();
+    } catch (error: any) {
+      setFormError(error.message || 'Failed to create task');
+      showToast(error.message || 'Failed to create task', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleEditTask = (task: Task) => {
@@ -168,14 +265,10 @@ const TasksPage: React.FC = () => {
       if (selectedTask) {
         await tasksApi.update(selectedTask.id, taskData);
         showToast('Task updated successfully', 'success');
-      } else {
-        await tasksApi.create(taskData);
-        showToast('Task created successfully', 'success');
+        await loadTasks();
+        setIsEditModalOpen(false);
+        setSelectedTask(null);
       }
-      await loadTasks();
-      setIsCreateModalOpen(false);
-      setIsEditModalOpen(false);
-      setSelectedTask(null);
     } catch (error: any) {
       showToast(error.message || 'Failed to save task', 'error');
       throw error;
@@ -248,15 +341,181 @@ const TasksPage: React.FC = () => {
     return false;
   };
 
+  const TASK_CATEGORIES: TaskCategory[] = ['Development', 'Admin', 'Sales', 'Personal Growth'];
+  const employeeItems = employees.map(emp => ({ id: emp.id, name: emp.name }));
+
   return (
     <div className="p-4 md:p-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
         <h1 className="text-2xl font-bold">My Tasks</h1>
-        <Button onClick={handleCreateTask}>
-          {ICONS.plus}
-          <span>Create Task</span>
+        <Button onClick={() => setIsFormExpanded(!isFormExpanded)}>
+          {isFormExpanded ? ICONS.x : ICONS.plus}
+          <span>{isFormExpanded ? 'Cancel' : 'Create Task'}</span>
         </Button>
       </div>
+
+      {/* Compact Create Task Form */}
+      {isFormExpanded && (
+        <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6 shadow-sm">
+          <form onSubmit={handleCreateTask} className="space-y-3">
+            {formError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">
+                {formError}
+              </div>
+            )}
+            
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+              {/* Title - Takes 4 columns */}
+              <div className="md:col-span-4">
+                <Input
+                  placeholder="Task title..."
+                  value={formTitle}
+                  onChange={(e) => setFormTitle(e.target.value)}
+                  required
+                  className="text-sm"
+                />
+              </div>
+
+              {/* Type - Takes 2 columns */}
+              <div className="md:col-span-2">
+                <Select
+                  value={formType}
+                  onChange={(e) => setFormType(e.target.value as TaskType)}
+                  disabled={!isAdmin}
+                  className="text-sm"
+                >
+                  <option value="Personal">Personal</option>
+                  {isAdmin && <option value="Assigned">Assigned</option>}
+                </Select>
+              </div>
+
+              {/* Category - Takes 2 columns */}
+              <div className="md:col-span-2">
+                <Select
+                  value={formCategory}
+                  onChange={(e) => setFormCategory(e.target.value)}
+                  className="text-sm"
+                >
+                  {TASK_CATEGORIES.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+
+              {/* Start Date - Takes 2 columns */}
+              <div className="md:col-span-2">
+                <DatePicker
+                  value={formStartDate}
+                  onChange={(date) => setFormStartDate(formatDate(date))}
+                  placeholder="Start date"
+                  className="text-sm"
+                />
+              </div>
+
+              {/* Deadline - Takes 2 columns */}
+              <div className="md:col-span-2">
+                <DatePicker
+                  value={formHardDeadline}
+                  onChange={(date) => setFormHardDeadline(formatDate(date))}
+                  placeholder="Deadline"
+                  className="text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Second Row - Optional Fields */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+              {/* Assign To (only for Assigned tasks) */}
+              {formType === 'Assigned' && isAdmin && (
+                <div className="md:col-span-3">
+                  <ComboBox
+                    items={employeeItems}
+                    selectedId={formAssignedToId}
+                    onSelect={(item) => setFormAssignedToId(item?.id || '')}
+                    placeholder="Assign to..."
+                    allowAddNew={false}
+                    className="text-sm"
+                  />
+                </div>
+              )}
+
+              {/* KPI Goal */}
+              <div className="md:col-span-3">
+                <Input
+                  placeholder="KPI Goal (optional)"
+                  value={formKpiGoal}
+                  onChange={(e) => setFormKpiGoal(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+
+              {/* KPI Target Value */}
+              <div className="md:col-span-2">
+                <Input
+                  type="number"
+                  placeholder="Target"
+                  value={formKpiTargetValue}
+                  onChange={(e) => setFormKpiTargetValue(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+
+              {/* KPI Unit */}
+              <div className="md:col-span-2">
+                <Input
+                  placeholder="Unit"
+                  value={formKpiUnit}
+                  onChange={(e) => setFormKpiUnit(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+
+              {/* Status */}
+              <div className="md:col-span-2">
+                <Select
+                  value={formStatus}
+                  onChange={(e) => setFormStatus(e.target.value as TaskStatus)}
+                  className="text-sm"
+                >
+                  <option value="Not Started">Not Started</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Review">Review</option>
+                  <option value="Completed">Completed</option>
+                </Select>
+              </div>
+            </div>
+
+            {/* Description (optional, collapsible) */}
+            <div>
+              <textarea
+                value={formDescription}
+                onChange={(e) => setFormDescription(e.target.value)}
+                className="block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500 text-sm"
+                rows={2}
+                placeholder="Description (optional)"
+              />
+            </div>
+
+            {/* Submit Button */}
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                onClick={resetForm}
+                variant="secondary"
+                disabled={isSubmitting}
+                className="text-sm"
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting} className="text-sm">
+                {isSubmitting ? 'Creating...' : 'Create Task'}
+              </Button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -319,26 +578,6 @@ const TasksPage: React.FC = () => {
           ))}
         </div>
       )}
-
-      {/* Create Task Modal */}
-      <Modal
-        isOpen={isCreateModalOpen}
-        onClose={() => {
-          setIsCreateModalOpen(false);
-          setSelectedTask(null);
-        }}
-        title="Create Task"
-        size="lg"
-      >
-        <TaskForm
-          onSubmit={handleSubmitTask}
-          onCancel={() => {
-            setIsCreateModalOpen(false);
-            setSelectedTask(null);
-          }}
-          employees={employees}
-        />
-      </Modal>
 
       {/* Edit Task Modal */}
       <Modal
