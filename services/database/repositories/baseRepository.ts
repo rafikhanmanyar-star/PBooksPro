@@ -141,10 +141,50 @@ export abstract class BaseRepository<T> {
      * Lazily load table columns to filter out non-existent fields
      */
     private ensureTableColumns(): Set<string> {
+        // Check if database is ready
+        if (!this.db.isReady()) {
+            console.warn(`⚠️ Database not ready for table columns check: ${this.tableName}`);
+            // Return empty set - caller should handle this gracefully
+            return new Set();
+        }
+
+        // Check if table exists before querying PRAGMA
+        const tableExists = this.db.query<{ name: string }>(
+            `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
+            [this.tableName]
+        );
+        
+        if (tableExists.length === 0) {
+            console.warn(`⚠️ Table ${this.tableName} does not exist yet. Attempting to create it...`);
+            // Try to ensure table exists
+            try {
+                this.db.ensureAllTablesExist();
+                // Check again after ensuring tables exist
+                const tableExistsAfter = this.db.query<{ name: string }>(
+                    `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
+                    [this.tableName]
+                );
+                if (tableExistsAfter.length === 0) {
+                    console.error(`❌ Table ${this.tableName} still does not exist after ensureAllTablesExist()`);
+                    return new Set();
+                }
+            } catch (error) {
+                console.error(`❌ Error ensuring table ${this.tableName} exists:`, error);
+                return new Set();
+            }
+        }
+
         // Always refresh column cache to ensure we have latest columns after schema changes
         // This is critical - if columns are added after cache is created, we need fresh data
         const rows = this.db.query<{ name: string }>(`PRAGMA table_info(${this.tableName})`);
+        
+        if (rows.length === 0) {
+            console.warn(`⚠️ PRAGMA table_info(${this.tableName}) returned no columns. Table may not exist or be empty.`);
+            return new Set();
+        }
+        
         this.tableColumns = new Set(rows.map(r => r.name));
+        console.log(`✅ Loaded ${this.tableColumns.size} columns for ${this.tableName}:`, Array.from(this.tableColumns).join(', '));
         return this.tableColumns;
     }
 

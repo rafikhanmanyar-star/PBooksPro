@@ -318,8 +318,45 @@ export class ChatMessagesRepository extends BaseRepository<any> {
      */
     insert(data: Partial<any>): void {
         try {
+            console.log(`📝 [ChatMessagesRepository] Starting insert for ${this.tableName}`);
+            console.log(`📝 [ChatMessagesRepository] Database ready: ${this.db.isReady()}`);
+            console.log(`📝 [ChatMessagesRepository] Original data:`, data);
+            
+            // Ensure database is ready and table exists
+            if (!this.db.isReady()) {
+                console.error(`❌ [ChatMessagesRepository] Database not ready for insert`);
+                throw new Error('Database not ready');
+            }
+            
+            // Ensure table exists before proceeding
+            const tableExists = this.db.query<{ name: string }>(
+                `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
+                [this.tableName]
+            );
+            
+            if (tableExists.length === 0) {
+                console.warn(`⚠️ [ChatMessagesRepository] Table ${this.tableName} does not exist. Creating it...`);
+                this.db.ensureAllTablesExist();
+                
+                // Verify table was created
+                const tableExistsAfter = this.db.query<{ name: string }>(
+                    `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
+                    [this.tableName]
+                );
+                
+                if (tableExistsAfter.length === 0) {
+                    console.error(`❌ [ChatMessagesRepository] Failed to create table ${this.tableName}`);
+                    throw new Error(`Table ${this.tableName} does not exist and could not be created`);
+                }
+                console.log(`✅ [ChatMessagesRepository] Table ${this.tableName} created successfully`);
+            }
+            
             const dbData = objectToDbFormat(data as Record<string, any>);
+            console.log(`📝 [ChatMessagesRepository] Converted data (db format):`, dbData);
+            
             const columnsSet = this.ensureTableColumns();
+            console.log(`📝 [ChatMessagesRepository] Available columns:`, Array.from(columnsSet));
+            console.log(`📝 [ChatMessagesRepository] Data keys after conversion:`, Object.keys(dbData));
             
             const keys = Object.keys(dbData)
                 .filter(k => dbData[k] !== undefined && columnsSet.has(k));
@@ -327,21 +364,30 @@ export class ChatMessagesRepository extends BaseRepository<any> {
             const placeholders = keys.map(() => '?').join(', ');
             const columns = keys.join(', ');
 
+            console.log(`📝 [ChatMessagesRepository] Filtered keys:`, keys);
+            console.log(`📝 [ChatMessagesRepository] SQL columns:`, columns);
+            console.log(`📝 [ChatMessagesRepository] Values:`, values);
+
             if (keys.length === 0) {
                 const errorMsg = `No valid columns to insert for ${this.tableName}. Available columns: ${Array.from(columnsSet).join(', ')}, Data keys after conversion: ${Object.keys(dbData).join(', ')}`;
                 console.error(`❌ ${errorMsg}`);
+                console.error(`❌ [ChatMessagesRepository] Database ready: ${this.db.isReady()}`);
+                console.error(`❌ [ChatMessagesRepository] Table exists: ${tableExists.length > 0}`);
                 throw new Error(errorMsg);
             }
 
             // Use INSERT OR IGNORE to prevent duplicate key errors
             // Messages can arrive from both API response and WebSocket
+            console.log(`📝 [ChatMessagesRepository] Executing INSERT OR IGNORE...`);
             this.db.execute(
                 `INSERT OR IGNORE INTO ${this.tableName} (${columns}) VALUES (${placeholders})`,
                 values
             );
+            console.log(`✅ [ChatMessagesRepository] Insert executed successfully`);
 
             if (!this.db.isInTransaction()) {
                 this.db.save();
+                console.log(`✅ [ChatMessagesRepository] Database saved`);
             }
         } catch (error) {
             console.error(`❌ Error inserting into ${this.tableName}:`, error);
@@ -367,6 +413,25 @@ export class ChatMessagesRepository extends BaseRepository<any> {
      * Get all conversations for a user (list of users they've chatted with)
      */
     getConversationsForUser(userId: string): any[] {
+        console.log(`📝 [ChatMessagesRepository] getConversationsForUser called for userId: ${userId}`);
+        console.log(`📝 [ChatMessagesRepository] Database ready: ${this.db.isReady()}`);
+        
+        if (!this.db.isReady()) {
+            console.warn(`⚠️ [ChatMessagesRepository] Database not ready for getConversationsForUser`);
+            return [];
+        }
+        
+        // Ensure table exists
+        const tableExists = this.db.query<{ name: string }>(
+            `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
+            [this.tableName]
+        );
+        
+        if (tableExists.length === 0) {
+            console.warn(`⚠️ [ChatMessagesRepository] Table ${this.tableName} does not exist for getConversationsForUser`);
+            return [];
+        }
+        
         const sql = `
             SELECT DISTINCT 
                 CASE 
@@ -384,6 +449,7 @@ export class ChatMessagesRepository extends BaseRepository<any> {
             ORDER BY last_message_time DESC
         `;
         const results = this.db.query<Record<string, any>>(sql, [userId, userId, userId, userId]);
+        console.log(`📝 [ChatMessagesRepository] Found ${results.length} conversations for user ${userId}`);
         return results.map(row => dbToObjectFormat(row));
     }
     
