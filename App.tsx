@@ -28,7 +28,7 @@ import { getLockManager } from './services/sync/lockManager';
 import { getOfflineLockManager } from './services/sync/offlineLockManager';
 import { getRealtimeSyncHandler } from './services/sync/realtimeSyncHandler';
 import { getSchemaSyncService } from './services/database/schemaSync';
-import { getWebSocketClient } from './services/websocket/websocketClient';
+import { getWebSocketClient } from './services/websocketClient';
 import { VersionUpdateNotification } from './components/ui/VersionUpdateNotification';
 import { createBackup, restoreBackup } from './services/backupService';
 import { useProgress } from './context/ProgressContext';
