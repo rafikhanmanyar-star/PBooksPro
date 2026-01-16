@@ -31,7 +31,15 @@ const TasksPage: React.FC = () => {
   const { dispatch } = usePageContext();
   const { user } = useAuth();
   const { showToast, showConfirm } = useNotification();
-  const isAdmin = user?.role === 'Admin';
+  // Check if user is Admin (case-insensitive, trimmed)
+  const isAdmin = user?.role?.trim()?.toLowerCase() === 'admin';
+  
+  // Debug logging
+  useEffect(() => {
+    if (user) {
+      console.log('TasksPage - User role:', user.role, 'isAdmin:', isAdmin);
+    }
+  }, [user, isAdmin]);
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,33 +92,51 @@ const TasksPage: React.FC = () => {
 
   // Load employees (for admin assignment)
   const loadEmployees = async () => {
-    if (!isAdmin) return;
+    if (!isAdmin) {
+      console.log('TasksPage - Not loading employees, user is not admin');
+      return;
+    }
     try {
+      console.log('TasksPage - Loading employees for task assignment...');
       const data = await apiClient.get<User[]>('/users');
-      setEmployees(data.filter(u => u.id !== user?.id)); // Exclude current user
+      const filtered = data.filter(u => u.id !== user?.id); // Exclude current user
+      console.log('TasksPage - Loaded employees:', filtered.length);
+      setEmployees(filtered);
     } catch (error) {
       console.error('Error loading employees:', error);
+      showToast('Failed to load employees list', 'error');
     }
   };
 
   useEffect(() => {
     loadTasks();
-    loadEmployees();
-  }, []);
+    if (isAdmin) {
+      loadEmployees();
+    }
+  }, [isAdmin]);
 
   // Employees can only create personal tasks
   useEffect(() => {
     if (!isAdmin) {
       setFormType('Personal');
+    } else {
+      // Admin can choose, but default to Personal
+      // Don't force it, let them choose
     }
   }, [isAdmin]);
 
-  // Initialize form start date when form is expanded
+  // Initialize form start date when form is expanded and load employees if admin
   useEffect(() => {
-    if (isFormExpanded && !formStartDate) {
-      setFormStartDate(formatDate(new Date()));
+    if (isFormExpanded) {
+      if (!formStartDate) {
+        setFormStartDate(formatDate(new Date()));
+      }
+      // Reload employees when form is expanded (in case new users were added)
+      if (isAdmin && employees.length === 0) {
+        loadEmployees();
+      }
     }
-  }, [isFormExpanded, formStartDate]);
+  }, [isFormExpanded, formStartDate, isAdmin]);
 
   // Listen for WebSocket task notifications
   useEffect(() => {
@@ -204,9 +230,15 @@ const TasksPage: React.FC = () => {
       setFormError('Deadline must be after start date');
       return;
     }
-    if (formType === 'Assigned' && !formAssignedToId) {
-      setFormError('Please select an employee to assign this task to');
-      return;
+    if (formType === 'Assigned') {
+      if (!isAdmin) {
+        setFormError('Only organization admins can create assigned tasks');
+        return;
+      }
+      if (!formAssignedToId) {
+        setFormError('Please select an employee to assign this task to');
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -347,7 +379,14 @@ const TasksPage: React.FC = () => {
   return (
     <div className="p-4 md:p-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-        <h1 className="text-2xl font-bold">My Tasks</h1>
+        <div>
+          <h1 className="text-2xl font-bold">My Tasks</h1>
+          {isAdmin && (
+            <p className="text-sm text-gray-600 mt-1">
+              Organization Admin - You can assign tasks to employees
+            </p>
+          )}
+        </div>
         <Button onClick={() => setIsFormExpanded(!isFormExpanded)}>
           {isFormExpanded ? ICONS.x : ICONS.plus}
           <span>{isFormExpanded ? 'Cancel' : 'Create Task'}</span>
@@ -430,14 +469,20 @@ const TasksPage: React.FC = () => {
               {/* Assign To (only for Assigned tasks) */}
               {formType === 'Assigned' && isAdmin && (
                 <div className="md:col-span-3">
-                  <ComboBox
-                    items={employeeItems}
-                    selectedId={formAssignedToId}
-                    onSelect={(item) => setFormAssignedToId(item?.id || '')}
-                    placeholder="Assign to..."
-                    allowAddNew={false}
-                    className="text-sm"
-                  />
+                  {employees.length === 0 ? (
+                    <div className="text-sm text-gray-500 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50">
+                      Loading employees...
+                    </div>
+                  ) : (
+                    <ComboBox
+                      items={employeeItems}
+                      selectedId={formAssignedToId}
+                      onSelect={(item) => setFormAssignedToId(item?.id || '')}
+                      placeholder="Assign to..."
+                      allowAddNew={false}
+                      className="text-sm"
+                    />
+                  )}
                 </div>
               )}
 

@@ -17,8 +17,9 @@ export function adminOnlyMiddleware() {
         });
       }
 
-      // Only Admin role users can access this route
-      if (req.userRole !== 'Admin') {
+      // Only Admin role users can access this route (case-insensitive check)
+      const userRole = (req.userRole || '').trim().toLowerCase();
+      if (userRole !== 'admin') {
         return res.status(403).json({ 
           error: 'Forbidden',
           message: 'Only organization administrators can perform this action.'

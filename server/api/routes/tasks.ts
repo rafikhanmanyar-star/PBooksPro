@@ -618,22 +618,70 @@ router.get('/calendar/events', async (req: TenantRequest, res) => {
     const db = getDb();
     const tenantId = req.tenantId!;
     const userId = req.userId!;
-    const userRole = (req as any).role || '';
+    const userRole = ((req as any).role || '').trim();
+    const isAdmin = userRole.toLowerCase() === 'admin';
     const { start_date, end_date } = req.query;
 
     if (!start_date || !end_date) {
       return res.status(400).json({ error: 'start_date and end_date query parameters are required' });
     }
 
-    let query = '';
-    let params: any[] = [tenantId, start_date, end_date];
+    // Convert date strings to proper format (handle DD/MM/YYYY or YYYY-MM-DD)
+    let startDate = decodeURIComponent(start_date as string).trim();
+    let endDate = decodeURIComponent(end_date as string).trim();
+    
+    // Helper function to convert date to YYYY-MM-DD format
+    const normalizeDate = (dateStr: string): string => {
+      // If already in YYYY-MM-DD format, return as is
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        return dateStr;
+      }
+      
+      // If in DD/MM/YYYY format, convert to YYYY-MM-DD
+      if (dateStr.includes('/')) {
+        const parts = dateStr.split('/');
+        if (parts.length === 3) {
+          const [d, m, y] = parts;
+          return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        }
+      }
+      
+      // Try to parse as Date and format
+      try {
+        const date = new Date(dateStr);
+        if (!isNaN(date.getTime())) {
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+      
+      throw new Error(`Invalid date format: ${dateStr}`);
+    };
+    
+    try {
+      startDate = normalizeDate(startDate);
+      endDate = normalizeDate(endDate);
+    } catch (error: any) {
+      return res.status(400).json({ 
+        error: 'Invalid date format', 
+        message: error.message || 'Dates must be in YYYY-MM-DD or DD/MM/YYYY format',
+        received: { start_date: start_date, end_date: end_date }
+      });
+    }
 
-    if (userRole === 'Admin') {
+    let query = '';
+    let params: any[] = [tenantId, startDate, endDate];
+
+    if (isAdmin) {
       query = `
         SELECT id, title, type, status, start_date, hard_deadline, category
         FROM tasks
         WHERE tenant_id = $1
-          AND (start_date <= $3 AND hard_deadline >= $2)
+          AND (start_date <= $3::date AND hard_deadline >= $2::date)
         ORDER BY start_date ASC
       `;
     } else {
@@ -641,18 +689,40 @@ router.get('/calendar/events', async (req: TenantRequest, res) => {
         SELECT id, title, type, status, start_date, hard_deadline, category
         FROM tasks
         WHERE tenant_id = $1
-          AND (type = 'Personal' AND created_by_id = $4 OR type = 'Assigned' AND assigned_to_id = $4)
-          AND (start_date <= $3 AND hard_deadline >= $2)
+          AND ((type = 'Personal' AND created_by_id = $4) OR (type = 'Assigned' AND assigned_to_id = $4))
+          AND (start_date <= $3::date AND hard_deadline >= $2::date)
         ORDER BY start_date ASC
       `;
       params.push(userId);
     }
 
+    console.log('Calendar query:', { 
+      isAdmin, 
+      userRole, 
+      startDate, 
+      endDate, 
+      userId, 
+      tenantId,
+      paramCount: params.length 
+    });
+    
     const tasks = await db.query(query, params);
+    console.log('Calendar tasks found:', tasks.length);
     res.json(tasks);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching calendar tasks:', error);
-    res.status(500).json({ error: 'Failed to fetch calendar tasks' });
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      detail: error.detail,
+      hint: error.hint,
+      stack: error.stack
+    });
+    res.status(500).json({ 
+      error: 'Failed to fetch calendar tasks',
+      message: error.message || 'Unknown error',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
@@ -667,21 +737,90 @@ router.get('/performance/leaderboard', adminOnlyMiddleware(), async (req: Tenant
       return res.status(400).json({ error: 'period_start and period_end query parameters are required' });
     }
 
+    // Convert date strings to proper format (handle DD/MM/YYYY or YYYY-MM-DD)
+    const normalizeDate = (dateStr: string): string => {
+      const decoded = decodeURIComponent(dateStr).trim();
+      
+      // If already in YYYY-MM-DD format, return as is
+      if (/^\d{4}-\d{2}-\d{2}$/.test(decoded)) {
+        return decoded;
+      }
+      
+      // If in DD/MM/YYYY format, convert to YYYY-MM-DD
+      if (decoded.includes('/')) {
+        const parts = decoded.split('/');
+        if (parts.length === 3) {
+          const [d, m, y] = parts;
+          return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        }
+      }
+      
+      // Try to parse as Date and format
+      try {
+        const date = new Date(decoded);
+        if (!isNaN(date.getTime())) {
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+      
+      throw new Error(`Invalid date format: ${decoded}`);
+    };
+
+    let normalizedPeriodStart: string;
+    let normalizedPeriodEnd: string;
+    
+    try {
+      normalizedPeriodStart = normalizeDate(period_start as string);
+      normalizedPeriodEnd = normalizeDate(period_end as string);
+    } catch (error: any) {
+      return res.status(400).json({ 
+        error: 'Invalid date format', 
+        message: error.message || 'Dates must be in YYYY-MM-DD or DD/MM/YYYY format',
+        received: { period_start, period_end }
+      });
+    }
+
+    console.log('Leaderboard query:', { 
+      tenantId, 
+      period_start: normalizedPeriodStart, 
+      period_end: normalizedPeriodEnd 
+    });
+
     const scores = await db.query(
       `SELECT tps.*, u.name as user_name, u.username
        FROM task_performance_scores tps
        JOIN users u ON tps.user_id = u.id
        WHERE tps.tenant_id = $1
-         AND tps.period_start = $2
-         AND tps.period_end = $3
+         AND tps.period_start = $2::date
+         AND tps.period_end = $3::date
        ORDER BY tps.performance_score DESC`,
-      [tenantId, period_start, period_end]
+      [tenantId, normalizedPeriodStart, normalizedPeriodEnd]
     );
 
-    res.json(scores);
-  } catch (error) {
+    console.log('Leaderboard scores found:', scores.length);
+    
+    // If no scores exist for this period, return empty array (scores are calculated when tasks are completed)
+    // In the future, we could trigger calculation on-demand here if needed
+    res.json(scores || []);
+  } catch (error: any) {
     console.error('Error fetching leaderboard:', error);
-    res.status(500).json({ error: 'Failed to fetch leaderboard' });
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      detail: error.detail,
+      hint: error.hint,
+      stack: error.stack
+    });
+    res.status(500).json({ 
+      error: 'Failed to fetch leaderboard',
+      message: error.message || 'Unknown error',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
