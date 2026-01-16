@@ -774,15 +774,17 @@ CREATE TABLE IF NOT EXISTS error_log (
 );
 
 -- Tasks table (for TodoList component)
+-- Schema matches PostgreSQL cloud database structure
 CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
     text TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0,
     priority TEXT NOT NULL DEFAULT 'medium',
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-    tenant_id TEXT,
-    user_id TEXT
+    CONSTRAINT valid_priority CHECK (priority IN ('low', 'medium', 'high'))
 );
 
 -- App Settings table (for various settings)
