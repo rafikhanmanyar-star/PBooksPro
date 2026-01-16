@@ -15,7 +15,7 @@
  */
 
 import { getDatabaseService } from '../database/databaseService';
-import { getWebSocketClient } from '../websocket/websocketClient';
+import { getWebSocketClient } from '../websocketClient';
 import { apiClient } from '../api/client';
 import { isMobileDevice } from '../../utils/platformDetection';
 

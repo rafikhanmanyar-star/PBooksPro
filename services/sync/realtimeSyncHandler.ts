@@ -9,7 +9,7 @@
  */
 
 import { getDatabaseService } from '../database/databaseService';
-import { getWebSocketClient } from '../websocket/websocketClient';
+import { getWebSocketClient } from '../websocketClient';
 import { getLockManager } from './lockManager';
 import { isMobileDevice } from '../../utils/platformDetection';
 import { AppAction } from '../../types';
