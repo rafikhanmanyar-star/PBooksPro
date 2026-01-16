@@ -8,7 +8,6 @@ export type Page =
   | 'vendorDirectory'
   | 'contacts'
   | 'budgets'
-  | 'tasks'
   | 'rentalManagement'
   | 'rentalInvoices'
   | 'rentalAgreements'
@@ -986,13 +985,6 @@ export interface ImportLogEntry {
   data?: any;
 }
 
-export interface Task {
-  id: string;
-  text: string;
-  completed: boolean;
-  priority: 'low' | 'medium' | 'high';
-  createdAt: number;
-}
 
 export interface AppState {
   version?: number;

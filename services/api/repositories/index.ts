@@ -21,7 +21,6 @@ export { ProjectAgreementsApiRepository } from './projectAgreementsApi';
 export { ContractsApiRepository } from './contractsApi';
 export { QuotationsApiRepository } from './quotationsApi';
 export { DocumentsApiRepository } from './documentsApi';
-export { TasksApiRepository } from './tasksApi';
 export { RecurringInvoiceTemplatesApiRepository } from './recurringInvoiceTemplatesApi';
 export { SalaryComponentsApiRepository } from './salaryComponentsApi';
 export { EmployeesApiRepository } from './employeesApi';

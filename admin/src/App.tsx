@@ -4,7 +4,6 @@ import { AdminAuthProvider, useAdminAuth } from './context/AdminAuthContext';
 import AdminLogin from './components/auth/AdminLogin';
 import AdminDashboard from './components/dashboard/AdminDashboard';
 import TenantManagement from './components/tenants/TenantManagement';
-import LicenseManagement from './components/licenses/LicenseManagement';
 import UserManagement from './components/users/UserManagement';
 import Layout from './components/layout/Layout';
 import ProtectedRoute from './components/layout/ProtectedRoute';
@@ -23,7 +22,6 @@ const AppRoutes: React.FC = () => {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<AdminDashboard />} />
         <Route path="tenants" element={<TenantManagement />} />
-        <Route path="licenses" element={<LicenseManagement />} />
         <Route path="users" element={<UserManagement />} />
       </Route>
     </Routes>

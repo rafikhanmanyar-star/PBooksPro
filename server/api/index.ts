@@ -79,7 +79,6 @@ import transactionAuditRouter from './routes/transaction-audit.js';
 import paymentsRouter from './routes/payments.js';
 import quotationsRouter from './routes/quotations.js';
 import documentsRouter from './routes/documents.js';
-import tasksRouter from './routes/tasks.js';
 import recurringInvoiceTemplatesRouter from './routes/recurring-invoice-templates.js';
 import salaryComponentsRouter from './routes/salary-components.js';
 import employeesRouter from './routes/employees.js';
@@ -670,7 +669,6 @@ app.use('/api/tenants', tenantRouter); // Tenant management (for authenticated t
 app.use('/api/transaction-audit', transactionAuditRouter); // Transaction audit logs
 app.use('/api/quotations', quotationsRouter); // Quotations
 app.use('/api/documents', documentsRouter); // Documents
-app.use('/api/tasks', tasksRouter); // Tasks
 app.use('/api/recurring-invoice-templates', recurringInvoiceTemplatesRouter); // Recurring Invoice Templates
 app.use('/api/salary-components', salaryComponentsRouter); // Salary Components
 app.use('/api/employees', employeesRouter); // Employees

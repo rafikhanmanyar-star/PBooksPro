@@ -35,8 +35,6 @@ const DashboardPage = React.lazy(() => import('./components/dashboard/DashboardP
 const EnhancedLedgerPage = React.lazy(() => import('./components/transactions/EnhancedLedgerPage'));
 const SettingsPage = React.lazy(() => import('./components/settings/SettingsPage'));
 const ImportExportWizard = React.lazy(() => import('./components/settings/ImportExportWizard'));
-// DEPRECATED: Old ImportPage kept for reference but not used
-// const ImportPage = React.lazy(() => import('./components/settings/ImportPage'));
 const RentalManagementPage = React.lazy(() => import('./components/rentalManagement/RentalManagementPage'));
 const ProjectManagementPage = React.lazy(() => import('./components/projectManagement/ProjectManagementPage'));
 const InvestmentManagementPage = React.lazy(() => import('./components/investmentManagement/InvestmentManagementPage'));
@@ -44,7 +42,6 @@ const PMConfigPage = React.lazy(() => import('./components/pmConfig/PMConfigPage
 const LoanManagementPage = React.lazy(() => import('./components/loans/LoanManagementPage'));
 const VendorDirectoryPage = React.lazy(() => import('./components/vendors/VendorDirectoryPage'));
 const ContactsPage = React.lazy(() => import('./components/contacts/ContactsPage'));
-const TodoList = React.lazy(() => import('./components/TodoList').then(module => ({ default: module.TodoList })));
 const BudgetManagement = React.lazy(() => import('./components/settings/BudgetManagement'));
 const MobilePaymentsPage = React.lazy(() => import('./components/mobile/MobilePaymentsPage'));
 const GlobalPayrollPage = React.lazy(() => import('./components/payroll/GlobalPayrollPage')); // Added
@@ -58,7 +55,6 @@ const PAGE_GROUPS = {
   VENDORS: ['vendorDirectory'],
   CONTACTS: ['contacts'],
   BUDGETS: ['budgets'],
-  TASKS: ['tasks'],
   RENTAL: ['rentalManagement', 'rentalInvoices', 'rentalAgreements', 'ownerPayouts'],
   PROJECT: ['projectManagement', 'projectInvoices', 'bills'],
   INVESTMENT: ['investmentManagement'],
@@ -265,7 +261,6 @@ const App: React.FC = () => {
       case 'vendorDirectory': return 'Vendor Directory';
       case 'contacts': return 'Contacts';
       case 'budgets': return 'Budget Planner';
-      case 'tasks': return 'Tasks';
       case 'payroll': return 'Global Payroll';
       default: return 'PBooks Pro';
     }
@@ -386,7 +381,6 @@ const App: React.FC = () => {
               {renderPersistentPage('VENDORS', <VendorDirectoryPage />)}
               {renderPersistentPage('CONTACTS', <ContactsPage />)}
               {renderPersistentPage('BUDGETS', <BudgetManagement />)}
-              {renderPersistentPage('TASKS', <TodoList />)}
               {renderPersistentPage('RENTAL', <RentalManagementPage initialPage={currentPage} />)}
               {renderPersistentPage('PROJECT', <ProjectManagementPage initialPage={currentPage} />)}
               {renderPersistentPage('INVESTMENT', <InvestmentManagementPage />)}

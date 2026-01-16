@@ -19,7 +19,7 @@ import {
     LegacyPayslipsRepository, BonusRecordsRepository, PayrollAdjustmentsRepository,
     LoanAdvanceRecordsRepository, AttendanceRecordsRepository,
     TaxConfigurationsRepository, StatutoryConfigurationsRepository,
-    TransactionLogRepository, ErrorLogRepository, TasksRepository, AppSettingsRepository,
+    TransactionLogRepository, ErrorLogRepository, AppSettingsRepository,
     QuotationsRepository, DocumentsRepository, PMCycleAllocationsRepository
 } from './index';
 import { migrateTenantColumns } from '../tenantMigration';
@@ -59,7 +59,6 @@ export class AppStateRepository {
     private statutoryConfigurationsRepo = new StatutoryConfigurationsRepository();
     private transactionLogRepo = new TransactionLogRepository();
     private errorLogRepo = new ErrorLogRepository();
-    private tasksRepo = new TasksRepository();
     private quotationsRepo = new QuotationsRepository();
     private documentsRepo = new DocumentsRepository();
     private pmCycleAllocationsRepo = new PMCycleAllocationsRepository();
@@ -130,7 +129,6 @@ export class AppStateRepository {
         const statutoryConfigurations = this.statutoryConfigurationsRepo.findAll();
         const transactionLog = this.transactionLogRepo.findAll();
         const errorLog = this.errorLogRepo.findAll();
-        const tasks = this.tasksRepo.findAll();
         const quotations = this.quotationsRepo.findAll();
         const documents = this.documentsRepo.findAll();
         const pmCycleAllocations = this.pmCycleAllocationsRepo.findAll();
@@ -705,9 +703,8 @@ export class AppStateRepository {
                                 timestamp: err.timestamp || new Date().toISOString()
                             }));
                             this.errorLogRepo.saveAll(normalizedErrors as any);
-                            this.tasksRepo.saveAll(state.tasks || []);
                         } catch (e) {
-                            console.error('❌ Failed to save error log/tasks:', e);
+                            console.error('❌ Failed to save error log:', e);
                             throw e;
                         }
 

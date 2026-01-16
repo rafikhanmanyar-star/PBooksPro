@@ -81,7 +81,7 @@ export abstract class BaseRepository<T> {
      */
     protected shouldFilterByTenant(): boolean {
         // Filter by tenant for all tables except global ones
-        const globalTables = ['metadata', 'error_log', 'app_settings', 'license_settings', 'tasks'];
+        const globalTables = ['metadata', 'error_log', 'app_settings', 'license_settings'];
         return !globalTables.includes(this.tableName);
     }
 

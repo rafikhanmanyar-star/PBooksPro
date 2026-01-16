@@ -1,43 +1,9 @@
 import { Router } from 'express';
 import { AdminRequest } from '../../../middleware/adminAuthMiddleware.js';
 import { getDatabaseService } from '../../../services/databaseService.js';
-import { LicenseService } from '../../../services/licenseService.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
-
-// Generate license key (admin only)
-router.post('/generate', async (req: AdminRequest, res) => {
-  try {
-    const { tenantId, licenseType, deviceId } = req.body;
-    
-    if (!['monthly', 'yearly', 'perpetual'].includes(licenseType)) {
-      return res.status(400).json({ error: 'Invalid license type' });
-    }
-
-    if (!tenantId) {
-      return res.status(400).json({ error: 'Tenant ID required' });
-    }
-
-    const db = getDb();
-    const licenseService = new LicenseService(db);
-    const licenseKey = await licenseService.generateLicenseKey(
-      tenantId,
-      licenseType,
-      deviceId
-    );
-
-    res.json({
-      success: true,
-      licenseKey,
-      licenseType,
-      message: 'License key generated successfully'
-    });
-  } catch (error) {
-    console.error('Error generating license:', error);
-    res.status(500).json({ error: 'Failed to generate license key' });
-  }
-});
 
 // List all licenses
 router.get('/', async (req: AdminRequest, res) => {

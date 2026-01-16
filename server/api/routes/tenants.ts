@@ -27,31 +27,6 @@ router.get('/me', async (req: TenantRequest, res) => {
   }
 });
 
-// Activate license
-router.post('/activate-license', async (req: TenantRequest, res) => {
-  try {
-    const { licenseKey, deviceId } = req.body;
-    const tenantId = req.tenantId!;
-
-    const db = getDb();
-    const licenseService = new LicenseService(db);
-    const success = await licenseService.activateLicense(tenantId, licenseKey, deviceId);
-    
-    if (success) {
-      const licenseInfo = await licenseService.checkLicenseStatus(tenantId);
-      res.json({
-        success: true,
-        licenseInfo
-      });
-    } else {
-      res.status(400).json({ error: 'Invalid license key' });
-    }
-  } catch (error) {
-    console.error('License activation error:', error);
-    res.status(500).json({ error: 'License activation failed' });
-  }
-});
-
 // Check license status
 router.get('/license-status', async (req: TenantRequest, res) => {
   try {
@@ -63,50 +38,6 @@ router.get('/license-status', async (req: TenantRequest, res) => {
   } catch (error) {
     console.error('License status check error:', error);
     res.status(500).json({ error: 'Failed to check license status' });
-  }
-});
-
-// Renew license
-// Note: For expired licenses, use payment gateway instead. This endpoint is for admin/manual renewals.
-router.post('/renew-license', async (req: TenantRequest, res) => {
-  try {
-    const { licenseType, skipPaymentCheck } = req.body; // 'monthly' or 'yearly', skipPaymentCheck for admin use
-    const tenantId = req.tenantId!;
-
-    if (!['monthly', 'yearly'].includes(licenseType)) {
-      return res.status(400).json({ error: 'Invalid license type' });
-    }
-
-    const db = getDb();
-    const licenseService = new LicenseService(db);
-    
-    // Check if license is expired and payment is required
-    if (!skipPaymentCheck) {
-      const licenseInfo = await licenseService.checkLicenseStatus(tenantId);
-      if (licenseInfo.isExpired || licenseInfo.licenseStatus === 'expired') {
-        return res.status(402).json({
-          error: 'Payment required',
-          message: 'Your license has expired. Please use the payment gateway to renew.',
-          requiresPayment: true,
-          licenseInfo
-        });
-      }
-    }
-    
-    const success = await licenseService.renewLicense(tenantId, licenseType);
-    
-    if (success) {
-      const licenseInfo = await licenseService.checkLicenseStatus(tenantId);
-      res.json({
-        success: true,
-        licenseInfo
-      });
-    } else {
-      res.status(400).json({ error: 'License renewal failed' });
-    }
-  } catch (error) {
-    console.error('License renewal error:', error);
-    res.status(500).json({ error: 'License renewal failed' });
   }
 });
 

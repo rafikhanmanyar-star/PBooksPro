@@ -28,7 +28,6 @@ const Footer: React.FC<FooterProps> = ({ isPanelOpen, onNavigate }) => {
     { page: 'dashboard' as Page, label: 'Dashboard', icon: ICONS.home },
     { page: 'transactions' as Page, label: 'Ledger', icon: ICONS.trendingUp },
     { page: 'payments' as Page, label: 'Payments', icon: ICONS.dollarSign },
-    { page: 'tasks' as Page, label: 'Tasks', icon: ICONS.clipboard },
     { page: 'settings' as Page, label: 'Config', icon: ICONS.settings },
   ];
 

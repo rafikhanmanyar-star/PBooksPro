@@ -116,9 +116,6 @@ export const WS_EVENTS = {
   DOCUMENT_DELETED: 'document:deleted',
   
   // Tasks
-  TASK_CREATED: 'task:created',
-  TASK_UPDATED: 'task:updated',
-  TASK_DELETED: 'task:deleted',
   
   // Recurring Invoice Templates
   RECURRING_INVOICE_TEMPLATE_CREATED: 'recurring_invoice_template:created',

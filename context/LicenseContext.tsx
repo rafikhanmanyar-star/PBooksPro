@@ -1,7 +1,6 @@
 
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
 import useDatabaseLicense from '../hooks/useDatabaseLicense';
-import { validateLicenseKey } from '../services/licenseService';
 import { useAuth } from './AuthContext';
 
 interface LicenseContextType {
@@ -12,7 +11,6 @@ interface LicenseContextType {
     licenseKey: string;
     deviceId: string;
     installDate: string;
-    registerApp: (key: string) => boolean;
 }
 
 const LicenseContext = createContext<LicenseContextType | undefined>(undefined);
@@ -74,11 +72,7 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
             setInstallDate(date);
         }
 
-        // 3. Validate License against the specific Device ID
-        const valid = validateLicenseKey(licenseKey, currentDeviceId);
-        setIsRegistered(valid);
-
-        // 4. Calculate Trial Status
+        // 3. Calculate Trial Status (for offline/local use)
         const start = new Date(date);
         const now = new Date();
         const diffTime = Math.abs(now.getTime() - start.getTime());
@@ -86,7 +80,7 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
         const remaining = TRIAL_DURATION_DAYS - diffDays;
 
         setDaysRemaining(remaining > 0 ? remaining : 0);
-        setIsExpired(!valid && remaining <= 0);
+        setIsExpired(remaining <= 0);
 
         // 5. If user is authenticated and cloud license is active, override local status
         if (isAuthenticated && cloudLicense) {
@@ -107,16 +101,6 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     }, [installDate, licenseKey, deviceId, isAuthenticated, cloudLicense]);
 
-    const registerApp = (key: string): boolean => {
-        if (validateLicenseKey(key, deviceId)) {
-            setLicenseKey(key);
-            setIsRegistered(true);
-            setIsExpired(false);
-            return true;
-        }
-        return false;
-    };
-
     return (
         <LicenseContext.Provider value={{
             isRegistered,
@@ -125,8 +109,7 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
             daysRemaining,
             licenseKey,
             deviceId,
-            installDate,
-            registerApp
+            installDate
         }}>
             {children}
         </LicenseContext.Provider>

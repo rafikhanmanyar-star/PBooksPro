@@ -287,9 +287,6 @@ export class ErrorLogRepository extends BaseRepository<any> {
     constructor() { super('error_log'); }
 }
 
-export class TasksRepository extends BaseRepository<any> {
-    constructor() { super('tasks'); }
-}
 
 export class QuotationsRepository extends BaseRepository<any> {
     constructor() { super('quotations'); }

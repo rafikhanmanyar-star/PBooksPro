@@ -1,7 +1,6 @@
 
 import { BaseAdapter } from './baseAdapter';
 import { ExcelAdapter } from './excelAdapter';
-import { QuickBooksAdapter } from './quickbooksAdapter';
 import { CSVAdapter } from './csvAdapter';
 
 /**
@@ -13,7 +12,6 @@ export class AdapterRegistry {
     constructor() {
         // Register default adapters
         this.register(new ExcelAdapter());
-        this.register(new QuickBooksAdapter());
         this.register(new CSVAdapter());
     }
 
@@ -59,6 +57,6 @@ export const adapterRegistry = new AdapterRegistry();
 export { BaseAdapter } from './baseAdapter';
 export type { AdapterResult, AdapterConfig } from './baseAdapter';
 export { ExcelAdapter } from './excelAdapter';
-export { QuickBooksAdapter } from './quickbooksAdapter';
 export { CSVAdapter } from './csvAdapter';
+export { QuickBooksAdapter } from './quickbooksAdapter';
 

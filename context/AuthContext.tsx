@@ -37,7 +37,6 @@ interface AuthContextType extends AuthState {
   smartLogin: (username: string, password: string, tenantId: string) => Promise<void>;
   registerTenant: (data: TenantRegistrationData) => Promise<{ tenantId: string; trialDaysRemaining: number }>;
   logout: () => void;
-  activateLicense: (licenseKey: string) => Promise<void>;
   checkLicenseStatus: () => Promise<{ isValid: boolean; daysRemaining?: number; type?: string }>;
 }
 
@@ -649,29 +648,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   /**
-   * Activate a license key
-   */
-  const activateLicense = useCallback(async (licenseKey: string) => {
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
-
-    try {
-      await apiClient.post('/tenants/activate-license', {
-        licenseKey,
-      });
-
-      setState(prev => ({ ...prev, isLoading: false }));
-    } catch (error: any) {
-      const errorMessage = error.error || error.message || 'License activation failed';
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        error: errorMessage,
-      }));
-      throw error;
-    }
-  }, []);
-
-  /**
    * Check license status
    */
   const checkLicenseStatus = useCallback(async () => {
@@ -699,7 +675,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         smartLogin,
         registerTenant,
         logout,
-        activateLicense,
         checkLicenseStatus,
       }}
     >
@@ -726,7 +701,6 @@ export const useAuth = (): AuthContextType => {
       login: async () => {},
       registerTenant: async () => ({ tenantId: '', trialDaysRemaining: 0 }),
       logout: () => {},
-      activateLicense: async () => {},
       checkLicenseStatus: async () => ({ isValid: false }),
     };
   }

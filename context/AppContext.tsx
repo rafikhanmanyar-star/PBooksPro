@@ -1682,7 +1682,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                             PropertiesRepository, UnitsRepository, InvoicesRepository,
                                             BillsRepository, BudgetsRepository, RentalAgreementsRepository,
                                             ProjectAgreementsRepository, ContractsRepository,
-                                            QuotationsRepository, DocumentsRepository, TasksRepository,
+                                            QuotationsRepository, DocumentsRepository,
                                             RecurringTemplatesRepository, SalaryComponentsRepository,
                                             StaffRepository, EmployeesRepository, PayrollCyclesRepository,
                                             PayslipsRepository, LegacyPayslipsRepository, BonusRecordsRepository,
@@ -1708,7 +1708,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     const contractsRepo = new ContractsRepository();
                                     const quotationsRepo = new QuotationsRepository();
                                     const documentsRepo = new DocumentsRepository();
-                                    const tasksRepo = new TasksRepository();
                                     const recurringTemplatesRepo = new RecurringTemplatesRepository();
                                     const salaryComponentsRepo = new SalaryComponentsRepository();
                                     const staffRepo = new StaffRepository();
@@ -1742,7 +1741,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             contractsRepo.deleteAllUnfiltered();
                             quotationsRepo.deleteAllUnfiltered();
                             documentsRepo.deleteAllUnfiltered();
-                            tasksRepo.deleteAllUnfiltered();
                             recurringTemplatesRepo.deleteAllUnfiltered();
                             salaryComponentsRepo.deleteAllUnfiltered();
                             staffRepo.deleteAllUnfiltered();

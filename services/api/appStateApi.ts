@@ -23,7 +23,6 @@ import { ContractsApiRepository } from './repositories/contractsApi';
 import { SalesReturnsApiRepository } from './repositories/salesReturnsApi';
 import { QuotationsApiRepository } from './repositories/quotationsApi';
 import { DocumentsApiRepository } from './repositories/documentsApi';
-import { TasksApiRepository } from './repositories/tasksApi';
 import { RecurringInvoiceTemplatesApiRepository } from './repositories/recurringInvoiceTemplatesApi';
 import { SalaryComponentsApiRepository } from './repositories/salaryComponentsApi';
 import { EmployeesApiRepository } from './repositories/employeesApi';
@@ -59,7 +58,6 @@ export class AppStateApiService {
   private salesReturnsRepo: SalesReturnsApiRepository;
   private quotationsRepo: QuotationsApiRepository;
   private documentsRepo: DocumentsApiRepository;
-  private tasksRepo: TasksApiRepository;
   private recurringInvoiceTemplatesRepo: RecurringInvoiceTemplatesApiRepository;
   private salaryComponentsRepo: SalaryComponentsApiRepository;
   private employeesRepo: EmployeesApiRepository;
@@ -94,7 +92,6 @@ export class AppStateApiService {
     this.salesReturnsRepo = new SalesReturnsApiRepository();
     this.quotationsRepo = new QuotationsApiRepository();
     this.documentsRepo = new DocumentsApiRepository();
-    this.tasksRepo = new TasksApiRepository();
     this.recurringInvoiceTemplatesRepo = new RecurringInvoiceTemplatesApiRepository();
     this.salaryComponentsRepo = new SalaryComponentsApiRepository();
     this.employeesRepo = new EmployeesApiRepository();
@@ -223,10 +220,6 @@ export class AppStateApiService {
           console.error('Error loading documents from API:', err);
           return [];
         }),
-        this.tasksRepo.findAll().catch(err => {
-          console.error('Error loading tasks from API:', err);
-          return [];
-        }),
         this.recurringInvoiceTemplatesRepo.findAll().catch(err => {
           console.error('Error loading recurring invoice templates from API:', err);
           return [];
@@ -303,7 +296,6 @@ export class AppStateApiService {
         salesReturns: salesReturns.length,
         quotations: quotations.length,
         documents: documents.length,
-        tasks: tasks.length,
         recurringInvoiceTemplates: recurringInvoiceTemplates.length,
         salaryComponents: salaryComponents.length,
         employees: employees.length,
@@ -692,7 +684,6 @@ export class AppStateApiService {
         salesReturns: normalizedSalesReturns,
         quotations: quotations || [],
         documents: documents || [],
-        tasks: tasks || [],
         recurringInvoiceTemplates: recurringInvoiceTemplates || [],
         salaryComponents: salaryComponents || [],
         employees: employees || [],

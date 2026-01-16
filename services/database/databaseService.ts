@@ -684,7 +684,7 @@ class DatabaseService {
             'employees', 'payroll_cycles', 'payslips', 'legacy_payslips',
             'bonus_records', 'payroll_adjustments', 'loan_advance_records',
             'attendance_records', 'tax_configurations', 'statutory_configurations',
-            'transaction_log', 'error_log', 'tasks', 'app_settings', 'license_settings',
+                'transaction_log', 'error_log', 'app_settings', 'license_settings',
             'project_agreement_units', 'contract_categories', 'pm_cycle_allocations'
         ];
 
@@ -946,7 +946,7 @@ class DatabaseService {
                 'employees', 'payroll_cycles', 'payslips', 'legacy_payslips',
                 'bonus_records', 'payroll_adjustments', 'loan_advance_records',
                 'attendance_records', 'tax_configurations', 'statutory_configurations',
-                'transaction_log', 'error_log', 'tasks', 'app_settings', 'license_settings',
+                'transaction_log', 'error_log', 'app_settings', 'license_settings',
                 'chat_messages'
             ];
             

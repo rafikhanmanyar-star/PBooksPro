@@ -881,18 +881,16 @@ const HELP_TOPICS: HelpTopic[] = [
         )
     },
     {
-        id: 'budgets-tasks',
-        title: 'Budget Planner & Tasks',
+        id: 'budgets',
+        title: 'Budget Planner',
         category: 'Advanced Tools',
-        keywords: ['budget', 'budget planner', 'tasks', 'todo', 'planning'],
+        keywords: ['budget', 'budget planner', 'planning'],
         content: (
             <div className="space-y-3 text-sm text-slate-600">
-                <p>Plan budgets and manage tasks to stay organized.</p>
+                <p>Plan budgets to stay organized.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Budget Planning:</strong> Budget Planner page. Set monthly or annual budgets per category. System compares actual spending vs. budget.</li>
                     <li><strong>Budget Tracking:</strong> Dashboard shows budget status. Budget reports show variance analysis (over/under budget).</li>
-                    <li><strong>Task Management:</strong> Tasks page for to-do lists. Create tasks with priority (Low, Medium, High), mark as complete.</li>
-                    <li><strong>Task Features:</strong> Add descriptions, set priorities, filter by status. Simple but effective task tracking.</li>
                     <li><strong>Budget Reports:</strong> View budget performance reports showing actual vs. budgeted amounts with variance percentages.</li>
                     <li><strong>Integration:</strong> Budgets work with transaction categories. Actual amounts pull from General Ledger automatically.</li>
                 </ul>

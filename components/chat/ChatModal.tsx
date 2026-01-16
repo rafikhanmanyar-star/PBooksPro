@@ -4,7 +4,7 @@ import { ChatMessagesRepository } from '../../services/database/repositories';
 import { useAuth } from '../../context/AuthContext';
 import { useAppContext } from '../../context/AppContext';
 import { apiClient } from '../../services/api/client';
-import { getWebSocketClient } from '../../services/websocket/websocketClient';
+import { getWebSocketClient } from '../../services/websocketClient';
 
 interface OnlineUser {
     id: string;
@@ -48,7 +48,11 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
 
     // Connect to WebSocket on mount
     useEffect(() => {
-        wsClient.connect();
+        const token = apiClient.getToken();
+        const tenantId = apiClient.getTenantId();
+        if (token && tenantId) {
+            wsClient.connect(token, tenantId);
+        }
         return () => {
             // Don't disconnect on unmount - keep connection alive for other components
         };

@@ -1,5 +1,6 @@
 
 import { AppState } from '../types';
+import { normalizeNameForComparison } from '../utils/stringUtils';
 import { IMPORT_SCHEMAS, ImportSchema, ImportMaps } from './importSchemas';
 
 export interface ValidationError {
@@ -31,12 +32,6 @@ export interface ImportValidationResult {
         skippedRows: number;
     };
 }
-
-// Helper for name normalization
-const normalizeNameForComparison = (name: string): string => {
-    if (!name) return '';
-    return String(name).trim().replace(/\s+/g, ' ').toLowerCase();
-};
 
 // Helper to normalize field names for comparison
 const normalizeKey = (key: string) => key.toString().trim().replace(/\s+/g, '').replace(/_/g, '').toLowerCase();

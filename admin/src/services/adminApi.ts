@@ -105,19 +105,6 @@ class AdminApi {
   }
 
   // License Management
-  async generateLicense(data: { tenantId: string; licenseType: string; deviceId?: string }) {
-    const response = await fetch(`${ADMIN_API_URL}/licenses/generate`, {
-      method: 'POST',
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify(data),
-    });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to generate license');
-    }
-    return response.json();
-  }
-
   async getLicenses(filters?: any) {
     const params = new URLSearchParams(filters);
     const response = await fetch(`${ADMIN_API_URL}/licenses?${params}`, {

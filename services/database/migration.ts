@@ -124,7 +124,6 @@ export async function migrateFromLocalStorage(
             employees: oldState.employees?.length || 0,
             payrollCycles: oldState.payrollCycles?.length || 0,
             payslips: oldState.payslips?.length || 0,
-            tasks: oldState.tasks?.length || 0
         };
 
         // Set migration flag
@@ -157,38 +156,6 @@ export async function migrateFromLocalStorage(
 /**
  * Migrate tasks from localStorage
  */
-export async function migrateTasks(): Promise<void> {
-    try {
-        const dbService = getDatabaseService();
-        await dbService.initialize();
-
-        const tasksJson = localStorage.getItem('tasks');
-        if (!tasksJson) return;
-
-        const tasks = JSON.parse(tasksJson);
-        if (!Array.isArray(tasks)) return;
-
-        // Convert tasks to database format
-        tasks.forEach((task: any) => {
-            dbService.execute(
-                `INSERT OR REPLACE INTO tasks (id, text, completed, priority, created_at, updated_at) 
-                 VALUES (?, ?, ?, ?, ?, ?)`,
-                [
-                    task.id,
-                    task.text,
-                    task.completed ? 1 : 0,
-                    task.priority || 'medium',
-                    task.createdAt || Date.now(),
-                    Date.now()
-                ]
-            );
-        });
-
-        dbService.save();
-    } catch (error) {
-        console.error('Failed to migrate tasks:', error);
-    }
-}
 
 /**
  * Migrate license settings from localStorage
@@ -256,7 +223,6 @@ export async function runAllMigrations(
         // Migrate tasks
         if (mainResult.migrated) {
             onProgress?.(95, 'Migrating additional data...');
-            await migrateTasks();
             await migrateLicenseSettings();
         }
 
