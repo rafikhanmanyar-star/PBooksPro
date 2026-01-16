@@ -237,6 +237,10 @@ const App: React.FC = () => {
           const token = apiClient.getToken();
           const tenantId = apiClient.getTenantId();
           if (token && tenantId) {
+            if (apiClient.isTokenExpired()) {
+              console.warn('[App] ⚠️ WebSocket not connected - token expired');
+              return;
+            }
             wsClient.connect(token, tenantId);
             console.log('[App] ✅ WebSocket client connecting...');
           } else {
@@ -287,6 +291,10 @@ const App: React.FC = () => {
       const token = apiClient.getToken();
       const tenantId = apiClient.getTenantId();
       if (token && tenantId) {
+        if (apiClient.isTokenExpired()) {
+          console.warn('[App] ⚠️ WebSocket not connected - token expired');
+          return;
+        }
         wsClient.connect(token, tenantId);
       } else {
         console.warn('[App] ⚠️ WebSocket not connected - missing token or tenant ID');

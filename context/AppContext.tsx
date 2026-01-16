@@ -2919,6 +2919,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const token = apiClient.getToken();
                 const tenantId = apiClient.getTenantId();
                 if (!token || !tenantId) return;
+                if (apiClient.isTokenExpired()) {
+                    console.warn('⚠️ Token expired, skipping WebSocket connection');
+                    return;
+                }
 
                 // Check if real-time sync should be enabled
                 // Sync is only enabled if there are 2+ active users in the organization

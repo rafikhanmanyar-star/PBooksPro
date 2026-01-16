@@ -56,6 +56,14 @@ export class ApiClient {
     if (typeof window !== 'undefined') {
       this.token = localStorage.getItem('auth_token');
       this.tenantId = localStorage.getItem('tenant_id');
+      const storedApiBase = localStorage.getItem('auth_api_base');
+      if (storedApiBase && storedApiBase !== this.baseUrl) {
+        if (shouldLog) {
+          logger.warnCategory('auth', '⚠️ Auth base URL changed, clearing stored auth');
+        }
+        this.clearAuth();
+        return;
+      }
       
       // Only log if explicitly requested (during login operations)
       if (shouldLog && this.token) {
@@ -73,6 +81,7 @@ export class ApiClient {
     if (typeof window !== 'undefined') {
       localStorage.setItem('auth_token', token);
       localStorage.setItem('tenant_id', tenantId);
+      localStorage.setItem('auth_api_base', this.baseUrl);
       // Only log during login operations
       if (shouldLog) {
         logger.logCategory('auth', '🔑 Auth token saved to localStorage and ApiClient instance');
@@ -89,6 +98,7 @@ export class ApiClient {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('auth_token');
       localStorage.removeItem('tenant_id');
+      localStorage.removeItem('auth_api_base');
     }
   }
 
