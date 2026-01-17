@@ -55,13 +55,30 @@ router.get('/', async (req: TenantRequest, res) => {
 
     query += ' ORDER BY start_date DESC';
 
+    // Log query for debugging (remove in production)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[Rental Agreements] Query:', query);
+      console.log('[Rental Agreements] Params:', params);
+    }
+
     const agreements = await db.query(query, params);
     // Transform database results to camelCase for API response
     const transformedAgreements = agreements.map(transformRentalAgreement);
     res.json(transformedAgreements);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching rental agreements:', error);
-    res.status(500).json({ error: 'Failed to fetch rental agreements' });
+    console.error('Error details:', {
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack,
+      query: 'SELECT * FROM rental_agreements WHERE org_id = $1',
+      tenantId: req.tenantId
+    });
+    res.status(500).json({ 
+      error: 'Failed to fetch rental agreements',
+      message: error?.message || 'Unknown error',
+      code: error?.code
+    });
   }
 });
 

@@ -198,6 +198,39 @@ const TasksPage: React.FC = () => {
     });
   }, [tasks, statusFilter, typeFilter, categoryFilter, searchQuery]);
 
+  // Group tasks by status for Kanban columns
+  const tasksByStatus = useMemo(() => {
+    const grouped: Record<TaskStatus, Task[]> = {
+      'Not Started': [],
+      'In Progress': [],
+      'Review': [],
+      'Completed': [],
+    };
+    filteredTasks.forEach(task => {
+      grouped[task.status].push(task);
+    });
+    return grouped;
+  }, [filteredTasks]);
+
+  // Status configuration for columns
+  const statusConfig: Array<{ status: TaskStatus; label: string; color: string; bgColor: string }> = [
+    { status: 'Not Started', label: 'NOT STARTED', color: 'text-red-600', bgColor: 'bg-red-600' },
+    { status: 'In Progress', label: 'IN PROGRESS', color: 'text-blue-600', bgColor: 'bg-blue-600' },
+    { status: 'Review', label: 'REVIEW', color: 'text-orange-600', bgColor: 'bg-orange-600' },
+    { status: 'Completed', label: 'COMPLETED', color: 'text-green-600', bgColor: 'bg-green-600' },
+  ];
+
+  // Get user initials for avatar
+  const getUserInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+  };
+
+  // Handle creating task in specific status column
+  const handleCreateTaskInColumn = (status: TaskStatus) => {
+    setFormStatus(status);
+    setIsFormExpanded(true);
+  };
+
   // Get unique categories
   const categories = useMemo(() => {
     const cats = new Set(tasks.map(t => t.category));
@@ -388,252 +421,317 @@ const TasksPage: React.FC = () => {
   const employeeItems = employees.map(emp => ({ id: emp.id, name: emp.name }));
 
   return (
-    <div className="p-4 md:p-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">My Tasks</h1>
-          {isAdmin && (
-            <p className="text-sm text-gray-600 mt-1">
-              Organization Admin - You can assign tasks to employees
-            </p>
-          )}
+    <div className="h-full flex flex-col" style={{ backgroundColor: '#F4F6F9' }}>
+      {/* Breadcrumb */}
+      <div className="px-6 pt-4 pb-2">
+        <div className="text-sm text-gray-500 flex items-center gap-2">
+          <span>Tasks</span>
+          <span>{ICONS.chevronRight}</span>
+          <span className="text-gray-700">My Tasks</span>
         </div>
-        <Button onClick={() => setIsFormExpanded(!isFormExpanded)}>
-          {isFormExpanded ? ICONS.x : ICONS.plus}
-          <span>{isFormExpanded ? 'Cancel' : 'Create Task'}</span>
-        </Button>
+      </div>
+
+      {/* User Header Section */}
+      <div className="px-6 py-4 bg-white border-b border-gray-200">
+        <div className="flex items-center gap-4">
+          {/* Profile Picture */}
+          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow-sm">
+            {user?.name ? getUserInitials(user.name) : 'U'}
+          </div>
+          
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold text-gray-800">{user?.name || 'User'}'s Tasks</h1>
+            <div className="flex items-center gap-3 mt-1">
+              <span className="text-sm text-gray-600">{user?.username || ''}</span>
+              {user?.role && (
+                <>
+                  <span className="text-gray-400">•</span>
+                  <div className="flex items-center gap-1.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-500">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                      <path d="M2 12h20"></path>
+                    </svg>
+                    <span className="text-sm text-gray-600">{user.role}</span>
+                  </div>
+                </>
+              )}
+              <span className="px-2.5 py-0.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-full">
+                Total tasks {tasks.length}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Control Buttons Row */}
+      <div className="px-6 py-3 bg-white border-b border-gray-200 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          {/* Filter Button */}
+          <button className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+            <span>Filter</span>
+            {ICONS.chevronDown}
+          </button>
+
+          {/* Sort By Button */}
+          <button className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+            <span>Sort By</span>
+            {ICONS.chevronDown}
+          </button>
+
+          {/* Group By Button */}
+          <button className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2 relative">
+            <span>Group By: Status</span>
+            {ICONS.chevronDown}
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-600 rounded"></div>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* View Selector */}
+          <button className="px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-sm font-medium text-blue-700 hover:bg-blue-100 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="8" y1="6" x2="21" y2="6"></line>
+              <line x1="8" y1="12" x2="21" y2="12"></line>
+              <line x1="8" y1="18" x2="21" y2="18"></line>
+              <line x1="3" y1="6" x2="3.01" y2="6"></line>
+              <line x1="3" y1="12" x2="3.01" y2="12"></line>
+              <line x1="3" y1="18" x2="3.01" y2="18"></line>
+            </svg>
+            <span>Kanban</span>
+            {ICONS.chevronDown}
+          </button>
+
+          {/* Create Task Button */}
+          <button 
+            onClick={() => setIsFormExpanded(!isFormExpanded)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center gap-2 shadow-sm"
+          >
+            {ICONS.plus}
+            <span>Create Task</span>
+          </button>
+        </div>
       </div>
 
       {/* Compact Create Task Form */}
       {isFormExpanded && (
-        <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6 shadow-sm">
-          <form onSubmit={handleCreateTask} className="space-y-3">
-            {formError && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">
-                {formError}
-              </div>
-            )}
-            
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-              {/* Title - Takes 4 columns */}
-              <div className="md:col-span-4">
-                <Input
-                  placeholder="Task title..."
-                  value={formTitle}
-                  onChange={(e) => setFormTitle(e.target.value)}
-                  required
-                  className="text-sm"
-                />
-              </div>
-
-              {/* Type - Takes 2 columns */}
-              <div className="md:col-span-2">
-                <Select
-                  value={formType}
-                  onChange={(e) => setFormType(e.target.value as TaskType)}
-                  disabled={!isAdmin}
-                  className="text-sm"
-                >
-                  <option value="Personal">Personal</option>
-                  {isAdmin && <option value="Assigned">Assigned</option>}
-                </Select>
-              </div>
-
-              {/* Category - Takes 2 columns */}
-              <div className="md:col-span-2">
-                <Select
-                  value={formCategory}
-                  onChange={(e) => setFormCategory(e.target.value)}
-                  className="text-sm"
-                >
-                  {TASK_CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-
-              {/* Start Date - Takes 2 columns */}
-              <div className="md:col-span-2">
-                <DatePicker
-                  value={formStartDate}
-                  onChange={(date) => setFormStartDate(formatDateForPicker(date))}
-                  placeholder="Start date"
-                  className="text-sm"
-                />
-              </div>
-
-              {/* Deadline - Takes 2 columns */}
-              <div className="md:col-span-2">
-                <DatePicker
-                  value={formHardDeadline}
-                  onChange={(date) => setFormHardDeadline(formatDateForPicker(date))}
-                  placeholder="Deadline"
-                  className="text-sm"
-                />
-              </div>
-            </div>
-
-            {/* Second Row - Optional Fields */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-              {/* Assign To (only for Assigned tasks) */}
-              {formType === 'Assigned' && isAdmin && (
-                <div className="md:col-span-3">
-                  {employees.length === 0 ? (
-                    <div className="text-sm text-gray-500 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50">
-                      Loading employees...
-                    </div>
-                  ) : (
-                    <ComboBox
-                      items={employeeItems}
-                      selectedId={formAssignedToId}
-                      onSelect={(item) => setFormAssignedToId(item?.id || '')}
-                      placeholder="Assign to..."
-                      allowAddNew={false}
-                      className="text-sm"
-                    />
-                  )}
+        <div className="px-6 py-4 bg-white border-b border-gray-200">
+          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm max-w-4xl">
+            <form onSubmit={handleCreateTask} className="space-y-3">
+              {formError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">
+                  {formError}
                 </div>
               )}
+              
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                <div className="md:col-span-4">
+                  <Input
+                    placeholder="Task title..."
+                    value={formTitle}
+                    onChange={(e) => setFormTitle(e.target.value)}
+                    required
+                    className="text-sm"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <Select
+                    value={formType}
+                    onChange={(e) => setFormType(e.target.value as TaskType)}
+                    disabled={!isAdmin}
+                    className="text-sm"
+                  >
+                    <option value="Personal">Personal</option>
+                    {isAdmin && <option value="Assigned">Assigned</option>}
+                  </Select>
+                </div>
+                <div className="md:col-span-2">
+                  <Select
+                    value={formCategory}
+                    onChange={(e) => setFormCategory(e.target.value)}
+                    className="text-sm"
+                  >
+                    {TASK_CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="md:col-span-2">
+                  <DatePicker
+                    value={formStartDate}
+                    onChange={(date) => setFormStartDate(formatDateForPicker(date))}
+                    placeholder="Start date"
+                    className="text-sm"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <DatePicker
+                    value={formHardDeadline}
+                    onChange={(date) => setFormHardDeadline(formatDateForPicker(date))}
+                    placeholder="Deadline"
+                    className="text-sm"
+                  />
+                </div>
+              </div>
 
-              {/* KPI Goal */}
-              <div className="md:col-span-3">
-                <Input
-                  placeholder="KPI Goal (optional)"
-                  value={formKpiGoal}
-                  onChange={(e) => setFormKpiGoal(e.target.value)}
-                  className="text-sm"
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                {formType === 'Assigned' && isAdmin && (
+                  <div className="md:col-span-3">
+                    {employees.length === 0 ? (
+                      <div className="text-sm text-gray-500 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50">
+                        Loading employees...
+                      </div>
+                    ) : (
+                      <ComboBox
+                        items={employeeItems}
+                        selectedId={formAssignedToId}
+                        onSelect={(item) => setFormAssignedToId(item?.id || '')}
+                        placeholder="Assign to..."
+                        allowAddNew={false}
+                        className="text-sm"
+                      />
+                    )}
+                  </div>
+                )}
+                <div className="md:col-span-3">
+                  <Input
+                    placeholder="KPI Goal (optional)"
+                    value={formKpiGoal}
+                    onChange={(e) => setFormKpiGoal(e.target.value)}
+                    className="text-sm"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <Input
+                    type="number"
+                    placeholder="Target"
+                    value={formKpiTargetValue}
+                    onChange={(e) => setFormKpiTargetValue(e.target.value)}
+                    className="text-sm"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <Input
+                    placeholder="Unit"
+                    value={formKpiUnit}
+                    onChange={(e) => setFormKpiUnit(e.target.value)}
+                    className="text-sm"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <Select
+                    value={formStatus}
+                    onChange={(e) => setFormStatus(e.target.value as TaskStatus)}
+                    className="text-sm"
+                  >
+                    <option value="Not Started">Not Started</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Review">Review</option>
+                    <option value="Completed">Completed</option>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <textarea
+                  value={formDescription}
+                  onChange={(e) => setFormDescription(e.target.value)}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500 text-sm"
+                  rows={2}
+                  placeholder="Description (optional)"
                 />
               </div>
 
-              {/* KPI Target Value */}
-              <div className="md:col-span-2">
-                <Input
-                  type="number"
-                  placeholder="Target"
-                  value={formKpiTargetValue}
-                  onChange={(e) => setFormKpiTargetValue(e.target.value)}
-                  className="text-sm"
-                />
-              </div>
-
-              {/* KPI Unit */}
-              <div className="md:col-span-2">
-                <Input
-                  placeholder="Unit"
-                  value={formKpiUnit}
-                  onChange={(e) => setFormKpiUnit(e.target.value)}
-                  className="text-sm"
-                />
-              </div>
-
-              {/* Status */}
-              <div className="md:col-span-2">
-                <Select
-                  value={formStatus}
-                  onChange={(e) => setFormStatus(e.target.value as TaskStatus)}
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  onClick={resetForm}
+                  variant="secondary"
+                  disabled={isSubmitting}
                   className="text-sm"
                 >
-                  <option value="Not Started">Not Started</option>
-                  <option value="In Progress">In Progress</option>
-                  <option value="Review">Review</option>
-                  <option value="Completed">Completed</option>
-                </Select>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmitting} className="text-sm">
+                  {isSubmitting ? 'Creating...' : 'Create Task'}
+                </Button>
               </div>
-            </div>
-
-            {/* Description (optional, collapsible) */}
-            <div>
-              <textarea
-                value={formDescription}
-                onChange={(e) => setFormDescription(e.target.value)}
-                className="block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500 text-sm"
-                rows={2}
-                placeholder="Description (optional)"
-              />
-            </div>
-
-            {/* Submit Button */}
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                onClick={resetForm}
-                variant="secondary"
-                disabled={isSubmitting}
-                className="text-sm"
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting} className="text-sm">
-                {isSubmitting ? 'Creating...' : 'Create Task'}
-              </Button>
-            </div>
-          </form>
+            </form>
+          </div>
         </div>
       )}
 
-      {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <Input
-          placeholder="Search tasks..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          icon={ICONS.search}
-        />
-        <Select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as TaskStatus | 'All')}
-        >
-          <option value="All">All Statuses</option>
-          <option value="Not Started">Not Started</option>
-          <option value="In Progress">In Progress</option>
-          <option value="Review">Review</option>
-          <option value="Completed">Completed</option>
-        </Select>
-        <Select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value as TaskType | 'All')}
-        >
-          <option value="All">All Types</option>
-          <option value="Personal">Personal</option>
-          <option value="Assigned">Assigned</option>
-        </Select>
-        <Select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-        >
-          <option value="All">All Categories</option>
-          {categories.map((cat) => (
-            <option key={cat} value={cat}>
-              {cat}
-            </option>
-          ))}
-        </Select>
+      {/* Kanban Board */}
+      <div className="flex-1 overflow-x-auto px-6 py-4">
+        {loading ? (
+          <div className="text-center py-12">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
+            <p className="text-sm text-gray-600">Loading tasks...</p>
+          </div>
+        ) : (
+          <div className="flex gap-4 h-full min-w-max">
+            {statusConfig.map(({ status, label, color, bgColor }) => {
+              const columnTasks = tasksByStatus[status];
+              return (
+                <div key={status} className="flex-shrink-0 w-72 flex flex-col">
+                  {/* Column Header */}
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <h3 className={`text-sm font-bold uppercase ${color}`}>
+                          {label}
+                        </h3>
+                        {status === 'Completed' && (
+                          <span className="text-green-600">{ICONS.checkCircle}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-full">
+                          = {columnTasks.length}
+                        </span>
+                        <button
+                          onClick={() => handleCreateTaskInColumn(status)}
+                          className="text-blue-600 hover:text-blue-700 p-1"
+                          title="Create new task"
+                        >
+                          {ICONS.plus}
+                        </button>
+                      </div>
+                    </div>
+                    <div className={`h-0.5 ${bgColor} rounded`}></div>
+                  </div>
+
+                  {/* Task Cards */}
+                  <div className="flex-1 overflow-y-auto space-y-3 min-h-[200px] pr-1">
+                    {columnTasks.map((task) => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        onClick={() => handleViewTask(task)}
+                        onCheckIn={canCheckIn(task) ? () => handleCheckIn(task) : undefined}
+                        canEdit={canEditTask(task)}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Inline Create Task Link */}
+                  {status !== 'Completed' && (
+                    <button
+                      onClick={() => handleCreateTaskInColumn(status)}
+                      className="mt-3 text-left text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1.5 py-2"
+                    >
+                      {ICONS.plus}
+                      <span>Create new task</span>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
-
-      {/* Tasks List */}
-      {loading ? (
-        <div className="text-center py-8">Loading tasks...</div>
-      ) : filteredTasks.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
-          {tasks.length === 0
-            ? 'No tasks found. Create your first task to get started!'
-            : 'No tasks match your filters.'}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredTasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              onClick={() => handleViewTask(task)}
-              onCheckIn={canCheckIn(task) ? () => handleCheckIn(task) : undefined}
-              canEdit={canEditTask(task)}
-            />
-          ))}
-        </div>
-      )}
 
       {/* Edit Task Modal */}
       <Modal
