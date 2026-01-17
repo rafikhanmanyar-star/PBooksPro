@@ -125,11 +125,22 @@ const TasksPage: React.FC = () => {
     }
   }, [isAdmin]);
 
+  // Helper function to convert Date to YYYY-MM-DD format (for DatePicker)
+  const formatDateForPicker = (date: Date | string): string => {
+    if (!date) return '';
+    const d = typeof date === 'string' ? new Date(date) : date;
+    if (isNaN(d.getTime())) return '';
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   // Initialize form start date when form is expanded and load employees if admin
   useEffect(() => {
     if (isFormExpanded) {
       if (!formStartDate) {
-        setFormStartDate(formatDate(new Date()));
+        setFormStartDate(formatDateForPicker(new Date()));
       }
       // Reload employees when form is expanded (in case new users were added)
       if (isAdmin && employees.length === 0) {
@@ -447,7 +458,7 @@ const TasksPage: React.FC = () => {
               <div className="md:col-span-2">
                 <DatePicker
                   value={formStartDate}
-                  onChange={(date) => setFormStartDate(formatDate(date))}
+                  onChange={(date) => setFormStartDate(formatDateForPicker(date))}
                   placeholder="Start date"
                   className="text-sm"
                 />
@@ -457,7 +468,7 @@ const TasksPage: React.FC = () => {
               <div className="md:col-span-2">
                 <DatePicker
                   value={formHardDeadline}
-                  onChange={(date) => setFormHardDeadline(formatDate(date))}
+                  onChange={(date) => setFormHardDeadline(formatDateForPicker(date))}
                   placeholder="Deadline"
                   className="text-sm"
                 />

@@ -71,39 +71,83 @@ export async function migrateRentalTenantIdToContactId(db: any): Promise<{ succe
                 const hasContactId = columns.some((col: any) => col.name === 'contact_id');
                 const hasTenantId = columns.some((col: any) => col.name === 'tenant_id');
 
-                if (hasContactId) {
-                  // Already migrated
+                if (hasContactId && !hasTenantId) {
+                  // Already migrated - table has contact_id but not tenant_id
                   db.run('COMMIT');
-                  resolve({ success: true, message: 'Migration already completed - contact_id column exists' });
+                  resolve({ success: true, message: 'Migration already completed - contact_id column exists, tenant_id not found' });
+                  return;
+                }
+
+                if (!hasContactId && !hasTenantId) {
+                  // Neither column exists - table might be empty or using different schema
+                  // Try to add contact_id column if table has rows
+                  db.run(
+                    'ALTER TABLE rental_agreements ADD COLUMN contact_id TEXT',
+                    (err: Error | null) => {
+                      if (err) {
+                        db.run('ROLLBACK');
+                        resolve({ success: false, message: `Failed to add contact_id column: ${err.message}` });
+                        return;
+                      }
+                      db.run('COMMIT');
+                      resolve({ success: true, message: 'Added contact_id column - no tenant_id found to migrate' });
+                    }
+                  );
                   return;
                 }
 
                 if (!hasTenantId) {
-                  // No tenant_id column, nothing to migrate
+                  // No tenant_id column, nothing to migrate (but contact_id might already exist)
                   db.run('COMMIT');
                   resolve({ success: true, message: 'No tenant_id column found, nothing to migrate' });
                   return;
                 }
 
-                // Step 1: Add contact_id column
-                db.run(
-                  'ALTER TABLE rental_agreements ADD COLUMN contact_id TEXT',
-                  (err: Error | null) => {
+                // Migration needed: table has tenant_id, need to convert to contact_id
+                // Double-check that tenant_id actually exists before proceeding
+                if (!hasTenantId) {
+                  // Should not reach here, but double-check for safety
+                  db.run('COMMIT');
+                  resolve({ success: true, message: 'No tenant_id column found (double-check), nothing to migrate' });
+                  return;
+                }
+
+                // Step 1: Add contact_id column if it doesn't exist
+                const addColumnQuery = hasContactId 
+                  ? 'SELECT 1' // Skip if already exists - use a no-op query
+                  : 'ALTER TABLE rental_agreements ADD COLUMN contact_id TEXT';
+                
+                db.run(addColumnQuery, (err: Error | null) => {
+                  if (err && !hasContactId) {
+                    db.run('ROLLBACK');
+                    resolve({ success: false, message: `Failed to add contact_id column: ${err.message}` });
+                    return;
+                  }
+
+                  // Step 2: Copy data from tenant_id to contact_id (only if contact_id is NULL or doesn't exist)
+                  // Only execute if tenant_id exists (should always be true at this point, but double-check)
+                  if (!hasTenantId) {
+                    db.run('COMMIT');
+                    resolve({ success: true, message: 'Skipping data copy - tenant_id column not found' });
+                    return;
+                  }
+
+                  const copyQuery = hasContactId
+                    ? 'UPDATE rental_agreements SET contact_id = tenant_id WHERE contact_id IS NULL AND tenant_id IS NOT NULL'
+                    : 'UPDATE rental_agreements SET contact_id = tenant_id WHERE tenant_id IS NOT NULL';
+                  
+                  db.run(copyQuery, (err: Error | null) => {
                     if (err) {
+                      // If error is "no such column: tenant_id", the column check was wrong - skip migration
+                      if (err.message && err.message.includes('no such column: tenant_id')) {
+                        db.run('COMMIT');
+                        resolve({ success: true, message: 'Skipped migration - tenant_id column does not exist (detected during copy)' });
+                        return;
+                      }
                       db.run('ROLLBACK');
-                      resolve({ success: false, message: `Failed to add contact_id column: ${err.message}` });
+                      resolve({ success: false, message: `Failed to copy data from tenant_id to contact_id: ${err.message}` });
                       return;
                     }
-
-                    // Step 2: Copy data from tenant_id to contact_id
-                    db.run(
-                      'UPDATE rental_agreements SET contact_id = tenant_id WHERE contact_id IS NULL',
-                      (err: Error | null) => {
-                        if (err) {
-                          db.run('ROLLBACK');
-                          reject(err);
-                          return;
-                        }
 
                         // Step 3: Drop old foreign key constraint (SQLite doesn't support DROP CONSTRAINT directly)
                         // We need to recreate the table
@@ -133,7 +177,7 @@ export async function migrateRentalTenantIdToContactId(db: any): Promise<{ succe
                           (err: Error | null) => {
                             if (err) {
                               db.run('ROLLBACK');
-                              reject(err);
+                              resolve({ success: false, message: `Failed to create new table: ${err.message}` });
                               return;
                             }
 
@@ -147,7 +191,7 @@ export async function migrateRentalTenantIdToContactId(db: any): Promise<{ succe
                               (err: Error | null) => {
                                 if (err) {
                                   db.run('ROLLBACK');
-                                  reject(err);
+                                  resolve({ success: false, message: `Failed to copy data to new table: ${err.message}` });
                                   return;
                                 }
 
@@ -155,7 +199,7 @@ export async function migrateRentalTenantIdToContactId(db: any): Promise<{ succe
                                 db.run('DROP TABLE rental_agreements', (err: Error | null) => {
                                   if (err) {
                                     db.run('ROLLBACK');
-                                    reject(err);
+                                    resolve({ success: false, message: `Failed to drop old table: ${err.message}` });
                                     return;
                                   }
 

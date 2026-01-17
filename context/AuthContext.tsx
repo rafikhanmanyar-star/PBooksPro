@@ -35,6 +35,7 @@ interface AuthContextType extends AuthState {
   login: (username: string, password: string, tenantId: string) => Promise<void>;
   lookupTenants: (organizationEmail: string) => Promise<Array<{ id: string; name: string; company_name: string; email: string }>>;
   smartLogin: (username: string, password: string, tenantId: string) => Promise<void>;
+  unifiedLogin: (organizationEmail: string, username: string, password: string) => Promise<void>;
   registerTenant: (data: TenantRegistrationData) => Promise<{ tenantId: string; trialDaysRemaining: number }>;
   logout: () => void;
   checkLicenseStatus: () => Promise<{ isValid: boolean; daysRemaining?: number; type?: string }>;
@@ -548,6 +549,114 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   /**
+   * Unified login - takes organizationEmail, username, and password all at once
+   */
+  const unifiedLogin = useCallback(async (organizationEmail: string, username: string, password: string) => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+    logger.logCategory('auth', '🔐 Starting unified login:', { 
+      orgEmail: organizationEmail.substring(0, 15) + '...', 
+      username: username.substring(0, 10) + '...', 
+      hasPassword: !!password 
+    });
+
+    try {
+      logger.logCategory('auth', '📤 Sending unified login request to server...');
+      const response = await apiClient.post<{
+        token: string;
+        user: User;
+        tenant: Tenant;
+      }>('/auth/unified-login', {
+        organizationEmail,
+        username,
+        password,
+      });
+
+      logger.logCategory('auth', '📥 Received unified login response:', {
+        hasToken: !!response.token,
+        hasUser: !!response.user,
+        hasTenant: !!response.tenant
+      });
+
+      if (response.token && response.user && response.tenant) {
+        logger.logCategory('auth', '✅ Unified login successful, processing response...');
+        
+        // Store tenant info in localStorage for post-login session management
+        localStorage.setItem('last_tenant_id', response.tenant.id);
+        localStorage.setItem('last_username', username);
+        localStorage.setItem('last_organization_email', organizationEmail);
+        localStorage.setItem('user_id', response.user.id); // Store user_id for local database tracking
+
+        // Set authentication
+        apiClient.setAuth(response.token, response.tenant.id);
+        
+        // Verify token is valid by checking it can be decoded
+        try {
+          const parts = response.token.split('.');
+          if (parts.length === 3) {
+            const payload = JSON.parse(atob(parts[1]));
+            const exp = payload.exp * 1000;
+            if (Date.now() >= exp) {
+              logger.errorCategory('auth', '❌ Token received from server is already expired!');
+              throw new Error('Token is expired');
+            }
+            logger.logCategory('auth', '✅ Token validated - expires at:', new Date(exp).toISOString());
+          }
+        } catch (tokenError) {
+          logger.errorCategory('auth', '❌ Invalid token format received from server:', tokenError);
+          throw new Error('Invalid token received from server');
+        }
+
+        setState({
+          isAuthenticated: true,
+          user: response.user,
+          tenant: response.tenant,
+          isLoading: false,
+          error: null,
+        });
+
+        logger.logCategory('auth', '✅ Unified login completed successfully');
+
+        // Load settings from cloud database after successful login
+        try {
+          logger.logCategory('auth', '📥 Loading settings from cloud database...');
+          const { settingsSyncService } = await import('../services/settingsSyncService');
+          const cloudSettings = await settingsSyncService.syncFromCloud();
+          
+          // Dispatch settings to AppContext if available
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('load-cloud-settings', {
+              detail: cloudSettings
+            }));
+          }
+          
+          logger.logCategory('auth', '✅ Settings loaded from cloud database');
+        } catch (settingsError) {
+          logger.warnCategory('auth', '⚠️ Failed to load settings from cloud, will use local settings:', settingsError);
+        }
+      } else {
+        logger.errorCategory('auth', '❌ Invalid response from server:', { response });
+        throw new Error('Invalid response from server - missing token, user, or tenant');
+      }
+    } catch (error: any) {
+      logger.errorCategory('auth', '❌ Unified login error caught:', {
+        error: error,
+        message: error?.message,
+        status: error?.status,
+        errorProperty: error?.error
+      });
+      const errorMessage = error?.error || error?.message || 'Login failed';
+      setState({
+        isAuthenticated: false,
+        user: null,
+        tenant: null,
+        isLoading: false,
+        error: errorMessage,
+      });
+      throw error;
+    }
+  }, []);
+
+  /**
    * Login with username, password, and tenant ID (legacy - kept for backward compatibility)
    */
   const login = useCallback(async (username: string, password: string, tenantId: string) => {
@@ -673,6 +782,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         lookupTenants,
         smartLogin,
+        unifiedLogin,
         registerTenant,
         logout,
         checkLicenseStatus,
@@ -699,6 +809,9 @@ export const useAuth = (): AuthContextType => {
       isLoading: false,
       error: null,
       login: async () => {},
+      lookupTenants: async () => [],
+      smartLogin: async () => {},
+      unifiedLogin: async () => {},
       registerTenant: async () => ({ tenantId: '', trialDaysRemaining: 0 }),
       logout: () => {},
       checkLicenseStatus: async () => ({ isValid: false }),
