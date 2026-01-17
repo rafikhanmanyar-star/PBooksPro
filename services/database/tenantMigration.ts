@@ -27,7 +27,8 @@ const TABLES_WITH_TENANT_ID = [
     'budgets',
     'quotations',
     'documents',
-    'rental_agreements', // Note: This already has tenant_id but it refers to contact, we need org_id
+    // Note: rental_agreements uses org_id (for organization) and contact_id (for tenant contact), NOT tenant_id
+    // Do NOT include 'rental_agreements' here - it's handled separately
     'project_agreements',
     'contracts',
     'recurring_invoice_templates',
