@@ -14,17 +14,37 @@ BEGIN
         ALTER TABLE rental_agreements
         ADD COLUMN contact_id TEXT;
         
-        -- Backfill contact_id from existing data if needed
-        -- Note: This assumes there's existing data that needs migration
-        -- If no data exists, this can be skipped
-        
-        -- Add foreign key constraint
+        -- Backfill contact_id from tenant_id if tenant_id column exists and has data
+        -- This handles migration from old schema where tenant_id was the contact reference
+        IF EXISTS (
+            SELECT 1 
+            FROM information_schema.columns 
+            WHERE table_name = 'rental_agreements' 
+            AND column_name = 'tenant_id'
+        ) THEN
+            -- Migrate existing data: copy tenant_id to contact_id where contact_id is NULL
+            -- tenant_id in rental_agreements refers to the contact (tenant person), not the organization
+            UPDATE rental_agreements
+            SET contact_id = tenant_id
+            WHERE contact_id IS NULL AND tenant_id IS NOT NULL;
+            
+            RAISE NOTICE 'Backfilled contact_id from tenant_id for existing rental agreements';
+        END IF;
+    END IF;
+END $$;
+
+-- Add foreign key constraint if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.table_constraints 
+        WHERE constraint_name = 'rental_agreements_contact_id_fkey'
+        AND table_name = 'rental_agreements'
+    ) THEN
         ALTER TABLE rental_agreements
         ADD CONSTRAINT rental_agreements_contact_id_fkey
         FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE RESTRICT;
-        
-        -- Make it NOT NULL after backfilling (if needed)
-        -- ALTER TABLE rental_agreements ALTER COLUMN contact_id SET NOT NULL;
     END IF;
 END $$;
 
