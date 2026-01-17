@@ -210,39 +210,88 @@ class DatabaseService {
                 // Create new database
                 logger.logCategory('database', '📦 Creating new database...');
                 this.db = new SQL.Database();
-                // Create schema
-                this.db.run(CREATE_SCHEMA_SQL);
-                // Set schema version
-                this.setMetadata('schema_version', SCHEMA_VERSION.toString());
-                logger.logCategory('database', '✅ Database schema created');
+                // Create schema - use exec() to support multiple statements
+                try {
+                    this.db.exec(CREATE_SCHEMA_SQL);
+                    // Set schema version directly (bypass isReady check during init)
+                    this.db.run('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime("now"))', 
+                        ['schema_version', SCHEMA_VERSION.toString()]);
+                    logger.logCategory('database', '✅ Database schema created');
+                } catch (schemaError) {
+                    logger.errorCategory('database', '❌ Failed to create schema:', schemaError);
+                    throw schemaError;
+                }
             } else {
-                // Database exists - check schema version and migrate if needed
-                await this.checkAndMigrateSchema();
-                // Ensure tenant columns are present even if schema version is current (idempotent)
+                // Database exists - verify it has tenant_id support
+                let needsRecreate = false;
                 try {
-                    const { migrateTenantColumns } = await import('./tenantMigration');
-                    migrateTenantColumns();
-                } catch (tenantError) {
-                    console.warn('⚠️ Tenant column migration failed during init (continuing):', tenantError);
-                }
-                
-                // Ensure license_settings table doesn't have tenant_id (it's a global table)
-                try {
-                    const columns = this.query<{ name: string }>('PRAGMA table_info(license_settings)');
-                    const hasTenantId = columns.some(col => col.name === 'tenant_id');
-                    if (hasTenantId) {
-                        // Note: SQLite doesn't support DROP COLUMN easily, but license_settings shouldn't have tenant_id
-                        // If it does, we'll need to recreate the table. For now, just warn.
-                        console.warn('⚠️ license_settings table has tenant_id column (should be global table)');
-                        // The queries should still work, just ignore tenant_id column if present
+                    // Check accounts table as a test for tenant_id support
+                    if (!needsRecreate) {
+                        try {
+                            const accountsResult = this.db.exec('PRAGMA table_info(accounts)');
+                            if (accountsResult.length > 0 && accountsResult[0].values && accountsResult[0].values.length > 0) {
+                                const columns = accountsResult[0].values.map((row: any) => row[1]);
+                                if (!columns.includes('tenant_id')) {
+                                    needsRecreate = true;
+                                }
+                            }
+                        } catch (e) {
+                            needsRecreate = true;
+                        }
                     }
-                } catch (checkError) {
-                    // Ignore if table doesn't exist yet or other errors
+                    
+                    if (needsRecreate) {
+                        throw new Error('Old database format detected');
+                    }
+                    
+                    // Database exists with tenant_id - check schema version and migrate if needed
+                    await this.checkAndMigrateSchema();
+                    // Ensure tenant columns are present even if schema version is current (idempotent)
+                    try {
+                        const { migrateTenantColumns } = await import('./tenantMigration');
+                        migrateTenantColumns();
+                    } catch (tenantError) {
+                        // Silent - not critical
+                    }
+                    
+                    // Ensure all tables are present (for existing databases)
+                    this.ensureAllTablesExist();
+                    // Ensure contracts table has new columns
+                    this.ensureContractColumnsExist();
+                } catch (tenantIdError) {
+                    // Old database without tenant_id support - recreate it
+                    logger.logCategory('database', '🔄 Detected old database format, recreating with new schema...');
+                    this.db = new SQL.Database();
+                    try {
+                        this.db.exec(CREATE_SCHEMA_SQL);
+                        // Set schema version directly (bypass isReady check during init)
+                        this.db.run('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime("now"))', 
+                            ['schema_version', SCHEMA_VERSION.toString()]);
+                        logger.logCategory('database', '✅ Database recreated with new schema');
+                    } catch (recreateError) {
+                        logger.errorCategory('database', '❌ Failed to recreate database:', recreateError);
+                        throw recreateError;
+                    }
+                    
+                    // Clear old storage
+                    try {
+                        localStorage.removeItem('finance_db');
+                        if (await this.opfs.isSupported()) {
+                            // Clear OPFS storage by overwriting with empty file
+                            const root = await (navigator as any).storage.getDirectory();
+                            try {
+                                const handle = await root.getFileHandle('finance_db.sqlite', { create: true });
+                                const writable = await handle.createWritable();
+                                await writable.write(new Uint8Array(0));
+                                await writable.close();
+                            } catch (opfsClearError) {
+                                // Ignore - will be overwritten on save anyway
+                            }
+                        }
+                    } catch (clearError) {
+                        // Ignore - will be overwritten anyway
+                    }
                 }
-                // Ensure all tables are present (for existing databases)
-                this.ensureAllTablesExist();
-                // Ensure contracts table has new columns
-                this.ensureContractColumnsExist();
             }
 
             // Migrate to OPFS if available
@@ -684,7 +733,7 @@ class DatabaseService {
             'employees', 'payroll_cycles', 'payslips', 'legacy_payslips',
             'bonus_records', 'payroll_adjustments', 'loan_advance_records',
             'attendance_records', 'tax_configurations', 'statutory_configurations',
-            'transaction_log', 'error_log', 'tasks', 'app_settings', 'license_settings',
+                'transaction_log', 'error_log', 'app_settings', 'license_settings',
             'project_agreement_units', 'contract_categories', 'pm_cycle_allocations'
         ];
 
@@ -946,7 +995,7 @@ class DatabaseService {
                 'employees', 'payroll_cycles', 'payslips', 'legacy_payslips',
                 'bonus_records', 'payroll_adjustments', 'loan_advance_records',
                 'attendance_records', 'tax_configurations', 'statutory_configurations',
-                'transaction_log', 'error_log', 'tasks', 'app_settings', 'license_settings',
+                'transaction_log', 'error_log', 'app_settings', 'license_settings',
                 'chat_messages'
             ];
             
@@ -956,14 +1005,14 @@ class DatabaseService {
             if (missingTables.length > 0) {
                 console.log(`⚠️ Found ${missingTables.length} missing tables, creating them...`, missingTables);
                 // Re-run schema creation (CREATE TABLE IF NOT EXISTS will only create missing tables)
-                this.db.run(CREATE_SCHEMA_SQL);
+                this.db.exec(CREATE_SCHEMA_SQL);
                 console.log('✅ Missing tables created');
             }
         } catch (error) {
             console.error('Error ensuring tables exist:', error);
             // If check fails, try to create schema anyway (safe with IF NOT EXISTS)
             try {
-                this.db.run(CREATE_SCHEMA_SQL);
+                this.db.exec(CREATE_SCHEMA_SQL);
             } catch (createError) {
                 console.error('Failed to create missing tables:', createError);
             }
@@ -980,7 +1029,7 @@ class DatabaseService {
     /**
      * Restore from backup
      */
-    restoreBackup(data: Uint8Array): void {
+    async restoreBackup(data: Uint8Array): Promise<void> {
         this.import(data);
         // After importing, ensure schema is up to date
         // This adds missing columns like expense_category_items
@@ -989,16 +1038,16 @@ class DatabaseService {
         
         // Clear repository column caches so they pick up the new columns
         // This is critical - otherwise repositories will filter out new columns when saving
-        this.clearRepositoryColumnCaches();
+        await this.clearRepositoryColumnCaches();
     }
     
     /**
      * Clear column caches in all repositories after schema changes
      */
-    private clearRepositoryColumnCaches(): void {
+    private async clearRepositoryColumnCaches(): Promise<void> {
         // Import repositories dynamically to avoid circular dependencies
         try {
-            const { ContractsRepository, BillsRepository } = require('./repositories/index');
+            const { ContractsRepository, BillsRepository } = await import('./repositories/index');
             const contractsRepo = new ContractsRepository();
             const billsRepo = new BillsRepository();
             

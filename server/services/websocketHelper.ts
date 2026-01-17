@@ -114,12 +114,7 @@ export const WS_EVENTS = {
   DOCUMENT_CREATED: 'document:created',
   DOCUMENT_UPDATED: 'document:updated',
   DOCUMENT_DELETED: 'document:deleted',
-  
-  // Tasks
-  TASK_CREATED: 'task:created',
-  TASK_UPDATED: 'task:updated',
-  TASK_DELETED: 'task:deleted',
-  
+
   // Recurring Invoice Templates
   RECURRING_INVOICE_TEMPLATE_CREATED: 'recurring_invoice_template:created',
   RECURRING_INVOICE_TEMPLATE_UPDATED: 'recurring_invoice_template:updated',
@@ -195,5 +190,12 @@ export const WS_EVENTS = {
   WHATSAPP_MESSAGE_RECEIVED: 'whatsapp:message:received',
   WHATSAPP_MESSAGE_SENT: 'whatsapp:message:sent',
   WHATSAPP_MESSAGE_STATUS: 'whatsapp:message:status',
+  
+  // Tasks
+  TASK_CREATED: 'task:created',
+  TASK_UPDATED: 'task:updated',
+  TASK_DELETED: 'task:deleted',
+  TASK_ASSIGNED: 'task:assigned',
+  TASK_DEADLINE_WARNING: 'task:deadline:warning',
 } as const;
 

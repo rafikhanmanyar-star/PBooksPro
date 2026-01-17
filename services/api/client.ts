@@ -29,6 +29,13 @@ export class ApiClient {
   }
 
   /**
+   * Get the base URL for API requests
+   */
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
+  /**
    * Enable logging for this request (for login/transaction operations)
    */
   enableLogging(): void {
@@ -49,6 +56,14 @@ export class ApiClient {
     if (typeof window !== 'undefined') {
       this.token = localStorage.getItem('auth_token');
       this.tenantId = localStorage.getItem('tenant_id');
+      const storedApiBase = localStorage.getItem('auth_api_base');
+      if (storedApiBase && storedApiBase !== this.baseUrl) {
+        if (shouldLog) {
+          logger.warnCategory('auth', '⚠️ Auth base URL changed, clearing stored auth');
+        }
+        this.clearAuth();
+        return;
+      }
       
       // Only log if explicitly requested (during login operations)
       if (shouldLog && this.token) {
@@ -66,6 +81,7 @@ export class ApiClient {
     if (typeof window !== 'undefined') {
       localStorage.setItem('auth_token', token);
       localStorage.setItem('tenant_id', tenantId);
+      localStorage.setItem('auth_api_base', this.baseUrl);
       // Only log during login operations
       if (shouldLog) {
         logger.logCategory('auth', '🔑 Auth token saved to localStorage and ApiClient instance');
@@ -82,6 +98,7 @@ export class ApiClient {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('auth_token');
       localStorage.removeItem('tenant_id');
+      localStorage.removeItem('auth_api_base');
     }
   }
 
@@ -246,14 +263,27 @@ export class ApiClient {
             logger.logCategory('api', `✅ Success response for ${endpoint}`);
           }
         } else {
-          // Always log errors, even if logging is disabled
-          logger.errorCategory('api', `❌ Error response for ${endpoint}:`, data);
+          // Suppress 401 errors for expected endpoints (schema/version before login)
+          const is401 = response.status === 401;
+          const isExpected401Endpoint = endpoint.includes('/schema/version');
+          
+          if (is401 && isExpected401Endpoint) {
+            // Silent - expected 401 before authentication
+          } else {
+            // Log other errors
+            logger.errorCategory('api', `❌ Error response for ${endpoint}:`, data);
+          }
         }
       } catch (jsonError) {
         // If JSON parsing fails, create error from response text
-        // Always log errors, even if logging is disabled
         const text = await response.text();
-        logger.errorCategory('api', `❌ Failed to parse JSON response for ${endpoint}:`, text);
+        // Only log if not a 401 on expected endpoint
+        const is401 = response.status === 401;
+        const isExpected401Endpoint = endpoint.includes('/schema/version');
+        
+        if (!(is401 && isExpected401Endpoint)) {
+          logger.errorCategory('api', `❌ Failed to parse JSON response for ${endpoint}:`, text);
+        }
         throw new Error(`Server error (${response.status}): ${text || response.statusText}`);
       }
 
@@ -442,6 +472,53 @@ export class ApiClient {
       method: 'PATCH',
       body: data ? JSON.stringify(data) : undefined,
     });
+  }
+
+  /**
+   * Refresh auth token
+   */
+  async refreshToken(): Promise<string | null> {
+    if (!this.token) return null;
+
+    const url = `${this.baseUrl}/auth/refresh-token`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw {
+        error: 'Token refresh failed',
+        status: response.status,
+      };
+    }
+
+    const data = await response.json();
+    const newToken = data?.token;
+    if (!newToken) {
+      throw {
+        error: 'Token refresh failed',
+        status: 401,
+      };
+    }
+
+    const tenantId =
+      this.tenantId ??
+      (typeof window !== 'undefined' ? localStorage.getItem('tenant_id') : null);
+
+    if (tenantId) {
+      this.setAuth(newToken, tenantId, false);
+    } else {
+      this.token = newToken;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('auth_token', newToken);
+      }
+    }
+
+    return newToken;
   }
 }
 

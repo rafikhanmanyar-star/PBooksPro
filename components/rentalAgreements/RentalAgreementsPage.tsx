@@ -180,8 +180,8 @@ const RentalAgreementsPage: React.FC = () => {
 
                 // Determine Child Node based on groupBy
                 if (groupBy === 'tenant') {
-                    subId = ra.tenantId;
-                    subName = state.contacts.find(c => c.id === ra.tenantId)?.name || 'Unknown Tenant';
+                    subId = ra.contactId;
+                    subName = state.contacts.find(c => c.id === ra.contactId)?.name || 'Unknown Tenant';
                 } else if (groupBy === 'owner') {
                     subId = property?.ownerId || 'unknown';
                     subName = state.contacts.find(c => c.id === subId)?.name || 'Unknown Owner';
@@ -223,7 +223,7 @@ const RentalAgreementsPage: React.FC = () => {
     const filteredAgreements = useMemo(() => {
         let agreements = dateFilteredAgreements.map(ra => {
             const property = state.properties.find(p => p.id === ra.propertyId);
-            const tenant = state.contacts.find(c => c.id === ra.tenantId);
+            const tenant = state.contacts.find(c => c.id === ra.contactId);
             // Use agreement's ownerId if available (for historical accuracy after property transfer), otherwise use property's ownerId
             const ownerId = ra.ownerId || property?.ownerId;
             const owner = ownerId ? state.contacts.find(c => c.id === ownerId) : null;
@@ -246,7 +246,7 @@ const RentalAgreementsPage: React.FC = () => {
                 agreements = agreements.filter(ra => ra.buildingId === selectedTreeId);
             } else {
                 // Subgroup filtering
-                if (groupBy === 'tenant') agreements = agreements.filter(ra => ra.tenantId === selectedTreeId);
+                if (groupBy === 'tenant') agreements = agreements.filter(ra => ra.contactId === selectedTreeId);
                 else if (groupBy === 'owner') agreements = agreements.filter(ra => ra.ownerId === selectedTreeId);
                 else if (groupBy === 'property') agreements = agreements.filter(ra => ra.propertyId === selectedTreeId);
             }

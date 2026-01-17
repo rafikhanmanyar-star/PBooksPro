@@ -123,6 +123,255 @@ router.post('/lookup-tenants', async (req, res) => {
   }
 });
 
+// Unified login - takes organizationEmail, username, and password all at once
+router.post('/unified-login', async (req, res) => {
+  try {
+    const db = getDb();
+    const { organizationEmail, username, password } = req.body;
+    
+    if (!organizationEmail || !username || !password) {
+      return res.status(400).json({ 
+        error: 'All fields required', 
+        message: 'Organization email, username, and password are required' 
+      });
+    }
+
+    // Basic email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(organizationEmail)) {
+      return res.status(400).json({ 
+        error: 'Invalid email format', 
+        message: 'Please enter a valid organization email address' 
+      });
+    }
+
+    console.log('🔐 Unified login attempt:', { 
+      orgEmail: organizationEmail.substring(0, 15) + '...', 
+      username: username.substring(0, 10) + '...', 
+      hasPassword: !!password 
+    });
+
+    // Lookup tenants by organization email (case-insensitive)
+    const tenants = await db.query(
+      'SELECT * FROM tenants WHERE LOWER(email) = LOWER($1)',
+      [organizationEmail]
+    );
+
+    if (tenants.length === 0) {
+      console.log('❌ Unified login: No organization found for email:', organizationEmail.substring(0, 15) + '...');
+      return res.status(401).json({ 
+        error: 'Invalid credentials', 
+        message: 'Invalid organization email, username, or password' 
+      });
+    }
+
+    // If multiple tenants found with same email, fail for security
+    if (tenants.length > 1) {
+      console.log('❌ Unified login: Multiple tenants found for email:', organizationEmail.substring(0, 15) + '...', tenants.length);
+      return res.status(401).json({ 
+        error: 'Invalid credentials', 
+        message: 'Invalid organization email, username, or password' 
+      });
+    }
+
+    const tenant = tenants[0];
+    const tenantId = tenant.id;
+
+    // Find user within tenant (case-insensitive username comparison)
+    const allUsers = await db.query(
+      'SELECT * FROM users WHERE LOWER(username) = LOWER($1) AND tenant_id = $2',
+      [username, tenantId]
+    );
+    
+    if (allUsers.length === 0) {
+      console.log('❌ Unified login: User not found:', { username, tenantId });
+      return res.status(401).json({ 
+        error: 'Invalid credentials', 
+        message: 'Invalid organization email, username, or password' 
+      });
+    }
+    
+    // Check if user is active
+    const users = allUsers.filter(u => u.is_active === true || u.is_active === null);
+    
+    if (users.length === 0) {
+      console.log('❌ Unified login: User is inactive:', { username, tenantId, is_active: allUsers[0]?.is_active });
+      return res.status(403).json({ 
+        error: 'Account disabled', 
+        message: 'Your account has been disabled. Please contact your administrator.' 
+      });
+    }
+
+    const user = users[0];
+
+    // Verify password
+    if (!user.password || !await bcrypt.compare(password, user.password)) {
+      console.log('❌ Unified login: Password mismatch for user:', { username, tenantId });
+      return res.status(401).json({ 
+        error: 'Invalid credentials', 
+        message: 'Invalid organization email, username, or password' 
+      });
+    }
+
+    // Check login_status flag - primary check for duplicate logins
+    const userStatus = await db.query(
+      'SELECT login_status FROM users WHERE id = $1',
+      [user.id]
+    );
+
+    if (userStatus.length > 0 && userStatus[0].login_status === true) {
+      // User is already logged in - check if session is stale
+      const STALE_SESSION_THRESHOLD_MINUTES = 5;
+      const activeSessions = await db.query(
+        `SELECT id, last_activity FROM user_sessions
+         WHERE user_id = $1 AND tenant_id = $2 AND expires_at > NOW()
+         LIMIT 1`,
+        [user.id, user.tenant_id]
+      );
+
+      if (activeSessions.length > 0) {
+        const session = activeSessions[0] as any;
+        const lastActivity = new Date(session.last_activity);
+        const thresholdDate = new Date();
+        thresholdDate.setMinutes(thresholdDate.getMinutes() - STALE_SESSION_THRESHOLD_MINUTES);
+
+        // If session is stale (likely from improper app closure), cleanup and allow login
+        if (lastActivity < thresholdDate) {
+          console.log(`🧹 Cleaning up stale session (last activity: ${lastActivity.toISOString()})`);
+          await db.query(
+            'DELETE FROM user_sessions WHERE user_id = $1 AND tenant_id = $2',
+            [user.id, user.tenant_id]
+          );
+          // Reset login_status flag since session was stale
+          await db.query(
+            'UPDATE users SET login_status = FALSE WHERE id = $1',
+            [user.id]
+          );
+          // Continue with login - session was cleaned up
+        } else {
+          // Session is still active (recent activity) - user is truly logged in
+          return res.status(409).json({
+            error: 'User is already logged in. Please logout first.',
+            message: 'This account is already logged in for this organization. Please logout from the other session/device and try again.',
+            code: 'ALREADY_LOGGED_IN'
+          });
+        }
+      } else {
+        // login_status is true but no active session - reset flag (orphaned state)
+        console.log(`🧹 Resetting orphaned login_status for user ${user.id}`);
+        await db.query(
+          'UPDATE users SET login_status = FALSE WHERE id = $1',
+          [user.id]
+        );
+        // Continue with login
+      }
+    }
+
+    // Update last login and set login_status = true
+    await db.query(
+      'UPDATE users SET last_login = NOW(), login_status = TRUE WHERE id = $1',
+      [user.id]
+    );
+
+    // Generate JWT with tenant context
+    // Increased expiration to 30 days to prevent premature expiration
+    const expiresIn = '30d';
+    const token = jwt.sign(
+      { 
+        userId: user.id, 
+        username: user.username,
+        tenantId: user.tenant_id,
+        role: user.role
+      },
+      process.env.JWT_SECRET!,
+      { expiresIn }
+    );
+
+    // Create session record (1 row per user+tenant). We use UPSERT to handle stale/expired rows.
+    // Session expiration matches JWT expiration (30 days).
+    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30); // 30 days to match JWT expiration
+
+    await db.query(
+      `INSERT INTO user_sessions (id, user_id, tenant_id, token, ip_address, user_agent, expires_at, last_activity)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+       ON CONFLICT (user_id, tenant_id)
+       DO UPDATE SET
+         token = EXCLUDED.token,
+         ip_address = EXCLUDED.ip_address,
+         user_agent = EXCLUDED.user_agent,
+         expires_at = EXCLUDED.expires_at,
+         last_activity = NOW()`,
+      [
+        sessionId,
+        user.id,
+        user.tenant_id,
+        token,
+        req.ip || req.headers['x-forwarded-for'] || 'unknown',
+        req.headers['user-agent'] || 'unknown',
+        expiresAt
+      ]
+    );
+
+    console.log('✅ Unified login successful:', { userId: user.id, username: user.username, tenantId: user.tenant_id });
+
+    res.json({ 
+      token, 
+      user: { 
+        id: user.id, 
+        username: user.username, 
+        name: user.name, 
+        role: user.role,
+        tenantId: user.tenant_id
+      },
+      tenant: {
+        id: tenant.id,
+        name: tenant.name,
+        companyName: tenant.company_name
+      }
+    });
+  } catch (error: any) {
+    console.error('❌ Unified login error:', {
+      error: error,
+      message: error?.message,
+      stack: error?.stack,
+      code: error?.code,
+      detail: error?.detail
+    });
+
+    // Check for database connection errors
+    const isDatabaseError = error?.code === 'ENOTFOUND' || 
+                            error?.code === 'ECONNREFUSED' || 
+                            error?.code === 'ETIMEDOUT' ||
+                            error?.message?.includes('getaddrinfo') ||
+                            error?.message?.includes('ENOTFOUND');
+
+    if (isDatabaseError) {
+      const dbUrl = process.env.DATABASE_URL || '';
+      const isInternalUrl = dbUrl.includes('@dpg-') && !dbUrl.includes('.render.com');
+      
+      let errorMessage = 'Database connection failed. ';
+      if (isInternalUrl) {
+        errorMessage += 'The database URL appears to be an internal URL. Please use the External Database URL from Render Dashboard.';
+      } else {
+        errorMessage += 'Please check your database connection settings.';
+      }
+      
+      return res.status(500).json({ 
+        error: 'Login failed',
+        message: errorMessage,
+        hint: 'If using Render, ensure DATABASE_URL uses the External Database URL (with full hostname like dpg-xxx-a.region-postgres.render.com)'
+      });
+    }
+
+    res.status(500).json({ 
+      error: 'Login failed',
+      message: error?.message || 'An error occurred during login. Please try again.'
+    });
+  }
+});
+
 // Smart login - requires tenantId (Step 2 of login flow)
 router.post('/smart-login', async (req, res) => {
   try {

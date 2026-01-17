@@ -6,13 +6,24 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { getDatabaseService } from '../services/database/databaseService';
+import { getUnifiedDatabaseService } from '../services/database/unifiedDatabaseService';
+import { isMobileDevice } from '../utils/platformDetection';
 
 let dbInitialized = false;
 
 async function ensureDatabaseInitialized(): Promise<void> {
     if (dbInitialized) return;
-    const dbService = getDatabaseService();
-    await dbService.initialize();
+    
+    // Initialize unified service first
+    const unifiedService = getUnifiedDatabaseService();
+    await unifiedService.initialize();
+    
+    // For desktop, also initialize local SQLite
+    if (!isMobileDevice()) {
+        const dbService = getDatabaseService();
+        await dbService.initialize();
+    }
+    
     dbInitialized = true;
 }
 

@@ -8,7 +8,6 @@ export type Page =
   | 'vendorDirectory'
   | 'contacts'
   | 'budgets'
-  | 'tasks'
   | 'rentalManagement'
   | 'rentalInvoices'
   | 'rentalAgreements'
@@ -20,7 +19,10 @@ export type Page =
   | 'pmConfig'
   | 'payroll'
   | 'settings'
-  | 'import';
+  | 'import'
+  | 'tasks'
+  | 'tasksCalendar'
+  | 'teamRanking';
 
 export enum TransactionType {
   INCOME = 'Income',
@@ -391,7 +393,7 @@ export interface Document {
 export interface RentalAgreement {
   id: string;
   agreementNumber: string;
-  tenantId: string; // Contact tenant ID (the tenant contact person in rental management, NOT the organization tenant_id for multi-tenancy)
+  contactId: string; // Contact ID (the tenant contact person in rental management, NOT the organization tenant_id for multi-tenancy)
   propertyId: string;
   startDate: string;
   endDate: string;
@@ -986,13 +988,6 @@ export interface ImportLogEntry {
   data?: any;
 }
 
-export interface Task {
-  id: string;
-  text: string;
-  completed: boolean;
-  priority: 'low' | 'medium' | 'high';
-  createdAt: number;
-}
 
 export interface AppState {
   version?: number;
@@ -1042,6 +1037,12 @@ export interface AppState {
 
   recurringInvoiceTemplates: RecurringInvoiceTemplate[];
   pmCycleAllocations: PMCycleAllocation[];
+
+  // Task Management
+  tasks: Task[];
+  taskUpdates: TaskUpdate[];
+  taskPerformanceScores: TaskPerformanceScore[];
+  taskPerformanceConfig?: TaskPerformanceConfig;
 
   agreementSettings: AgreementSettings;
   projectAgreementSettings: AgreementSettings;
@@ -1233,7 +1234,83 @@ export type AppAction =
   | { type: 'DELETE_TAX_CONFIGURATION'; payload: string }
   | { type: 'ADD_STATUTORY_CONFIGURATION'; payload: StatutoryConfiguration }
   | { type: 'UPDATE_STATUTORY_CONFIGURATION'; payload: StatutoryConfiguration }
-  | { type: 'DELETE_STATUTORY_CONFIGURATION'; payload: string };
+  | { type: 'DELETE_STATUTORY_CONFIGURATION'; payload: string }
+  // Task Management Actions
+  | { type: 'ADD_TASK'; payload: Task }
+  | { type: 'UPDATE_TASK'; payload: Task }
+  | { type: 'DELETE_TASK'; payload: string }
+  | { type: 'ADD_TASK_UPDATE'; payload: TaskUpdate }
+  | { type: 'UPDATE_TASK_PERFORMANCE_CONFIG'; payload: TaskPerformanceConfig };
+
+// ==================== TASK MANAGEMENT TYPES ====================
+
+export type TaskType = 'Personal' | 'Assigned';
+export type TaskStatus = 'Not Started' | 'In Progress' | 'Review' | 'Completed';
+export type TaskCategory = 'Development' | 'Admin' | 'Sales' | 'Personal Growth';
+export type TaskUpdateType = 'Status Change' | 'KPI Update' | 'Comment' | 'Check-in';
+
+export interface Task {
+  id: string;
+  tenant_id?: string;
+  title: string;
+  description?: string;
+  type: TaskType;
+  category: TaskCategory | string; // Allow custom categories
+  status: TaskStatus;
+  start_date: string; // ISO date string
+  hard_deadline: string; // ISO date string
+  kpi_goal?: string;
+  kpi_target_value?: number;
+  kpi_current_value: number;
+  kpi_unit?: string;
+  kpi_progress_percentage: number; // 0-100
+  assigned_by_id?: string;
+  assigned_to_id?: string;
+  created_by_id: string;
+  user_id?: string; // For local SQLite compatibility
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface TaskUpdate {
+  id: string;
+  tenant_id?: string;
+  task_id: string;
+  user_id: string;
+  update_type: TaskUpdateType;
+  status_before?: TaskStatus;
+  status_after?: TaskStatus;
+  kpi_value_before?: number;
+  kpi_value_after?: number;
+  comment?: string;
+  created_at?: string;
+}
+
+export interface TaskPerformanceScore {
+  id: string;
+  tenant_id?: string;
+  user_id: string;
+  period_start: string; // ISO date string
+  period_end: string; // ISO date string
+  total_tasks: number;
+  completed_tasks: number;
+  on_time_completions: number;
+  overdue_tasks: number;
+  average_kpi_achievement: number;
+  completion_rate: number; // 0-100
+  deadline_adherence_rate: number; // 0-100
+  performance_score: number;
+  calculated_at?: string;
+}
+
+export interface TaskPerformanceConfig {
+  id: string;
+  tenant_id: string;
+  completion_rate_weight: number; // 0-1
+  deadline_adherence_weight: number; // 0-1
+  kpi_achievement_weight: number; // 0-1
+  updated_at?: string;
+}
 
 export interface KpiDefinition {
   id: string;

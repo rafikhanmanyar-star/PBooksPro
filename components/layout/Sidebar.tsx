@@ -8,7 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { apiClient } from '../../services/api/client';
 import packageJson from '../../package.json';
 import ChatModal from '../chat/ChatModal';
-import { getWebSocketClient } from '../../services/websocket/websocketClient';
+import { getWebSocketClient } from '../../services/websocketClient';
 import { ChatMessagesRepository } from '../../services/database/repositories';
 import { getDatabaseService } from '../../services/database/databaseService';
 import Modal from '../ui/Modal';
@@ -117,8 +117,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     useEffect(() => {
         if (!currentUserId) return;
 
-        // Connect to WebSocket
-        wsClient.connect();
+        // Connect to WebSocket with token and tenantId
+        const token = apiClient.getToken();
+        const tenantId = apiClient.getTenantId();
+        if (token && tenantId) {
+            wsClient.connect(token, tenantId);
+        }
 
         // Check initial unread count
         checkUnreadMessages();
@@ -140,7 +144,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
             wsClient.off('chat:message', handleChatMessage);
             clearInterval(interval);
         };
-    }, [currentUserId, wsClient, checkUnreadMessages]);
+    }, [currentUserId, checkUnreadMessages]);
 
     // Update unread count when chat modal opens/closes
     useEffect(() => {
@@ -164,7 +168,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
             title: 'Overview',
             items: [
                 { page: 'dashboard', label: 'Dashboard', icon: ICONS.home },
-                { page: 'tasks', label: 'Tasks & Todos', icon: ICONS.clipboard },
             ]
         },
         {
@@ -183,6 +186,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 { page: 'vendorDirectory', label: 'Vendors', icon: ICONS.briefcase },
                 ...(isAdmin ? [{ page: 'investmentManagement', label: 'Inv. Cycle', icon: ICONS.dollarSign }] : []),
                 { page: 'pmConfig', label: 'PM Cycle', icon: ICONS.filter },
+            ]
+        },
+        {
+            title: 'Tasks',
+            items: [
+                { page: 'tasks', label: 'My Tasks', icon: ICONS.checkSquare },
+                { page: 'tasksCalendar', label: 'Calendar', icon: ICONS.calendar },
+                ...(isAdmin ? [{ page: 'teamRanking', label: 'Team Ranking', icon: ICONS.trophy }] : []),
             ]
         },
         {

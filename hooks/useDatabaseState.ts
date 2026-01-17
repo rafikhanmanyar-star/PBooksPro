@@ -8,6 +8,8 @@
 import React, { useState, useEffect, useCallback, Dispatch, SetStateAction } from 'react';
 import { AppState } from '../types';
 import { getDatabaseService } from '../services/database/databaseService';
+import { getUnifiedDatabaseService } from '../services/database/unifiedDatabaseService';
+import { isMobileDevice } from '../utils/platformDetection';
 // Lazy import AppStateRepository to avoid initialization issues during module load
 let AppStateRepositoryClass: any = null;
 let appStateRepoLoadPromise: Promise<any> | null = null;
@@ -51,10 +53,21 @@ async function ensureDatabaseInitialized(): Promise<void> {
     initializationPromise = (async () => {
         try {
             console.log('[useDatabaseState] Getting database service...');
-            const dbService = getDatabaseService();
-            console.log('[useDatabaseState] Database service obtained, initializing...');
-            await dbService.initialize();
-            console.log('[useDatabaseState] Database initialized successfully');
+            
+            // Initialize unified service first
+            const unifiedService = getUnifiedDatabaseService();
+            await unifiedService.initialize();
+            
+            // For desktop, also initialize local SQLite
+            if (!isMobileDevice()) {
+                const dbService = getDatabaseService();
+                console.log('[useDatabaseState] Database service obtained, initializing...');
+                await dbService.initialize();
+                console.log('[useDatabaseState] Database initialized successfully');
+            } else {
+                console.log('[useDatabaseState] Mobile platform: Using API repositories only');
+            }
+            
             dbInitialized = true;
         } catch (error) {
             console.error('❌ [useDatabaseState] Database initialization failed:', error);

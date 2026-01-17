@@ -542,7 +542,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                                             if (bill.projectAgreementId) {
                                                 const rentalAgreement = state.rentalAgreements.find(ra => ra.id === bill.projectAgreementId);
                                                 if (rentalAgreement) {
-                                                    tenantId = rentalAgreement.tenantId;
+                                                    tenantId = rentalAgreement.contactId;
                                                 }
                                             }
                                             
@@ -552,7 +552,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                                                     ra.propertyId === bill.propertyId && ra.status === 'Active'
                                                 );
                                                 if (rentalAgreement) {
-                                                    tenantId = rentalAgreement.tenantId;
+                                                    tenantId = rentalAgreement.contactId;
                                                 }
                                             }
                                             

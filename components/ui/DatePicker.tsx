@@ -31,6 +31,25 @@ const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label, id, nam
 
     const getSafeDate = (val: string | undefined) => {
         if (!val) return new Date();
+        
+        // If already in YYYY-MM-DD format, parse it directly
+        if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+            const [y, m, d] = val.split('-').map(Number);
+            const date = new Date(y, m - 1, d);
+            return isNaN(date.getTime()) ? new Date() : date;
+        }
+        
+        // If in DD/MM/YYYY format, parse it
+        if (val.includes('/')) {
+            const parts = val.split('/');
+            if (parts.length === 3) {
+                const [d, m, y] = parts.map(Number);
+                const date = new Date(y, m - 1, d);
+                if (!isNaN(date.getTime()) && date.getDate() === d) return date;
+            }
+        }
+        
+        // Try standard Date parsing
         const d = new Date(val + 'T00:00:00');
         return isNaN(d.getTime()) ? new Date() : d;
     };

@@ -79,7 +79,6 @@ import transactionAuditRouter from './routes/transaction-audit.js';
 import paymentsRouter from './routes/payments.js';
 import quotationsRouter from './routes/quotations.js';
 import documentsRouter from './routes/documents.js';
-import tasksRouter from './routes/tasks.js';
 import recurringInvoiceTemplatesRouter from './routes/recurring-invoice-templates.js';
 import salaryComponentsRouter from './routes/salary-components.js';
 import employeesRouter from './routes/employees.js';
@@ -100,6 +99,7 @@ import dataImportExportRouter from './routes/data-import-export.js';
 import appInfoRouter from './routes/app-info.js';
 import whatsappRouter from './routes/whatsapp.js';
 import whatsappWebhookRouter from './routes/whatsapp-webhook.js';
+import tasksRouter from './routes/tasks.js';
 import { tenantMiddleware } from '../middleware/tenantMiddleware.js';
 import { licenseMiddleware } from '../middleware/licenseMiddleware.js';
 
@@ -670,7 +670,6 @@ app.use('/api/tenants', tenantRouter); // Tenant management (for authenticated t
 app.use('/api/transaction-audit', transactionAuditRouter); // Transaction audit logs
 app.use('/api/quotations', quotationsRouter); // Quotations
 app.use('/api/documents', documentsRouter); // Documents
-app.use('/api/tasks', tasksRouter); // Tasks
 app.use('/api/recurring-invoice-templates', recurringInvoiceTemplatesRouter); // Recurring Invoice Templates
 app.use('/api/salary-components', salaryComponentsRouter); // Salary Components
 app.use('/api/employees', employeesRouter); // Employees
@@ -689,6 +688,7 @@ app.use('/api/pm-cycle-allocations', pmCycleAllocationsRouter); // PM Cycle Allo
 app.use('/api/data-management', dataManagementRouter); // Data Management (Admin only)
 app.use('/api/data-import-export', dataImportExportRouter); // Data Import/Export
 app.use('/api/whatsapp', whatsappRouter); // WhatsApp API (requires authentication)
+app.use('/api/tasks', tasksRouter); // Task Management (requires authentication)
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

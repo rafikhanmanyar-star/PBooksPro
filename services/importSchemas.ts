@@ -32,12 +32,6 @@ export interface ImportSchema {
     validate?: (row: any, maps: ImportMaps, normalizeName: (name: string) => string) => ValidationResult;
 }
 
-// Helper function for name normalization (shared with importService)
-const normalizeNameForComparison = (name: string): string => {
-    if (!name) return '';
-    return String(name).trim().replace(/\s+/g, ' ').toLowerCase();
-};
-
 // Helper to safely parse JSON (shared utility)
 const safeJsonParse = (str: any) => {
     if (typeof str === 'object') return str;

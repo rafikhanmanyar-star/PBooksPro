@@ -76,7 +76,7 @@ const AgreementExpiryReport: React.FC = () => {
         let result: AgreementExpiryRow[] = expiringAgreements.map(agreement => {
             const property = state.properties.find(p => p.id === agreement.propertyId);
             const building = property ? state.buildings.find(b => b.id === property.buildingId) : null;
-            const tenant = state.contacts.find(c => c.id === agreement.tenantId);
+            const tenant = state.contacts.find(c => c.id === agreement.contactId);
             
             const endDate = new Date(agreement.endDate);
             endDate.setHours(23, 59, 59, 999);

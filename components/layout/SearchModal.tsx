@@ -160,12 +160,12 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, currentPage 
           state.rentalAgreements
             .filter(agreement => {
               const agreementNumber = agreement.agreementNumber?.toLowerCase() || '';
-              const tenant = state.contacts.find(c => c.id === agreement.tenantId)?.name.toLowerCase() || '';
+              const tenant = state.contacts.find(c => c.id === agreement.contactId)?.name.toLowerCase() || '';
               return agreementNumber.includes(query) || tenant.includes(query);
             })
             .slice(0, 20)
             .forEach(agreement => {
-              const tenant = state.contacts.find(c => c.id === agreement.tenantId)?.name || 'Unknown';
+              const tenant = state.contacts.find(c => c.id === agreement.contactId)?.name || 'Unknown';
               results.push({
                 id: agreement.id,
                 type: 'Rental Agreement',

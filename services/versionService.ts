@@ -78,7 +78,7 @@ class VersionService {
   async checkForUpdate(): Promise<{ available: boolean; serverVersion?: string; clientVersion: string }> {
     try {
       const baseUrl = this.getApiBaseUrl();
-      const response = await fetch(`${baseUrl}/app-info/version`);
+      const response = await fetch(`${baseUrl}/api/app-info/version`);
       if (!response.ok) {
         throw new Error('Failed to fetch version');
       }

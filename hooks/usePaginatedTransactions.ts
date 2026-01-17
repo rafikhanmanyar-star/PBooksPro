@@ -12,6 +12,8 @@ import { Transaction } from '../types';
 import { TransactionsRepository } from '../services/database/repositories';
 import { useAppContext } from '../context/AppContext';
 import { getDatabaseService } from '../services/database/databaseService';
+import { getUnifiedDatabaseService } from '../services/database/unifiedDatabaseService';
+import { isMobileDevice } from '../utils/platformDetection';
 
 interface UsePaginatedTransactionsOptions {
   projectId?: string | null;
@@ -70,20 +72,25 @@ export function usePaginatedTransactions(
       // Always fetch count on first page or when it's null
       // Only fetch if database is ready to avoid warnings
       if (page === 0 || totalCount === null) {
-        const dbService = getDatabaseService();
-        if (dbService.isReady()) {
-          try {
-            const count = await repo.getCount({ projectId });
-            setTotalCount(count);
-          } catch (error) {
-            // Silently handle count errors during initialization
-            console.debug('Count query failed:', error);
-          }
+        // Mobile: Use API repository for count (or skip)
+        if (isMobileDevice()) {
+          setTotalCount(null); // Count would come from API if needed
         } else {
-          // Database not ready yet, will retry on next render or when database becomes ready
-          // For now, use state transactions length as fallback
-          if (!shouldUseNative) {
-            setTotalCount(state.transactions.length);
+          const dbService = getDatabaseService();
+          if (dbService.isReady()) {
+            try {
+              const count = await repo.getCount({ projectId });
+              setTotalCount(count);
+            } catch (error) {
+              // Silently handle count errors during initialization
+              console.debug('Count query failed:', error);
+            }
+          } else {
+            // Database not ready yet, will retry on next render or when database becomes ready
+            // For now, use state transactions length as fallback
+            if (!shouldUseNative) {
+              setTotalCount(state.transactions.length);
+            }
           }
         }
       }
@@ -119,7 +126,7 @@ export function usePaginatedTransactions(
     } finally {
       setIsLoading(false);
     }
-  }, [enabled, projectId, pageSize, repo, shouldUseNative, totalCount]);
+  }, [enabled, projectId, pageSize, repo, shouldUseNative, totalCount, state.transactions.length, state]);
 
   const loadMore = useCallback(async () => {
     if (!hasMore || isLoading || !shouldUseNative) return;

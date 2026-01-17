@@ -4,7 +4,8 @@ import SearchModal from './SearchModal';
 import HelpModal from './HelpModal';
 import { WhatsAppChatService } from '../../services/whatsappChatService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
-import { useOffline } from '../../context/OfflineContext';
+import ConnectionStatusIndicator from '../ui/ConnectionStatusIndicator';
+import SyncStatusIndicator from '../ui/SyncStatusIndicator';
 
 interface HeaderProps {
   title: string;
@@ -13,7 +14,6 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const { dispatch, state } = useAppContext();
-  const { isOnline, isOffline, pendingCount, isSyncing } = useOffline();
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // For mobile menu logic if needed
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
@@ -101,17 +101,10 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
           {/* Right: Actions */}
           <div className="flex items-center gap-2 sm:gap-4 justify-end flex-1">
 
-            {/* Online/Offline Status Badge */}
+            {/* Connection Status & Sync Status */}
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200">
-              <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'} ${isSyncing ? 'animate-pulse' : ''}`} />
-              <span className="text-xs font-medium text-slate-700 hidden sm:inline">
-                {isSyncing ? 'Syncing' : (isOnline ? 'Online' : 'Offline')}
-              </span>
-              {pendingCount > 0 && (
-                <span className="text-xs font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">
-                  {pendingCount}
-                </span>
-              )}
+              <ConnectionStatusIndicator showLabel={true} />
+              <SyncStatusIndicator showDetails={false} />
             </div>
 
             <button

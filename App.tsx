@@ -18,9 +18,18 @@ import LicenseLockScreen from './components/license/LicenseLockScreen';
 import PaymentSuccessPage from './components/license/PaymentSuccessPage';
 import PaddleCheckoutPage from './components/license/PaddleCheckoutPage';
 import { useAuth } from './context/AuthContext';
+import { apiClient } from './services/api/client';
 import CloudLoginPage from './components/auth/CloudLoginPage';
 // Initialize Sync Service removed
 import UpdateNotification from './components/ui/UpdateNotification';
+import { getUnifiedDatabaseService } from './services/database/unifiedDatabaseService';
+import { getConnectionMonitor } from './services/connection/connectionMonitor';
+import { getSyncManager } from './services/sync/syncManager';
+import { getLockManager } from './services/sync/lockManager';
+import { getOfflineLockManager } from './services/sync/offlineLockManager';
+import { getRealtimeSyncHandler } from './services/sync/realtimeSyncHandler';
+import { getSchemaSyncService } from './services/database/schemaSync';
+import { getWebSocketClient } from './services/websocketClient';
 import { VersionUpdateNotification } from './components/ui/VersionUpdateNotification';
 import { createBackup, restoreBackup } from './services/backupService';
 import { useProgress } from './context/ProgressContext';
@@ -28,6 +37,8 @@ import { usePagePreloader } from './hooks/usePagePreloader';
 import Loading from './components/ui/Loading';
 import { OfflineProvider } from './context/OfflineContext';
 import SyncNotification from './components/ui/SyncNotification';
+import MobileOfflineWarning from './components/ui/MobileOfflineWarning';
+import WebSocketDebugPanel from './components/ui/WebSocketDebugPanel';
 
 
 // Lazy Load Components
@@ -35,8 +46,6 @@ const DashboardPage = React.lazy(() => import('./components/dashboard/DashboardP
 const EnhancedLedgerPage = React.lazy(() => import('./components/transactions/EnhancedLedgerPage'));
 const SettingsPage = React.lazy(() => import('./components/settings/SettingsPage'));
 const ImportExportWizard = React.lazy(() => import('./components/settings/ImportExportWizard'));
-// DEPRECATED: Old ImportPage kept for reference but not used
-// const ImportPage = React.lazy(() => import('./components/settings/ImportPage'));
 const RentalManagementPage = React.lazy(() => import('./components/rentalManagement/RentalManagementPage'));
 const ProjectManagementPage = React.lazy(() => import('./components/projectManagement/ProjectManagementPage'));
 const InvestmentManagementPage = React.lazy(() => import('./components/investmentManagement/InvestmentManagementPage'));
@@ -44,10 +53,12 @@ const PMConfigPage = React.lazy(() => import('./components/pmConfig/PMConfigPage
 const LoanManagementPage = React.lazy(() => import('./components/loans/LoanManagementPage'));
 const VendorDirectoryPage = React.lazy(() => import('./components/vendors/VendorDirectoryPage'));
 const ContactsPage = React.lazy(() => import('./components/contacts/ContactsPage'));
-const TodoList = React.lazy(() => import('./components/TodoList').then(module => ({ default: module.TodoList })));
 const BudgetManagement = React.lazy(() => import('./components/settings/BudgetManagement'));
 const MobilePaymentsPage = React.lazy(() => import('./components/mobile/MobilePaymentsPage'));
 const GlobalPayrollPage = React.lazy(() => import('./components/payroll/GlobalPayrollPage')); // Added
+const TasksPage = React.lazy(() => import('./components/tasks/TasksPage'));
+const TasksCalendarView = React.lazy(() => import('./components/tasks/TasksCalendarView'));
+const TeamRankingPage = React.lazy(() => import('./components/tasks/TeamRankingPage'));
 
 // Define page groups to determine which component instance handles which routes
 const PAGE_GROUPS = {
@@ -58,12 +69,12 @@ const PAGE_GROUPS = {
   VENDORS: ['vendorDirectory'],
   CONTACTS: ['contacts'],
   BUDGETS: ['budgets'],
-  TASKS: ['tasks'],
   RENTAL: ['rentalManagement', 'rentalInvoices', 'rentalAgreements', 'ownerPayouts'],
   PROJECT: ['projectManagement', 'projectInvoices', 'bills'],
   INVESTMENT: ['investmentManagement'],
   PM_CONFIG: ['pmConfig'],
   PAYROLL: ['payroll'], // Added Payroll Group
+  TASKS: ['tasks', 'tasksCalendar', 'teamRanking'],
   SETTINGS: ['settings'],
   IMPORT: ['import'],
 };
@@ -75,7 +86,7 @@ const App: React.FC = () => {
   const { isPanelOpen } = useKpis();
   const { isExpired } = useLicense(); // License Check
   const progress = useProgress();
-  const { isAuthenticated, isLoading: authLoading } = useAuth(); // Cloud authentication
+  const { isAuthenticated, isLoading: authLoading, user, tenant } = useAuth(); // Cloud authentication
 
   // State to track if the native OS keyboard is likely open
   const [isNativeKeyboardOpen, setIsNativeKeyboardOpen] = useState(false);
@@ -164,6 +175,147 @@ const App: React.FC = () => {
 
   // Preload pages for instant navigation
   usePagePreloader();
+
+  // Initialize database services (unified database, connection monitor, sync manager)
+  useEffect(() => {
+    let isMounted = true;
+
+    const initializeServices = async () => {
+      try {
+        console.log('[App] Initializing database services...');
+        
+        // Initialize unified database service (platform-aware)
+        await getUnifiedDatabaseService().initialize();
+        
+        if (!isMounted) return;
+        console.log('[App] ✅ Unified database service initialized');
+
+        // Start connection monitoring
+        const connectionMonitor = getConnectionMonitor();
+        connectionMonitor.startMonitoring({
+          onStatusChange: (status) => {
+            console.log(`[App] Connection status changed: ${status}`);
+          },
+          onOnline: () => {
+            console.log('[App] ✅ Online - starting auto-sync');
+            const syncManager = getSyncManager();
+            syncManager.startAutoSync();
+          },
+          onOffline: () => {
+            console.log('[App] ⚠️ Offline - pausing sync');
+            const syncManager = getSyncManager();
+            syncManager.stopAutoSync();
+          },
+        });
+
+        // Check initial connection status and start sync if online
+        const initialStatus = await connectionMonitor.checkStatus();
+        if (initialStatus === 'online') {
+          const syncManager = getSyncManager();
+          syncManager.startAutoSync();
+          console.log('[App] ✅ Started auto-sync (already online)');
+        }
+
+        // Initialize lock manager
+        const lockManager = getLockManager();
+        console.log('[App] ✅ Lock manager initialized');
+
+        // Initialize offline lock manager
+        const offlineLockManager = getOfflineLockManager();
+        // Set user context when authenticated (will be set in useEffect below)
+        console.log('[App] ✅ Offline lock manager initialized');
+
+        // Initialize real-time sync handler
+        const realtimeSyncHandler = getRealtimeSyncHandler();
+        realtimeSyncHandler.initialize();
+        console.log('[App] ✅ Real-time sync handler initialized');
+
+        // Initialize schema sync service
+        const schemaSyncService = getSchemaSyncService();
+        await schemaSyncService.initialize();
+        console.log('[App] ✅ Schema sync service initialized');
+
+        // Connect WebSocket client (if authenticated)
+        if (isAuthenticated) {
+          const wsClient = getWebSocketClient();
+          const token = apiClient.getToken();
+          const tenantId = apiClient.getTenantId();
+          if (token && tenantId) {
+            if (apiClient.isTokenExpired()) {
+              console.warn('[App] ⚠️ WebSocket not connected - token expired');
+              return;
+            }
+            wsClient.connect(token, tenantId);
+            console.log('[App] ✅ WebSocket client connecting...');
+          } else {
+            console.warn('[App] ⚠️ WebSocket not connected - missing token or tenant ID');
+          }
+        }
+
+        console.log('[App] ✅ Database services initialized successfully');
+      } catch (error) {
+        console.error('[App] ❌ Failed to initialize database services:', error);
+        // Don't block app from loading - services will retry or work in degraded mode
+      }
+    };
+
+    initializeServices();
+
+    // Cleanup on unmount
+    return () => {
+      isMounted = false;
+      const syncManager = getSyncManager();
+      syncManager.destroy();
+      const connectionMonitor = getConnectionMonitor();
+      connectionMonitor.destroy();
+      const lockManager = getLockManager();
+      lockManager.destroy();
+      const offlineLockManager = getOfflineLockManager();
+      offlineLockManager.destroy();
+      const realtimeSyncHandler = getRealtimeSyncHandler();
+      realtimeSyncHandler.destroy();
+      const wsClient = getWebSocketClient();
+      wsClient.disconnect();
+    };
+  }, []); // Run once on mount
+
+  // Set user context for offline lock manager when authenticated
+  useEffect(() => {
+    if (isAuthenticated && user && tenant) {
+      const offlineLockManager = getOfflineLockManager();
+      offlineLockManager.setUserContext(user.id, tenant.id);
+      console.log('[App] ✅ Set user context for offline lock manager');
+    }
+  }, [isAuthenticated, user, tenant]);
+
+  // Connect WebSocket when authenticated and set up real-time sync
+  useEffect(() => {
+    if (isAuthenticated) {
+      const wsClient = getWebSocketClient();
+      const token = apiClient.getToken();
+      const tenantId = apiClient.getTenantId();
+      if (token && tenantId) {
+        if (apiClient.isTokenExpired()) {
+          console.warn('[App] ⚠️ WebSocket not connected - token expired');
+          return;
+        }
+        wsClient.connect(token, tenantId);
+      } else {
+        console.warn('[App] ⚠️ WebSocket not connected - missing token or tenant ID');
+      }
+      console.log('[App] ✅ WebSocket client connecting (authenticated)');
+      
+      // Set dispatch callback for real-time sync handler
+      const realtimeSyncHandler = getRealtimeSyncHandler();
+      realtimeSyncHandler.setDispatch(dispatch);
+      console.log('[App] ✅ Real-time sync handler connected to AppContext dispatch');
+      
+      return () => {
+        wsClient.disconnect();
+        realtimeSyncHandler.setDispatch(null);
+      };
+    }
+  }, [isAuthenticated, dispatch]);
 
   // Optimized navigation handler - uses startTransition for non-blocking updates
   const handleSetPage = useCallback((page: Page) => {
@@ -265,8 +417,10 @@ const App: React.FC = () => {
       case 'vendorDirectory': return 'Vendor Directory';
       case 'contacts': return 'Contacts';
       case 'budgets': return 'Budget Planner';
-      case 'tasks': return 'Tasks';
       case 'payroll': return 'Global Payroll';
+      case 'tasks': return 'My Tasks';
+      case 'tasksCalendar': return 'Task Calendar';
+      case 'teamRanking': return 'Team Ranking';
       default: return 'PBooks Pro';
     }
   };
@@ -376,6 +530,9 @@ const App: React.FC = () => {
           style={{ marginRight: 'var(--right-sidebar-width, 0px)' }}
         >
           <Header title={getPageTitle(currentPage)} isNavigating={isPending} />
+          
+          {/* Mobile Offline Warning Banner */}
+          <MobileOfflineWarning />
 
           <main className="flex-1 relative overflow-hidden overscroll-none" id="main-container">
             <ErrorBoundary dispatch={dispatch}>
@@ -386,12 +543,26 @@ const App: React.FC = () => {
               {renderPersistentPage('VENDORS', <VendorDirectoryPage />)}
               {renderPersistentPage('CONTACTS', <ContactsPage />)}
               {renderPersistentPage('BUDGETS', <BudgetManagement />)}
-              {renderPersistentPage('TASKS', <TodoList />)}
               {renderPersistentPage('RENTAL', <RentalManagementPage initialPage={currentPage} />)}
               {renderPersistentPage('PROJECT', <ProjectManagementPage initialPage={currentPage} />)}
               {renderPersistentPage('INVESTMENT', <InvestmentManagementPage />)}
               {renderPersistentPage('PM_CONFIG', <PMConfigPage />)}
               {renderPersistentPage('PAYROLL', <GlobalPayrollPage />)}
+              {currentPage === 'tasks' && (
+                <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-center"><div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-2"></div><p className="text-sm text-gray-600">Loading...</p></div></div>}>
+                  <TasksPage />
+                </Suspense>
+              )}
+              {currentPage === 'tasksCalendar' && (
+                <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-center"><div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-2"></div><p className="text-sm text-gray-600">Loading...</p></div></div>}>
+                  <TasksCalendarView />
+                </Suspense>
+              )}
+              {currentPage === 'teamRanking' && (
+                <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-center"><div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-2"></div><p className="text-sm text-gray-600">Loading...</p></div></div>}>
+                  <TeamRankingPage />
+                </Suspense>
+              )}
               {renderPersistentPage('SETTINGS', <SettingsPage />)}
               {renderPersistentPage('IMPORT', <ImportExportWizard />)}
             </ErrorBoundary>
@@ -432,6 +603,7 @@ const App: React.FC = () => {
 
         {/* Sync Notification */}
         <SyncNotification />
+        <WebSocketDebugPanel />
 
         <UpdateNotification />
         <VersionUpdateNotification onUpdateRequested={() => {

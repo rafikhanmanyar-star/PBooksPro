@@ -2,42 +2,57 @@
  * Sync Notification Component
  * 
  * Displays sync progress, success, and error notifications
+ * Uses the new useSyncStatus hook for better integration
  */
 
 import React, { useEffect, useState } from 'react';
-import { useOffline } from '../../context/OfflineContext';
+import { useSyncStatus } from '../../hooks/useSyncStatus';
+import { isMobileDevice } from '../../utils/platformDetection';
 
 const SyncNotification: React.FC = () => {
-  const { isSyncing, syncProgress, pendingCount, failedCount } = useOffline();
+  const { pending, syncing, failed, isSyncing } = useSyncStatus();
+  const isMobile = isMobileDevice();
   const [showSuccess, setShowSuccess] = useState(false);
   const [lastCompletedCount, setLastCompletedCount] = useState(0);
+  const [previousSyncing, setPreviousSyncing] = useState(false);
+
+  // Mobile doesn't have sync queue, so don't show anything
+  if (isMobile) {
+    return null;
+  }
 
   /**
    * Show success notification when sync completes
    */
   useEffect(() => {
-    if (!isSyncing && syncProgress && syncProgress.completed > 0) {
-      setLastCompletedCount(syncProgress.completed);
-      setShowSuccess(true);
-      
-      // Auto-dismiss after 5 seconds
-      const timer = setTimeout(() => {
-        setShowSuccess(false);
-      }, 5000);
+    // Detect when sync transitions from syncing to not syncing
+    if (previousSyncing && !isSyncing && syncing === 0) {
+      // Calculate completed count from pending reduction
+      const completed = syncing; // Items that were syncing are now done
+      if (completed > 0) {
+        setLastCompletedCount(completed);
+        setShowSuccess(true);
+        
+        // Auto-dismiss after 5 seconds
+        const timer = setTimeout(() => {
+          setShowSuccess(false);
+        }, 5000);
 
-      return () => clearTimeout(timer);
+        return () => clearTimeout(timer);
+      }
     }
-  }, [isSyncing, syncProgress]);
+    setPreviousSyncing(isSyncing);
+  }, [isSyncing, syncing, previousSyncing]);
 
   // Don't render if nothing to show
-  if (!isSyncing && !showSuccess && pendingCount === 0 && failedCount === 0) {
+  if (!isSyncing && !showSuccess && pending === 0 && failed === 0) {
     return null;
   }
 
   return (
     <div className="fixed bottom-20 right-4 z-50 space-y-2">
       {/* Syncing Progress */}
-      {isSyncing && syncProgress && (
+      {isSyncing && syncing > 0 && (
         <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-4 max-w-sm animate-slide-up">
           <div className="flex items-start gap-3">
             {/* Spinning Icon */}
@@ -69,22 +84,12 @@ const SyncNotification: React.FC = () => {
                 Syncing data to cloud...
               </p>
               <p className="text-xs text-gray-600 mt-1">
-                {syncProgress.completed} of {syncProgress.total} operations
+                {syncing} operation{syncing !== 1 ? 's' : ''} in progress
               </p>
               
-              {/* Progress Bar */}
-              <div className="mt-2 bg-gray-200 rounded-full h-2 overflow-hidden">
-                <div 
-                  className="bg-blue-600 h-full transition-all duration-300 ease-out"
-                  style={{ 
-                    width: `${(syncProgress.completed / syncProgress.total) * 100}%` 
-                  }}
-                />
-              </div>
-              
-              {syncProgress.current && (
+              {pending > 0 && (
                 <p className="text-xs text-gray-500 mt-1">
-                  {syncProgress.current.action} {syncProgress.current.type}
+                  {pending} more waiting
                 </p>
               )}
             </div>
@@ -137,7 +142,7 @@ const SyncNotification: React.FC = () => {
       )}
 
       {/* Failed Items Warning */}
-      {failedCount > 0 && !isSyncing && (
+      {failed > 0 && !isSyncing && (
         <div className="bg-white rounded-lg shadow-lg border border-red-200 p-4 max-w-sm">
           <div className="flex items-start gap-3">
             {/* Warning Icon */}
@@ -163,7 +168,7 @@ const SyncNotification: React.FC = () => {
                 Some items failed to sync
               </p>
               <p className="text-xs text-gray-600 mt-1">
-                {failedCount} operation{failedCount !== 1 ? 's' : ''} failed after multiple retries
+                {failed} operation{failed !== 1 ? 's' : ''} failed after multiple retries
               </p>
               <p className="text-xs text-gray-500 mt-2">
                 Check your connection and try again later
@@ -174,7 +179,7 @@ const SyncNotification: React.FC = () => {
       )}
 
       {/* Pending Items Info (when offline) */}
-      {pendingCount > 0 && !isSyncing && (
+      {pending > 0 && !isSyncing && (
         <div className="bg-white rounded-lg shadow-lg border border-amber-200 p-4 max-w-sm">
           <div className="flex items-start gap-3">
             {/* Info Icon */}
@@ -200,7 +205,7 @@ const SyncNotification: React.FC = () => {
                 Changes saved locally
               </p>
               <p className="text-xs text-gray-600 mt-1">
-                {pendingCount} operation{pendingCount !== 1 ? 's' : ''} waiting to sync
+                {pending} operation{pending !== 1 ? 's' : ''} waiting to sync
               </p>
               <p className="text-xs text-gray-500 mt-2">
                 Will sync automatically when online

@@ -39,7 +39,7 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
                 ra.status === RentalAgreementStatus.ACTIVE
             )
             .map(ra => {
-                const tenant = state.contacts.find(c => c.id === ra.tenantId);
+                const tenant = state.contacts.find(c => c.id === ra.contactId);
                 return {
                     agreement: ra,
                     tenantName: tenant?.name || 'Unknown Tenant',
@@ -58,7 +58,7 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
                  ra.status === RentalAgreementStatus.TERMINATED)
             )
             .map(ra => {
-                const tenant = state.contacts.find(c => c.id === ra.tenantId);
+                const tenant = state.contacts.find(c => c.id === ra.contactId);
                 return {
                     agreement: ra,
                     tenantName: tenant?.name || 'Unknown Tenant',
@@ -256,7 +256,7 @@ const PropertyTransferModal: React.FC<PropertyTransferModalProps> = ({ isOpen, o
                     const newAgreement: RentalAgreement = {
                         id: newAgreementId,
                         agreementNumber: newAgreementNumber,
-                        tenantId: oldAgreement.tenantId,
+                        tenantId: oldAgreement.contactId,
                         propertyId: property.id,
                         startDate: transferDate,
                         endDate: oldAgreement.endDate, // Keep same end date or extend as needed

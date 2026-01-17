@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Modal from '../ui/Modal';
 import { ChatMessagesRepository } from '../../services/database/repositories';
+import { getDatabaseService } from '../../services/database/databaseService';
 import { useAuth } from '../../context/AuthContext';
 import { useAppContext } from '../../context/AppContext';
 import { apiClient } from '../../services/api/client';
-import { getWebSocketClient } from '../../services/websocket/websocketClient';
+import { getWebSocketClient } from '../../services/websocketClient';
 
 interface OnlineUser {
     id: string;
@@ -46,9 +47,58 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
     const chatRepo = new ChatMessagesRepository();
     const wsClient = getWebSocketClient();
 
+    const ensureChatDbReady = async (): Promise<boolean> => {
+        try {
+            console.log(`📝 [ChatModal] ensureChatDbReady called`);
+            const dbService = getDatabaseService();
+            console.log(`📝 [ChatModal] Database service initialized: ${dbService.isInitialized}`);
+            console.log(`📝 [ChatModal] Database ready: ${dbService.isReady()}`);
+            
+            if (!dbService.isReady()) {
+                console.log(`📝 [ChatModal] Initializing database...`);
+                await dbService.initialize();
+                console.log(`📝 [ChatModal] Database initialized. Ready: ${dbService.isReady()}`);
+            }
+            
+            console.log(`📝 [ChatModal] Ensuring all tables exist...`);
+            dbService.ensureAllTablesExist();
+            
+            // Verify chat_messages table exists
+            const tableExists = dbService.query<{ name: string }>(
+                `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
+                ['chat_messages']
+            );
+            console.log(`📝 [ChatModal] chat_messages table exists: ${tableExists.length > 0}`);
+            
+            if (tableExists.length === 0) {
+                console.error(`❌ [ChatModal] chat_messages table does not exist after ensureAllTablesExist()`);
+                return false;
+            }
+            
+            // Verify table has columns
+            const columns = dbService.query<{ name: string }>(`PRAGMA table_info(chat_messages)`);
+            console.log(`📝 [ChatModal] chat_messages table columns:`, columns.map(c => c.name));
+            
+            if (columns.length === 0) {
+                console.error(`❌ [ChatModal] chat_messages table has no columns`);
+                return false;
+            }
+            
+            console.log(`✅ [ChatModal] Chat database is ready`);
+            return true;
+        } catch (error) {
+            console.error('❌ [ChatModal] Error initializing chat database:', error);
+            return false;
+        }
+    };
+
     // Connect to WebSocket on mount
     useEffect(() => {
-        wsClient.connect();
+        const token = apiClient.getToken();
+        const tenantId = apiClient.getTenantId();
+        if (token && tenantId) {
+            wsClient.connect(token, tenantId);
+        }
         return () => {
             // Don't disconnect on unmount - keep connection alive for other components
         };
@@ -56,23 +106,37 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
 
     // Listen for incoming chat messages
     useEffect(() => {
-        const handleChatMessage = (data: ChatMessage) => {
+        const handleChatMessage = async (data: ChatMessage) => {
+            console.log(`📝 [ChatModal] WebSocket message received:`, data);
             // Only process messages for current user
             if (data.recipientId === currentUserId || data.senderId === currentUserId) {
                 try {
+                    console.log(`📝 [ChatModal] Processing message for current user`);
+                    const ready = await ensureChatDbReady();
+                    console.log(`📝 [ChatModal] Database ready for incoming message: ${ready}`);
+                    if (!ready) {
+                        console.warn(`⚠️ [ChatModal] Database not ready, skipping message save`);
+                        return;
+                    }
                     // Save message locally
+                    console.log(`📝 [ChatModal] Saving incoming message locally...`);
                     chatRepo.insert(data);
+                    console.log(`✅ [ChatModal] Incoming message saved successfully`);
                     
                     // If this message is for the currently selected conversation, update UI
                     if (selectedUserId && (data.senderId === selectedUserId || data.recipientId === selectedUserId)) {
+                        console.log(`📝 [ChatModal] Message is for selected conversation, reloading messages`);
                         loadMessages(selectedUserId);
                     }
                     
                     // Refresh conversations list
-                    loadConversations();
+                    console.log(`📝 [ChatModal] Refreshing conversations list`);
+                    await loadConversations();
                 } catch (error) {
-                    console.error('Error saving incoming message:', error);
+                    console.error('❌ [ChatModal] Error saving incoming message:', error);
                 }
+            } else {
+                console.log(`📝 [ChatModal] Message not for current user, ignoring`);
             }
         };
 
@@ -94,8 +158,6 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
     useEffect(() => {
         if (selectedUserId && currentUserId) {
             loadMessages(selectedUserId);
-            // Mark messages as read
-            chatRepo.markAsRead(selectedUserId, currentUserId);
         }
     }, [selectedUserId, currentUserId]);
 
@@ -104,8 +166,10 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
         scrollToBottom();
     }, [messages]);
 
-    const loadConversations = () => {
+    const loadConversations = async () => {
         try {
+            const ready = await ensureChatDbReady();
+            if (!ready) return;
             const convos = chatRepo.getConversationsForUser(currentUserId);
             setConversations(convos);
         } catch (error) {
@@ -113,10 +177,14 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
         }
     };
 
-    const loadMessages = (otherUserId: string) => {
+    const loadMessages = async (otherUserId: string) => {
         try {
+            const ready = await ensureChatDbReady();
+            if (!ready) return;
             const msgs = chatRepo.getConversation(currentUserId, otherUserId);
             setMessages(msgs);
+            // Mark messages as read after loading
+            chatRepo.markAsRead(otherUserId, currentUserId);
         } catch (error) {
             console.error('Error loading messages:', error);
         }
@@ -136,21 +204,36 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
         setNewMessage(''); // Clear input immediately for better UX
 
         try {
+            console.log(`📝 [ChatModal] handleSendMessage called`);
+            console.log(`📝 [ChatModal] Message text: ${messageText}`);
+            console.log(`📝 [ChatModal] Selected user ID: ${selectedUserId}`);
+            console.log(`📝 [ChatModal] Current user ID: ${currentUserId}`);
+            
+            const ready = await ensureChatDbReady();
+            console.log(`📝 [ChatModal] Database ready: ${ready}`);
+            if (!ready) throw new Error('Chat database not ready');
+            
             // Send message via API (which will broadcast via WebSocket)
+            console.log(`📝 [ChatModal] Sending message via API...`);
             const response = await apiClient.post('/tenants/chat/send', {
                 recipientId: selectedUserId,
                 message: messageText
             });
+            console.log(`📝 [ChatModal] API response received:`, response);
 
             // Message will be received via WebSocket and saved locally
             // But we can also save it locally immediately for instant UI update
             if (response.message) {
+                console.log(`📝 [ChatModal] Saving message locally:`, response.message);
                 chatRepo.insert(response.message);
+                console.log(`✅ [ChatModal] Message saved locally`);
                 setMessages([...messages, response.message]);
-                loadConversations();
+                await loadConversations();
+            } else {
+                console.warn(`⚠️ [ChatModal] API response did not include message`);
             }
         } catch (error) {
-            console.error('Error sending message:', error);
+            console.error('❌ [ChatModal] Error sending message:', error);
             alert('Failed to send message. Please try again.');
             setNewMessage(messageText); // Restore message on error
         }

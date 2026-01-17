@@ -4,6 +4,7 @@ export { ImportType } from '../types';
 import { AppState, AppAction, ImportLogEntry, Account, Contact, Project, Category, Building, Property, Unit, Transaction, Invoice, Bill, RentalAgreement, ProjectAgreement, Budget, ContactType, TransactionType, RentalAgreementStatus, ProjectAgreementStatus, InvoiceStatus, InvoiceType, LoanSubtype, AccountType, Contract, ContractExpenseCategoryItem, ContractStatus, Staff, SalaryComponent, Payslip, RecurringInvoiceTemplate, ImportType } from '../types';
 import type { ProgressContextType } from '../context/ProgressContext';
 import * as XLSX from 'xlsx';
+import { normalizeNameForComparison } from '../utils/stringUtils';
 import { IMPORT_SCHEMAS } from './importSchemas';
 import { AppStateRepository } from './database/repositories/appStateRepository';
 
@@ -1149,20 +1150,6 @@ export const runImportProcess = async (
         else if (status === 'Error') {
             summary.errors++;
         }
-    };
-
-    // Helper to normalize names for consistent case-insensitive comparison
-    // Trims whitespace, normalizes multiple spaces to single space, and converts to lowercase
-    // Pure spelling comparison - case and spacing variations are ignored
-    // Examples: "Abdul Haq", "abdul haq", "ABDUL HAQ", "  Abdul  Haq  " all become "abdul haq"
-    const normalizeNameForComparison = (name: string): string => {
-        if (!name) return '';
-        // Convert to string and trim
-        let normalized = String(name).trim();
-        // Normalize multiple consecutive spaces to single space (handles "Abdul  Haq" -> "Abdul Haq")
-        normalized = normalized.replace(/\s+/g, ' ');
-        // Convert to lowercase for case-insensitive comparison
-        return normalized.toLowerCase();
     };
 
     // Helper to find similar names for suggestions

@@ -45,7 +45,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
         return '';
     }, [agreementToEdit, state.properties]);
 
-    const [tenantId, setTenantId] = useState(agreementToEdit?.tenantId || '');
+    const [contactId, setContactId] = useState(agreementToEdit?.contactId || '');
     const [buildingId, setBuildingId] = useState(initialBuildingId);
     const [propertyId, setPropertyId] = useState(agreementToEdit?.propertyId || '');
 
@@ -220,7 +220,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
              const secInvoice: Invoice = {
                 id: `inv-sec-man-${Date.now()}`,
                 invoiceNumber: secInvNum,
-                contactId: tenantId,
+                contactId: contactId,
                 invoiceType: InvoiceType.RENTAL,
                 amount: secDep,
                 paidAmount: 0,
@@ -248,7 +248,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
              const rentInvoice: Invoice = {
                 id: `inv-rent-man-${Date.now()}`,
                 invoiceNumber: rentInvNum,
-                contactId: tenantId,
+                contactId: contactId,
                 invoiceType: InvoiceType.RENTAL,
                 amount: rent,
                 paidAmount: 0,
@@ -269,7 +269,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
            
            const recurringTemplate: RecurringInvoiceTemplate = {
                id: `rec-${Date.now()}`,
-               contactId: tenantId,
+               contactId: contactId,
                propertyId: propertyId,
                buildingId: bId || '',
                amount: rent,
@@ -293,7 +293,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         
-        if (!tenantId || !propertyId || !startDate || !endDate || !monthlyRent) {
+        if (!contactId || !propertyId || !startDate || !endDate || !monthlyRent) {
             await showAlert("Please fill in all required fields.");
             return;
         }
@@ -307,7 +307,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
         }
 
         const agreementData = {
-            tenantId,
+            contactId,
             propertyId,
             startDate: startD.toISOString(),
             endDate: endD.toISOString(),
@@ -399,7 +399,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                     const incInvoice: Invoice = {
                         id: `inv-sec-inc-${Date.now()}`,
                         invoiceNumber: incInvNum,
-                        contactId: agreementData.tenantId,
+                        contactId: agreementData.contactId,
                         invoiceType: InvoiceType.RENTAL,
                         amount: increment,
                         paidAmount: 0,
@@ -427,7 +427,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                    const rentInvoice: Invoice = {
                         id: `inv-rent-renew-${Date.now()}`,
                         invoiceNumber: rentInvNum,
-                        contactId: agreementData.tenantId,
+                        contactId: agreementData.contactId,
                         invoiceType: InvoiceType.RENTAL,
                         amount: rentAmt,
                         paidAmount: 0,
@@ -449,7 +449,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                    
                    const recurringTemplate: RecurringInvoiceTemplate = {
                        id: `rec-${Date.now()}`,
-                       contactId: agreementData.tenantId,
+                       contactId: agreementData.contactId,
                        propertyId: agreementData.propertyId,
                        buildingId: bId || '',
                        amount: rentAmt,
@@ -514,7 +514,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                      const secInvoice: Invoice = {
                         id: `inv-sec-new-${Date.now()}`,
                         invoiceNumber: secInvNum,
-                        contactId: agreementData.tenantId,
+                        contactId: agreementData.contactId,
                         invoiceType: InvoiceType.RENTAL,
                         amount: agreementData.securityDeposit,
                         paidAmount: 0,
@@ -542,7 +542,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                      const rentInvoice: Invoice = {
                         id: `inv-rent-new-${Date.now()}`,
                         invoiceNumber: rentInvNum,
-                        contactId: agreementData.tenantId,
+                        contactId: agreementData.contactId,
                         invoiceType: InvoiceType.RENTAL,
                         amount: agreementData.monthlyRent,
                         paidAmount: 0,
@@ -563,7 +563,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                    
                    const recurringTemplate: RecurringInvoiceTemplate = {
                        id: `rec-${Date.now()}`,
-                       contactId: agreementData.tenantId,
+                       contactId: agreementData.contactId,
                        propertyId: agreementData.propertyId,
                        buildingId: bId || '',
                        amount: agreementData.monthlyRent,
@@ -645,8 +645,8 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                 <ComboBox 
                     label="Tenant" 
                     items={tenants} 
-                    selectedId={tenantId} 
-                    onSelect={(item) => setTenantId(item?.id || '')} 
+                    selectedId={contactId} 
+                    onSelect={(item) => setContactId(item?.id || '')} 
                     placeholder="Select Tenant"
                     required
                     disabled={!!agreementToEdit && !renewMode}
