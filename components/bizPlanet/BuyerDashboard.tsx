@@ -574,8 +574,12 @@ const BuyerDashboard: React.FC = () => {
                             ) : (
                                 outstandingPOs.map(po => (
                                     <tr key={po.id} className="hover:bg-slate-50">
-                                        <td className="px-4 py-3 text-sm text-slate-900">{po.poNumber}</td>
-                                        <td className="px-4 py-3 text-sm text-slate-600">{po.supplierTenantId}</td>
+                                        <td className="px-4 py-3 text-sm text-slate-900 font-medium">{po.poNumber || 'N/A'}</td>
+                                        <td className="px-4 py-3 text-sm text-slate-600">
+                                            {registeredSuppliers.find(s => s.id === po.supplierTenantId)?.company_name || 
+                                             registeredSuppliers.find(s => s.id === po.supplierTenantId)?.name || 
+                                             po.supplierTenantId}
+                                        </td>
                                         <td className="px-4 py-3 text-sm text-right font-medium text-slate-900">
                                             {CURRENCY} {(po.totalAmount || 0).toFixed(2)}
                                         </td>
@@ -627,8 +631,8 @@ const BuyerDashboard: React.FC = () => {
                             ) : (
                                 invoicesAwaitingApproval.map(invoice => (
                                     <tr key={invoice.id} className="hover:bg-slate-50">
-                                        <td className="px-4 py-3 text-sm text-slate-900">{invoice.invoiceNumber}</td>
-                                        <td className="px-4 py-3 text-sm text-slate-600">{invoice.poId}</td>
+                                        <td className="px-4 py-3 text-sm text-slate-900 font-medium">{invoice.invoiceNumber}</td>
+                                        <td className="px-4 py-3 text-sm text-slate-600">{invoice.poNumber || invoice.poId}</td>
                                         <td className="px-4 py-3 text-sm text-right font-medium text-slate-900">
                                             {CURRENCY} {(invoice.amount || 0).toFixed(2)}
                                         </td>
