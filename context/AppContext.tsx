@@ -385,7 +385,7 @@ const applyTransactionEffect = (state: AppState, tx: Transaction, isAdd: boolean
 
     // 4. Payslip Status
     if (tx.payslipId && tx.type === TransactionType.EXPENSE) {
-        // Find payslip in either project or rental list
+        // Find payslip in either project, rental, or enterprise payroll list
         const findAndUpdate = (list: Payslip[]) => list.map(p => {
             if (p.id === tx.payslipId) {
                 const newPaid = Math.max(0, (p.paidAmount || 0) + (tx.amount * factor));
@@ -400,6 +400,7 @@ const applyTransactionEffect = (state: AppState, tx: Transaction, isAdd: boolean
         });
         newState.projectPayslips = findAndUpdate(newState.projectPayslips);
         newState.rentalPayslips = findAndUpdate(newState.rentalPayslips);
+        newState.payslips = findAndUpdate(newState.payslips || []);
     }
 
     // 5. Staff Advance Balance (If transaction Category is Salary Advance)
@@ -1290,6 +1291,90 @@ const reducer = (state: AppState, action: AppAction): AppState => {
         }
         case 'ADD_PAYSLIP':
             return { ...state, payslips: [...(state.payslips || []), action.payload] };
+        case 'UPDATE_PAYSLIP': {
+            const updated = action.payload as Payslip;
+            return {
+                ...state,
+                payslips: (state.payslips || []).map(p => p.id === updated.id ? updated : p)
+            };
+        }
+        case 'MARK_PAYSLIP_PAID': {
+            const { payslipId, accountId, paymentDate, amount, description } = action.payload;
+            const payslip = (state.payslips || []).find(p => p.id === payslipId);
+            if (!payslip) return state;
+
+            // Find employee salary category or use default
+            const salaryCategoryId = state.categories.find(c => 
+                c.name === 'Employee Salary' || c.name === 'Staff Salary'
+            )?.id;
+
+            // Get employee for contactId
+            const employee = (state.employees || []).find(e => e.id === payslip.employeeId);
+            
+            // Create transaction(s) based on cost allocations
+            // If payslip has cost allocations, create multiple transactions
+            const transactions: Transaction[] = [];
+            
+            if (payslip.costAllocations && payslip.costAllocations.length > 0) {
+                // Multi-project allocation - create separate transaction for each project
+                payslip.costAllocations.forEach(allocation => {
+                    const allocationAmount = amount * (allocation.percentage / 100);
+                    transactions.push({
+                        id: `pay-tx-${payslipId}-${allocation.projectId}-${Date.now()}`,
+                        type: TransactionType.EXPENSE,
+                        amount: allocationAmount,
+                        date: paymentDate,
+                        description: description || `Salary Payment for ${payslip.month} - ${allocation.projectId}`,
+                        accountId,
+                        categoryId: salaryCategoryId,
+                        contactId: payslip.employeeId,
+                        projectId: allocation.projectId,
+                        payslipId: payslip.id
+                    });
+                });
+            } else {
+                // Single transaction - use first project assignment if exists
+                const projectId = employee?.projectAssignments?.[0]?.projectId;
+                
+                transactions.push({
+                    id: `pay-tx-${payslipId}-${Date.now()}`,
+                    type: TransactionType.EXPENSE,
+                    amount,
+                    date: paymentDate,
+                    description: description || `Salary Payment for ${payslip.month}`,
+                    accountId,
+                    categoryId: salaryCategoryId,
+                    contactId: payslip.employeeId,
+                    projectId,
+                    payslipId: payslip.id
+                });
+            }
+
+            let newState = { ...state, transactions: [...state.transactions, ...transactions] };
+            
+            // Apply transaction effects
+            transactions.forEach(tx => {
+                newState = applyTransactionEffect(newState, tx, true);
+            });
+
+            // Update payslip status and payment details
+            const updatedPayslip: Payslip = {
+                ...payslip,
+                paidAmount: (payslip.paidAmount || 0) + amount,
+                paymentDate,
+                paymentAccountId: accountId,
+                status: (payslip.paidAmount || 0) + amount >= payslip.netSalary - 0.01 
+                    ? PayslipStatus.PAID 
+                    : PayslipStatus.PARTIALLY_PAID
+            };
+
+            newState = {
+                ...newState,
+                payslips: (newState.payslips || []).map(p => p.id === payslipId ? updatedPayslip : p)
+            };
+
+            return newState;
+        }
         case 'BULK_APPROVE_PAYSLIPS': {
             const { payslipIds, approvedBy } = action.payload;
             return {

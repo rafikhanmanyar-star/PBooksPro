@@ -1227,6 +1227,7 @@ export type AppAction =
   | { type: 'PROCESS_PAYROLL_CYCLE'; payload: { cycleId: string; month: string; frequency: PayrollFrequency } }
   | { type: 'ADD_PAYSLIP'; payload: Payslip }
   | { type: 'UPDATE_PAYSLIP'; payload: Payslip }
+  | { type: 'MARK_PAYSLIP_PAID'; payload: { payslipId: string; accountId: string; paymentDate: string; amount: number; description?: string } }
   | { type: 'BULK_APPROVE_PAYSLIPS'; payload: { payslipIds: string[]; approvedBy: string } }
   | { type: 'BULK_PAY_PAYSLIPS'; payload: { payslipIds: string[]; accountId: string; paymentDate: string } }
   | { type: 'ADD_TAX_CONFIGURATION'; payload: TaxConfiguration }

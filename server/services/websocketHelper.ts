@@ -98,6 +98,36 @@ export const WS_EVENTS = {
   USER_UPDATED: 'user:updated',
   USER_DELETED: 'user:deleted',
   
+  // Employees
+  EMPLOYEE_CREATED: 'employee:created',
+  EMPLOYEE_UPDATED: 'employee:updated',
+  EMPLOYEE_DELETED: 'employee:deleted',
+  
+  // Payroll Cycles
+  PAYROLL_CYCLE_CREATED: 'payroll_cycle:created',
+  PAYROLL_CYCLE_UPDATED: 'payroll_cycle:updated',
+  PAYROLL_CYCLE_DELETED: 'payroll_cycle:deleted',
+  
+  // Payslips
+  PAYSLIP_CREATED: 'payslip:created',
+  PAYSLIP_UPDATED: 'payslip:updated',
+  PAYSLIP_DELETED: 'payslip:deleted',
+  
+  // Attendance Records
+  ATTENDANCE_RECORD_CREATED: 'attendance_record:created',
+  ATTENDANCE_RECORD_UPDATED: 'attendance_record:updated',
+  ATTENDANCE_RECORD_DELETED: 'attendance_record:deleted',
+  
+  // Bonus Records
+  BONUS_RECORD_CREATED: 'bonus_record:created',
+  BONUS_RECORD_UPDATED: 'bonus_record:updated',
+  BONUS_RECORD_DELETED: 'bonus_record:deleted',
+  
+  // Payroll Adjustments
+  PAYROLL_ADJUSTMENT_CREATED: 'payroll_adjustment:created',
+  PAYROLL_ADJUSTMENT_UPDATED: 'payroll_adjustment:updated',
+  PAYROLL_ADJUSTMENT_DELETED: 'payroll_adjustment:deleted',
+  
   // Connection events
   USER_CONNECTED: 'user:connected',
   USER_DISCONNECTED: 'user:disconnected',

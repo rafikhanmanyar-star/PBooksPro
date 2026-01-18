@@ -10,10 +10,15 @@ import { Employee, PayrollCycle, Payslip } from '../../types';
 import EmployeeManagement from './EmployeeManagement';
 import PayrollProcessing from './PayrollProcessing';
 import PayrollReports from './PayrollReports';
+import AttendanceManagement from './AttendanceManagement';
+import BonusManagement from './BonusManagement';
+import PayrollAdjustmentManagement from './PayrollAdjustmentManagement';
 
 const GlobalPayrollPage: React.FC = () => {
     const { state } = useAppContext();
     const [activeTab, setActiveTab] = useState('Overview');
+
+    const tabs = ['Overview', 'Employees', 'Payroll Processing', 'Attendance', 'Bonuses', 'Adjustments', 'Reports'];
 
     // Calculate KPIs
     const activeEmployees = useMemo(() => 
@@ -136,11 +141,19 @@ const GlobalPayrollPage: React.FC = () => {
                                     </Button>
                                     <Button 
                                         variant="secondary" 
-                                        onClick={() => setActiveTab('Reports & Analytics')} 
+                                        onClick={() => setActiveTab('Attendance')} 
+                                        className="h-20 flex-col justify-center gap-2 bg-white border-2 border-slate-200 hover:border-blue-300 hover:bg-blue-50"
+                                    >
+                                        <div className="w-6 h-6 text-blue-600">{ICONS.calendar}</div>
+                                        <span className="text-sm font-semibold text-slate-700">Attendance</span>
+                                    </Button>
+                                    <Button 
+                                        variant="secondary" 
+                                        onClick={() => setActiveTab('Reports')} 
                                         className="h-20 flex-col justify-center gap-2 bg-white border-2 border-slate-200 hover:border-purple-300 hover:bg-purple-50"
                                     >
                                         <div className="w-6 h-6 text-purple-600">{ICONS.barChart}</div>
-                                        <span className="text-sm font-semibold text-slate-700">Reports & Analytics</span>
+                                        <span className="text-sm font-semibold text-slate-700">Reports</span>
                                     </Button>
                                 </div>
                             </Card>
@@ -213,7 +226,13 @@ const GlobalPayrollPage: React.FC = () => {
                 return <EmployeeManagement />;
             case 'Payroll Processing':
                 return <PayrollProcessing />;
-            case 'Reports & Analytics':
+            case 'Attendance':
+                return <AttendanceManagement />;
+            case 'Bonuses':
+                return <BonusManagement />;
+            case 'Adjustments':
+                return <PayrollAdjustmentManagement />;
+            case 'Reports':
                 return <PayrollReports />;
             default:
                 return null;
@@ -237,7 +256,7 @@ const GlobalPayrollPage: React.FC = () => {
                 <div className="h-full flex flex-col">
                     <div className="bg-white border-b border-slate-200 px-6">
                         <Tabs
-                            tabs={['Overview', 'Employees', 'Payroll Processing', 'Reports & Analytics']}
+                            tabs={['Overview', 'Employees', 'Payroll Processing', 'Attendance', 'Bonuses', 'Adjustments', 'Reports']}
                             activeTab={activeTab}
                             onTabClick={setActiveTab}
                         />
