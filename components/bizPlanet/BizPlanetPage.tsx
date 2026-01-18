@@ -19,7 +19,14 @@ const BizPlanetPage: React.FC = () => {
             if (tenant?.id) {
                 // Fetch current tenant info to check is_supplier flag
                 const tenantInfo = await apiClient.get<{ is_supplier?: boolean }>('/tenants/me');
-                setIsSupplier(tenantInfo.is_supplier === true);
+                console.log('Tenant info received:', tenantInfo);
+                console.log('is_supplier value:', tenantInfo.is_supplier);
+                const supplierStatus = tenantInfo.is_supplier === true || tenantInfo.is_supplier === 'true';
+                console.log('Setting isSupplier to:', supplierStatus);
+                setIsSupplier(supplierStatus);
+            } else {
+                console.log('No tenant ID available');
+                setIsSupplier(false);
             }
         } catch (error) {
             console.error('Error checking supplier status:', error);

@@ -155,12 +155,15 @@ const SupplierPortal: React.FC = () => {
                     <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Supplier Portal</h1>
                     <p className="text-xs sm:text-sm text-slate-500 mt-1">Manage purchase orders and invoices</p>
                 </div>
-                <Button
-                    onClick={() => setIsRegistrationFormOpen(!isRegistrationFormOpen)}
-                    className="bg-slate-900 text-white hover:bg-slate-800"
-                >
-                    {isRegistrationFormOpen ? 'Cancel' : '+ Register with Buyer'}
-                </Button>
+                <div className="flex items-center gap-2">
+                    <Button
+                        onClick={() => setIsRegistrationFormOpen(!isRegistrationFormOpen)}
+                        className="bg-slate-900 text-white hover:bg-slate-800"
+                        type="button"
+                    >
+                        {isRegistrationFormOpen ? 'Cancel' : '+ Register with Buyer'}
+                    </Button>
+                </div>
             </div>
 
             {/* Registration Request Form */}
