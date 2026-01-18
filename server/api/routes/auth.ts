@@ -34,14 +34,15 @@ router.post('/lookup-tenants', async (req, res) => {
     }
 
     const { organizationEmail } = req.body;
+    const normalizedOrganizationEmail = organizationEmail?.trim();
     
-    if (!organizationEmail) {
+    if (!normalizedOrganizationEmail) {
       return res.status(400).json({ error: 'Organization email is required' });
     }
 
     // Basic email format validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(organizationEmail)) {
+    if (!emailRegex.test(normalizedOrganizationEmail)) {
       return res.status(400).json({ error: 'Invalid email format' });
     }
 
@@ -76,8 +77,8 @@ router.post('/lookup-tenants', async (req, res) => {
     let tenants;
     try {
       tenants = await db.query(
-        'SELECT id, name, company_name, email FROM tenants WHERE LOWER(email) = LOWER($1)',
-        [organizationEmail]
+        'SELECT id, name, company_name, email FROM tenants WHERE LOWER(TRIM(email)) = LOWER(TRIM($1))',
+        [normalizedOrganizationEmail]
       );
     } catch (queryError: any) {
       console.error('❌ [API] Database query error in lookup-tenants:', {
@@ -129,8 +130,10 @@ router.post('/unified-login', async (req, res) => {
   try {
     const db = getDb();
     const { organizationEmail, username, password } = req.body;
+    const normalizedOrganizationEmail = organizationEmail?.trim();
+    const normalizedUsername = username?.trim();
     
-    if (!organizationEmail || !username || !password) {
+    if (!normalizedOrganizationEmail || !normalizedUsername || !password) {
       return res.status(400).json({ 
         error: 'All fields required', 
         message: 'Organization email, username, and password are required' 
@@ -139,7 +142,7 @@ router.post('/unified-login', async (req, res) => {
 
     // Basic email format validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(organizationEmail)) {
+    if (!emailRegex.test(normalizedOrganizationEmail)) {
       return res.status(400).json({ 
         error: 'Invalid email format', 
         message: 'Please enter a valid organization email address' 
@@ -147,26 +150,26 @@ router.post('/unified-login', async (req, res) => {
     }
 
     console.log('🔐 Unified login attempt:', { 
-      orgEmail: organizationEmail.substring(0, 15) + '...', 
-      username: username.substring(0, 10) + '...', 
+      orgEmail: normalizedOrganizationEmail.substring(0, 15) + '...', 
+      username: normalizedUsername.substring(0, 10) + '...', 
       hasPassword: !!password 
     });
 
     // Lookup tenants by organization email (case-insensitive)
-    console.log('🔍 Looking up tenant by email:', organizationEmail);
+    console.log('🔍 Looking up tenant by email:', normalizedOrganizationEmail);
     const tenants = await db.query(
-      'SELECT * FROM tenants WHERE LOWER(email) = LOWER($1)',
-      [organizationEmail]
+      'SELECT * FROM tenants WHERE LOWER(TRIM(email)) = LOWER(TRIM($1))',
+      [normalizedOrganizationEmail]
     );
 
     console.log('📊 Tenant lookup result:', { 
       tenantsFound: tenants.length, 
-      searchedEmail: organizationEmail,
+      searchedEmail: normalizedOrganizationEmail,
       foundEmails: tenants.map((t: any) => t.email?.substring(0, 15) + '...')
     });
 
     if (tenants.length === 0) {
-      console.log('❌ Unified login: No organization found for email:', organizationEmail);
+      console.log('❌ Unified login: No organization found for email:', normalizedOrganizationEmail);
       // Also check what emails exist in the database for debugging
       const allTenants = await db.query('SELECT id, email, name FROM tenants LIMIT 10');
       console.log('📊 Available tenants in DB:', allTenants.map((t: any) => ({ id: t.id?.substring(0, 15), email: t.email })));
@@ -178,7 +181,7 @@ router.post('/unified-login', async (req, res) => {
 
     // If multiple tenants found with same email, fail for security
     if (tenants.length > 1) {
-      console.log('❌ Unified login: Multiple tenants found for email:', organizationEmail, tenants.length);
+      console.log('❌ Unified login: Multiple tenants found for email:', normalizedOrganizationEmail, tenants.length);
       return res.status(401).json({ 
         error: 'Invalid credentials', 
         message: 'Invalid organization email, username, or password' 
@@ -190,20 +193,28 @@ router.post('/unified-login', async (req, res) => {
     console.log('✅ Tenant found:', { tenantId, tenantName: tenant.name, tenantEmail: tenant.email });
 
     // Find user within tenant (case-insensitive username comparison)
-    console.log('🔍 Looking up user:', { username, tenantId });
+    console.log('🔍 Looking up user:', { username: normalizedUsername, tenantId });
     const allUsers = await db.query(
-      'SELECT * FROM users WHERE LOWER(username) = LOWER($1) AND tenant_id = $2',
-      [username, tenantId]
+      `SELECT * FROM users
+       WHERE tenant_id = $2
+         AND (
+           LOWER(TRIM(username)) = LOWER(TRIM($1))
+           OR LOWER(TRIM(email)) = LOWER(TRIM($1))
+         )
+       ORDER BY
+         CASE WHEN LOWER(TRIM(username)) = LOWER(TRIM($1)) THEN 0 ELSE 1 END,
+         username ASC`,
+      [normalizedUsername, tenantId]
     );
     
     console.log('📊 User lookup result:', { 
       usersFound: allUsers.length, 
-      searchedUsername: username,
+      searchedUsername: normalizedUsername,
       foundUsernames: allUsers.map((u: any) => u.username)
     });
 
     if (allUsers.length === 0) {
-      console.log('❌ Unified login: User not found:', { username, tenantId });
+      console.log('❌ Unified login: User not found:', { username: normalizedUsername, tenantId });
       // Also check what users exist for this tenant for debugging
       const tenantUsers = await db.query('SELECT id, username, email, is_active FROM users WHERE tenant_id = $1', [tenantId]);
       console.log('📊 Available users for tenant:', tenantUsers.map((u: any) => ({ 
@@ -222,7 +233,7 @@ router.post('/unified-login', async (req, res) => {
     const users = allUsers.filter(u => u.is_active === true || u.is_active === null);
     
     if (users.length === 0) {
-      console.log('❌ Unified login: User is inactive:', { username, tenantId, is_active: allUsers[0]?.is_active });
+      console.log('❌ Unified login: User is inactive:', { username: normalizedUsername, tenantId, is_active: allUsers[0]?.is_active });
       return res.status(403).json({ 
         error: 'Account disabled', 
         message: 'Your account has been disabled. Please contact your administrator.' 
@@ -237,7 +248,7 @@ router.post('/unified-login', async (req, res) => {
     console.log('🔐 Verifying password:', { hasPassword, passwordLength: user.password?.length });
     
     if (!user.password) {
-      console.log('❌ Unified login: User has no password set:', { username, tenantId });
+      console.log('❌ Unified login: User has no password set:', { username: normalizedUsername, tenantId });
       return res.status(401).json({ 
         error: 'Invalid credentials', 
         message: 'Invalid organization email, username, or password' 
@@ -248,11 +259,18 @@ router.post('/unified-login', async (req, res) => {
     console.log('🔐 Password comparison result:', { passwordMatch });
     
     if (!passwordMatch) {
-      console.log('❌ Unified login: Password mismatch for user:', { username, tenantId });
-      return res.status(401).json({ 
-        error: 'Invalid credentials', 
-        message: 'Invalid organization email, username, or password' 
-      });
+      // Fallback for legacy plaintext passwords: compare raw, then upgrade hash.
+      if (user.password === password) {
+        const upgradedHash = await bcrypt.hash(password, 10);
+        await db.query('UPDATE users SET password = $1 WHERE id = $2', [upgradedHash, user.id]);
+        console.log('✅ Unified login: Upgraded legacy plaintext password to bcrypt hash');
+      } else {
+        console.log('❌ Unified login: Password mismatch for user:', { username: normalizedUsername, tenantId });
+        return res.status(401).json({ 
+          error: 'Invalid credentials', 
+          message: 'Invalid organization email, username, or password' 
+        });
+      }
     }
     
     console.log('✅ Password verified successfully');
@@ -421,8 +439,10 @@ router.post('/smart-login', async (req, res) => {
   try {
     const db = getDb();
     const { username, password, tenantId } = req.body;
+    const normalizedUsername = username?.trim();
+    const normalizedUsername = username?.trim();
     
-    if (!username || !password) {
+    if (!normalizedUsername || !password) {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
@@ -430,7 +450,7 @@ router.post('/smart-login', async (req, res) => {
       return res.status(400).json({ error: 'Tenant ID is required. Please select an organization first.' });
     }
 
-    console.log('🔐 Smart login attempt:', { username: username.substring(0, 10) + '...', hasPassword: !!password, tenantId });
+    console.log('🔐 Smart login attempt:', { username: normalizedUsername.substring(0, 10) + '...', hasPassword: !!password, tenantId });
 
     // Verify tenant exists
     const tenants = await db.query(
@@ -449,12 +469,20 @@ router.post('/smart-login', async (req, res) => {
     
     // Find user within tenant (case-insensitive username comparison)
     const allUsers = await db.query(
-      'SELECT * FROM users WHERE LOWER(username) = LOWER($1) AND tenant_id = $2',
-      [username, tenantId]
+      `SELECT * FROM users
+       WHERE tenant_id = $2
+         AND (
+           LOWER(TRIM(username)) = LOWER(TRIM($1))
+           OR LOWER(TRIM(email)) = LOWER(TRIM($1))
+         )
+       ORDER BY
+         CASE WHEN LOWER(TRIM(username)) = LOWER(TRIM($1)) THEN 0 ELSE 1 END,
+         username ASC`,
+      [normalizedUsername, tenantId]
     );
     
     if (allUsers.length === 0) {
-      console.log('❌ Smart login: User not found:', { username, tenantId });
+      console.log('❌ Smart login: User not found:', { username: normalizedUsername, tenantId });
       return res.status(401).json({ error: 'Invalid credentials', message: 'User not found' });
     }
     
@@ -462,15 +490,26 @@ router.post('/smart-login', async (req, res) => {
     const users = allUsers.filter(u => u.is_active === true || u.is_active === null);
     
     if (users.length === 0) {
-      console.log('❌ Smart login: User is inactive:', { username, tenantId, is_active: allUsers[0]?.is_active });
+      console.log('❌ Smart login: User is inactive:', { username: normalizedUsername, tenantId, is_active: allUsers[0]?.is_active });
       return res.status(403).json({ error: 'Account disabled', message: 'Your account has been disabled. Please contact your administrator.' });
     }
 
     const user = users[0];
 
     // Verify password
-    if (!user.password || !await bcrypt.compare(password, user.password)) {
+    if (!user.password) {
       return res.status(401).json({ error: 'Invalid credentials', message: 'Incorrect password' });
+    }
+    
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
+      if (user.password === password) {
+        const upgradedHash = await bcrypt.hash(password, 10);
+        await db.query('UPDATE users SET password = $1 WHERE id = $2', [upgradedHash, user.id]);
+        console.log('✅ Smart login: Upgraded legacy plaintext password to bcrypt hash');
+      } else {
+        return res.status(401).json({ error: 'Invalid credentials', message: 'Incorrect password' });
+      }
     }
 
     // Check login_status flag - primary check for duplicate logins
@@ -659,12 +698,20 @@ router.post('/login', async (req, res) => {
     // Find user within tenant (check all users first, then filter active)
     // Use case-insensitive comparison for username
     const allUsers = await db.query(
-      'SELECT * FROM users WHERE LOWER(username) = LOWER($1) AND tenant_id = $2',
-      [username, tenantId]
+      `SELECT * FROM users
+       WHERE tenant_id = $2
+         AND (
+           LOWER(TRIM(username)) = LOWER(TRIM($1))
+           OR LOWER(TRIM(email)) = LOWER(TRIM($1))
+         )
+       ORDER BY
+         CASE WHEN LOWER(TRIM(username)) = LOWER(TRIM($1)) THEN 0 ELSE 1 END,
+         username ASC`,
+      [normalizedUsername, tenantId]
     );
     
     if (allUsers.length === 0) {
-      console.log('❌ Login: User not found:', { username, tenantId });
+      console.log('❌ Login: User not found:', { username: normalizedUsername, tenantId });
       return res.status(401).json({ error: 'Invalid credentials', message: 'User not found' });
     }
     
@@ -672,7 +719,7 @@ router.post('/login', async (req, res) => {
     const users = allUsers.filter((u: any) => u.is_active === true || u.is_active === null);
     
     if (users.length === 0) {
-      console.log('❌ Login: User is inactive:', { username, tenantId, is_active: allUsers[0]?.is_active });
+      console.log('❌ Login: User is inactive:', { username: normalizedUsername, tenantId, is_active: allUsers[0]?.is_active });
       return res.status(403).json({ error: 'Account disabled', message: 'Your account has been disabled. Please contact your administrator.' });
     }
 
@@ -686,8 +733,14 @@ router.post('/login', async (req, res) => {
     
     const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
-      console.log('❌ Login: Password mismatch:', { userId: user.id, username: user.username });
-      return res.status(401).json({ error: 'Invalid credentials', message: 'Incorrect password' });
+      if (user.password === password) {
+        const upgradedHash = await bcrypt.hash(password, 10);
+        await db.query('UPDATE users SET password = $1 WHERE id = $2', [upgradedHash, user.id]);
+        console.log('✅ Login: Upgraded legacy plaintext password to bcrypt hash');
+      } else {
+        console.log('❌ Login: Password mismatch:', { userId: user.id, username: user.username });
+        return res.status(401).json({ error: 'Invalid credentials', message: 'Incorrect password' });
+      }
     }
     
     console.log('✅ Login: Password verified for user:', { userId: user.id, username: user.username, role: user.role });
