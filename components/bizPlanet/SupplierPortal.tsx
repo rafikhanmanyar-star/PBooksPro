@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { apiClient } from '../../services/api/client';
 import { PurchaseOrder, P2PInvoice, POStatus, P2PInvoiceStatus, SupplierRegistrationRequest } from '../../types';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
 import Input from '../ui/Input';
+import ComboBox from '../ui/ComboBox';
 import { useNotification } from '../../context/NotificationContext';
 
 const SupplierPortal: React.FC = () => {
@@ -18,12 +19,25 @@ const SupplierPortal: React.FC = () => {
     // Registration form state
     const [isRegistrationFormOpen, setIsRegistrationFormOpen] = useState(false);
     const [buyerOrganizationEmail, setBuyerOrganizationEmail] = useState('');
+    const [selectedBuyerTenantId, setSelectedBuyerTenantId] = useState('');
     const [supplierMessage, setSupplierMessage] = useState('');
+    const [availableBuyers, setAvailableBuyers] = useState<Array<{ id: string; name: string; email: string }>>([]);
 
     useEffect(() => {
         loadData();
         loadMyRegistrationRequests();
+        loadAvailableBuyers();
     }, []);
+
+    const loadAvailableBuyers = async () => {
+        try {
+            // This would need an API endpoint to get all tenants that are NOT suppliers
+            // For now, we'll use a placeholder - in production you'd want to search by email
+            // The user can still type the email manually if needed
+        } catch (error) {
+            console.error('Error loading available buyers:', error);
+        }
+    };
 
     const loadData = async () => {
         try {
@@ -153,14 +167,18 @@ const SupplierPortal: React.FC = () => {
             {isRegistrationFormOpen && (
                 <Card className="p-6 border-2 border-blue-200 bg-blue-50/30">
                     <h2 className="text-lg font-semibold text-slate-900 mb-4">Register with Buyer Organization</h2>
+                    <p className="text-sm text-slate-600 mb-4">Enter the email address of the buyer organization you want to register with.</p>
                     
                     <div className="space-y-4 mb-6">
                         <Input
                             label="Buyer Organization Email *"
                             type="email"
                             value={buyerOrganizationEmail}
-                            onChange={(e) => setBuyerOrganizationEmail(e.target.value)}
-                            placeholder="Enter buyer organization email"
+                            onChange={(e) => {
+                                setBuyerOrganizationEmail(e.target.value);
+                                setSelectedBuyerTenantId('');
+                            }}
+                            placeholder="Enter buyer organization email (e.g., buyer@company.com)"
                             required
                         />
                         <div>
@@ -182,6 +200,7 @@ const SupplierPortal: React.FC = () => {
                             variant="secondary"
                             onClick={() => {
                                 setBuyerOrganizationEmail('');
+                                setSelectedBuyerTenantId('');
                                 setSupplierMessage('');
                                 setIsRegistrationFormOpen(false);
                             }}
@@ -191,6 +210,7 @@ const SupplierPortal: React.FC = () => {
                         <Button
                             onClick={handleSubmitRegistration}
                             className="bg-blue-600 hover:bg-blue-700 text-white"
+                            disabled={!buyerOrganizationEmail.trim()}
                         >
                             Send Registration Request
                         </Button>

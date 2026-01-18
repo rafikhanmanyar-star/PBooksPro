@@ -194,12 +194,15 @@ CREATE TABLE IF NOT EXISTS supplier_registration_requests (
     tenant_id TEXT NOT NULL,
     FOREIGN KEY (supplier_tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (buyer_tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    -- Prevent duplicate pending requests
-    UNIQUE(supplier_tenant_id, buyer_tenant_id, status) WHERE status = 'PENDING'
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_supplier_reg_req_supplier ON supplier_registration_requests(supplier_tenant_id);
 CREATE INDEX IF NOT EXISTS idx_supplier_reg_req_buyer ON supplier_registration_requests(buyer_tenant_id);
 CREATE INDEX IF NOT EXISTS idx_supplier_reg_req_status ON supplier_registration_requests(status);
 CREATE INDEX IF NOT EXISTS idx_supplier_reg_req_tenant_id ON supplier_registration_requests(tenant_id);
+
+-- Create unique partial index to prevent duplicate pending requests
+CREATE UNIQUE INDEX IF NOT EXISTS idx_supplier_reg_req_unique_pending 
+    ON supplier_registration_requests(supplier_tenant_id, buyer_tenant_id) 
+    WHERE status = 'PENDING';
