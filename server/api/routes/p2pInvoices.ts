@@ -12,6 +12,9 @@ const getDb = () => getDatabaseService();
 /**
  * GET /api/p2p-invoices
  * Get all P2P invoices for the tenant
+ * Returns invoices where:
+ *   - buyer_tenant_id matches (invoices for POs this tenant created as buyer)
+ *   - OR supplier_tenant_id matches (invoices this tenant created as supplier)
  */
 router.get('/', async (req: TenantRequest, res) => {
   try {
@@ -19,23 +22,41 @@ router.get('/', async (req: TenantRequest, res) => {
     const { status, poId } = req.query;
 
     let query = `
-      SELECT * FROM p2p_invoices 
-      WHERE tenant_id = $1
+      SELECT 
+        inv.id,
+        inv.invoice_number as "invoiceNumber",
+        inv.po_id as "poId",
+        inv.buyer_tenant_id as "buyerTenantId",
+        inv.supplier_tenant_id as "supplierTenantId",
+        inv.amount,
+        inv.status,
+        inv.items,
+        inv.reviewed_by as "reviewedBy",
+        inv.reviewed_at as "reviewedAt",
+        inv.rejected_reason as "rejectedReason",
+        inv.tenant_id as "tenantId",
+        inv.user_id as "userId",
+        inv.created_at as "createdAt",
+        inv.updated_at as "updatedAt",
+        po.po_number as "poNumber"
+      FROM p2p_invoices inv
+      LEFT JOIN purchase_orders po ON inv.po_id = po.id
+      WHERE (inv.buyer_tenant_id = $1 OR inv.supplier_tenant_id = $1)
     `;
     const params: any[] = [req.tenantId];
     let paramIndex = 2;
 
     if (status) {
-      query += ` AND status = $${paramIndex++}`;
+      query += ` AND inv.status = $${paramIndex++}`;
       params.push(status);
     }
 
     if (poId) {
-      query += ` AND po_id = $${paramIndex++}`;
+      query += ` AND inv.po_id = $${paramIndex++}`;
       params.push(poId);
     }
 
-    query += ' ORDER BY created_at DESC';
+    query += ' ORDER BY inv.created_at DESC';
 
     const invoices = await db.query(query, params);
     res.json(invoices);
@@ -53,7 +74,26 @@ router.get('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const invoice = await db.query(
-      'SELECT * FROM p2p_invoices WHERE id = $1 AND tenant_id = $2',
+      `SELECT 
+        inv.id,
+        inv.invoice_number as "invoiceNumber",
+        inv.po_id as "poId",
+        inv.buyer_tenant_id as "buyerTenantId",
+        inv.supplier_tenant_id as "supplierTenantId",
+        inv.amount,
+        inv.status,
+        inv.items,
+        inv.reviewed_by as "reviewedBy",
+        inv.reviewed_at as "reviewedAt",
+        inv.rejected_reason as "rejectedReason",
+        inv.tenant_id as "tenantId",
+        inv.user_id as "userId",
+        inv.created_at as "createdAt",
+        inv.updated_at as "updatedAt",
+        po.po_number as "poNumber"
+      FROM p2p_invoices inv
+      LEFT JOIN purchase_orders po ON inv.po_id = po.id
+      WHERE inv.id = $1 AND (inv.buyer_tenant_id = $2 OR inv.supplier_tenant_id = $2)`,
       [req.params.id, req.tenantId]
     );
 
@@ -113,7 +153,22 @@ router.post('/flip-from-po/:poId', async (req: TenantRequest, res) => {
         id, invoice_number, po_id, buyer_tenant_id, supplier_tenant_id, amount,
         status, items, tenant_id, user_id, created_at, updated_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-      RETURNING *`,
+      RETURNING 
+        id,
+        invoice_number as "invoiceNumber",
+        po_id as "poId",
+        buyer_tenant_id as "buyerTenantId",
+        supplier_tenant_id as "supplierTenantId",
+        amount,
+        status,
+        items,
+        reviewed_by as "reviewedBy",
+        reviewed_at as "reviewedAt",
+        rejected_reason as "rejectedReason",
+        tenant_id as "tenantId",
+        user_id as "userId",
+        created_at as "createdAt",
+        updated_at as "updatedAt"`,
       [
         invoiceId,
         invoiceNumber,
@@ -198,7 +253,22 @@ router.put('/:id/approve', async (req: TenantRequest, res) => {
       `UPDATE p2p_invoices 
        SET status = 'APPROVED', reviewed_by = $1, reviewed_at = $2, updated_at = NOW()
        WHERE id = $3
-       RETURNING *`,
+       RETURNING 
+        id,
+        invoice_number as "invoiceNumber",
+        po_id as "poId",
+        buyer_tenant_id as "buyerTenantId",
+        supplier_tenant_id as "supplierTenantId",
+        amount,
+        status,
+        items,
+        reviewed_by as "reviewedBy",
+        reviewed_at as "reviewedAt",
+        rejected_reason as "rejectedReason",
+        tenant_id as "tenantId",
+        user_id as "userId",
+        created_at as "createdAt",
+        updated_at as "updatedAt"`,
       [req.user?.userId || null, now, req.params.id]
     );
 
@@ -261,7 +331,22 @@ router.put('/:id/reject', async (req: TenantRequest, res) => {
       `UPDATE p2p_invoices 
        SET status = 'REJECTED', reviewed_by = $1, reviewed_at = $2, rejected_reason = $3, updated_at = NOW()
        WHERE id = $4
-       RETURNING *`,
+       RETURNING 
+        id,
+        invoice_number as "invoiceNumber",
+        po_id as "poId",
+        buyer_tenant_id as "buyerTenantId",
+        supplier_tenant_id as "supplierTenantId",
+        amount,
+        status,
+        items,
+        reviewed_by as "reviewedBy",
+        reviewed_at as "reviewedAt",
+        rejected_reason as "rejectedReason",
+        tenant_id as "tenantId",
+        user_id as "userId",
+        created_at as "createdAt",
+        updated_at as "updatedAt"`,
       [req.user?.userId || null, now, reason, req.params.id]
     );
 

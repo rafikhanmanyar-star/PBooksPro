@@ -25,13 +25,30 @@ router.get('/', async (req: TenantRequest, res) => {
     // IMPORTANT: Return POs where tenant_id matches (buyer's own POs)
     // OR where supplier_tenant_id matches (POs sent to this tenant as supplier)
     // Join with tenants table to get buyer and supplier company names
+    // Use aliases to return camelCase field names for frontend compatibility
     let query = `
       SELECT 
-        po.*,
-        bt.company_name as buyer_company_name,
-        bt.name as buyer_name,
-        st.company_name as supplier_company_name,
-        st.name as supplier_name
+        po.id,
+        po.po_number as "poNumber",
+        po.buyer_tenant_id as "buyerTenantId",
+        po.supplier_tenant_id as "supplierTenantId",
+        po.total_amount as "totalAmount",
+        po.status,
+        po.items,
+        po.description,
+        po.created_by as "createdBy",
+        po.sent_at as "sentAt",
+        po.received_at as "receivedAt",
+        po.delivered_at as "deliveredAt",
+        po.completed_at as "completedAt",
+        po.tenant_id as "tenantId",
+        po.user_id as "userId",
+        po.created_at as "createdAt",
+        po.updated_at as "updatedAt",
+        bt.company_name as "buyerCompanyName",
+        bt.name as "buyerName",
+        st.company_name as "supplierCompanyName",
+        st.name as "supplierName"
       FROM purchase_orders po
       LEFT JOIN tenants bt ON po.buyer_tenant_id = bt.id
       LEFT JOIN tenants st ON po.supplier_tenant_id = st.id
@@ -69,11 +86,27 @@ router.get('/:id', async (req: TenantRequest, res) => {
     const db = getDb();
     const po = await db.query(
       `SELECT 
-        po.*,
-        bt.company_name as buyer_company_name,
-        bt.name as buyer_name,
-        st.company_name as supplier_company_name,
-        st.name as supplier_name
+        po.id,
+        po.po_number as "poNumber",
+        po.buyer_tenant_id as "buyerTenantId",
+        po.supplier_tenant_id as "supplierTenantId",
+        po.total_amount as "totalAmount",
+        po.status,
+        po.items,
+        po.description,
+        po.created_by as "createdBy",
+        po.sent_at as "sentAt",
+        po.received_at as "receivedAt",
+        po.delivered_at as "deliveredAt",
+        po.completed_at as "completedAt",
+        po.tenant_id as "tenantId",
+        po.user_id as "userId",
+        po.created_at as "createdAt",
+        po.updated_at as "updatedAt",
+        bt.company_name as "buyerCompanyName",
+        bt.name as "buyerName",
+        st.company_name as "supplierCompanyName",
+        st.name as "supplierName"
       FROM purchase_orders po
       LEFT JOIN tenants bt ON po.buyer_tenant_id = bt.id
       LEFT JOIN tenants st ON po.supplier_tenant_id = st.id
@@ -119,7 +152,24 @@ router.post('/', async (req: TenantRequest, res) => {
         id, po_number, buyer_tenant_id, supplier_tenant_id, total_amount, status,
         items, description, created_by, sent_at, tenant_id, user_id, created_at, updated_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-      RETURNING *`,
+      RETURNING 
+        id,
+        po_number as "poNumber",
+        buyer_tenant_id as "buyerTenantId",
+        supplier_tenant_id as "supplierTenantId",
+        total_amount as "totalAmount",
+        status,
+        items,
+        description,
+        created_by as "createdBy",
+        sent_at as "sentAt",
+        received_at as "receivedAt",
+        delivered_at as "deliveredAt",
+        completed_at as "completedAt",
+        tenant_id as "tenantId",
+        user_id as "userId",
+        created_at as "createdAt",
+        updated_at as "updatedAt"`,
       [
         poId,
         poData.poNumber,
@@ -237,7 +287,24 @@ router.put('/:id/status', async (req: TenantRequest, res) => {
       `UPDATE purchase_orders 
        SET ${updateFields.join(', ')}
        WHERE id = $${paramIndex} AND tenant_id = $${paramIndex + 1}
-       RETURNING *`,
+       RETURNING 
+        id,
+        po_number as "poNumber",
+        buyer_tenant_id as "buyerTenantId",
+        supplier_tenant_id as "supplierTenantId",
+        total_amount as "totalAmount",
+        status,
+        items,
+        description,
+        created_by as "createdBy",
+        sent_at as "sentAt",
+        received_at as "receivedAt",
+        delivered_at as "deliveredAt",
+        completed_at as "completedAt",
+        tenant_id as "tenantId",
+        user_id as "userId",
+        created_at as "createdAt",
+        updated_at as "updatedAt"`,
       updateValues
     );
 

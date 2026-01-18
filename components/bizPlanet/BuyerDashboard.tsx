@@ -39,9 +39,18 @@ const BuyerDashboard: React.FC = () => {
     const [registeredSuppliers, setRegisteredSuppliers] = useState<Supplier[]>([]);
     const [supplierTenantId, setSupplierTenantId] = useState('');
     const [projectId, setProjectId] = useState('');
+    const [poNumber, setPoNumber] = useState('');
     const [poDescription, setPoDescription] = useState('');
     const [targetDeliveryDate, setTargetDeliveryDate] = useState('');
     const [items, setItems] = useState<POItem[]>([]);
+
+    // Generate PO number when form opens
+    useEffect(() => {
+        if (isFormOpen && !poNumber) {
+            const newPoNumber = `PO-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+            setPoNumber(newPoNumber);
+        }
+    }, [isFormOpen]);
 
     // Get expense categories for line items
     const expenseCategories = useMemo(() => 
@@ -83,15 +92,21 @@ const BuyerDashboard: React.FC = () => {
             setLoading(true);
 
             // Load outstanding POs (status: SENT, RECEIVED, INVOICED, DELIVERED)
+            // Filter to only show POs created by this tenant (as buyer)
             const outstandingStatuses = ['SENT', 'RECEIVED', 'INVOICED', 'DELIVERED'];
             const allPOs = await apiClient.get<PurchaseOrder[]>('/purchase-orders');
-            const outstanding = allPOs.filter(po => outstandingStatuses.includes(po.status));
+            const outstanding = allPOs.filter(po => 
+                outstandingStatuses.includes(po.status) && 
+                po.buyerTenantId === tenant?.id
+            );
             setOutstandingPOs(outstanding);
 
             // Load invoices awaiting approval (status: PENDING, UNDER_REVIEW)
+            // Only show invoices where this tenant is the buyer (they need to approve)
             const allInvoices = await apiClient.get<P2PInvoice[]>('/p2p-invoices');
             const awaitingApproval = allInvoices.filter(inv => 
-                inv.status === P2PInvoiceStatus.PENDING || inv.status === P2PInvoiceStatus.UNDER_REVIEW
+                (inv.status === P2PInvoiceStatus.PENDING || inv.status === P2PInvoiceStatus.UNDER_REVIEW) &&
+                inv.buyerTenantId === tenant?.id
             );
             setInvoicesAwaitingApproval(awaitingApproval);
 
@@ -232,9 +247,6 @@ const BuyerDashboard: React.FC = () => {
         }
 
         try {
-            // Generate PO number
-            const poNumber = `PO-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-
             const poData = {
                 poNumber,
                 supplierTenantId,
@@ -257,6 +269,7 @@ const BuyerDashboard: React.FC = () => {
             // Reset form
             setSupplierTenantId('');
             setProjectId('');
+            setPoNumber('');
             setPoDescription('');
             setTargetDeliveryDate('');
             setItems([]);
@@ -273,6 +286,7 @@ const BuyerDashboard: React.FC = () => {
     const handleCancelPO = () => {
         setSupplierTenantId('');
         setProjectId('');
+        setPoNumber('');
         setPoDescription('');
         setTargetDeliveryDate('');
         setItems([]);
@@ -370,7 +384,15 @@ const BuyerDashboard: React.FC = () => {
             {isFormOpen && (
                 <div className="flex-shrink-0 p-2 sm:p-4 bg-blue-50/50 border-b border-blue-200 overflow-auto max-h-[60vh]">
                     <Card className="p-3 sm:p-4 border border-blue-200">
-                        <h2 className="text-xs sm:text-sm font-semibold text-slate-900 mb-2 sm:mb-3">Create New Purchase Order</h2>
+                        <div className="flex items-center justify-between mb-2 sm:mb-3">
+                            <h2 className="text-xs sm:text-sm font-semibold text-slate-900">Create New Purchase Order</h2>
+                            {poNumber && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] sm:text-xs text-slate-500">PO #:</span>
+                                    <span className="text-xs sm:text-sm font-mono font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{poNumber}</span>
+                                </div>
+                            )}
+                        </div>
                         
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mb-3">
                             <ComboBox
@@ -550,6 +572,7 @@ const BuyerDashboard: React.FC = () => {
                                                     <p className="text-[10px] text-slate-500 truncate">
                                                         {po.supplierCompanyName || po.supplierName || po.supplierTenantId}
                                                     </p>
+                                                    {po.createdAt && <p className="text-[10px] text-slate-400">Created: {formatDate(po.createdAt)}</p>}
                                                 </div>
                                                 <span className={`px-1.5 py-0.5 text-[9px] font-medium rounded-full flex-shrink-0 ${getStatusColor(po.status)}`}>{po.status}</span>
                                             </div>
@@ -567,6 +590,7 @@ const BuyerDashboard: React.FC = () => {
                                     <tr>
                                         <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-left text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">PO #</th>
                                         <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-left text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Supplier</th>
+                                        <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-left text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Created</th>
                                         <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-right text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Amount</th>
                                         <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-left text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Status</th>
                                         <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-left text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Action</th>
@@ -574,13 +598,16 @@ const BuyerDashboard: React.FC = () => {
                                 </thead>
                                 <tbody className="divide-y divide-slate-200">
                                     {!Array.isArray(outstandingPOs) || outstandingPOs.length === 0 ? (
-                                        <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-500 text-xs">No outstanding POs</td></tr>
+                                        <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-500 text-xs">No outstanding POs</td></tr>
                                     ) : (
                                         outstandingPOs.map(po => (
                                             <tr key={po.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => setSelectedPO(po)}>
                                                 <td className="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-slate-900 font-medium">{po.poNumber || 'N/A'}</td>
                                                 <td className="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-slate-600 truncate max-w-[100px]">
                                                     {po.supplierCompanyName || po.supplierName || po.supplierTenantId}
+                                                </td>
+                                                <td className="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-slate-500">
+                                                    {po.createdAt ? formatDate(po.createdAt) : '-'}
                                                 </td>
                                                 <td className="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-right font-medium text-slate-900">{CURRENCY} {(po.totalAmount || 0).toFixed(2)}</td>
                                                 <td className="px-2 sm:px-3 py-1.5 sm:py-2">

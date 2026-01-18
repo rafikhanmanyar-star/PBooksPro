@@ -648,9 +648,9 @@ const SupplierPortal: React.FC = () => {
                                                 <div className="min-w-0 flex-1">
                                                     <p className="text-xs font-medium text-slate-900 truncate">{po.poNumber || 'N/A'}</p>
                                                     <p className="text-[10px] text-slate-500 truncate">{po.buyerCompanyName || po.buyerTenantId}</p>
-                                                    {po.targetDeliveryDate && (
-                                                        <p className="text-[10px] text-orange-600 mt-0.5">
-                                                            Deliver by: {new Date(po.targetDeliveryDate).toLocaleDateString()}
+                                                    {po.createdAt && (
+                                                        <p className="text-[10px] text-slate-400 mt-0.5">
+                                                            Created: {new Date(po.createdAt).toLocaleDateString()}
                                                         </p>
                                                     )}
                                                 </div>
@@ -679,8 +679,8 @@ const SupplierPortal: React.FC = () => {
                                     <tr>
                                         <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-left text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">PO #</th>
                                         <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-left text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Buyer</th>
+                                        <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-left text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Created</th>
                                         <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-right text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Amount</th>
-                                        <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-left text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Deliver By</th>
                                         <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-left text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Status</th>
                                         <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-left text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Action</th>
                                     </tr>
@@ -697,11 +697,11 @@ const SupplierPortal: React.FC = () => {
                                             <tr key={po.id} data-po-id={po.id} className="hover:bg-slate-50 transition-all">
                                                 <td className="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-slate-900 font-medium">{po.poNumber || 'N/A'}</td>
                                                 <td className="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-slate-600 truncate max-w-[80px] sm:max-w-[100px]">{po.buyerCompanyName || po.buyerTenantId}</td>
+                                                <td className="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-slate-500">
+                                                    {po.createdAt ? new Date(po.createdAt).toLocaleDateString() : '-'}
+                                                </td>
                                                 <td className="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-right font-medium text-slate-900">
                                                     {CURRENCY} {(po.totalAmount || 0).toFixed(2)}
-                                                </td>
-                                                <td className="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-orange-600">
-                                                    {po.targetDeliveryDate ? new Date(po.targetDeliveryDate).toLocaleDateString() : '-'}
                                                 </td>
                                                 <td className="px-2 sm:px-3 py-1.5 sm:py-2">
                                                     <span className={`px-1.5 py-0.5 text-[9px] sm:text-[10px] font-medium rounded-full ${getStatusColor(po.status)}`}>
