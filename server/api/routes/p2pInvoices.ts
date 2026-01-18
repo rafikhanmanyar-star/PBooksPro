@@ -59,7 +59,13 @@ router.get('/', async (req: TenantRequest, res) => {
     query += ' ORDER BY inv.created_at DESC';
 
     const invoices = await db.query(query, params);
-    res.json(invoices);
+    // Parse numeric fields and JSON items
+    const parsedInvoices = invoices.map((inv: any) => ({
+      ...inv,
+      amount: parseFloat(inv.amount) || 0,
+      items: typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items
+    }));
+    res.json(parsedInvoices);
   } catch (error: any) {
     console.error('Error fetching P2P invoices:', error);
     res.status(500).json({ error: 'Failed to fetch P2P invoices' });
@@ -101,7 +107,13 @@ router.get('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Invoice not found' });
     }
 
-    res.json(invoice[0]);
+    // Parse numeric fields and JSON items
+    const parsedInvoice = {
+      ...invoice[0],
+      amount: parseFloat(invoice[0].amount) || 0,
+      items: typeof invoice[0].items === 'string' ? JSON.parse(invoice[0].items) : invoice[0].items
+    };
+    res.json(parsedInvoice);
   } catch (error: any) {
     console.error('Error fetching P2P invoice:', error);
     res.status(500).json({ error: 'Failed to fetch P2P invoice' });
@@ -189,7 +201,12 @@ router.post('/flip-from-po/:poId', async (req: TenantRequest, res) => {
       return res.status(500).json({ error: 'Failed to create invoice' });
     }
 
-    const invoice = invoiceResult[0];
+    // Parse numeric fields and JSON items
+    const invoice = {
+      ...invoiceResult[0],
+      amount: parseFloat(invoiceResult[0].amount) || 0,
+      items: typeof invoiceResult[0].items === 'string' ? JSON.parse(invoiceResult[0].items) : invoiceResult[0].items
+    };
 
     // Update PO status to INVOICED
     await db.query(
@@ -276,7 +293,12 @@ router.put('/:id/approve', async (req: TenantRequest, res) => {
       return res.status(500).json({ error: 'Failed to approve invoice' });
     }
 
-    const updatedInvoice = result[0];
+    // Parse numeric fields and JSON items
+    const updatedInvoice = {
+      ...result[0],
+      amount: parseFloat(result[0].amount) || 0,
+      items: typeof result[0].items === 'string' ? JSON.parse(result[0].items) : result[0].items
+    };
 
     // Log audit trail
     if (req.tenantId) {
@@ -354,7 +376,12 @@ router.put('/:id/reject', async (req: TenantRequest, res) => {
       return res.status(500).json({ error: 'Failed to reject invoice' });
     }
 
-    const updatedInvoice = result[0];
+    // Parse numeric fields and JSON items
+    const updatedInvoice = {
+      ...result[0],
+      amount: parseFloat(result[0].amount) || 0,
+      items: typeof result[0].items === 'string' ? JSON.parse(result[0].items) : result[0].items
+    };
 
     // Log audit trail
     if (req.tenantId) {

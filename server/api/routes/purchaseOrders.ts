@@ -70,7 +70,13 @@ router.get('/', async (req: TenantRequest, res) => {
     query += ' ORDER BY po.created_at DESC';
 
     const pos = await db.query(query, params);
-    res.json(pos);
+    // Parse numeric fields and JSON items
+    const parsedPOs = pos.map((po: any) => ({
+      ...po,
+      totalAmount: parseFloat(po.totalAmount) || 0,
+      items: typeof po.items === 'string' ? JSON.parse(po.items) : po.items
+    }));
+    res.json(parsedPOs);
   } catch (error: any) {
     console.error('Error fetching purchase orders:', error);
     res.status(500).json({ error: 'Failed to fetch purchase orders' });
@@ -118,7 +124,13 @@ router.get('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Purchase order not found' });
     }
 
-    res.json(po[0]);
+    // Parse numeric fields and JSON items
+    const parsedPO = {
+      ...po[0],
+      totalAmount: parseFloat(po[0].totalAmount) || 0,
+      items: typeof po[0].items === 'string' ? JSON.parse(po[0].items) : po[0].items
+    };
+    res.json(parsedPO);
   } catch (error: any) {
     console.error('Error fetching purchase order:', error);
     res.status(500).json({ error: 'Failed to fetch purchase order' });
@@ -192,7 +204,12 @@ router.post('/', async (req: TenantRequest, res) => {
       return res.status(500).json({ error: 'Failed to create purchase order' });
     }
 
-    const createdPO = result[0];
+    // Parse numeric fields and JSON items
+    const createdPO = {
+      ...result[0],
+      totalAmount: parseFloat(result[0].totalAmount) || 0,
+      items: typeof result[0].items === 'string' ? JSON.parse(result[0].items) : result[0].items
+    };
 
     // Log audit trail
     if (req.tenantId) {
@@ -312,7 +329,12 @@ router.put('/:id/status', async (req: TenantRequest, res) => {
       return res.status(500).json({ error: 'Failed to update purchase order status' });
     }
 
-    const updatedPO = result[0];
+    // Parse numeric fields and JSON items
+    const updatedPO = {
+      ...result[0],
+      totalAmount: parseFloat(result[0].totalAmount) || 0,
+      items: typeof result[0].items === 'string' ? JSON.parse(result[0].items) : result[0].items
+    };
 
     // Log audit trail
     if (req.tenantId) {
