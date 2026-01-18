@@ -367,11 +367,64 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
 
     }, [baseInvoices, invoiceTypeFilter, state.projects, state.buildings, state.properties, state.units, state.contacts, groupBy]);
 
+    // --- Invoices without status filter (for payment visibility) ---
+    // Build a set of invoice IDs that match all filters EXCEPT status filter
+    // This ensures payments remain visible even if invoice status changes after payment
+    const invoicesWithoutStatusFilter = useMemo(() => {
+        try {
+            let invoices = state.invoices;
+
+            if (invoiceTypeFilter) {
+                invoices = invoices.filter(inv => inv.invoiceType === invoiceTypeFilter);
+            }
+
+            // NOTE: Skip status filter here - we want to include all statuses for payment matching
+
+            if (invoiceTypeFilter === InvoiceType.RENTAL && buildingFilter !== 'all') {
+                invoices = invoices.filter(inv => {
+                    if (inv.buildingId === buildingFilter) return true;
+                    if (inv.propertyId) {
+                        const prop = state.properties.find(p => p.id === inv.propertyId);
+                        return prop && prop.buildingId === buildingFilter;
+                    }
+                    return false;
+                });
+            } else if (invoiceTypeFilter === InvoiceType.INSTALLMENT && projectFilter !== 'all') {
+                invoices = invoices.filter(inv => inv.projectId === projectFilter);
+            }
+
+            if (searchQuery) {
+                const query = searchQuery.toLowerCase();
+                invoices = invoices.filter(inv => {
+                    if (inv.invoiceNumber.toLowerCase().includes(query)) return true;
+                    if (state.contacts.find(c => c.id === inv.contactId)?.name.toLowerCase().includes(query)) return true;
+                    if (inv.description && inv.description.toLowerCase().includes(query)) return true;
+                    if (inv.propertyId) {
+                        const prop = state.properties.find(p => p.id === inv.propertyId);
+                        if (prop?.name.toLowerCase().includes(query)) return true;
+                    }
+                    if (inv.unitId) {
+                        const unit = state.units.find(u => u.id === inv.unitId);
+                        if (unit?.name.toLowerCase().includes(query)) return true;
+                    }
+                    return false;
+                });
+            }
+
+            return invoices;
+        } catch (error) {
+            console.error("Error filtering invoices without status filter:", error);
+            return [];
+        }
+    }, [state.invoices, state.contacts, state.properties, state.units, invoiceTypeFilter, searchQuery, buildingFilter, projectFilter]);
+
     // --- Combined Financial Records for Grid View ---
     const financialRecords = useMemo<FinancialRecord[]>(() => {
         const records: FinancialRecord[] = [];
         const relevantInvoices = filteredInvoices; // Use already filtered list
-        const invoiceIdSet = new Set(relevantInvoices.map(i => i.id));
+        // Build invoiceIdSet from invoicesWithoutStatusFilter (not baseInvoices) to include payments even if invoice status changes after payment
+        // This ensures payments remain visible even if their linked invoice changes status (e.g., Unpaid -> Paid)
+        const invoiceIdSet = new Set(invoicesWithoutStatusFilter.map(i => i.id));
 
         // 1. Invoices
         relevantInvoices.forEach(inv => {

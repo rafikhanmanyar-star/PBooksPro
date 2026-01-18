@@ -8,7 +8,7 @@ import Card from '../ui/Card';
 import ComboBox from '../ui/ComboBox';
 import Input from '../ui/Input';
 import { useNotification } from '../../context/NotificationContext';
-import { ICONS } from '../../constants';
+import { ICONS, CURRENCY } from '../../constants';
 import { getWebSocketClient } from '../../services/websocketClient';
 
 interface Supplier {
@@ -283,24 +283,27 @@ const BuyerDashboard: React.FC = () => {
                     <p className="text-xs sm:text-sm text-slate-500 mt-1">Manage purchase orders and invoices</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    {/* Notification Bell - Show pending registration requests count */}
-                    {registrationRequests.length > 0 && (
+                    {/* Notification Icon - Show pending registration requests and invoices awaiting approval */}
+                    {(registrationRequests.length > 0 || invoicesAwaitingApproval.length > 0) && (
                         <div className="relative">
                             <button
                                 type="button"
                                 onClick={() => {
-                                    // Scroll to registration requests section
-                                    const element = document.querySelector('[data-section="registration-requests"]');
-                                    if (element) {
-                                        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                    // Scroll to registration requests section if exists, otherwise to invoices
+                                    const regElement = document.querySelector('[data-section="registration-requests"]');
+                                    const invElement = document.querySelector('[data-section="invoices-awaiting"]');
+                                    if (regElement && registrationRequests.length > 0) {
+                                        regElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                    } else if (invElement && invoicesAwaitingApproval.length > 0) {
+                                        invElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
                                     }
                                 }}
                                 className="p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors relative min-w-[44px] min-h-[44px] flex items-center justify-center"
-                                title={`${registrationRequests.length} pending registration request${registrationRequests.length > 1 ? 's' : ''}`}
+                                title={`${registrationRequests.length} pending registration request${registrationRequests.length !== 1 ? 's' : ''}, ${invoicesAwaitingApproval.length} invoice${invoicesAwaitingApproval.length !== 1 ? 's' : ''} awaiting approval`}
                             >
                                 {ICONS.bell}
                                 <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center">
-                                    {registrationRequests.length > 99 ? '99+' : registrationRequests.length}
+                                    {(registrationRequests.length + invoicesAwaitingApproval.length) > 99 ? '99+' : (registrationRequests.length + invoicesAwaitingApproval.length)}
                                 </span>
                             </button>
                         </div>
@@ -423,7 +426,7 @@ const BuyerDashboard: React.FC = () => {
                                         <div className="mt-2 text-right">
                                             <span className="text-sm text-slate-600">
                                                 Subtotal: <span className="font-semibold text-slate-900">
-                                                    ${(item.total || 0).toFixed(2)}
+                                                    {CURRENCY} {(item.total || 0).toFixed(2)}
                                                 </span>
                                             </span>
                                         </div>
@@ -437,7 +440,7 @@ const BuyerDashboard: React.FC = () => {
                                 <div className="flex justify-between items-center">
                                     <span className="text-lg font-semibold text-indigo-900">Total Amount:</span>
                                     <span className="text-2xl font-bold text-indigo-900">
-                                        ${(totalAmount || 0).toFixed(2)}
+                                        {CURRENCY} {(totalAmount || 0).toFixed(2)}
                                     </span>
                                 </div>
                             </div>
@@ -571,7 +574,7 @@ const BuyerDashboard: React.FC = () => {
                                         <td className="px-4 py-3 text-sm text-slate-900">{po.poNumber}</td>
                                         <td className="px-4 py-3 text-sm text-slate-600">{po.supplierTenantId}</td>
                                         <td className="px-4 py-3 text-sm text-right font-medium text-slate-900">
-                                            ${(po.totalAmount || 0).toFixed(2)}
+                                            {CURRENCY} {(po.totalAmount || 0).toFixed(2)}
                                         </td>
                                         <td className="px-4 py-3">
                                             <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(po.status)}`}>
@@ -596,7 +599,7 @@ const BuyerDashboard: React.FC = () => {
             </Card>
 
             {/* Invoices Awaiting Approval */}
-            <Card className="flex-1 overflow-auto">
+            <Card className="flex-1 overflow-auto" data-section="invoices-awaiting">
                 <div className="p-4 border-b border-slate-200">
                     <h2 className="text-lg font-semibold text-slate-900">Invoices Awaiting Approval</h2>
                 </div>
@@ -624,7 +627,7 @@ const BuyerDashboard: React.FC = () => {
                                         <td className="px-4 py-3 text-sm text-slate-900">{invoice.invoiceNumber}</td>
                                         <td className="px-4 py-3 text-sm text-slate-600">{invoice.poId}</td>
                                         <td className="px-4 py-3 text-sm text-right font-medium text-slate-900">
-                                            ${(invoice.amount || 0).toFixed(2)}
+                                            {CURRENCY} {(invoice.amount || 0).toFixed(2)}
                                         </td>
                                         <td className="px-4 py-3">
                                             <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(invoice.status)}`}>

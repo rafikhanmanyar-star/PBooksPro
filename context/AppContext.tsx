@@ -2545,16 +2545,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         // Handle bill changes
                         if (action.type === 'ADD_BILL') {
                             const bill = action.payload;
-                            await apiService.saveBill(bill);
-                            logger.logCategory('sync', '✅ Synced bill to API:', bill.billNumber);
+                            logger.logCategory('sync', `🔄 Starting sync for ADD_BILL: ${bill.billNumber} (${bill.id})`);
+                            try {
+                                logger.logCategory('sync', `📤 Calling apiService.saveBill for: ${bill.billNumber}`);
+                                await apiService.saveBill(bill);
+                                logger.logCategory('sync', '✅ Synced bill to API:', bill.billNumber);
+                            } catch (err: any) {
+                                logger.errorCategory('sync', `❌ FAILED to sync bill ${bill.billNumber} to API:`, {
+                                    error: err,
+                                    errorMessage: err?.message || err?.error || 'Unknown error',
+                                    status: err?.status,
+                                    statusText: err?.statusText,
+                                    bill: {
+                                        id: bill.id,
+                                        billNumber: bill.billNumber,
+                                        amount: bill.amount,
+                                        projectId: bill.projectId
+                                    },
+                                    fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
+                                });
+                                // Don't re-throw - log and continue, data is saved locally
+                                // This allows user to continue working even if sync fails
+                            }
                         } else if (action.type === 'UPDATE_BILL') {
                             const bill = action.payload;
-                            await apiService.saveBill(bill);
-                            logger.logCategory('sync', '✅ Synced bill update to API:', bill.billNumber);
+                            logger.logCategory('sync', `🔄 Starting sync for UPDATE_BILL: ${bill.billNumber} (${bill.id})`);
+                            try {
+                                logger.logCategory('sync', `📤 Calling apiService.saveBill for update: ${bill.billNumber}`);
+                                await apiService.saveBill(bill);
+                                logger.logCategory('sync', '✅ Synced bill update to API:', bill.billNumber);
+                            } catch (err: any) {
+                                logger.errorCategory('sync', `❌ FAILED to sync bill update ${bill.billNumber} to API:`, {
+                                    error: err,
+                                    errorMessage: err?.message || err?.error || 'Unknown error',
+                                    status: err?.status,
+                                    statusText: err?.statusText,
+                                    bill: {
+                                        id: bill.id,
+                                        billNumber: bill.billNumber,
+                                        amount: bill.amount,
+                                        projectId: bill.projectId
+                                    },
+                                    fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
+                                });
+                                // Don't re-throw - log and continue
+                            }
                         } else if (action.type === 'DELETE_BILL') {
                             const billId = action.payload as string;
-                            await apiService.deleteBill(billId);
-                            logger.logCategory('sync', '✅ Synced bill deletion to API:', billId);
+                            try {
+                                await apiService.deleteBill(billId);
+                                logger.logCategory('sync', '✅ Synced bill deletion to API:', billId);
+                            } catch (err: any) {
+                                logger.errorCategory('sync', `⚠️ Failed to sync bill deletion ${billId} to API:`, {
+                                    error: err,
+                                    billId: billId,
+                                    errorMessage: err?.message || err?.error || 'Unknown error',
+                                    status: err?.status
+                                });
+                                // Don't re-throw for deletions - allow local deletion even if sync fails
+                            }
                         }
 
                         // Handle budget changes

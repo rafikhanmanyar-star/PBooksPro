@@ -364,13 +364,16 @@ router.get('/registered', async (req: TenantRequest, res) => {
 
     // Get registered suppliers from registered_suppliers table (primary source)
     // Join with tenants table to get supplier details
+    // IMPORTANT: Exclude own organization - a supplier cannot be in their own organization's supplier list
     const suppliers = await db.query(
       `SELECT t.id, t.name, t.company_name, t.email, t.phone, t.address,
               t.tax_id, t.payment_terms, t.supplier_category, t.supplier_status,
               rs.registered_at, rs.status as registration_status, rs.notes
        FROM registered_suppliers rs
        INNER JOIN tenants t ON rs.supplier_tenant_id = t.id
-       WHERE rs.buyer_tenant_id = $1 AND rs.status = 'ACTIVE'
+       WHERE rs.buyer_tenant_id = $1 
+         AND rs.status = 'ACTIVE'
+         AND rs.supplier_tenant_id != $1
        ORDER BY rs.registered_at DESC`,
       [buyerTenantId]
     );
