@@ -440,7 +440,6 @@ router.post('/smart-login', async (req, res) => {
     const db = getDb();
     const { username, password, tenantId } = req.body;
     const normalizedUsername = username?.trim();
-    const normalizedUsername = username?.trim();
     
     if (!normalizedUsername || !password) {
       return res.status(400).json({ error: 'Username and password are required' });
@@ -674,6 +673,7 @@ router.post('/login', async (req, res) => {
   try {
     const db = getDb();
     const { username, password, tenantId } = req.body;
+    const normalizedUsername = username?.trim();
     
     if (!tenantId) {
       return res.status(400).json({ error: 'Tenant ID required' });
