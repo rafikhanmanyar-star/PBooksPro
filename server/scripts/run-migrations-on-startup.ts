@@ -289,6 +289,44 @@ async function runMigrations() {
     } else {
       console.warn('   ⚠️  Could not find add-tasks-schema.sql migration file');
     }
+
+    // Migration: Add is_supplier column to tenants table
+    const isSupplierMigrationPaths = [
+      join(__dirname, '../migrations/add-is-supplier-to-tenants.sql'),
+      join(__dirname, '../../migrations/add-is-supplier-to-tenants.sql'),
+      join(process.cwd(), 'server/migrations/add-is-supplier-to-tenants.sql'),
+      join(process.cwd(), 'migrations/add-is-supplier-to-tenants.sql'),
+    ];
+    
+    let isSupplierMigrationPath: string | null = null;
+    for (const path of isSupplierMigrationPaths) {
+      try {
+        readFileSync(path, 'utf8');
+        isSupplierMigrationPath = path;
+        break;
+      } catch (e) {
+        // Try next path
+      }
+    }
+    
+    if (isSupplierMigrationPath) {
+      try {
+        console.log('📋 Running is_supplier migration from:', isSupplierMigrationPath);
+        const isSupplierMigrationSQL = readFileSync(isSupplierMigrationPath, 'utf8');
+        await pool.query(isSupplierMigrationSQL);
+        console.log('✅ is_supplier migration completed');
+      } catch (error: any) {
+        // If column already exists, that's okay
+        if (error.code === '42710' || error.message.includes('already exists')) {
+          console.log('   ℹ️  is_supplier column already exists (skipping)');
+        } else {
+          console.warn('   ⚠️  is_supplier migration warning:', error.message);
+          // Don't throw - migration might already be applied
+        }
+      }
+    } else {
+      console.warn('   ⚠️  Could not find add-is-supplier-to-tenants.sql migration file');
+    }
     
     // Create default admin user if it doesn't exist
     console.log('👤 Ensuring admin user exists...');
