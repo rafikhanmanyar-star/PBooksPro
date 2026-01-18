@@ -423,7 +423,7 @@ const SupplierPortal: React.FC = () => {
     };
 
     // Get approved registrations for the right panel
-    const approvedRegistrations = myRegistrationRequests.filter(r => r.status === SupplierRegistrationStatus.APPROVED);
+    const approvedRegistrations = Array.isArray(myRegistrationRequests) ? myRegistrationRequests.filter(r => r.status === SupplierRegistrationStatus.APPROVED) : [];
 
     if (loading) {
         return (
@@ -483,7 +483,7 @@ const SupplierPortal: React.FC = () => {
                                         )}
                                     </div>
                                     <div className="max-h-60 sm:max-h-72 overflow-y-auto">
-                                        {notifications.length === 0 ? (
+                                        {!Array.isArray(notifications) || notifications.length === 0 ? (
                                             <div className="px-4 py-8 text-center text-slate-500 text-xs sm:text-sm">
                                                 No notifications
                                             </div>
@@ -637,7 +637,7 @@ const SupplierPortal: React.FC = () => {
                         <div className="flex-1 overflow-auto">
                             {/* Mobile Card View */}
                             <div className="sm:hidden divide-y divide-slate-200">
-                                {receivedPOs.length === 0 ? (
+                                {!Array.isArray(receivedPOs) || receivedPOs.length === 0 ? (
                                     <div className="px-3 py-6 text-center text-slate-500 text-xs">
                                         No received purchase orders
                                     </div>
@@ -648,6 +648,11 @@ const SupplierPortal: React.FC = () => {
                                                 <div className="min-w-0 flex-1">
                                                     <p className="text-xs font-medium text-slate-900 truncate">{po.poNumber || 'N/A'}</p>
                                                     <p className="text-[10px] text-slate-500 truncate">{po.buyerCompanyName || po.buyerTenantId}</p>
+                                                    {po.targetDeliveryDate && (
+                                                        <p className="text-[10px] text-orange-600 mt-0.5">
+                                                            Deliver by: {new Date(po.targetDeliveryDate).toLocaleDateString()}
+                                                        </p>
+                                                    )}
                                                 </div>
                                                 <span className={`px-1.5 py-0.5 text-[9px] font-medium rounded-full flex-shrink-0 ${getStatusColor(po.status)}`}>
                                                     {po.status}
@@ -675,14 +680,15 @@ const SupplierPortal: React.FC = () => {
                                         <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-left text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">PO #</th>
                                         <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-left text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Buyer</th>
                                         <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-right text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Amount</th>
+                                        <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-left text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Deliver By</th>
                                         <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-left text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Status</th>
                                         <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-left text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-200">
-                                    {receivedPOs.length === 0 ? (
+                                    {!Array.isArray(receivedPOs) || receivedPOs.length === 0 ? (
                                         <tr>
-                                            <td colSpan={5} className="px-3 py-6 text-center text-slate-500 text-xs">
+                                            <td colSpan={6} className="px-3 py-6 text-center text-slate-500 text-xs">
                                                 No received purchase orders
                                             </td>
                                         </tr>
@@ -693,6 +699,9 @@ const SupplierPortal: React.FC = () => {
                                                 <td className="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-slate-600 truncate max-w-[80px] sm:max-w-[100px]">{po.buyerCompanyName || po.buyerTenantId}</td>
                                                 <td className="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-right font-medium text-slate-900">
                                                     {CURRENCY} {(po.totalAmount || 0).toFixed(2)}
+                                                </td>
+                                                <td className="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-orange-600">
+                                                    {po.targetDeliveryDate ? new Date(po.targetDeliveryDate).toLocaleDateString() : '-'}
                                                 </td>
                                                 <td className="px-2 sm:px-3 py-1.5 sm:py-2">
                                                     <span className={`px-1.5 py-0.5 text-[9px] sm:text-[10px] font-medium rounded-full ${getStatusColor(po.status)}`}>
@@ -725,7 +734,7 @@ const SupplierPortal: React.FC = () => {
                         <div className="flex-1 overflow-auto">
                             {/* Mobile Card View */}
                             <div className="sm:hidden divide-y divide-slate-200">
-                                {myInvoices.length === 0 ? (
+                                {!Array.isArray(myInvoices) || myInvoices.length === 0 ? (
                                     <div className="px-3 py-6 text-center text-slate-500 text-xs">
                                         No invoices submitted
                                     </div>
@@ -759,7 +768,7 @@ const SupplierPortal: React.FC = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-200">
-                                    {myInvoices.length === 0 ? (
+                                    {!Array.isArray(myInvoices) || myInvoices.length === 0 ? (
                                         <tr>
                                             <td colSpan={4} className="px-3 py-6 text-center text-slate-500 text-xs">
                                                 No invoices submitted
@@ -844,7 +853,7 @@ const SupplierPortal: React.FC = () => {
                     </Card>
 
                     {/* Pending Registrations */}
-                    {myRegistrationRequests.filter(r => r.status === SupplierRegistrationStatus.PENDING).length > 0 && (
+                    {Array.isArray(myRegistrationRequests) && myRegistrationRequests.filter(r => r.status === SupplierRegistrationStatus.PENDING).length > 0 && (
                         <Card className="flex-shrink-0 overflow-hidden">
                             <div className="px-2 sm:px-3 py-1.5 sm:py-2 border-b border-slate-200 bg-yellow-50">
                                 <h2 className="text-[10px] sm:text-xs font-semibold text-slate-900 flex items-center gap-1 sm:gap-2">
@@ -866,7 +875,7 @@ const SupplierPortal: React.FC = () => {
                     )}
 
                     {/* Rejected Registrations */}
-                    {myRegistrationRequests.filter(r => r.status === SupplierRegistrationStatus.REJECTED).length > 0 && (
+                    {Array.isArray(myRegistrationRequests) && myRegistrationRequests.filter(r => r.status === SupplierRegistrationStatus.REJECTED).length > 0 && (
                         <Card className="flex-shrink-0 overflow-hidden">
                             <div className="px-2 sm:px-3 py-1.5 sm:py-2 border-b border-slate-200 bg-red-50">
                                 <h2 className="text-[10px] sm:text-xs font-semibold text-slate-900 flex items-center gap-1 sm:gap-2">

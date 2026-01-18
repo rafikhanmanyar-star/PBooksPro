@@ -1367,11 +1367,13 @@ export interface PurchaseOrder {
   id: string;
   poNumber: string;
   buyerTenantId: string;
+  buyerCompanyName?: string;
   supplierTenantId: string;
   totalAmount: number;
   status: POStatus;
   items: POItem[];
   description?: string;
+  targetDeliveryDate?: string;
   createdBy?: string;
   sentAt?: string;
   receivedAt?: string;
