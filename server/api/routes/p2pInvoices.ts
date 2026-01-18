@@ -223,10 +223,16 @@ router.post('/flip-from-po/:poId', async (req: TenantRequest, res) => {
     // Trigger notification (stub)
     await notifyPOInvoiced(poId, invoiceId, po.buyer_tenant_id);
 
-    // Emit WebSocket events
+    // Emit WebSocket events to supplier
     if (req.tenantId) {
       emitToTenant(req.tenantId, WS_EVENTS.P2P_INVOICE_CREATED, invoice);
       emitToTenant(req.tenantId, WS_EVENTS.PURCHASE_ORDER_UPDATED, { id: poId, status: 'INVOICED' });
+    }
+
+    // Also emit to buyer so their dashboard updates
+    if (po.buyer_tenant_id && po.buyer_tenant_id !== req.tenantId) {
+      emitToTenant(po.buyer_tenant_id, WS_EVENTS.P2P_INVOICE_CREATED, invoice);
+      emitToTenant(po.buyer_tenant_id, WS_EVENTS.PURCHASE_ORDER_UPDATED, { id: poId, status: 'INVOICED' });
     }
 
     res.status(201).json(invoice);
@@ -304,8 +310,13 @@ router.put('/:id/approve', async (req: TenantRequest, res) => {
     if (req.tenantId) {
       await logStatusChange('INVOICE', req.params.id, 'APPROVED', invoice.status, 'APPROVED', req.user?.userId, req.tenantId, reason);
 
-      // Emit WebSocket event
+      // Emit WebSocket event to buyer
       emitToTenant(req.tenantId, WS_EVENTS.P2P_INVOICE_UPDATED, updatedInvoice);
+    }
+
+    // Also emit to supplier so their portal updates
+    if (invoice.supplier_tenant_id && invoice.supplier_tenant_id !== req.tenantId) {
+      emitToTenant(invoice.supplier_tenant_id, WS_EVENTS.P2P_INVOICE_UPDATED, updatedInvoice);
     }
 
     res.json(updatedInvoice);
@@ -387,8 +398,13 @@ router.put('/:id/reject', async (req: TenantRequest, res) => {
     if (req.tenantId) {
       await logStatusChange('INVOICE', req.params.id, 'REJECTED', invoice.status, 'REJECTED', req.user?.userId, req.tenantId, reason);
 
-      // Emit WebSocket event
+      // Emit WebSocket event to buyer
       emitToTenant(req.tenantId, WS_EVENTS.P2P_INVOICE_UPDATED, updatedInvoice);
+    }
+
+    // Also emit to supplier so their portal updates
+    if (invoice.supplier_tenant_id && invoice.supplier_tenant_id !== req.tenantId) {
+      emitToTenant(invoice.supplier_tenant_id, WS_EVENTS.P2P_INVOICE_UPDATED, updatedInvoice);
     }
 
     res.json(updatedInvoice);

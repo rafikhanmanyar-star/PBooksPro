@@ -67,7 +67,7 @@ const BuyerDashboard: React.FC = () => {
         loadRegisteredSuppliers();
     }, []);
 
-    // WebSocket listener for new registration requests
+    // WebSocket listener for new registration requests and invoice updates
     useEffect(() => {
         const wsClient = getWebSocketClient();
         
@@ -79,11 +79,36 @@ const BuyerDashboard: React.FC = () => {
             }
         };
 
-        // Subscribe to DATA_UPDATED events
-        const unsubscribe = wsClient.on('data:updated', handleDataUpdate);
+        // Handle P2P invoice created events
+        const handleInvoiceCreated = (data: any) => {
+            // Reload data when a supplier creates an invoice
+            loadData();
+            showToast(`New invoice received: ${data.invoiceNumber || 'Invoice'}`, 'info');
+        };
+
+        // Handle P2P invoice updated events (e.g., status changes)
+        const handleInvoiceUpdated = (data: any) => {
+            // Reload data when an invoice is updated
+            loadData();
+        };
+
+        // Handle PO updated events
+        const handlePOUpdated = (data: any) => {
+            // Reload data when a PO is updated
+            loadData();
+        };
+
+        // Subscribe to events
+        const unsubscribeData = wsClient.on('data:updated', handleDataUpdate);
+        const unsubscribeInvoiceCreated = wsClient.on('p2p_invoice:created', handleInvoiceCreated);
+        const unsubscribeInvoiceUpdated = wsClient.on('p2p_invoice:updated', handleInvoiceUpdated);
+        const unsubscribePOUpdated = wsClient.on('purchase_order:updated', handlePOUpdated);
 
         return () => {
-            if (unsubscribe) unsubscribe();
+            if (unsubscribeData) unsubscribeData();
+            if (unsubscribeInvoiceCreated) unsubscribeInvoiceCreated();
+            if (unsubscribeInvoiceUpdated) unsubscribeInvoiceUpdated();
+            if (unsubscribePOUpdated) unsubscribePOUpdated();
         };
     }, [showToast]);
 

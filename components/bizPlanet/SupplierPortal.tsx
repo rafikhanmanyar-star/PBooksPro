@@ -6,6 +6,7 @@ import Button from '../ui/Button';
 import Card from '../ui/Card';
 import Input from '../ui/Input';
 import ComboBox from '../ui/ComboBox';
+import Modal from '../ui/Modal';
 import { useNotification } from '../../context/NotificationContext';
 import { ICONS, CURRENCY } from '../../constants';
 import { getWebSocketClient } from '../../services/websocketClient';
@@ -29,6 +30,7 @@ const SupplierPortal: React.FC = () => {
     const [myInvoices, setMyInvoices] = useState<P2PInvoice[]>([]);
     const [myRegistrationRequests, setMyRegistrationRequests] = useState<SupplierRegistrationRequest[]>([]);
     const [loading, setLoading] = useState(true);
+    const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
     
     // Notification dropdown state
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -167,7 +169,7 @@ const SupplierPortal: React.FC = () => {
         return notifications.filter(n => !n.read).length;
     }, [notifications]);
 
-    // WebSocket listener for registration status updates and new purchase orders
+    // WebSocket listener for registration status updates, new purchase orders, and invoice updates
     useEffect(() => {
         const wsClient = getWebSocketClient();
         
@@ -189,11 +191,23 @@ const SupplierPortal: React.FC = () => {
             }
         };
 
-        // Subscribe to DATA_UPDATED events
-        const unsubscribe = wsClient.on('data:updated', handleDataUpdate);
+        // Handle invoice updated events (e.g., when buyer approves/rejects)
+        const handleInvoiceUpdated = (data: any) => {
+            loadData();
+            if (data.status === 'APPROVED') {
+                showToast(`Invoice ${data.invoiceNumber || ''} has been approved!`, 'success');
+            } else if (data.status === 'REJECTED') {
+                showToast(`Invoice ${data.invoiceNumber || ''} was rejected.`, 'info');
+            }
+        };
+
+        // Subscribe to events
+        const unsubscribeData = wsClient.on('data:updated', handleDataUpdate);
+        const unsubscribeInvoiceUpdated = wsClient.on('p2p_invoice:updated', handleInvoiceUpdated);
 
         return () => {
-            if (unsubscribe) unsubscribe();
+            if (unsubscribeData) unsubscribeData();
+            if (unsubscribeInvoiceUpdated) unsubscribeInvoiceUpdated();
         };
     }, [showToast]);
 
@@ -325,6 +339,15 @@ const SupplierPortal: React.FC = () => {
             case 'REJECTED': return 'bg-red-100 text-red-700';
             default: return 'bg-gray-100 text-gray-700';
         }
+    };
+
+    // Get display status for PO from supplier's perspective
+    // For supplier, "SENT" means they have "RECEIVED" it from buyer
+    const getSupplierPODisplayStatus = (status: string) => {
+        if (status === POStatus.SENT) {
+            return 'RECEIVED';
+        }
+        return status;
     };
 
     const getNotificationIcon = (type: ActivityNotification['type']) => {
@@ -654,20 +677,33 @@ const SupplierPortal: React.FC = () => {
                                                         </p>
                                                     )}
                                                 </div>
-                                                <span className={`px-1.5 py-0.5 text-[9px] font-medium rounded-full flex-shrink-0 ${getStatusColor(po.status)}`}>
-                                                    {po.status}
+                                                <span className={`px-1.5 py-0.5 text-[9px] font-medium rounded-full flex-shrink-0 ${getStatusColor('RECEIVED')}`}>
+                                                    {getSupplierPODisplayStatus(po.status)}
                                                 </span>
                                             </div>
                                             <div className="flex items-center justify-between mt-2">
                                                 <span className="text-xs font-medium text-slate-900">{CURRENCY} {(po.totalAmount || 0).toFixed(2)}</span>
-                                                <Button
-                                                    variant="primary"
-                                                    onClick={() => handleFlipToInvoice(po.id)}
-                                                    className="text-[9px] bg-blue-600 hover:bg-blue-700 text-white py-1 px-2"
-                                                    disabled={po.status !== POStatus.SENT && po.status !== POStatus.RECEIVED}
-                                                >
-                                                    Create Invoice
-                                                </Button>
+                                                <div className="flex gap-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSelectedPO(po)}
+                                                        className="p-1.5 rounded text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                                        title="View PO Details"
+                                                    >
+                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                        </svg>
+                                                    </button>
+                                                    <Button
+                                                        variant="primary"
+                                                        onClick={() => handleFlipToInvoice(po.id)}
+                                                        className="text-[9px] bg-blue-600 hover:bg-blue-700 text-white py-1 px-2"
+                                                        disabled={po.status !== POStatus.SENT && po.status !== POStatus.RECEIVED}
+                                                    >
+                                                        Create Invoice
+                                                    </Button>
+                                                </div>
                                             </div>
                                         </div>
                                     ))
@@ -682,7 +718,7 @@ const SupplierPortal: React.FC = () => {
                                         <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-left text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Created</th>
                                         <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-right text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Amount</th>
                                         <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-left text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Status</th>
-                                        <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-left text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Action</th>
+                                        <th className="px-2 sm:px-3 py-1.5 sm:py-2 text-left text-[9px] sm:text-[10px] font-medium text-slate-500 uppercase">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-200">
@@ -704,19 +740,32 @@ const SupplierPortal: React.FC = () => {
                                                     {CURRENCY} {(po.totalAmount || 0).toFixed(2)}
                                                 </td>
                                                 <td className="px-2 sm:px-3 py-1.5 sm:py-2">
-                                                    <span className={`px-1.5 py-0.5 text-[9px] sm:text-[10px] font-medium rounded-full ${getStatusColor(po.status)}`}>
-                                                        {po.status}
+                                                    <span className={`px-1.5 py-0.5 text-[9px] sm:text-[10px] font-medium rounded-full ${getStatusColor('RECEIVED')}`}>
+                                                        {getSupplierPODisplayStatus(po.status)}
                                                     </span>
                                                 </td>
                                                 <td className="px-2 sm:px-3 py-1.5 sm:py-2">
-                                                    <Button
-                                                        variant="primary"
-                                                        onClick={() => handleFlipToInvoice(po.id)}
-                                                        className="text-[9px] sm:text-[10px] bg-blue-600 hover:bg-blue-700 text-white py-0.5 sm:py-1 px-1.5 sm:px-2"
-                                                        disabled={po.status !== POStatus.SENT && po.status !== POStatus.RECEIVED}
-                                                    >
-                                                        Invoice
-                                                    </Button>
+                                                    <div className="flex gap-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setSelectedPO(po)}
+                                                            className="p-1 rounded text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                                            title="View PO Details"
+                                                        >
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                            </svg>
+                                                        </button>
+                                                        <Button
+                                                            variant="primary"
+                                                            onClick={() => handleFlipToInvoice(po.id)}
+                                                            className="text-[9px] sm:text-[10px] bg-blue-600 hover:bg-blue-700 text-white py-0.5 sm:py-1 px-1.5 sm:px-2"
+                                                            disabled={po.status !== POStatus.SENT && po.status !== POStatus.RECEIVED}
+                                                        >
+                                                            Invoice
+                                                        </Button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))
@@ -897,6 +946,102 @@ const SupplierPortal: React.FC = () => {
                     )}
                 </div>
             </div>
+
+            {/* Purchase Order Detail Modal */}
+            {selectedPO && (
+                <Modal
+                    isOpen={!!selectedPO}
+                    onClose={() => setSelectedPO(null)}
+                    title={`PO: ${selectedPO.poNumber}`}
+                    size="lg"
+                >
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <p className="text-xs text-slate-500 mb-1">PO Number</p>
+                                <p className="font-semibold text-slate-900 text-sm">{selectedPO.poNumber}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-slate-500 mb-1">Status</p>
+                                <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor('RECEIVED')}`}>
+                                    {getSupplierPODisplayStatus(selectedPO.status)}
+                                </span>
+                            </div>
+                            <div>
+                                <p className="text-xs text-slate-500 mb-1">Buyer</p>
+                                <p className="font-semibold text-slate-900 text-sm">
+                                    {selectedPO.buyerCompanyName || selectedPO.buyerName || selectedPO.buyerTenantId}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-slate-500 mb-1">Total Amount</p>
+                                <p className="font-semibold text-slate-900 text-sm">{CURRENCY} {(selectedPO.totalAmount || 0).toFixed(2)}</p>
+                            </div>
+                            {selectedPO.targetDeliveryDate && (
+                                <div>
+                                    <p className="text-xs text-slate-500 mb-1">Target Delivery</p>
+                                    <p className="font-semibold text-orange-600 text-sm">{new Date(selectedPO.targetDeliveryDate).toLocaleDateString()}</p>
+                                </div>
+                            )}
+                            {selectedPO.description && (
+                                <div className="col-span-2">
+                                    <p className="text-xs text-slate-500 mb-1">Description</p>
+                                    <p className="text-sm text-slate-900">{selectedPO.description}</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {selectedPO.items && Array.isArray(selectedPO.items) && selectedPO.items.length > 0 && (
+                            <div className="pt-3 border-t border-slate-200">
+                                <h3 className="text-xs font-semibold text-slate-900 mb-2">Line Items</h3>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-xs">
+                                        <thead className="bg-slate-50 border-b border-slate-200">
+                                            <tr>
+                                                <th className="px-2 py-1.5 text-left font-medium text-slate-500">Description</th>
+                                                <th className="px-2 py-1.5 text-right font-medium text-slate-500">Qty</th>
+                                                <th className="px-2 py-1.5 text-right font-medium text-slate-500">Price</th>
+                                                <th className="px-2 py-1.5 text-right font-medium text-slate-500">Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-200">
+                                            {(Array.isArray(selectedPO.items) ? selectedPO.items : []).map((item, index) => (
+                                                <tr key={item.id || index}>
+                                                    <td className="px-2 py-1.5 text-slate-900">{item.description || '-'}</td>
+                                                    <td className="px-2 py-1.5 text-right text-slate-700">{item.quantity || 0}</td>
+                                                    <td className="px-2 py-1.5 text-right text-slate-700">{CURRENCY} {(item.unitPrice || 0).toFixed(2)}</td>
+                                                    <td className="px-2 py-1.5 text-right font-medium text-slate-900">{CURRENCY} {(item.total || 0).toFixed(2)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot className="bg-slate-50 border-t-2 border-slate-300">
+                                            <tr>
+                                                <td colSpan={3} className="px-2 py-1.5 font-semibold text-slate-900 text-right">Total:</td>
+                                                <td className="px-2 py-1.5 font-bold text-slate-900 text-right">{CURRENCY} {(selectedPO.totalAmount || 0).toFixed(2)}</td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+                            <Button
+                                variant="primary"
+                                onClick={() => {
+                                    handleFlipToInvoice(selectedPO.id);
+                                    setSelectedPO(null);
+                                }}
+                                className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
+                                disabled={selectedPO.status !== POStatus.SENT && selectedPO.status !== POStatus.RECEIVED}
+                            >
+                                Create Invoice
+                            </Button>
+                            <Button variant="secondary" onClick={() => setSelectedPO(null)}>Close</Button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 };
