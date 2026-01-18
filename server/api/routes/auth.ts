@@ -153,13 +153,23 @@ router.post('/unified-login', async (req, res) => {
     });
 
     // Lookup tenants by organization email (case-insensitive)
+    console.log('🔍 Looking up tenant by email:', organizationEmail);
     const tenants = await db.query(
       'SELECT * FROM tenants WHERE LOWER(email) = LOWER($1)',
       [organizationEmail]
     );
 
+    console.log('📊 Tenant lookup result:', { 
+      tenantsFound: tenants.length, 
+      searchedEmail: organizationEmail,
+      foundEmails: tenants.map((t: any) => t.email?.substring(0, 15) + '...')
+    });
+
     if (tenants.length === 0) {
-      console.log('❌ Unified login: No organization found for email:', organizationEmail.substring(0, 15) + '...');
+      console.log('❌ Unified login: No organization found for email:', organizationEmail);
+      // Also check what emails exist in the database for debugging
+      const allTenants = await db.query('SELECT id, email, name FROM tenants LIMIT 10');
+      console.log('📊 Available tenants in DB:', allTenants.map((t: any) => ({ id: t.id?.substring(0, 15), email: t.email })));
       return res.status(401).json({ 
         error: 'Invalid credentials', 
         message: 'Invalid organization email, username, or password' 
@@ -168,7 +178,7 @@ router.post('/unified-login', async (req, res) => {
 
     // If multiple tenants found with same email, fail for security
     if (tenants.length > 1) {
-      console.log('❌ Unified login: Multiple tenants found for email:', organizationEmail.substring(0, 15) + '...', tenants.length);
+      console.log('❌ Unified login: Multiple tenants found for email:', organizationEmail, tenants.length);
       return res.status(401).json({ 
         error: 'Invalid credentials', 
         message: 'Invalid organization email, username, or password' 
@@ -177,15 +187,31 @@ router.post('/unified-login', async (req, res) => {
 
     const tenant = tenants[0];
     const tenantId = tenant.id;
+    console.log('✅ Tenant found:', { tenantId, tenantName: tenant.name, tenantEmail: tenant.email });
 
     // Find user within tenant (case-insensitive username comparison)
+    console.log('🔍 Looking up user:', { username, tenantId });
     const allUsers = await db.query(
       'SELECT * FROM users WHERE LOWER(username) = LOWER($1) AND tenant_id = $2',
       [username, tenantId]
     );
     
+    console.log('📊 User lookup result:', { 
+      usersFound: allUsers.length, 
+      searchedUsername: username,
+      foundUsernames: allUsers.map((u: any) => u.username)
+    });
+
     if (allUsers.length === 0) {
       console.log('❌ Unified login: User not found:', { username, tenantId });
+      // Also check what users exist for this tenant for debugging
+      const tenantUsers = await db.query('SELECT id, username, email, is_active FROM users WHERE tenant_id = $1', [tenantId]);
+      console.log('📊 Available users for tenant:', tenantUsers.map((u: any) => ({ 
+        id: u.id?.substring(0, 15), 
+        username: u.username, 
+        email: u.email,
+        is_active: u.is_active 
+      })));
       return res.status(401).json({ 
         error: 'Invalid credentials', 
         message: 'Invalid organization email, username, or password' 
@@ -204,15 +230,32 @@ router.post('/unified-login', async (req, res) => {
     }
 
     const user = users[0];
+    console.log('✅ User found:', { userId: user.id, username: user.username, role: user.role, is_active: user.is_active });
 
     // Verify password
-    if (!user.password || !await bcrypt.compare(password, user.password)) {
+    const hasPassword = !!user.password;
+    console.log('🔐 Verifying password:', { hasPassword, passwordLength: user.password?.length });
+    
+    if (!user.password) {
+      console.log('❌ Unified login: User has no password set:', { username, tenantId });
+      return res.status(401).json({ 
+        error: 'Invalid credentials', 
+        message: 'Invalid organization email, username, or password' 
+      });
+    }
+    
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    console.log('🔐 Password comparison result:', { passwordMatch });
+    
+    if (!passwordMatch) {
       console.log('❌ Unified login: Password mismatch for user:', { username, tenantId });
       return res.status(401).json({ 
         error: 'Invalid credentials', 
         message: 'Invalid organization email, username, or password' 
       });
     }
+    
+    console.log('✅ Password verified successfully');
 
     // Check login_status flag - primary check for duplicate logins
     const userStatus = await db.query(
