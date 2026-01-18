@@ -5,23 +5,25 @@
  * Enforces business rules for document lifecycle
  */
 
-import { POStatus, P2PInvoiceStatus } from '../../types';
+// Define enums inline to avoid import issues
+type POStatus = 'DRAFT' | 'SENT' | 'RECEIVED' | 'INVOICED' | 'DELIVERED' | 'COMPLETED';
+type P2PInvoiceStatus = 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED';
 
 // Valid state transitions
 const VALID_TRANSITIONS = {
   PO: {
-    DRAFT: ['SENT'],
-    SENT: ['RECEIVED', 'INVOICED'],
-    RECEIVED: ['INVOICED'],
-    INVOICED: ['DELIVERED'],
-    DELIVERED: ['COMPLETED'],
-    COMPLETED: [] // Terminal state
+    DRAFT: ['SENT'] as const,
+    SENT: ['RECEIVED', 'INVOICED'] as const,
+    RECEIVED: ['INVOICED'] as const,
+    INVOICED: ['DELIVERED'] as const,
+    DELIVERED: ['COMPLETED'] as const,
+    COMPLETED: [] as const
   },
   INVOICE: {
-    PENDING: ['UNDER_REVIEW', 'APPROVED', 'REJECTED'],
-    UNDER_REVIEW: ['APPROVED', 'REJECTED'],
-    APPROVED: [], // Terminal state
-    REJECTED: [] // Terminal state
+    PENDING: ['UNDER_REVIEW', 'APPROVED', 'REJECTED'] as const,
+    UNDER_REVIEW: ['APPROVED', 'REJECTED'] as const,
+    APPROVED: [] as const,
+    REJECTED: [] as const
   }
 } as const;
 
@@ -44,22 +46,22 @@ export function canTransitionInvoice(from: P2PInvoiceStatus, to: P2PInvoiceStatu
 /**
  * Get valid next states for a PO status
  */
-export function getValidPOTransitions(currentStatus: POStatus): POStatus[] {
-  return (VALID_TRANSITIONS.PO[currentStatus] || []) as POStatus[];
+export function getValidPOTransitions(currentStatus: POStatus): string[] {
+  return [...(VALID_TRANSITIONS.PO[currentStatus] || [])];
 }
 
 /**
  * Get valid next states for an Invoice status
  */
-export function getValidInvoiceTransitions(currentStatus: P2PInvoiceStatus): P2PInvoiceStatus[] {
-  return (VALID_TRANSITIONS.INVOICE[currentStatus] || []) as P2PInvoiceStatus[];
+export function getValidInvoiceTransitions(currentStatus: P2PInvoiceStatus): string[] {
+  return [...(VALID_TRANSITIONS.INVOICE[currentStatus] || [])];
 }
 
 /**
  * Validate PO status transition and throw if invalid
  */
-export function validatePOTransition(from: POStatus, to: POStatus): void {
-  if (!canTransitionPO(from, to)) {
+export function validatePOTransition(from: string, to: string): void {
+  if (!canTransitionPO(from as POStatus, to as POStatus)) {
     throw new Error(`Invalid PO status transition: ${from} -> ${to}`);
   }
 }
@@ -67,8 +69,8 @@ export function validatePOTransition(from: POStatus, to: POStatus): void {
 /**
  * Validate Invoice status transition and throw if invalid
  */
-export function validateInvoiceTransition(from: P2PInvoiceStatus, to: P2PInvoiceStatus): void {
-  if (!canTransitionInvoice(from, to)) {
+export function validateInvoiceTransition(from: string, to: string): void {
+  if (!canTransitionInvoice(from as P2PInvoiceStatus, to as P2PInvoiceStatus)) {
     throw new Error(`Invalid Invoice status transition: ${from} -> ${to}`);
   }
 }

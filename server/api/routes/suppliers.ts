@@ -73,10 +73,12 @@ router.post('/promote', async (req: TenantRequest, res) => {
     const updatedTenant = result[0];
 
     // Emit WebSocket event
-    emitToTenant(req.tenantId, WS_EVENTS.SUPPLIER_PROMOTED, {
-      tenantId: updatedTenant.id,
-      isSupplier: true
-    });
+    if (req.tenantId) {
+      emitToTenant(req.tenantId, WS_EVENTS.SUPPLIER_PROMOTED, {
+        tenantId: updatedTenant.id,
+        isSupplier: true
+      });
+    }
 
     res.json(updatedTenant);
   } catch (error: any) {

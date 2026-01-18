@@ -43,7 +43,7 @@ function calculateDueDate(paymentTerms: string | null): string {
  * Auto-generate bill from approved invoice when PO is marked DELIVERED
  * This is called internally when a PO status changes to DELIVERED
  */
-export async function autoGenerateBill(invoiceId: string, poId: string, tenantId: string): Promise<any> {
+async function autoGenerateBill(invoiceId: string, poId: string, tenantId: string): Promise<any> {
   try {
     const db = getDb();
 
@@ -107,7 +107,9 @@ export async function autoGenerateBill(invoiceId: string, poId: string, tenantId
     const bill = billResult[0];
 
     // Emit WebSocket event
-    emitToTenant(tenantId, WS_EVENTS.P2P_BILL_CREATED, bill);
+    if (tenantId) {
+      emitToTenant(tenantId, WS_EVENTS.P2P_BILL_CREATED, bill);
+    }
 
     return bill;
   } catch (error: any) {
@@ -234,7 +236,9 @@ router.put('/:id/payment-status', async (req: TenantRequest, res) => {
     const updatedBill = result[0];
 
     // Emit WebSocket event
-    emitToTenant(req.tenantId, WS_EVENTS.P2P_BILL_UPDATED, updatedBill);
+    if (req.tenantId) {
+      emitToTenant(req.tenantId, WS_EVENTS.P2P_BILL_UPDATED, updatedBill);
+    }
 
     res.json(updatedBill);
   } catch (error: any) {

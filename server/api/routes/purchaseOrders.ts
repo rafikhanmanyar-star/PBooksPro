@@ -2,9 +2,9 @@ import { Router } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
 import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
-import { validatePOTransition } from '../../../services/p2p/stateMachine.js';
-import { logStatusChange, logEntityCreated } from '../../../services/p2p/auditTrail.js';
-import { notifyPOReceived } from '../../../services/p2p/notifications.js';
+import { validatePOTransition } from '../../services/p2p/stateMachine.js';
+import { logStatusChange, logEntityCreated } from '../../services/p2p/auditTrail.js';
+import { notifyPOReceived } from '../../services/p2p/notifications.js';
 import { autoGenerateBill } from './p2pBills.js';
 
 const router = Router();
@@ -122,14 +122,18 @@ router.post('/', async (req: TenantRequest, res) => {
     const createdPO = result[0];
 
     // Log audit trail
-    await logEntityCreated('PO', poId, req.user?.userId, req.tenantId);
-    await logStatusChange('PO', poId, 'STATUS_CHANGE', 'DRAFT', 'SENT', req.user?.userId, req.tenantId);
+    if (req.tenantId) {
+      await logEntityCreated('PO', poId, req.user?.userId, req.tenantId);
+      await logStatusChange('PO', poId, 'STATUS_CHANGE', 'DRAFT', 'SENT', req.user?.userId, req.tenantId);
+    }
 
     // Trigger notification (stub)
     await notifyPOReceived(poId, poData.supplierTenantId);
 
     // Emit WebSocket event
-    emitToTenant(req.tenantId, WS_EVENTS.PURCHASE_ORDER_CREATED, createdPO);
+    if (req.tenantId) {
+      emitToTenant(req.tenantId, WS_EVENTS.PURCHASE_ORDER_CREATED, createdPO);
+    }
 
     res.status(201).json(createdPO);
   } catch (error: any) {
@@ -208,30 +212,32 @@ router.put('/:id/status', async (req: TenantRequest, res) => {
     const updatedPO = result[0];
 
     // Log audit trail
-    await logStatusChange('PO', req.params.id, 'STATUS_CHANGE', po.status, status, req.user?.userId, req.tenantId);
+    if (req.tenantId) {
+      await logStatusChange('PO', req.params.id, 'STATUS_CHANGE', po.status, status, req.user?.userId, req.tenantId);
 
-    // If DELIVERED, check for APPROVED invoice and auto-generate BILL
-    if (status === 'DELIVERED') {
-      try {
-        // Check if there's an APPROVED invoice for this PO
-        const invoiceResult = await db.query(
-          'SELECT id FROM p2p_invoices WHERE po_id = $1 AND status = $2',
-          [req.params.id, 'APPROVED']
-        );
+      // If DELIVERED, check for APPROVED invoice and auto-generate BILL
+      if (status === 'DELIVERED') {
+        try {
+          // Check if there's an APPROVED invoice for this PO
+          const invoiceResult = await db.query(
+            'SELECT id FROM p2p_invoices WHERE po_id = $1 AND status = $2',
+            [req.params.id, 'APPROVED']
+          );
 
-        if (invoiceResult && invoiceResult.length > 0) {
-          const invoiceId = invoiceResult[0].id;
-          // Auto-generate bill
-          await autoGenerateBill(invoiceId, req.params.id, req.tenantId);
+          if (invoiceResult && invoiceResult.length > 0) {
+            const invoiceId = invoiceResult[0].id;
+            // Auto-generate bill
+            await autoGenerateBill(invoiceId, req.params.id, req.tenantId);
+          }
+        } catch (error: any) {
+          console.error('Error auto-generating bill:', error);
+          // Don't fail the status update if bill generation fails
         }
-      } catch (error: any) {
-        console.error('Error auto-generating bill:', error);
-        // Don't fail the status update if bill generation fails
       }
-    }
 
-    // Emit WebSocket event
-    emitToTenant(req.tenantId, WS_EVENTS.PURCHASE_ORDER_UPDATED, updatedPO);
+      // Emit WebSocket event
+      emitToTenant(req.tenantId, WS_EVENTS.PURCHASE_ORDER_UPDATED, updatedPO);
+    }
 
     res.json(updatedPO);
   } catch (error: any) {

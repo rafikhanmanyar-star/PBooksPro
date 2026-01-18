@@ -2,9 +2,9 @@ import { Router } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
 import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
-import { validateInvoiceTransition } from '../../../services/p2p/stateMachine.js';
-import { logStatusChange, logInvoiceFlip } from '../../../services/p2p/auditTrail.js';
-import { notifyPOInvoiced } from '../../../services/p2p/notifications.js';
+import { validateInvoiceTransition } from '../../services/p2p/stateMachine.js';
+import { logStatusChange, logInvoiceFlip } from '../../services/p2p/auditTrail.js';
+import { notifyPOInvoiced } from '../../services/p2p/notifications.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
@@ -152,8 +152,10 @@ router.post('/flip-from-po/:poId', async (req: TenantRequest, res) => {
     await notifyPOInvoiced(poId, invoiceId, po.buyer_tenant_id);
 
     // Emit WebSocket events
-    emitToTenant(req.tenantId, WS_EVENTS.P2P_INVOICE_CREATED, invoice);
-    emitToTenant(req.tenantId, WS_EVENTS.PURCHASE_ORDER_UPDATED, { id: poId, status: 'INVOICED' });
+    if (req.tenantId) {
+      emitToTenant(req.tenantId, WS_EVENTS.P2P_INVOICE_CREATED, invoice);
+      emitToTenant(req.tenantId, WS_EVENTS.PURCHASE_ORDER_UPDATED, { id: poId, status: 'INVOICED' });
+    }
 
     res.status(201).json(invoice);
   } catch (error: any) {
@@ -185,7 +187,7 @@ router.put('/:id/approve', async (req: TenantRequest, res) => {
 
     // Validate invoice status allows approval
     try {
-      validateInvoiceTransition(invoice.status, 'APPROVED');
+      validateInvoiceTransition(invoice.status, 'APPROVED' as any);
     } catch (error: any) {
       return res.status(400).json({ error: error.message });
     }
@@ -207,10 +209,12 @@ router.put('/:id/approve', async (req: TenantRequest, res) => {
     const updatedInvoice = result[0];
 
     // Log audit trail
-    await logStatusChange('INVOICE', req.params.id, 'APPROVED', invoice.status, 'APPROVED', req.user?.userId, req.tenantId, reason);
+    if (req.tenantId) {
+      await logStatusChange('INVOICE', req.params.id, 'APPROVED', invoice.status, 'APPROVED', req.user?.userId, req.tenantId, reason);
 
-    // Emit WebSocket event
-    emitToTenant(req.tenantId, WS_EVENTS.P2P_INVOICE_UPDATED, updatedInvoice);
+      // Emit WebSocket event
+      emitToTenant(req.tenantId, WS_EVENTS.P2P_INVOICE_UPDATED, updatedInvoice);
+    }
 
     res.json(updatedInvoice);
   } catch (error: any) {
@@ -246,7 +250,7 @@ router.put('/:id/reject', async (req: TenantRequest, res) => {
 
     // Validate invoice status allows rejection
     try {
-      validateInvoiceTransition(invoice.status, 'REJECTED');
+      validateInvoiceTransition(invoice.status, 'REJECTED' as any);
     } catch (error: any) {
       return res.status(400).json({ error: error.message });
     }
@@ -268,10 +272,12 @@ router.put('/:id/reject', async (req: TenantRequest, res) => {
     const updatedInvoice = result[0];
 
     // Log audit trail
-    await logStatusChange('INVOICE', req.params.id, 'REJECTED', invoice.status, 'REJECTED', req.user?.userId, req.tenantId, reason);
+    if (req.tenantId) {
+      await logStatusChange('INVOICE', req.params.id, 'REJECTED', invoice.status, 'REJECTED', req.user?.userId, req.tenantId, reason);
 
-    // Emit WebSocket event
-    emitToTenant(req.tenantId, WS_EVENTS.P2P_INVOICE_UPDATED, updatedInvoice);
+      // Emit WebSocket event
+      emitToTenant(req.tenantId, WS_EVENTS.P2P_INVOICE_UPDATED, updatedInvoice);
+    }
 
     res.json(updatedInvoice);
   } catch (error: any) {
