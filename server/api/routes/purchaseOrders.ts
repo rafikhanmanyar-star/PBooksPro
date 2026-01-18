@@ -117,8 +117,8 @@ router.post('/', async (req: TenantRequest, res) => {
     const result = await db.query(
       `INSERT INTO purchase_orders (
         id, po_number, buyer_tenant_id, supplier_tenant_id, total_amount, status,
-        items, description, target_delivery_date, created_by, sent_at, tenant_id, user_id, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        items, description, created_by, sent_at, tenant_id, user_id, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *`,
       [
         poId,
@@ -129,7 +129,6 @@ router.post('/', async (req: TenantRequest, res) => {
         'SENT', // Automatically set to SENT on creation
         JSON.stringify(poData.items),
         poData.description || null,
-        poData.targetDeliveryDate || null,
         req.user?.userId || null,
         now, // sent_at
         req.tenantId,
