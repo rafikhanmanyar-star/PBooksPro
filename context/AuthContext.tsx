@@ -49,6 +49,7 @@ export interface TenantRegistrationData {
   adminUsername: string;
   adminPassword: string;
   adminName: string;
+  isSupplier?: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
