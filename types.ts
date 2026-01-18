@@ -1423,6 +1423,33 @@ export interface P2PBill {
   updatedAt: string;
 }
 
+// Supplier Registration Request Status Enum
+export enum SupplierRegistrationStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED'
+}
+
+// Supplier Registration Request
+export interface SupplierRegistrationRequest {
+  id: string;
+  supplierTenantId: string;
+  buyerTenantId: string;
+  buyerOrganizationEmail: string;
+  status: SupplierRegistrationStatus;
+  supplierMessage?: string;
+  buyerComments?: string;
+  requestedAt: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  tenantId: string;
+  // Expanded fields (for UI)
+  supplierName?: string;
+  supplierCompanyName?: string;
+  buyerName?: string;
+  buyerCompanyName?: string;
+}
+
 export interface KpiDefinition {
   id: string;
   title: string;

@@ -1,18 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { apiClient } from '../../services/api/client';
-import { PurchaseOrder, P2PInvoice, POStatus, P2PInvoiceStatus } from '../../types';
+import { PurchaseOrder, P2PInvoice, POStatus, P2PInvoiceStatus, SupplierRegistrationRequest } from '../../types';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
+import Input from '../ui/Input';
+import { useNotification } from '../../context/NotificationContext';
 
 const SupplierPortal: React.FC = () => {
     const { tenant } = useAuth();
+    const { showToast, showAlert } = useNotification();
     const [receivedPOs, setReceivedPOs] = useState<PurchaseOrder[]>([]);
     const [myInvoices, setMyInvoices] = useState<P2PInvoice[]>([]);
+    const [myRegistrationRequests, setMyRegistrationRequests] = useState<SupplierRegistrationRequest[]>([]);
     const [loading, setLoading] = useState(true);
+    
+    // Registration form state
+    const [isRegistrationFormOpen, setIsRegistrationFormOpen] = useState(false);
+    const [buyerOrganizationEmail, setBuyerOrganizationEmail] = useState('');
+    const [supplierMessage, setSupplierMessage] = useState('');
 
     useEffect(() => {
         loadData();
+        loadMyRegistrationRequests();
     }, []);
 
     const loadData = async () => {
@@ -39,6 +49,15 @@ const SupplierPortal: React.FC = () => {
         }
     };
 
+    const loadMyRegistrationRequests = async () => {
+        try {
+            const requests = await apiClient.get<SupplierRegistrationRequest[]>('/supplier-registrations/my-requests');
+            setMyRegistrationRequests(requests);
+        } catch (error) {
+            console.error('Error loading registration requests:', error);
+        }
+    };
+
     const handleFlipToInvoice = async (poId: string) => {
         try {
             await apiClient.post(`/p2p-invoices/flip-from-po/${poId}`);
@@ -46,6 +65,41 @@ const SupplierPortal: React.FC = () => {
         } catch (error) {
             console.error('Error flipping PO to invoice:', error);
             alert('Error creating invoice from PO. Please try again.');
+        }
+    };
+
+    const handleSubmitRegistration = async () => {
+        // Validation
+        if (!buyerOrganizationEmail.trim()) {
+            showAlert('Please enter buyer organization email');
+            return;
+        }
+
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(buyerOrganizationEmail)) {
+            showAlert('Please enter a valid email address');
+            return;
+        }
+
+        try {
+            await apiClient.post('/supplier-registrations/request', {
+                buyerOrganizationEmail: buyerOrganizationEmail.trim(),
+                supplierMessage: supplierMessage.trim() || undefined
+            });
+            
+            showToast('Registration request sent successfully');
+            
+            // Reset form
+            setBuyerOrganizationEmail('');
+            setSupplierMessage('');
+            setIsRegistrationFormOpen(false);
+            
+            // Reload requests
+            await loadMyRegistrationRequests();
+        } catch (error: any) {
+            console.error('Error sending registration request:', error);
+            showAlert(error.response?.data?.error || 'Failed to send registration request');
         }
     };
 
@@ -87,7 +141,105 @@ const SupplierPortal: React.FC = () => {
                     <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Supplier Portal</h1>
                     <p className="text-xs sm:text-sm text-slate-500 mt-1">Manage purchase orders and invoices</p>
                 </div>
+                <Button
+                    onClick={() => setIsRegistrationFormOpen(!isRegistrationFormOpen)}
+                    className="bg-slate-900 text-white hover:bg-slate-800"
+                >
+                    {isRegistrationFormOpen ? 'Cancel' : '+ Register with Buyer'}
+                </Button>
             </div>
+
+            {/* Registration Request Form */}
+            {isRegistrationFormOpen && (
+                <Card className="p-6 border-2 border-blue-200 bg-blue-50/30">
+                    <h2 className="text-lg font-semibold text-slate-900 mb-4">Register with Buyer Organization</h2>
+                    
+                    <div className="space-y-4 mb-6">
+                        <Input
+                            label="Buyer Organization Email *"
+                            type="email"
+                            value={buyerOrganizationEmail}
+                            onChange={(e) => setBuyerOrganizationEmail(e.target.value)}
+                            placeholder="Enter buyer organization email"
+                            required
+                        />
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">
+                                Message (Optional)
+                            </label>
+                            <textarea
+                                className="block w-full px-3 py-2 border rounded-lg shadow-sm placeholder-gray-400 focus:outline-none text-base sm:text-sm focus:ring-2 focus:ring-green-500/50 focus:border-green-500 border-gray-300 transition-colors"
+                                rows={3}
+                                value={supplierMessage}
+                                onChange={(e) => setSupplierMessage(e.target.value)}
+                                placeholder="Add a message to the buyer organization (optional)"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+                        <Button
+                            variant="secondary"
+                            onClick={() => {
+                                setBuyerOrganizationEmail('');
+                                setSupplierMessage('');
+                                setIsRegistrationFormOpen(false);
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleSubmitRegistration}
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                            Send Registration Request
+                        </Button>
+                    </div>
+                </Card>
+            )}
+
+            {/* My Registration Requests Status */}
+            {myRegistrationRequests.length > 0 && (
+                <Card className="flex-1 overflow-auto">
+                    <div className="p-4 border-b border-slate-200">
+                        <h2 className="text-lg font-semibold text-slate-900">My Registration Requests</h2>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead className="bg-slate-50 border-b border-slate-200">
+                                <tr>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Buyer Organization</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Email</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Requested</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Comments</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                                {myRegistrationRequests.map(request => (
+                                    <tr key={request.id} className="hover:bg-slate-50">
+                                        <td className="px-4 py-3 text-sm text-slate-900">
+                                            {request.buyerCompanyName || request.buyerName || 'N/A'}
+                                        </td>
+                                        <td className="px-4 py-3 text-sm text-slate-600">{request.buyerOrganizationEmail}</td>
+                                        <td className="px-4 py-3">
+                                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(request.status)}`}>
+                                                {request.status}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-sm text-slate-600">
+                                            {new Date(request.requestedAt).toLocaleDateString()}
+                                        </td>
+                                        <td className="px-4 py-3 text-sm text-slate-600">
+                                            {request.buyerComments || '-'}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </Card>
+            )}
 
             {/* Received Purchase Orders */}
             <Card className="flex-1 overflow-auto">

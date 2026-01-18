@@ -174,3 +174,32 @@ CREATE INDEX IF NOT EXISTS idx_p2p_bills_payment_status ON p2p_bills(payment_sta
 CREATE INDEX IF NOT EXISTS idx_p2p_bills_tenant_id ON p2p_bills(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_p2p_audit_trail_entity ON p2p_audit_trail(entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_p2p_audit_trail_tenant_id ON p2p_audit_trail(tenant_id);
+
+-- ============================================================================
+-- SUPPLIER REGISTRATION REQUESTS
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS supplier_registration_requests (
+    id TEXT PRIMARY KEY,
+    supplier_tenant_id TEXT NOT NULL,
+    buyer_tenant_id TEXT NOT NULL,
+    buyer_organization_email TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING' 
+        CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
+    supplier_message TEXT,
+    buyer_comments TEXT,
+    requested_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    reviewed_at TIMESTAMP,
+    reviewed_by TEXT,
+    tenant_id TEXT NOT NULL,
+    FOREIGN KEY (supplier_tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (buyer_tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    -- Prevent duplicate pending requests
+    UNIQUE(supplier_tenant_id, buyer_tenant_id, status) WHERE status = 'PENDING'
+);
+
+CREATE INDEX IF NOT EXISTS idx_supplier_reg_req_supplier ON supplier_registration_requests(supplier_tenant_id);
+CREATE INDEX IF NOT EXISTS idx_supplier_reg_req_buyer ON supplier_registration_requests(buyer_tenant_id);
+CREATE INDEX IF NOT EXISTS idx_supplier_reg_req_status ON supplier_registration_requests(status);
+CREATE INDEX IF NOT EXISTS idx_supplier_reg_req_tenant_id ON supplier_registration_requests(tenant_id);
