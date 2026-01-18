@@ -1,24 +1,52 @@
 
-import React, { memo } from 'react';
+import React, { memo, useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import { apiClient } from '../../services/api/client';
+import BuyerDashboard from './BuyerDashboard';
+import SupplierPortal from './SupplierPortal';
 
 const BizPlanetPage: React.FC = () => {
-    return (
-        <div className="flex flex-col h-full bg-slate-50/50 p-4 sm:p-6 gap-4 sm:gap-6">
-            {/* Header Section */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0">
-                <div>
-                    <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Biz Planet</h1>
-                    <p className="text-xs sm:text-sm text-slate-500 mt-1">B2B business platform</p>
-                </div>
-            </div>
+    const { tenant } = useAuth();
+    const [isSupplier, setIsSupplier] = useState<boolean>(false);
+    const [loading, setLoading] = useState(true);
 
-            {/* Content Area */}
-            <div className="flex-grow flex items-center justify-center">
-                <div className="text-center text-slate-400">
-                    <p className="text-sm">Content coming soon...</p>
+    useEffect(() => {
+        checkSupplierStatus();
+    }, [tenant]);
+
+    const checkSupplierStatus = async () => {
+        try {
+            if (tenant?.id) {
+                // Fetch tenant info to check is_supplier flag
+                const tenantInfo = await apiClient.get<{ is_supplier?: boolean }>(`/tenants/${tenant.id}`);
+                setIsSupplier(tenantInfo.is_supplier === true);
+            }
+        } catch (error) {
+            console.error('Error checking supplier status:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-slate-600 mb-2"></div>
+                    <p className="text-sm text-slate-600">Loading...</p>
                 </div>
             </div>
-        </div>
+        );
+    }
+
+    return (
+        <>
+            {isSupplier ? (
+                <SupplierPortal />
+            ) : (
+                <BuyerDashboard />
+            )}
+        </>
     );
 };
 

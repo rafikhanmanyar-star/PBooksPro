@@ -197,5 +197,15 @@ export const WS_EVENTS = {
   TASK_DELETED: 'task:deleted',
   TASK_ASSIGNED: 'task:assigned',
   TASK_DEADLINE_WARNING: 'task:deadline:warning',
+  
+  // P2P System
+  SUPPLIER_PROMOTED: 'supplier:promoted',
+  PURCHASE_ORDER_CREATED: 'purchase_order:created',
+  PURCHASE_ORDER_UPDATED: 'purchase_order:updated',
+  P2P_INVOICE_CREATED: 'p2p_invoice:created',
+  P2P_INVOICE_UPDATED: 'p2p_invoice:updated',
+  P2P_BILL_CREATED: 'p2p_bill:created',
+  P2P_BILL_UPDATED: 'p2p_bill:updated',
+  DATA_UPDATED: 'data:updated', // Generic event for any data update
 } as const;
 

@@ -971,4 +971,104 @@ CREATE INDEX IF NOT EXISTS idx_task_updates_tenant_id ON task_updates(tenant_id)
 CREATE INDEX IF NOT EXISTS idx_task_updates_user_id ON task_updates(user_id);
 CREATE INDEX IF NOT EXISTS idx_task_performance_scores_tenant_id ON task_performance_scores(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_task_performance_scores_user_id ON task_performance_scores(user_id);
+
+-- ============================================================================
+-- P2P (PROCUREMENT-TO-PAY) SYSTEM
+-- ============================================================================
+
+-- Purchase Orders table
+CREATE TABLE IF NOT EXISTS purchase_orders (
+    id TEXT PRIMARY KEY,
+    po_number TEXT NOT NULL UNIQUE,
+    buyer_tenant_id TEXT NOT NULL,
+    supplier_tenant_id TEXT NOT NULL,
+    total_amount REAL NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('DRAFT', 'SENT', 'RECEIVED', 'INVOICED', 'DELIVERED', 'COMPLETED')) DEFAULT 'DRAFT',
+    items TEXT NOT NULL, -- JSON array of POItem
+    description TEXT,
+    created_by TEXT,
+    sent_at TEXT,
+    received_at TEXT,
+    delivered_at TEXT,
+    completed_at TEXT,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- P2P Invoices table
+CREATE TABLE IF NOT EXISTS p2p_invoices (
+    id TEXT PRIMARY KEY,
+    invoice_number TEXT NOT NULL UNIQUE,
+    po_id TEXT NOT NULL,
+    buyer_tenant_id TEXT NOT NULL,
+    supplier_tenant_id TEXT NOT NULL,
+    amount REAL NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('PENDING', 'UNDER_REVIEW', 'APPROVED', 'REJECTED')) DEFAULT 'PENDING',
+    items TEXT NOT NULL, -- JSON array matching PO items
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    rejected_reason TEXT,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE RESTRICT
+);
+
+-- P2P Bills table
+CREATE TABLE IF NOT EXISTS p2p_bills (
+    id TEXT PRIMARY KEY,
+    bill_number TEXT NOT NULL UNIQUE,
+    invoice_id TEXT NOT NULL,
+    po_id TEXT NOT NULL,
+    buyer_tenant_id TEXT NOT NULL,
+    supplier_tenant_id TEXT NOT NULL,
+    amount REAL NOT NULL,
+    due_date TEXT NOT NULL,
+    payment_status TEXT NOT NULL CHECK (payment_status IN ('UNPAID', 'PARTIALLY_PAID', 'PAID', 'OVERDUE')) DEFAULT 'UNPAID',
+    paid_amount REAL NOT NULL DEFAULT 0,
+    paid_at TEXT,
+    payment_account_id TEXT,
+    transaction_id TEXT,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (invoice_id) REFERENCES p2p_invoices(id) ON DELETE RESTRICT,
+    FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE RESTRICT,
+    FOREIGN KEY (payment_account_id) REFERENCES accounts(id) ON DELETE SET NULL
+);
+
+-- P2P Audit Trail table
+CREATE TABLE IF NOT EXISTS p2p_audit_trail (
+    id TEXT PRIMARY KEY,
+    entity_type TEXT NOT NULL CHECK (entity_type IN ('PO', 'INVOICE', 'BILL')),
+    entity_id TEXT NOT NULL,
+    action TEXT NOT NULL, -- 'STATUS_CHANGE', 'CREATED', 'APPROVED', 'REJECTED'
+    from_status TEXT,
+    to_status TEXT,
+    performed_by TEXT,
+    performed_at TEXT NOT NULL DEFAULT (datetime('now')),
+    notes TEXT,
+    tenant_id TEXT NOT NULL
+);
+
+-- P2P Indexes
+CREATE INDEX IF NOT EXISTS idx_po_buyer_tenant ON purchase_orders(buyer_tenant_id);
+CREATE INDEX IF NOT EXISTS idx_po_supplier_tenant ON purchase_orders(supplier_tenant_id);
+CREATE INDEX IF NOT EXISTS idx_po_status ON purchase_orders(status);
+CREATE INDEX IF NOT EXISTS idx_po_tenant_id ON purchase_orders(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_p2p_invoices_po_id ON p2p_invoices(po_id);
+CREATE INDEX IF NOT EXISTS idx_p2p_invoices_status ON p2p_invoices(status);
+CREATE INDEX IF NOT EXISTS idx_p2p_invoices_buyer_tenant ON p2p_invoices(buyer_tenant_id);
+CREATE INDEX IF NOT EXISTS idx_p2p_invoices_supplier_tenant ON p2p_invoices(supplier_tenant_id);
+CREATE INDEX IF NOT EXISTS idx_p2p_invoices_tenant_id ON p2p_invoices(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_p2p_bills_invoice_id ON p2p_bills(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_p2p_bills_due_date ON p2p_bills(due_date);
+CREATE INDEX IF NOT EXISTS idx_p2p_bills_payment_status ON p2p_bills(payment_status);
+CREATE INDEX IF NOT EXISTS idx_p2p_bills_tenant_id ON p2p_bills(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_p2p_audit_trail_entity ON p2p_audit_trail(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_p2p_audit_trail_tenant_id ON p2p_audit_trail(tenant_id);
 `;
