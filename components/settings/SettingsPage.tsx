@@ -32,6 +32,7 @@ import { Property } from '../../types';
 import ClearTransactionsModal from './ClearTransactionsModal';
 import { dataManagementApi } from '../../services/api/repositories/dataManagementApi';
 import { getDatabaseService } from '../../services/database/databaseService';
+import { apiClient } from '../../services/api/client';
 
 interface TableRowData {
     id: string;
@@ -83,6 +84,24 @@ const SettingsPage: React.FC = () => {
         return () => window.removeEventListener('open-backup-restore-section', handleOpenBackup);
     }, []);
 
+    // Fetch current tenant supplier status
+    useEffect(() => {
+        const fetchSupplierStatus = async () => {
+            if (isOffline) return;
+            try {
+                setIsCheckingSupplierStatus(true);
+                const tenantInfo = await apiClient.get<{ is_supplier?: boolean }>('/tenants/me');
+                const supplierStatus = tenantInfo.is_supplier === true || tenantInfo.is_supplier === 'true';
+                setIsSupplier(supplierStatus);
+            } catch (error) {
+                console.error('Error fetching supplier status:', error);
+            } finally {
+                setIsCheckingSupplierStatus(false);
+            }
+        };
+        fetchSupplierStatus();
+    }, [isOffline]);
+
     // Close dropdown when navigating away from accounts view
     useEffect(() => {
         if (activeCategory !== 'accounts') {
@@ -98,6 +117,9 @@ const SettingsPage: React.FC = () => {
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'default', direction: 'asc' });
     const [ledgerModalState, setLedgerModalState] = useState<{ isOpen: boolean; entityId: string; entityType: 'account' | 'category' | 'contact' | 'project' | 'building' | 'property' | 'unit'; entityName: string } | null>(null);
     const [propertyToTransfer, setPropertyToTransfer] = useState<Property | null>(null);
+    const [isSupplier, setIsSupplier] = useState<boolean>(false);
+    const [isCheckingSupplierStatus, setIsCheckingSupplierStatus] = useState<boolean>(false);
+    const [isUpgradingToSupplier, setIsUpgradingToSupplier] = useState<boolean>(false);
     const [isMigrationWizardOpen, setIsMigrationWizardOpen] = useState(false);
     const [isAddNewMenuOpen, setIsAddNewMenuOpen] = useState(false);
     const [isClearTransactionsModalOpen, setIsClearTransactionsModalOpen] = useState(false);
@@ -449,6 +471,32 @@ const SettingsPage: React.FC = () => {
         }
     };
 
+    const handleUpgradeToSupplier = async () => {
+        if (isSupplier) {
+            await showAlert('This organization is already a supplier.');
+            return;
+        }
+
+        const confirmed = await showConfirm(
+            'Upgrade this organization to supplier? This will enable supplier features and allow you to participate in procurement-to-pay transactions. This action cannot be undone.',
+            { title: 'Upgrade to Supplier', confirmLabel: 'Upgrade', cancelLabel: 'Cancel' }
+        );
+
+        if (!confirmed) return;
+
+        try {
+            setIsUpgradingToSupplier(true);
+            await apiClient.put('/tenants/me', { isSupplier: true });
+            setIsSupplier(true);
+            showToast('Organization successfully upgraded to supplier!', 'success');
+        } catch (error: any) {
+            console.error('Error upgrading to supplier:', error);
+            await showAlert(error.message || error.error || 'Failed to upgrade to supplier. Please try again.');
+        } finally {
+            setIsUpgradingToSupplier(false);
+        }
+    };
+
     const isTableViewCategory = !!columnConfig[activeCategory];
     const SortHeader: React.FC<{ label: string; sortKey: string; align?: string }> = ({ label, sortKey, align = 'left' }) => (
         <th className={`px-4 py-3 text-${align} text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors select-none sticky top-0 bg-white z-10 border-b border-slate-200`} onClick={() => handleSort(sortKey)}>
@@ -586,6 +634,43 @@ const SettingsPage: React.FC = () => {
                     }}>Browse...</Button>
                 </div>
             </div>
+
+            {!isSupplier && (
+                <div className="p-5 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border-2 border-indigo-200 shadow-sm">
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                            <h4 className="font-semibold text-indigo-900 mb-1 text-lg">Upgrade to Supplier</h4>
+                            <p className="text-sm text-indigo-700 mb-4">
+                                Enable supplier features to participate in procurement-to-pay transactions. As a supplier, you can receive purchase orders, send invoices, and manage your business relationships with buyers.
+                            </p>
+                        </div>
+                    </div>
+                    <Button 
+                        variant="primary" 
+                        onClick={handleUpgradeToSupplier}
+                        disabled={isUpgradingToSupplier || isOffline}
+                        className="w-full"
+                    >
+                        {isUpgradingToSupplier ? 'Upgrading...' : 'Upgrade to Supplier'}
+                    </Button>
+                </div>
+            )}
+
+            {isSupplier && (
+                <div className="p-5 bg-green-50 rounded-xl border-2 border-green-200 shadow-sm">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-green-100 rounded-lg text-green-600">
+                            {ICONS.checkCircle}
+                        </div>
+                        <div className="flex-1">
+                            <h4 className="font-semibold text-green-900 mb-1">Supplier Status Active</h4>
+                            <p className="text-sm text-green-700">
+                                This organization is registered as a supplier and can participate in procurement-to-pay transactions.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 

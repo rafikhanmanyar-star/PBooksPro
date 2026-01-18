@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAppContext } from '../../context/AppContext';
 import { apiClient } from '../../services/api/client';
@@ -8,6 +8,8 @@ import Card from '../ui/Card';
 import ComboBox from '../ui/ComboBox';
 import Input from '../ui/Input';
 import { useNotification } from '../../context/NotificationContext';
+import { ICONS } from '../../constants';
+import { getWebSocketClient } from '../../services/websocketClient';
 
 interface Supplier {
     id: string;
@@ -47,6 +49,26 @@ const BuyerDashboard: React.FC = () => {
         loadRegistrationRequests();
         loadRegisteredSuppliers();
     }, []);
+
+    // WebSocket listener for new registration requests
+    useEffect(() => {
+        const wsClient = getWebSocketClient();
+        
+        const handleDataUpdate = (data: any) => {
+            if (data.type === 'SUPPLIER_REGISTRATION_REQUEST') {
+                // Reload registration requests when new request arrives
+                loadRegistrationRequests();
+                showToast('New supplier registration request received', 'info');
+            }
+        };
+
+        // Subscribe to DATA_UPDATED events
+        const unsubscribe = wsClient.on('data:updated', handleDataUpdate);
+
+        return () => {
+            if (unsubscribe) unsubscribe();
+        };
+    }, [showToast]);
 
     const loadData = async () => {
         try {
@@ -260,12 +282,36 @@ const BuyerDashboard: React.FC = () => {
                     <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Buyer Dashboard</h1>
                     <p className="text-xs sm:text-sm text-slate-500 mt-1">Manage purchase orders and invoices</p>
                 </div>
-                <Button 
-                    onClick={() => setIsFormOpen(!isFormOpen)} 
-                    className="bg-slate-900 text-white hover:bg-slate-800"
-                >
-                    {isFormOpen ? 'Cancel' : '+ New Purchase Order'}
-                </Button>
+                <div className="flex items-center gap-2">
+                    {/* Notification Bell - Show pending registration requests count */}
+                    {registrationRequests.length > 0 && (
+                        <div className="relative">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    // Scroll to registration requests section
+                                    const element = document.querySelector('[data-section="registration-requests"]');
+                                    if (element) {
+                                        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                    }
+                                }}
+                                className="p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors relative min-w-[44px] min-h-[44px] flex items-center justify-center"
+                                title={`${registrationRequests.length} pending registration request${registrationRequests.length > 1 ? 's' : ''}`}
+                            >
+                                {ICONS.bell}
+                                <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center">
+                                    {registrationRequests.length > 99 ? '99+' : registrationRequests.length}
+                                </span>
+                            </button>
+                        </div>
+                    )}
+                    <Button 
+                        onClick={() => setIsFormOpen(!isFormOpen)} 
+                        className="bg-slate-900 text-white hover:bg-slate-800"
+                    >
+                        {isFormOpen ? 'Cancel' : '+ New Purchase Order'}
+                    </Button>
+                </div>
             </div>
 
             {/* Inline PO Creation Form */}
@@ -377,7 +423,7 @@ const BuyerDashboard: React.FC = () => {
                                         <div className="mt-2 text-right">
                                             <span className="text-sm text-slate-600">
                                                 Subtotal: <span className="font-semibold text-slate-900">
-                                                    ${item.total.toFixed(2)}
+                                                    ${(item.total || 0).toFixed(2)}
                                                 </span>
                                             </span>
                                         </div>
@@ -391,7 +437,7 @@ const BuyerDashboard: React.FC = () => {
                                 <div className="flex justify-between items-center">
                                     <span className="text-lg font-semibold text-indigo-900">Total Amount:</span>
                                     <span className="text-2xl font-bold text-indigo-900">
-                                        ${totalAmount.toFixed(2)}
+                                        ${(totalAmount || 0).toFixed(2)}
                                     </span>
                                 </div>
                             </div>
@@ -438,7 +484,7 @@ const BuyerDashboard: React.FC = () => {
 
             {/* Supplier Registration Requests */}
             {registrationRequests.length > 0 && (
-                <Card className="flex-1 overflow-auto">
+                <Card className="flex-1 overflow-auto" data-section="registration-requests">
                     <div className="p-4 border-b border-slate-200">
                         <h2 className="text-lg font-semibold text-slate-900">Supplier Registration Requests</h2>
                     </div>
@@ -525,7 +571,7 @@ const BuyerDashboard: React.FC = () => {
                                         <td className="px-4 py-3 text-sm text-slate-900">{po.poNumber}</td>
                                         <td className="px-4 py-3 text-sm text-slate-600">{po.supplierTenantId}</td>
                                         <td className="px-4 py-3 text-sm text-right font-medium text-slate-900">
-                                            ${po.totalAmount.toFixed(2)}
+                                            ${(po.totalAmount || 0).toFixed(2)}
                                         </td>
                                         <td className="px-4 py-3">
                                             <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(po.status)}`}>
@@ -578,7 +624,7 @@ const BuyerDashboard: React.FC = () => {
                                         <td className="px-4 py-3 text-sm text-slate-900">{invoice.invoiceNumber}</td>
                                         <td className="px-4 py-3 text-sm text-slate-600">{invoice.poId}</td>
                                         <td className="px-4 py-3 text-sm text-right font-medium text-slate-900">
-                                            ${invoice.amount.toFixed(2)}
+                                            ${(invoice.amount || 0).toFixed(2)}
                                         </td>
                                         <td className="px-4 py-3">
                                             <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(invoice.status)}`}>

@@ -51,6 +51,17 @@ router.post('/request', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Cannot send registration request to your own organization' });
     }
 
+    // Check if already registered (approved) in registered_suppliers table
+    const existingRegistered = await db.query(
+      `SELECT id FROM registered_suppliers 
+       WHERE supplier_tenant_id = $1 AND buyer_tenant_id = $2 AND status = 'ACTIVE'`,
+      [supplierTenantId, buyerTenant.id]
+    );
+
+    if (existingRegistered.length > 0) {
+      return res.status(400).json({ error: 'You are already registered with this organization' });
+    }
+
     // Check if there's already a pending request
     const existingPending = await db.query(
       `SELECT id FROM supplier_registration_requests 
@@ -62,7 +73,7 @@ router.post('/request', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'A pending registration request already exists for this organization' });
     }
 
-    // Check if already approved
+    // Check if there's an approved request (should already be in registered_suppliers, but check anyway)
     const existingApproved = await db.query(
       `SELECT id FROM supplier_registration_requests 
        WHERE supplier_tenant_id = $1 AND buyer_tenant_id = $2 AND status = 'APPROVED'`,
@@ -70,7 +81,7 @@ router.post('/request', async (req: TenantRequest, res) => {
     );
 
     if (existingApproved.length > 0) {
-      return res.status(400).json({ error: 'Registration request already approved for this organization' });
+      return res.status(400).json({ error: 'You are already registered with this organization' });
     }
 
     // Create registration request

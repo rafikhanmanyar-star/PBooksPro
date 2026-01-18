@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { apiClient } from '../../services/api/client';
-import { PurchaseOrder, P2PInvoice, POStatus, P2PInvoiceStatus, SupplierRegistrationRequest } from '../../types';
+import { PurchaseOrder, P2PInvoice, POStatus, P2PInvoiceStatus, SupplierRegistrationRequest, SupplierRegistrationStatus } from '../../types';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
 import Input from '../ui/Input';
 import ComboBox from '../ui/ComboBox';
 import { useNotification } from '../../context/NotificationContext';
+import { ICONS } from '../../constants';
+import { getWebSocketClient } from '../../services/websocketClient';
 
 const SupplierPortal: React.FC = () => {
     const { tenant } = useAuth();
@@ -28,6 +30,32 @@ const SupplierPortal: React.FC = () => {
         loadMyRegistrationRequests();
         loadAvailableBuyers();
     }, []);
+
+    // WebSocket listener for registration status updates
+    useEffect(() => {
+        const wsClient = getWebSocketClient();
+        
+        const handleDataUpdate = (data: any) => {
+            if (data.type === 'SUPPLIER_REGISTRATION_APPROVED' || data.type === 'SUPPLIER_REGISTRATION_REJECTED') {
+                // Reload registration requests when status changes
+                loadMyRegistrationRequests();
+                
+                // Show success notification for approval
+                if (data.type === 'SUPPLIER_REGISTRATION_APPROVED') {
+                    showToast('Registration approved! You are now registered with the buyer organization.', 'success');
+                } else if (data.type === 'SUPPLIER_REGISTRATION_REJECTED') {
+                    showToast('Registration request was rejected by the buyer organization.', 'info');
+                }
+            }
+        };
+
+        // Subscribe to DATA_UPDATED events
+        const unsubscribe = wsClient.on('data:updated', handleDataUpdate);
+
+        return () => {
+            if (unsubscribe) unsubscribe();
+        };
+    }, [showToast]);
 
     const loadAvailableBuyers = async () => {
         try {
@@ -72,6 +100,22 @@ const SupplierPortal: React.FC = () => {
         }
     };
 
+    const checkIfAlreadyRegistered = async (buyerEmail: string): Promise<boolean> => {
+        try {
+            // Check if any of our registration requests are approved for this buyer
+            const requests = await apiClient.get<SupplierRegistrationRequest[]>('/supplier-registrations/my-requests');
+            const buyerRequests = requests.filter(r => 
+                r.buyerOrganizationEmail.toLowerCase() === buyerEmail.toLowerCase()
+            );
+            
+            // Check if any request is approved
+            return buyerRequests.some(r => r.status === SupplierRegistrationStatus.APPROVED);
+        } catch (error) {
+            console.error('Error checking registration status:', error);
+            return false;
+        }
+    };
+
     const handleFlipToInvoice = async (poId: string) => {
         try {
             await apiClient.post(`/p2p-invoices/flip-from-po/${poId}`);
@@ -96,6 +140,13 @@ const SupplierPortal: React.FC = () => {
             return;
         }
 
+        // Check if already registered with this organization
+        const isAlreadyRegistered = await checkIfAlreadyRegistered(buyerOrganizationEmail.trim());
+        if (isAlreadyRegistered) {
+            showAlert('You are already registered with this organization');
+            return;
+        }
+
         try {
             await apiClient.post('/supplier-registrations/request', {
                 buyerOrganizationEmail: buyerOrganizationEmail.trim(),
@@ -113,7 +164,14 @@ const SupplierPortal: React.FC = () => {
             await loadMyRegistrationRequests();
         } catch (error: any) {
             console.error('Error sending registration request:', error);
-            showAlert(error.response?.data?.error || 'Failed to send registration request');
+            const errorMessage = error.response?.data?.error || 'Failed to send registration request';
+            
+            // Check for already registered error
+            if (errorMessage.toLowerCase().includes('already registered')) {
+                showAlert('You are already registered with this organization');
+            } else {
+                showAlert(errorMessage);
+            }
         }
     };
 
@@ -156,6 +214,21 @@ const SupplierPortal: React.FC = () => {
                     <p className="text-xs sm:text-sm text-slate-500 mt-1">Manage purchase orders and invoices</p>
                 </div>
                 <div className="flex items-center gap-2">
+                    {/* Notification Bell - Show approved/rejected status */}
+                    {myRegistrationRequests.some(r => r.status === SupplierRegistrationStatus.APPROVED || r.status === SupplierRegistrationStatus.REJECTED) && (
+                        <div className="relative">
+                            <button
+                                type="button"
+                                className="p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors relative min-w-[44px] min-h-[44px] flex items-center justify-center"
+                                title="Registration Status Updates"
+                            >
+                                {ICONS.bell}
+                                <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1.5 bg-blue-500 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center">
+                                    {myRegistrationRequests.filter(r => r.status === SupplierRegistrationStatus.APPROVED || r.status === SupplierRegistrationStatus.REJECTED).length}
+                                </span>
+                            </button>
+                        </div>
+                    )}
                     <Button
                         onClick={() => setIsRegistrationFormOpen(!isRegistrationFormOpen)}
                         className="bg-slate-900 text-white hover:bg-slate-800"
@@ -221,6 +294,26 @@ const SupplierPortal: React.FC = () => {
                 </Card>
             )}
 
+            {/* Success Banner for Approved Registrations */}
+            {myRegistrationRequests.some(r => r.status === SupplierRegistrationStatus.APPROVED) && (
+                <Card className="p-4 bg-green-50 border-2 border-green-200">
+                    <div className="flex items-center gap-3">
+                        <div className="flex-shrink-0">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-green-600">
+                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                            </svg>
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="text-sm font-semibold text-green-900">Registration Approved!</h3>
+                            <p className="text-sm text-green-700">
+                                {myRegistrationRequests.filter(r => r.status === SupplierRegistrationStatus.APPROVED).length} registration request{myRegistrationRequests.filter(r => r.status === SupplierRegistrationStatus.APPROVED).length > 1 ? 's have' : ' has'} been approved. You can now receive purchase orders from these buyers.
+                            </p>
+                        </div>
+                    </div>
+                </Card>
+            )}
+
             {/* My Registration Requests Status */}
             {myRegistrationRequests.length > 0 && (
                 <Card className="flex-1 overflow-auto">
@@ -240,14 +333,19 @@ const SupplierPortal: React.FC = () => {
                             </thead>
                             <tbody className="divide-y divide-slate-200">
                                 {myRegistrationRequests.map(request => (
-                                    <tr key={request.id} className="hover:bg-slate-50">
-                                        <td className="px-4 py-3 text-sm text-slate-900">
+                                    <tr 
+                                        key={request.id} 
+                                        className={`hover:bg-slate-50 ${
+                                            request.status === SupplierRegistrationStatus.APPROVED ? 'bg-green-50/50' : ''
+                                        }`}
+                                    >
+                                        <td className="px-4 py-3 text-sm text-slate-900 font-medium">
                                             {request.buyerCompanyName || request.buyerName || 'N/A'}
                                         </td>
                                         <td className="px-4 py-3 text-sm text-slate-600">{request.buyerOrganizationEmail}</td>
                                         <td className="px-4 py-3">
                                             <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(request.status)}`}>
-                                                {request.status}
+                                                {request.status === SupplierRegistrationStatus.APPROVED && '✓ '}{request.status}
                                             </span>
                                         </td>
                                         <td className="px-4 py-3 text-sm text-slate-600">
@@ -293,7 +391,7 @@ const SupplierPortal: React.FC = () => {
                                         <td className="px-4 py-3 text-sm text-slate-900 font-medium">{po.poNumber}</td>
                                         <td className="px-4 py-3 text-sm text-slate-600">{po.buyerTenantId}</td>
                                         <td className="px-4 py-3 text-sm text-right font-medium text-slate-900">
-                                            ${po.totalAmount.toFixed(2)}
+                                            ${(po.totalAmount || 0).toFixed(2)}
                                         </td>
                                         <td className="px-4 py-3">
                                             <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(po.status)}`}>
@@ -365,7 +463,7 @@ const SupplierPortal: React.FC = () => {
                                         <td className="px-4 py-3 text-sm text-slate-900 font-medium">{invoice.invoiceNumber}</td>
                                         <td className="px-4 py-3 text-sm text-slate-600">{invoice.poId}</td>
                                         <td className="px-4 py-3 text-sm text-right font-medium text-slate-900">
-                                            ${invoice.amount.toFixed(2)}
+                                            ${(invoice.amount || 0).toFixed(2)}
                                         </td>
                                         <td className="px-4 py-3">
                                             <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(invoice.status)}`}>

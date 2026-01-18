@@ -27,6 +27,40 @@ router.get('/me', async (req: TenantRequest, res) => {
   }
 });
 
+// Update current tenant info (for authenticated tenant)
+router.put('/me', async (req: TenantRequest, res) => {
+  try {
+    const db = getDb();
+    const { isSupplier } = req.body;
+    
+    // Only allow updating is_supplier flag for self-service
+    if (isSupplier === undefined) {
+      return res.status(400).json({ error: 'isSupplier field is required' });
+    }
+    
+    // Update tenant's is_supplier flag
+    const result = await db.query(
+      'UPDATE tenants SET is_supplier = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
+      [isSupplier === true || isSupplier === 'true', req.tenantId]
+    );
+    
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+    
+    // Emit WebSocket event
+    emitToTenant(req.tenantId!, WS_EVENTS.SUPPLIER_PROMOTED, {
+      tenantId: result[0].id,
+      isSupplier: result[0].is_supplier
+    });
+    
+    res.json(result[0]);
+  } catch (error: any) {
+    console.error('Error updating tenant:', error);
+    res.status(500).json({ error: 'Failed to update tenant info' });
+  }
+});
+
 // Check license status
 router.get('/license-status', async (req: TenantRequest, res) => {
   try {
