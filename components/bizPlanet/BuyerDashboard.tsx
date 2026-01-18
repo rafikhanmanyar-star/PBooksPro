@@ -7,9 +7,11 @@ import Button from '../ui/Button';
 import Card from '../ui/Card';
 import ComboBox from '../ui/ComboBox';
 import Input from '../ui/Input';
+import Modal from '../ui/Modal';
 import { useNotification } from '../../context/NotificationContext';
 import { ICONS, CURRENCY } from '../../constants';
 import { getWebSocketClient } from '../../services/websocketClient';
+import { formatDate } from '../../utils/dateUtils';
 
 interface Supplier {
     id: string;
@@ -25,6 +27,7 @@ const BuyerDashboard: React.FC = () => {
     const [invoicesAwaitingApproval, setInvoicesAwaitingApproval] = useState<P2PInvoice[]>([]);
     const [registrationRequests, setRegistrationRequests] = useState<SupplierRegistrationRequest[]>([]);
     const [loading, setLoading] = useState(true);
+    const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
     
     // Form state
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -584,7 +587,7 @@ const BuyerDashboard: React.FC = () => {
                                         <td className="px-4 py-3">
                                             <Button
                                                 variant="secondary"
-                                                onClick={() => {}}
+                                                onClick={() => setSelectedPO(po)}
                                                 className="text-xs"
                                             >
                                                 View
@@ -659,6 +662,133 @@ const BuyerDashboard: React.FC = () => {
                     </table>
                 </div>
             </Card>
+
+            {/* Purchase Order Detail Modal */}
+            {selectedPO && (
+                <Modal
+                    isOpen={!!selectedPO}
+                    onClose={() => setSelectedPO(null)}
+                    title={`Purchase Order: ${selectedPO.poNumber}`}
+                    size="lg"
+                >
+                    <div className="space-y-6">
+                        {/* Header Information */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <p className="text-xs text-slate-500 mb-1">PO Number</p>
+                                <p className="font-semibold text-slate-900">{selectedPO.poNumber}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-slate-500 mb-1">Status</p>
+                                <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(selectedPO.status)}`}>
+                                    {selectedPO.status}
+                                </span>
+                            </div>
+                            <div>
+                                <p className="text-xs text-slate-500 mb-1">Supplier</p>
+                                <p className="font-semibold text-slate-900">
+                                    {registeredSuppliers.find(s => s.id === selectedPO.supplierTenantId)?.company_name || 
+                                     registeredSuppliers.find(s => s.id === selectedPO.supplierTenantId)?.name || 
+                                     selectedPO.supplierTenantId}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-slate-500 mb-1">Total Amount</p>
+                                <p className="font-semibold text-slate-900">
+                                    {CURRENCY} {(selectedPO.totalAmount || 0).toFixed(2)}
+                                </p>
+                            </div>
+                            {selectedPO.description && (
+                                <div className="col-span-2">
+                                    <p className="text-xs text-slate-500 mb-1">Description</p>
+                                    <p className="font-semibold text-slate-900">{selectedPO.description}</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Dates */}
+                        <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-200">
+                            {selectedPO.createdAt && (
+                                <div>
+                                    <p className="text-xs text-slate-500 mb-1">Created At</p>
+                                    <p className="text-sm text-slate-700">{formatDate(selectedPO.createdAt)}</p>
+                                </div>
+                            )}
+                            {selectedPO.sentAt && (
+                                <div>
+                                    <p className="text-xs text-slate-500 mb-1">Sent At</p>
+                                    <p className="text-sm text-slate-700">{formatDate(selectedPO.sentAt)}</p>
+                                </div>
+                            )}
+                            {selectedPO.receivedAt && (
+                                <div>
+                                    <p className="text-xs text-slate-500 mb-1">Received At</p>
+                                    <p className="text-sm text-slate-700">{formatDate(selectedPO.receivedAt)}</p>
+                                </div>
+                            )}
+                            {selectedPO.completedAt && (
+                                <div>
+                                    <p className="text-xs text-slate-500 mb-1">Completed At</p>
+                                    <p className="text-sm text-slate-700">{formatDate(selectedPO.completedAt)}</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Line Items */}
+                        {selectedPO.items && selectedPO.items.length > 0 && (
+                            <div className="pt-4 border-t border-slate-200">
+                                <h3 className="text-sm font-semibold text-slate-900 mb-3">Line Items</h3>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full">
+                                        <thead className="bg-slate-50 border-b border-slate-200">
+                                            <tr>
+                                                <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase">Description</th>
+                                                <th className="px-3 py-2 text-right text-xs font-medium text-slate-500 uppercase">Quantity</th>
+                                                <th className="px-3 py-2 text-right text-xs font-medium text-slate-500 uppercase">Unit Price</th>
+                                                <th className="px-3 py-2 text-right text-xs font-medium text-slate-500 uppercase">Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-200">
+                                            {selectedPO.items.map((item, index) => (
+                                                <tr key={item.id || index} className="hover:bg-slate-50">
+                                                    <td className="px-3 py-2 text-sm text-slate-900">{item.description || '-'}</td>
+                                                    <td className="px-3 py-2 text-sm text-right text-slate-700">{item.quantity || 0}</td>
+                                                    <td className="px-3 py-2 text-sm text-right text-slate-700">
+                                                        {CURRENCY} {(item.unitPrice || 0).toFixed(2)}
+                                                    </td>
+                                                    <td className="px-3 py-2 text-sm text-right font-medium text-slate-900">
+                                                        {CURRENCY} {(item.total || 0).toFixed(2)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot className="bg-slate-50 border-t-2 border-slate-300">
+                                            <tr>
+                                                <td colSpan={3} className="px-3 py-2 text-sm font-semibold text-slate-900 text-right">
+                                                    Total Amount:
+                                                </td>
+                                                <td className="px-3 py-2 text-sm font-bold text-slate-900 text-right">
+                                                    {CURRENCY} {(selectedPO.totalAmount || 0).toFixed(2)}
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Actions */}
+                        <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+                            <Button
+                                variant="secondary"
+                                onClick={() => setSelectedPO(null)}
+                            >
+                                Close
+                            </Button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 };

@@ -31,7 +31,7 @@ const SupplierPortal: React.FC = () => {
         loadAvailableBuyers();
     }, []);
 
-    // WebSocket listener for registration status updates
+    // WebSocket listener for registration status updates and new purchase orders
     useEffect(() => {
         const wsClient = getWebSocketClient();
         
@@ -46,6 +46,10 @@ const SupplierPortal: React.FC = () => {
                 } else if (data.type === 'SUPPLIER_REGISTRATION_REJECTED') {
                     showToast('Registration request was rejected by the buyer organization.', 'info');
                 }
+            } else if (data.type === 'PURCHASE_ORDER_RECEIVED') {
+                // Reload purchase orders when new PO is received
+                loadData();
+                showToast(`New purchase order received: ${data.poNumber}`, 'info');
             }
         };
 
@@ -214,6 +218,28 @@ const SupplierPortal: React.FC = () => {
                     <p className="text-xs sm:text-sm text-slate-500 mt-1">Manage purchase orders and invoices</p>
                 </div>
                 <div className="flex items-center gap-2">
+                    {/* Bill Icon Reminder - Show new purchase orders (SENT status) */}
+                    {receivedPOs.filter(po => po.status === POStatus.SENT).length > 0 && (
+                        <div className="relative">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    // Scroll to Received Purchase Orders section
+                                    const poElement = document.querySelector('[data-section="received-pos"]');
+                                    if (poElement) {
+                                        poElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                    }
+                                }}
+                                className="p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors relative min-w-[44px] min-h-[44px] flex items-center justify-center"
+                                title={`${receivedPOs.filter(po => po.status === POStatus.SENT).length} new purchase order${receivedPOs.filter(po => po.status === POStatus.SENT).length !== 1 ? 's' : ''} received`}
+                            >
+                                {ICONS.fileText}
+                                <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1.5 bg-blue-500 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center">
+                                    {receivedPOs.filter(po => po.status === POStatus.SENT).length > 99 ? '99+' : receivedPOs.filter(po => po.status === POStatus.SENT).length}
+                                </span>
+                            </button>
+                        </div>
+                    )}
                     {/* Notification Icon - Show registration status updates, pending invoices, and new invoices */}
                     {(myRegistrationRequests.some(r => r.status === SupplierRegistrationStatus.APPROVED || r.status === SupplierRegistrationStatus.REJECTED) ||
                       myInvoices.filter(inv => inv.status === P2PInvoiceStatus.PENDING || inv.status === P2PInvoiceStatus.UNDER_REVIEW).length > 0) && (
@@ -378,7 +404,7 @@ const SupplierPortal: React.FC = () => {
             )}
 
             {/* Received Purchase Orders */}
-            <Card className="flex-1 overflow-auto">
+            <Card className="flex-1 overflow-auto" data-section="received-pos">
                 <div className="p-4 border-b border-slate-200">
                     <h2 className="text-lg font-semibold text-slate-900">Received Purchase Orders</h2>
                 </div>

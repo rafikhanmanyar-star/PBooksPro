@@ -13,15 +13,20 @@ const getDb = () => getDatabaseService();
 /**
  * GET /api/purchase-orders
  * Get all purchase orders for the tenant
+ * Returns:
+ *   - For buyers: POs where tenant_id matches (POs they created)
+ *   - For suppliers: POs where supplier_tenant_id matches (POs sent to them)
  */
 router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const { status, supplierId } = req.query;
 
+    // IMPORTANT: Return POs where tenant_id matches (buyer's own POs)
+    // OR where supplier_tenant_id matches (POs sent to this tenant as supplier)
     let query = `
       SELECT * FROM purchase_orders 
-      WHERE tenant_id = $1
+      WHERE (tenant_id = $1 OR supplier_tenant_id = $1)
     `;
     const params: any[] = [req.tenantId];
     let paramIndex = 2;
@@ -130,9 +135,22 @@ router.post('/', async (req: TenantRequest, res) => {
     // Trigger notification (stub)
     await notifyPOReceived(poId, poData.supplierTenantId);
 
-    // Emit WebSocket event
+    // Emit WebSocket event to buyer's tenant
     if (req.tenantId) {
       emitToTenant(req.tenantId, WS_EVENTS.PURCHASE_ORDER_CREATED, createdPO);
+    }
+
+    // IMPORTANT: Also emit WebSocket event to supplier's tenant so they get notified
+    // Use DATA_UPDATED event type with specific PO notification
+    if (poData.supplierTenantId) {
+      emitToTenant(poData.supplierTenantId, WS_EVENTS.DATA_UPDATED, {
+        type: 'PURCHASE_ORDER_RECEIVED',
+        poId: poId,
+        poNumber: poData.poNumber,
+        buyerTenantId: buyerTenantId,
+        totalAmount: totalAmount,
+        purchaseOrder: createdPO
+      });
     }
 
     res.status(201).json(createdPO);
