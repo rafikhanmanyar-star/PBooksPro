@@ -1104,12 +1104,6 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return newState;
         }
 
-        case 'UPDATE_PAYSLIP': {
-            const updated = action.payload;
-            const updateList = (list: Payslip[]) => list.map(p => p.id === updated.id ? updated : p);
-            return { ...state, projectPayslips: updateList(state.projectPayslips), rentalPayslips: updateList(state.rentalPayslips) };
-        }
-
         case 'MARK_PROJECT_PAYSLIP_PAID':
         case 'MARK_RENTAL_PAYSLIP_PAID': {
             const { payslipId, accountId, paymentDate, amount, description } = action.payload;
@@ -1340,9 +1334,13 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, payslips: [...(state.payslips || []), action.payload] };
         case 'UPDATE_PAYSLIP': {
             const updated = action.payload as Payslip;
+            // Update in all payslip lists (legacy and enterprise)
+            const updateList = (list: Payslip[]) => list.map(p => p.id === updated.id ? updated : p);
             return {
                 ...state,
-                payslips: (state.payslips || []).map(p => p.id === updated.id ? updated : p)
+                projectPayslips: updateList(state.projectPayslips),
+                rentalPayslips: updateList(state.rentalPayslips),
+                payslips: updateList(state.payslips || [])
             };
         }
         case 'MARK_PAYSLIP_PAID': {

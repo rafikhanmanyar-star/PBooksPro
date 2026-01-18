@@ -37,8 +37,8 @@ export function canTransitionPO(from: string, to: string): boolean {
   if (!validNextStates) {
     return false;
   }
-  // Convert readonly array to regular array for includes check
-  const states = [...validNextStates];
+  // Convert readonly array to regular string array for includes check
+  const states: string[] = [...validNextStates] as string[];
   return states.includes(to);
 }
 
@@ -53,8 +53,8 @@ export function canTransitionInvoice(from: string, to: string): boolean {
   if (!validNextStates) {
     return false;
   }
-  // Convert readonly array to regular array for includes check
-  const states = [...validNextStates];
+  // Convert readonly array to regular string array for includes check
+  const states: string[] = [...validNextStates] as string[];
   return states.includes(to);
 }
 
