@@ -825,6 +825,82 @@ export class AppStateApiService {
   }
 
   /**
+   * Save employee to API
+   */
+  async saveEmployee(employee: Partial<AppState['employees'][0]>): Promise<AppState['employees'][0]> {
+    logger.logCategory('sync', '💾 AppStateApiService.saveEmployee called:', {
+      id: employee.id,
+      employeeId: employee.employeeId,
+      name: employee.personalDetails ? `${employee.personalDetails.firstName} ${employee.personalDetails.lastName}` : 'Unknown',
+      isUpdate: !!employee.id
+    });
+    
+    // Validate required fields
+    if (!employee.employeeId) {
+      const error = new Error('Employee ID is required');
+      logger.errorCategory('sync', '❌ AppStateApiService.saveEmployee validation failed: employeeId missing');
+      throw error;
+    }
+    
+    try {
+      // Ensure employee has an ID
+      const employeeWithId = {
+        ...employee,
+        id: employee.id || `employee_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      };
+      
+      // Always use POST endpoint for employees - it handles upserts automatically
+      logger.logCategory('sync', `💾 Syncing employee (POST upsert): ${employeeWithId.id} - ${employeeWithId.employeeId}`);
+      const saved = await this.employeesRepo.create(employeeWithId);
+      
+      // Normalize the response
+      const normalized = {
+        id: saved.id,
+        employeeId: saved.employeeId,
+        personalDetails: typeof saved.personalDetails === 'string' ? JSON.parse(saved.personalDetails) : saved.personalDetails,
+        employmentDetails: typeof saved.employmentDetails === 'string' ? JSON.parse(saved.employmentDetails) : saved.employmentDetails,
+        status: saved.status,
+        basicSalary: typeof saved.basicSalary === 'number' ? saved.basicSalary : parseFloat(String((saved as any).basic_salary || saved.basicSalary || '0')),
+        salaryStructure: typeof saved.salaryStructure === 'string' ? JSON.parse(saved.salaryStructure) : saved.salaryStructure,
+        projectAssignments: typeof saved.projectAssignments === 'string' ? JSON.parse(saved.projectAssignments) : (saved.projectAssignments || []),
+        bankDetails: saved.bankDetails ? (typeof saved.bankDetails === 'string' ? JSON.parse(saved.bankDetails) : saved.bankDetails) : undefined,
+        documents: typeof saved.documents === 'string' ? JSON.parse(saved.documents) : (saved.documents || []),
+        lifecycleHistory: typeof saved.lifecycleHistory === 'string' ? JSON.parse(saved.lifecycleHistory) : (saved.lifecycleHistory || []),
+        terminationDetails: saved.terminationDetails ? (typeof saved.terminationDetails === 'string' ? JSON.parse(saved.terminationDetails) : saved.terminationDetails) : undefined,
+        advanceBalance: typeof saved.advanceBalance === 'number' ? saved.advanceBalance : parseFloat(String((saved as any).advance_balance || saved.advanceBalance || '0')),
+        loanBalance: typeof saved.loanBalance === 'number' ? saved.loanBalance : parseFloat(String((saved as any).loan_balance || saved.loanBalance || '0'))
+      };
+
+      // Log whether it was created or updated
+      if (employee.id) {
+        logger.logCategory('sync', `✅ Employee synced (upsert) successfully: ${normalized.employeeId} (${normalized.id})`);
+      } else {
+        logger.logCategory('sync', `✅ Employee created successfully: ${normalized.employeeId} (${normalized.id})`);
+      }
+      
+      return normalized;
+    } catch (error: any) {
+      logger.errorCategory('sync', '❌ AppStateApiService.saveEmployee failed:', {
+        error: error,
+        errorMessage: error?.message || error?.error || 'Unknown error',
+        status: error?.status,
+        employee: {
+          id: employee.id,
+          employeeId: employee.employeeId
+        }
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Delete employee from API
+   */
+  async deleteEmployee(id: string): Promise<void> {
+    return this.employeesRepo.delete(id);
+  }
+
+  /**
    * Save transaction to API
    */
   async saveTransaction(transaction: Partial<AppState['transactions'][0]>): Promise<AppState['transactions'][0]> {

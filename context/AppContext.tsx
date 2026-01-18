@@ -2174,6 +2174,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 'ADD_PM_CYCLE_ALLOCATION',
                 'UPDATE_PM_CYCLE_ALLOCATION',
                 'DELETE_PM_CYCLE_ALLOCATION',
+                // Employees
+                'ADD_EMPLOYEE',
+                'UPDATE_EMPLOYEE',
+                'DELETE_EMPLOYEE',
             ]);
 
             if (!SYNC_TO_API_ACTIONS.has(action.type)) {
@@ -2305,6 +2309,67 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 console.error(`⚠️ Failed to sync contact deletion ${contactId} to API:`, {
                                     error: err,
                                     contactId: contactId,
+                                    errorMessage: err?.message || err?.error || 'Unknown error',
+                                    status: err?.status
+                                });
+                                throw err;
+                            }
+                        }
+
+                        // Handle employee changes
+                        if (action.type === 'ADD_EMPLOYEE') {
+                            const employee = action.payload;
+                            logger.logCategory('sync', `🔄 Starting sync for ADD_EMPLOYEE: ${employee.employeeId} (${employee.id})`);
+                            try {
+                                logger.logCategory('sync', `📤 Calling apiService.saveEmployee for: ${employee.employeeId}`);
+                                const savedEmployee = await apiService.saveEmployee(employee);
+                                logger.logCategory('sync', `✅ Successfully synced employee to API: ${savedEmployee.employeeId} (${savedEmployee.id})`);
+                            } catch (err: any) {
+                                logger.errorCategory('sync', `❌ FAILED to sync employee ${employee.employeeId} to API:`, {
+                                    error: err,
+                                    errorMessage: err?.message || err?.error || 'Unknown error',
+                                    status: err?.status,
+                                    statusText: err?.statusText,
+                                    employee: {
+                                        id: employee.id,
+                                        employeeId: employee.employeeId,
+                                        name: employee.personalDetails?.firstName + ' ' + employee.personalDetails?.lastName
+                                    },
+                                    fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
+                                });
+                                // Don't re-throw - log and continue, data is saved locally
+                            }
+                        } else if (action.type === 'UPDATE_EMPLOYEE') {
+                            const employee = action.payload;
+                            logger.logCategory('sync', `🔄 Starting sync for UPDATE_EMPLOYEE: ${employee.employeeId} (${employee.id})`);
+                            try {
+                                logger.logCategory('sync', `📤 Calling apiService.saveEmployee for update: ${employee.employeeId}`);
+                                const savedEmployee = await apiService.saveEmployee(employee);
+                                logger.logCategory('sync', `✅ Successfully synced employee update to API: ${savedEmployee.employeeId} (${savedEmployee.id})`);
+                            } catch (err: any) {
+                                logger.errorCategory('sync', `❌ FAILED to sync employee update ${employee.employeeId} to API:`, {
+                                    error: err,
+                                    errorMessage: err?.message || err?.error || 'Unknown error',
+                                    status: err?.status,
+                                    statusText: err?.statusText,
+                                    employee: {
+                                        id: employee.id,
+                                        employeeId: employee.employeeId,
+                                        name: employee.personalDetails?.firstName + ' ' + employee.personalDetails?.lastName
+                                    },
+                                    fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
+                                });
+                                // Don't re-throw - log and continue
+                            }
+                        } else if (action.type === 'DELETE_EMPLOYEE') {
+                            const employeeId = action.payload as string;
+                            try {
+                                await apiService.deleteEmployee(employeeId);
+                                logger.logCategory('sync', '✅ Synced employee deletion to API:', employeeId);
+                            } catch (err: any) {
+                                console.error(`⚠️ Failed to sync employee deletion ${employeeId} to API:`, {
+                                    error: err,
+                                    employeeId: employeeId,
                                     errorMessage: err?.message || err?.error || 'Unknown error',
                                     status: err?.status
                                 });
@@ -2771,6 +2836,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         return { type: 'sales_return', action: 'update', data: action.payload };
                     case 'DELETE_SALES_RETURN':
                         return { type: 'sales_return', action: 'delete', data: { id: action.payload } };
+                    case 'ADD_EMPLOYEE':
+                        return { type: 'employee', action: 'create', data: action.payload };
+                    case 'UPDATE_EMPLOYEE':
+                        return { type: 'employee', action: 'update', data: action.payload };
+                    case 'DELETE_EMPLOYEE':
+                        return { type: 'employee', action: 'delete', data: { id: action.payload } };
                     default:
                         return null;
                 }

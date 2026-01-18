@@ -65,15 +65,15 @@ router.post('/', async (req: TenantRequest, res) => {
         loan_balance = EXCLUDED.loan_balance, user_id = EXCLUDED.user_id, updated_at = NOW()
       RETURNING *`,
       [
-        employeeId, req.tenantId, req.user?.userId || null, employee.employeeId,
-        typeof employee.personalDetails === 'object' ? JSON.stringify(employee.personalDetails) : employee.personalDetails,
-        typeof employee.employmentDetails === 'object' ? JSON.stringify(employee.employmentDetails) : employee.employmentDetails,
-        employee.status, employee.basicSalary || 0,
-        typeof employee.salaryStructure === 'object' ? JSON.stringify(employee.salaryStructure) : employee.salaryStructure,
-        typeof employee.projectAssignments === 'object' ? JSON.stringify(employee.projectAssignments) : employee.projectAssignments,
+        employeeId, req.tenantId, req.user?.userId || null, employee.employeeId || `EMP${Date.now()}`,
+        typeof employee.personalDetails === 'object' ? JSON.stringify(employee.personalDetails) : (employee.personalDetails || '{}'),
+        typeof employee.employmentDetails === 'object' ? JSON.stringify(employee.employmentDetails) : (employee.employmentDetails || '{}'),
+        employee.status || 'Active', employee.basicSalary || 0,
+        typeof employee.salaryStructure === 'object' ? JSON.stringify(employee.salaryStructure) : (employee.salaryStructure || '{}'),
+        typeof employee.projectAssignments === 'object' ? JSON.stringify(employee.projectAssignments) : (employee.projectAssignments || '[]'),
         employee.bankDetails ? (typeof employee.bankDetails === 'object' ? JSON.stringify(employee.bankDetails) : employee.bankDetails) : null,
-        typeof employee.documents === 'object' ? JSON.stringify(employee.documents) : employee.documents,
-        typeof employee.lifecycleHistory === 'object' ? JSON.stringify(employee.lifecycleHistory) : employee.lifecycleHistory,
+        typeof employee.documents === 'object' ? JSON.stringify(employee.documents) : (employee.documents || '[]'),
+        typeof employee.lifecycleHistory === 'object' ? JSON.stringify(employee.lifecycleHistory) : (employee.lifecycleHistory || '[]'),
         employee.terminationDetails ? (typeof employee.terminationDetails === 'object' ? JSON.stringify(employee.terminationDetails) : employee.terminationDetails) : null,
         employee.advanceBalance || 0, employee.loanBalance || 0
       ]
