@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { getDatabaseService } from '../../services/databaseService.js';
 
 const router = Router();
@@ -1146,7 +1147,6 @@ router.post('/register-tenant', async (req, res) => {
 
     // Use a database transaction to ensure tenant and user are created atomically
     // This prevents orphaned tenants (tenant created but no user) which cause login failures
-    const crypto = await import('crypto');
     const hashedPassword = await bcrypt.hash(adminPassword, 10);
     const tenantId = `tenant_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
     const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
