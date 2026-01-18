@@ -29,14 +29,16 @@ const BonusFormModal: React.FC<BonusFormModalProps> = ({
     const { showAlert, showToast } = useNotification();
 
     const [employeeId, setEmployeeId] = useState('');
-    const [type, setType] = useState<BonusType>('Performance');
+    const [type, setType] = useState<BonusType | 'Custom'>('Performance');
+    const [customBonusType, setCustomBonusType] = useState('');
     const [amount, setAmount] = useState('');
     const [description, setDescription] = useState('');
     const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().split('T')[0]);
     const [payrollMonth, setPayrollMonth] = useState('');
     const [isRecurring, setIsRecurring] = useState(false);
     const [projectId, setProjectId] = useState('');
-    const [status, setStatus] = useState<BonusRecord['status']>('Pending');
+    const [status, setStatus] = useState<BonusRecord['status'] | 'Custom'>('Pending');
+    const [customBonusStatus, setCustomBonusStatus] = useState('');
 
     const activeEmployees = useMemo(() => 
         (state.employees || []).filter(e => e.status === 'Active'),
@@ -47,17 +49,34 @@ const BonusFormModal: React.FC<BonusFormModalProps> = ({
         if (isOpen) {
             if (bonusToEdit) {
                 setEmployeeId(bonusToEdit.employeeId);
-                setType(bonusToEdit.type);
+                // Check if type is a standard type or custom
+                const standardTypes: BonusType[] = ['Performance', 'Project Completion', 'Annual', 'Quarterly', 'Celebratory', 'Ad-Hoc', 'Recurring'];
+                if (standardTypes.includes(bonusToEdit.type)) {
+                    setType(bonusToEdit.type);
+                    setCustomBonusType('');
+                } else {
+                    setType('Custom');
+                    setCustomBonusType(bonusToEdit.type);
+                }
                 setAmount(bonusToEdit.amount.toString());
                 setDescription(bonusToEdit.description);
                 setEffectiveDate(bonusToEdit.effectiveDate);
                 setPayrollMonth(bonusToEdit.payrollMonth || '');
                 setIsRecurring(bonusToEdit.isRecurring || false);
                 setProjectId(bonusToEdit.projectId || '');
-                setStatus(bonusToEdit.status);
+                // Check if status is a standard status or custom
+                const standardStatuses: BonusRecord['status'][] = ['Pending', 'Approved', 'Paid', 'Cancelled'];
+                if (standardStatuses.includes(bonusToEdit.status)) {
+                    setStatus(bonusToEdit.status);
+                    setCustomBonusStatus('');
+                } else {
+                    setStatus('Custom');
+                    setCustomBonusStatus(bonusToEdit.status);
+                }
             } else {
                 setEmployeeId('');
                 setType('Performance');
+                setCustomBonusType('');
                 setAmount('');
                 setDescription('');
                 setEffectiveDate(new Date().toISOString().split('T')[0]);
@@ -65,6 +84,7 @@ const BonusFormModal: React.FC<BonusFormModalProps> = ({
                 setIsRecurring(false);
                 setProjectId('');
                 setStatus('Pending');
+                setCustomBonusStatus('');
             }
         }
     }, [isOpen, bonusToEdit]);
@@ -92,19 +112,32 @@ const BonusFormModal: React.FC<BonusFormModalProps> = ({
             return;
         }
 
+        const bonusType = type === 'Custom' ? customBonusType.trim() : type;
+        const bonusStatus = status === 'Custom' ? customBonusStatus.trim() : status;
+
+        if (!bonusType) {
+            await showAlert('Please enter a bonus type.');
+            return;
+        }
+
+        if (status === 'Custom' && !customBonusStatus.trim()) {
+            await showAlert('Please enter a bonus status.');
+            return;
+        }
+
         const bonus: BonusRecord = {
             id: bonusToEdit?.id || `bonus_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             employeeId,
-            type,
+            type: bonusType as BonusType,
             amount: parseFloat(amount),
             description: description.trim(),
             effectiveDate,
             payrollMonth: payrollMonth || undefined,
             isRecurring,
             projectId: projectId || undefined,
-            status,
-            approvedBy: status === 'Approved' ? state.currentUser?.id : undefined,
-            approvedAt: status === 'Approved' ? new Date().toISOString() : undefined
+            status: bonusStatus as BonusRecord['status'],
+            approvedBy: bonusStatus === 'Approved' ? state.currentUser?.id : undefined,
+            approvedAt: bonusStatus === 'Approved' ? new Date().toISOString() : undefined
         };
 
         if (bonusToEdit) {
@@ -144,21 +177,45 @@ const BonusFormModal: React.FC<BonusFormModalProps> = ({
                     required
                 />
 
-                <Select
-                    label="Bonus Type"
-                    value={type}
-                    onChange={(e) => setType(e.target.value as BonusType)}
-                    options={[
-                        { value: 'Performance', label: 'Performance' },
-                        { value: 'Project Completion', label: 'Project Completion' },
-                        { value: 'Annual', label: 'Annual' },
-                        { value: 'Quarterly', label: 'Quarterly' },
-                        { value: 'Celebratory', label: 'Celebratory' },
-                        { value: 'Ad-Hoc', label: 'Ad-Hoc' },
-                        { value: 'Recurring', label: 'Recurring' }
-                    ]}
-                    required
-                />
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Bonus Type <span className="text-rose-500">*</span>
+                    </label>
+                    <ComboBox
+                        items={[
+                            { id: 'Performance', name: 'Performance' },
+                            { id: 'Project Completion', name: 'Project Completion' },
+                            { id: 'Annual', name: 'Annual' },
+                            { id: 'Quarterly', name: 'Quarterly' },
+                            { id: 'Celebratory', name: 'Celebratory' },
+                            { id: 'Ad-Hoc', name: 'Ad-Hoc' },
+                            { id: 'Recurring', name: 'Recurring' },
+                            { id: 'Custom', name: '+ Add Custom Type...' }
+                        ]}
+                        selectedId={type === 'Custom' ? 'Custom' : type}
+                        onSelect={(item) => {
+                            if (item?.id === 'Custom') {
+                                setType('Custom');
+                                setCustomBonusType('');
+                            } else {
+                                setType(item?.id as BonusType || 'Performance');
+                                setCustomBonusType('');
+                            }
+                        }}
+                        placeholder="Select or add bonus type"
+                        required
+                    />
+                    {type === 'Custom' && (
+                        <Input
+                            label="Custom Bonus Type"
+                            value={customBonusType}
+                            onChange={e => setCustomBonusType(e.target.value)}
+                            placeholder="Enter custom bonus type..."
+                            className="mt-2"
+                            required
+                        />
+                    )}
+                </div>
 
                 <Input
                     label="Bonus Amount"
@@ -215,18 +272,42 @@ const BonusFormModal: React.FC<BonusFormModalProps> = ({
                     placeholder="Select Project"
                 />
 
-                <Select
-                    label="Status"
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as BonusRecord['status'])}
-                    options={[
-                        { value: 'Pending', label: 'Pending' },
-                        { value: 'Approved', label: 'Approved' },
-                        { value: 'Rejected', label: 'Rejected' },
-                        { value: 'Paid', label: 'Paid' }
-                    ]}
-                    required
-                />
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Status <span className="text-rose-500">*</span>
+                    </label>
+                    <ComboBox
+                        items={[
+                            { id: 'Pending', name: 'Pending' },
+                            { id: 'Approved', name: 'Approved' },
+                            { id: 'Paid', name: 'Paid' },
+                            { id: 'Cancelled', name: 'Cancelled' },
+                            { id: 'Custom', name: '+ Add Custom Status...' }
+                        ]}
+                        selectedId={status === 'Custom' ? 'Custom' : status}
+                        onSelect={(item) => {
+                            if (item?.id === 'Custom') {
+                                setStatus('Custom');
+                                setCustomBonusStatus('');
+                            } else {
+                                setStatus((item?.id as BonusRecord['status']) || 'Pending');
+                                setCustomBonusStatus('');
+                            }
+                        }}
+                        placeholder="Select or add status"
+                        required
+                    />
+                    {status === 'Custom' && (
+                        <Input
+                            label="Custom Status"
+                            value={customBonusStatus}
+                            onChange={e => setCustomBonusStatus(e.target.value)}
+                            placeholder="Enter custom status..."
+                            className="mt-2"
+                            required
+                        />
+                    )}
+                </div>
 
                 <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
                     <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>

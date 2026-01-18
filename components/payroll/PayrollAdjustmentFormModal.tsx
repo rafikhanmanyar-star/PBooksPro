@@ -29,8 +29,9 @@ const PayrollAdjustmentFormModal: React.FC<PayrollAdjustmentFormModalProps> = ({
     const { showAlert, showToast } = useNotification();
 
     const [employeeId, setEmployeeId] = useState('');
-    const [type, setType] = useState('Allowance');
-    const [category, setCategory] = useState<'Allowance' | 'Deduction'>('Allowance');
+    const [type, setType] = useState<'Deduction' | 'Addition'>('Addition');
+    const [category, setCategory] = useState<'Allowance' | 'Deduction' | 'Tax' | 'PF' | 'ESI' | 'Insurance' | 'Loan' | 'Advance' | 'Penalty' | 'Fine' | 'Custom'>('Allowance');
+    const [customCategory, setCustomCategory] = useState('');
     const [amount, setAmount] = useState('');
     const [description, setDescription] = useState('');
     const [reason, setReason] = useState('');
@@ -38,7 +39,8 @@ const PayrollAdjustmentFormModal: React.FC<PayrollAdjustmentFormModalProps> = ({
     const [payrollMonth, setPayrollMonth] = useState('');
     const [isRecurring, setIsRecurring] = useState(false);
     const [formula, setFormula] = useState('');
-    const [status, setStatus] = useState<PayrollAdjustment['status']>('Active');
+    const [status, setStatus] = useState<PayrollAdjustment['status'] | 'Custom'>('Active');
+    const [customStatus, setCustomStatus] = useState('');
 
     const activeEmployees = useMemo(() => 
         (state.employees || []).filter(e => e.status === 'Active'),
@@ -50,7 +52,16 @@ const PayrollAdjustmentFormModal: React.FC<PayrollAdjustmentFormModalProps> = ({
             if (adjustmentToEdit) {
                 setEmployeeId(adjustmentToEdit.employeeId);
                 setType(adjustmentToEdit.type);
-                setCategory(adjustmentToEdit.category);
+                setType(adjustmentToEdit.type);
+                // Check if category is a standard category or custom
+                const standardCategories = ['Allowance', 'Transport', 'Meal', 'Medical', 'Deduction', 'Tax', 'PF', 'ESI', 'Insurance', 'Loan', 'Advance', 'Penalty', 'Fine'];
+                if (standardCategories.includes(adjustmentToEdit.category)) {
+                    setCategory(adjustmentToEdit.category as any);
+                    setCustomCategory('');
+                } else {
+                    setCategory('Custom');
+                    setCustomCategory(adjustmentToEdit.category);
+                }
                 setAmount(adjustmentToEdit.amount.toString());
                 setDescription(adjustmentToEdit.description);
                 setReason(adjustmentToEdit.reason);
@@ -58,11 +69,20 @@ const PayrollAdjustmentFormModal: React.FC<PayrollAdjustmentFormModalProps> = ({
                 setPayrollMonth(adjustmentToEdit.payrollMonth || '');
                 setIsRecurring(adjustmentToEdit.isRecurring || false);
                 setFormula(adjustmentToEdit.formula || '');
-                setStatus(adjustmentToEdit.status);
+                // Check if status is a standard status or custom
+                const standardStatuses: PayrollAdjustment['status'][] = ['Active', 'Applied', 'Cancelled'];
+                if (standardStatuses.includes(adjustmentToEdit.status)) {
+                    setStatus(adjustmentToEdit.status);
+                    setCustomStatus('');
+                } else {
+                    setStatus('Custom');
+                    setCustomStatus(adjustmentToEdit.status);
+                }
             } else {
                 setEmployeeId('');
-                setType('Allowance');
+                setType('Addition');
                 setCategory('Allowance');
+                setCustomCategory('');
                 setAmount('');
                 setDescription('');
                 setReason('');
@@ -71,6 +91,7 @@ const PayrollAdjustmentFormModal: React.FC<PayrollAdjustmentFormModalProps> = ({
                 setIsRecurring(false);
                 setFormula('');
                 setStatus('Active');
+                setCustomStatus('');
             }
         }
     }, [isOpen, adjustmentToEdit]);
@@ -103,11 +124,24 @@ const PayrollAdjustmentFormModal: React.FC<PayrollAdjustmentFormModalProps> = ({
             return;
         }
 
+        const adjustmentCategory = category === 'Custom' ? customCategory.trim() : category;
+        const adjustmentStatus = status === 'Custom' ? customStatus.trim() : status;
+
+        if (!adjustmentCategory) {
+            await showAlert('Please enter a category.');
+            return;
+        }
+
+        if (status === 'Custom' && !customStatus.trim()) {
+            await showAlert('Please enter a status.');
+            return;
+        }
+
         const adjustment: PayrollAdjustment = {
             id: adjustmentToEdit?.id || `adjustment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             employeeId,
             type,
-            category,
+            category: adjustmentCategory,
             amount: parseFloat(amount),
             description: description.trim(),
             reason: reason.trim(),
@@ -115,7 +149,7 @@ const PayrollAdjustmentFormModal: React.FC<PayrollAdjustmentFormModalProps> = ({
             payrollMonth: payrollMonth || undefined,
             isRecurring,
             formula: formula || undefined,
-            status,
+            status: adjustmentStatus as PayrollAdjustment['status'],
             performedBy: state.currentUser?.id || 'System',
             performedAt: new Date().toISOString()
         };
@@ -158,37 +192,77 @@ const PayrollAdjustmentFormModal: React.FC<PayrollAdjustmentFormModalProps> = ({
                 />
 
                 <Select
-                    label="Category"
-                    value={category}
+                    label="Type"
+                    value={type}
                     onChange={(e) => {
-                        const newCategory = e.target.value as 'Allowance' | 'Deduction';
-                        setCategory(newCategory);
+                        const newType = e.target.value as 'Deduction' | 'Addition';
+                        setType(newType);
                         if (!adjustmentToEdit) {
-                            // Auto-set type based on category
-                            if (newCategory === 'Allowance') {
-                                setType('Transport');
+                            // Auto-set default category based on type
+                            if (newType === 'Addition') {
+                                setCategory('Allowance');
                             } else {
-                                setType('Penalty');
+                                setCategory('Deduction');
                             }
                         }
                     }}
                     options={[
-                        { value: 'Allowance', label: 'Allowance' },
-                        { value: 'Deduction', label: 'Deduction' }
+                        { value: 'Addition', label: 'Addition (Add to Salary)' },
+                        { value: 'Deduction', label: 'Deduction (Subtract from Salary)' }
                     ]}
                     required
                 />
 
-                <Input
-                    label="Type"
-                    value={type}
-                    onChange={e => setType(e.target.value)}
-                    placeholder={category === 'Allowance' ? 'e.g. Transport, Meal' : 'e.g. Penalty, Late Fee'}
-                    required
-                />
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Category <span className="text-rose-500">*</span>
+                    </label>
+                    <ComboBox
+                        items={type === 'Addition' ? [
+                            { id: 'Allowance', name: 'Allowance' },
+                            { id: 'Transport', name: 'Transport' },
+                            { id: 'Meal', name: 'Meal' },
+                            { id: 'Medical', name: 'Medical' },
+                            { id: 'Custom', name: '+ Add Custom Category...' }
+                        ] : [
+                            { id: 'Deduction', name: 'Deduction' },
+                            { id: 'Tax', name: 'Tax' },
+                            { id: 'PF', name: 'Provident Fund (PF)' },
+                            { id: 'ESI', name: 'Employee State Insurance (ESI)' },
+                            { id: 'Insurance', name: 'Insurance' },
+                            { id: 'Loan', name: 'Loan' },
+                            { id: 'Advance', name: 'Advance' },
+                            { id: 'Penalty', name: 'Penalty' },
+                            { id: 'Fine', name: 'Fine' },
+                            { id: 'Custom', name: '+ Add Custom Category...' }
+                        ]}
+                        selectedId={category === 'Custom' ? 'Custom' : category}
+                        onSelect={(item) => {
+                            if (item?.id === 'Custom') {
+                                setCategory('Custom');
+                                setCustomCategory('');
+                            } else {
+                                setCategory((item?.id as any) || (type === 'Addition' ? 'Allowance' : 'Deduction'));
+                                setCustomCategory('');
+                            }
+                        }}
+                        placeholder="Select or add category"
+                        required
+                    />
+                    {category === 'Custom' && (
+                        <Input
+                            label="Custom Category"
+                            value={customCategory}
+                            onChange={e => setCustomCategory(e.target.value)}
+                            placeholder="Enter custom category..."
+                            className="mt-2"
+                            required
+                        />
+                    )}
+                </div>
 
                 <Input
-                    label={`${category === 'Allowance' ? 'Allowance' : 'Deduction'} Amount`}
+                    label={`${type === 'Addition' ? 'Addition' : 'Deduction'} Amount`}
                     type="number"
                     value={amount}
                     onChange={e => setAmount(e.target.value)}
@@ -252,24 +326,48 @@ const PayrollAdjustmentFormModal: React.FC<PayrollAdjustmentFormModalProps> = ({
                     />
                 )}
 
-                <Select
-                    label="Status"
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as PayrollAdjustment['status'])}
-                    options={[
-                        { value: 'Active', label: 'Active' },
-                        { value: 'Inactive', label: 'Inactive' },
-                        { value: 'Cancelled', label: 'Cancelled' }
-                    ]}
-                    required
-                />
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Status <span className="text-rose-500">*</span>
+                    </label>
+                    <ComboBox
+                        items={[
+                            { id: 'Active', name: 'Active' },
+                            { id: 'Applied', name: 'Applied' },
+                            { id: 'Cancelled', name: 'Cancelled' },
+                            { id: 'Custom', name: '+ Add Custom Status...' }
+                        ]}
+                        selectedId={status === 'Custom' ? 'Custom' : status}
+                        onSelect={(item) => {
+                            if (item?.id === 'Custom') {
+                                setStatus('Custom');
+                                setCustomStatus('');
+                            } else {
+                                setStatus((item?.id as PayrollAdjustment['status']) || 'Active');
+                                setCustomStatus('');
+                            }
+                        }}
+                        placeholder="Select or add status"
+                        required
+                    />
+                    {status === 'Custom' && (
+                        <Input
+                            label="Custom Status"
+                            value={customStatus}
+                            onChange={e => setCustomStatus(e.target.value)}
+                            placeholder="Enter custom status..."
+                            className="mt-2"
+                            required
+                        />
+                    )}
+                </div>
 
                 <div className="p-3 bg-slate-50 rounded border border-slate-200">
                     <div className="text-xs font-semibold text-slate-600 mb-1">
                         Adjustment Summary:
                     </div>
                     <div className="text-sm text-slate-700">
-                        {category === 'Allowance' ? (
+                        {type === 'Addition' ? (
                             <span className="text-emerald-600 font-semibold">
                                 +{CURRENCY} {amount || '0.00'} will be added
                             </span>

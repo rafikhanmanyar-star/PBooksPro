@@ -67,6 +67,23 @@ const SYSTEM_CATEGORIES: Category[] = [
     { id: 'sys-cat-sal-adv', name: 'Salary Advance', type: TransactionType.EXPENSE, isPermanent: true },
     { id: 'sys-cat-proj-sal', name: 'Project Staff Salary', type: TransactionType.EXPENSE, isPermanent: true },
     { id: 'sys-cat-rent-sal', name: 'Rental Staff Salary', type: TransactionType.EXPENSE, isPermanent: true },
+    
+    // Payroll System Categories (Enterprise Payroll)
+    { id: 'sys-cat-emp-sal', name: 'Employee Salary', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for enterprise employee salaries' },
+    { id: 'sys-cat-payroll-tax', name: 'Payroll Tax Expense', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for payroll tax expenses' },
+    { id: 'sys-cat-emp-benefits', name: 'Employee Benefits', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee benefits expenses' },
+    { id: 'sys-cat-emp-allow', name: 'Employee Allowances', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee allowances (transport, meal, etc.)' },
+    { id: 'sys-cat-emp-deduct', name: 'Employee Deductions', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee deductions' },
+    { id: 'sys-cat-pf-expense', name: 'Provident Fund (PF)', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for Provident Fund contributions' },
+    { id: 'sys-cat-esi-expense', name: 'Employee State Insurance (ESI)', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for ESI contributions' },
+    { id: 'sys-cat-emp-insurance', name: 'Employee Insurance', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee insurance expenses' },
+    { id: 'sys-cat-bonus-inc', name: 'Bonuses & Incentives', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee bonuses and incentives' },
+    { id: 'sys-cat-overtime', name: 'Overtime Pay', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for overtime pay expenses' },
+    { id: 'sys-cat-commission', name: 'Commission Expense', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee commission expenses' },
+    { id: 'sys-cat-gratuity', name: 'Gratuity Expense', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for gratuity payments' },
+    { id: 'sys-cat-leave-encash', name: 'Leave Encashment', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for leave encashment expenses' },
+    { id: 'sys-cat-termination-settle', name: 'Employee Termination Settlement', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee termination settlements' },
+    { id: 'sys-cat-payroll-processing', name: 'Payroll Processing Fee', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for payroll processing fees' },
     { id: 'sys-cat-bld-maint', name: 'Building Maintenance', type: TransactionType.EXPENSE, isPermanent: true, isRental: true },
     { id: 'sys-cat-bld-util', name: 'Building Utilities', type: TransactionType.EXPENSE, isPermanent: true, isRental: true },
     { id: 'sys-cat-own-pay', name: 'Owner Payout', type: TransactionType.EXPENSE, isPermanent: true, isRental: true },
@@ -1303,10 +1320,10 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             const payslip = (state.payslips || []).find(p => p.id === payslipId);
             if (!payslip) return state;
 
-            // Find employee salary category or use default
+            // Find employee salary category or use default system category
             const salaryCategoryId = state.categories.find(c => 
-                c.name === 'Employee Salary' || c.name === 'Staff Salary'
-            )?.id;
+                c.id === 'sys-cat-emp-sal' || c.name === 'Employee Salary' || c.name === 'Staff Salary'
+            )?.id || 'sys-cat-emp-sal'; // Fallback to system category ID
 
             // Get employee for contactId
             const employee = (state.employees || []).find(e => e.id === payslip.employeeId);
@@ -2974,7 +2991,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (apiState.rentalAgreements) updates.rentalAgreements = mergeById(currentState.rentalAgreements, apiState.rentalAgreements);
             if (apiState.projectAgreements) updates.projectAgreements = mergeById(currentState.projectAgreements, apiState.projectAgreements);
             if (apiState.salesReturns) updates.salesReturns = mergeById(currentState.salesReturns, apiState.salesReturns);
-            if (apiState.categories) updates.categories = mergeById(currentState.categories, apiState.categories);
+            // Merge categories: ensure system categories are always included
+            if (apiState.categories) {
+                // First merge API categories with local
+                const mergedApiLocal = mergeById(currentState.categories, apiState.categories);
+                // Then ensure all system categories are included (they may be missing if not synced yet)
+                const systemCategoryIds = new Set(SYSTEM_CATEGORIES.map(c => c.id));
+                const userCategories = mergedApiLocal.filter(c => !systemCategoryIds.has(c.id));
+                const existingSystemCategories = mergedApiLocal.filter(c => systemCategoryIds.has(c.id));
+                // Combine: existing system categories (from API with latest data) + all defined system categories (in case API is missing some) + user categories
+                const allSystemCategories = SYSTEM_CATEGORIES.map(sysCat => {
+                    const existing = existingSystemCategories.find(c => c.id === sysCat.id);
+                    return existing || sysCat; // Use API version if exists, otherwise use local definition
+                });
+                updates.categories = [...allSystemCategories, ...userCategories];
+            }
             if (apiState.accounts) updates.accounts = mergeById(currentState.accounts, apiState.accounts);
             if (apiState.projects) updates.projects = mergeById(currentState.projects, apiState.projects);
             if (apiState.buildings) updates.buildings = mergeById(currentState.buildings, apiState.buildings);

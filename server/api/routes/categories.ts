@@ -83,20 +83,24 @@ router.post('/', async (req: TenantRequest, res) => {
       );
       
       if (existing.rows.length > 0) {
+        // Check if this is a system category (is_permanent = true)
+        if (existing.rows[0].is_permanent === true) {
+          throw new Error('Cannot update system category');
+        }
+        
         // Update existing category
         console.log('🔄 POST /categories - Updating existing category:', categoryId);
         isUpdate = true;
         const updateResult = await client.query(
           `UPDATE categories 
-           SET name = $1, type = $2, description = $3, is_permanent = $4, 
-               is_rental = $5, parent_category_id = $6, user_id = $7, updated_at = NOW()
-           WHERE id = $8 AND tenant_id = $9
+           SET name = $1, type = $2, description = $3, is_rental = $4, 
+               parent_category_id = $5, user_id = $6, updated_at = NOW()
+           WHERE id = $7 AND tenant_id = $8 AND is_permanent = FALSE
            RETURNING *`,
           [
             category.name,
             category.type,
             category.description || null,
-            category.isPermanent || false,
             category.isRental || false,
             category.parentCategoryId || null,
             req.user?.userId || null,
@@ -104,6 +108,11 @@ router.post('/', async (req: TenantRequest, res) => {
             req.tenantId
           ]
         );
+        
+        if (updateResult.rows.length === 0) {
+          throw new Error('Cannot update system category');
+        }
+        
         return updateResult.rows[0];
       } else {
         // Create new category
@@ -174,18 +183,32 @@ router.post('/', async (req: TenantRequest, res) => {
 router.put('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
+    
+    // Check if category exists and is a system category
+    const existing = await db.query(
+      'SELECT is_permanent FROM categories WHERE id = $1 AND tenant_id = $2',
+      [req.params.id, req.tenantId]
+    );
+    
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+    
+    if (existing[0].is_permanent === true) {
+      return res.status(403).json({ error: 'Cannot update system category' });
+    }
+    
     const category = req.body;
     const result = await db.query(
       `UPDATE categories 
-       SET name = $1, type = $2, description = $3, is_permanent = $4, 
-           is_rental = $5, parent_category_id = $6, updated_at = NOW()
-       WHERE id = $7 AND tenant_id = $8
+       SET name = $1, type = $2, description = $3, 
+           is_rental = $4, parent_category_id = $5, updated_at = NOW()
+       WHERE id = $6 AND tenant_id = $7 AND is_permanent = FALSE
        RETURNING *`,
       [
         category.name,
         category.type,
         category.description || null,
-        category.isPermanent || false,
         category.isRental || false,
         category.parentCategoryId || null,
         req.params.id,
@@ -194,7 +217,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
     );
     
     if (result.length === 0) {
-      return res.status(404).json({ error: 'Category not found' });
+      return res.status(403).json({ error: 'Cannot update system category' });
     }
     
     emitToTenant(req.tenantId!, WS_EVENTS.CATEGORY_UPDATED, {
@@ -214,13 +237,28 @@ router.put('/:id', async (req: TenantRequest, res) => {
 router.delete('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
+    
+    // Check if category exists and is a system category
+    const existing = await db.query(
+      'SELECT is_permanent FROM categories WHERE id = $1 AND tenant_id = $2',
+      [req.params.id, req.tenantId]
+    );
+    
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+    
+    if (existing[0].is_permanent === true) {
+      return res.status(403).json({ error: 'Cannot delete system category' });
+    }
+    
     const result = await db.query(
-      'DELETE FROM categories WHERE id = $1 AND tenant_id = $2 RETURNING id',
+      'DELETE FROM categories WHERE id = $1 AND tenant_id = $2 AND is_permanent = FALSE RETURNING id',
       [req.params.id, req.tenantId]
     );
     
     if (result.length === 0) {
-      return res.status(404).json({ error: 'Category not found' });
+      return res.status(403).json({ error: 'Cannot delete system category' });
     }
     
     emitToTenant(req.tenantId!, WS_EVENTS.CATEGORY_DELETED, {

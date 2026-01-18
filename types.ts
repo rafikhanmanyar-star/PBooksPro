@@ -22,7 +22,8 @@ export type Page =
   | 'import'
   | 'tasks'
   | 'tasksCalendar'
-  | 'teamRanking';
+  | 'teamRanking'
+  | 'bizPlanet';
 
 export enum TransactionType {
   INCOME = 'Income',
@@ -524,7 +525,7 @@ export type SalaryComponentType = 'Earning' | 'Deduction' | 'Information' | 'All
 export type CalculationType = 'Fixed' | 'Percentage of Basic' | 'Percentage of Gross' | 'Formula' | 'Per Day' | 'Per Hour';
 export type PayrollFrequency = 'Monthly' | 'Semi-Monthly' | 'Weekly' | 'Bi-Weekly';
 export type EmployeeStatus = 'Active' | 'Inactive' | 'On Leave' | 'Transferred' | 'Promoted' | 'Resigned' | 'Terminated' | 'Suspended';
-export type BonusType = 'Performance' | 'Project Completion' | 'Annual' | 'Quarterly' | 'Celebratory' | 'Ad-Hoc' | 'Recurring';
+export type BonusType = 'Performance' | 'Project Completion' | 'Annual' | 'Quarterly' | 'Celebratory' | 'Ad-Hoc' | 'Recurring' | string; // Allow custom types
 export type DeductionType = 'Tax' | 'PF' | 'ESI' | 'Insurance' | 'Loan' | 'Advance' | 'Penalty' | 'Fine' | 'Custom';
 export type LifecycleEventType = 'Join' | 'Promotion' | 'Transfer' | 'Exit' | 'Increment' | 'Salary Revision' | 'Status Change' | 'Other';
 
@@ -596,7 +597,7 @@ export interface AttendanceRecord {
   checkIn?: string;
   checkOut?: string;
   hoursWorked?: number;
-  status: 'Present' | 'Absent' | 'Leave' | 'Holiday' | 'Half Day';
+  status: 'Present' | 'Absent' | 'Leave' | 'Holiday' | 'Half Day' | string; // Allow custom statuses
   leaveType?: string;
   projectId?: string;
   notes?: string;
@@ -655,7 +656,7 @@ export interface BonusRecord {
   eligibilityRule?: string;
   approvedBy?: string;
   approvedAt?: string;
-  status: 'Pending' | 'Approved' | 'Paid' | 'Cancelled';
+  status: 'Pending' | 'Approved' | 'Paid' | 'Cancelled' | string; // Allow custom statuses
   projectId?: string; // For project completion bonuses
 }
 
@@ -675,7 +676,7 @@ export interface PayrollAdjustment {
   reason: string;
   performedBy: string;
   performedAt: string;
-  status: 'Active' | 'Applied' | 'Cancelled';
+  status: 'Active' | 'Applied' | 'Cancelled' | string; // Allow custom statuses
 }
 
 // Loan/Advance Record

@@ -31,7 +31,8 @@ const AttendanceEntryModal: React.FC<AttendanceEntryModalProps> = ({
 
     const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
     const [date, setDate] = useState(initialDate);
-    const [status, setStatus] = useState<AttendanceRecord['status']>('Present');
+    const [status, setStatus] = useState<AttendanceRecord['status'] | 'Custom'>('Present');
+    const [customAttendanceStatus, setCustomAttendanceStatus] = useState('');
     const [checkIn, setCheckIn] = useState('');
     const [checkOut, setCheckOut] = useState('');
     const [hoursWorked, setHoursWorked] = useState('');
@@ -61,6 +62,7 @@ const AttendanceEntryModal: React.FC<AttendanceEntryModalProps> = ({
             }
             setDate(initialDate);
             setStatus('Present');
+            setCustomAttendanceStatus('');
             setCheckIn('');
             setCheckOut('');
             setHoursWorked('');
@@ -71,7 +73,15 @@ const AttendanceEntryModal: React.FC<AttendanceEntryModalProps> = ({
 
     useEffect(() => {
         if (existingRecord) {
-            setStatus(existingRecord.status);
+            // Check if status is a standard status or custom
+            const standardStatuses: AttendanceRecord['status'][] = ['Present', 'Absent', 'Leave', 'Holiday', 'Half Day'];
+            if (standardStatuses.includes(existingRecord.status)) {
+                setStatus(existingRecord.status);
+                setCustomAttendanceStatus('');
+            } else {
+                setStatus('Custom');
+                setCustomAttendanceStatus(existingRecord.status);
+            }
             setCheckIn(existingRecord.checkIn || '');
             setCheckOut(existingRecord.checkOut || '');
             setHoursWorked(existingRecord.hoursWorked?.toString() || '');
@@ -118,11 +128,18 @@ const AttendanceEntryModal: React.FC<AttendanceEntryModalProps> = ({
             return;
         }
 
+        const attendanceStatus = status === 'Custom' ? customAttendanceStatus.trim() : status;
+
+        if (!attendanceStatus) {
+            await showAlert('Please enter an attendance status.');
+            return;
+        }
+
         const record: AttendanceRecord = {
             id: existingRecord?.id || `attendance_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             employeeId: selectedEmployeeId,
             date,
-            status,
+            status: attendanceStatus as AttendanceRecord['status'],
             checkIn: checkIn || undefined,
             checkOut: checkOut || undefined,
             hoursWorked: hoursWorked ? parseFloat(hoursWorked) : undefined,
@@ -176,21 +193,45 @@ const AttendanceEntryModal: React.FC<AttendanceEntryModalProps> = ({
                     required
                 />
 
-                <Select
-                    label="Status"
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as AttendanceRecord['status'])}
-                    options={[
-                        { value: 'Present', label: 'Present' },
-                        { value: 'Absent', label: 'Absent' },
-                        { value: 'Leave', label: 'Leave' },
-                        { value: 'Holiday', label: 'Holiday' },
-                        { value: 'Half Day', label: 'Half Day' }
-                    ]}
-                    required
-                />
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Status <span className="text-rose-500">*</span>
+                    </label>
+                    <ComboBox
+                        items={[
+                            { id: 'Present', name: 'Present' },
+                            { id: 'Absent', name: 'Absent' },
+                            { id: 'Leave', name: 'Leave' },
+                            { id: 'Holiday', name: 'Holiday' },
+                            { id: 'Half Day', name: 'Half Day' },
+                            { id: 'Custom', name: '+ Add Custom Status...' }
+                        ]}
+                        selectedId={status === 'Custom' ? 'Custom' : status}
+                        onSelect={(item) => {
+                            if (item?.id === 'Custom') {
+                                setStatus('Custom');
+                                setCustomAttendanceStatus('');
+                            } else {
+                                setStatus((item?.id as AttendanceRecord['status']) || 'Present');
+                                setCustomAttendanceStatus('');
+                            }
+                        }}
+                        placeholder="Select or add attendance status"
+                        required
+                    />
+                    {status === 'Custom' && (
+                        <Input
+                            label="Custom Attendance Status"
+                            value={customAttendanceStatus}
+                            onChange={e => setCustomAttendanceStatus(e.target.value)}
+                            placeholder="Enter custom status..."
+                            className="mt-2"
+                            required
+                        />
+                    )}
+                </div>
 
-                {status === 'Leave' && (
+                {(status === 'Leave' || (status === 'Custom' && customAttendanceStatus.toLowerCase().includes('leave'))) && (
                     <Input
                         label="Leave Type"
                         value={leaveType}
@@ -199,7 +240,7 @@ const AttendanceEntryModal: React.FC<AttendanceEntryModalProps> = ({
                     />
                 )}
 
-                {(status === 'Present' || status === 'Half Day') && (
+                {(status === 'Present' || status === 'Half Day' || (status === 'Custom' && !customAttendanceStatus.toLowerCase().includes('leave'))) && (
                     <>
                         <div className="grid grid-cols-2 gap-4">
                             <Input
