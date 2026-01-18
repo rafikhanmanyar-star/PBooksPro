@@ -9,7 +9,9 @@ After registration, some organizations (tenants) exist in the database but have 
 
 ## Root Cause
 
-The registration process creates the tenant first, then creates the user. If user creation fails for any reason, the tenant may remain in the database without a user (orphaned tenant).
+Previously, the registration process created the tenant first, then created the user in separate database calls. If user creation failed for any reason, the tenant would remain in the database without a user (orphaned tenant).
+
+**Fixed (January 2026)**: The registration endpoint now uses a proper database transaction. This ensures that either both the tenant AND user are created together, or neither is created (automatic rollback on failure).
 
 ## Solution 1: Check Existing Orphaned Tenants
 
@@ -175,15 +177,16 @@ cd server
 npm run tsx scripts/fix-orphaned-tenants.ts
 ```
 
-## Solution 3: Prevent Future Orphaned Tenants
+## Solution 3: Prevention (Already Implemented)
 
-The code has been improved to:
-1. ✅ Better error logging
-2. ✅ Automatic tenant cleanup if user creation fails
-3. ✅ User creation verification
-4. ✅ Detailed error messages
+The registration code now uses **database transactions** to ensure atomicity:
+1. ✅ **Transaction-based registration** - Tenant and user created in a single atomic transaction
+2. ✅ **Automatic rollback** - If user creation fails, tenant creation is also rolled back
+3. ✅ **Better error logging** - Detailed transaction logs for debugging
+4. ✅ **User creation verification** - User is verified within the same transaction
+5. ✅ **No orphaned tenants** - Impossible to have tenant without user after successful registration
 
-After deploying the fix, new registrations should not create orphaned tenants.
+After deploying this fix, new registrations will NEVER create orphaned tenants.
 
 ## Verify Fix
 

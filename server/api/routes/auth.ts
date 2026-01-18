@@ -1144,155 +1144,110 @@ router.post('/register-tenant', async (req, res) => {
       });
     }
 
-    // Import LicenseService
-    const { LicenseService } = await import('../../services/licenseService.js');
-    const licenseService = new LicenseService(db);
+    // Use a database transaction to ensure tenant and user are created atomically
+    // This prevents orphaned tenants (tenant created but no user) which cause login failures
+    const crypto = await import('crypto');
+    const hashedPassword = await bcrypt.hash(adminPassword, 10);
+    const tenantId = `tenant_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const now = new Date();
+    const daysRemaining = 30;
 
-    // Create tenant with free trial
-    let tenantId: string;
-    let daysRemaining: number;
+    console.log('🔄 Starting registration transaction for:', {
+      companyName,
+      email,
+      adminUsername,
+      tenantId,
+      userId
+    });
+
     try {
-      const result = await licenseService.createTenantWithTrial({
-        name: companyName,
-        companyName,
-        email,
-        phone,
-        address,
-        isSupplier: Boolean(isSupplier)
+      // Execute all registration operations in a single transaction
+      await db.transaction(async (client) => {
+        // Step 1: Create tenant
+        console.log('📝 Creating tenant...');
+        await client.query(
+          `INSERT INTO tenants (
+            id, name, company_name, email, phone, address,
+            license_type, license_status, trial_start_date, is_supplier
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          [
+            tenantId,
+            companyName,
+            companyName,
+            email,
+            phone || null,
+            address || null,
+            'trial',
+            'active',
+            now,
+            Boolean(isSupplier)
+          ]
+        );
+        console.log('✅ Tenant created:', tenantId);
+
+        // Step 2: Log license history
+        const historyId = `history_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+        await client.query(
+          `INSERT INTO license_history (
+            id, tenant_id, license_key_id, action, from_status, to_status, from_type, to_type, payment_id
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [historyId, tenantId, null, 'trial_started', null, 'active', null, 'trial', null]
+        );
+
+        // Step 3: Create admin user
+        console.log('📝 Creating admin user:', {
+          userId,
+          tenantId,
+          username: adminUsername,
+          email,
+          role: 'Admin'
+        });
+        
+        await client.query(
+          `INSERT INTO users (id, tenant_id, username, name, role, password, email, is_active)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [userId, tenantId, adminUsername, adminName || 'Administrator', 'Admin', hashedPassword, email, true]
+        );
+
+        // Step 4: Verify user was created (within same transaction)
+        const verifyResult = await client.query(
+          'SELECT id, username, email, role, is_active FROM users WHERE id = $1',
+          [userId]
+        );
+        
+        if (verifyResult.rows.length === 0) {
+          throw new Error('User creation verification failed - user not found after insert');
+        }
+        
+        const createdUser = verifyResult.rows[0];
+        console.log('✅ Admin user created successfully:', {
+          userId: createdUser.id,
+          username: createdUser.username,
+          email: createdUser.email,
+          role: createdUser.role,
+          is_active: createdUser.is_active
+        });
       });
-      tenantId = result.tenantId;
-      daysRemaining = result.daysRemaining;
-      console.log('Tenant created:', tenantId);
-    } catch (licenseError: any) {
-      console.error('Error creating tenant:', licenseError);
+
+      console.log('✅ Registration transaction committed successfully');
+
+    } catch (transactionError: any) {
+      console.error('❌ Registration transaction failed (rolled back):', {
+        message: transactionError?.message || String(transactionError),
+        code: transactionError?.code,
+        detail: transactionError?.detail,
+        constraint: transactionError?.constraint
+      });
+      
       return res.status(500).json({ 
-        error: 'Failed to create tenant',
-        message: licenseError.message || 'An error occurred while creating your account'
+        error: 'Failed to create organization',
+        message: transactionError.message || 'An error occurred while creating your account. Please try again.',
+        details: process.env.NODE_ENV === 'development' ? transactionError.message : undefined
       });
     }
 
-    // Create admin user (using transaction-like approach for data integrity)
-    let userId: string;
-    try {
-      // Safety check: Ensure no admin user already exists for this tenant
-      // (This shouldn't happen since we prevent re-registration, but check for safety)
-      const existingAdmin = await db.query(
-        'SELECT id FROM users WHERE tenant_id = $1 AND role = $2',
-        [tenantId, 'Admin']
-      );
-      
-      if (existingAdmin.length > 0) {
-        // Admin already exists - this shouldn't happen, but if it does, clean up tenant and reject
-        console.warn('⚠️ Admin user already exists for tenant, cleaning up...');
-        try {
-          await db.query('DELETE FROM tenants WHERE id = $1', [tenantId]);
-          console.log('✅ Cleaned up orphaned tenant');
-        } catch (cleanupError: any) {
-          console.error('❌ Failed to clean up tenant:', cleanupError);
-        }
-        return res.status(409).json({
-          error: 'Admin user already exists',
-          message: 'This organization already has an admin user. Registration cannot be completed.'
-        });
-      }
-      
-      // Check user limit (skip for first user during registration)
-      const tenantInfo = await db.query(
-        'SELECT max_users FROM tenants WHERE id = $1',
-        [tenantId]
-      );
-      const maxUsers = tenantInfo[0]?.max_users || 5;
-      
-      const userCountResult = await db.query(
-        'SELECT COUNT(*) as count FROM users WHERE tenant_id = $1',
-        [tenantId]
-      );
-      const currentUserCount = parseInt(userCountResult[0]?.count || '0');
-      
-      // During registration, we're creating the first user, so this should always pass
-      // But we check anyway for safety
-      if (currentUserCount >= maxUsers) {
-        console.error('❌ User limit reached for tenant during registration');
-        try {
-          await db.query('DELETE FROM tenants WHERE id = $1', [tenantId]);
-          console.log('✅ Cleaned up tenant after user limit error');
-        } catch (cleanupError: any) {
-          console.error('❌ Failed to clean up tenant:', cleanupError);
-        }
-        return res.status(403).json({
-          error: 'User limit reached',
-          message: `This organization has reached its maximum user limit of ${maxUsers}. Please contact support to increase the limit.`
-        });
-      }
-      
-      const hashedPassword = await bcrypt.hash(adminPassword, 10);
-      userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
-      console.log('📝 Creating admin user:', {
-        userId,
-        tenantId,
-        username: adminUsername,
-        email,
-        role: 'Admin'
-      });
-      
-      // Create the admin user (only one admin per organization)
-      // Explicitly set is_active = TRUE to ensure user can login
-      await db.query(
-        `INSERT INTO users (id, tenant_id, username, name, role, password, email, is_active)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [userId, tenantId, adminUsername, adminName || 'Administrator', 'Admin', hashedPassword, email, true]
-      );
-      
-      // Verify user was created
-      const verifyUser = await db.query(
-        'SELECT id, username, email, role, is_active FROM users WHERE id = $1',
-        [userId]
-      );
-      
-      if (verifyUser.length === 0) {
-        throw new Error('User creation verification failed - user not found after insert');
-      }
-      
-      console.log('✅ Admin user created successfully:', {
-        userId: verifyUser[0].id,
-        username: verifyUser[0].username,
-        email: verifyUser[0].email,
-        role: verifyUser[0].role,
-        is_active: verifyUser[0].is_active
-      });
-      
-    } catch (userError: any) {
-      console.error('❌ Error creating admin user:', {
-        message: userError?.message || String(userError),
-        code: userError?.code,
-        detail: userError?.detail,
-        stack: userError?.stack,
-        tenantId
-      });
-      
-      // Try to clean up tenant if user creation fails
-      try {
-        const deleteResult = await db.query('DELETE FROM tenants WHERE id = $1', [tenantId]);
-        console.log('✅ Cleaned up tenant after user creation failure');
-      } catch (cleanupError: any) {
-        console.error('❌ Failed to clean up tenant after user creation error:', {
-          message: cleanupError?.message || String(cleanupError),
-          code: cleanupError?.code,
-          tenantId
-        });
-        // Log this critical error - orphaned tenant exists
-        console.error('⚠️ CRITICAL: Orphaned tenant created (tenant exists but user creation failed):', tenantId);
-      }
-      
-      return res.status(500).json({ 
-        error: 'Failed to create admin user',
-        message: userError.message || 'An error occurred while creating your admin account',
-        details: process.env.NODE_ENV === 'development' ? userError.message : undefined
-      });
-    }
-
-    // Initialize system accounts and categories for the new tenant
+    // Initialize system accounts and categories for the new tenant (outside transaction - non-critical)
     try {
       const { TenantInitializationService } = await import('../../services/tenantInitializationService.js');
       const initService = new TenantInitializationService(db);
