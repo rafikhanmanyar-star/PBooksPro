@@ -97,6 +97,10 @@ export class WhatsAppChatService {
    */
   static async getUnreadCount(): Promise<number> {
     try {
+      // Check if authenticated before making API call to prevent 401 errors
+      if (!apiClient.getToken()) {
+        return 0;
+      }
       const response = await apiClient.get<UnreadCountResponse>('/whatsapp/unread-count');
       return response.count;
     } catch (error: any) {

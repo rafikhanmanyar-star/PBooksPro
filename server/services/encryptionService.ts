@@ -22,7 +22,8 @@ export class EncryptionService {
   private getEncryptionKey(): Buffer {
     const key = process.env.WHATSAPP_ENCRYPTION_KEY;
     if (!key) {
-      console.warn('⚠️ WHATSAPP_ENCRYPTION_KEY not set, using default key (NOT SECURE FOR PRODUCTION)');
+      // TODO: Re-enable this warning when WhatsApp integration is actively used
+      // console.warn('⚠️ WHATSAPP_ENCRYPTION_KEY not set, using default key (NOT SECURE FOR PRODUCTION)');
       // Use a default key if not set (32 bytes)
       return crypto.scryptSync('default-key-not-secure', 'salt', this.keyLength);
     }

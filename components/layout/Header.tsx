@@ -1,5 +1,6 @@
 import React, { useState, memo, useEffect, useCallback } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import SearchModal from './SearchModal';
 import HelpModal from './HelpModal';
 import { WhatsAppChatService } from '../../services/whatsappChatService';
@@ -14,6 +15,7 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const { dispatch, state } = useAppContext();
+  const { isAuthenticated } = useAuth();
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // For mobile menu logic if needed
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
@@ -21,8 +23,14 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const [whatsappUnreadCount, setWhatsappUnreadCount] = useState(0);
   const { openChat } = useWhatsApp();
 
-  // Load WhatsApp unread count
+  // Load WhatsApp unread count - only when authenticated
   useEffect(() => {
+    // Skip if not authenticated to prevent 401 errors
+    if (!isAuthenticated) {
+      setWhatsappUnreadCount(0);
+      return;
+    }
+
     const loadUnreadCount = async () => {
       try {
         const count = await WhatsAppChatService.getUnreadCount();
@@ -37,7 +45,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     // Refresh every 30 seconds
     const interval = setInterval(loadUnreadCount, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isAuthenticated]);
 
   const handleWhatsAppNotificationClick = useCallback(() => {
     // Open chat window - if there are unread messages, we could show a list
