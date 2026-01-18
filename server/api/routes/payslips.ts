@@ -132,6 +132,133 @@ router.post('/', async (req: TenantRequest, res) => {
   }
 });
 
+// POST /payslips/:id/pay - Mark payslip as paid
+router.post('/:id/pay', async (req: TenantRequest, res) => {
+  try {
+    const db = getDb();
+    const { accountId, paymentDate, amount, description } = req.body;
+    const payslipId = req.params.id;
+
+    // Validate required fields
+    if (!accountId || !paymentDate || !amount) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'accountId, paymentDate, and amount are required'
+      });
+    }
+
+    // Get payslip
+    const payslips = await db.query(
+      'SELECT * FROM payslips WHERE id = $1 AND tenant_id = $2',
+      [payslipId, req.tenantId]
+    );
+
+    if (payslips.length === 0) {
+      return res.status(404).json({ error: 'Payslip not found' });
+    }
+
+    const payslip = payslips[0];
+
+    // Create transaction(s) based on cost allocations
+    const transactions = [];
+
+    if (payslip.cost_allocations && Array.isArray(payslip.cost_allocations) && payslip.cost_allocations.length > 0) {
+      // Multi-project allocation
+      for (const allocation of payslip.cost_allocations) {
+        const allocationAmount = amount * (allocation.percentage / 100);
+        const transactionId = `pay-tx-${payslipId}-${allocation.projectId}-${Date.now()}`;
+        
+        await db.query(
+          `INSERT INTO transactions (
+            id, tenant_id, user_id, type, amount, date, description, account_id,
+            category_id, contact_id, project_id, payslip_id, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())`,
+          [
+            transactionId,
+            req.tenantId,
+            req.user?.userId || null,
+            'EXPENSE',
+            allocationAmount,
+            paymentDate,
+            description || `Salary Payment for ${payslip.month} - ${allocation.projectId}`,
+            accountId,
+            null, // category_id - will be set by application
+            payslip.employee_id,
+            allocation.projectId,
+            payslipId
+          ]
+        );
+        transactions.push(transactionId);
+      }
+    } else {
+      // Single transaction
+      const transactionId = `pay-tx-${payslipId}-${Date.now()}`;
+      
+      await db.query(
+        `INSERT INTO transactions (
+          id, tenant_id, user_id, type, amount, date, description, account_id,
+          category_id, contact_id, payslip_id, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())`,
+        [
+          transactionId,
+          req.tenantId,
+          req.user?.userId || null,
+          'EXPENSE',
+          amount,
+          paymentDate,
+          description || `Salary Payment for ${payslip.month}`,
+          accountId,
+          null, // category_id
+          payslip.employee_id,
+          payslipId
+        ]
+      );
+      transactions.push(transactionId);
+    }
+
+    // Update payslip payment details
+    const newPaidAmount = (parseFloat(payslip.paid_amount || '0') + parseFloat(amount));
+    const newStatus = newPaidAmount >= parseFloat(payslip.net_salary || '0') - 0.01 
+      ? 'Paid' 
+      : 'Partially Paid';
+
+    const updatedPayslip = await db.query(
+      `UPDATE payslips 
+       SET paid_amount = $1, payment_date = $2, payment_account_id = $3, 
+           status = $4, transaction_id = $5, updated_at = NOW()
+       WHERE id = $6 AND tenant_id = $7
+       RETURNING *`,
+      [
+        newPaidAmount,
+        paymentDate,
+        accountId,
+        newStatus,
+        transactions[0] || null,
+        payslipId,
+        req.tenantId
+      ]
+    );
+
+    emitToTenant(req.tenantId!, WS_EVENTS.PAYSLIP_UPDATED, {
+      payslip: updatedPayslip[0],
+      userId: req.user?.userId,
+      username: req.user?.username,
+    });
+
+    res.json({ 
+      success: true, 
+      payslip: updatedPayslip[0],
+      transactions 
+    });
+  } catch (error: any) {
+    console.error('Error processing payslip payment:', error);
+    res.status(500).json({ 
+      error: 'Failed to process payment', 
+      message: error.message 
+    });
+  }
+});
+
 router.delete('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();

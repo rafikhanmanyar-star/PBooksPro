@@ -1,12 +1,14 @@
 
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { Employee, Payslip, PayrollCycle } from '../../types';
+import { Employee, Payslip, PayrollCycle, PayslipStatus } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
 import Input from '../ui/Input';
+import EnterprisePayslipPaymentModal from './EnterprisePayslipPaymentModal';
+import PayslipDetailModal from './PayslipDetailModal';
 
 const PayrollReports: React.FC = () => {
     const { state } = useAppContext();
@@ -17,6 +19,8 @@ const PayrollReports: React.FC = () => {
         start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
         end: new Date().toISOString().split('T')[0]
     });
+    const [paymentPayslipId, setPaymentPayslipId] = useState<string | null>(null);
+    const [viewPayslipId, setViewPayslipId] = useState<string | null>(null);
 
     const payslips = useMemo(() => {
         let filtered = state.payslips || [];
@@ -391,7 +395,111 @@ const PayrollReports: React.FC = () => {
                 {reportType === 'project' && renderProjectReport()}
                 {reportType === 'employee' && renderEmployeeReport()}
                 {reportType === 'tax' && renderTaxReport()}
+
+                {/* Payslips List for Payment */}
+                <Card className="mt-6">
+                    <h3 className="text-lg font-semibold text-slate-800 mb-4">Payslips List</h3>
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-slate-200">
+                            <thead className="bg-slate-50">
+                                <tr>
+                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Employee</th>
+                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Month</th>
+                                    <th className="px-4 py-3 text-right text-xs font-semibold text-slate-600 uppercase">Net Salary</th>
+                                    <th className="px-4 py-3 text-right text-xs font-semibold text-slate-600 uppercase">Paid</th>
+                                    <th className="px-4 py-3 text-right text-xs font-semibold text-slate-600 uppercase">Due</th>
+                                    <th className="px-4 py-3 text-center text-xs font-semibold text-slate-600 uppercase">Status</th>
+                                    <th className="px-4 py-3 text-center text-xs font-semibold text-slate-600 uppercase">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200 bg-white">
+                                {payslips.map(payslip => {
+                                    const employee = state.employees.find(e => e.id === payslip.employeeId);
+                                    const balanceDue = Math.max(0, payslip.netSalary - (payslip.paidAmount || 0));
+                                    const isPaid = payslip.status === PayslipStatus.PAID;
+                                    
+                                    return (
+                                        <tr key={payslip.id} className="hover:bg-slate-50">
+                                            <td className="px-4 py-3 font-medium text-slate-800">
+                                                {employee 
+                                                    ? `${employee.personalDetails.firstName} ${employee.personalDetails.lastName}`
+                                                    : 'Unknown Employee'}
+                                            </td>
+                                            <td className="px-4 py-3 text-slate-600">{payslip.month}</td>
+                                            <td className="px-4 py-3 text-right font-semibold text-slate-700">
+                                                {CURRENCY} {payslip.netSalary.toLocaleString()}
+                                            </td>
+                                            <td className="px-4 py-3 text-right text-emerald-600">
+                                                {CURRENCY} {(payslip.paidAmount || 0).toLocaleString()}
+                                            </td>
+                                            <td className={`px-4 py-3 text-right font-bold ${balanceDue > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                                                {CURRENCY} {balanceDue.toLocaleString()}
+                                            </td>
+                                            <td className="px-4 py-3 text-center">
+                                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                                    isPaid ? 'bg-green-100 text-green-700' :
+                                                    payslip.status === 'Partially Paid' ? 'bg-amber-100 text-amber-700' :
+                                                    'bg-slate-100 text-slate-700'
+                                                }`}>
+                                                    {payslip.status}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-center">
+                                                <div className="flex justify-center gap-2">
+                                                    <Button
+                                                        size="sm"
+                                                        variant="secondary"
+                                                        onClick={() => setViewPayslipId(payslip.id)}
+                                                        className="text-xs"
+                                                    >
+                                                        View
+                                                    </Button>
+                                                    {!isPaid && balanceDue > 0 && (
+                                                        <Button
+                                                            size="sm"
+                                                            onClick={() => setPaymentPayslipId(payslip.id)}
+                                                            className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                                                        >
+                                                            Pay
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                                {payslips.length === 0 && (
+                                    <tr>
+                                        <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                                            No payslips found for the selected period
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </Card>
             </div>
+
+            {/* Modals */}
+            <EnterprisePayslipPaymentModal
+                isOpen={!!paymentPayslipId}
+                onClose={() => setPaymentPayslipId(null)}
+                payslip={paymentPayslipId ? (state.payslips || []).find(p => p.id === paymentPayslipId) || null : null}
+                onSuccess={() => setPaymentPayslipId(null)}
+            />
+
+            {viewPayslipId && (() => {
+                const payslipToView = (state.payslips || []).find(p => p.id === viewPayslipId);
+                return payslipToView ? (
+                    <PayslipDetailModal
+                        key={viewPayslipId}
+                        isOpen={true}
+                        onClose={() => setViewPayslipId(null)}
+                        payslip={payslipToView}
+                    />
+                ) : null;
+            })()}
         </div>
     );
 };

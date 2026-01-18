@@ -11,6 +11,9 @@ import ComboBox from '../ui/ComboBox';
 import { useNotification } from '../../context/NotificationContext';
 import EmployeeForm from './EmployeeForm';
 import EmployeeDetailView from './EmployeeDetailView';
+import EmployeeTerminationModal from './EmployeeTerminationModal';
+import EmployeePromotionModal from './EmployeePromotionModal';
+import EmployeeTransferModal from './EmployeeTransferModal';
 
 const EmployeeManagement: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -22,6 +25,10 @@ const EmployeeManagement: React.FC = () => {
     const [isFormModalOpen, setIsFormModalOpen] = useState(false);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
     const [employeeToEdit, setEmployeeToEdit] = useState<Employee | null>(null);
+    const [isTerminationModalOpen, setIsTerminationModalOpen] = useState(false);
+    const [isPromotionModalOpen, setIsPromotionModalOpen] = useState(false);
+    const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+    const [actionEmployee, setActionEmployee] = useState<Employee | null>(null);
 
     const filteredEmployees = useMemo(() => {
         let filtered = state.employees || [];
@@ -79,6 +86,21 @@ const EmployeeManagement: React.FC = () => {
             dispatch({ type: 'DELETE_EMPLOYEE', payload: employee.id });
             showToast('Employee deleted successfully');
         }
+    };
+
+    const handleTerminateEmployee = (employee: Employee) => {
+        setActionEmployee(employee);
+        setIsTerminationModalOpen(true);
+    };
+
+    const handlePromoteEmployee = (employee: Employee) => {
+        setActionEmployee(employee);
+        setIsPromotionModalOpen(true);
+    };
+
+    const handleTransferEmployee = (employee: Employee) => {
+        setActionEmployee(employee);
+        setIsTransferModalOpen(true);
     };
 
     const getStatusBadge = (status: EmployeeStatus) => {
@@ -213,21 +235,55 @@ const EmployeeManagement: React.FC = () => {
                                                 </div>
                                             )}
                                         </div>
-                                        <div className="flex gap-2 mt-3 pt-3 border-t border-slate-200" onClick={(e) => e.stopPropagation()}>
+                                        <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-slate-200" onClick={(e) => e.stopPropagation()}>
+                                            {employee.status === 'Active' && (
+                                                <>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="secondary"
+                                                        onClick={() => handlePromoteEmployee(employee)}
+                                                        className="text-xs"
+                                                        title="Promote"
+                                                    >
+                                                        ↑ Promote
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="secondary"
+                                                        onClick={() => handleTransferEmployee(employee)}
+                                                        className="text-xs"
+                                                        title="Transfer"
+                                                    >
+                                                        ↔ Transfer
+                                                    </Button>
+                                                </>
+                                            )}
                                             <Button
                                                 size="sm"
                                                 variant="secondary"
                                                 onClick={() => handleEditEmployee(employee)}
-                                                className="flex-1"
+                                                className="flex-1 text-xs"
                                             >
                                                 <div className="w-3 h-3 mr-1">{ICONS.edit}</div>
                                                 Edit
                                             </Button>
+                                            {employee.status === 'Active' && (
+                                                <Button
+                                                    size="sm"
+                                                    variant="danger"
+                                                    onClick={() => handleTerminateEmployee(employee)}
+                                                    className="text-xs"
+                                                    title="Terminate"
+                                                >
+                                                    × Terminate
+                                                </Button>
+                                            )}
                                             <Button
                                                 size="sm"
                                                 variant="secondary"
                                                 onClick={() => handleDeleteEmployee(employee)}
                                                 className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                                                title="Delete"
                                             >
                                                 <div className="w-3 h-3">{ICONS.trash}</div>
                                             </Button>
@@ -289,6 +345,46 @@ const EmployeeManagement: React.FC = () => {
                     />
                 </Modal>
             )}
+
+            {/* Employee Lifecycle Modals */}
+            <EmployeeTerminationModal
+                isOpen={isTerminationModalOpen}
+                onClose={() => {
+                    setIsTerminationModalOpen(false);
+                    setActionEmployee(null);
+                }}
+                employee={actionEmployee}
+                onSuccess={() => {
+                    setIsTerminationModalOpen(false);
+                    setActionEmployee(null);
+                }}
+            />
+
+            <EmployeePromotionModal
+                isOpen={isPromotionModalOpen}
+                onClose={() => {
+                    setIsPromotionModalOpen(false);
+                    setActionEmployee(null);
+                }}
+                employee={actionEmployee}
+                onSuccess={() => {
+                    setIsPromotionModalOpen(false);
+                    setActionEmployee(null);
+                }}
+            />
+
+            <EmployeeTransferModal
+                isOpen={isTransferModalOpen}
+                onClose={() => {
+                    setIsTransferModalOpen(false);
+                    setActionEmployee(null);
+                }}
+                employee={actionEmployee}
+                onSuccess={() => {
+                    setIsTransferModalOpen(false);
+                    setActionEmployee(null);
+                }}
+            />
         </div>
     );
 };

@@ -137,10 +137,54 @@ router.post('/', async (req: TenantRequest, res) => {
     
     // Check if agreement exists to determine if this is a create or update
     const existing = await db.query(
-      'SELECT id FROM rental_agreements WHERE id = $1 AND org_id = $2',
+      'SELECT id, status FROM rental_agreements WHERE id = $1 AND org_id = $2',
       [agreementId, req.tenantId]
     );
     const isUpdate = existing.length > 0;
+    
+    // If updating, check if invoices exist and if status is not Renewed
+    if (isUpdate) {
+      const existingAgreement = existing[0];
+      const hasInvoices = await db.query(
+        'SELECT COUNT(*) as count FROM invoices WHERE agreement_id = $1 AND tenant_id = $2',
+        [agreementId, req.tenantId]
+      );
+      
+      const invoiceCount = parseInt(hasInvoices[0]?.count || '0', 10);
+      const isChangingStatusToRenewed = agreement.status === 'Renewed' && existingAgreement.status !== 'Renewed';
+      
+      if (invoiceCount > 0 && existingAgreement.status !== 'Renewed') {
+        // Only allow changing status to Renewed, prevent other field changes
+        if (isChangingStatusToRenewed) {
+          // Allow only status update, preserve all other fields from existing agreement
+          const result = await db.query(
+            `UPDATE rental_agreements 
+             SET status = $1, updated_at = NOW()
+             WHERE id = $2 AND org_id = $3
+             RETURNING *`,
+            ['Renewed', agreementId, req.tenantId]
+          );
+          
+          if (result.length === 0) {
+            return res.status(404).json({ error: 'Rental agreement not found' });
+          }
+          
+          const transformedResult = transformRentalAgreement(result[0]);
+          emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_UPDATED, {
+            agreement: transformedResult,
+            userId: req.user?.userId,
+            username: req.user?.username,
+          });
+          
+          return res.status(200).json(transformedResult);
+        } else {
+          return res.status(400).json({
+            error: 'Cannot edit agreement',
+            message: 'This agreement has invoices associated with it. To modify the agreement, you must first change its status to "Renewed".'
+          });
+        }
+      }
+    }
     
     // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
     const result = await db.query(
@@ -218,6 +262,61 @@ router.put('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const agreement = req.body;
+    const agreementId = req.params.id;
+    
+    // Check if agreement exists and get its current status
+    const existing = await db.query(
+      'SELECT id, status FROM rental_agreements WHERE id = $1 AND org_id = $2',
+      [agreementId, req.tenantId]
+    );
+    
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'Rental agreement not found' });
+    }
+    
+    const existingAgreement = existing[0];
+    
+    // Check if invoices exist and if status is not Renewed
+    const hasInvoices = await db.query(
+      'SELECT COUNT(*) as count FROM invoices WHERE agreement_id = $1 AND tenant_id = $2',
+      [agreementId, req.tenantId]
+    );
+    
+    const invoiceCount = parseInt(hasInvoices[0]?.count || '0', 10);
+    const isChangingStatusToRenewed = agreement.status === 'Renewed' && existingAgreement.status !== 'Renewed';
+    
+    if (invoiceCount > 0 && existingAgreement.status !== 'Renewed') {
+      // Only allow changing status to Renewed, prevent other field changes
+      if (isChangingStatusToRenewed) {
+        // Allow only status update, preserve all other fields from existing agreement
+        const result = await db.query(
+          `UPDATE rental_agreements 
+           SET status = $1, updated_at = NOW()
+           WHERE id = $2 AND org_id = $3
+           RETURNING *`,
+          ['Renewed', agreementId, req.tenantId]
+        );
+        
+        if (result.length === 0) {
+          return res.status(404).json({ error: 'Rental agreement not found' });
+        }
+        
+        const transformedResult = transformRentalAgreement(result[0]);
+        emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_UPDATED, {
+          agreement: transformedResult,
+          userId: req.user?.userId,
+          username: req.user?.username,
+        });
+        
+        return res.json(transformedResult);
+      } else {
+        return res.status(400).json({
+          error: 'Cannot edit agreement',
+          message: 'This agreement has invoices associated with it. To modify the agreement, you must first change its status to "Renewed".'
+        });
+      }
+    }
+    
     const result = await db.query(
       `UPDATE rental_agreements 
        SET agreement_number = $1, contact_id = $2, property_id = $3, start_date = $4, end_date = $5,
@@ -240,7 +339,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
         agreement.brokerId || null,
         agreement.brokerFee || null,
         agreement.ownerId || null,
-        req.params.id,
+        agreementId,
         req.tenantId
       ]
     );

@@ -67,6 +67,23 @@ const SYSTEM_CATEGORIES: Category[] = [
     { id: 'sys-cat-sal-adv', name: 'Salary Advance', type: TransactionType.EXPENSE, isPermanent: true },
     { id: 'sys-cat-proj-sal', name: 'Project Staff Salary', type: TransactionType.EXPENSE, isPermanent: true },
     { id: 'sys-cat-rent-sal', name: 'Rental Staff Salary', type: TransactionType.EXPENSE, isPermanent: true },
+    
+    // Payroll System Categories (Enterprise Payroll)
+    { id: 'sys-cat-emp-sal', name: 'Employee Salary', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for enterprise employee salaries' },
+    { id: 'sys-cat-payroll-tax', name: 'Payroll Tax Expense', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for payroll tax expenses' },
+    { id: 'sys-cat-emp-benefits', name: 'Employee Benefits', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee benefits expenses' },
+    { id: 'sys-cat-emp-allow', name: 'Employee Allowances', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee allowances (transport, meal, etc.)' },
+    { id: 'sys-cat-emp-deduct', name: 'Employee Deductions', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee deductions' },
+    { id: 'sys-cat-pf-expense', name: 'Provident Fund (PF)', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for Provident Fund contributions' },
+    { id: 'sys-cat-esi-expense', name: 'Employee State Insurance (ESI)', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for ESI contributions' },
+    { id: 'sys-cat-emp-insurance', name: 'Employee Insurance', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee insurance expenses' },
+    { id: 'sys-cat-bonus-inc', name: 'Bonuses & Incentives', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee bonuses and incentives' },
+    { id: 'sys-cat-overtime', name: 'Overtime Pay', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for overtime pay expenses' },
+    { id: 'sys-cat-commission', name: 'Commission Expense', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee commission expenses' },
+    { id: 'sys-cat-gratuity', name: 'Gratuity Expense', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for gratuity payments' },
+    { id: 'sys-cat-leave-encash', name: 'Leave Encashment', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for leave encashment expenses' },
+    { id: 'sys-cat-termination-settle', name: 'Employee Termination Settlement', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee termination settlements' },
+    { id: 'sys-cat-payroll-processing', name: 'Payroll Processing Fee', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for payroll processing fees' },
     { id: 'sys-cat-bld-maint', name: 'Building Maintenance', type: TransactionType.EXPENSE, isPermanent: true, isRental: true },
     { id: 'sys-cat-bld-util', name: 'Building Utilities', type: TransactionType.EXPENSE, isPermanent: true, isRental: true },
     { id: 'sys-cat-own-pay', name: 'Owner Payout', type: TransactionType.EXPENSE, isPermanent: true, isRental: true },
@@ -385,7 +402,7 @@ const applyTransactionEffect = (state: AppState, tx: Transaction, isAdd: boolean
 
     // 4. Payslip Status
     if (tx.payslipId && tx.type === TransactionType.EXPENSE) {
-        // Find payslip in either project or rental list
+        // Find payslip in either project, rental, or enterprise payroll list
         const findAndUpdate = (list: Payslip[]) => list.map(p => {
             if (p.id === tx.payslipId) {
                 const newPaid = Math.max(0, (p.paidAmount || 0) + (tx.amount * factor));
@@ -400,6 +417,7 @@ const applyTransactionEffect = (state: AppState, tx: Transaction, isAdd: boolean
         });
         newState.projectPayslips = findAndUpdate(newState.projectPayslips);
         newState.rentalPayslips = findAndUpdate(newState.rentalPayslips);
+        newState.payslips = findAndUpdate(newState.payslips || []);
     }
 
     // 5. Staff Advance Balance (If transaction Category is Salary Advance)
@@ -538,8 +556,14 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, accounts: state.accounts.filter(a => a.id !== action.payload) };
 
         // --- CONTACT HANDLERS ---
-        case 'ADD_CONTACT':
-            return { ...state, contacts: [...state.contacts, action.payload] };
+        case 'ADD_CONTACT': {
+            const contactToAdd = action.payload;
+            // Prevent duplicate contacts by ID
+            if (state.contacts.find(c => c.id === contactToAdd.id)) {
+                return state; // Already exists
+            }
+            return { ...state, contacts: [...state.contacts, contactToAdd] };
+        }
         case 'UPDATE_CONTACT':
             return { ...state, contacts: state.contacts.map(c => c.id === action.payload.id ? action.payload : c) };
         case 'DELETE_CONTACT':
@@ -1284,6 +1308,90 @@ const reducer = (state: AppState, action: AppAction): AppState => {
         }
         case 'ADD_PAYSLIP':
             return { ...state, payslips: [...(state.payslips || []), action.payload] };
+        case 'UPDATE_PAYSLIP': {
+            const updated = action.payload as Payslip;
+            return {
+                ...state,
+                payslips: (state.payslips || []).map(p => p.id === updated.id ? updated : p)
+            };
+        }
+        case 'MARK_PAYSLIP_PAID': {
+            const { payslipId, accountId, paymentDate, amount, description } = action.payload;
+            const payslip = (state.payslips || []).find(p => p.id === payslipId);
+            if (!payslip) return state;
+
+            // Find employee salary category or use default system category
+            const salaryCategoryId = state.categories.find(c => 
+                c.id === 'sys-cat-emp-sal' || c.name === 'Employee Salary' || c.name === 'Staff Salary'
+            )?.id || 'sys-cat-emp-sal'; // Fallback to system category ID
+
+            // Get employee for contactId
+            const employee = (state.employees || []).find(e => e.id === payslip.employeeId);
+            
+            // Create transaction(s) based on cost allocations
+            // If payslip has cost allocations, create multiple transactions
+            const transactions: Transaction[] = [];
+            
+            if (payslip.costAllocations && payslip.costAllocations.length > 0) {
+                // Multi-project allocation - create separate transaction for each project
+                payslip.costAllocations.forEach(allocation => {
+                    const allocationAmount = amount * (allocation.percentage / 100);
+                    transactions.push({
+                        id: `pay-tx-${payslipId}-${allocation.projectId}-${Date.now()}`,
+                        type: TransactionType.EXPENSE,
+                        amount: allocationAmount,
+                        date: paymentDate,
+                        description: description || `Salary Payment for ${payslip.month} - ${allocation.projectId}`,
+                        accountId,
+                        categoryId: salaryCategoryId,
+                        contactId: payslip.employeeId,
+                        projectId: allocation.projectId,
+                        payslipId: payslip.id
+                    });
+                });
+            } else {
+                // Single transaction - use first project assignment if exists
+                const projectId = employee?.projectAssignments?.[0]?.projectId;
+                
+                transactions.push({
+                    id: `pay-tx-${payslipId}-${Date.now()}`,
+                    type: TransactionType.EXPENSE,
+                    amount,
+                    date: paymentDate,
+                    description: description || `Salary Payment for ${payslip.month}`,
+                    accountId,
+                    categoryId: salaryCategoryId,
+                    contactId: payslip.employeeId,
+                    projectId,
+                    payslipId: payslip.id
+                });
+            }
+
+            let newState = { ...state, transactions: [...state.transactions, ...transactions] };
+            
+            // Apply transaction effects
+            transactions.forEach(tx => {
+                newState = applyTransactionEffect(newState, tx, true);
+            });
+
+            // Update payslip status and payment details
+            const updatedPayslip: Payslip = {
+                ...payslip,
+                paidAmount: (payslip.paidAmount || 0) + amount,
+                paymentDate,
+                paymentAccountId: accountId,
+                status: (payslip.paidAmount || 0) + amount >= payslip.netSalary - 0.01 
+                    ? PayslipStatus.PAID 
+                    : PayslipStatus.PARTIALLY_PAID
+            };
+
+            newState = {
+                ...newState,
+                payslips: (newState.payslips || []).map(p => p.id === payslipId ? updatedPayslip : p)
+            };
+
+            return newState;
+        }
         case 'BULK_APPROVE_PAYSLIPS': {
             const { payslipIds, approvedBy } = action.payload;
             return {
@@ -2083,6 +2191,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 'ADD_PM_CYCLE_ALLOCATION',
                 'UPDATE_PM_CYCLE_ALLOCATION',
                 'DELETE_PM_CYCLE_ALLOCATION',
+                // Employees
+                'ADD_EMPLOYEE',
+                'UPDATE_EMPLOYEE',
+                'DELETE_EMPLOYEE',
             ]);
 
             if (!SYNC_TO_API_ACTIONS.has(action.type)) {
@@ -2214,6 +2326,67 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 console.error(`⚠️ Failed to sync contact deletion ${contactId} to API:`, {
                                     error: err,
                                     contactId: contactId,
+                                    errorMessage: err?.message || err?.error || 'Unknown error',
+                                    status: err?.status
+                                });
+                                throw err;
+                            }
+                        }
+
+                        // Handle employee changes
+                        if (action.type === 'ADD_EMPLOYEE') {
+                            const employee = action.payload;
+                            logger.logCategory('sync', `🔄 Starting sync for ADD_EMPLOYEE: ${employee.employeeId} (${employee.id})`);
+                            try {
+                                logger.logCategory('sync', `📤 Calling apiService.saveEmployee for: ${employee.employeeId}`);
+                                const savedEmployee = await apiService.saveEmployee(employee);
+                                logger.logCategory('sync', `✅ Successfully synced employee to API: ${savedEmployee.employeeId} (${savedEmployee.id})`);
+                            } catch (err: any) {
+                                logger.errorCategory('sync', `❌ FAILED to sync employee ${employee.employeeId} to API:`, {
+                                    error: err,
+                                    errorMessage: err?.message || err?.error || 'Unknown error',
+                                    status: err?.status,
+                                    statusText: err?.statusText,
+                                    employee: {
+                                        id: employee.id,
+                                        employeeId: employee.employeeId,
+                                        name: employee.personalDetails?.firstName + ' ' + employee.personalDetails?.lastName
+                                    },
+                                    fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
+                                });
+                                // Don't re-throw - log and continue, data is saved locally
+                            }
+                        } else if (action.type === 'UPDATE_EMPLOYEE') {
+                            const employee = action.payload;
+                            logger.logCategory('sync', `🔄 Starting sync for UPDATE_EMPLOYEE: ${employee.employeeId} (${employee.id})`);
+                            try {
+                                logger.logCategory('sync', `📤 Calling apiService.saveEmployee for update: ${employee.employeeId}`);
+                                const savedEmployee = await apiService.saveEmployee(employee);
+                                logger.logCategory('sync', `✅ Successfully synced employee update to API: ${savedEmployee.employeeId} (${savedEmployee.id})`);
+                            } catch (err: any) {
+                                logger.errorCategory('sync', `❌ FAILED to sync employee update ${employee.employeeId} to API:`, {
+                                    error: err,
+                                    errorMessage: err?.message || err?.error || 'Unknown error',
+                                    status: err?.status,
+                                    statusText: err?.statusText,
+                                    employee: {
+                                        id: employee.id,
+                                        employeeId: employee.employeeId,
+                                        name: employee.personalDetails?.firstName + ' ' + employee.personalDetails?.lastName
+                                    },
+                                    fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
+                                });
+                                // Don't re-throw - log and continue
+                            }
+                        } else if (action.type === 'DELETE_EMPLOYEE') {
+                            const employeeId = action.payload as string;
+                            try {
+                                await apiService.deleteEmployee(employeeId);
+                                logger.logCategory('sync', '✅ Synced employee deletion to API:', employeeId);
+                            } catch (err: any) {
+                                console.error(`⚠️ Failed to sync employee deletion ${employeeId} to API:`, {
+                                    error: err,
+                                    employeeId: employeeId,
                                     errorMessage: err?.message || err?.error || 'Unknown error',
                                     status: err?.status
                                 });
@@ -2680,6 +2853,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         return { type: 'sales_return', action: 'update', data: action.payload };
                     case 'DELETE_SALES_RETURN':
                         return { type: 'sales_return', action: 'delete', data: { id: action.payload } };
+                    case 'ADD_EMPLOYEE':
+                        return { type: 'employee', action: 'create', data: action.payload };
+                    case 'UPDATE_EMPLOYEE':
+                        return { type: 'employee', action: 'update', data: action.payload };
+                    case 'DELETE_EMPLOYEE':
+                        return { type: 'employee', action: 'delete', data: { id: action.payload } };
                     default:
                         return null;
                 }
@@ -2812,7 +2991,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (apiState.rentalAgreements) updates.rentalAgreements = mergeById(currentState.rentalAgreements, apiState.rentalAgreements);
             if (apiState.projectAgreements) updates.projectAgreements = mergeById(currentState.projectAgreements, apiState.projectAgreements);
             if (apiState.salesReturns) updates.salesReturns = mergeById(currentState.salesReturns, apiState.salesReturns);
-            if (apiState.categories) updates.categories = mergeById(currentState.categories, apiState.categories);
+            // Merge categories: ensure system categories are always included
+            if (apiState.categories) {
+                // First merge API categories with local
+                const mergedApiLocal = mergeById(currentState.categories, apiState.categories);
+                // Then ensure all system categories are included (they may be missing if not synced yet)
+                const systemCategoryIds = new Set(SYSTEM_CATEGORIES.map(c => c.id));
+                const userCategories = mergedApiLocal.filter(c => !systemCategoryIds.has(c.id));
+                const existingSystemCategories = mergedApiLocal.filter(c => systemCategoryIds.has(c.id));
+                // Combine: existing system categories (from API with latest data) + all defined system categories (in case API is missing some) + user categories
+                const allSystemCategories = SYSTEM_CATEGORIES.map(sysCat => {
+                    const existing = existingSystemCategories.find(c => c.id === sysCat.id);
+                    return existing || sysCat; // Use API version if exists, otherwise use local definition
+                });
+                updates.categories = [...allSystemCategories, ...userCategories];
+            }
             if (apiState.accounts) updates.accounts = mergeById(currentState.accounts, apiState.accounts);
             if (apiState.projects) updates.projects = mergeById(currentState.projects, apiState.projects);
             if (apiState.buildings) updates.buildings = mergeById(currentState.buildings, apiState.buildings);

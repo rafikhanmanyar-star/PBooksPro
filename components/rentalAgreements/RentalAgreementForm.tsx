@@ -475,6 +475,32 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
 
         } else if (agreementToEdit) {
             // EDITING EXISTING
+            // Check if invoices exist for this agreement
+            const hasInvoices = state.invoices.some(inv => inv.agreementId === agreementToEdit.id);
+            const isChangingStatusToRenewed = agreementData.status === RentalAgreementStatus.RENEWED && agreementToEdit.status !== RentalAgreementStatus.RENEWED;
+            
+            // If invoices exist and status is not Renewed, only allow changing status to Renewed
+            if (hasInvoices && agreementToEdit.status !== RentalAgreementStatus.RENEWED) {
+                // Allow status change to Renewed
+                if (isChangingStatusToRenewed) {
+                    // Only update status, keep all other fields unchanged
+                    dispatch({ type: 'UPDATE_RENTAL_AGREEMENT', payload: { ...agreementToEdit, status: RentalAgreementStatus.RENEWED } });
+                    showToast("Agreement status updated to Renewed.");
+                    onClose();
+                    return;
+                } else {
+                    // Prevent other changes
+                    await showAlert(
+                        'Cannot Edit Agreement\n\n' +
+                        'This agreement has invoices associated with it. ' +
+                        'To modify the agreement, you must first change its status to "Renewed". ' +
+                        'This will mark the current agreement as renewed and allow you to create a new agreement with updated terms.',
+                        { title: 'Edit Restricted' }
+                    );
+                    return;
+                }
+            }
+            
             dispatch({ type: 'UPDATE_RENTAL_AGREEMENT', payload: { ...agreementToEdit, ...agreementData } });
             showToast("Agreement updated.");
         } else {
