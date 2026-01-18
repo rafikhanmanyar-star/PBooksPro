@@ -160,8 +160,6 @@ router.post('/:id/pay', async (req: TenantRequest, res) => {
     const payslip = payslips[0];
 
     // Create transaction(s) based on cost allocations
-    const { TransactionRepository } = await import('../../services/database/repositories/index.js');
-    const transactionsRepo = new TransactionRepository();
     const transactions = [];
 
     if (payslip.cost_allocations && Array.isArray(payslip.cost_allocations) && payslip.cost_allocations.length > 0) {
