@@ -982,10 +982,12 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
     po_number TEXT NOT NULL UNIQUE,
     buyer_tenant_id TEXT NOT NULL,
     supplier_tenant_id TEXT NOT NULL,
+    project_id TEXT,
     total_amount REAL NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('DRAFT', 'SENT', 'RECEIVED', 'INVOICED', 'DELIVERED', 'COMPLETED')) DEFAULT 'DRAFT',
     items TEXT NOT NULL, -- JSON array of POItem
     description TEXT,
+    target_delivery_date TEXT,
     created_by TEXT,
     sent_at TEXT,
     received_at TEXT,
@@ -1085,6 +1087,11 @@ CREATE TABLE IF NOT EXISTS supplier_registration_requests (
     reviewed_at TEXT,
     reviewed_by TEXT,
     tenant_id TEXT NOT NULL,
+    reg_supplier_name TEXT,
+    reg_supplier_company TEXT,
+    reg_supplier_contact_no TEXT,
+    reg_supplier_address TEXT,
+    reg_supplier_description TEXT,
     FOREIGN KEY (supplier_tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (buyer_tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
 );
@@ -1105,6 +1112,11 @@ CREATE TABLE IF NOT EXISTS registered_suppliers (
     status TEXT NOT NULL CHECK (status IN ('ACTIVE', 'SUSPENDED', 'REMOVED')) DEFAULT 'ACTIVE',
     notes TEXT,
     tenant_id TEXT NOT NULL,
+    supplier_name TEXT,
+    supplier_company TEXT,
+    supplier_contact_no TEXT,
+    supplier_address TEXT,
+    supplier_description TEXT,
     FOREIGN KEY (buyer_tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (supplier_tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     UNIQUE(buyer_tenant_id, supplier_tenant_id)

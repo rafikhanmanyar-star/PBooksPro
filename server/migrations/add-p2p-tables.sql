@@ -192,6 +192,11 @@ CREATE TABLE IF NOT EXISTS supplier_registration_requests (
     reviewed_at TIMESTAMP,
     reviewed_by TEXT,
     tenant_id TEXT NOT NULL,
+    reg_supplier_name TEXT,
+    reg_supplier_company TEXT,
+    reg_supplier_contact_no TEXT,
+    reg_supplier_address TEXT,
+    reg_supplier_description TEXT,
     FOREIGN KEY (supplier_tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (buyer_tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
@@ -222,6 +227,11 @@ CREATE TABLE IF NOT EXISTS registered_suppliers (
         CHECK (status IN ('ACTIVE', 'SUSPENDED', 'REMOVED')),
     notes TEXT, -- Optional notes from buyer
     tenant_id TEXT NOT NULL, -- Buyer's tenant_id for multi-tenancy
+    supplier_name TEXT, -- Supplier name from registration
+    supplier_company TEXT, -- Supplier company from registration
+    supplier_contact_no TEXT, -- Supplier contact number from registration
+    supplier_address TEXT, -- Supplier address from registration
+    supplier_description TEXT, -- Supplier description from registration
     FOREIGN KEY (buyer_tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (supplier_tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (registration_request_id) REFERENCES supplier_registration_requests(id) ON DELETE SET NULL,

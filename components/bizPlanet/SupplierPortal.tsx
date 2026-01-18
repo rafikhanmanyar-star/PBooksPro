@@ -55,6 +55,12 @@ const SupplierPortal: React.FC = () => {
     const [selectedBuyerTenantId, setSelectedBuyerTenantId] = useState('');
     const [supplierMessage, setSupplierMessage] = useState('');
     const [availableBuyers, setAvailableBuyers] = useState<Array<{ id: string; name: string; email: string }>>([]);
+    // Additional supplier registration fields
+    const [regSupplierName, setRegSupplierName] = useState('');
+    const [regSupplierCompany, setRegSupplierCompany] = useState('');
+    const [regSupplierContactNo, setRegSupplierContactNo] = useState('');
+    const [regSupplierAddress, setRegSupplierAddress] = useState('');
+    const [regSupplierDescription, setRegSupplierDescription] = useState('');
 
     // Save read notifications to localStorage
     useEffect(() => {
@@ -301,10 +307,25 @@ const SupplierPortal: React.FC = () => {
             return;
         }
 
+        // Validate required supplier fields
+        if (!regSupplierName.trim()) {
+            showAlert('Please enter supplier name');
+            return;
+        }
+        if (!regSupplierCompany.trim()) {
+            showAlert('Please enter supplier company');
+            return;
+        }
+
         try {
             await apiClient.post('/supplier-registrations/request', {
                 buyerOrganizationEmail: buyerOrganizationEmail.trim(),
-                supplierMessage: supplierMessage.trim() || undefined
+                supplierMessage: supplierMessage.trim() || undefined,
+                regSupplierName: regSupplierName.trim(),
+                regSupplierCompany: regSupplierCompany.trim(),
+                regSupplierContactNo: regSupplierContactNo.trim() || undefined,
+                regSupplierAddress: regSupplierAddress.trim() || undefined,
+                regSupplierDescription: regSupplierDescription.trim() || undefined
             });
             
             showToast('Registration request sent successfully');
@@ -312,6 +333,11 @@ const SupplierPortal: React.FC = () => {
             // Reset form
             setBuyerOrganizationEmail('');
             setSupplierMessage('');
+            setRegSupplierName('');
+            setRegSupplierCompany('');
+            setRegSupplierContactNo('');
+            setRegSupplierAddress('');
+            setRegSupplierDescription('');
             setIsRegistrationFormOpen(false);
             
             // Reload requests
@@ -586,41 +612,103 @@ const SupplierPortal: React.FC = () => {
                 <div className="flex-shrink-0 p-2 sm:p-4 bg-blue-50/50 border-b border-blue-200">
                     <Card className="p-3 sm:p-4 border border-blue-200">
                         <h2 className="text-xs sm:text-sm font-semibold text-slate-900 mb-2 sm:mb-3">Register with Buyer Organization</h2>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
-                            <Input
-                                label="Buyer Email *"
-                                type="email"
-                                value={buyerOrganizationEmail}
-                                onChange={(e) => setBuyerOrganizationEmail(e.target.value)}
-                                placeholder="buyer@company.com"
-                                required
-                            />
-                            <div>
-                                <label className="block text-[10px] sm:text-xs font-medium text-slate-700 mb-1">Message (Optional)</label>
-                                <input
-                                    type="text"
-                                    className="block w-full px-2 sm:px-3 py-1.5 sm:py-2 border rounded-lg shadow-sm placeholder-gray-400 focus:outline-none text-xs sm:text-sm focus:ring-2 focus:ring-green-500/50 focus:border-green-500 border-gray-300 transition-colors"
-                                    value={supplierMessage}
-                                    onChange={(e) => setSupplierMessage(e.target.value)}
-                                    placeholder="Optional message"
+                        <div className="space-y-3">
+                            {/* Buyer Information */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+                                <Input
+                                    label="Buyer Email *"
+                                    type="email"
+                                    value={buyerOrganizationEmail}
+                                    onChange={(e) => setBuyerOrganizationEmail(e.target.value)}
+                                    placeholder="buyer@company.com"
+                                    required
                                 />
+                                <div>
+                                    <label className="block text-[10px] sm:text-xs font-medium text-slate-700 mb-1">Message (Optional)</label>
+                                    <input
+                                        type="text"
+                                        className="block w-full px-2 sm:px-3 py-1.5 sm:py-2 border rounded-lg shadow-sm placeholder-gray-400 focus:outline-none text-xs sm:text-sm focus:ring-2 focus:ring-green-500/50 focus:border-green-500 border-gray-300 transition-colors"
+                                        value={supplierMessage}
+                                        onChange={(e) => setSupplierMessage(e.target.value)}
+                                        placeholder="Optional message to buyer"
+                                    />
+                                </div>
                             </div>
-                            <div className="flex items-end gap-2 col-span-1 sm:col-span-2 md:col-span-1">
+                            
+                            {/* Supplier Details Section */}
+                            <div className="border-t border-blue-200 pt-3">
+                                <h3 className="text-[10px] sm:text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">Supplier Information</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
+                                    <Input
+                                        label="Supplier Name *"
+                                        type="text"
+                                        value={regSupplierName}
+                                        onChange={(e) => setRegSupplierName(e.target.value)}
+                                        placeholder="Contact person name"
+                                        required
+                                    />
+                                    <Input
+                                        label="Supplier Company *"
+                                        type="text"
+                                        value={regSupplierCompany}
+                                        onChange={(e) => setRegSupplierCompany(e.target.value)}
+                                        placeholder="Company name"
+                                        required
+                                    />
+                                    <Input
+                                        label="Contact No"
+                                        type="text"
+                                        value={regSupplierContactNo}
+                                        onChange={(e) => setRegSupplierContactNo(e.target.value)}
+                                        placeholder="Phone number"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mt-2 sm:mt-3">
+                                    <div>
+                                        <label className="block text-[10px] sm:text-xs font-medium text-slate-700 mb-1">Supplier Address</label>
+                                        <input
+                                            type="text"
+                                            className="block w-full px-2 sm:px-3 py-1.5 sm:py-2 border rounded-lg shadow-sm placeholder-gray-400 focus:outline-none text-xs sm:text-sm focus:ring-2 focus:ring-green-500/50 focus:border-green-500 border-gray-300 transition-colors"
+                                            value={regSupplierAddress}
+                                            onChange={(e) => setRegSupplierAddress(e.target.value)}
+                                            placeholder="Business address"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] sm:text-xs font-medium text-slate-700 mb-1">Description</label>
+                                        <input
+                                            type="text"
+                                            className="block w-full px-2 sm:px-3 py-1.5 sm:py-2 border rounded-lg shadow-sm placeholder-gray-400 focus:outline-none text-xs sm:text-sm focus:ring-2 focus:ring-green-500/50 focus:border-green-500 border-gray-300 transition-colors"
+                                            value={regSupplierDescription}
+                                            onChange={(e) => setRegSupplierDescription(e.target.value)}
+                                            placeholder="Products/services offered"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {/* Action Buttons */}
+                            <div className="flex justify-end gap-2 pt-2 border-t border-blue-200">
                                 <Button
                                     variant="secondary"
                                     onClick={() => {
                                         setBuyerOrganizationEmail('');
                                         setSupplierMessage('');
+                                        setRegSupplierName('');
+                                        setRegSupplierCompany('');
+                                        setRegSupplierContactNo('');
+                                        setRegSupplierAddress('');
+                                        setRegSupplierDescription('');
                                         setIsRegistrationFormOpen(false);
                                     }}
-                                    className="text-xs flex-1 sm:flex-none"
+                                    className="text-xs"
                                 >
                                     Cancel
                                 </Button>
                                 <Button
                                     onClick={handleSubmitRegistration}
-                                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs flex-1 sm:flex-none"
-                                    disabled={!buyerOrganizationEmail.trim()}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
+                                    disabled={!buyerOrganizationEmail.trim() || !regSupplierName.trim() || !regSupplierCompany.trim()}
                                 >
                                     Send Request
                                 </Button>

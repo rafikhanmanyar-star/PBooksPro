@@ -1372,6 +1372,8 @@ export interface PurchaseOrder {
   supplierTenantId: string;
   supplierCompanyName?: string;
   supplierName?: string;
+  projectId?: string;
+  projectName?: string;
   totalAmount: number;
   status: POStatus;
   items: POItem[];
@@ -1448,7 +1450,13 @@ export interface SupplierRegistrationRequest {
   reviewedAt?: string;
   reviewedBy?: string;
   tenantId: string;
-  // Expanded fields (for UI)
+  // Supplier-provided registration details
+  regSupplierName?: string;        // Supplier name (provided during registration)
+  regSupplierCompany?: string;     // Supplier company name
+  regSupplierContactNo?: string;   // Supplier contact number
+  regSupplierAddress?: string;     // Supplier address
+  regSupplierDescription?: string; // Description of supplier/services
+  // Expanded fields (for UI - from tenant lookup)
   supplierName?: string;
   supplierCompanyName?: string;
   buyerName?: string;

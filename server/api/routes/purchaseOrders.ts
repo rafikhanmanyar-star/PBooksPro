@@ -32,10 +32,12 @@ router.get('/', async (req: TenantRequest, res) => {
         po.po_number as "poNumber",
         po.buyer_tenant_id as "buyerTenantId",
         po.supplier_tenant_id as "supplierTenantId",
+        po.project_id as "projectId",
         po.total_amount as "totalAmount",
         po.status,
         po.items,
         po.description,
+        po.target_delivery_date as "targetDeliveryDate",
         po.created_by as "createdBy",
         po.sent_at as "sentAt",
         po.received_at as "receivedAt",
@@ -48,10 +50,12 @@ router.get('/', async (req: TenantRequest, res) => {
         bt.company_name as "buyerCompanyName",
         bt.name as "buyerName",
         st.company_name as "supplierCompanyName",
-        st.name as "supplierName"
+        st.name as "supplierName",
+        p.name as "projectName"
       FROM purchase_orders po
       LEFT JOIN tenants bt ON po.buyer_tenant_id = bt.id
       LEFT JOIN tenants st ON po.supplier_tenant_id = st.id
+      LEFT JOIN projects p ON po.project_id = p.id
       WHERE (po.tenant_id = $1 OR po.supplier_tenant_id = $1)
     `;
     const params: any[] = [req.tenantId];
@@ -96,10 +100,12 @@ router.get('/:id', async (req: TenantRequest, res) => {
         po.po_number as "poNumber",
         po.buyer_tenant_id as "buyerTenantId",
         po.supplier_tenant_id as "supplierTenantId",
+        po.project_id as "projectId",
         po.total_amount as "totalAmount",
         po.status,
         po.items,
         po.description,
+        po.target_delivery_date as "targetDeliveryDate",
         po.created_by as "createdBy",
         po.sent_at as "sentAt",
         po.received_at as "receivedAt",
@@ -112,10 +118,12 @@ router.get('/:id', async (req: TenantRequest, res) => {
         bt.company_name as "buyerCompanyName",
         bt.name as "buyerName",
         st.company_name as "supplierCompanyName",
-        st.name as "supplierName"
+        st.name as "supplierName",
+        p.name as "projectName"
       FROM purchase_orders po
       LEFT JOIN tenants bt ON po.buyer_tenant_id = bt.id
       LEFT JOIN tenants st ON po.supplier_tenant_id = st.id
+      LEFT JOIN projects p ON po.project_id = p.id
       WHERE po.id = $1 AND (po.tenant_id = $2 OR po.supplier_tenant_id = $2)`,
       [req.params.id, req.tenantId]
     );
@@ -161,18 +169,20 @@ router.post('/', async (req: TenantRequest, res) => {
     // Create PO with status DRAFT, then immediately set to SENT
     const result = await db.query(
       `INSERT INTO purchase_orders (
-        id, po_number, buyer_tenant_id, supplier_tenant_id, total_amount, status,
-        items, description, created_by, sent_at, tenant_id, user_id, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        id, po_number, buyer_tenant_id, supplier_tenant_id, project_id, total_amount, status,
+        items, description, target_delivery_date, created_by, sent_at, tenant_id, user_id, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING 
         id,
         po_number as "poNumber",
         buyer_tenant_id as "buyerTenantId",
         supplier_tenant_id as "supplierTenantId",
+        project_id as "projectId",
         total_amount as "totalAmount",
         status,
         items,
         description,
+        target_delivery_date as "targetDeliveryDate",
         created_by as "createdBy",
         sent_at as "sentAt",
         received_at as "receivedAt",
@@ -187,10 +197,12 @@ router.post('/', async (req: TenantRequest, res) => {
         poData.poNumber,
         buyerTenantId,
         poData.supplierTenantId,
+        poData.projectId || null,
         totalAmount,
         'SENT', // Automatically set to SENT on creation
         JSON.stringify(poData.items),
         poData.description || null,
+        poData.targetDeliveryDate || null,
         req.user?.userId || null,
         now, // sent_at
         req.tenantId,
@@ -309,10 +321,12 @@ router.put('/:id/status', async (req: TenantRequest, res) => {
         po_number as "poNumber",
         buyer_tenant_id as "buyerTenantId",
         supplier_tenant_id as "supplierTenantId",
+        project_id as "projectId",
         total_amount as "totalAmount",
         status,
         items,
         description,
+        target_delivery_date as "targetDeliveryDate",
         created_by as "createdBy",
         sent_at as "sentAt",
         received_at as "receivedAt",

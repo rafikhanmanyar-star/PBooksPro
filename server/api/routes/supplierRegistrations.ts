@@ -13,7 +13,15 @@ const getDb = () => getDatabaseService();
 router.post('/request', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
-    const { buyerOrganizationEmail, supplierMessage } = req.body;
+    const { 
+      buyerOrganizationEmail, 
+      supplierMessage,
+      regSupplierName,
+      regSupplierCompany,
+      regSupplierContactNo,
+      regSupplierAddress,
+      regSupplierDescription
+    } = req.body;
     const supplierTenantId = req.tenantId;
 
     if (!supplierTenantId) {
@@ -84,14 +92,21 @@ router.post('/request', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'You are already registered with this organization' });
     }
 
+    // Validate required supplier fields
+    if (!regSupplierName || !regSupplierCompany) {
+      return res.status(400).json({ error: 'Supplier name and company are required' });
+    }
+
     // Create registration request
     const requestId = `sr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const request = await db.query(
       `INSERT INTO supplier_registration_requests 
-       (id, supplier_tenant_id, buyer_tenant_id, buyer_organization_email, status, supplier_message, tenant_id)
-       VALUES ($1, $2, $3, $4, 'PENDING', $5, $6)
+       (id, supplier_tenant_id, buyer_tenant_id, buyer_organization_email, status, supplier_message, tenant_id,
+        reg_supplier_name, reg_supplier_company, reg_supplier_contact_no, reg_supplier_address, reg_supplier_description)
+       VALUES ($1, $2, $3, $4, 'PENDING', $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
-      [requestId, supplierTenantId, buyerTenant.id, buyerOrganizationEmail, supplierMessage || null, supplierTenantId]
+      [requestId, supplierTenantId, buyerTenant.id, buyerOrganizationEmail, supplierMessage || null, supplierTenantId,
+       regSupplierName, regSupplierCompany, regSupplierContactNo || null, regSupplierAddress || null, regSupplierDescription || null]
     );
 
     // Emit WebSocket event to buyer
@@ -155,6 +170,13 @@ router.get('/requests', async (req: TenantRequest, res) => {
       reviewedAt: req.reviewed_at,
       reviewedBy: req.reviewed_by,
       tenantId: req.tenant_id,
+      // Supplier-provided registration details
+      regSupplierName: req.reg_supplier_name,
+      regSupplierCompany: req.reg_supplier_company,
+      regSupplierContactNo: req.reg_supplier_contact_no,
+      regSupplierAddress: req.reg_supplier_address,
+      regSupplierDescription: req.reg_supplier_description,
+      // Expanded fields from tenant lookup
       supplierName: req.supplier_name,
       supplierCompanyName: req.supplier_company_name,
       buyerName: req.buyer_name,
@@ -204,6 +226,13 @@ router.get('/my-requests', async (req: TenantRequest, res) => {
       reviewedAt: req.reviewed_at,
       reviewedBy: req.reviewed_by,
       tenantId: req.tenant_id,
+      // Supplier-provided registration details
+      regSupplierName: req.reg_supplier_name,
+      regSupplierCompany: req.reg_supplier_company,
+      regSupplierContactNo: req.reg_supplier_contact_no,
+      regSupplierAddress: req.reg_supplier_address,
+      regSupplierDescription: req.reg_supplier_description,
+      // Expanded fields from tenant lookup
       buyerName: req.buyer_name,
       buyerCompanyName: req.buyer_company_name
     }));
@@ -258,20 +287,74 @@ router.put('/:id/approve', async (req: TenantRequest, res) => {
       [comments || null, buyerTenantId, requestId]
     );
 
-    // Create entry in registered_suppliers table
+    // Create entry in registered_suppliers table with supplier details from registration request
     const registrationId = `reg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     try {
       await db.query(
         `INSERT INTO registered_suppliers 
-         (id, buyer_tenant_id, supplier_tenant_id, registration_request_id, registered_at, registered_by, status, notes, tenant_id)
-         VALUES ($1, $2, $3, $4, NOW(), $5, 'ACTIVE', $6, $7)
+         (id, buyer_tenant_id, supplier_tenant_id, registration_request_id, registered_at, registered_by, status, notes, tenant_id,
+          supplier_name, supplier_company, supplier_contact_no, supplier_address, supplier_description)
+         VALUES ($1, $2, $3, $4, NOW(), $5, 'ACTIVE', $6, $7, $8, $9, $10, $11, $12)
          ON CONFLICT (buyer_tenant_id, supplier_tenant_id) 
-         DO UPDATE SET status = 'ACTIVE', registered_at = NOW(), registration_request_id = $4, registered_by = $5, notes = $6`,
-        [registrationId, buyerTenantId, request.supplier_tenant_id, requestId, buyerTenantId, comments || null, buyerTenantId]
+         DO UPDATE SET status = 'ACTIVE', registered_at = NOW(), registration_request_id = $4, registered_by = $5, notes = $6,
+           supplier_name = $8, supplier_company = $9, supplier_contact_no = $10, supplier_address = $11, supplier_description = $12`,
+        [registrationId, buyerTenantId, request.supplier_tenant_id, requestId, buyerTenantId, comments || null, buyerTenantId,
+         request.reg_supplier_name, request.reg_supplier_company, request.reg_supplier_contact_no, 
+         request.reg_supplier_address, request.reg_supplier_description]
       );
     } catch (error: any) {
       console.error('Error creating registered_suppliers entry:', error);
       // Continue even if this fails - the request is still approved
+    }
+
+    // Also create/update a contact in the vendor directory for this supplier
+    try {
+      const supplierCompany = request.reg_supplier_company || 'Supplier';
+      const supplierName = request.reg_supplier_name || supplierCompany;
+      const supplierContactNo = request.reg_supplier_contact_no || '';
+      const supplierAddress = request.reg_supplier_address || '';
+      const supplierDescription = request.reg_supplier_description || '';
+
+      // Check if a contact already exists for this supplier
+      const existingContact = await db.query(
+        `SELECT id FROM contacts WHERE tenant_id = $1 AND contact_type = 'Vendor' AND company_name = $2 LIMIT 1`,
+        [buyerTenantId, supplierCompany]
+      );
+
+      if (existingContact && existingContact.length > 0) {
+        // Update existing contact with latest info
+        await db.query(
+          `UPDATE contacts SET 
+            name = $1, phone = $2, address = $3, notes = $4, updated_at = NOW()
+           WHERE id = $5`,
+          [supplierName, supplierContactNo, supplierAddress, supplierDescription, existingContact[0].id]
+        );
+        console.log(`Updated vendor contact for supplier: ${supplierCompany}`);
+      } else {
+        // Create new contact in vendor directory
+        const contactId = `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        await db.query(
+          `INSERT INTO contacts (id, name, company_name, phone, address, notes, contact_type, tenant_id, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, 'Vendor', $7, NOW(), NOW())`,
+          [contactId, supplierName, supplierCompany, supplierContactNo, supplierAddress, supplierDescription, buyerTenantId]
+        );
+        console.log(`Created vendor contact for supplier: ${supplierCompany} (${contactId})`);
+        
+        // Emit WebSocket event for new contact
+        emitToTenant(buyerTenantId, WS_EVENTS.CONTACT_CREATED, {
+          id: contactId,
+          name: supplierName,
+          companyName: supplierCompany,
+          phone: supplierContactNo,
+          address: supplierAddress,
+          notes: supplierDescription,
+          contactType: 'Vendor',
+          tenantId: buyerTenantId
+        });
+      }
+    } catch (contactError: any) {
+      console.error('Error creating/updating vendor contact:', contactError);
+      // Continue even if this fails - the registration is still approved
     }
 
     // Emit WebSocket event to supplier
@@ -368,7 +451,10 @@ router.get('/registered', async (req: TenantRequest, res) => {
     const suppliers = await db.query(
       `SELECT t.id, t.name, t.company_name, t.email, t.phone, t.address,
               t.tax_id, t.payment_terms, t.supplier_category, t.supplier_status,
-              rs.registered_at, rs.status as registration_status, rs.notes
+              rs.registered_at, rs.status as registration_status, rs.notes,
+              rs.supplier_name as reg_supplier_name, rs.supplier_company as reg_supplier_company,
+              rs.supplier_contact_no as reg_supplier_contact_no, rs.supplier_address as reg_supplier_address,
+              rs.supplier_description as reg_supplier_description
        FROM registered_suppliers rs
        INNER JOIN tenants t ON rs.supplier_tenant_id = t.id
        WHERE rs.buyer_tenant_id = $1 
@@ -378,7 +464,28 @@ router.get('/registered', async (req: TenantRequest, res) => {
       [buyerTenantId]
     );
 
-    res.json(suppliers);
+    // Map to include both tenant info and registration details (prefer registration details if available)
+    const mappedSuppliers = suppliers.map((s: any) => ({
+      id: s.id,
+      // Use registration details if available, fallback to tenant info
+      name: s.reg_supplier_name || s.name,
+      companyName: s.reg_supplier_company || s.company_name,
+      contactNo: s.reg_supplier_contact_no || s.phone,
+      address: s.reg_supplier_address || s.address,
+      description: s.reg_supplier_description,
+      // Original tenant info
+      email: s.email,
+      phone: s.phone,
+      taxId: s.tax_id,
+      paymentTerms: s.payment_terms,
+      supplierCategory: s.supplier_category,
+      supplierStatus: s.supplier_status,
+      registeredAt: s.registered_at,
+      registrationStatus: s.registration_status,
+      notes: s.notes
+    }));
+
+    res.json(mappedSuppliers);
   } catch (error: any) {
     console.error('Error fetching registered suppliers:', error);
     res.status(500).json({ error: 'Failed to fetch registered suppliers' });

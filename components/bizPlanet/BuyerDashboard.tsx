@@ -275,6 +275,7 @@ const BuyerDashboard: React.FC = () => {
             const poData = {
                 poNumber,
                 supplierTenantId,
+                projectId,
                 targetDeliveryDate,
                 items: items.map(item => ({
                     id: item.id,
@@ -540,14 +541,33 @@ const BuyerDashboard: React.FC = () => {
                                     Pending Registration Requests ({registrationRequests.length})
                                 </h2>
                             </div>
-                            <div className="max-h-40 overflow-auto divide-y divide-slate-100">
+                            <div className="max-h-64 overflow-auto divide-y divide-slate-100">
                                 {registrationRequests.map(request => (
                                     <div key={request.id} className="px-2 sm:px-3 py-2 hover:bg-slate-50">
                                         <div className="flex items-start justify-between gap-2">
                                             <div className="min-w-0 flex-1">
-                                                <p className="text-xs font-medium text-slate-900 truncate">{request.supplierCompanyName || request.supplierName || 'N/A'}</p>
-                                                <p className="text-[10px] text-slate-500 truncate">{request.buyerOrganizationEmail}</p>
-                                                {request.supplierMessage && <p className="text-[10px] text-slate-400 truncate mt-0.5">{request.supplierMessage}</p>}
+                                                {/* Supplier Company and Name from registration */}
+                                                <p className="text-xs font-semibold text-slate-900 truncate">
+                                                    {request.regSupplierCompany || request.supplierCompanyName || request.regSupplierName || request.supplierName || 'N/A'}
+                                                </p>
+                                                {request.regSupplierName && (
+                                                    <p className="text-[10px] text-slate-600 truncate">Contact: {request.regSupplierName}</p>
+                                                )}
+                                                {request.regSupplierContactNo && (
+                                                    <p className="text-[10px] text-slate-500 truncate">Tel: {request.regSupplierContactNo}</p>
+                                                )}
+                                                {request.regSupplierAddress && (
+                                                    <p className="text-[10px] text-slate-500 truncate">Address: {request.regSupplierAddress}</p>
+                                                )}
+                                                {request.regSupplierDescription && (
+                                                    <p className="text-[10px] text-slate-400 truncate mt-0.5 italic">{request.regSupplierDescription}</p>
+                                                )}
+                                                {request.supplierMessage && (
+                                                    <p className="text-[10px] text-blue-500 truncate mt-0.5">Message: {request.supplierMessage}</p>
+                                                )}
+                                                <p className="text-[9px] text-slate-400 mt-1">
+                                                    Requested: {new Date(request.requestedAt).toLocaleDateString()}
+                                                </p>
                                             </div>
                                             <div className="flex gap-1 flex-shrink-0">
                                                 <Button

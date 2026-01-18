@@ -245,6 +245,7 @@ router.post('/flip-from-po/:poId', async (req: TenantRequest, res) => {
 /**
  * PUT /api/p2p-invoices/:id/approve
  * Buyer approves invoice
+ * When approved, automatically creates a bill in the buyer's project bills section with UNPAID status
  */
 router.put('/:id/approve', async (req: TenantRequest, res) => {
   try {
@@ -269,6 +270,14 @@ router.put('/:id/approve', async (req: TenantRequest, res) => {
     } catch (error: any) {
       return res.status(400).json({ error: error.message });
     }
+
+    // Get the PO to fetch project_id and supplier information
+    const poResult = await db.query(
+      'SELECT po.*, t.name as supplier_name, t.company_name as supplier_company_name FROM purchase_orders po LEFT JOIN tenants t ON po.supplier_tenant_id = t.id WHERE po.id = $1',
+      [invoice.po_id]
+    );
+
+    const po = poResult && poResult.length > 0 ? poResult[0] : null;
 
     // Update status to APPROVED
     const now = new Date().toISOString();
@@ -306,6 +315,116 @@ router.put('/:id/approve', async (req: TenantRequest, res) => {
       items: typeof result[0].items === 'string' ? JSON.parse(result[0].items) : result[0].items
     };
 
+    // Create a bill in the buyer's bills table with UNPAID status
+    let createdBill = null;
+    try {
+      // Get supplier information from registered_suppliers table (created during registration approval)
+      const registeredSupplierResult = await db.query(
+        `SELECT * FROM registered_suppliers 
+         WHERE buyer_tenant_id = $1 AND supplier_tenant_id = $2 AND status = 'ACTIVE'`,
+        [req.tenantId, invoice.supplier_tenant_id]
+      );
+      
+      const registeredSupplier = registeredSupplierResult && registeredSupplierResult.length > 0 
+        ? registeredSupplierResult[0] 
+        : null;
+      
+      // Get supplier name and company from registered_suppliers or fallback to PO/tenant info
+      const supplierCompany = registeredSupplier?.supplier_company || po?.supplier_company_name || 'Supplier';
+      const supplierName = registeredSupplier?.supplier_name || po?.supplier_name || supplierCompany;
+      const supplierContactNo = registeredSupplier?.supplier_contact_no || '';
+      const supplierAddress = registeredSupplier?.supplier_address || '';
+      
+      // Find existing contact in vendor directory by matching company name or supplier tenant ID
+      let contactId = null;
+      
+      // First try to find by company name (exact match first)
+      let existingContact = await db.query(
+        `SELECT id FROM contacts WHERE tenant_id = $1 AND contact_type = 'Vendor' AND company_name = $2 LIMIT 1`,
+        [req.tenantId, supplierCompany]
+      );
+      
+      // If not found, try partial match
+      if (!existingContact || existingContact.length === 0) {
+        existingContact = await db.query(
+          `SELECT id FROM contacts WHERE tenant_id = $1 AND contact_type = 'Vendor' AND (name ILIKE $2 OR company_name ILIKE $2) LIMIT 1`,
+          [req.tenantId, `%${supplierCompany}%`]
+        );
+      }
+      
+      if (existingContact && existingContact.length > 0) {
+        contactId = existingContact[0].id;
+      } else {
+        // Create a new contact for this supplier using registered supplier info
+        const newContactId = `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        await db.query(
+          `INSERT INTO contacts (id, name, company_name, phone, address, contact_type, tenant_id, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, 'Vendor', $6, NOW(), NOW())`,
+          [newContactId, supplierName, supplierCompany, supplierContactNo, supplierAddress, req.tenantId]
+        );
+        contactId = newContactId;
+        console.log(`Created new vendor contact for supplier: ${supplierCompany} (${newContactId})`);
+      }
+
+      // Generate bill number
+      const billNumber = `BILL-${invoice.invoice_number}`;
+      const billId = `bill_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Calculate due date (Net 30 from approval date by default)
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + 30);
+      const dueDateStr = dueDate.toISOString().split('T')[0];
+
+      // Get category from PO items if available
+      const items = typeof invoice.items === 'string' ? JSON.parse(invoice.items) : invoice.items;
+      const categoryId = items && items.length > 0 && items[0].categoryId ? items[0].categoryId : null;
+
+      // Build description with PO number
+      const poNumber = po?.po_number || 'N/A';
+      const billDescription = `PO: ${poNumber} | Invoice: ${invoice.invoice_number} | Vendor: ${supplierCompany}`;
+
+      // Create bill in bills table
+      const billResult = await db.query(
+        `INSERT INTO bills (
+          id, tenant_id, bill_number, contact_id, amount, paid_amount, status,
+          issue_date, due_date, description, category_id, project_id,
+          user_id, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
+        RETURNING *`,
+        [
+          billId,
+          req.tenantId,
+          billNumber,
+          contactId,
+          parseFloat(invoice.amount) || 0,
+          0, // paid_amount starts at 0
+          'Unpaid', // UNPAID status
+          now.split('T')[0], // issue_date is today
+          dueDateStr,
+          billDescription,
+          categoryId,
+          po?.project_id || null, // Link to project from PO
+          req.user?.userId || null
+        ]
+      );
+
+      if (billResult && billResult.length > 0) {
+        createdBill = billResult[0];
+        console.log(`Bill created from approved invoice: ${billNumber}, Project: ${po?.project_id || 'None'}, Vendor: ${supplierCompany}`);
+        
+        // Emit WebSocket event for the new bill
+        emitToTenant(req.tenantId!, WS_EVENTS.BILL_CREATED, {
+          bill: createdBill,
+          userId: req.user?.userId,
+          source: 'p2p_invoice_approval'
+        });
+      }
+    } catch (billError: any) {
+      console.error('Error creating bill from approved invoice:', billError);
+      // Don't fail the invoice approval if bill creation fails
+      // The invoice is already approved
+    }
+
     // Log audit trail
     if (req.tenantId) {
       await logStatusChange('INVOICE', req.params.id, 'APPROVED', invoice.status, 'APPROVED', req.user?.userId, req.tenantId, reason);
@@ -319,7 +438,13 @@ router.put('/:id/approve', async (req: TenantRequest, res) => {
       emitToTenant(invoice.supplier_tenant_id, WS_EVENTS.P2P_INVOICE_UPDATED, updatedInvoice);
     }
 
-    res.json(updatedInvoice);
+    // Return the invoice with bill info if created
+    res.json({
+      ...updatedInvoice,
+      billCreated: !!createdBill,
+      billId: createdBill?.id,
+      billNumber: createdBill?.bill_number
+    });
   } catch (error: any) {
     console.error('Error approving invoice:', error);
     res.status(500).json({ error: 'Failed to approve invoice' });
