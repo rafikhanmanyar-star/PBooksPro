@@ -538,8 +538,14 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, accounts: state.accounts.filter(a => a.id !== action.payload) };
 
         // --- CONTACT HANDLERS ---
-        case 'ADD_CONTACT':
-            return { ...state, contacts: [...state.contacts, action.payload] };
+        case 'ADD_CONTACT': {
+            const contactToAdd = action.payload;
+            // Prevent duplicate contacts by ID
+            if (state.contacts.find(c => c.id === contactToAdd.id)) {
+                return state; // Already exists
+            }
+            return { ...state, contacts: [...state.contacts, contactToAdd] };
+        }
         case 'UPDATE_CONTACT':
             return { ...state, contacts: state.contacts.map(c => c.id === action.payload.id ? action.payload : c) };
         case 'DELETE_CONTACT':

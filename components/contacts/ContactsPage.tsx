@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { Contact, ContactType, TransactionType, LoanSubtype } from '../../types';
 import ContactForm from '../settings/ContactForm';
@@ -28,6 +28,7 @@ const ContactsPage: React.FC = () => {
     const [contactToEdit, setContactToEdit] = useState<Contact | null>(null);
     const [ledgerModal, setLedgerModal] = useState<{ isOpen: boolean; contact: Contact | null }>({ isOpen: false, contact: null });
     const [whatsAppModal, setWhatsAppModal] = useState<{ isOpen: boolean; contact: Contact | null }>({ isOpen: false, contact: null });
+    const isSubmittingRef = useRef(false);
 
     const TABS = ['All', 'Owners', 'Tenants', 'Brokers', 'Friends & Family'];
 
@@ -104,13 +105,28 @@ const ContactsPage: React.FC = () => {
     );
 
     const handleSaveContact = (contactData: Omit<Contact, 'id'>) => {
-        if (contactToEdit) {
-            dispatch({ type: 'UPDATE_CONTACT', payload: { ...contactToEdit, ...contactData } });
-        } else {
-            dispatch({ type: 'ADD_CONTACT', payload: { ...contactData, id: Date.now().toString() } });
+        // Prevent multiple submissions
+        if (isSubmittingRef.current) {
+            return;
         }
-        setIsModalOpen(false);
-        setContactToEdit(null);
+        isSubmittingRef.current = true;
+
+        try {
+            if (contactToEdit) {
+                dispatch({ type: 'UPDATE_CONTACT', payload: { ...contactToEdit, ...contactData } });
+            } else {
+                // Generate a unique ID that includes timestamp and random component
+                const contactId = `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                dispatch({ type: 'ADD_CONTACT', payload: { ...contactData, id: contactId } });
+            }
+            setIsModalOpen(false);
+            setContactToEdit(null);
+        } finally {
+            // Reset after a short delay to allow the action to process
+            setTimeout(() => {
+                isSubmittingRef.current = false;
+            }, 1000);
+        }
     };
 
     const handleDeleteContact = async () => {
@@ -118,20 +134,27 @@ const ContactsPage: React.FC = () => {
         const confirmed = await showConfirm(`Are you sure you want to delete "${contactToEdit.name}"? This cannot be undone.`);
         if (confirmed) {
             dispatch({ type: 'DELETE_CONTACT', payload: contactToEdit.id });
-            setIsModalOpen(false);
-            setContactToEdit(null);
+            handleCloseModal();
         }
     };
     
     const openAddModal = () => {
         setContactToEdit(null);
+        isSubmittingRef.current = false; // Reset submission guard
         setIsModalOpen(true);
     };
 
     const openEditModal = (contact: Contact, e: React.MouseEvent) => {
         e.stopPropagation();
         setContactToEdit(contact);
+        isSubmittingRef.current = false; // Reset submission guard
         setIsModalOpen(true);
+    };
+
+    const handleCloseModal = () => {
+        setIsModalOpen(false);
+        setContactToEdit(null);
+        isSubmittingRef.current = false; // Reset submission guard
     };
 
     const openLedger = (contact: Contact) => {
@@ -299,10 +322,10 @@ const ContactsPage: React.FC = () => {
                 </div>
             </div>
 
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={contactToEdit ? `Edit Contact` : `New Contact`}>
+            <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={contactToEdit ? `Edit Contact` : `New Contact`}>
                 <ContactForm 
                     onSubmit={handleSaveContact} 
-                    onCancel={() => setIsModalOpen(false)} 
+                    onCancel={handleCloseModal} 
                     contactToEdit={contactToEdit || undefined}
                     onDelete={handleDeleteContact}
                     existingContacts={state.contacts}

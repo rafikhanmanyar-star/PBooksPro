@@ -14,7 +14,8 @@
     "create-admin": "tsx scripts/create-admin-user.ts",
     "reset-admin": "tsx scripts/reset-admin-password.ts",
     "test-admin": "tsx scripts/test-admin-login.ts",
-    "test-whatsapp": "tsx scripts/test-whatsapp-api.ts"
+    "test-whatsapp": "tsx scripts/test-whatsapp-api.ts",
+    "verify-rental-migration": "tsx scripts/verify-rental-agreements-migration.ts"
   },
   "dependencies": {
     "axios": "^1.13.2",
