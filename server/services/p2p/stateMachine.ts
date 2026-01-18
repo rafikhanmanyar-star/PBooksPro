@@ -34,7 +34,12 @@ export function canTransitionPO(from: string, to: string): boolean {
     return false;
   }
   const validNextStates = VALID_TRANSITIONS.PO[from as POStatusKey];
-  return validNextStates ? validNextStates.includes(to as any) : false;
+  if (!validNextStates) {
+    return false;
+  }
+  // Convert readonly array to regular array for includes check
+  const states = [...validNextStates];
+  return states.includes(to);
 }
 
 /**
@@ -45,7 +50,12 @@ export function canTransitionInvoice(from: string, to: string): boolean {
     return false;
   }
   const validNextStates = VALID_TRANSITIONS.INVOICE[from as InvoiceStatusKey];
-  return validNextStates ? validNextStates.includes(to as any) : false;
+  if (!validNextStates) {
+    return false;
+  }
+  // Convert readonly array to regular array for includes check
+  const states = [...validNextStates];
+  return states.includes(to);
 }
 
 /**
