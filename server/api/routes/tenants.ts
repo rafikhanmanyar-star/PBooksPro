@@ -13,7 +13,7 @@ router.get('/me', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const tenants = await db.query(
-      'SELECT id, name, company_name, email, license_type, license_status, license_expiry_date, trial_start_date FROM tenants WHERE id = $1',
+      'SELECT id, name, company_name, email, license_type, license_status, license_expiry_date, trial_start_date, is_supplier FROM tenants WHERE id = $1',
       [req.tenantId]
     );
     

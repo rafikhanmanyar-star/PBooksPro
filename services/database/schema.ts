@@ -1093,4 +1093,25 @@ CREATE INDEX IF NOT EXISTS idx_supplier_reg_req_supplier ON supplier_registratio
 CREATE INDEX IF NOT EXISTS idx_supplier_reg_req_buyer ON supplier_registration_requests(buyer_tenant_id);
 CREATE INDEX IF NOT EXISTS idx_supplier_reg_req_status ON supplier_registration_requests(status);
 CREATE INDEX IF NOT EXISTS idx_supplier_reg_req_tenant_id ON supplier_registration_requests(tenant_id);
+
+-- Registered Suppliers table (Track approved supplier-buyer relationships)
+CREATE TABLE IF NOT EXISTS registered_suppliers (
+    id TEXT PRIMARY KEY,
+    buyer_tenant_id TEXT NOT NULL,
+    supplier_tenant_id TEXT NOT NULL,
+    registration_request_id TEXT,
+    registered_at TEXT NOT NULL DEFAULT (datetime('now')),
+    registered_by TEXT,
+    status TEXT NOT NULL CHECK (status IN ('ACTIVE', 'SUSPENDED', 'REMOVED')) DEFAULT 'ACTIVE',
+    notes TEXT,
+    tenant_id TEXT NOT NULL,
+    FOREIGN KEY (buyer_tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (supplier_tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    UNIQUE(buyer_tenant_id, supplier_tenant_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_registered_suppliers_buyer ON registered_suppliers(buyer_tenant_id);
+CREATE INDEX IF NOT EXISTS idx_registered_suppliers_supplier ON registered_suppliers(supplier_tenant_id);
+CREATE INDEX IF NOT EXISTS idx_registered_suppliers_status ON registered_suppliers(status);
+CREATE INDEX IF NOT EXISTS idx_registered_suppliers_tenant_id ON registered_suppliers(tenant_id);
 `;

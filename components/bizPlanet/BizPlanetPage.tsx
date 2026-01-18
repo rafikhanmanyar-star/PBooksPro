@@ -17,12 +17,14 @@ const BizPlanetPage: React.FC = () => {
     const checkSupplierStatus = async () => {
         try {
             if (tenant?.id) {
-                // Fetch tenant info to check is_supplier flag
-                const tenantInfo = await apiClient.get<{ is_supplier?: boolean }>(`/tenants/${tenant.id}`);
+                // Fetch current tenant info to check is_supplier flag
+                const tenantInfo = await apiClient.get<{ is_supplier?: boolean }>('/tenants/me');
                 setIsSupplier(tenantInfo.is_supplier === true);
             }
         } catch (error) {
             console.error('Error checking supplier status:', error);
+            // If error, default to buyer (not supplier)
+            setIsSupplier(false);
         } finally {
             setLoading(false);
         }

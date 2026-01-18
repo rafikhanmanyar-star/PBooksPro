@@ -247,6 +247,22 @@ router.put('/:id/approve', async (req: TenantRequest, res) => {
       [comments || null, buyerTenantId, requestId]
     );
 
+    // Create entry in registered_suppliers table
+    const registrationId = `reg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    try {
+      await db.query(
+        `INSERT INTO registered_suppliers 
+         (id, buyer_tenant_id, supplier_tenant_id, registration_request_id, registered_at, registered_by, status, notes, tenant_id)
+         VALUES ($1, $2, $3, $4, NOW(), $5, 'ACTIVE', $6, $7)
+         ON CONFLICT (buyer_tenant_id, supplier_tenant_id) 
+         DO UPDATE SET status = 'ACTIVE', registered_at = NOW(), registration_request_id = $4, registered_by = $5, notes = $6`,
+        [registrationId, buyerTenantId, request.supplier_tenant_id, requestId, buyerTenantId, comments || null, buyerTenantId]
+      );
+    } catch (error: any) {
+      console.error('Error creating registered_suppliers entry:', error);
+      // Continue even if this fails - the request is still approved
+    }
+
     // Emit WebSocket event to supplier
     if (req.tenantId) {
       emitToTenant(request.supplier_tenant_id, WS_EVENTS.DATA_UPDATED, {
@@ -335,15 +351,16 @@ router.get('/registered', async (req: TenantRequest, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // Get approved suppliers
+    // Get registered suppliers from registered_suppliers table (primary source)
+    // Join with tenants table to get supplier details
     const suppliers = await db.query(
-      `SELECT DISTINCT t.id, t.name, t.company_name, t.email, t.phone, t.address,
+      `SELECT t.id, t.name, t.company_name, t.email, t.phone, t.address,
               t.tax_id, t.payment_terms, t.supplier_category, t.supplier_status,
-              sr.requested_at as registered_at
-       FROM tenants t
-       INNER JOIN supplier_registration_requests sr ON t.id = sr.supplier_tenant_id
-       WHERE sr.buyer_tenant_id = $1 AND sr.status = 'APPROVED'
-       ORDER BY sr.requested_at DESC`,
+              rs.registered_at, rs.status as registration_status, rs.notes
+       FROM registered_suppliers rs
+       INNER JOIN tenants t ON rs.supplier_tenant_id = t.id
+       WHERE rs.buyer_tenant_id = $1 AND rs.status = 'ACTIVE'
+       ORDER BY rs.registered_at DESC`,
       [buyerTenantId]
     );
 
