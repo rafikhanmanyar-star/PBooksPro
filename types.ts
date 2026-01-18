@@ -1368,7 +1368,10 @@ export interface PurchaseOrder {
   poNumber: string;
   buyerTenantId: string;
   buyerCompanyName?: string;
+  buyerName?: string;
   supplierTenantId: string;
+  supplierCompanyName?: string;
+  supplierName?: string;
   totalAmount: number;
   status: POStatus;
   items: POItem[];

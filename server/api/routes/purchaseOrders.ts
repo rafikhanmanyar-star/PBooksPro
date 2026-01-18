@@ -24,24 +24,33 @@ router.get('/', async (req: TenantRequest, res) => {
 
     // IMPORTANT: Return POs where tenant_id matches (buyer's own POs)
     // OR where supplier_tenant_id matches (POs sent to this tenant as supplier)
+    // Join with tenants table to get buyer and supplier company names
     let query = `
-      SELECT * FROM purchase_orders 
-      WHERE (tenant_id = $1 OR supplier_tenant_id = $1)
+      SELECT 
+        po.*,
+        bt.company_name as buyer_company_name,
+        bt.name as buyer_name,
+        st.company_name as supplier_company_name,
+        st.name as supplier_name
+      FROM purchase_orders po
+      LEFT JOIN tenants bt ON po.buyer_tenant_id = bt.id
+      LEFT JOIN tenants st ON po.supplier_tenant_id = st.id
+      WHERE (po.tenant_id = $1 OR po.supplier_tenant_id = $1)
     `;
     const params: any[] = [req.tenantId];
     let paramIndex = 2;
 
     if (status) {
-      query += ` AND status = $${paramIndex++}`;
+      query += ` AND po.status = $${paramIndex++}`;
       params.push(status);
     }
 
     if (supplierId) {
-      query += ` AND supplier_tenant_id = $${paramIndex++}`;
+      query += ` AND po.supplier_tenant_id = $${paramIndex++}`;
       params.push(supplierId);
     }
 
-    query += ' ORDER BY created_at DESC';
+    query += ' ORDER BY po.created_at DESC';
 
     const pos = await db.query(query, params);
     res.json(pos);
@@ -59,7 +68,16 @@ router.get('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const po = await db.query(
-      'SELECT * FROM purchase_orders WHERE id = $1 AND tenant_id = $2',
+      `SELECT 
+        po.*,
+        bt.company_name as buyer_company_name,
+        bt.name as buyer_name,
+        st.company_name as supplier_company_name,
+        st.name as supplier_name
+      FROM purchase_orders po
+      LEFT JOIN tenants bt ON po.buyer_tenant_id = bt.id
+      LEFT JOIN tenants st ON po.supplier_tenant_id = st.id
+      WHERE po.id = $1 AND (po.tenant_id = $2 OR po.supplier_tenant_id = $2)`,
       [req.params.id, req.tenantId]
     );
 
@@ -99,8 +117,8 @@ router.post('/', async (req: TenantRequest, res) => {
     const result = await db.query(
       `INSERT INTO purchase_orders (
         id, po_number, buyer_tenant_id, supplier_tenant_id, total_amount, status,
-        items, description, created_by, sent_at, tenant_id, user_id, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        items, description, target_delivery_date, created_by, sent_at, tenant_id, user_id, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       RETURNING *`,
       [
         poId,
@@ -111,6 +129,7 @@ router.post('/', async (req: TenantRequest, res) => {
         'SENT', // Automatically set to SENT on creation
         JSON.stringify(poData.items),
         poData.description || null,
+        poData.targetDeliveryDate || null,
         req.user?.userId || null,
         now, // sent_at
         req.tenantId,

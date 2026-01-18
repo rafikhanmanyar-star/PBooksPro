@@ -351,6 +351,33 @@ export class WebSocketClient {
     this.socket.on('user:disconnected', (data: any) => {
       logger.logCategory('websocket', 'User disconnected:', data);
     });
+
+    // Generic data:updated event for P2P notifications and other cross-tenant events
+    this.socket.on('data:updated', (data: any) => {
+      logger.logCategory('websocket', 'Data updated:', data);
+      this.notifyHandlers('data:updated', data);
+    });
+
+    // P2P specific events
+    this.socket.on('purchase_order:created', (data: any) => {
+      logger.logCategory('websocket', 'PO created:', data);
+      this.notifyHandlers('purchase_order:created', data);
+    });
+
+    this.socket.on('purchase_order:updated', (data: any) => {
+      logger.logCategory('websocket', 'PO updated:', data);
+      this.notifyHandlers('purchase_order:updated', data);
+    });
+
+    this.socket.on('p2p_invoice:created', (data: any) => {
+      logger.logCategory('websocket', 'P2P Invoice created:', data);
+      this.notifyHandlers('p2p_invoice:created', data);
+    });
+
+    this.socket.on('p2p_invoice:updated', (data: any) => {
+      logger.logCategory('websocket', 'P2P Invoice updated:', data);
+      this.notifyHandlers('p2p_invoice:updated', data);
+    });
   }
 
   /**

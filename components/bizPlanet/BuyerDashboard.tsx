@@ -548,9 +548,7 @@ const BuyerDashboard: React.FC = () => {
                                                 <div className="min-w-0 flex-1">
                                                     <p className="text-xs font-medium text-slate-900 truncate">{po.poNumber || 'N/A'}</p>
                                                     <p className="text-[10px] text-slate-500 truncate">
-                                                        {(Array.isArray(registeredSuppliers) ? registeredSuppliers : []).find(s => s.id === po.supplierTenantId)?.company_name || 
-                                                         (Array.isArray(registeredSuppliers) ? registeredSuppliers : []).find(s => s.id === po.supplierTenantId)?.name || 
-                                                         po.supplierTenantId}
+                                                        {po.supplierCompanyName || po.supplierName || po.supplierTenantId}
                                                     </p>
                                                 </div>
                                                 <span className={`px-1.5 py-0.5 text-[9px] font-medium rounded-full flex-shrink-0 ${getStatusColor(po.status)}`}>{po.status}</span>
@@ -582,9 +580,7 @@ const BuyerDashboard: React.FC = () => {
                                             <tr key={po.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => setSelectedPO(po)}>
                                                 <td className="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-slate-900 font-medium">{po.poNumber || 'N/A'}</td>
                                                 <td className="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-slate-600 truncate max-w-[100px]">
-                                                    {(Array.isArray(registeredSuppliers) ? registeredSuppliers : []).find(s => s.id === po.supplierTenantId)?.company_name || 
-                                                     (Array.isArray(registeredSuppliers) ? registeredSuppliers : []).find(s => s.id === po.supplierTenantId)?.name || 
-                                                     po.supplierTenantId}
+                                                    {po.supplierCompanyName || po.supplierName || po.supplierTenantId}
                                                 </td>
                                                 <td className="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-right font-medium text-slate-900">{CURRENCY} {(po.totalAmount || 0).toFixed(2)}</td>
                                                 <td className="px-2 sm:px-3 py-1.5 sm:py-2">
@@ -765,9 +761,7 @@ const BuyerDashboard: React.FC = () => {
                             <div>
                                 <p className="text-xs text-slate-500 mb-1">Supplier</p>
                                 <p className="font-semibold text-slate-900 text-sm">
-                                    {(Array.isArray(registeredSuppliers) ? registeredSuppliers : []).find(s => s.id === selectedPO.supplierTenantId)?.company_name || 
-                                     (Array.isArray(registeredSuppliers) ? registeredSuppliers : []).find(s => s.id === selectedPO.supplierTenantId)?.name || 
-                                     selectedPO.supplierTenantId}
+                                    {selectedPO.supplierCompanyName || selectedPO.supplierName || selectedPO.supplierTenantId}
                                 </p>
                             </div>
                             <div>
