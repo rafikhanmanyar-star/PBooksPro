@@ -1094,7 +1094,8 @@ router.post('/register-tenant', async (req, res) => {
       address,
       adminUsername, 
       adminPassword, 
-      adminName 
+      adminName,
+      isSupplier 
     } = req.body;
 
     console.log('Registration request received:', {
@@ -1156,7 +1157,8 @@ router.post('/register-tenant', async (req, res) => {
         companyName,
         email,
         phone,
-        address
+        address,
+        isSupplier: Boolean(isSupplier)
       });
       tenantId = result.tenantId;
       daysRemaining = result.daysRemaining;

@@ -13,7 +13,7 @@ router.get('/me', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const tenants = await db.query(
-      'SELECT id, name, company_name, email, license_type, license_status, license_expiry_date, trial_start_date FROM tenants WHERE id = $1',
+      'SELECT id, name, company_name, email, license_type, license_status, license_expiry_date, trial_start_date, is_supplier FROM tenants WHERE id = $1',
       [req.tenantId]
     );
     
@@ -24,6 +24,40 @@ router.get('/me', async (req: TenantRequest, res) => {
     res.json(tenants[0]);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch tenant info' });
+  }
+});
+
+// Update current tenant info (for authenticated tenant)
+router.put('/me', async (req: TenantRequest, res) => {
+  try {
+    const db = getDb();
+    const { isSupplier } = req.body;
+    
+    // Only allow updating is_supplier flag for self-service
+    if (isSupplier === undefined) {
+      return res.status(400).json({ error: 'isSupplier field is required' });
+    }
+    
+    // Update tenant's is_supplier flag
+    const result = await db.query(
+      'UPDATE tenants SET is_supplier = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
+      [isSupplier === true || isSupplier === 'true', req.tenantId]
+    );
+    
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+    
+    // Emit WebSocket event
+    emitToTenant(req.tenantId!, WS_EVENTS.SUPPLIER_PROMOTED, {
+      tenantId: result[0].id,
+      isSupplier: result[0].is_supplier
+    });
+    
+    res.json(result[0]);
+  } catch (error: any) {
+    console.error('Error updating tenant:', error);
+    res.status(500).json({ error: 'Failed to update tenant info' });
   }
 });
 

@@ -39,14 +39,53 @@ router.get('/:id', async (req: TenantRequest, res) => {
 
 router.post('/', async (req: TenantRequest, res) => {
   try {
+    console.log('📥 POST /employees - Request received:', {
+      tenantId: req.tenantId,
+      userId: req.user?.userId,
+      employeeData: {
+        id: req.body.id,
+        employeeId: req.body.employeeId,
+        status: req.body.status,
+        hasPersonalDetails: !!req.body.personalDetails,
+        hasEmploymentDetails: !!req.body.employmentDetails
+      }
+    });
+    
     const db = getDb();
     const employee = req.body;
     const employeeId = employee.id || `employee_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const empId = employee.employeeId || `EMP${Date.now()}`;
+    
+    // Check for unique constraint violation on (tenant_id, employee_id)
+    const existingEmployeeId = await db.query(
+      'SELECT id, employee_id FROM employees WHERE tenant_id = $1 AND employee_id = $2',
+      [req.tenantId, empId]
+    );
+    
+    if (existingEmployeeId.length > 0 && existingEmployeeId[0].id !== employeeId) {
+      console.error('❌ POST /employees - Duplicate employee_id:', {
+        tenantId: req.tenantId,
+        employeeId: empId,
+        existingId: existingEmployeeId[0].id
+      });
+      return res.status(409).json({ 
+        error: 'Duplicate employee ID',
+        message: `An employee with ID "${empId}" already exists for this tenant`
+      });
+    }
+    
     const existing = await db.query(
       'SELECT id FROM employees WHERE id = $1 AND tenant_id = $2',
       [employeeId, req.tenantId]
     );
     const isUpdate = existing.length > 0;
+    
+    console.log('📝 POST /employees - Executing query:', {
+      employeeId,
+      empId,
+      isUpdate,
+      tenantId: req.tenantId
+    });
     
     const result = await db.query(
       `INSERT INTO employees (
@@ -65,7 +104,7 @@ router.post('/', async (req: TenantRequest, res) => {
         loan_balance = EXCLUDED.loan_balance, user_id = EXCLUDED.user_id, updated_at = NOW()
       RETURNING *`,
       [
-        employeeId, req.tenantId, req.user?.userId || null, employee.employeeId || `EMP${Date.now()}`,
+        employeeId, req.tenantId, req.user?.userId || null, empId,
         typeof employee.personalDetails === 'object' ? JSON.stringify(employee.personalDetails) : (employee.personalDetails || '{}'),
         typeof employee.employmentDetails === 'object' ? JSON.stringify(employee.employmentDetails) : (employee.employmentDetails || '{}'),
         employee.status || 'Active', employee.basicSalary || 0,
@@ -79,13 +118,67 @@ router.post('/', async (req: TenantRequest, res) => {
       ]
     );
     
+    if (!result || result.length === 0) {
+      console.error('❌ POST /employees - Query returned no result');
+      return res.status(500).json({ 
+        error: 'Failed to create/update employee',
+        message: 'Database query returned no result'
+      });
+    }
+    
+    console.log('✅ POST /employees - Employee saved successfully:', {
+      id: result[0].id,
+      employeeId: result[0].employee_id,
+      tenantId: req.tenantId
+    });
+    
     emitToTenant(req.tenantId!, isUpdate ? WS_EVENTS.EMPLOYEE_UPDATED : WS_EVENTS.EMPLOYEE_CREATED, {
       employee: result[0], userId: req.user?.userId, username: req.user?.username,
     });
     res.status(201).json(result[0]);
   } catch (error: any) {
-    console.error('Error creating/updating employee:', error);
-    res.status(500).json({ error: 'Failed to create/update employee', message: error.message });
+    console.error('❌ POST /employees - Error:', {
+      error: error,
+      errorMessage: error.message,
+      errorCode: error.code,
+      errorStack: error.stack,
+      tenantId: req.tenantId,
+      employeeId: req.body?.id,
+      employeeEmployeeId: req.body?.employeeId
+    });
+    
+    // Handle specific database errors
+    if (error.code === '23505') { // Unique violation
+      if (error.constraint?.includes('employee_id')) {
+        return res.status(409).json({ 
+          error: 'Duplicate employee ID',
+          message: 'An employee with this employee ID already exists for this tenant'
+        });
+      }
+      return res.status(409).json({ 
+        error: 'Duplicate employee',
+        message: 'An employee with this ID already exists'
+      });
+    }
+    
+    if (error.code === '23502') { // Not null violation
+      return res.status(400).json({ 
+        error: 'Missing required field',
+        message: error.message || 'One or more required fields are missing'
+      });
+    }
+    
+    if (error.code === '23503') { // Foreign key violation
+      return res.status(400).json({ 
+        error: 'Invalid reference',
+        message: 'One or more referenced records do not exist'
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Failed to create/update employee', 
+      message: error.message || 'Internal server error'
+    });
   }
 });
 

@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS tenants (
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     settings JSONB DEFAULT '{}'::jsonb,
     
+    -- Business profile
+    is_supplier BOOLEAN NOT NULL DEFAULT FALSE,
+    
     CONSTRAINT valid_license_type CHECK (license_type IN ('trial', 'monthly', 'yearly', 'perpetual')),
     CONSTRAINT valid_license_status CHECK (license_status IN ('active', 'expired', 'suspended', 'cancelled'))
 );

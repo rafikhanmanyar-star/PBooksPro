@@ -413,8 +413,6 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
         };
 
         if (agreementToEdit) {
-            const updatedAgreement = { ...agreementToEdit, ...agreementData };
-            
             // Find all invoices linked to this agreement
             // Include invoices that:
             // 1. Have agreementId matching this agreement
@@ -434,128 +432,20 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                 return false;
             });
             
-            // Warn user if there are linked invoices and any changes are detected
-            const hasChanges = 
-                agreementToEdit.clientId !== updatedAgreement.clientId ||
-                agreementToEdit.projectId !== updatedAgreement.projectId ||
-                JSON.stringify(agreementToEdit.unitIds || []) !== JSON.stringify(updatedAgreement.unitIds || []) ||
-                agreementToEdit.sellingPriceCategoryId !== updatedAgreement.sellingPriceCategoryId;
-            
-            if (linkedInvoices.length > 0 && hasChanges) {
-                const confirmed = await showConfirm(
-                    `This agreement has ${linkedInvoices.length} linked invoice${linkedInvoices.length !== 1 ? 's' : ''}. ` +
-                    `Updating the agreement will automatically update the linked invoices to reflect changes in Client/Owner, Project, Unit, or Category.\n\n` +
-                    `Do you want to proceed?`,
+            // Block editing if there are associated invoices
+            if (linkedInvoices.length > 0) {
+                await showAlert(
+                    `This sales agreement has ${linkedInvoices.length} associated invoice${linkedInvoices.length !== 1 ? 's' : ''} created. ` +
+                    `To edit this agreement, please delete the associated invoices first.\n\n` +
+                    `You can delete invoices from the Invoices & Payments section.`,
                     { 
-                        title: 'Update Agreement and Linked Invoices',
-                        confirmLabel: 'Yes, Update',
-                        cancelLabel: 'Cancel'
+                        title: 'Cannot Edit Agreement',
                     }
                 );
-                
-                if (!confirmed) {
-                    return; // User cancelled
-                }
+                return; // Prevent editing
             }
             
-            // Track what changed for notification
-            const changes: string[] = [];
-            const updatedInvoiceIds: string[] = [];
-            
-            // Update linked invoices based on agreement changes
-            if (linkedInvoices.length > 0) {
-                linkedInvoices.forEach(invoice => {
-                    let invoiceUpdated = false;
-                    const invoiceUpdates: Partial<Invoice> = {};
-                    
-                    // Always ensure agreementId is set on the invoice
-                    if (invoice.agreementId !== agreementToEdit.id) {
-                        invoiceUpdates.agreementId = agreementToEdit.id;
-                        invoiceUpdated = true;
-                    }
-                    
-                    // Update contactId if clientId changed or if it doesn't match
-                    if (invoice.contactId !== updatedAgreement.clientId) {
-                        invoiceUpdates.contactId = updatedAgreement.clientId;
-                        invoiceUpdated = true;
-                        if (!changes.includes('Client/Owner')) {
-                            changes.push('Client/Owner');
-                        }
-                    }
-                    
-                    // Update projectId if it changed or if it doesn't match
-                    if (invoice.projectId !== updatedAgreement.projectId) {
-                        invoiceUpdates.projectId = updatedAgreement.projectId;
-                        invoiceUpdated = true;
-                        if (!changes.includes('Project')) {
-                            changes.push('Project');
-                        }
-                    }
-                    
-                    // Update unitId if unitIds changed (use first unit for invoices)
-                    const oldFirstUnit = agreementToEdit.unitIds?.[0];
-                    const newFirstUnit = updatedAgreement.unitIds?.[0];
-                    const currentInvoiceUnit = invoice.unitId;
-                    
-                    // Check if unitIds array itself changed
-                    const oldUnitIdsSet = new Set(agreementToEdit.unitIds || []);
-                    const newUnitIdsSet = new Set(updatedAgreement.unitIds || []);
-                    const unitIdsChanged = oldUnitIdsSet.size !== newUnitIdsSet.size || 
-                                         [...oldUnitIdsSet].some(id => !newUnitIdsSet.has(id));
-                    
-                    // Update unitId if:
-                    // 1. The first unit changed
-                    // 2. The unitIds array changed and invoice unit is not in new array
-                    // 3. Invoice unitId doesn't match the first unit of agreement
-                    if (newFirstUnit && (
-                        unitIdsChanged ||
-                        oldFirstUnit !== newFirstUnit ||
-                        currentInvoiceUnit !== newFirstUnit ||
-                        !newUnitIdsSet.has(currentInvoiceUnit || '')
-                    )) {
-                        invoiceUpdates.unitId = newFirstUnit;
-                        invoiceUpdated = true;
-                        if (!changes.includes('Unit')) {
-                            changes.push('Unit');
-                        }
-                    }
-                    
-                    // Update categoryId if sellingPriceCategoryId changed (used for installment invoices)
-                    if (updatedAgreement.sellingPriceCategoryId && 
-                        invoice.categoryId !== updatedAgreement.sellingPriceCategoryId) {
-                        invoiceUpdates.categoryId = updatedAgreement.sellingPriceCategoryId;
-                        invoiceUpdated = true;
-                        if (!changes.includes('Category')) {
-                            changes.push('Category');
-                        }
-                    }
-                    
-                    // Apply updates if any changes were made
-                    if (invoiceUpdated) {
-                        dispatch({ 
-                            type: 'UPDATE_INVOICE', 
-                            payload: { ...invoice, ...invoiceUpdates } 
-                        });
-                        updatedInvoiceIds.push(invoice.id);
-                    }
-                });
-                
-                // Notify user about invoice updates
-                if (updatedInvoiceIds.length > 0) {
-                    const invoiceCount = updatedInvoiceIds.length;
-                    const changesList = changes.length > 0 ? ` Changes: ${changes.join(', ')}.` : '';
-                    showToast(
-                        `Updated ${invoiceCount} invoice${invoiceCount !== 1 ? 's' : ''} linked to this agreement.${changesList}`,
-                        'info'
-                    );
-                } else if (linkedInvoices.length > 0) {
-                    // Invoices are linked but no updates were needed (already in sync)
-                    showToast(
-                        `Checked ${linkedInvoices.length} linked invoice${linkedInvoices.length !== 1 ? 's' : ''}. All are already in sync with the agreement.`,
-                        'success'
-                    );
-                }
-            }
+            const updatedAgreement = { ...agreementToEdit, ...agreementData };
             
             // Update the agreement
             dispatch({ type: 'UPDATE_PROJECT_AGREEMENT', payload: updatedAgreement });

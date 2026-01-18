@@ -571,6 +571,12 @@ const reducer = (state: AppState, action: AppAction): AppState => {
 
         // --- ENTITY HANDLERS (Projects, Buildings, etc) ---
         case 'ADD_PROJECT':
+            // Check if project already exists (prevents duplicates from WebSocket events)
+            const existingProject = state.projects.find(p => p.id === action.payload.id);
+            if (existingProject) {
+                // If exists, update it instead of adding duplicate
+                return { ...state, projects: state.projects.map(p => p.id === action.payload.id ? action.payload : p) };
+            }
             return { ...state, projects: [...state.projects, action.payload] };
         case 'UPDATE_PROJECT':
             return { ...state, projects: state.projects.map(p => p.id === action.payload.id ? action.payload : p) };
@@ -578,6 +584,12 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, projects: state.projects.filter(p => p.id !== action.payload) };
 
         case 'ADD_BUILDING':
+            // Check if building already exists (prevents duplicates from WebSocket events)
+            const existingBuilding = state.buildings.find(b => b.id === action.payload.id);
+            if (existingBuilding) {
+                // If exists, update it instead of adding duplicate
+                return { ...state, buildings: state.buildings.map(b => b.id === action.payload.id ? action.payload : b) };
+            }
             return { ...state, buildings: [...state.buildings, action.payload] };
         case 'UPDATE_BUILDING':
             return { ...state, buildings: state.buildings.map(b => b.id === action.payload.id ? action.payload : b) };
@@ -585,6 +597,12 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, buildings: state.buildings.filter(b => b.id !== action.payload) };
 
         case 'ADD_PROPERTY':
+            // Check if property already exists (prevents duplicates from WebSocket events)
+            const existingProperty = state.properties.find(p => p.id === action.payload.id);
+            if (existingProperty) {
+                // If exists, update it instead of adding duplicate
+                return { ...state, properties: state.properties.map(p => p.id === action.payload.id ? action.payload : p) };
+            }
             return { ...state, properties: [...state.properties, action.payload] };
         case 'UPDATE_PROPERTY':
             return { ...state, properties: state.properties.map(p => p.id === action.payload.id ? action.payload : p) };
@@ -592,6 +610,12 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, properties: state.properties.filter(p => p.id !== action.payload) };
 
         case 'ADD_UNIT':
+            // Check if unit already exists (prevents duplicates from WebSocket events)
+            const existingUnit = state.units.find(u => u.id === action.payload.id);
+            if (existingUnit) {
+                // If exists, update it instead of adding duplicate
+                return { ...state, units: state.units.map(u => u.id === action.payload.id ? action.payload : u) };
+            }
             return { ...state, units: [...state.units, action.payload] };
         case 'UPDATE_UNIT':
             return { ...state, units: state.units.map(u => u.id === action.payload.id ? action.payload : u) };
@@ -599,6 +623,12 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, units: state.units.filter(u => u.id !== action.payload) };
 
         case 'ADD_CATEGORY':
+            // Check if category already exists (prevents duplicates from WebSocket events)
+            const existingCategory = state.categories.find(c => c.id === action.payload.id);
+            if (existingCategory) {
+                // If exists, update it instead of adding duplicate
+                return { ...state, categories: state.categories.map(c => c.id === action.payload.id ? action.payload : c) };
+            }
             return { ...state, categories: [...state.categories, action.payload] };
         case 'UPDATE_CATEGORY':
             return { ...state, categories: state.categories.map(c => c.id === action.payload.id ? action.payload : c) };
@@ -1074,12 +1104,6 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return newState;
         }
 
-        case 'UPDATE_PAYSLIP': {
-            const updated = action.payload;
-            const updateList = (list: Payslip[]) => list.map(p => p.id === updated.id ? updated : p);
-            return { ...state, projectPayslips: updateList(state.projectPayslips), rentalPayslips: updateList(state.rentalPayslips) };
-        }
-
         case 'MARK_PROJECT_PAYSLIP_PAID':
         case 'MARK_RENTAL_PAYSLIP_PAID': {
             const { payslipId, accountId, paymentDate, amount, description } = action.payload;
@@ -1310,9 +1334,13 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, payslips: [...(state.payslips || []), action.payload] };
         case 'UPDATE_PAYSLIP': {
             const updated = action.payload as Payslip;
+            // Update in all payslip lists (legacy and enterprise)
+            const updateList = (list: Payslip[]) => list.map(p => p.id === updated.id ? updated : p);
             return {
                 ...state,
-                payslips: (state.payslips || []).map(p => p.id === updated.id ? updated : p)
+                projectPayslips: updateList(state.projectPayslips),
+                rentalPayslips: updateList(state.rentalPayslips),
+                payslips: updateList(state.payslips || [])
             };
         }
         case 'MARK_PAYSLIP_PAID': {
@@ -2517,16 +2545,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         // Handle bill changes
                         if (action.type === 'ADD_BILL') {
                             const bill = action.payload;
-                            await apiService.saveBill(bill);
-                            logger.logCategory('sync', '✅ Synced bill to API:', bill.billNumber);
+                            logger.logCategory('sync', `🔄 Starting sync for ADD_BILL: ${bill.billNumber} (${bill.id})`);
+                            try {
+                                logger.logCategory('sync', `📤 Calling apiService.saveBill for: ${bill.billNumber}`);
+                                await apiService.saveBill(bill);
+                                logger.logCategory('sync', '✅ Synced bill to API:', bill.billNumber);
+                            } catch (err: any) {
+                                logger.errorCategory('sync', `❌ FAILED to sync bill ${bill.billNumber} to API:`, {
+                                    error: err,
+                                    errorMessage: err?.message || err?.error || 'Unknown error',
+                                    status: err?.status,
+                                    statusText: err?.statusText,
+                                    bill: {
+                                        id: bill.id,
+                                        billNumber: bill.billNumber,
+                                        amount: bill.amount,
+                                        projectId: bill.projectId
+                                    },
+                                    fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
+                                });
+                                // Don't re-throw - log and continue, data is saved locally
+                                // This allows user to continue working even if sync fails
+                            }
                         } else if (action.type === 'UPDATE_BILL') {
                             const bill = action.payload;
-                            await apiService.saveBill(bill);
-                            logger.logCategory('sync', '✅ Synced bill update to API:', bill.billNumber);
+                            logger.logCategory('sync', `🔄 Starting sync for UPDATE_BILL: ${bill.billNumber} (${bill.id})`);
+                            try {
+                                logger.logCategory('sync', `📤 Calling apiService.saveBill for update: ${bill.billNumber}`);
+                                await apiService.saveBill(bill);
+                                logger.logCategory('sync', '✅ Synced bill update to API:', bill.billNumber);
+                            } catch (err: any) {
+                                logger.errorCategory('sync', `❌ FAILED to sync bill update ${bill.billNumber} to API:`, {
+                                    error: err,
+                                    errorMessage: err?.message || err?.error || 'Unknown error',
+                                    status: err?.status,
+                                    statusText: err?.statusText,
+                                    bill: {
+                                        id: bill.id,
+                                        billNumber: bill.billNumber,
+                                        amount: bill.amount,
+                                        projectId: bill.projectId
+                                    },
+                                    fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
+                                });
+                                // Don't re-throw - log and continue
+                            }
                         } else if (action.type === 'DELETE_BILL') {
                             const billId = action.payload as string;
-                            await apiService.deleteBill(billId);
-                            logger.logCategory('sync', '✅ Synced bill deletion to API:', billId);
+                            try {
+                                await apiService.deleteBill(billId);
+                                logger.logCategory('sync', '✅ Synced bill deletion to API:', billId);
+                            } catch (err: any) {
+                                logger.errorCategory('sync', `⚠️ Failed to sync bill deletion ${billId} to API:`, {
+                                    error: err,
+                                    billId: billId,
+                                    errorMessage: err?.message || err?.error || 'Unknown error',
+                                    status: err?.status
+                                });
+                                // Don't re-throw for deletions - allow local deletion even if sync fails
+                            }
                         }
 
                         // Handle budget changes

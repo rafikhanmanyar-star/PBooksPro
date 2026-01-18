@@ -179,6 +179,7 @@ export class LicenseService {
     email: string;
     phone?: string;
     address?: string;
+    isSupplier?: boolean;
   }): Promise<{ tenantId: string; daysRemaining: number }> {
     const tenantId = `tenant_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
     const now = new Date();
@@ -186,8 +187,8 @@ export class LicenseService {
     await this.db.query(
       `INSERT INTO tenants (
         id, name, company_name, email, phone, address,
-        license_type, license_status, trial_start_date
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        license_type, license_status, trial_start_date, is_supplier
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
       [
         tenantId,
         data.name,
@@ -197,7 +198,8 @@ export class LicenseService {
         data.address || null,
         'trial',
         'active',
-        now
+        now,
+        data.isSupplier || false
       ]
     );
     

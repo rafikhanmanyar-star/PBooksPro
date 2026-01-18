@@ -1314,6 +1314,142 @@ export interface TaskPerformanceConfig {
   updated_at?: string;
 }
 
+// ============================================================================
+// P2P (PROCUREMENT-TO-PAY) SYSTEM TYPES
+// ============================================================================
+
+// PO Status Enum
+export enum POStatus {
+  DRAFT = 'DRAFT',
+  SENT = 'SENT',
+  RECEIVED = 'RECEIVED',
+  INVOICED = 'INVOICED',
+  DELIVERED = 'DELIVERED',
+  COMPLETED = 'COMPLETED'
+}
+
+// Invoice Status Enum
+export enum P2PInvoiceStatus {
+  PENDING = 'PENDING',
+  UNDER_REVIEW = 'UNDER_REVIEW',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED'
+}
+
+// Bill Payment Status Enum
+export enum P2PBillPaymentStatus {
+  UNPAID = 'UNPAID',
+  PARTIALLY_PAID = 'PARTIALLY_PAID',
+  PAID = 'PAID',
+  OVERDUE = 'OVERDUE'
+}
+
+// Supplier Metadata
+export interface SupplierMetadata {
+  taxId?: string;
+  paymentTerms?: 'Net 30' | 'Net 60' | 'Net 90' | 'Due on Receipt' | 'Custom';
+  supplierCategory?: string;
+  supplierStatus?: 'Active' | 'Inactive';
+}
+
+// PO Line Item
+export interface POItem {
+  id: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+  categoryId?: string;
+}
+
+// Purchase Order
+export interface PurchaseOrder {
+  id: string;
+  poNumber: string;
+  buyerTenantId: string;
+  supplierTenantId: string;
+  totalAmount: number;
+  status: POStatus;
+  items: POItem[];
+  description?: string;
+  createdBy?: string;
+  sentAt?: string;
+  receivedAt?: string;
+  deliveredAt?: string;
+  completedAt?: string;
+  tenantId: string;
+  userId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// P2P Invoice
+export interface P2PInvoice {
+  id: string;
+  invoiceNumber: string;
+  poId: string;
+  buyerTenantId: string;
+  supplierTenantId: string;
+  amount: number;
+  status: P2PInvoiceStatus;
+  items: POItem[];
+  reviewedBy?: string;
+  reviewedAt?: string;
+  rejectedReason?: string;
+  tenantId: string;
+  userId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// P2P Bill
+export interface P2PBill {
+  id: string;
+  billNumber: string;
+  invoiceId: string;
+  poId: string;
+  buyerTenantId: string;
+  supplierTenantId: string;
+  amount: number;
+  dueDate: string;
+  paymentStatus: P2PBillPaymentStatus;
+  paidAmount: number;
+  paidAt?: string;
+  paymentAccountId?: string;
+  transactionId?: string;
+  tenantId: string;
+  userId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Supplier Registration Request Status Enum
+export enum SupplierRegistrationStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED'
+}
+
+// Supplier Registration Request
+export interface SupplierRegistrationRequest {
+  id: string;
+  supplierTenantId: string;
+  buyerTenantId: string;
+  buyerOrganizationEmail: string;
+  status: SupplierRegistrationStatus;
+  supplierMessage?: string;
+  buyerComments?: string;
+  requestedAt: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  tenantId: string;
+  // Expanded fields (for UI)
+  supplierName?: string;
+  supplierCompanyName?: string;
+  buyerName?: string;
+  buyerCompanyName?: string;
+}
+
 export interface KpiDefinition {
   id: string;
   title: string;
