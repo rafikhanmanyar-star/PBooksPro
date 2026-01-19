@@ -1077,6 +1077,32 @@ CREATE INDEX IF NOT EXISTS idx_tasks_category ON tasks(category);
 CREATE INDEX IF NOT EXISTS idx_tasks_tenant_status ON tasks(tenant_id, status);
 CREATE INDEX IF NOT EXISTS idx_tasks_tenant_deadline ON tasks(tenant_id, hard_deadline);
 
+-- ============================================================================
+-- MANUAL PRODUCTION PATCH: Tenant Supplier Metadata Columns
+-- Run this block manually in production if needed
+-- ============================================================================
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS tax_id TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS payment_terms TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS supplier_category TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS supplier_status TEXT DEFAULT 'Active';
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'valid_payment_terms'
+    ) THEN
+        ALTER TABLE tenants ADD CONSTRAINT valid_payment_terms 
+            CHECK (payment_terms IS NULL OR payment_terms IN ('Net 30', 'Net 60', 'Net 90', 'Due on Receipt', 'Custom'));
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'valid_supplier_status'
+    ) THEN
+        ALTER TABLE tenants ADD CONSTRAINT valid_supplier_status 
+            CHECK (supplier_status IS NULL OR supplier_status IN ('Active', 'Inactive'));
+    END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_task_updates_task_id ON task_updates(task_id);
 CREATE INDEX IF NOT EXISTS idx_task_updates_tenant_id ON task_updates(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_task_updates_user_id ON task_updates(user_id);

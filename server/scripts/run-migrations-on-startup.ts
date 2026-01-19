@@ -76,6 +76,39 @@ async function runMigrations() {
     
     // Run additional migrations
     console.log('🔄 Running additional migrations...');
+
+    // Migration: P2P system tables and tenant supplier metadata
+    const p2pMigrationPaths = [
+      join(__dirname, '../migrations/add-p2p-tables.sql'),
+      join(__dirname, '../../migrations/add-p2p-tables.sql'),
+      join(process.cwd(), 'server/migrations/add-p2p-tables.sql'),
+      join(process.cwd(), 'migrations/add-p2p-tables.sql'),
+    ];
+
+    let p2pMigrationPath: string | null = null;
+    for (const path of p2pMigrationPaths) {
+      try {
+        readFileSync(path, 'utf8');
+        p2pMigrationPath = path;
+        break;
+      } catch (e) {
+        // Try next path
+      }
+    }
+
+    if (p2pMigrationPath) {
+      try {
+        console.log('📋 Running P2P migration from:', p2pMigrationPath);
+        const p2pMigrationSQL = readFileSync(p2pMigrationPath, 'utf8');
+        await pool.query(p2pMigrationSQL);
+        console.log('✅ P2P migration completed');
+      } catch (error: any) {
+        console.warn('   ⚠️  P2P migration warning:', error.message);
+        // Don't throw - migration might already be applied
+      }
+    } else {
+      console.warn('   ⚠️  Could not find add-p2p-tables.sql migration file');
+    }
     
     // Migration: Add user_id to transactions table
     const userIdMigrationPaths = [

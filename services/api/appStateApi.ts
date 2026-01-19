@@ -310,6 +310,18 @@ export class AppStateApiService {
         pmCycleAllocations: pmCycleAllocations.length,
       });
 
+      const parseJsonSafe = <T,>(value: any, fallback: T): T => {
+        if (value == null) return fallback;
+        if (typeof value === 'string') {
+          try {
+            return JSON.parse(value) as T;
+          } catch {
+            return fallback;
+          }
+        }
+        return value as T;
+      };
+
       // Normalize properties from API (transform snake_case to camelCase)
       // The server returns snake_case fields, but the client expects camelCase
       const normalizedProperties = properties.map((p: any) => {
@@ -356,6 +368,47 @@ export class AppStateApiService {
           return typeof price === 'number' ? price : parseFloat(String(price));
         })(),
         description: u.description || undefined
+      }));
+
+      // Normalize employees from API (transform snake_case to camelCase)
+      const normalizedEmployees = employees.map((e: any) => ({
+        id: e.id,
+        employeeId: e.employeeId || e.employee_id || '',
+        personalDetails: parseJsonSafe(e.personalDetails ?? e.personal_details, {
+          firstName: '',
+          lastName: '',
+        }),
+        employmentDetails: parseJsonSafe(e.employmentDetails ?? e.employment_details, {
+          designation: '',
+          joiningDate: new Date().toISOString().split('T')[0],
+          employmentType: 'Full-Time',
+        }),
+        status: e.status || 'Active',
+        basicSalary: (() => {
+          const salary = e.basicSalary ?? e.basic_salary;
+          if (salary == null) return 0;
+          return typeof salary === 'number' ? salary : parseFloat(String(salary));
+        })(),
+        salaryStructure: parseJsonSafe(e.salaryStructure ?? e.salary_structure, []),
+        projectAssignments: parseJsonSafe(e.projectAssignments ?? e.project_assignments, []),
+        bankDetails: parseJsonSafe(e.bankDetails ?? e.bank_details, undefined),
+        documents: parseJsonSafe(e.documents ?? e.documents, []),
+        lifecycleHistory: parseJsonSafe(e.lifecycleHistory ?? e.lifecycle_history, []),
+        terminationDetails: parseJsonSafe(e.terminationDetails ?? e.termination_details, undefined),
+        advanceBalance: (() => {
+          const balance = e.advanceBalance ?? e.advance_balance;
+          if (balance == null) return 0;
+          return typeof balance === 'number' ? balance : parseFloat(String(balance));
+        })(),
+        loanBalance: (() => {
+          const balance = e.loanBalance ?? e.loan_balance;
+          if (balance == null) return 0;
+          return typeof balance === 'number' ? balance : parseFloat(String(balance));
+        })(),
+        createdAt: e.createdAt || e.created_at || new Date().toISOString(),
+        updatedAt: e.updatedAt || e.updated_at || new Date().toISOString(),
+        createdBy: e.createdBy || e.user_id || undefined,
+        updatedBy: e.updatedBy || e.user_id || undefined
       }));
 
       // Normalize categories from API (transform snake_case to camelCase)
@@ -685,7 +738,7 @@ export class AppStateApiService {
         documents: documents || [],
         recurringInvoiceTemplates: recurringInvoiceTemplates || [],
         salaryComponents: salaryComponents || [],
-        employees: employees || [],
+        employees: normalizedEmployees || [],
         payrollCycles: payrollCycles || [],
         payslips: payslips || [],
         legacyPayslips: legacyPayslips || [],
