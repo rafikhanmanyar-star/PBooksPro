@@ -611,6 +611,69 @@ CREATE TABLE IF NOT EXISTS tasks (
 -- Add missing columns to tasks table if they don't exist (for existing databases)
 DO $$ 
 BEGIN
+    -- Add title column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tasks' AND column_name = 'title'
+    ) THEN
+        ALTER TABLE tasks ADD COLUMN title TEXT NOT NULL DEFAULT '';
+        RAISE NOTICE 'Column title added to tasks table';
+    END IF;
+
+    -- Add description column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tasks' AND column_name = 'description'
+    ) THEN
+        ALTER TABLE tasks ADD COLUMN description TEXT;
+        RAISE NOTICE 'Column description added to tasks table';
+    END IF;
+
+    -- Add type column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tasks' AND column_name = 'type'
+    ) THEN
+        ALTER TABLE tasks ADD COLUMN type TEXT NOT NULL DEFAULT 'Personal';
+        RAISE NOTICE 'Column type added to tasks table';
+    END IF;
+
+    -- Add category column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tasks' AND column_name = 'category'
+    ) THEN
+        ALTER TABLE tasks ADD COLUMN category TEXT NOT NULL DEFAULT 'General';
+        RAISE NOTICE 'Column category added to tasks table';
+    END IF;
+
+    -- Add status column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tasks' AND column_name = 'status'
+    ) THEN
+        ALTER TABLE tasks ADD COLUMN status TEXT NOT NULL DEFAULT 'Not Started';
+        RAISE NOTICE 'Column status added to tasks table';
+    END IF;
+
+    -- Add start_date column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tasks' AND column_name = 'start_date'
+    ) THEN
+        ALTER TABLE tasks ADD COLUMN start_date DATE NOT NULL DEFAULT CURRENT_DATE;
+        RAISE NOTICE 'Column start_date added to tasks table';
+    END IF;
+
+    -- Add hard_deadline column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tasks' AND column_name = 'hard_deadline'
+    ) THEN
+        ALTER TABLE tasks ADD COLUMN hard_deadline DATE NOT NULL DEFAULT CURRENT_DATE;
+        RAISE NOTICE 'Column hard_deadline added to tasks table';
+    END IF;
+
     -- Add assigned_by_id column
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns 
@@ -691,6 +754,24 @@ BEGIN
         ALTER TABLE tasks ADD COLUMN kpi_progress_percentage REAL DEFAULT 0;
         RAISE NOTICE 'Column kpi_progress_percentage added to tasks table';
     END IF;
+
+    -- Add created_at column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tasks' AND column_name = 'created_at'
+    ) THEN
+        ALTER TABLE tasks ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT NOW();
+        RAISE NOTICE 'Column created_at added to tasks table';
+    END IF;
+
+    -- Add updated_at column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tasks' AND column_name = 'updated_at'
+    ) THEN
+        ALTER TABLE tasks ADD COLUMN updated_at TIMESTAMP NOT NULL DEFAULT NOW();
+        RAISE NOTICE 'Column updated_at added to tasks table';
+    END IF;
 END $$;
 
 -- Add foreign keys for tasks table if they don't exist
@@ -729,20 +810,105 @@ END $$;
 CREATE TABLE IF NOT EXISTS task_updates (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL,
-    task_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    update_type TEXT NOT NULL CHECK (update_type IN ('Status Change', 'KPI Update', 'Comment', 'Check-in')),
+    task_id TEXT,
+    user_id TEXT,
+    update_type TEXT,
     status_before TEXT,
     status_after TEXT,
     kpi_value_before REAL,
     kpi_value_after REAL,
     comment TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
 );
 
--- Add foreign key for task_updates.user_id if not exists
+-- Add missing columns to task_updates table if they don't exist
+DO $$ 
+BEGIN
+    -- Add task_id column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_updates' AND column_name = 'task_id'
+    ) THEN
+        ALTER TABLE task_updates ADD COLUMN task_id TEXT;
+        RAISE NOTICE 'Column task_id added to task_updates table';
+    END IF;
+
+    -- Add user_id column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_updates' AND column_name = 'user_id'
+    ) THEN
+        ALTER TABLE task_updates ADD COLUMN user_id TEXT;
+        RAISE NOTICE 'Column user_id added to task_updates table';
+    END IF;
+
+    -- Add update_type column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_updates' AND column_name = 'update_type'
+    ) THEN
+        ALTER TABLE task_updates ADD COLUMN update_type TEXT;
+        RAISE NOTICE 'Column update_type added to task_updates table';
+    END IF;
+
+    -- Add status_before column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_updates' AND column_name = 'status_before'
+    ) THEN
+        ALTER TABLE task_updates ADD COLUMN status_before TEXT;
+        RAISE NOTICE 'Column status_before added to task_updates table';
+    END IF;
+
+    -- Add status_after column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_updates' AND column_name = 'status_after'
+    ) THEN
+        ALTER TABLE task_updates ADD COLUMN status_after TEXT;
+        RAISE NOTICE 'Column status_after added to task_updates table';
+    END IF;
+
+    -- Add kpi_value_before column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_updates' AND column_name = 'kpi_value_before'
+    ) THEN
+        ALTER TABLE task_updates ADD COLUMN kpi_value_before REAL;
+        RAISE NOTICE 'Column kpi_value_before added to task_updates table';
+    END IF;
+
+    -- Add kpi_value_after column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_updates' AND column_name = 'kpi_value_after'
+    ) THEN
+        ALTER TABLE task_updates ADD COLUMN kpi_value_after REAL;
+        RAISE NOTICE 'Column kpi_value_after added to task_updates table';
+    END IF;
+
+    -- Add comment column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_updates' AND column_name = 'comment'
+    ) THEN
+        ALTER TABLE task_updates ADD COLUMN comment TEXT;
+        RAISE NOTICE 'Column comment added to task_updates table';
+    END IF;
+END $$;
+
+-- Add foreign keys for task_updates if not exists
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'task_updates_task_id_fkey'
+    ) THEN
+        ALTER TABLE task_updates ADD CONSTRAINT task_updates_task_id_fkey 
+            FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE;
+    END IF;
+END $$;
+
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -757,36 +923,148 @@ END $$;
 CREATE TABLE IF NOT EXISTS task_performance_scores (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    period_start DATE NOT NULL,
-    period_end DATE NOT NULL,
+    user_id TEXT,
+    period_start DATE,
+    period_end DATE,
     total_tasks INTEGER DEFAULT 0,
     completed_tasks INTEGER DEFAULT 0,
     on_time_completions INTEGER DEFAULT 0,
     overdue_tasks INTEGER DEFAULT 0,
     average_kpi_achievement REAL DEFAULT 0,
-    completion_rate REAL DEFAULT 0 CHECK (completion_rate >= 0 AND completion_rate <= 100),
-    deadline_adherence_rate REAL DEFAULT 0 CHECK (deadline_adherence_rate >= 0 AND deadline_adherence_rate <= 100),
+    completion_rate REAL DEFAULT 0,
+    deadline_adherence_rate REAL DEFAULT 0,
     performance_score REAL DEFAULT 0,
     calculated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE(tenant_id, user_id, period_start, period_end)
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
 );
+
+-- Add missing columns to task_performance_scores table if they don't exist
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_performance_scores' AND column_name = 'user_id'
+    ) THEN
+        ALTER TABLE task_performance_scores ADD COLUMN user_id TEXT;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_performance_scores' AND column_name = 'period_start'
+    ) THEN
+        ALTER TABLE task_performance_scores ADD COLUMN period_start DATE;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_performance_scores' AND column_name = 'period_end'
+    ) THEN
+        ALTER TABLE task_performance_scores ADD COLUMN period_end DATE;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_performance_scores' AND column_name = 'total_tasks'
+    ) THEN
+        ALTER TABLE task_performance_scores ADD COLUMN total_tasks INTEGER DEFAULT 0;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_performance_scores' AND column_name = 'completed_tasks'
+    ) THEN
+        ALTER TABLE task_performance_scores ADD COLUMN completed_tasks INTEGER DEFAULT 0;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_performance_scores' AND column_name = 'on_time_completions'
+    ) THEN
+        ALTER TABLE task_performance_scores ADD COLUMN on_time_completions INTEGER DEFAULT 0;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_performance_scores' AND column_name = 'overdue_tasks'
+    ) THEN
+        ALTER TABLE task_performance_scores ADD COLUMN overdue_tasks INTEGER DEFAULT 0;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_performance_scores' AND column_name = 'average_kpi_achievement'
+    ) THEN
+        ALTER TABLE task_performance_scores ADD COLUMN average_kpi_achievement REAL DEFAULT 0;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_performance_scores' AND column_name = 'completion_rate'
+    ) THEN
+        ALTER TABLE task_performance_scores ADD COLUMN completion_rate REAL DEFAULT 0;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_performance_scores' AND column_name = 'deadline_adherence_rate'
+    ) THEN
+        ALTER TABLE task_performance_scores ADD COLUMN deadline_adherence_rate REAL DEFAULT 0;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_performance_scores' AND column_name = 'performance_score'
+    ) THEN
+        ALTER TABLE task_performance_scores ADD COLUMN performance_score REAL DEFAULT 0;
+    END IF;
+END $$;
+
+-- Add foreign key for task_performance_scores.user_id if not exists
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'task_performance_scores_user_id_fkey'
+    ) THEN
+        ALTER TABLE task_performance_scores ADD CONSTRAINT task_performance_scores_user_id_fkey 
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+    END IF;
+END $$;
 
 -- Task performance configuration (Admin-configurable weights)
 CREATE TABLE IF NOT EXISTS task_performance_config (
     id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL UNIQUE,
-    completion_rate_weight REAL DEFAULT 0.33 CHECK (completion_rate_weight >= 0 AND completion_rate_weight <= 1),
-    deadline_adherence_weight REAL DEFAULT 0.33 CHECK (deadline_adherence_weight >= 0 AND deadline_adherence_weight <= 1),
-    kpi_achievement_weight REAL DEFAULT 0.34 CHECK (kpi_achievement_weight >= 0 AND kpi_achievement_weight <= 1),
+    tenant_id TEXT NOT NULL,
+    completion_rate_weight REAL DEFAULT 0.33,
+    deadline_adherence_weight REAL DEFAULT 0.33,
+    kpi_achievement_weight REAL DEFAULT 0.34,
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    CONSTRAINT weights_sum_to_one CHECK (
-        ABS((completion_rate_weight + deadline_adherence_weight + kpi_achievement_weight) - 1.0) < 0.01
-    )
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
 );
+
+-- Add missing columns to task_performance_config table if they don't exist
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_performance_config' AND column_name = 'completion_rate_weight'
+    ) THEN
+        ALTER TABLE task_performance_config ADD COLUMN completion_rate_weight REAL DEFAULT 0.33;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_performance_config' AND column_name = 'deadline_adherence_weight'
+    ) THEN
+        ALTER TABLE task_performance_config ADD COLUMN deadline_adherence_weight REAL DEFAULT 0.33;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'task_performance_config' AND column_name = 'kpi_achievement_weight'
+    ) THEN
+        ALTER TABLE task_performance_config ADD COLUMN kpi_achievement_weight REAL DEFAULT 0.34;
+    END IF;
+END $$;
 
 -- Task indexes
 CREATE INDEX IF NOT EXISTS idx_tasks_tenant_id ON tasks(tenant_id);
