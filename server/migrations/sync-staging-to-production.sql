@@ -605,11 +605,125 @@ CREATE TABLE IF NOT EXISTS tasks (
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (assigned_by_id) REFERENCES users(id) ON DELETE SET NULL,
-    FOREIGN KEY (assigned_to_id) REFERENCES users(id) ON DELETE SET NULL,
-    FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE RESTRICT,
     CONSTRAINT valid_deadline CHECK (hard_deadline >= start_date)
 );
+
+-- Add missing columns to tasks table if they don't exist (for existing databases)
+DO $$ 
+BEGIN
+    -- Add assigned_by_id column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tasks' AND column_name = 'assigned_by_id'
+    ) THEN
+        ALTER TABLE tasks ADD COLUMN assigned_by_id TEXT;
+        RAISE NOTICE 'Column assigned_by_id added to tasks table';
+    END IF;
+
+    -- Add assigned_to_id column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tasks' AND column_name = 'assigned_to_id'
+    ) THEN
+        ALTER TABLE tasks ADD COLUMN assigned_to_id TEXT;
+        RAISE NOTICE 'Column assigned_to_id added to tasks table';
+    END IF;
+
+    -- Add created_by_id column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tasks' AND column_name = 'created_by_id'
+    ) THEN
+        ALTER TABLE tasks ADD COLUMN created_by_id TEXT;
+        RAISE NOTICE 'Column created_by_id added to tasks table';
+    END IF;
+
+    -- Add user_id column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tasks' AND column_name = 'user_id'
+    ) THEN
+        ALTER TABLE tasks ADD COLUMN user_id TEXT;
+        RAISE NOTICE 'Column user_id added to tasks table';
+    END IF;
+
+    -- Add kpi_goal column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tasks' AND column_name = 'kpi_goal'
+    ) THEN
+        ALTER TABLE tasks ADD COLUMN kpi_goal TEXT;
+        RAISE NOTICE 'Column kpi_goal added to tasks table';
+    END IF;
+
+    -- Add kpi_target_value column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tasks' AND column_name = 'kpi_target_value'
+    ) THEN
+        ALTER TABLE tasks ADD COLUMN kpi_target_value REAL;
+        RAISE NOTICE 'Column kpi_target_value added to tasks table';
+    END IF;
+
+    -- Add kpi_current_value column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tasks' AND column_name = 'kpi_current_value'
+    ) THEN
+        ALTER TABLE tasks ADD COLUMN kpi_current_value REAL DEFAULT 0;
+        RAISE NOTICE 'Column kpi_current_value added to tasks table';
+    END IF;
+
+    -- Add kpi_unit column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tasks' AND column_name = 'kpi_unit'
+    ) THEN
+        ALTER TABLE tasks ADD COLUMN kpi_unit TEXT;
+        RAISE NOTICE 'Column kpi_unit added to tasks table';
+    END IF;
+
+    -- Add kpi_progress_percentage column
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tasks' AND column_name = 'kpi_progress_percentage'
+    ) THEN
+        ALTER TABLE tasks ADD COLUMN kpi_progress_percentage REAL DEFAULT 0;
+        RAISE NOTICE 'Column kpi_progress_percentage added to tasks table';
+    END IF;
+END $$;
+
+-- Add foreign keys for tasks table if they don't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'tasks_assigned_by_id_fkey'
+    ) THEN
+        ALTER TABLE tasks ADD CONSTRAINT tasks_assigned_by_id_fkey 
+            FOREIGN KEY (assigned_by_id) REFERENCES users(id) ON DELETE SET NULL;
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'tasks_assigned_to_id_fkey'
+    ) THEN
+        ALTER TABLE tasks ADD CONSTRAINT tasks_assigned_to_id_fkey 
+            FOREIGN KEY (assigned_to_id) REFERENCES users(id) ON DELETE SET NULL;
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'tasks_created_by_id_fkey'
+    ) THEN
+        -- Use SET NULL instead of RESTRICT for migration safety
+        ALTER TABLE tasks ADD CONSTRAINT tasks_created_by_id_fkey 
+            FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE SET NULL;
+    END IF;
+END $$;
 
 -- Task updates/comment history table
 CREATE TABLE IF NOT EXISTS task_updates (
@@ -625,9 +739,19 @@ CREATE TABLE IF NOT EXISTS task_updates (
     comment TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
 );
+
+-- Add foreign key for task_updates.user_id if not exists
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'task_updates_user_id_fkey'
+    ) THEN
+        ALTER TABLE task_updates ADD CONSTRAINT task_updates_user_id_fkey 
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+    END IF;
+END $$;
 
 -- Task performance scores table (for leaderboard)
 CREATE TABLE IF NOT EXISTS task_performance_scores (

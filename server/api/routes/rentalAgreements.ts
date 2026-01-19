@@ -116,7 +116,13 @@ router.post('/', async (req: TenantRequest, res) => {
       agreementNumber: agreement.agreementNumber,
       contactId: agreement.contactId,
       propertyId: agreement.propertyId,
-      hasBody: !!agreement
+      startDate: agreement.startDate,
+      endDate: agreement.endDate,
+      monthlyRent: agreement.monthlyRent,
+      rentDueDate: agreement.rentDueDate,
+      status: agreement.status,
+      hasBody: !!agreement,
+      bodyKeys: Object.keys(agreement || {})
     });
     
     // Validate required fields
@@ -270,10 +276,42 @@ router.post('/', async (req: TenantRequest, res) => {
     res.status(isUpdate ? 200 : 201).json(transformedSaved);
   } catch (error: any) {
     console.error('Error creating/updating rental agreement:', error);
+    console.error('Error details:', {
+      code: error?.code,
+      message: error?.message,
+      detail: error?.detail,
+      constraint: error?.constraint,
+      column: error?.column,
+      table: error?.table
+    });
+    
+    // Handle specific PostgreSQL error codes
     if (error.code === '23505') { // Unique violation
-      return res.status(400).json({ error: 'Agreement number already exists' });
+      return res.status(400).json({ 
+        error: 'Agreement number already exists',
+        message: `An agreement with this number already exists: ${error.detail || ''}`
+      });
     }
-    res.status(500).json({ error: 'Failed to save rental agreement' });
+    if (error.code === '23502') { // NOT NULL violation
+      return res.status(400).json({ 
+        error: 'Missing required field',
+        message: `Required field is missing: ${error.column || error.detail || 'unknown field'}`,
+        detail: error.detail
+      });
+    }
+    if (error.code === '23503') { // Foreign key violation
+      return res.status(400).json({ 
+        error: 'Invalid reference',
+        message: `Referenced record does not exist: ${error.detail || error.constraint || 'unknown reference'}`,
+        detail: error.detail
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Failed to save rental agreement',
+      message: error?.message || 'Unknown error',
+      code: error?.code
+    });
   }
 });
 
