@@ -62,16 +62,9 @@ router.post('/', async (req: TenantRequest, res) => {
       [req.tenantId, empId]
     );
     
-    if (existingEmployeeId.length > 0 && existingEmployeeId[0].id !== employeeId) {
-      console.error('❌ POST /employees - Duplicate employee_id:', {
-        tenantId: req.tenantId,
-        employeeId: empId,
-        existingId: existingEmployeeId[0].id
-      });
-      return res.status(409).json({ 
-        error: 'Duplicate employee ID',
-        message: `An employee with ID "${empId}" already exists for this tenant`
-      });
+    // If employee_id already exists for this tenant, upsert using that ID
+    if (existingEmployeeId.length > 0) {
+      employeeId = existingEmployeeId[0].id;
     }
     
     const existing = await db.query(
