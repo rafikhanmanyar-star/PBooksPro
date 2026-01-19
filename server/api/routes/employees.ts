@@ -53,7 +53,7 @@ router.post('/', async (req: TenantRequest, res) => {
     
     const db = getDb();
     const employee = req.body;
-    const employeeId = employee.id || `employee_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    let employeeId = employee.id || `employee_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const empId = employee.employeeId || `EMP${Date.now()}`;
     
     // Check for unique constraint violation on (tenant_id, employee_id)
