@@ -236,6 +236,121 @@ function normalizeBudget(data: any): any {
 }
 
 /**
+ * Normalize invoice data from API/WebSocket (snake_case) to client format (camelCase)
+ */
+function normalizeInvoice(data: any): any {
+  if (!data) return data;
+  return {
+    id: data.id,
+    invoiceNumber: data.invoice_number ?? data.invoiceNumber ?? '',
+    contactId: data.contact_id ?? data.contactId ?? '',
+    amount: (() => {
+      const amt = data.amount;
+      if (amt == null) return 0;
+      return typeof amt === 'number' ? amt : parseFloat(String(amt));
+    })(),
+    paidAmount: (() => {
+      const amt = data.paid_amount ?? data.paidAmount;
+      if (amt == null) return 0;
+      return typeof amt === 'number' ? amt : parseFloat(String(amt));
+    })(),
+    status: data.status ?? 'Unpaid',
+    issueDate: data.issue_date ?? data.issueDate ?? '',
+    dueDate: data.due_date ?? data.dueDate ?? '',
+    invoiceType: data.invoice_type ?? data.invoiceType ?? 'Sales',
+    description: data.description ?? undefined,
+    projectId: data.project_id ?? data.projectId ?? undefined,
+    buildingId: data.building_id ?? data.buildingId ?? undefined,
+    propertyId: data.property_id ?? data.propertyId ?? undefined,
+    unitId: data.unit_id ?? data.unitId ?? undefined,
+    categoryId: data.category_id ?? data.categoryId ?? undefined,
+    agreementId: data.agreement_id ?? data.agreementId ?? undefined,
+    securityDepositCharge: (() => {
+      const charge = data.security_deposit_charge ?? data.securityDepositCharge;
+      if (charge == null) return undefined;
+      return typeof charge === 'number' ? charge : parseFloat(String(charge));
+    })(),
+    serviceCharges: (() => {
+      const charges = data.service_charges ?? data.serviceCharges;
+      if (charges == null) return undefined;
+      return typeof charges === 'number' ? charges : parseFloat(String(charges));
+    })(),
+    rentalMonth: data.rental_month ?? data.rentalMonth ?? undefined,
+  };
+}
+
+/**
+ * Normalize bill data from API/WebSocket (snake_case) to client format (camelCase)
+ */
+function normalizeBill(data: any): any {
+  if (!data) return data;
+  return {
+    id: data.id,
+    billNumber: data.bill_number ?? data.billNumber ?? '',
+    contactId: data.contact_id ?? data.contactId ?? '',
+    amount: (() => {
+      const amt = data.amount;
+      if (amt == null) return 0;
+      return typeof amt === 'number' ? amt : parseFloat(String(amt));
+    })(),
+    paidAmount: (() => {
+      const amt = data.paid_amount ?? data.paidAmount;
+      if (amt == null) return 0;
+      return typeof amt === 'number' ? amt : parseFloat(String(amt));
+    })(),
+    status: data.status ?? 'Unpaid',
+    issueDate: data.issue_date ?? data.issueDate ?? '',
+    dueDate: data.due_date ?? data.dueDate ?? undefined,
+    description: data.description ?? undefined,
+    categoryId: data.category_id ?? data.categoryId ?? undefined,
+    projectId: data.project_id ?? data.projectId ?? undefined,
+    buildingId: data.building_id ?? data.buildingId ?? undefined,
+    propertyId: data.property_id ?? data.propertyId ?? undefined,
+    projectAgreementId: data.project_agreement_id ?? data.projectAgreementId ?? undefined,
+    contractId: data.contract_id ?? data.contractId ?? undefined,
+    staffId: data.staff_id ?? data.staffId ?? undefined,
+    expenseCategoryItems: data.expense_category_items ?? data.expenseCategoryItems ?? undefined,
+    documentPath: data.document_path ?? data.documentPath ?? undefined,
+  };
+}
+
+/**
+ * Normalize transaction data from API/WebSocket (snake_case) to client format (camelCase)
+ */
+function normalizeTransaction(data: any): any {
+  if (!data) return data;
+  return {
+    id: data.id,
+    date: data.date ?? '',
+    type: data.type ?? 'expense',
+    amount: (() => {
+      const amt = data.amount;
+      if (amt == null) return 0;
+      return typeof amt === 'number' ? amt : parseFloat(String(amt));
+    })(),
+    description: data.description ?? undefined,
+    accountId: data.account_id ?? data.accountId ?? '',
+    categoryId: data.category_id ?? data.categoryId ?? undefined,
+    projectId: data.project_id ?? data.projectId ?? undefined,
+    contactId: data.contact_id ?? data.contactId ?? undefined,
+    invoiceId: data.invoice_id ?? data.invoiceId ?? undefined,
+    billId: data.bill_id ?? data.billId ?? undefined,
+    buildingId: data.building_id ?? data.buildingId ?? undefined,
+    propertyId: data.property_id ?? data.propertyId ?? undefined,
+    unitId: data.unit_id ?? data.unitId ?? undefined,
+    rentalAgreementId: data.rental_agreement_id ?? data.rentalAgreementId ?? undefined,
+    projectAgreementId: data.project_agreement_id ?? data.projectAgreementId ?? undefined,
+    contractId: data.contract_id ?? data.contractId ?? undefined,
+    isSystemGenerated: data.is_system_generated ?? data.isSystemGenerated ?? false,
+    reference: data.reference ?? undefined,
+    paymentMethod: data.payment_method ?? data.paymentMethod ?? undefined,
+    userId: data.user_id ?? data.userId ?? undefined,
+    createdAt: data.created_at ?? data.createdAt ?? undefined,
+    updatedAt: data.updated_at ?? data.updatedAt ?? undefined,
+  };
+}
+
+/**
  * Get the appropriate normalizer function for an entity type
  */
 function getEntityNormalizer(entity: string): ((data: any) => any) | null {
@@ -248,6 +363,9 @@ function getEntityNormalizer(entity: string): ((data: any) => any) | null {
     case 'account': return normalizeAccount;
     case 'category': return normalizeCategory;
     case 'budget': return normalizeBudget;
+    case 'invoice': return normalizeInvoice;
+    case 'bill': return normalizeBill;
+    case 'transaction': return normalizeTransaction;
     default: return null;
   }
 }
