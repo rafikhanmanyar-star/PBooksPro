@@ -15,6 +15,8 @@ function generateId(): string {
   return `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
+const isAdminRole = (role: string) => role.trim().toLowerCase() === 'admin';
+
 // Helper function to check if user can edit task
 async function canEditTask(
   taskId: string,
@@ -35,7 +37,7 @@ async function canEditTask(
   const task = tasks[0];
 
   // Admin can always edit
-  if (userRole === 'Admin') {
+  if (isAdminRole(userRole)) {
     return { allowed: true };
   }
 
@@ -72,7 +74,7 @@ async function canDeleteTask(
   const task = tasks[0];
 
   // Admin can always delete
-  if (userRole === 'Admin') {
+  if (isAdminRole(userRole)) {
     return { allowed: true };
   }
 
@@ -90,12 +92,13 @@ router.get('/', async (req: TenantRequest, res) => {
     const db = getDb();
     const tenantId = req.tenantId!;
     const userId = req.userId!;
-    const userRole = (req as any).role || '';
+    const userRole = req.userRole || '';
+    const isAdmin = isAdminRole(userRole);
 
     let query = '';
     let params: any[] = [tenantId];
 
-    if (userRole === 'Admin') {
+    if (isAdmin) {
       // Admin sees all tasks in tenant
       query = `
         SELECT t.*, 
@@ -141,7 +144,8 @@ router.get('/:id', async (req: TenantRequest, res) => {
     const db = getDb();
     const tenantId = req.tenantId!;
     const userId = req.userId!;
-    const userRole = (req as any).role || '';
+    const userRole = req.userRole || '';
+    const isAdmin = isAdminRole(userRole);
     const taskId = req.params.id;
 
     // Get task
@@ -165,7 +169,7 @@ router.get('/:id', async (req: TenantRequest, res) => {
     const task = tasks[0];
 
     // Check access permission
-    if (userRole !== 'Admin') {
+    if (!isAdmin) {
       if (task.type === 'Personal' && task.created_by_id !== userId) {
         return res.status(403).json({ error: 'Access denied' });
       }
@@ -197,7 +201,8 @@ router.post('/', async (req: TenantRequest, res) => {
     const db = getDb();
     const tenantId = req.tenantId!;
     const userId = req.userId!;
-    const userRole = (req as any).role || '';
+    const userRole = req.userRole || '';
+    const isAdmin = isAdminRole(userRole);
     const {
       title,
       description,
@@ -223,7 +228,7 @@ router.post('/', async (req: TenantRequest, res) => {
     }
 
     // Employees can only create personal tasks
-    if (userRole !== 'Admin' && type === 'Assigned') {
+    if (!isAdmin && type === 'Assigned') {
       return res.status(403).json({ error: 'Only admins can create assigned tasks' });
     }
 
@@ -332,7 +337,8 @@ router.put('/:id', async (req: TenantRequest, res) => {
     const db = getDb();
     const tenantId = req.tenantId!;
     const userId = req.userId!;
-    const userRole = (req as any).role || '';
+    const userRole = req.userRole || '';
+    const isAdmin = isAdminRole(userRole);
     const taskId = req.params.id;
 
     // Check permissions
@@ -365,7 +371,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
     const currentTask = currentTasks[0];
 
     // Employees can only update progress on assigned tasks (via check-in endpoint)
-    if (userRole !== 'Admin' && currentTask.type === 'Assigned') {
+    if (!isAdmin && currentTask.type === 'Assigned') {
       return res.status(403).json({ error: 'Use check-in endpoint to update assigned task progress' });
     }
 
@@ -486,7 +492,8 @@ router.post('/:id/check-in', async (req: TenantRequest, res) => {
     const db = getDb();
     const tenantId = req.tenantId!;
     const userId = req.userId!;
-    const userRole = (req as any).role || '';
+    const userRole = req.userRole || '';
+    const isAdmin = isAdminRole(userRole);
     const taskId = req.params.id;
     const { status, kpi_current_value, comment } = req.body;
 
@@ -501,7 +508,7 @@ router.post('/:id/check-in', async (req: TenantRequest, res) => {
     const task = tasks[0];
 
     // Check access
-    if (userRole !== 'Admin') {
+    if (!isAdmin) {
       if (task.type === 'Personal' && task.created_by_id !== userId) {
         return res.status(403).json({ error: 'Access denied' });
       }
@@ -594,7 +601,7 @@ router.delete('/:id', async (req: TenantRequest, res) => {
     const db = getDb();
     const tenantId = req.tenantId!;
     const userId = req.userId!;
-    const userRole = (req as any).role || '';
+    const userRole = req.userRole || '';
     const taskId = req.params.id;
 
     // Check permissions
@@ -618,8 +625,8 @@ router.get('/calendar/events', async (req: TenantRequest, res) => {
     const db = getDb();
     const tenantId = req.tenantId!;
     const userId = req.userId!;
-    const userRole = ((req as any).role || '').trim();
-    const isAdmin = userRole.toLowerCase() === 'admin';
+    const userRole = req.userRole || '';
+    const isAdmin = isAdminRole(userRole);
     const { start_date, end_date } = req.query;
 
     if (!start_date || !end_date) {
