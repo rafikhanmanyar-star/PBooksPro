@@ -117,6 +117,13 @@ export class ApiClient {
   }
 
   /**
+   * Check if user is authenticated (has a valid, non-expired token)
+   */
+  isAuthenticated(): boolean {
+    return this.token !== null && !this.isTokenExpired();
+  }
+
+  /**
    * Check if token is expired (client-side check)
    * Note: This is a basic check - server validation is authoritative
    */

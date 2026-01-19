@@ -1,7 +1,7 @@
 -- Migration Script: Sync Staging Database to Match Production
 -- Generated automatically - Review before running!
--- Date: 2026-01-18T00:00:00.000Z
--- Updated: Added P2P (Procurement-to-Pay) System Tables
+-- Date: 2026-01-19T00:00:00.000Z
+-- Updated: Full schema sync including P2P, Tasks, WhatsApp, Audit Trail, and more
 
 BEGIN;
 
@@ -434,16 +434,371 @@ CREATE INDEX IF NOT EXISTS idx_registered_suppliers_tenant_id ON registered_supp
 -- Tenants is_supplier index for faster supplier lookups
 CREATE INDEX IF NOT EXISTS idx_tenants_is_supplier ON tenants(is_supplier) WHERE is_supplier = TRUE;
 
+-- ============================================================================
+-- PURCHASE ORDERS - Additional Columns
+-- ============================================================================
+
+-- Add target_delivery_date column if it doesn't exist
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'purchase_orders' AND column_name = 'target_delivery_date'
+    ) THEN
+        ALTER TABLE purchase_orders ADD COLUMN target_delivery_date DATE;
+        RAISE NOTICE 'Column target_delivery_date added to purchase_orders table';
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_po_target_delivery_date ON purchase_orders(target_delivery_date);
+
+-- ============================================================================
+-- BILLS TABLE - Version Column for Optimistic Locking
+-- ============================================================================
+
+-- Add version column to bills table
+ALTER TABLE bills ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
+
+-- Create index on (id, version) for efficient conflict detection
+CREATE INDEX IF NOT EXISTS idx_bills_id_version ON bills(id, version);
+
+-- ============================================================================
+-- USERS TABLE - Login Status Column
+-- ============================================================================
+
+-- Add login_status column if it doesn't exist
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'users' 
+        AND column_name = 'login_status'
+    ) THEN
+        ALTER TABLE users ADD COLUMN login_status BOOLEAN NOT NULL DEFAULT FALSE;
+        RAISE NOTICE 'Added login_status column to users table';
+    END IF;
+END $$;
+
+-- Create indexes for login_status
+CREATE INDEX IF NOT EXISTS idx_users_login_status ON users(login_status);
+CREATE INDEX IF NOT EXISTS idx_users_tenant_login_status ON users(tenant_id, login_status);
+
+-- ============================================================================
+-- PROJECT AGREEMENTS - Installment Plan Column
+-- ============================================================================
+
+-- Add installment_plan column as JSONB to store the plan configuration
+ALTER TABLE project_agreements ADD COLUMN IF NOT EXISTS installment_plan JSONB;
+
+-- ============================================================================
+-- TRANSACTION AUDIT LOG
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS transaction_audit_log (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    transaction_id TEXT,
+    user_id TEXT, -- Nullable to allow user deletion while preserving audit trail
+    user_name TEXT NOT NULL,
+    user_role TEXT NOT NULL,
+    action TEXT NOT NULL, -- 'CREATE', 'UPDATE', 'DELETE', 'VIEW'
+    transaction_type TEXT,
+    amount DECIMAL(15, 2),
+    description TEXT,
+    old_values JSONB,
+    new_values JSONB,
+    ip_address TEXT,
+    user_agent TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Make user_id nullable if it exists with NOT NULL constraint
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'transaction_audit_log' 
+        AND column_name = 'user_id'
+        AND is_nullable = 'NO'
+    ) THEN
+        ALTER TABLE transaction_audit_log ALTER COLUMN user_id DROP NOT NULL;
+        RAISE NOTICE 'Successfully made transaction_audit_log.user_id nullable';
+    END IF;
+END $$;
+
+-- Transaction audit log indexes
+CREATE INDEX IF NOT EXISTS idx_transaction_audit_log_tenant_id ON transaction_audit_log(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_transaction_audit_log_user_id ON transaction_audit_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_transaction_audit_log_transaction_id ON transaction_audit_log(transaction_id);
+CREATE INDEX IF NOT EXISTS idx_transaction_audit_log_created_at ON transaction_audit_log(created_at);
+
+-- ============================================================================
+-- USER SESSIONS (for preventing duplicate logins)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS user_sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    ip_address TEXT,
+    user_agent TEXT,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    last_activity TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+);
+
+-- Cleanup duplicate sessions (keep newest per user_id, tenant_id)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'user_sessions') THEN
+    DELETE FROM user_sessions a
+    USING user_sessions b
+    WHERE a.user_id = b.user_id
+      AND a.tenant_id = b.tenant_id
+      AND (
+        a.created_at < b.created_at
+        OR (a.created_at = b.created_at AND a.id < b.id)
+      );
+  END IF;
+END $$;
+
+-- Unique index to enforce single session per user per tenant
+CREATE UNIQUE INDEX IF NOT EXISTS uq_user_sessions_user_tenant ON user_sessions(user_id, tenant_id);
+
+-- Session indexes
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_tenant_id ON user_sessions(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_expires_at ON user_sessions(expires_at);
+
+-- ============================================================================
+-- TASK MANAGEMENT SYSTEM
+-- ============================================================================
+
+-- Tasks table
+CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    type TEXT NOT NULL CHECK (type IN ('Personal', 'Assigned')),
+    category TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('Not Started', 'In Progress', 'Review', 'Completed')),
+    start_date DATE NOT NULL,
+    hard_deadline DATE NOT NULL,
+    kpi_goal TEXT,
+    kpi_target_value REAL,
+    kpi_current_value REAL DEFAULT 0,
+    kpi_unit TEXT,
+    kpi_progress_percentage REAL DEFAULT 0 CHECK (kpi_progress_percentage >= 0 AND kpi_progress_percentage <= 100),
+    assigned_by_id TEXT,
+    assigned_to_id TEXT,
+    created_by_id TEXT NOT NULL,
+    user_id TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (assigned_by_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (assigned_to_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE RESTRICT,
+    CONSTRAINT valid_deadline CHECK (hard_deadline >= start_date)
+);
+
+-- Task updates/comment history table
+CREATE TABLE IF NOT EXISTS task_updates (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    update_type TEXT NOT NULL CHECK (update_type IN ('Status Change', 'KPI Update', 'Comment', 'Check-in')),
+    status_before TEXT,
+    status_after TEXT,
+    kpi_value_before REAL,
+    kpi_value_after REAL,
+    comment TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT
+);
+
+-- Task performance scores table (for leaderboard)
+CREATE TABLE IF NOT EXISTS task_performance_scores (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    period_start DATE NOT NULL,
+    period_end DATE NOT NULL,
+    total_tasks INTEGER DEFAULT 0,
+    completed_tasks INTEGER DEFAULT 0,
+    on_time_completions INTEGER DEFAULT 0,
+    overdue_tasks INTEGER DEFAULT 0,
+    average_kpi_achievement REAL DEFAULT 0,
+    completion_rate REAL DEFAULT 0 CHECK (completion_rate >= 0 AND completion_rate <= 100),
+    deadline_adherence_rate REAL DEFAULT 0 CHECK (deadline_adherence_rate >= 0 AND deadline_adherence_rate <= 100),
+    performance_score REAL DEFAULT 0,
+    calculated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(tenant_id, user_id, period_start, period_end)
+);
+
+-- Task performance configuration (Admin-configurable weights)
+CREATE TABLE IF NOT EXISTS task_performance_config (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL UNIQUE,
+    completion_rate_weight REAL DEFAULT 0.33 CHECK (completion_rate_weight >= 0 AND completion_rate_weight <= 1),
+    deadline_adherence_weight REAL DEFAULT 0.33 CHECK (deadline_adherence_weight >= 0 AND deadline_adherence_weight <= 1),
+    kpi_achievement_weight REAL DEFAULT 0.34 CHECK (kpi_achievement_weight >= 0 AND kpi_achievement_weight <= 1),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    CONSTRAINT weights_sum_to_one CHECK (
+        ABS((completion_rate_weight + deadline_adherence_weight + kpi_achievement_weight) - 1.0) < 0.01
+    )
+);
+
+-- Task indexes
+CREATE INDEX IF NOT EXISTS idx_tasks_tenant_id ON tasks(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to_id ON tasks(assigned_to_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_created_by_id ON tasks(created_by_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_hard_deadline ON tasks(hard_deadline);
+CREATE INDEX IF NOT EXISTS idx_tasks_type ON tasks(type);
+CREATE INDEX IF NOT EXISTS idx_tasks_category ON tasks(category);
+CREATE INDEX IF NOT EXISTS idx_tasks_tenant_status ON tasks(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_tasks_tenant_deadline ON tasks(tenant_id, hard_deadline);
+
+CREATE INDEX IF NOT EXISTS idx_task_updates_task_id ON task_updates(task_id);
+CREATE INDEX IF NOT EXISTS idx_task_updates_tenant_id ON task_updates(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_task_updates_user_id ON task_updates(user_id);
+CREATE INDEX IF NOT EXISTS idx_task_updates_created_at ON task_updates(created_at);
+
+CREATE INDEX IF NOT EXISTS idx_task_performance_scores_tenant_id ON task_performance_scores(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_task_performance_scores_user_id ON task_performance_scores(user_id);
+CREATE INDEX IF NOT EXISTS idx_task_performance_scores_period ON task_performance_scores(period_start, period_end);
+CREATE INDEX IF NOT EXISTS idx_task_performance_scores_tenant_period ON task_performance_scores(tenant_id, period_start, period_end);
+
+-- ============================================================================
+-- WHATSAPP BUSINESS API INTEGRATION
+-- ============================================================================
+
+-- WhatsApp Configurations table
+CREATE TABLE IF NOT EXISTS whatsapp_configs (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    
+    -- API Credentials (encrypted)
+    api_key TEXT NOT NULL,
+    api_secret TEXT,
+    
+    -- WhatsApp Business API Identifiers
+    phone_number_id TEXT NOT NULL,
+    business_account_id TEXT,
+    
+    -- Webhook Configuration
+    verify_token TEXT NOT NULL,
+    webhook_url TEXT,
+    
+    -- Status
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    
+    -- Metadata
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    UNIQUE(tenant_id)
+);
+
+-- WhatsApp Messages table
+CREATE TABLE IF NOT EXISTS whatsapp_messages (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    
+    -- Contact Information
+    contact_id TEXT,
+    phone_number TEXT NOT NULL,
+    
+    -- Message Identifiers
+    message_id TEXT UNIQUE,
+    wam_id TEXT, -- WhatsApp API Message ID
+    
+    -- Message Details
+    direction TEXT NOT NULL, -- 'outgoing' or 'incoming'
+    status TEXT NOT NULL DEFAULT 'sent', -- 'sending', 'sent', 'delivered', 'read', 'failed', 'received'
+    message_text TEXT,
+    
+    -- Media (optional)
+    media_url TEXT,
+    media_type TEXT, -- 'image', 'video', 'document', 'audio', 'sticker'
+    media_caption TEXT,
+    
+    -- Timestamps
+    timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    read_at TIMESTAMP, -- When message was read (for incoming messages)
+    
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE SET NULL,
+    CONSTRAINT valid_direction CHECK (direction IN ('outgoing', 'incoming')),
+    CONSTRAINT valid_status CHECK (status IN ('sending', 'sent', 'delivered', 'read', 'failed', 'received'))
+);
+
+-- WhatsApp indexes
+CREATE INDEX IF NOT EXISTS idx_whatsapp_configs_tenant_id ON whatsapp_configs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_configs_active ON whatsapp_configs(tenant_id, is_active) WHERE is_active = TRUE;
+
+CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_tenant_id ON whatsapp_messages(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_contact_id ON whatsapp_messages(contact_id);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_phone_number ON whatsapp_messages(tenant_id, phone_number);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_message_id ON whatsapp_messages(message_id);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_timestamp ON whatsapp_messages(tenant_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_unread ON whatsapp_messages(tenant_id, phone_number, read_at) WHERE direction = 'incoming' AND read_at IS NULL;
+
 COMMIT;
 
 -- ============================================================================
 -- Migration complete!
--- P2P System Tables Added:
+-- Tables and Columns Added/Updated:
+--
+-- PAYMENT TABLES:
+--   - payment_webhooks
+--   - payments
+--   - subscriptions
+--
+-- P2P SYSTEM TABLES:
 --   - Tenant supplier metadata columns (is_supplier, tax_id, payment_terms, etc.)
---   - purchase_orders
+--   - purchase_orders (+ target_delivery_date column)
 --   - p2p_invoices
 --   - p2p_bills
 --   - p2p_audit_trail
 --   - supplier_registration_requests
 --   - registered_suppliers
+--
+-- AUDIT & SESSION TABLES:
+--   - transaction_audit_log
+--   - user_sessions
+--
+-- TASK MANAGEMENT TABLES:
+--   - tasks
+--   - task_updates
+--   - task_performance_scores
+--   - task_performance_config
+--
+-- WHATSAPP INTEGRATION TABLES:
+--   - whatsapp_configs
+--   - whatsapp_messages
+--
+-- COLUMN ADDITIONS:
+--   - bills.version (optimistic locking)
+--   - users.login_status (duplicate login prevention)
+--   - project_agreements.installment_plan (JSONB)
+--   - purchase_orders.target_delivery_date
 -- ============================================================================
