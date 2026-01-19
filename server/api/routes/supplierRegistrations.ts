@@ -99,15 +99,33 @@ router.post('/request', async (req: TenantRequest, res) => {
 
     // Create registration request
     const requestId = `sr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const request = await db.query(
-      `INSERT INTO supplier_registration_requests 
-       (id, supplier_tenant_id, buyer_tenant_id, buyer_organization_email, status, supplier_message, tenant_id,
-        reg_supplier_name, reg_supplier_company, reg_supplier_contact_no, reg_supplier_address, reg_supplier_description)
-       VALUES ($1, $2, $3, $4, 'PENDING', $5, $6, $7, $8, $9, $10, $11)
-       RETURNING *`,
-      [requestId, supplierTenantId, buyerTenant.id, buyerOrganizationEmail, supplierMessage || null, supplierTenantId,
-       regSupplierName, regSupplierCompany, regSupplierContactNo || null, regSupplierAddress || null, regSupplierDescription || null]
-    );
+    let request: any[] = [];
+
+    try {
+      request = await db.query(
+        `INSERT INTO supplier_registration_requests 
+         (id, supplier_tenant_id, buyer_tenant_id, buyer_organization_email, status, supplier_message, tenant_id,
+          reg_supplier_name, reg_supplier_company, reg_supplier_contact_no, reg_supplier_address, reg_supplier_description)
+         VALUES ($1, $2, $3, $4, 'PENDING', $5, $6, $7, $8, $9, $10, $11)
+         RETURNING *`,
+        [requestId, supplierTenantId, buyerTenant.id, buyerOrganizationEmail, supplierMessage || null, supplierTenantId,
+         regSupplierName, regSupplierCompany, regSupplierContactNo || null, regSupplierAddress || null, regSupplierDescription || null]
+      );
+    } catch (insertError: any) {
+      const errorMessage = String(insertError?.message || '');
+      if (errorMessage.toLowerCase().includes('reg_supplier_')) {
+        // Backward compatibility: some environments may not have the new columns yet.
+        request = await db.query(
+          `INSERT INTO supplier_registration_requests 
+           (id, supplier_tenant_id, buyer_tenant_id, buyer_organization_email, status, supplier_message, tenant_id)
+           VALUES ($1, $2, $3, $4, 'PENDING', $5, $6)
+           RETURNING *`,
+          [requestId, supplierTenantId, buyerTenant.id, buyerOrganizationEmail, supplierMessage || null, supplierTenantId]
+        );
+      } else {
+        throw insertError;
+      }
+    }
 
     // Emit WebSocket event to buyer
     emitToTenant(buyerTenant.id, WS_EVENTS.DATA_UPDATED, {

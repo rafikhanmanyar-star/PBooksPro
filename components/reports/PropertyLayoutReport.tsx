@@ -460,7 +460,7 @@ const PropertyLayoutReport: React.FC = () => {
             <div 
                 key={unit.id} 
                 onClick={() => handleCardClick(unit)}
-                className={`relative rounded-xl bg-white border shadow-sm p-2 flex flex-col justify-between transition-all h-32 overflow-hidden cursor-pointer hover:shadow-md hover:scale-[1.02]
+                className={`relative rounded-xl bg-white border shadow-sm p-2 flex flex-col justify-between transition-all h-32 overflow-y-auto overflow-x-hidden cursor-pointer hover:shadow-md hover:scale-[1.02]
                     ${getColorClasses(unit, mode)}
                 `}
                 style={backgroundColorStyle}
