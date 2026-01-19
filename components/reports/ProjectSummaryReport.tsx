@@ -99,7 +99,7 @@ const ProjectSummaryReport: React.FC = () => {
         const now = new Date();
         return new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
     });
-    const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || 'all');
+    const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
     
     const [detailModalData, setDetailModalData] = useState<{
         isOpen: boolean;

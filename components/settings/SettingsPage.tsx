@@ -796,8 +796,8 @@ const SettingsPage: React.FC = () => {
 
     if (showDetail) {
         return (
-            <div className="p-6 bg-slate-50 h-full">
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 h-full overflow-hidden">
+            <div className="p-6 bg-slate-50 h-full overflow-auto">
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200">
                     <SettingsDetailPage goBack={() => { }} />
                 </div>
             </div>
@@ -863,7 +863,7 @@ const SettingsPage: React.FC = () => {
                 )}
                 
                 {/* Header */}
-                <div className="px-8 py-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-0 bg-slate-50/95 backdrop-blur z-10">
+                <div className="px-8 py-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-0 bg-slate-50/95 backdrop-blur z-30">
                     <div>
                         <h2 className="text-3xl font-bold text-slate-800 tracking-tight">{flatCategories.find(c => c.id === activeCategory)?.label}</h2>
                         <p className="text-slate-500 text-sm mt-1">Manage your {flatCategories.find(c => c.id === activeCategory)?.label.toLowerCase()} preferences and data.</p>
@@ -898,10 +898,10 @@ const SettingsPage: React.FC = () => {
                                         {isAddNewMenuOpen && (
                                             <>
                                                 <div 
-                                                    className="fixed inset-0 z-10" 
+                                                    className="fixed inset-0 z-40" 
                                                     onClick={() => setIsAddNewMenuOpen(false)}
                                                 />
-                                                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-slate-200 z-20 py-1">
+                                                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-slate-200 z-50 py-1">
                                                     <button
                                                         onClick={() => handleAddNew('ACCOUNT')}
                                                         className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2 transition-colors"

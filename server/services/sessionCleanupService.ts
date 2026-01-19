@@ -9,8 +9,8 @@
 import { getDatabaseService } from './databaseService.js';
 
 // Configuration
-const INACTIVITY_THRESHOLD_MINUTES = 30; // Sessions inactive for 30 minutes will be cleaned up
-const CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // Run cleanup every 10 minutes
+const INACTIVITY_THRESHOLD_MINUTES = 5; // Sessions inactive for 5 minutes will be cleaned up (reduced from 30 for faster detection)
+const CLEANUP_INTERVAL_MS = 2 * 60 * 1000; // Run cleanup every 2 minutes (reduced from 10 minutes for faster login status updates)
 
 let cleanupInterval: NodeJS.Timeout | null = null;
 let isRunning = false;

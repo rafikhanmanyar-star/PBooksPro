@@ -15,6 +15,61 @@ const SYSTEM_ACCOUNTS: { [key: string]: { name: string; type: string; descriptio
   'sys-acc-clearing': { name: 'Internal Clearing', type: 'Bank', description: 'System account for internal transfers and equity clearing' }
 };
 
+type NormalizedTransaction = {
+  type?: string;
+  subtype?: string | null;
+  amount: number;
+  accountId?: string | null;
+  fromAccountId?: string | null;
+  toAccountId?: string | null;
+};
+
+const normalizeTransactionForBalance = (tx: any): NormalizedTransaction => ({
+  type: tx?.type,
+  subtype: tx?.subtype ?? null,
+  amount: typeof tx?.amount === 'number' ? tx.amount : parseFloat(tx?.amount || '0'),
+  accountId: tx?.accountId ?? tx?.account_id ?? null,
+  fromAccountId: tx?.fromAccountId ?? tx?.from_account_id ?? null,
+  toAccountId: tx?.toAccountId ?? tx?.to_account_id ?? null,
+});
+
+const applyAccountBalanceChanges = async (
+  client: any,
+  tenantId: string,
+  tx: any,
+  factor: 1 | -1
+) => {
+  const normalized = normalizeTransactionForBalance(tx);
+  if (!normalized.amount || Number.isNaN(normalized.amount)) return;
+
+  const deltas = new Map<string, number>();
+  const addDelta = (accountId: string | null | undefined, delta: number) => {
+    if (!accountId || !delta) return;
+    deltas.set(accountId, (deltas.get(accountId) || 0) + delta);
+  };
+
+  if (normalized.type === 'Income') {
+    addDelta(normalized.accountId, normalized.amount * factor);
+  } else if (normalized.type === 'Expense') {
+    addDelta(normalized.accountId, -normalized.amount * factor);
+  } else if (normalized.type === 'Transfer') {
+    addDelta(normalized.fromAccountId, -normalized.amount * factor);
+    addDelta(normalized.toAccountId, normalized.amount * factor);
+  } else if (normalized.type === 'Loan') {
+    const isPositive =
+      normalized.subtype === 'Receive Loan' || normalized.subtype === 'Collect Loan';
+    addDelta(normalized.accountId, (isPositive ? normalized.amount : -normalized.amount) * factor);
+  }
+
+  for (const [accountId, delta] of deltas.entries()) {
+    if (!delta) continue;
+    await client.query(
+      'UPDATE accounts SET balance = balance + $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3',
+      [delta, accountId, tenantId]
+    );
+  }
+};
+
 // Helper function to log transaction audit
 async function logTransactionAudit(
   db: any,
@@ -432,6 +487,8 @@ router.post('/', async (req: TenantRequest, res) => {
             req.tenantId
           ]
         );
+        await applyAccountBalanceChanges(client, req.tenantId!, oldValues, -1);
+        await applyAccountBalanceChanges(client, req.tenantId!, transaction, 1);
         return updateResult.rows[0];
       } else {
         // Create new transaction
@@ -479,6 +536,7 @@ router.post('/', async (req: TenantRequest, res) => {
             transaction.isSystem || false
           ]
         );
+        await applyAccountBalanceChanges(client, req.tenantId!, transaction, 1);
         
         console.log('✅ POST /transactions - Transaction inserted successfully:', {
           id: insertResult.rows[0]?.id,
@@ -876,32 +934,38 @@ router.put('/:id', async (req: TenantRequest, res) => {
       WHERE id = $23 AND tenant_id = $24
       RETURNING *
     `;
-    const result = await db.query(query, [
-      transaction.type,
-      transaction.subtype || null,
-      transaction.amount,
-      transaction.date,
-      transaction.description || null,
-      transaction.accountId || null,
-      transaction.fromAccountId || null,
-      transaction.toAccountId || null,
-      transaction.categoryId || null,
-      transaction.contactId || null,
-      transaction.projectId || null,
-      transaction.buildingId || null,
-      transaction.propertyId || null,
-      transaction.unitId || null,
-      transaction.invoiceId || null,
-      transaction.billId || null,
-      transaction.payslipId || null,
-      transaction.contractId || null,
-      transaction.agreementId || null,
-      transaction.batchId || null,
-      transaction.isSystem || false,
-      req.user?.userId || null,
-      req.params.id,
-      req.tenantId
-    ]);
+    const result = await db.transaction(async (client) => {
+      const updateResult = await client.query(query, [
+        transaction.type,
+        transaction.subtype || null,
+        transaction.amount,
+        transaction.date,
+        transaction.description || null,
+        transaction.accountId || null,
+        transaction.fromAccountId || null,
+        transaction.toAccountId || null,
+        transaction.categoryId || null,
+        transaction.contactId || null,
+        transaction.projectId || null,
+        transaction.buildingId || null,
+        transaction.propertyId || null,
+        transaction.unitId || null,
+        transaction.invoiceId || null,
+        transaction.billId || null,
+        transaction.payslipId || null,
+        transaction.contractId || null,
+        transaction.agreementId || null,
+        transaction.batchId || null,
+        transaction.isSystem || false,
+        req.user?.userId || null,
+        req.params.id,
+        req.tenantId
+      ]);
+      const updatedTransaction = updateResult.rows[0];
+      await applyAccountBalanceChanges(client, req.tenantId!, oldTransaction[0], -1);
+      await applyAccountBalanceChanges(client, req.tenantId!, updatedTransaction, 1);
+      return updatedTransaction;
+    });
     
     // Log audit entry
     if (req.user) {
@@ -913,14 +977,14 @@ router.put('/:id', async (req: TenantRequest, res) => {
         req.user.role || 'Unknown',
         'UPDATE',
         req.params.id,
-        result[0],
+        result,
         oldTransaction[0],
         req
       );
     }
     
     // Update bill's paid_amount if this transaction is linked to a bill (check both old and new bill_id)
-    const billIdToUpdate = result[0].bill_id || oldTransaction[0].bill_id;
+    const billIdToUpdate = result.bill_id || oldTransaction[0].bill_id;
     if (billIdToUpdate) {
       try {
         const billTransactions = await db.query(
@@ -962,7 +1026,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
     }
     
     // Update invoice's paid_amount if this transaction is linked to an invoice (check both old and new invoice_id)
-    const invoiceIdToUpdate = result[0].invoice_id || oldTransaction[0].invoice_id;
+    const invoiceIdToUpdate = result.invoice_id || oldTransaction[0].invoice_id;
     if (invoiceIdToUpdate) {
       try {
         const invoiceTransactions = await db.query(
@@ -1018,12 +1082,12 @@ router.put('/:id', async (req: TenantRequest, res) => {
     
     // Emit WebSocket event for real-time sync
     emitToTenant(req.tenantId!, WS_EVENTS.TRANSACTION_UPDATED, {
-      transaction: result[0],
+      transaction: result,
       userId: req.user?.userId,
       username: req.user?.username,
     });
     
-    res.json(result[0]);
+    res.json(result);
   } catch (error) {
     console.error('Error updating transaction:', error);
     res.status(500).json({ error: 'Failed to update transaction' });
@@ -1045,10 +1109,14 @@ router.delete('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Transaction not found' });
     }
     
-    const result = await db.query(
-      'DELETE FROM transactions WHERE id = $1 AND tenant_id = $2 RETURNING id',
-      [req.params.id, req.tenantId]
-    );
+    const result = await db.transaction(async (client) => {
+      await applyAccountBalanceChanges(client, req.tenantId!, oldTransaction[0], -1);
+      const deleteResult = await client.query(
+        'DELETE FROM transactions WHERE id = $1 AND tenant_id = $2 RETURNING id',
+        [req.params.id, req.tenantId]
+      );
+      return deleteResult.rows[0];
+    });
     
     // Update bill's paid_amount if this transaction was linked to a bill
     if (oldTransaction[0].bill_id) {
@@ -1168,7 +1236,7 @@ router.delete('/:id', async (req: TenantRequest, res) => {
       username: req.user?.username,
     });
     
-    res.json({ success: true });
+    res.json({ success: true, id: result?.id || req.params.id });
   } catch (error) {
     console.error('Error deleting transaction:', error);
     res.status(500).json({ error: 'Failed to delete transaction' });
@@ -1326,6 +1394,7 @@ router.post('/batch', async (req: TenantRequest, res) => {
           let savedTransaction;
           if (existing.rows.length > 0) {
             // Update existing
+            const oldValues = existing.rows[0];
             const updateResult = await client.query(
               `UPDATE transactions 
                SET type = $1, subtype = $2, amount = $3, date = $4, description = $5, 
@@ -1364,6 +1433,8 @@ router.post('/batch', async (req: TenantRequest, res) => {
               ]
             );
             savedTransaction = updateResult.rows[0];
+            await applyAccountBalanceChanges(client, req.tenantId!, oldValues, -1);
+            await applyAccountBalanceChanges(client, req.tenantId!, savedTransaction, 1);
           } else {
             // Create new
             const insertResult = await client.query(
@@ -1402,6 +1473,7 @@ router.post('/batch', async (req: TenantRequest, res) => {
               ]
             );
             savedTransaction = insertResult.rows[0];
+            await applyAccountBalanceChanges(client, req.tenantId!, savedTransaction, 1);
             
             // Update bill if linked
             if (transaction.billId && !transaction.id) {

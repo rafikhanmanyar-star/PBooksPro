@@ -246,6 +246,9 @@ class DatabaseService {
                     
                     // Database exists with tenant_id - check schema version and migrate if needed
                     await this.checkAndMigrateSchema();
+                    
+                    // IMPORTANT: Add tenant_id columns BEFORE ensureAllTablesExist
+                    // because ensureAllTablesExist runs CREATE_SCHEMA_SQL which includes indexes on tenant_id
                     // Ensure tenant columns are present even if schema version is current (idempotent)
                     try {
                         const { migrateTenantColumns } = await import('./tenantMigration');
@@ -255,6 +258,7 @@ class DatabaseService {
                     }
                     
                     // Ensure all tables are present (for existing databases)
+                    // Safe to create indexes now because tenant_id columns already exist
                     this.ensureAllTablesExist();
                     // Ensure contracts table has new columns
                     this.ensureContractColumnsExist();
@@ -863,19 +867,22 @@ class DatabaseService {
                 console.log(`🔄 Schema migration needed: ${currentVersion} -> ${latestVersion}`);
                 console.log('⚠️ Running schema migration...');
                 
-                // Ensure all tables exist (this will create any missing tables)
-                this.ensureAllTablesExist();
-                
-                // Ensure contract and bill columns exist (for expense_category_items)
-                this.ensureContractColumnsExist();
-                
-                // Add tenant_id columns for multi-tenant support
+                // IMPORTANT: Add tenant_id columns FIRST before running ensureAllTablesExist
+                // because ensureAllTablesExist runs CREATE_SCHEMA_SQL which includes indexes on tenant_id
+                // If we create indexes before the columns exist, SQLite will error
                 try {
                     const { migrateTenantColumns } = await import('./tenantMigration');
                     migrateTenantColumns();
                 } catch (migrationError) {
                     console.warn('⚠️ Tenant migration failed, continuing anyway:', migrationError);
                 }
+                
+                // Ensure all tables exist (this will create any missing tables AND indexes)
+                // Now safe because tenant_id columns already exist
+                this.ensureAllTablesExist();
+                
+                // Ensure contract and bill columns exist (for expense_category_items)
+                this.ensureContractColumnsExist();
                 
                 // Update schema version
                 this.setMetadata('schema_version', latestVersion.toString());
@@ -1005,16 +1012,46 @@ class DatabaseService {
             if (missingTables.length > 0) {
                 console.log(`⚠️ Found ${missingTables.length} missing tables, creating them...`, missingTables);
                 // Re-run schema creation (CREATE TABLE IF NOT EXISTS will only create missing tables)
-                this.db.exec(CREATE_SCHEMA_SQL);
+                // Execute each statement separately to handle index creation failures gracefully
+                this.executeSchemaStatements(CREATE_SCHEMA_SQL);
                 console.log('✅ Missing tables created');
             }
         } catch (error) {
             console.error('Error ensuring tables exist:', error);
             // If check fails, try to create schema anyway (safe with IF NOT EXISTS)
             try {
-                this.db.exec(CREATE_SCHEMA_SQL);
+                this.executeSchemaStatements(CREATE_SCHEMA_SQL);
             } catch (createError) {
                 console.error('Failed to create missing tables:', createError);
+            }
+        }
+    }
+    
+    /**
+     * Execute SQL schema statements one by one, handling index creation failures gracefully
+     * This allows table creation to succeed even if some indexes fail due to missing columns
+     */
+    private executeSchemaStatements(sql: string): void {
+        if (!this.db) return;
+        
+        // Split by semicolon and filter out empty statements
+        const statements = sql.split(';')
+            .map(s => s.trim())
+            .filter(s => s.length > 0 && !s.startsWith('--'));
+        
+        for (const statement of statements) {
+            try {
+                this.db.exec(statement + ';');
+            } catch (error: any) {
+                const errorMsg = error?.message || String(error);
+                // Silently skip index creation failures on missing columns
+                // This can happen when tenant_id columns haven't been added yet
+                if (errorMsg.includes('no such column') && statement.toUpperCase().includes('CREATE INDEX')) {
+                    console.warn(`⚠️ Skipping index creation (column not found): ${statement.substring(0, 80)}...`);
+                } else {
+                    // Re-throw other errors
+                    throw error;
+                }
             }
         }
     }

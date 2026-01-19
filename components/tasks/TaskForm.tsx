@@ -21,7 +21,7 @@ const TASK_STATUSES: TaskStatus[] = ['Not Started', 'In Progress', 'Review', 'Co
 
 const TaskForm: React.FC<TaskFormProps> = ({ task, onSubmit, onCancel, onDelete, employees = [] }) => {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'Admin';
+  const isAdmin = user?.role?.trim()?.toLowerCase() === 'admin';
   const isEdit = !!task;
 
   const [title, setTitle] = useState(task?.title || '');

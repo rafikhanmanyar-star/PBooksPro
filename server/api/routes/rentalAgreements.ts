@@ -5,6 +5,34 @@ import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
+let tenantColumnInfoCache: { hasOrgId: boolean; hasTenantId: boolean } | null = null;
+
+async function getTenantColumnInfo() {
+  if (tenantColumnInfoCache) return tenantColumnInfoCache;
+  const db = getDb();
+  const columns = await db.query(
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_name = 'rental_agreements'
+       AND column_name IN ('org_id', 'tenant_id')`
+  );
+  const columnNames = new Set(columns.map((col: any) => col.column_name));
+  tenantColumnInfoCache = {
+    hasOrgId: columnNames.has('org_id'),
+    hasTenantId: columnNames.has('tenant_id')
+  };
+  return tenantColumnInfoCache;
+}
+
+function buildTenantClause(info: { hasOrgId: boolean; hasTenantId: boolean }, index: number) {
+  if (info.hasOrgId && info.hasTenantId) {
+    return `(org_id = $${index} OR tenant_id = $${index})`;
+  }
+  if (info.hasOrgId) {
+    return `org_id = $${index}`;
+  }
+  return `tenant_id = $${index}`;
+}
 
 /**
  * Transform database result (snake_case) to API response format (camelCase)
@@ -39,8 +67,9 @@ router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const { status, propertyId } = req.query;
-    
-    let query = 'SELECT * FROM rental_agreements WHERE org_id = $1';
+
+    const tenantInfo = await getTenantColumnInfo();
+    let query = `SELECT * FROM rental_agreements WHERE ${buildTenantClause(tenantInfo, 1)}`;
     const params: any[] = [req.tenantId];
     let paramIndex = 2;
 
@@ -86,8 +115,9 @@ router.get('/', async (req: TenantRequest, res) => {
 router.get('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
+    const tenantInfo = await getTenantColumnInfo();
     const agreements = await db.query(
-      'SELECT * FROM rental_agreements WHERE id = $1 AND org_id = $2',
+      `SELECT * FROM rental_agreements WHERE id = $1 AND ${buildTenantClause(tenantInfo, 2)}`,
       [req.params.id, req.tenantId]
     );
     
@@ -108,9 +138,27 @@ router.post('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const agreement = req.body;
+    const tenantInfo = await getTenantColumnInfo();
+    
+    console.log('📝 POST /rental-agreements - Received request:', {
+      tenantId: req.tenantId,
+      userId: req.user?.userId,
+      agreementId: agreement.id,
+      agreementNumber: agreement.agreementNumber,
+      contactId: agreement.contactId,
+      propertyId: agreement.propertyId,
+      startDate: agreement.startDate,
+      endDate: agreement.endDate,
+      monthlyRent: agreement.monthlyRent,
+      rentDueDate: agreement.rentDueDate,
+      status: agreement.status,
+      hasBody: !!agreement,
+      bodyKeys: Object.keys(agreement || {})
+    });
     
     // Validate required fields
     if (!agreement.agreementNumber) {
+      console.log('❌ POST /rental-agreements - Validation failed: agreementNumber is required');
       return res.status(400).json({ 
         error: 'Validation error',
         message: 'Agreement number is required'
@@ -122,12 +170,19 @@ router.post('/', async (req: TenantRequest, res) => {
     
     // Check if agreement with this ID already exists and belongs to a different tenant
     if (agreement.id) {
+      const tenantColumns = [
+        tenantInfo.hasOrgId ? 'org_id' : null,
+        tenantInfo.hasTenantId ? 'tenant_id' : null
+      ].filter(Boolean);
+      const selectTenantColumns = tenantColumns.length > 0 ? `, ${tenantColumns.join(', ')}` : '';
       const existingAgreement = await db.query(
-        'SELECT org_id FROM rental_agreements WHERE id = $1',
+        `SELECT id${selectTenantColumns} FROM rental_agreements WHERE id = $1`,
         [agreementId]
       );
       
-      if (existingAgreement.length > 0 && existingAgreement[0].org_id !== req.tenantId) {
+      const existingRow = existingAgreement[0];
+      const existingTenantId = existingRow?.org_id ?? existingRow?.tenant_id;
+      if (existingAgreement.length > 0 && existingTenantId !== req.tenantId) {
         return res.status(403).json({ 
           error: 'Forbidden',
           message: 'A rental agreement with this ID already exists in another organization'
@@ -137,7 +192,7 @@ router.post('/', async (req: TenantRequest, res) => {
     
     // Check if agreement exists to determine if this is a create or update
     const existing = await db.query(
-      'SELECT id, status FROM rental_agreements WHERE id = $1 AND org_id = $2',
+      `SELECT id, status FROM rental_agreements WHERE id = $1 AND ${buildTenantClause(tenantInfo, 2)}`,
       [agreementId, req.tenantId]
     );
     const isUpdate = existing.length > 0;
@@ -160,7 +215,7 @@ router.post('/', async (req: TenantRequest, res) => {
           const result = await db.query(
             `UPDATE rental_agreements 
              SET status = $1, updated_at = NOW()
-             WHERE id = $2 AND org_id = $3
+             WHERE id = $2 AND ${buildTenantClause(tenantInfo, 3)}
              RETURNING *`,
             ['Renewed', agreementId, req.tenantId]
           );
@@ -187,13 +242,60 @@ router.post('/', async (req: TenantRequest, res) => {
     }
     
     // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
+    const insertColumns = ['id'];
+    const insertValues: any[] = [agreementId];
+
+    if (tenantInfo.hasOrgId) {
+      insertColumns.push('org_id');
+      insertValues.push(req.tenantId);
+    }
+    if (tenantInfo.hasTenantId) {
+      insertColumns.push('tenant_id');
+      insertValues.push(req.tenantId);
+    }
+
+    insertColumns.push(
+      'agreement_number',
+      'contact_id',
+      'property_id',
+      'start_date',
+      'end_date',
+      'monthly_rent',
+      'rent_due_date',
+      'status',
+      'description',
+      'security_deposit',
+      'broker_id',
+      'broker_fee',
+      'owner_id',
+      'created_at',
+      'updated_at'
+    );
+
+    insertValues.push(
+      agreement.agreementNumber,
+      agreement.contactId || null, // Contact ID (the tenant contact person)
+      agreement.propertyId,
+      agreement.startDate,
+      agreement.endDate,
+      agreement.monthlyRent,
+      agreement.rentDueDate,
+      agreement.status,
+      agreement.description || null,
+      agreement.securityDeposit || null,
+      agreement.brokerId || null,
+      agreement.brokerFee || null,
+      agreement.ownerId || null
+    );
+
+    const valuePlaceholders = insertColumns.map((_, idx) => `$${idx + 1}`);
+    valuePlaceholders[valuePlaceholders.length - 2] = `COALESCE((SELECT created_at FROM rental_agreements WHERE id = $1), NOW())`;
+    valuePlaceholders[valuePlaceholders.length - 1] = 'NOW()';
+
     const result = await db.query(
       `INSERT INTO rental_agreements (
-        id, org_id, agreement_number, contact_id, property_id, start_date, end_date,
-        monthly_rent, rent_due_date, status, description, security_deposit,
-        broker_id, broker_fee, owner_id, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-                COALESCE((SELECT created_at FROM rental_agreements WHERE id = $1), NOW()), NOW())
+        ${insertColumns.join(', ')}
+      ) VALUES (${valuePlaceholders.join(', ')})
       ON CONFLICT (id) 
       DO UPDATE SET
         agreement_number = EXCLUDED.agreement_number,
@@ -211,35 +313,28 @@ router.post('/', async (req: TenantRequest, res) => {
         owner_id = EXCLUDED.owner_id,
         updated_at = NOW()
       RETURNING *`,
-      [
-        agreementId,
-        req.tenantId, // Organization org_id (for multi-tenancy isolation)
-        agreement.agreementNumber,
-        agreement.contactId || null, // Contact ID (the tenant contact person)
-        agreement.propertyId,
-        agreement.startDate,
-        agreement.endDate,
-        agreement.monthlyRent,
-        agreement.rentDueDate,
-        agreement.status,
-        agreement.description || null,
-        agreement.securityDeposit || null,
-        agreement.brokerId || null,
-        agreement.brokerFee || null,
-        agreement.ownerId || null
-      ]
+      insertValues
     );
     const saved = result[0];
     const transformedSaved = transformRentalAgreement(saved);
     
+    console.log('✅ POST /rental-agreements - Agreement saved successfully:', {
+      id: saved.id,
+      agreementNumber: saved.agreement_number,
+      tenantId: req.tenantId,
+      isUpdate
+    });
+    
     // Emit WebSocket event for real-time sync
     if (isUpdate) {
+      console.log('📡 POST /rental-agreements - Emitting RENTAL_AGREEMENT_UPDATED event');
       emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_UPDATED, {
         agreement: transformedSaved,
         userId: req.user?.userId,
         username: req.user?.username,
       });
     } else {
+      console.log('📡 POST /rental-agreements - Emitting RENTAL_AGREEMENT_CREATED event');
       emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_CREATED, {
         agreement: transformedSaved,
         userId: req.user?.userId,
@@ -250,10 +345,42 @@ router.post('/', async (req: TenantRequest, res) => {
     res.status(isUpdate ? 200 : 201).json(transformedSaved);
   } catch (error: any) {
     console.error('Error creating/updating rental agreement:', error);
+    console.error('Error details:', {
+      code: error?.code,
+      message: error?.message,
+      detail: error?.detail,
+      constraint: error?.constraint,
+      column: error?.column,
+      table: error?.table
+    });
+    
+    // Handle specific PostgreSQL error codes
     if (error.code === '23505') { // Unique violation
-      return res.status(400).json({ error: 'Agreement number already exists' });
+      return res.status(400).json({ 
+        error: 'Agreement number already exists',
+        message: `An agreement with this number already exists: ${error.detail || ''}`
+      });
     }
-    res.status(500).json({ error: 'Failed to save rental agreement' });
+    if (error.code === '23502') { // NOT NULL violation
+      return res.status(400).json({ 
+        error: 'Missing required field',
+        message: `Required field is missing: ${error.column || error.detail || 'unknown field'}`,
+        detail: error.detail
+      });
+    }
+    if (error.code === '23503') { // Foreign key violation
+      return res.status(400).json({ 
+        error: 'Invalid reference',
+        message: `Referenced record does not exist: ${error.detail || error.constraint || 'unknown reference'}`,
+        detail: error.detail
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Failed to save rental agreement',
+      message: error?.message || 'Unknown error',
+      code: error?.code
+    });
   }
 });
 

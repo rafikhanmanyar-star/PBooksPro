@@ -45,6 +45,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     // Fetch license status
     useEffect(() => {
         const fetchLicenseStatus = async () => {
+            // Check for token before making API call to prevent 401 errors
+            if (!apiClient.getToken()) {
+                return;
+            }
             try {
                 const response = await apiClient.get<{
                     licenseStatus: string;
@@ -71,6 +75,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     // Fetch online users count and list (users with active sessions) for the organization
     useEffect(() => {
         const fetchOnlineUsers = async () => {
+            // Check for token before making API call to prevent 401 errors
+            if (!apiClient.getToken()) {
+                return;
+            }
             try {
                 const [countResponse, listResponse] = await Promise.all([
                     apiClient.get<{ onlineUsers: number }>('/tenants/online-users-count'),

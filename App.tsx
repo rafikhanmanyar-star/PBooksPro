@@ -307,17 +307,21 @@ const App: React.FC = () => {
       }
       console.log('[App] ✅ WebSocket client connecting (authenticated)');
       
-      // Set dispatch callback for real-time sync handler
+      // Set dispatch callback and current user ID for real-time sync handler
+      // Setting the user ID is critical to prevent duplicate records when the creator
+      // receives their own WebSocket event back
       const realtimeSyncHandler = getRealtimeSyncHandler();
       realtimeSyncHandler.setDispatch(dispatch);
+      realtimeSyncHandler.setCurrentUserId(user?.id || null);
       console.log('[App] ✅ Real-time sync handler connected to AppContext dispatch');
       
       return () => {
         wsClient.disconnect();
         realtimeSyncHandler.setDispatch(null);
+        realtimeSyncHandler.setCurrentUserId(null);
       };
     }
-  }, [isAuthenticated, dispatch]);
+  }, [isAuthenticated, dispatch, user?.id]);
 
   // Optimized navigation handler - uses startTransition for non-blocking updates
   const handleSetPage = useCallback((page: Page) => {

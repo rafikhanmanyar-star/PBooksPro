@@ -24,27 +24,63 @@ router.get('/', async (req: TenantRequest, res) => {
 
     // IMPORTANT: Return POs where tenant_id matches (buyer's own POs)
     // OR where supplier_tenant_id matches (POs sent to this tenant as supplier)
+    // Join with tenants table to get buyer and supplier company names
+    // Use aliases to return camelCase field names for frontend compatibility
     let query = `
-      SELECT * FROM purchase_orders 
-      WHERE (tenant_id = $1 OR supplier_tenant_id = $1)
+      SELECT 
+        po.id,
+        po.po_number as "poNumber",
+        po.buyer_tenant_id as "buyerTenantId",
+        po.supplier_tenant_id as "supplierTenantId",
+        po.project_id as "projectId",
+        po.total_amount as "totalAmount",
+        po.status,
+        po.items,
+        po.description,
+        po.target_delivery_date as "targetDeliveryDate",
+        po.created_by as "createdBy",
+        po.sent_at as "sentAt",
+        po.received_at as "receivedAt",
+        po.delivered_at as "deliveredAt",
+        po.completed_at as "completedAt",
+        po.tenant_id as "tenantId",
+        po.user_id as "userId",
+        po.created_at as "createdAt",
+        po.updated_at as "updatedAt",
+        bt.company_name as "buyerCompanyName",
+        bt.name as "buyerName",
+        st.company_name as "supplierCompanyName",
+        st.name as "supplierName",
+        p.name as "projectName"
+      FROM purchase_orders po
+      LEFT JOIN tenants bt ON po.buyer_tenant_id = bt.id
+      LEFT JOIN tenants st ON po.supplier_tenant_id = st.id
+      LEFT JOIN projects p ON po.project_id = p.id
+      WHERE (po.tenant_id = $1 OR po.supplier_tenant_id = $1)
     `;
     const params: any[] = [req.tenantId];
     let paramIndex = 2;
 
     if (status) {
-      query += ` AND status = $${paramIndex++}`;
+      query += ` AND po.status = $${paramIndex++}`;
       params.push(status);
     }
 
     if (supplierId) {
-      query += ` AND supplier_tenant_id = $${paramIndex++}`;
+      query += ` AND po.supplier_tenant_id = $${paramIndex++}`;
       params.push(supplierId);
     }
 
-    query += ' ORDER BY created_at DESC';
+    query += ' ORDER BY po.created_at DESC';
 
     const pos = await db.query(query, params);
-    res.json(pos);
+    // Parse numeric fields and JSON items
+    const parsedPOs = pos.map((po: any) => ({
+      ...po,
+      totalAmount: parseFloat(po.totalAmount) || 0,
+      items: typeof po.items === 'string' ? JSON.parse(po.items) : po.items
+    }));
+    res.json(parsedPOs);
   } catch (error: any) {
     console.error('Error fetching purchase orders:', error);
     res.status(500).json({ error: 'Failed to fetch purchase orders' });
@@ -59,7 +95,36 @@ router.get('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const po = await db.query(
-      'SELECT * FROM purchase_orders WHERE id = $1 AND tenant_id = $2',
+      `SELECT 
+        po.id,
+        po.po_number as "poNumber",
+        po.buyer_tenant_id as "buyerTenantId",
+        po.supplier_tenant_id as "supplierTenantId",
+        po.project_id as "projectId",
+        po.total_amount as "totalAmount",
+        po.status,
+        po.items,
+        po.description,
+        po.target_delivery_date as "targetDeliveryDate",
+        po.created_by as "createdBy",
+        po.sent_at as "sentAt",
+        po.received_at as "receivedAt",
+        po.delivered_at as "deliveredAt",
+        po.completed_at as "completedAt",
+        po.tenant_id as "tenantId",
+        po.user_id as "userId",
+        po.created_at as "createdAt",
+        po.updated_at as "updatedAt",
+        bt.company_name as "buyerCompanyName",
+        bt.name as "buyerName",
+        st.company_name as "supplierCompanyName",
+        st.name as "supplierName",
+        p.name as "projectName"
+      FROM purchase_orders po
+      LEFT JOIN tenants bt ON po.buyer_tenant_id = bt.id
+      LEFT JOIN tenants st ON po.supplier_tenant_id = st.id
+      LEFT JOIN projects p ON po.project_id = p.id
+      WHERE po.id = $1 AND (po.tenant_id = $2 OR po.supplier_tenant_id = $2)`,
       [req.params.id, req.tenantId]
     );
 
@@ -67,7 +132,13 @@ router.get('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Purchase order not found' });
     }
 
-    res.json(po[0]);
+    // Parse numeric fields and JSON items
+    const parsedPO = {
+      ...po[0],
+      totalAmount: parseFloat(po[0].totalAmount) || 0,
+      items: typeof po[0].items === 'string' ? JSON.parse(po[0].items) : po[0].items
+    };
+    res.json(parsedPO);
   } catch (error: any) {
     console.error('Error fetching purchase order:', error);
     res.status(500).json({ error: 'Failed to fetch purchase order' });
@@ -98,19 +169,40 @@ router.post('/', async (req: TenantRequest, res) => {
     // Create PO with status DRAFT, then immediately set to SENT
     const result = await db.query(
       `INSERT INTO purchase_orders (
-        id, po_number, buyer_tenant_id, supplier_tenant_id, total_amount, status,
-        items, description, created_by, sent_at, tenant_id, user_id, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-      RETURNING *`,
+        id, po_number, buyer_tenant_id, supplier_tenant_id, project_id, total_amount, status,
+        items, description, target_delivery_date, created_by, sent_at, tenant_id, user_id, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      RETURNING 
+        id,
+        po_number as "poNumber",
+        buyer_tenant_id as "buyerTenantId",
+        supplier_tenant_id as "supplierTenantId",
+        project_id as "projectId",
+        total_amount as "totalAmount",
+        status,
+        items,
+        description,
+        target_delivery_date as "targetDeliveryDate",
+        created_by as "createdBy",
+        sent_at as "sentAt",
+        received_at as "receivedAt",
+        delivered_at as "deliveredAt",
+        completed_at as "completedAt",
+        tenant_id as "tenantId",
+        user_id as "userId",
+        created_at as "createdAt",
+        updated_at as "updatedAt"`,
       [
         poId,
         poData.poNumber,
         buyerTenantId,
         poData.supplierTenantId,
+        poData.projectId || null,
         totalAmount,
         'SENT', // Automatically set to SENT on creation
         JSON.stringify(poData.items),
         poData.description || null,
+        poData.targetDeliveryDate || null,
         req.user?.userId || null,
         now, // sent_at
         req.tenantId,
@@ -124,7 +216,12 @@ router.post('/', async (req: TenantRequest, res) => {
       return res.status(500).json({ error: 'Failed to create purchase order' });
     }
 
-    const createdPO = result[0];
+    // Parse numeric fields and JSON items
+    const createdPO = {
+      ...result[0],
+      totalAmount: parseFloat(result[0].totalAmount) || 0,
+      items: typeof result[0].items === 'string' ? JSON.parse(result[0].items) : result[0].items
+    };
 
     // Log audit trail
     if (req.tenantId) {
@@ -219,7 +316,26 @@ router.put('/:id/status', async (req: TenantRequest, res) => {
       `UPDATE purchase_orders 
        SET ${updateFields.join(', ')}
        WHERE id = $${paramIndex} AND tenant_id = $${paramIndex + 1}
-       RETURNING *`,
+       RETURNING 
+        id,
+        po_number as "poNumber",
+        buyer_tenant_id as "buyerTenantId",
+        supplier_tenant_id as "supplierTenantId",
+        project_id as "projectId",
+        total_amount as "totalAmount",
+        status,
+        items,
+        description,
+        target_delivery_date as "targetDeliveryDate",
+        created_by as "createdBy",
+        sent_at as "sentAt",
+        received_at as "receivedAt",
+        delivered_at as "deliveredAt",
+        completed_at as "completedAt",
+        tenant_id as "tenantId",
+        user_id as "userId",
+        created_at as "createdAt",
+        updated_at as "updatedAt"`,
       updateValues
     );
 
@@ -227,7 +343,12 @@ router.put('/:id/status', async (req: TenantRequest, res) => {
       return res.status(500).json({ error: 'Failed to update purchase order status' });
     }
 
-    const updatedPO = result[0];
+    // Parse numeric fields and JSON items
+    const updatedPO = {
+      ...result[0],
+      totalAmount: parseFloat(result[0].totalAmount) || 0,
+      items: typeof result[0].items === 'string' ? JSON.parse(result[0].items) : result[0].items
+    };
 
     // Log audit trail
     if (req.tenantId) {

@@ -5,7 +5,7 @@
 
 import { AppSettingsApiRepository } from './api/repositories/appSettingsApi';
 import { AppSettingsRepository } from './database/repositories/index';
-import { apiClient } from './api/client';
+import { isAuthenticatedSafe } from './api/client';
 
 export interface SettingsToSync {
   // General settings (user-based)
@@ -46,7 +46,7 @@ class SettingsSyncService {
    * Check if cloud sync is available (user is authenticated)
    */
   private isCloudAvailable(): boolean {
-    return apiClient.isAuthenticated();
+    return isAuthenticatedSafe();
   }
 
   /**
@@ -163,8 +163,12 @@ class SettingsSyncService {
    * Save a single setting to both cloud and local DB
    */
   async saveSetting(key: string, value: any): Promise<void> {
-    // Always save to local first for immediate availability
-    this.localRepo.setSetting(key, value);
+    // Try to save to local first for immediate availability
+    try {
+      this.localRepo.setSetting(key, value);
+    } catch (localError) {
+      console.warn(`⚠️ Failed to save setting ${key} locally (database may not be ready):`, localError);
+    }
 
     // Try to save to cloud if available
     if (this.isCloudAvailable()) {
@@ -181,8 +185,12 @@ class SettingsSyncService {
    * Save multiple settings to both cloud and local DB
    */
   async saveSettings(settings: SettingsToSync): Promise<void> {
-    // Always save to local first
-    this.saveSettingsToLocal(settings);
+    // Try to save to local first
+    try {
+      this.saveSettingsToLocal(settings);
+    } catch (localError) {
+      console.warn('⚠️ Failed to save settings locally (database may not be ready):', localError);
+    }
 
     // Try to save to cloud if available
     if (this.isCloudAvailable()) {

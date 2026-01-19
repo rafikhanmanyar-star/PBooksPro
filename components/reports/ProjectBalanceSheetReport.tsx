@@ -50,7 +50,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
     const { handlePrint } = usePrint();
     const [dateRange, setDateRange] = useState<ReportDateRange>('all');
     const [asOfDate, setAsOfDate] = useState(new Date().toISOString().split('T')[0]);
-    const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || 'all');
+    const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
 
     const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...state.projects], [state.projects]);
 

@@ -70,7 +70,7 @@ const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => 
     const renderReport = () => {
         switch (activeReport) {
             case 'Visual Layout':
-                return <PropertyLayoutReport onReportChange={setActiveReport} activeReport={activeReport} />;
+                return <PropertyLayoutReport />;
             case 'Tabular Layout':
                 return <UnitStatusReport />;
             case 'Agreement Expiry':
