@@ -353,7 +353,7 @@ const applyTransactionEffect = (state: AppState, tx: Transaction, isAdd: boolean
             if (acc.id === tx.toAccountId) change = tx.amount;
         }
         else if (tx.type === TransactionType.LOAN && acc.id === tx.accountId) {
-            if (tx.subtype === LoanSubtype.RECEIVE) change = tx.amount;
+            if (tx.subtype === LoanSubtype.RECEIVE || tx.subtype === LoanSubtype.COLLECT) change = tx.amount;
             else change = -tx.amount;
         }
 

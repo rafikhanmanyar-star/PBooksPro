@@ -60,6 +60,8 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
                 console.log(`📝 [ChatModal] Database initialized. Ready: ${dbService.isReady()}`);
             }
             
+            // Note: ensureAllTablesExist is now safe to call even if tenant_id columns
+            // haven't been added yet - it handles index creation failures gracefully
             console.log(`📝 [ChatModal] Ensuring all tables exist...`);
             dbService.ensureAllTablesExist();
             

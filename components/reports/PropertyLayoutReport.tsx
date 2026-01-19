@@ -5,7 +5,6 @@ import { CURRENCY, ICONS } from '../../constants';
 import { InvoiceStatus, TransactionType, InvoiceType, RentalAgreementStatus } from '../../types';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
-import Button from '../ui/Button';
 import PrintButton from '../ui/PrintButton';
 import ComboBox from '../ui/ComboBox';
 import PropertyHistoryModal from './PropertyHistoryModal';
@@ -67,12 +66,7 @@ interface ProjectLayoutData {
     unconventional: UnitBoxData[];
 }
 
-interface PropertyLayoutReportProps {
-    onReportChange?: (report: string) => void;
-    activeReport?: string;
-}
-
-const PropertyLayoutReport: React.FC<PropertyLayoutReportProps> = ({ onReportChange, activeReport }) => {
+const PropertyLayoutReport: React.FC = () => {
     const { state } = useAppContext();
     const { handlePrint } = usePrint();
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
@@ -648,32 +642,8 @@ const PropertyLayoutReport: React.FC<PropertyLayoutReportProps> = ({ onReportCha
                             />
                         </div>
                     )}
-                    {/* Layout Toggle Buttons */}
-                    {onReportChange && (
-                        <div className="flex gap-2 ml-auto">
-                            <button
-                                onClick={() => onReportChange('Visual Layout')}
-                                className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 whitespace-nowrap focus:outline-none ${
-                                    activeReport === 'Visual Layout'
-                                        ? 'bg-indigo-100 text-indigo-700 border-2 border-indigo-300 shadow-sm'
-                                        : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-                                }`}
-                            >
-                                Visual Layout
-                            </button>
-                            <button
-                                onClick={() => onReportChange('Tabular Layout')}
-                                className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 whitespace-nowrap focus:outline-none ${
-                                    activeReport === 'Tabular Layout'
-                                        ? 'bg-indigo-100 text-indigo-700 border-2 border-indigo-300 shadow-sm'
-                                        : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-                                }`}
-                            >
-                                Tabular Layout
-                            </button>
-                        </div>
-                    )}
-                    {/* Actions Group */}
+                    {/* Actions Group - pushed to right */}
+                    <div className="ml-auto"></div>
                     <div className="flex items-center gap-2">
                         <PrintButton
                             variant="secondary"

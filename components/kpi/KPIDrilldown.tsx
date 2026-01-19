@@ -56,7 +56,7 @@ const KPIDrilldown: React.FC = () => {
                      if (tx.fromAccountId === accountId) amount = -amount;
                      // else if toAccountId, it's positive
                  } else if (tx.type === TransactionType.LOAN) {
-                     if (tx.subtype === LoanSubtype.REPAY) amount = -amount; // We pay out
+                    if (tx.subtype === LoanSubtype.REPAY || tx.subtype === LoanSubtype.GIVE) amount = -amount; // We pay out
                      // else Receive Loan, we get money (positive)
                  }
 

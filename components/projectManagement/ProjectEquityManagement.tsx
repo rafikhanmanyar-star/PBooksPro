@@ -76,7 +76,6 @@ const ProjectEquityManagement: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('projectEquity_sidebarWidth', 300);
     const [isActionModalOpen, setIsActionModalOpen] = useState(false);
-    const [actionType, setActionType] = useState<'INVEST' | 'WITHDRAW'>('INVEST');
     
     // Action Form
     const [formInvestorId, setFormInvestorId] = useState('');
@@ -593,8 +592,7 @@ const ProjectEquityManagement: React.FC = () => {
         }
     };
 
-    const handleOpenModal = (type: 'INVEST' | 'WITHDRAW') => {
-        setActionType(type);
+    const handleOpenInvestModal = () => {
         setFormAmount('');
         setFormDescription('');
         setFormDate(new Date().toISOString().split('T')[0]);
@@ -631,19 +629,11 @@ const ProjectEquityManagement: React.FC = () => {
             return;
         }
 
-        let fromId, toId, desc;
-        if (actionType === 'INVEST') {
-            // Investment: Money flows FROM investor (equity) TO bank account
-            // This increases bank account (money received) and increases equity balance (investment recorded)
-            fromId = formInvestorId;
-            toId = formBankAccountId;
-            desc = `Investment in ${state.projects.find(p=>p.id===formProjectId)?.name}`;
-        } else {
-            // Withdrawal: Money flows FROM bank account TO investor (equity)
-            fromId = formBankAccountId;
-            toId = formInvestorId;
-            desc = `Capital Withdrawal from ${state.projects.find(p=>p.id===formProjectId)?.name}`;
-        }
+        // Investment: Money flows FROM investor (equity) TO bank account
+        // This increases bank account (money received) and increases equity balance (investment recorded)
+        const fromId = formInvestorId;
+        const toId = formBankAccountId;
+        const desc = `Investment in ${state.projects.find(p=>p.id===formProjectId)?.name}`;
 
         const tx: Transaction = {
             id: `eq-tx-${Date.now()}`,
@@ -964,8 +954,7 @@ const ProjectEquityManagement: React.FC = () => {
                                 <div className="flex gap-2">
                                     <Button size="sm" variant="secondary" onClick={handleExport}>{ICONS.export} Export</Button>
                                     <Button size="sm" variant="secondary" onClick={handlePrint}>{ICONS.print} Print</Button>
-                                    <Button size="sm" onClick={() => handleOpenModal('INVEST')} className="bg-emerald-600 hover:bg-emerald-700">{ICONS.plus} Invest</Button>
-                                    <Button size="sm" variant="secondary" onClick={() => handleOpenModal('WITHDRAW')}>{ICONS.minus} Withdraw</Button>
+                                    <Button size="sm" onClick={handleOpenInvestModal} className="bg-emerald-600 hover:bg-emerald-700">{ICONS.plus} Invest</Button>
                                 </div>
                             </div>
                             <div className="flex-grow overflow-y-auto">
@@ -1265,7 +1254,7 @@ const ProjectEquityManagement: React.FC = () => {
                 </div>
             )}
 
-            <Modal isOpen={isActionModalOpen} onClose={() => setIsActionModalOpen(false)} title={actionType === 'INVEST' ? "Record New Investment" : "Record Withdrawal"}>
+            <Modal isOpen={isActionModalOpen} onClose={() => setIsActionModalOpen(false)} title="Record New Investment">
                 <div className="space-y-4">
                     <ComboBox label="Investor" items={equityAccounts} selectedId={formInvestorId} onSelect={(i) => setFormInvestorId(i?.id || '')} required />
                     <ComboBox label="Project" items={state.projects} selectedId={formProjectId} onSelect={(i) => setFormProjectId(i?.id || '')} required allowAddNew={false} />

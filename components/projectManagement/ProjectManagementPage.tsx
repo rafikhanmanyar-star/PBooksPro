@@ -178,7 +178,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
     return (
         <div className="flex flex-col h-full space-y-4">
             {/* Custom Navigation Bar */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between bg-white border-b border-slate-200 px-4 py-2 shadow-sm flex-shrink-0 gap-3 md:gap-4 z-20 relative">
+            <div className="flex flex-col md:flex-row md:items-center justify-between bg-white border-b border-slate-200 px-4 py-2 shadow-sm flex-shrink-0 gap-3 md:gap-4 z-50 relative">
                 
                 {/* Left Side: Operational Tabs & Reports Dropdown */}
                 <div className="flex items-center flex-grow min-w-0">

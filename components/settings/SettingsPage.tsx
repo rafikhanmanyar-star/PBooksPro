@@ -796,8 +796,8 @@ const SettingsPage: React.FC = () => {
 
     if (showDetail) {
         return (
-            <div className="p-6 bg-slate-50 h-full">
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 h-full overflow-hidden">
+            <div className="p-6 bg-slate-50 h-full overflow-auto">
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200">
                     <SettingsDetailPage goBack={() => { }} />
                 </div>
             </div>
