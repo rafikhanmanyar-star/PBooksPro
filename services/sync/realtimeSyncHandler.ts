@@ -617,9 +617,11 @@ class RealtimeSyncHandler {
         };
         const aliases = entityAliases[entity];
         if (aliases) {
+          console.log(`[RealtimeSyncHandler] 🔍 Trying aliases for ${entity}:`, aliases, 'data keys:', Object.keys(data));
           for (const alias of aliases) {
             if (data[alias]) {
               entityData = data[alias];
+              console.log(`[RealtimeSyncHandler] ✅ Found entity data using alias '${alias}'`);
               break;
             }
           }
@@ -631,7 +633,32 @@ class RealtimeSyncHandler {
         entityData = data;
       }
       
-      const entityId = entityData?.id;
+      // Extract entity ID - handle different naming conventions
+      // For create/update events: entity has { id: '...' }
+      // For delete events: server sends { transactionId: '...', invoiceId: '...', agreementId: '...' } etc.
+      let entityId = entityData?.id;
+      
+      // If no 'id' field, check for entity-specific ID fields (used in delete events)
+      if (!entityId) {
+        // Build possible ID field names based on entity type
+        // e.g., 'transaction' -> 'transactionId', 'rental_agreement' -> 'agreementId'
+        const camelEntity = entity.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+        const possibleIdFields = [
+          `${camelEntity}Id`,           // e.g., 'transactionId', 'invoiceId'
+          `${entity}Id`,                // e.g., 'transaction_id' (unlikely but covered)
+          `${entity}_id`,               // e.g., 'rental_agreement_id'
+          'agreementId',                // For rental_agreement and project_agreement
+          'id',                         // Fallback
+        ];
+        
+        for (const field of possibleIdFields) {
+          if (data[field]) {
+            entityId = data[field];
+            console.log(`[RealtimeSyncHandler] 🔍 Found entity ID using field '${field}': ${entityId}`);
+            break;
+          }
+        }
+      }
 
       if (!entityId) {
         console.warn(`[RealtimeSyncHandler] No ID found in event data for ${eventName}:`, data);
@@ -664,6 +691,16 @@ class RealtimeSyncHandler {
       // while the database uses snake_case
       const normalizer = getEntityNormalizer(entity);
       const normalizedData = normalizer ? normalizer(entityData) : entityData;
+      
+      if (normalizer) {
+        console.log(`[RealtimeSyncHandler] 🔄 Normalized ${entity} data:`, { 
+          original: entityData?.id, 
+          normalized: normalizedData?.id,
+          hasNormalizer: true 
+        });
+      } else {
+        console.log(`[RealtimeSyncHandler] ⚠️ No normalizer found for ${entity}, using raw data`);
+      }
 
       switch (action) {
         case 'create':

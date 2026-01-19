@@ -3305,6 +3305,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     };
                 };
 
+                // Helper: normalize invoice from event payload
+                const normalizeInvoiceFromEvent = (inv: any) => {
+                    if (!inv) return null;
+                    return {
+                        id: inv.id,
+                        invoiceNumber: inv.invoice_number ?? inv.invoiceNumber ?? '',
+                        contactId: inv.contact_id ?? inv.contactId ?? '',
+                        amount: typeof inv.amount === 'number' ? inv.amount : parseFloat(String(inv.amount ?? '0')),
+                        paidAmount: typeof inv.paid_amount === 'number'
+                            ? inv.paid_amount
+                            : (typeof inv.paidAmount === 'number' ? inv.paidAmount : parseFloat(String(inv.paid_amount ?? inv.paidAmount ?? '0'))),
+                        status: inv.status ?? 'Unpaid',
+                        issueDate: inv.issue_date ?? inv.issueDate ?? '',
+                        dueDate: inv.due_date ?? inv.dueDate ?? '',
+                        invoiceType: inv.invoice_type ?? inv.invoiceType ?? 'Sales',
+                        description: inv.description ?? undefined,
+                        projectId: inv.project_id ?? inv.projectId ?? undefined,
+                        buildingId: inv.building_id ?? inv.buildingId ?? undefined,
+                        propertyId: inv.property_id ?? inv.propertyId ?? undefined,
+                        unitId: inv.unit_id ?? inv.unitId ?? undefined,
+                        categoryId: inv.category_id ?? inv.categoryId ?? undefined,
+                        agreementId: inv.agreement_id ?? inv.agreementId ?? undefined,
+                        securityDepositCharge: inv.security_deposit_charge ?? inv.securityDepositCharge ?? undefined,
+                        serviceCharges: inv.service_charges ?? inv.serviceCharges ?? undefined,
+                        rentalMonth: inv.rental_month ?? inv.rentalMonth ?? undefined,
+                    };
+                };
+
+                // Helper: normalize rental agreement from event payload
+                const normalizeRentalAgreementFromEvent = (ra: any) => {
+                    if (!ra) return null;
+                    return {
+                        id: ra.id,
+                        agreementNumber: ra.agreement_number ?? ra.agreementNumber ?? '',
+                        contactId: ra.contact_id ?? ra.contactId ?? '',
+                        propertyId: ra.property_id ?? ra.propertyId ?? '',
+                        startDate: ra.start_date ?? ra.startDate ?? '',
+                        endDate: ra.end_date ?? ra.endDate ?? '',
+                        monthlyRent: typeof ra.monthly_rent === 'number' ? ra.monthly_rent : (typeof ra.monthlyRent === 'number' ? ra.monthlyRent : parseFloat(String(ra.monthly_rent ?? ra.monthlyRent ?? '0'))),
+                        rentDueDate: ra.rent_due_date ?? ra.rentDueDate ?? undefined,
+                        status: ra.status ?? 'Active',
+                        description: ra.description ?? undefined,
+                        securityDeposit: ra.security_deposit ?? ra.securityDeposit ?? undefined,
+                        brokerId: ra.broker_id ?? ra.brokerId ?? undefined,
+                        brokerFee: ra.broker_fee ?? ra.brokerFee ?? undefined,
+                        ownerId: ra.owner_id ?? ra.ownerId ?? undefined,
+                    };
+                };
+
                 const events = [
                     'transaction:created', 'transaction:updated', 'transaction:deleted',
                     'bill:created', 'bill:updated', 'bill:deleted',
@@ -3424,6 +3473,84 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     if (!id) return;
                     dispatch({ 
                         type: 'DELETE_TRANSACTION', 
+                        payload: id,
+                        _isRemote: true 
+                    } as any);
+                }));
+
+                // Invoice events (so invoice status updates appear immediately)
+                unsubSpecific.push(ws.on('invoice:created', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const payloadInv = data?.invoice ?? data;
+                    const normalized = normalizeInvoiceFromEvent(payloadInv);
+                    if (!normalized) return;
+                    const exists = stateRef.current.invoices.some(i => i.id === normalized.id);
+                    if (!exists) {
+                        dispatch({ 
+                            type: 'ADD_INVOICE', 
+                            payload: normalized,
+                            _isRemote: true 
+                        } as any);
+                    }
+                }));
+                unsubSpecific.push(ws.on('invoice:updated', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const payloadInv = data?.invoice ?? data;
+                    const normalized = normalizeInvoiceFromEvent(payloadInv);
+                    if (!normalized) return;
+                    const existing = stateRef.current.invoices.find(i => i.id === normalized.id);
+                    const merged = existing ? { ...existing, ...normalized } : normalized;
+                    dispatch({ 
+                        type: existing ? 'UPDATE_INVOICE' : 'ADD_INVOICE', 
+                        payload: merged,
+                        _isRemote: true 
+                    } as any);
+                }));
+                unsubSpecific.push(ws.on('invoice:deleted', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const id = data?.invoiceId ?? data?.id;
+                    if (!id) return;
+                    dispatch({ 
+                        type: 'DELETE_INVOICE', 
+                        payload: id,
+                        _isRemote: true 
+                    } as any);
+                }));
+
+                // Rental Agreement events (so agreements appear immediately)
+                unsubSpecific.push(ws.on('rental_agreement:created', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const payloadAgreement = data?.agreement ?? data?.rentalAgreement ?? data?.rental_agreement ?? data;
+                    const normalized = normalizeRentalAgreementFromEvent(payloadAgreement);
+                    if (!normalized) return;
+                    const exists = stateRef.current.rentalAgreements.some(r => r.id === normalized.id);
+                    if (!exists) {
+                        dispatch({ 
+                            type: 'ADD_RENTAL_AGREEMENT', 
+                            payload: normalized,
+                            _isRemote: true 
+                        } as any);
+                    }
+                }));
+                unsubSpecific.push(ws.on('rental_agreement:updated', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const payloadAgreement = data?.agreement ?? data?.rentalAgreement ?? data?.rental_agreement ?? data;
+                    const normalized = normalizeRentalAgreementFromEvent(payloadAgreement);
+                    if (!normalized) return;
+                    const existing = stateRef.current.rentalAgreements.find(r => r.id === normalized.id);
+                    const merged = existing ? { ...existing, ...normalized } : normalized;
+                    dispatch({ 
+                        type: existing ? 'UPDATE_RENTAL_AGREEMENT' : 'ADD_RENTAL_AGREEMENT', 
+                        payload: merged,
+                        _isRemote: true 
+                    } as any);
+                }));
+                unsubSpecific.push(ws.on('rental_agreement:deleted', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const id = data?.agreementId ?? data?.id;
+                    if (!id) return;
+                    dispatch({ 
+                        type: 'DELETE_RENTAL_AGREEMENT', 
                         payload: id,
                         _isRemote: true 
                     } as any);

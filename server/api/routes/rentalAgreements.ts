@@ -109,8 +109,19 @@ router.post('/', async (req: TenantRequest, res) => {
     const db = getDb();
     const agreement = req.body;
     
+    console.log('📝 POST /rental-agreements - Received request:', {
+      tenantId: req.tenantId,
+      userId: req.user?.userId,
+      agreementId: agreement.id,
+      agreementNumber: agreement.agreementNumber,
+      contactId: agreement.contactId,
+      propertyId: agreement.propertyId,
+      hasBody: !!agreement
+    });
+    
     // Validate required fields
     if (!agreement.agreementNumber) {
+      console.log('❌ POST /rental-agreements - Validation failed: agreementNumber is required');
       return res.status(400).json({ 
         error: 'Validation error',
         message: 'Agreement number is required'
@@ -232,14 +243,23 @@ router.post('/', async (req: TenantRequest, res) => {
     const saved = result[0];
     const transformedSaved = transformRentalAgreement(saved);
     
+    console.log('✅ POST /rental-agreements - Agreement saved successfully:', {
+      id: saved.id,
+      agreementNumber: saved.agreement_number,
+      tenantId: req.tenantId,
+      isUpdate
+    });
+    
     // Emit WebSocket event for real-time sync
     if (isUpdate) {
+      console.log('📡 POST /rental-agreements - Emitting RENTAL_AGREEMENT_UPDATED event');
       emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_UPDATED, {
         agreement: transformedSaved,
         userId: req.user?.userId,
         username: req.user?.username,
       });
     } else {
+      console.log('📡 POST /rental-agreements - Emitting RENTAL_AGREEMENT_CREATED event');
       emitToTenant(req.tenantId!, WS_EVENTS.RENTAL_AGREEMENT_CREATED, {
         agreement: transformedSaved,
         userId: req.user?.userId,
