@@ -2229,6 +2229,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 return newState;
             }
 
+        const getDeleteSyncTarget = (action: AppAction): { type: SyncOperationType; id: string } | null => {
+            switch (action.type) {
+                case 'DELETE_INVOICE':
+                    return { type: 'invoice', id: action.payload as string };
+                case 'DELETE_TRANSACTION':
+                    return { type: 'transaction', id: action.payload as string };
+                default:
+                    return null;
+            }
+        };
+
+        const prunePendingSyncItems = async (currentUser: User | null, action: AppAction) => {
+            const target = getDeleteSyncTarget(action);
+            const tenantId = currentUser?.tenant?.id;
+            if (!target || !tenantId) return;
+
+            try {
+                const removed = await getSyncQueue().removePendingByEntity(tenantId, target.type, target.id);
+                if (removed > 0) {
+                    logger.logCategory('sync', `🧹 Removed ${removed} pending sync item(s) for ${target.type}:${target.id}`);
+                }
+            } catch (error) {
+                logger.warnCategory('sync', '⚠️ Failed to prune pending sync items:', error);
+            }
+        };
+
             // Sync to API asynchronously (don't block UI)
             const syncToApi = async () => {
                     logger.logCategory('sync', `🚀 syncToApi called for action: ${action.type}`, {
@@ -2273,6 +2299,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             return;
                         }
                         
+                        await prunePendingSyncItems(state.currentUser, action);
+
                         const apiService = getAppStateApiService();
 
                         // Handle account changes
@@ -2798,6 +2826,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     }
                 };
 
+            const user = state.currentUser;
+
             // Helper function to queue operations for offline sync
             const queueOperationForSync = async (action: AppAction) => {
                 try {
@@ -2809,6 +2839,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         logger.warnCategory('sync', '⚠️ Cannot queue operation: missing tenant or user ID');
                         return;
                     }
+
+                    await prunePendingSyncItems(user, action);
 
                     // Map action type to sync operation type and extract data
                     const mapping = mapActionToSyncOperation(action);

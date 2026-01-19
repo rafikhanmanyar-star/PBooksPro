@@ -271,6 +271,32 @@ class SyncQueueService {
   }
 
   /**
+   * Remove pending items for a specific entity (e.g. delete after create)
+   */
+  async removePendingByEntity(
+    tenantId: string,
+    type: SyncOperationType,
+    entityId: string
+  ): Promise<number> {
+    await this.init();
+    if (!this.db) throw new Error('Database not initialized');
+
+    const items = await this.getAllItems(tenantId);
+    const toRemove = items.filter(item => {
+      if (item.type !== type) return false;
+      if (item.status === 'completed') return false;
+      if (item.action === 'delete') return false;
+      const dataId = item.data?.id;
+      return dataId === entityId;
+    });
+
+    if (toRemove.length === 0) return 0;
+
+    await Promise.all(toRemove.map(item => this.remove(item.id)));
+    return toRemove.length;
+  }
+
+  /**
    * Clear all items for a tenant (use with caution)
    */
   async clearAll(tenantId: string): Promise<number> {
