@@ -84,6 +84,15 @@ const SupplierPortal: React.FC = () => {
         loadAvailableBuyers();
     }, []);
 
+    // Fallback polling for registration status updates if WS misses events
+    useEffect(() => {
+        const intervalId = setInterval(() => {
+            loadMyRegistrationRequests();
+        }, 30000);
+
+        return () => clearInterval(intervalId);
+    }, []);
+
     // Build notifications from data
     useEffect(() => {
         buildNotifications();

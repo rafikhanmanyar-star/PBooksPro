@@ -192,7 +192,8 @@ const BuyerDashboard: React.FC = () => {
             await loadRegisteredSuppliers();
         } catch (error: any) {
             console.error('Error approving registration:', error);
-            showAlert(error.response?.data?.error || 'Failed to approve registration request');
+            const errorMessage = error?.response?.data?.error || error?.message || error?.error || 'Failed to approve registration request';
+            showAlert(errorMessage);
         }
     };
 
@@ -203,7 +204,8 @@ const BuyerDashboard: React.FC = () => {
             await loadRegistrationRequests();
         } catch (error: any) {
             console.error('Error rejecting registration:', error);
-            showAlert(error.response?.data?.error || 'Failed to reject registration request');
+            const errorMessage = error?.response?.data?.error || error?.message || error?.error || 'Failed to reject registration request';
+            showAlert(errorMessage);
         }
     };
 
