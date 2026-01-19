@@ -351,6 +351,114 @@ function normalizeTransaction(data: any): any {
 }
 
 /**
+ * Normalize rental agreement data from API/WebSocket (snake_case) to client format (camelCase)
+ */
+function normalizeRentalAgreement(data: any): any {
+  if (!data) return data;
+  return {
+    id: data.id,
+    agreementNumber: data.agreement_number ?? data.agreementNumber ?? '',
+    contactId: data.contact_id ?? data.contactId ?? '',
+    propertyId: data.property_id ?? data.propertyId ?? '',
+    startDate: data.start_date ?? data.startDate ?? '',
+    endDate: data.end_date ?? data.endDate ?? '',
+    monthlyRent: (() => {
+      const rent = data.monthly_rent ?? data.monthlyRent;
+      if (rent == null) return 0;
+      return typeof rent === 'number' ? rent : parseFloat(String(rent));
+    })(),
+    rentDueDate: data.rent_due_date ?? data.rentDueDate ?? undefined,
+    status: data.status ?? 'Active',
+    description: data.description ?? undefined,
+    securityDeposit: (() => {
+      const deposit = data.security_deposit ?? data.securityDeposit;
+      if (deposit == null) return undefined;
+      return typeof deposit === 'number' ? deposit : parseFloat(String(deposit));
+    })(),
+    brokerId: data.broker_id ?? data.brokerId ?? undefined,
+    brokerFee: (() => {
+      const fee = data.broker_fee ?? data.brokerFee;
+      if (fee == null) return undefined;
+      return typeof fee === 'number' ? fee : parseFloat(String(fee));
+    })(),
+    ownerId: data.owner_id ?? data.ownerId ?? undefined,
+    orgId: data.org_id ?? data.orgId ?? undefined,
+    userId: data.user_id ?? data.userId ?? undefined,
+    createdAt: data.created_at ?? data.createdAt ?? undefined,
+    updatedAt: data.updated_at ?? data.updatedAt ?? undefined,
+  };
+}
+
+/**
+ * Normalize project agreement data from API/WebSocket (snake_case) to client format (camelCase)
+ */
+function normalizeProjectAgreement(data: any): any {
+  if (!data) return data;
+  return {
+    id: data.id,
+    agreementNumber: data.agreement_number ?? data.agreementNumber ?? '',
+    contactId: data.contact_id ?? data.contactId ?? '',
+    projectId: data.project_id ?? data.projectId ?? '',
+    unitId: data.unit_id ?? data.unitId ?? undefined,
+    totalAmount: (() => {
+      const amt = data.total_amount ?? data.totalAmount;
+      if (amt == null) return 0;
+      return typeof amt === 'number' ? amt : parseFloat(String(amt));
+    })(),
+    paidAmount: (() => {
+      const amt = data.paid_amount ?? data.paidAmount;
+      if (amt == null) return 0;
+      return typeof amt === 'number' ? amt : parseFloat(String(amt));
+    })(),
+    status: data.status ?? 'Active',
+    agreementDate: data.agreement_date ?? data.agreementDate ?? '',
+    installmentPlan: data.installment_plan ?? data.installmentPlan ?? undefined,
+    description: data.description ?? undefined,
+    brokerId: data.broker_id ?? data.brokerId ?? undefined,
+    brokerFee: (() => {
+      const fee = data.broker_fee ?? data.brokerFee;
+      if (fee == null) return undefined;
+      return typeof fee === 'number' ? fee : parseFloat(String(fee));
+    })(),
+    userId: data.user_id ?? data.userId ?? undefined,
+    createdAt: data.created_at ?? data.createdAt ?? undefined,
+    updatedAt: data.updated_at ?? data.updatedAt ?? undefined,
+  };
+}
+
+/**
+ * Normalize contract data from API/WebSocket (snake_case) to client format (camelCase)
+ */
+function normalizeContract(data: any): any {
+  if (!data) return data;
+  return {
+    id: data.id,
+    contractNumber: data.contract_number ?? data.contractNumber ?? '',
+    contactId: data.contact_id ?? data.contactId ?? '',
+    projectId: data.project_id ?? data.projectId ?? undefined,
+    buildingId: data.building_id ?? data.buildingId ?? undefined,
+    propertyId: data.property_id ?? data.propertyId ?? undefined,
+    totalAmount: (() => {
+      const amt = data.total_amount ?? data.totalAmount;
+      if (amt == null) return 0;
+      return typeof amt === 'number' ? amt : parseFloat(String(amt));
+    })(),
+    paidAmount: (() => {
+      const amt = data.paid_amount ?? data.paidAmount;
+      if (amt == null) return 0;
+      return typeof amt === 'number' ? amt : parseFloat(String(amt));
+    })(),
+    status: data.status ?? 'Active',
+    startDate: data.start_date ?? data.startDate ?? '',
+    endDate: data.end_date ?? data.endDate ?? undefined,
+    description: data.description ?? undefined,
+    userId: data.user_id ?? data.userId ?? undefined,
+    createdAt: data.created_at ?? data.createdAt ?? undefined,
+    updatedAt: data.updated_at ?? data.updatedAt ?? undefined,
+  };
+}
+
+/**
  * Get the appropriate normalizer function for an entity type
  */
 function getEntityNormalizer(entity: string): ((data: any) => any) | null {
@@ -366,6 +474,9 @@ function getEntityNormalizer(entity: string): ((data: any) => any) | null {
     case 'invoice': return normalizeInvoice;
     case 'bill': return normalizeBill;
     case 'transaction': return normalizeTransaction;
+    case 'rental_agreement': return normalizeRentalAgreement;
+    case 'project_agreement': return normalizeProjectAgreement;
+    case 'contract': return normalizeContract;
     default: return null;
   }
 }
@@ -493,6 +604,26 @@ class RealtimeSyncHandler {
         // Try camelCase versions
         const camelEntity = entity.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
         entityData = data[camelEntity] || data[`${camelEntity}s`];
+      }
+      
+      // If still not found, try entity-specific aliases
+      // Server sends { agreement: ... } for rental_agreement and project_agreement
+      // Server sends { salesReturn: ... } for sales_return
+      if (!entityData) {
+        const entityAliases: Record<string, string[]> = {
+          'rental_agreement': ['agreement', 'rentalAgreement'],
+          'project_agreement': ['agreement', 'projectAgreement'],
+          'sales_return': ['salesReturn'],
+        };
+        const aliases = entityAliases[entity];
+        if (aliases) {
+          for (const alias of aliases) {
+            if (data[alias]) {
+              entityData = data[alias];
+              break;
+            }
+          }
+        }
       }
       
       // If still not found, the data itself might be the entity
