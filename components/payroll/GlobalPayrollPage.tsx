@@ -4,8 +4,6 @@ import { useAppContext } from '../../context/AppContext';
 import { ICONS, CURRENCY } from '../../constants';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
-import Tabs from '../ui/Tabs';
-import { Employee, PayrollCycle, Payslip } from '../../types';
 
 import EmployeeManagement from './EmployeeManagement';
 import PayrollProcessing from './PayrollProcessing';
@@ -254,12 +252,23 @@ const GlobalPayrollPage: React.FC = () => {
 
             <div className="flex-1 overflow-hidden">
                 <div className="h-full flex flex-col">
-                    <div className="bg-white border-b border-slate-200 px-6">
-                        <Tabs
-                            tabs={['Overview', 'Employees', 'Payroll Processing', 'Attendance', 'Bonuses', 'Adjustments', 'Reports']}
-                            activeTab={activeTab}
-                            onTabClick={setActiveTab}
-                        />
+                    <div className="bg-white border-b border-slate-200">
+                        <div className="flex gap-1 px-6 pt-4 overflow-x-auto">
+                            {tabs.map(tab => (
+                                <button
+                                    key={tab}
+                                    type="button"
+                                    onClick={() => setActiveTab(tab)}
+                                    className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap ${
+                                        activeTab === tab
+                                            ? 'bg-indigo-600 text-white shadow-sm'
+                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                    }`}
+                                >
+                                    {tab}
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-6">

@@ -468,7 +468,6 @@ router.get('/registered', async (req: TenantRequest, res) => {
     // IMPORTANT: Exclude own organization - a supplier cannot be in their own organization's supplier list
     const suppliers = await db.query(
       `SELECT t.id, t.name, t.company_name, t.email, t.phone, t.address,
-              t.tax_id, t.payment_terms, t.supplier_category, t.supplier_status,
               rs.registered_at, rs.status as registration_status, rs.notes,
               rs.supplier_name as reg_supplier_name, rs.supplier_company as reg_supplier_company,
               rs.supplier_contact_no as reg_supplier_contact_no, rs.supplier_address as reg_supplier_address,
@@ -494,10 +493,6 @@ router.get('/registered', async (req: TenantRequest, res) => {
       // Original tenant info
       email: s.email,
       phone: s.phone,
-      taxId: s.tax_id,
-      paymentTerms: s.payment_terms,
-      supplierCategory: s.supplier_category,
-      supplierStatus: s.supplier_status,
       registeredAt: s.registered_at,
       registrationStatus: s.registration_status,
       notes: s.notes

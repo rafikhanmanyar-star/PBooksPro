@@ -168,6 +168,38 @@ async function runMigrations() {
         }
       }
     }
+
+    // Migration: Ensure tenant supplier metadata columns exist
+    try {
+      const ensureTenantColumns = async (column: string, sql: string) => {
+        const columnCheck = await pool.query(`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_name = 'tenants' AND column_name = $1
+        `, [column]);
+        if (columnCheck.rows.length === 0) {
+          console.log(`📋 Adding tenants.${column} column...`);
+          await pool.query(sql);
+          console.log(`✅ Added tenants.${column} column`);
+        }
+      };
+
+      await ensureTenantColumns('tax_id', 'ALTER TABLE tenants ADD COLUMN tax_id TEXT');
+      await ensureTenantColumns('payment_terms', `
+        ALTER TABLE tenants ADD COLUMN payment_terms TEXT;
+        ALTER TABLE tenants ADD CONSTRAINT valid_payment_terms 
+          CHECK (payment_terms IS NULL OR payment_terms IN ('Net 30', 'Net 60', 'Net 90', 'Due on Receipt', 'Custom'));
+      `);
+      await ensureTenantColumns('supplier_category', 'ALTER TABLE tenants ADD COLUMN supplier_category TEXT');
+      await ensureTenantColumns('supplier_status', `
+        ALTER TABLE tenants ADD COLUMN supplier_status TEXT DEFAULT 'Active';
+        ALTER TABLE tenants ADD CONSTRAINT valid_supplier_status 
+          CHECK (supplier_status IS NULL OR supplier_status IN ('Active', 'Inactive'));
+      `);
+    } catch (tenantColumnError: any) {
+      console.warn('   ⚠️  tenant supplier metadata migration warning:', tenantColumnError.message);
+      // Don't throw - migration might already be applied or constraints exist
+    }
     
     // Migration: Add org_id to rental_agreements table (MUST run before contact_id)
     const orgIdMigrationPaths = [

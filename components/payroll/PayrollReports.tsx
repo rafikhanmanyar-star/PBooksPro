@@ -24,10 +24,27 @@ const PayrollReports: React.FC = () => {
 
     const payslips = useMemo(() => {
         let filtered = state.payslips || [];
+
+        const getPayslipDate = (payslip: Payslip): Date | null => {
+            const candidates = [
+                payslip.issueDate,
+                payslip.payPeriodStart,
+                payslip.month ? `${payslip.month}-01` : undefined
+            ].filter(Boolean) as string[];
+
+            for (const candidate of candidates) {
+                const date = new Date(candidate);
+                if (!Number.isNaN(date.getTime())) {
+                    return date;
+                }
+            }
+            return null;
+        };
         
-        // Filter by date range
+        // Filter by date range (use issueDate/payPeriodStart, fallback to month)
         filtered = filtered.filter(p => {
-            const payslipDate = new Date(p.month + '-01');
+            const payslipDate = getPayslipDate(p);
+            if (!payslipDate) return false;
             const start = new Date(dateRange.start);
             const end = new Date(dateRange.end);
             return payslipDate >= start && payslipDate <= end;
@@ -36,7 +53,7 @@ const PayrollReports: React.FC = () => {
         // Filter by project
         if (selectedProjectId !== 'all') {
             filtered = filtered.filter(p => 
-                p.costAllocations.some(a => a.projectId === selectedProjectId)
+                (p.costAllocations || []).some(a => a.projectId === selectedProjectId)
             );
         }
 
@@ -52,7 +69,7 @@ const PayrollReports: React.FC = () => {
         const costs: Record<string, { gross: number; net: number; employees: Set<string> }> = {};
         
         payslips.forEach(payslip => {
-            payslip.costAllocations.forEach(allocation => {
+            (payslip.costAllocations || []).forEach(allocation => {
                 if (!costs[allocation.projectId]) {
                     costs[allocation.projectId] = { gross: 0, net: 0, employees: new Set() };
                 }
