@@ -148,8 +148,8 @@ export class AppStateRepository {
         let settings: any = {};
         try {
             // Try to load from cloud if authenticated
-            const { apiClient } = await import('../../api/client');
-            if (apiClient.isAuthenticated()) {
+            const { isAuthenticatedSafe } = await import('../../api/client');
+            if (isAuthenticatedSafe()) {
                 const { settingsSyncService } = await import('../../settingsSyncService');
                 const cloudSettings = await settingsSyncService.loadSettings();
                 // Merge cloud settings with local settings (cloud takes precedence)

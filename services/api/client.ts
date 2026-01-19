@@ -529,6 +529,20 @@ export class ApiClient {
   }
 }
 
+function isTokenExpiredForToken(token: string): boolean {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return true;
+    const payload = JSON.parse(atob(parts[1]));
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      return true;
+    }
+    return false;
+  } catch (error) {
+    return true;
+  }
+}
+
 // Lazy singleton instance to avoid initialization issues during module load
 let apiClientInstance: ApiClient | null = null;
 
@@ -544,4 +558,23 @@ export const apiClient = new Proxy({} as ApiClient, {
         return value;
     }
 });
+
+/**
+ * Safe auth check that tolerates module/proxy issues.
+ */
+export function isAuthenticatedSafe(): boolean {
+  try {
+    const authFn = (apiClient as any)?.isAuthenticated;
+    if (typeof authFn === 'function') {
+      return authFn.call(apiClient);
+    }
+  } catch (error) {
+    logger.warnCategory('auth', '⚠️ Failed apiClient auth check, falling back:', error);
+  }
+
+  if (typeof window === 'undefined') return false;
+  const token = localStorage.getItem('auth_token');
+  if (!token) return false;
+  return !isTokenExpiredForToken(token);
+}
 

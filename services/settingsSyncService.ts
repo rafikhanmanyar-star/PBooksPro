@@ -5,7 +5,7 @@
 
 import { AppSettingsApiRepository } from './api/repositories/appSettingsApi';
 import { AppSettingsRepository } from './database/repositories/index';
-import { apiClient } from './api/client';
+import { isAuthenticatedSafe } from './api/client';
 
 export interface SettingsToSync {
   // General settings (user-based)
@@ -46,7 +46,7 @@ class SettingsSyncService {
    * Check if cloud sync is available (user is authenticated)
    */
   private isCloudAvailable(): boolean {
-    return apiClient.isAuthenticated();
+    return isAuthenticatedSafe();
   }
 
   /**
