@@ -122,7 +122,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (!state.isAuthenticated) return;
 
-    const HEARTBEAT_INTERVAL = 2 * 60 * 1000; // 2 minutes
+    const HEARTBEAT_INTERVAL = 1 * 60 * 1000; // 1 minute (reduced from 2 minutes to ensure session stays active with 5-minute inactivity threshold)
     const INITIAL_DELAY = 5000; // 5 seconds delay before first heartbeat to avoid race condition
     let heartbeatInterval: NodeJS.Timeout | null = null;
     let initialTimeout: NodeJS.Timeout | null = null;

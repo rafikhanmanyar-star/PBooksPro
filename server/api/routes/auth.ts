@@ -283,7 +283,7 @@ router.post('/unified-login', async (req, res) => {
 
     if (userStatus.length > 0 && userStatus[0].login_status === true) {
       // User is already logged in - check if session is stale
-      const STALE_SESSION_THRESHOLD_MINUTES = 5;
+      const STALE_SESSION_THRESHOLD_MINUTES = 1; // Reduced from 5 to 1 minute for faster re-login after unexpected disconnection
       const activeSessions = await db.query(
         `SELECT id, last_activity FROM user_sessions
          WHERE user_id = $1 AND tenant_id = $2 AND expires_at > NOW()
@@ -519,7 +519,7 @@ router.post('/smart-login', async (req, res) => {
 
     if (userStatus.length > 0 && userStatus[0].login_status === true) {
       // User is already logged in - check if session is stale
-      const STALE_SESSION_THRESHOLD_MINUTES = 5;
+      const STALE_SESSION_THRESHOLD_MINUTES = 1; // Reduced from 5 to 1 minute for faster re-login after unexpected disconnection
       const activeSessions = await db.query(
         `SELECT id, last_activity FROM user_sessions
          WHERE user_id = $1 AND tenant_id = $2 AND expires_at > NOW()
@@ -753,7 +753,7 @@ router.post('/login', async (req, res) => {
 
     if (userStatus.length > 0 && userStatus[0].login_status === true) {
       // User is already logged in - check if session is stale
-      const STALE_SESSION_THRESHOLD_MINUTES = 5;
+      const STALE_SESSION_THRESHOLD_MINUTES = 1; // Reduced from 5 to 1 minute for faster re-login after unexpected disconnection
       const activeSessions = await db.query(
         `SELECT id, last_activity FROM user_sessions
          WHERE user_id = $1 AND tenant_id = $2 AND expires_at > NOW()

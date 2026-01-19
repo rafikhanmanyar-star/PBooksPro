@@ -156,7 +156,7 @@ export function tenantMiddleware(pool: Pool) {
 
         // Check if session is inactive (user disconnected)
         // Sessions are considered inactive if last_activity is older than 30 minutes
-        const INACTIVITY_THRESHOLD_MINUTES = 30;
+        const INACTIVITY_THRESHOLD_MINUTES = 5; // Reduced from 30 to 5 minutes for faster detection of disconnected sessions
         const lastActivity = new Date(session.last_activity);
         const thresholdDate = new Date();
         thresholdDate.setMinutes(thresholdDate.getMinutes() - INACTIVITY_THRESHOLD_MINUTES);

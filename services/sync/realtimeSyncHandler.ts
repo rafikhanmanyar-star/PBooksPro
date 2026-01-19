@@ -68,6 +68,191 @@ const ACTION_TYPE_MAP: Record<string, AppAction['type']> = {
   'contact:create': 'ADD_CONTACT',
   'contact:update': 'UPDATE_CONTACT',
   'contact:delete': 'DELETE_CONTACT',
+
+// ============================================================================
+// NORMALIZATION FUNCTIONS
+// Convert snake_case fields from PostgreSQL to camelCase for client state
+// ============================================================================
+
+/**
+ * Normalize unit data from API/WebSocket (snake_case) to client format (camelCase)
+ */
+function normalizeUnit(data: any): any {
+  if (!data) return data;
+  return {
+    id: data.id,
+    name: data.name || '',
+    projectId: data.project_id ?? data.projectId ?? '',
+    contactId: data.contact_id ?? data.contactId ?? undefined,
+    salePrice: (() => {
+      const price = data.sale_price ?? data.salePrice;
+      if (price == null) return undefined;
+      return typeof price === 'number' ? price : parseFloat(String(price));
+    })(),
+    description: data.description ?? undefined,
+    userId: data.user_id ?? data.userId ?? undefined,
+    createdAt: data.created_at ?? data.createdAt ?? undefined,
+    updatedAt: data.updated_at ?? data.updatedAt ?? undefined,
+  };
+}
+
+/**
+ * Normalize property data from API/WebSocket (snake_case) to client format (camelCase)
+ */
+function normalizeProperty(data: any): any {
+  if (!data) return data;
+  return {
+    id: data.id,
+    name: data.name || '',
+    ownerId: data.owner_id ?? data.ownerId ?? '',
+    buildingId: data.building_id ?? data.buildingId ?? '',
+    description: data.description ?? undefined,
+    monthlyServiceCharge: (() => {
+      const charge = data.monthly_service_charge ?? data.monthlyServiceCharge;
+      if (charge == null) return 0;
+      return typeof charge === 'number' ? charge : parseFloat(String(charge));
+    })(),
+    userId: data.user_id ?? data.userId ?? undefined,
+    createdAt: data.created_at ?? data.createdAt ?? undefined,
+    updatedAt: data.updated_at ?? data.updatedAt ?? undefined,
+  };
+}
+
+/**
+ * Normalize building data from API/WebSocket (snake_case) to client format (camelCase)
+ */
+function normalizeBuilding(data: any): any {
+  if (!data) return data;
+  return {
+    id: data.id,
+    name: data.name || '',
+    description: data.description ?? undefined,
+    address: data.address ?? undefined,
+    color: data.color ?? undefined,
+    userId: data.user_id ?? data.userId ?? undefined,
+    createdAt: data.created_at ?? data.createdAt ?? undefined,
+    updatedAt: data.updated_at ?? data.updatedAt ?? undefined,
+  };
+}
+
+/**
+ * Normalize project data from API/WebSocket (snake_case) to client format (camelCase)
+ */
+function normalizeProject(data: any): any {
+  if (!data) return data;
+  return {
+    id: data.id,
+    name: data.name || '',
+    description: data.description ?? undefined,
+    color: data.color ?? undefined,
+    installmentPlan: data.installment_plan ?? data.installmentPlan ?? undefined,
+    userId: data.user_id ?? data.userId ?? undefined,
+    createdAt: data.created_at ?? data.createdAt ?? undefined,
+    updatedAt: data.updated_at ?? data.updatedAt ?? undefined,
+  };
+}
+
+/**
+ * Normalize contact data from API/WebSocket (snake_case) to client format (camelCase)
+ */
+function normalizeContact(data: any): any {
+  if (!data) return data;
+  return {
+    id: data.id,
+    name: data.name || '',
+    type: data.type,
+    contactNo: data.contact_no ?? data.contactNo ?? undefined,
+    email: data.email ?? undefined,
+    address: data.address ?? undefined,
+    notes: data.notes ?? undefined,
+    openingBalance: (() => {
+      const balance = data.opening_balance ?? data.openingBalance;
+      if (balance == null) return undefined;
+      return typeof balance === 'number' ? balance : parseFloat(String(balance));
+    })(),
+    userId: data.user_id ?? data.userId ?? undefined,
+    createdAt: data.created_at ?? data.createdAt ?? undefined,
+    updatedAt: data.updated_at ?? data.updatedAt ?? undefined,
+  };
+}
+
+/**
+ * Normalize account data from API/WebSocket (snake_case) to client format (camelCase)
+ */
+function normalizeAccount(data: any): any {
+  if (!data) return data;
+  return {
+    id: data.id,
+    name: data.name || '',
+    type: data.type,
+    balance: (() => {
+      const bal = data.balance;
+      if (bal == null) return 0;
+      return typeof bal === 'number' ? bal : parseFloat(String(bal));
+    })(),
+    description: data.description ?? undefined,
+    isPermanent: data.is_permanent ?? data.isPermanent ?? false,
+    parentAccountId: data.parent_account_id ?? data.parentAccountId ?? undefined,
+    userId: data.user_id ?? data.userId ?? undefined,
+    createdAt: data.created_at ?? data.createdAt ?? undefined,
+    updatedAt: data.updated_at ?? data.updatedAt ?? undefined,
+  };
+}
+
+/**
+ * Normalize category data from API/WebSocket (snake_case) to client format (camelCase)
+ */
+function normalizeCategory(data: any): any {
+  if (!data) return data;
+  return {
+    id: data.id,
+    name: data.name || '',
+    type: data.type,
+    description: data.description ?? undefined,
+    isPermanent: data.is_permanent ?? data.isPermanent ?? false,
+    isRental: data.is_rental ?? data.isRental ?? false,
+    parentCategoryId: data.parent_category_id ?? data.parentCategoryId ?? undefined,
+    userId: data.user_id ?? data.userId ?? undefined,
+    createdAt: data.created_at ?? data.createdAt ?? undefined,
+    updatedAt: data.updated_at ?? data.updatedAt ?? undefined,
+  };
+}
+
+/**
+ * Normalize budget data from API/WebSocket (snake_case) to client format (camelCase)
+ */
+function normalizeBudget(data: any): any {
+  if (!data) return data;
+  return {
+    id: data.id,
+    categoryId: data.category_id ?? data.categoryId ?? '',
+    amount: (() => {
+      const amt = data.amount;
+      if (amt == null) return 0;
+      return typeof amt === 'number' ? amt : parseFloat(String(amt));
+    })(),
+    projectId: data.project_id ?? data.projectId ?? undefined,
+  };
+}
+
+/**
+ * Get the appropriate normalizer function for an entity type
+ */
+function getEntityNormalizer(entity: string): ((data: any) => any) | null {
+  switch (entity) {
+    case 'unit': return normalizeUnit;
+    case 'property': return normalizeProperty;
+    case 'building': return normalizeBuilding;
+    case 'project': return normalizeProject;
+    case 'contact': return normalizeContact;
+    case 'account': return normalizeAccount;
+    case 'category': return normalizeCategory;
+    case 'budget': return normalizeBudget;
+    default: return null;
+  }
+}
+
+// ============================================================================
   'account:create': 'ADD_ACCOUNT',
   'account:update': 'UPDATE_ACCOUNT',
   'account:delete': 'DELETE_ACCOUNT',
@@ -225,12 +410,18 @@ class RealtimeSyncHandler {
       // Create AppAction based on action type
       let appAction: AppAction | null = null;
 
+      // Normalize entity data from snake_case to camelCase before dispatching
+      // This ensures the client state uses consistent field names (camelCase)
+      // while the database uses snake_case
+      const normalizer = getEntityNormalizer(entity);
+      const normalizedData = normalizer ? normalizer(entityData) : entityData;
+
       switch (action) {
         case 'create':
         case 'update':
           appAction = {
             type: actionType,
-            payload: entityData,
+            payload: normalizedData,
             _isRemote: true, // Mark as remote to prevent re-syncing
           } as AppAction;
           break;
