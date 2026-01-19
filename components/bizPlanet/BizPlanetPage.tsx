@@ -70,7 +70,7 @@ const BizPlanetPage: React.FC = () => {
                                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                             }`}
                         >
-                            Supplier Portal
+                            Supplier Dashboard
                         </button>
                         <button
                             onClick={() => setActiveTab('buyer')}

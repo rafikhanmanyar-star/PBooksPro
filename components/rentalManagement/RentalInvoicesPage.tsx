@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect } from 'react';
-import Tabs from '../ui/Tabs';
 import InvoicesPage from '../invoices/InvoicesPage';
 import { InvoiceType, Transaction, TransactionType, Category } from '../../types';
 import Button from '../ui/Button';
@@ -36,10 +35,28 @@ const RentalInvoicesPage: React.FC = () => {
         }
     };
 
+    const TabButton = ({ tab, label }: { tab: string; label: string }) => (
+        <button
+            type="button"
+            onClick={() => setActiveTab(tab)}
+            className={`whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === tab
+                    ? 'bg-indigo-50 text-accent ring-1 ring-indigo-100'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+            }`}
+        >
+            {label}
+        </button>
+    );
+
     return (
         <div className="flex flex-col h-full space-y-4">
             <div className="flex justify-between items-center flex-wrap gap-4 flex-shrink-0">
-                <Tabs tabs={TABS} activeTab={activeTab} onTabClick={setActiveTab} />
+                <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+                    {TABS.map((tab) => (
+                        <TabButton key={tab} tab={tab} label={tab} />
+                    ))}
+                </div>
                 <div className="flex gap-2 items-center">
                     {activeTab === 'Rental Invoices' && (
                         <>

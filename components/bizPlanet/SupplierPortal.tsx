@@ -260,19 +260,22 @@ const SupplierPortal: React.FC = () => {
         }
     };
 
-    const checkIfAlreadyRegistered = async (buyerEmail: string): Promise<boolean> => {
+    const checkRegistrationStatus = async (buyerEmail: string): Promise<{ approved: boolean; pending: boolean }> => {
         try {
             // Check if any of our registration requests are approved for this buyer
             const requests = await apiClient.get<SupplierRegistrationRequest[]>('/supplier-registrations/my-requests');
+            const normalizedBuyerEmail = buyerEmail.trim().toLowerCase();
             const buyerRequests = requests.filter(r => 
-                r.buyerOrganizationEmail.toLowerCase() === buyerEmail.toLowerCase()
+                r.buyerOrganizationEmail?.toLowerCase() === normalizedBuyerEmail
             );
             
-            // Check if any request is approved
-            return buyerRequests.some(r => r.status === SupplierRegistrationStatus.APPROVED);
+            return {
+                approved: buyerRequests.some(r => r.status === SupplierRegistrationStatus.APPROVED),
+                pending: buyerRequests.some(r => r.status === SupplierRegistrationStatus.PENDING)
+            };
         } catch (error) {
             console.error('Error checking registration status:', error);
-            return false;
+            return { approved: false, pending: false };
         }
     };
 
@@ -301,9 +304,13 @@ const SupplierPortal: React.FC = () => {
         }
 
         // Check if already registered with this organization
-        const isAlreadyRegistered = await checkIfAlreadyRegistered(buyerOrganizationEmail.trim());
-        if (isAlreadyRegistered) {
+        const { approved, pending } = await checkRegistrationStatus(buyerOrganizationEmail.trim());
+        if (approved) {
             showAlert('You are already registered with this organization');
+            return;
+        }
+        if (pending) {
+            showAlert('A pending registration request already exists for this organization');
             return;
         }
 
@@ -344,11 +351,13 @@ const SupplierPortal: React.FC = () => {
             await loadMyRegistrationRequests();
         } catch (error: any) {
             console.error('Error sending registration request:', error);
-            const errorMessage = error.response?.data?.error || 'Failed to send registration request';
+            const errorMessage = error?.response?.data?.error || error?.message || error?.error || 'Failed to send registration request';
             
             // Check for already registered error
             if (errorMessage.toLowerCase().includes('already registered')) {
                 showAlert('You are already registered with this organization');
+            } else if (errorMessage.toLowerCase().includes('pending')) {
+                showAlert('A pending registration request already exists for this organization');
             } else {
                 showAlert(errorMessage);
             }
