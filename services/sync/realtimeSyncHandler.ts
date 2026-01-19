@@ -111,6 +111,7 @@ class RealtimeSyncHandler {
   private lockManager = getLockManager();
   private isInitialized = false;
   private dispatchCallback: ((action: AppAction) => void) | null = null;
+  private currentUserId: string | null = null;
 
   /**
    * Set the dispatch callback from AppContext
@@ -118,6 +119,15 @@ class RealtimeSyncHandler {
    */
   setDispatch(dispatch: (action: AppAction) => void): void {
     this.dispatchCallback = dispatch;
+  }
+
+  /**
+   * Set the current user ID to skip events from self
+   * This prevents duplicates when the creator receives their own WebSocket event
+   */
+  setCurrentUserId(userId: string | null): void {
+    this.currentUserId = userId;
+    console.log(`[RealtimeSyncHandler] 👤 Current user ID set to: ${userId || 'null'}`);
   }
 
   /**
@@ -162,6 +172,14 @@ class RealtimeSyncHandler {
 
       const { entity, action } = eventInfo;
       
+      // Check if this event is from the current user (skip to prevent duplicates)
+      // This is critical for preventing the creator from seeing their own record twice
+      const eventUserId = data?.userId || data?.user_id;
+      if (eventUserId && this.currentUserId && eventUserId === this.currentUserId) {
+        console.log(`[RealtimeSyncHandler] ⏭️ Skipping own event: ${eventName} (userId: ${eventUserId})`);
+        return;
+      }
+      
       // Extract entity data from server response
       // Server sends: { transaction: {...}, userId, username, timestamp } or { contact: {...}, ... }
       // The entity key might be singular (transaction) or plural (transactions)
@@ -191,7 +209,7 @@ class RealtimeSyncHandler {
       // Check if we have a lock on this entity (if so, ignore - it's our own change)
       const lock = this.lockManager.getLock(entity, entityId);
       if (lock) {
-        console.log(`[RealtimeSyncHandler] ⏭️ Ignoring own change: ${entity}:${entityId}`);
+        console.log(`[RealtimeSyncHandler] ⏭️ Ignoring own change (lock): ${entity}:${entityId}`);
         return;
       }
 
@@ -432,6 +450,7 @@ class RealtimeSyncHandler {
     // WebSocket listeners are managed by the WebSocket client
     this.isInitialized = false;
     this.dispatchCallback = null;
+    this.currentUserId = null;
   }
 }
 
