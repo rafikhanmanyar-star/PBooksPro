@@ -789,6 +789,24 @@ const BuyerDashboard: React.FC = () => {
                         </div>
                     </Card>
 
+                    {/* Market Place */}
+                    <Card className="flex-shrink-0 p-2 sm:p-3">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="text-[10px] sm:text-xs font-semibold text-slate-700">Market Place</h3>
+                                <p className="text-[9px] sm:text-[10px] text-slate-500 mt-0.5">Explore suppliers and offers</p>
+                            </div>
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={() => showToast('Market Place coming soon', 'info')}
+                                className="text-[9px] sm:text-[10px] px-2 py-1"
+                            >
+                                Open
+                            </Button>
+                        </div>
+                    </Card>
+
                     {/* Quick Stats */}
                     <Card className="flex-shrink-0 p-2 sm:p-3">
                         <h3 className="text-[10px] sm:text-xs font-semibold text-slate-700 mb-2">Quick Stats</h3>
