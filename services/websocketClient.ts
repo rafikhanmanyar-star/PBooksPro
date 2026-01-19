@@ -352,6 +352,11 @@ export class WebSocketClient {
       logger.logCategory('websocket', 'User disconnected:', data);
     });
 
+    // Chat events
+    this.socket.on('chat:message', (data: any) => {
+      this.handleEvent('chat:message', data);
+    });
+
     // Generic data:updated event for P2P notifications and other cross-tenant events
     this.socket.on('data:updated', (data: any) => {
       logger.logCategory('websocket', 'Data updated:', data);
