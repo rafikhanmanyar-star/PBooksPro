@@ -168,14 +168,43 @@ export const payrollApi = {
     }
   },
 
-  // ==================== PROJECTS ====================
+  // ==================== PROJECTS (from main app settings) ====================
 
+  /**
+   * Get projects from the main application's projects module.
+   * These are the projects defined in the Settings page.
+   */
+  async getMainAppProjects(): Promise<PayrollProject[]> {
+    try {
+      const response = await apiClient.get<any[]>('/projects');
+      // Map main app project structure to payroll project structure
+      return (response || []).map(p => ({
+        id: p.id,
+        tenant_id: p.tenant_id || '',
+        name: p.name,
+        code: p.id.substring(0, 8).toUpperCase(), // Use first 8 chars of ID as code
+        description: p.description || '',
+        status: p.status === 'Completed' ? 'COMPLETED' : p.status === 'On Hold' ? 'ON_HOLD' : 'ACTIVE'
+      }));
+    } catch (error) {
+      console.error('Error fetching main app projects:', error);
+      return [];
+    }
+  },
+
+  // Get payroll-specific projects (fallback if main app projects not available)
   async getProjects(): Promise<PayrollProject[]> {
     try {
+      // First try to get from main app projects
+      const mainProjects = await this.getMainAppProjects();
+      if (mainProjects.length > 0) {
+        return mainProjects;
+      }
+      // Fallback to payroll-specific projects
       const response = await apiClient.get<PayrollProject[]>('/payroll/projects');
       return response || [];
     } catch (error) {
-      console.error('Error fetching payroll projects:', error);
+      console.error('Error fetching projects:', error);
       return [];
     }
   },

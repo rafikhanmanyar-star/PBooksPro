@@ -331,11 +331,27 @@ export const storageService = {
   },
 
   // ==================== PROJECTS ====================
+  // Projects are fetched from main application's projects module (Settings page)
+  // This provides a cached/fallback version using localStorage
+
+  _mainAppProjectsCache: null as PayrollProject[] | null,
+  _mainAppProjectsCacheTime: 0,
 
   getProjects(tenantId: string): PayrollProject[] {
     this.init(tenantId);
+    // Return cached main app projects if available and recent (within 5 minutes)
+    if (this._mainAppProjectsCache && (Date.now() - this._mainAppProjectsCacheTime) < 300000) {
+      return this._mainAppProjectsCache;
+    }
+    // Fallback to localStorage
     const data = localStorage.getItem(getKey(tenantId, STORAGE_KEYS.PROJECTS));
     return JSON.parse(data || '[]');
+  },
+
+  // Update cache with projects from main app
+  setProjectsCache(projects: PayrollProject[]): void {
+    this._mainAppProjectsCache = projects;
+    this._mainAppProjectsCacheTime = Date.now();
   },
 
   addProject(tenantId: string, project: PayrollProject, userId: string): void {

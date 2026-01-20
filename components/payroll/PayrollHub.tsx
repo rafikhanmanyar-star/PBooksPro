@@ -99,9 +99,9 @@ const PayrollHub: React.FC = () => {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      {/* Sub-navigation tabs */}
-      <div className="bg-white/80 backdrop-blur-md border-b border-slate-200 -mx-4 lg:-mx-8 -mt-4 lg:-mt-8 px-2 sm:px-4 lg:px-8 mb-4 sm:mb-6 sticky top-14 sm:top-16 z-30 shadow-sm no-print">
+    <div className="flex flex-col min-h-full">
+      {/* Sub-navigation tabs - Fixed at top of payroll section */}
+      <div className="bg-white/95 backdrop-blur-md border-b border-slate-200 -mx-4 lg:-mx-8 -mt-4 lg:-mt-8 px-2 sm:px-4 lg:px-8 sticky top-0 z-30 shadow-sm no-print">
         <div className="flex overflow-x-auto no-scrollbar gap-1 sm:gap-8">
           {hrTabs.map((tab) => (
             <button
@@ -125,8 +125,8 @@ const PayrollHub: React.FC = () => {
         </div>
       </div>
 
-      {/* Tab content */}
-      <div className="animate-in fade-in duration-500">
+      {/* Tab content - starts after navigation with proper spacing */}
+      <div className="flex-1 pt-4 sm:pt-6 animate-in fade-in duration-500">
         {activeSubTab === 'workforce' && (
           selectedEmployee ? (
             <EmployeeProfile 

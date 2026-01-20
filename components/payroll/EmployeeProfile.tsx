@@ -42,6 +42,7 @@ import {
 } from './types';
 import { ActionModal } from './modals/ActionModals';
 import { storageService } from './services/storageService';
+import { payrollApi } from '../../services/api/payrollApi';
 import PayslipModal from './modals/PayslipModal';
 import AdjustmentModal from './modals/AdjustmentModal';
 import { useAuth } from '../../context/AuthContext';
@@ -70,7 +71,26 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
     if (tenantId) {
       const runs = storageService.getPayrollRuns(tenantId).filter(r => r.status === PayrollStatus.PAID);
       setAvailableRuns(runs);
-      setGlobalProjects(storageService.getProjects(tenantId).filter(p => p.status === 'ACTIVE'));
+      
+      // Fetch projects from main application API
+      const fetchProjects = async () => {
+        try {
+          const projects = await payrollApi.getMainAppProjects();
+          if (projects.length > 0) {
+            const activeProjects = projects.filter(p => p.status === 'ACTIVE');
+            setGlobalProjects(activeProjects);
+            storageService.setProjectsCache(projects);
+          } else {
+            // Fallback to localStorage
+            setGlobalProjects(storageService.getProjects(tenantId).filter(p => p.status === 'ACTIVE'));
+          }
+        } catch (error) {
+          console.error('Error fetching projects:', error);
+          // Fallback to localStorage
+          setGlobalProjects(storageService.getProjects(tenantId).filter(p => p.status === 'ACTIVE'));
+        }
+      };
+      fetchProjects();
     }
   }, [tenantId]);
 

@@ -35,6 +35,7 @@ import {
   EmployeeSalaryComponent
 } from './types';
 import { storageService } from './services/storageService';
+import { payrollApi } from '../../services/api/payrollApi';
 import { useAuth } from '../../context/AuthContext';
 
 interface SalaryComponentState {
@@ -65,9 +66,35 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
     return storageService.getGradeLevels(tenantId);
   }, [tenantId]);
 
-  const globalProjects = useMemo(() => {
-    if (!tenantId) return [];
-    return storageService.getProjects(tenantId).filter(p => p.status === 'ACTIVE');
+  // Projects state - fetched from main application's settings
+  const [globalProjects, setGlobalProjects] = useState<PayrollProject[]>([]);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
+
+  // Fetch projects from main application API
+  useEffect(() => {
+    const fetchProjects = async () => {
+      if (!tenantId) return;
+      setIsLoadingProjects(true);
+      try {
+        // Fetch from main app projects API
+        const projects = await payrollApi.getMainAppProjects();
+        if (projects.length > 0) {
+          const activeProjects = projects.filter(p => p.status === 'ACTIVE');
+          setGlobalProjects(activeProjects);
+          storageService.setProjectsCache(projects);
+        } else {
+          // Fallback to localStorage
+          setGlobalProjects(storageService.getProjects(tenantId).filter(p => p.status === 'ACTIVE'));
+        }
+      } catch (error) {
+        console.error('Error fetching projects:', error);
+        // Fallback to localStorage
+        setGlobalProjects(storageService.getProjects(tenantId).filter(p => p.status === 'ACTIVE'));
+      } finally {
+        setIsLoadingProjects(false);
+      }
+    };
+    fetchProjects();
   }, [tenantId]);
 
   const [isPersonalInfoOpen, setIsPersonalInfoOpen] = useState(false);
