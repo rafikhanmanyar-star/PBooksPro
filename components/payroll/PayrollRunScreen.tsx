@@ -14,13 +14,15 @@ import {
   Eye,
   Search,
   Printer,
-  ArrowLeft
+  ArrowLeft,
+  Wallet
 } from 'lucide-react';
 import { 
   PayrollStatus, 
   EmploymentStatus, 
   PayrollRun, 
-  PayrollEmployee 
+  PayrollEmployee,
+  Payslip
 } from './types';
 import { storageService } from './services/storageService';
 import { payrollApi } from '../../services/api/payrollApi';
@@ -39,6 +41,8 @@ const PayrollRunScreen: React.FC = () => {
   
   const [selectedRunDetail, setSelectedRunDetail] = useState<PayrollRun | null>(null);
   const [selectedEmployeeForPayslip, setSelectedEmployeeForPayslip] = useState<PayrollEmployee | null>(null);
+  const [payslipsForRun, setPayslipsForRun] = useState<Payslip[]>([]);
+  const [loadingPayslips, setLoadingPayslips] = useState(false);
 
   const [newRunData, setNewRunData] = useState({
     month: 'January',
@@ -163,6 +167,35 @@ const PayrollRunScreen: React.FC = () => {
     setCalculating(false);
     setIsCreating(false);
     await refreshRuns();
+  };
+
+  // Handle viewing run detail and fetching payslips
+  const handleViewRunDetail = async (run: PayrollRun) => {
+    setSelectedRunDetail(run);
+    setLoadingPayslips(true);
+    
+    try {
+      const payslips = await payrollApi.getPayslipsByRun(run.id);
+      setPayslipsForRun(payslips);
+    } catch (error) {
+      console.error('Failed to fetch payslips:', error);
+      setPayslipsForRun([]);
+    } finally {
+      setLoadingPayslips(false);
+    }
+  };
+
+  // Get payslip for specific employee in current run
+  const getPayslipForEmployee = (employeeId: string): Payslip | undefined => {
+    return payslipsForRun.find(p => p.employee_id === employeeId);
+  };
+
+  // Refresh payslips after payment
+  const handlePayslipPaymentComplete = async () => {
+    if (selectedRunDetail) {
+      const payslips = await payrollApi.getPayslipsByRun(selectedRunDetail.id);
+      setPayslipsForRun(payslips);
+    }
   };
 
   const handleUpdateStatus = async (run: PayrollRun, nextStatus: PayrollStatus) => {
@@ -350,46 +383,81 @@ const PayrollRunScreen: React.FC = () => {
               <Printer size={14} /> Print Batch
             </button>
           </div>
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                <th className="px-8 py-4">Employee</th>
-                <th className="px-8 py-4">Department</th>
-                <th className="px-8 py-4">Status</th>
-                <th className="px-8 py-4 text-right no-print">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {activeEmployees.map(emp => (
-                <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-8 py-4">
-                    <div className="font-bold text-slate-900">{emp.name}</div>
-                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{emp.id}</div>
-                  </td>
-                  <td className="px-8 py-4 text-sm font-medium text-slate-600">{emp.department}</td>
-                  <td className="px-8 py-4">
-                    <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 bg-green-50 text-green-600 rounded border border-green-100">Processed</span>
-                  </td>
-                  <td className="px-8 py-4 text-right no-print">
-                    <button 
-                      onClick={() => setSelectedEmployeeForPayslip(emp)} 
-                      className="text-blue-600 hover:underline font-black text-xs uppercase tracking-widest flex items-center gap-2 ml-auto"
-                    >
-                      <Eye size={14} /> View Payslip
-                    </button>
-                  </td>
+          {loadingPayslips ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 size={24} className="animate-spin text-blue-600" />
+              <span className="ml-2 text-slate-500 font-medium">Loading payslips...</span>
+            </div>
+          ) : (
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  <th className="px-8 py-4">Employee</th>
+                  <th className="px-8 py-4">Department</th>
+                  <th className="px-8 py-4">Net Pay</th>
+                  <th className="px-8 py-4">Payment Status</th>
+                  <th className="px-8 py-4 text-right no-print">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {activeEmployees.map(emp => {
+                  const payslip = getPayslipForEmployee(emp.id);
+                  const isPaid = payslip?.is_paid || false;
+                  return (
+                    <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-8 py-4">
+                        <div className="font-bold text-slate-900">{emp.name}</div>
+                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{emp.employee_code || emp.id.substring(0, 8)}</div>
+                      </td>
+                      <td className="px-8 py-4 text-sm font-medium text-slate-600">{emp.department}</td>
+                      <td className="px-8 py-4">
+                        <span className="font-bold text-slate-900">
+                          PKR {payslip?.net_pay?.toLocaleString() || '—'}
+                        </span>
+                      </td>
+                      <td className="px-8 py-4">
+                        {isPaid ? (
+                          <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 bg-green-50 text-green-600 rounded border border-green-100 flex items-center gap-1 w-fit">
+                            <CheckCircle2 size={10} /> Paid
+                          </span>
+                        ) : payslip ? (
+                          <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 bg-amber-50 text-amber-600 rounded border border-amber-100">
+                            Pending
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 bg-slate-50 text-slate-400 rounded border border-slate-100">
+                            Not Generated
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-8 py-4 text-right no-print">
+                        <button 
+                          onClick={() => setSelectedEmployeeForPayslip(emp)} 
+                          className={`font-black text-xs uppercase tracking-widest flex items-center gap-2 ml-auto px-3 py-1.5 rounded-lg transition-all ${
+                            isPaid 
+                              ? 'text-slate-600 hover:bg-slate-100' 
+                              : 'text-blue-600 hover:bg-blue-50'
+                          }`}
+                        >
+                          <Eye size={14} /> {isPaid ? 'View' : 'View / Pay'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
 
-        {selectedEmployeeForPayslip && (
+        {selectedEmployeeForPayslip && selectedRunDetail && (
           <PayslipModal 
             isOpen={!!selectedEmployeeForPayslip} 
             onClose={() => setSelectedEmployeeForPayslip(null)} 
             employee={selectedEmployeeForPayslip} 
-            run={selectedRunDetail} 
+            run={selectedRunDetail}
+            payslipData={getPayslipForEmployee(selectedEmployeeForPayslip.id)}
+            onPaymentComplete={handlePayslipPaymentComplete}
           />
         )}
       </div>
@@ -419,7 +487,7 @@ const PayrollRunScreen: React.FC = () => {
             <div 
               key={run.id} 
               className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm"
-              onClick={() => setSelectedRunDetail(run)}
+              onClick={() => handleViewRunDetail(run)}
             >
               <div className="flex items-start justify-between mb-3">
                 <div>
@@ -471,7 +539,7 @@ const PayrollRunScreen: React.FC = () => {
                     <td className="px-6 lg:px-8 py-5">{getStatusBadge(run.status)}</td>
                     <td className="px-6 lg:px-8 py-5 text-right">
                       <button 
-                        onClick={() => setSelectedRunDetail(run)} 
+                        onClick={() => handleViewRunDetail(run)} 
                         className="px-4 py-2 text-xs font-black bg-slate-100 text-slate-900 rounded-xl hover:bg-slate-200 transition-all flex items-center gap-2 ml-auto"
                       >
                         <Eye size={14} /> View Batch

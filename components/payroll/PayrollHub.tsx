@@ -17,7 +17,10 @@ import {
   Trash2,
   TrendingUp,
   TrendingDown,
-  Award
+  Award,
+  Wallet,
+  Save,
+  Loader2
 } from 'lucide-react';
 import PayrollRunScreen from './PayrollRunScreen';
 import EmployeeList from './EmployeeList';
@@ -30,7 +33,9 @@ import GradeConfigModal from './modals/GradeConfigModal';
 import { PayrollEmployee, GradeLevel, EarningType, DeductionType } from './types';
 import { storageService } from './services/storageService';
 import { payrollApi } from '../../services/api/payrollApi';
+import { apiClient } from '../../services/api/client';
 import { useAuth } from '../../context/AuthContext';
+import { Account, Category, Project, TransactionType } from '../../types';
 
 type PayrollSubTab = 'workforce' | 'cycles' | 'report' | 'structure' | 'history';
 
@@ -52,6 +57,17 @@ const PayrollHub: React.FC = () => {
   const [editingEarning, setEditingEarning] = useState<EarningType | null>(null);
   const [editingDeduction, setEditingDeduction] = useState<DeductionType | null>(null);
   const [editingGrade, setEditingGrade] = useState<GradeLevel | null>(null);
+  
+  // Payment settings state
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [payrollSettings, setPayrollSettings] = useState({
+    defaultAccountId: '',
+    defaultCategoryId: '',
+    defaultProjectId: ''
+  });
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   // Get tenant ID from auth context
   const tenantId = tenant?.id || '';
@@ -72,10 +88,14 @@ const PayrollHub: React.FC = () => {
     
     try {
       // Fetch from cloud API first, fallback to localStorage
-      const [apiEarnings, apiDeductions, apiGrades] = await Promise.all([
+      const [apiEarnings, apiDeductions, apiGrades, accountsData, categoriesData, projectsData, settings] = await Promise.all([
         payrollApi.getEarningTypes(),
         payrollApi.getDeductionTypes(),
-        payrollApi.getGradeLevels()
+        payrollApi.getGradeLevels(),
+        apiClient.get<Account[]>('/accounts').catch(() => []),
+        apiClient.get<Category[]>('/categories').catch(() => []),
+        apiClient.get<Project[]>('/projects').catch(() => []),
+        payrollApi.getPayrollSettings()
       ]);
       
       // Use API data if available, otherwise fallback to localStorage
@@ -96,6 +116,18 @@ const PayrollHub: React.FC = () => {
       } else {
         setGradeLevels(storageService.getGradeLevels(tenantId));
       }
+      
+      // Set accounts, categories, projects for payment settings
+      setAccounts(accountsData || []);
+      setCategories((categoriesData || []).filter(c => c.type === TransactionType.EXPENSE));
+      setProjects(projectsData || []);
+      
+      // Set payroll settings
+      setPayrollSettings({
+        defaultAccountId: settings.defaultAccountId || '',
+        defaultCategoryId: settings.defaultCategoryId || '',
+        defaultProjectId: settings.defaultProjectId || ''
+      });
     } catch (error) {
       console.warn('Failed to fetch from API, using localStorage:', error);
       setEarningTypes(storageService.getEarningTypes(tenantId));
@@ -328,6 +360,88 @@ const PayrollHub: React.FC = () => {
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* Payment Settings */}
+            <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-4 sm:px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Wallet size={18} className="text-purple-600" />
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Payment Settings</h3>
+                </div>
+              </div>
+              <div className="p-4 sm:p-6 space-y-4">
+                <p className="text-xs text-slate-500 mb-4">Configure default account and expense category for salary payments.</p>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Default Payment Account</label>
+                    <select
+                      value={payrollSettings.defaultAccountId}
+                      onChange={(e) => setPayrollSettings({ ...payrollSettings, defaultAccountId: e.target.value })}
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-medium text-sm"
+                    >
+                      <option value="">Select Account</option>
+                      {accounts.map((acc) => (
+                        <option key={acc.id} value={acc.id}>{acc.name} ({acc.type})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Default Expense Category</label>
+                    <select
+                      value={payrollSettings.defaultCategoryId}
+                      onChange={(e) => setPayrollSettings({ ...payrollSettings, defaultCategoryId: e.target.value })}
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-medium text-sm"
+                    >
+                      <option value="">Select Category</option>
+                      {categories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Default Project</label>
+                    <select
+                      value={payrollSettings.defaultProjectId}
+                      onChange={(e) => setPayrollSettings({ ...payrollSettings, defaultProjectId: e.target.value })}
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-medium text-sm"
+                    >
+                      <option value="">None (Use Employee's Project)</option>
+                      {projects.map((proj) => (
+                        <option key={proj.id} value={proj.id}>{proj.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                
+                <div className="pt-4 border-t border-slate-100">
+                  <button
+                    onClick={async () => {
+                      setIsSavingSettings(true);
+                      try {
+                        await payrollApi.updatePayrollSettings({
+                          defaultAccountId: payrollSettings.defaultAccountId || null,
+                          defaultCategoryId: payrollSettings.defaultCategoryId || null,
+                          defaultProjectId: payrollSettings.defaultProjectId || null
+                        });
+                      } catch (error) {
+                        console.error('Failed to save payroll settings:', error);
+                      } finally {
+                        setIsSavingSettings(false);
+                      }
+                    }}
+                    disabled={isSavingSettings}
+                    className="px-4 py-2 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-700 transition-all flex items-center gap-2 disabled:opacity-50 text-sm"
+                  >
+                    {isSavingSettings ? (
+                      <><Loader2 size={16} className="animate-spin" /> Saving...</>
+                    ) : (
+                      <><Save size={16} /> Save Settings</>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
 

@@ -289,6 +289,71 @@ export const payrollApi = {
       console.error('Error fetching employee payslips:', error);
       return [];
     }
+  },
+
+  async getPayslip(id: string): Promise<any | null> {
+    try {
+      return await apiClient.get<any>(`/payroll/payslips/${id}`);
+    } catch (error) {
+      console.error('Error fetching payslip:', error);
+      return null;
+    }
+  },
+
+  async payPayslip(payslipId: string, paymentData: {
+    accountId: string;
+    categoryId?: string;
+    projectId?: string;
+    description?: string;
+  }): Promise<{ success: boolean; payslip?: any; transaction?: any; error?: string }> {
+    try {
+      const response = await apiClient.post<{ success: boolean; payslip: any; transaction: any }>(
+        `/payroll/payslips/${payslipId}/pay`,
+        paymentData
+      );
+      return response;
+    } catch (error: any) {
+      console.error('Error paying payslip:', error);
+      return { success: false, error: error.message || 'Failed to pay payslip' };
+    }
+  },
+
+  // ==================== PAYROLL SETTINGS ====================
+
+  async getPayrollSettings(): Promise<{
+    defaultAccountId: string | null;
+    defaultCategoryId: string | null;
+    defaultProjectId: string | null;
+  }> {
+    try {
+      const response = await apiClient.get<any>('/payroll/settings');
+      return response || {
+        defaultAccountId: null,
+        defaultCategoryId: null,
+        defaultProjectId: null
+      };
+    } catch (error) {
+      console.error('Error fetching payroll settings:', error);
+      return {
+        defaultAccountId: null,
+        defaultCategoryId: null,
+        defaultProjectId: null
+      };
+    }
+  },
+
+  async updatePayrollSettings(settings: {
+    defaultAccountId?: string | null;
+    defaultCategoryId?: string | null;
+    defaultProjectId?: string | null;
+  }): Promise<boolean> {
+    try {
+      await apiClient.put('/payroll/settings', settings);
+      return true;
+    } catch (error) {
+      console.error('Error updating payroll settings:', error);
+      return false;
+    }
   }
 };
 

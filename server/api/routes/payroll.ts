@@ -760,4 +760,205 @@ router.put('/deduction-types', async (req: TenantRequest, res) => {
   }
 });
 
+// =====================================================
+// PAYSLIP PAYMENT ROUTES
+// =====================================================
+
+// POST /payroll/payslips/:id/pay - Pay individual payslip and create transaction
+router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    const userId = req.userId;
+    const { id } = req.params;
+
+    if (!tenantId || !userId) {
+      return res.status(400).json({ error: 'Authentication required' });
+    }
+
+    const { accountId, categoryId, projectId, description } = req.body;
+
+    if (!accountId) {
+      return res.status(400).json({ error: 'Account ID is required' });
+    }
+
+    // Get payslip details with employee info
+    const payslipResult = await getDb().query(
+      `SELECT p.*, e.name as employee_name, e.projects as employee_projects, 
+              r.month, r.year
+       FROM payslips p
+       JOIN payroll_employees e ON p.employee_id = e.id
+       JOIN payroll_runs r ON p.payroll_run_id = r.id
+       WHERE p.id = $1 AND p.tenant_id = $2`,
+      [id, tenantId]
+    );
+
+    if (payslipResult.length === 0) {
+      return res.status(404).json({ error: 'Payslip not found' });
+    }
+
+    const payslip = payslipResult[0];
+
+    if (payslip.is_paid) {
+      return res.status(400).json({ error: 'Payslip is already paid' });
+    }
+
+    // Determine project from employee's project allocation (first one with highest allocation)
+    let effectiveProjectId = projectId;
+    if (!effectiveProjectId && payslip.employee_projects) {
+      const projects = typeof payslip.employee_projects === 'string' 
+        ? JSON.parse(payslip.employee_projects) 
+        : payslip.employee_projects;
+      if (projects && projects.length > 0) {
+        // Sort by percentage descending and get the first one
+        const sortedProjects = [...projects].sort((a: any, b: any) => (b.percentage || 0) - (a.percentage || 0));
+        effectiveProjectId = sortedProjects[0].project_id;
+      }
+    }
+
+    const txnDescription = description || `Salary payment for ${payslip.employee_name} - ${payslip.month} ${payslip.year}`;
+
+    // Create expense transaction for salary payment
+    const transactionResult = await getDb().query(
+      `INSERT INTO transactions 
+       (tenant_id, type, amount, date, description, account_id, category_id, project_id, user_id)
+       VALUES ($1, 'Expense', $2, CURRENT_DATE, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [tenantId, payslip.net_pay, txnDescription, accountId, categoryId || null, effectiveProjectId || null, userId]
+    );
+
+    const transaction = transactionResult[0];
+
+    // Update account balance
+    await getDb().query(
+      `UPDATE accounts SET balance = balance - $1 WHERE id = $2 AND tenant_id = $3`,
+      [payslip.net_pay, accountId, tenantId]
+    );
+
+    // Mark payslip as paid
+    const updateResult = await getDb().query(
+      `UPDATE payslips SET 
+        is_paid = true,
+        paid_at = CURRENT_TIMESTAMP,
+        transaction_id = $1
+       WHERE id = $2 AND tenant_id = $3
+       RETURNING *`,
+      [transaction.id, id, tenantId]
+    );
+
+    // Emit WebSocket event
+    emitToTenant(tenantId, 'payslip_paid', { 
+      payslipId: id, 
+      transactionId: transaction.id,
+      employeeId: payslip.employee_id 
+    });
+
+    res.json({
+      success: true,
+      payslip: updateResult[0],
+      transaction: transaction
+    });
+  } catch (error) {
+    console.error('Error paying payslip:', error);
+    res.status(500).json({ error: 'Failed to pay payslip' });
+  }
+});
+
+// GET /payroll/payslips/:id - Get single payslip
+router.get('/payslips/:id', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    const { id } = req.params;
+
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant ID is required' });
+    }
+
+    const payslips = await getDb().query(
+      `SELECT p.*, e.name as employee_name, e.designation, e.department,
+              r.month, r.year, r.status as run_status
+       FROM payslips p
+       JOIN payroll_employees e ON p.employee_id = e.id
+       JOIN payroll_runs r ON p.payroll_run_id = r.id
+       WHERE p.id = $1 AND p.tenant_id = $2`,
+      [id, tenantId]
+    );
+
+    if (payslips.length === 0) {
+      return res.status(404).json({ error: 'Payslip not found' });
+    }
+
+    res.json(payslips[0]);
+  } catch (error) {
+    console.error('Error fetching payslip:', error);
+    res.status(500).json({ error: 'Failed to fetch payslip' });
+  }
+});
+
+// =====================================================
+// PAYROLL SETTINGS ROUTES
+// =====================================================
+
+// GET /payroll/settings - Get payroll settings
+router.get('/settings', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant ID is required' });
+    }
+
+    // Get from app_settings table
+    const settings = await getDb().query(
+      `SELECT * FROM app_settings WHERE tenant_id = $1 AND key = 'payroll_settings'`,
+      [tenantId]
+    );
+
+    if (settings.length === 0) {
+      // Return default settings
+      return res.json({
+        defaultAccountId: null,
+        defaultCategoryId: null,
+        defaultProjectId: null
+      });
+    }
+
+    res.json(settings[0].value);
+  } catch (error) {
+    console.error('Error fetching payroll settings:', error);
+    res.status(500).json({ error: 'Failed to fetch payroll settings' });
+  }
+});
+
+// PUT /payroll/settings - Update payroll settings
+router.put('/settings', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    const userId = req.userId;
+
+    if (!tenantId || !userId) {
+      return res.status(400).json({ error: 'Authentication required' });
+    }
+
+    const { defaultAccountId, defaultCategoryId, defaultProjectId } = req.body;
+
+    const settingsValue = {
+      defaultAccountId,
+      defaultCategoryId,
+      defaultProjectId
+    };
+
+    // Upsert settings
+    await getDb().query(
+      `INSERT INTO app_settings (tenant_id, key, value)
+       VALUES ($1, 'payroll_settings', $2)
+       ON CONFLICT (tenant_id, key) DO UPDATE SET value = $2`,
+      [tenantId, JSON.stringify(settingsValue)]
+    );
+
+    res.json({ success: true, settings: settingsValue });
+  } catch (error) {
+    console.error('Error updating payroll settings:', error);
+    res.status(500).json({ error: 'Failed to update payroll settings' });
+  }
+});
+
 export default router;

@@ -2,21 +2,79 @@
  * PayslipModal - View employee payslip for a specific payroll run
  */
 
-import React from 'react';
-import { X, Download, Printer, ShieldCheck, Building2, Plus, TrendingDown } from 'lucide-react';
-import { PayrollEmployee, PayrollRun } from '../types';
+import React, { useState, useEffect } from 'react';
+import { X, Download, Printer, ShieldCheck, Building2, Plus, TrendingDown, Wallet, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
+import { PayrollEmployee, PayrollRun, Payslip } from '../types';
+import { payrollApi } from '../../../services/api/payrollApi';
 import { useAuth } from '../../../context/AuthContext';
+import { Account, Category, Project, TransactionType } from '../../../types';
+import { apiClient } from '../../../services/api/client';
 
 interface PayslipModalProps {
   isOpen: boolean;
   onClose: () => void;
   employee: PayrollEmployee;
   run: PayrollRun;
+  payslipData?: Payslip | null;
+  onPaymentComplete?: () => void;
 }
 
-const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, run }) => {
+const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, run, payslipData, onPaymentComplete }) => {
   const { tenant } = useAuth();
   const companyName = tenant?.companyName || tenant?.name || 'Organization';
+
+  // Payment state
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [isPaying, setIsPaying] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [isPaid, setIsPaid] = useState(payslipData?.is_paid || false);
+  
+  // Payment form data
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+
+  // Load accounts, categories, projects and payroll settings on mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [accountsData, categoriesData, projectsData, settings] = await Promise.all([
+          apiClient.get<Account[]>('/accounts'),
+          apiClient.get<Category[]>('/categories'),
+          apiClient.get<Project[]>('/projects'),
+          payrollApi.getPayrollSettings()
+        ]);
+        
+        setAccounts(accountsData || []);
+        // Filter to only expense categories
+        setCategories((categoriesData || []).filter(c => c.type === TransactionType.EXPENSE));
+        setProjects(projectsData || []);
+        
+        // Set defaults from settings
+        if (settings.defaultAccountId) setSelectedAccountId(settings.defaultAccountId);
+        if (settings.defaultCategoryId) setSelectedCategoryId(settings.defaultCategoryId);
+        if (settings.defaultProjectId) setSelectedProjectId(settings.defaultProjectId);
+        
+        // If employee has project allocation, use that as default project
+        if (employee.projects && employee.projects.length > 0) {
+          const sortedProjects = [...employee.projects].sort((a, b) => (b.percentage || 0) - (a.percentage || 0));
+          if (sortedProjects[0].project_id && !settings.defaultProjectId) {
+            setSelectedProjectId(sortedProjects[0].project_id);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading payment data:', error);
+      }
+    };
+    
+    if (isOpen) {
+      loadData();
+      setIsPaid(payslipData?.is_paid || false);
+    }
+  }, [isOpen, payslipData, employee.projects]);
 
   if (!isOpen) return null;
 
@@ -185,25 +243,177 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
           </div>
 
           {/* Net Pay */}
-          <div className="bg-slate-900 rounded-3xl p-8 flex flex-col md:flex-row items-center justify-between text-white gap-6">
+          <div className={`rounded-3xl p-8 flex flex-col md:flex-row items-center justify-between gap-6 ${isPaid ? 'bg-green-900' : 'bg-slate-900'} text-white`}>
             <div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Net Payable Amount</p>
               <p className="text-4xl font-black">PKR {netPay.toLocaleString()}</p>
+              {isPaid && (
+                <div className="flex items-center gap-2 mt-2 text-green-300">
+                  <CheckCircle2 size={16} />
+                  <span className="text-xs font-bold">PAID</span>
+                  {payslipData?.paid_at && (
+                    <span className="text-xs text-green-400">
+                      on {new Date(payslipData.paid_at).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             <div className="text-right">
-              <p className="text-xs text-slate-400 font-medium italic mb-2">
-                Transaction generated from cycle {run.month}-{run.year}
-              </p>
-              <div className="flex gap-4 no-print">
-                <div className="px-4 py-2 bg-white/10 rounded-xl text-xs font-bold border border-white/10">
-                  Compliance: ISO 27001
+              {!isPaid && !showPaymentForm && (
+                <button
+                  onClick={() => setShowPaymentForm(true)}
+                  className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl flex items-center gap-2 transition-all no-print"
+                >
+                  <Wallet size={18} /> Pay Salary
+                </button>
+              )}
+              {isPaid && (
+                <div className="flex gap-4 no-print">
+                  <div className="px-4 py-2 bg-white/10 rounded-xl text-xs font-bold border border-white/10">
+                    Status: Paid
+                  </div>
+                  <div className="px-4 py-2 bg-white/10 rounded-xl text-xs font-bold border border-white/10">
+                    Txn: {payslipData?.transaction_id?.substring(0, 8) || 'N/A'}
+                  </div>
                 </div>
-                <div className="px-4 py-2 bg-white/10 rounded-xl text-xs font-bold border border-white/10">
-                  Mode: Auto-Transfer
+              )}
+            </div>
+          </div>
+
+          {/* Payment Form */}
+          {showPaymentForm && !isPaid && (
+            <div className="bg-blue-50 rounded-2xl p-6 border border-blue-200 space-y-4 no-print">
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-slate-900 flex items-center gap-2">
+                  <Wallet size={18} className="text-blue-600" /> Process Salary Payment
+                </h4>
+                <button 
+                  onClick={() => setShowPaymentForm(false)}
+                  className="p-1 text-slate-400 hover:text-slate-600"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {paymentError && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2 text-red-700 text-sm">
+                  <AlertCircle size={16} />
+                  {paymentError}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
+                    Pay From Account <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={selectedAccountId}
+                    onChange={(e) => setSelectedAccountId(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-medium text-sm"
+                  >
+                    <option value="">Select Account</option>
+                    {accounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name} ({acc.type}) - PKR {acc.balance.toLocaleString()}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
+                    Expense Category
+                  </label>
+                  <select
+                    value={selectedCategoryId}
+                    onChange={(e) => setSelectedCategoryId(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-medium text-sm"
+                  >
+                    <option value="">Select Category (Optional)</option>
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
+                    Charge to Project
+                  </label>
+                  <select
+                    value={selectedProjectId}
+                    onChange={(e) => setSelectedProjectId(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-medium text-sm"
+                  >
+                    <option value="">Select Project (Optional)</option>
+                    {projects.map((proj) => (
+                      <option key={proj.id} value={proj.id}>{proj.name}</option>
+                    ))}
+                  </select>
+                  {employee.projects && employee.projects.length > 0 && (
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Employee allocation: {employee.projects.map(p => `${p.project_name} (${p.percentage}%)`).join(', ')}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-4 border-t border-blue-200">
+                <div className="text-sm text-slate-600">
+                  Amount to debit: <span className="font-bold text-slate-900">PKR {netPay.toLocaleString()}</span>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowPaymentForm(false)}
+                    className="px-4 py-2 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!selectedAccountId) {
+                        setPaymentError('Please select an account to pay from');
+                        return;
+                      }
+                      
+                      if (!payslipData?.id) {
+                        setPaymentError('Payslip ID not found');
+                        return;
+                      }
+                      
+                      setIsPaying(true);
+                      setPaymentError(null);
+                      
+                      const result = await payrollApi.payPayslip(payslipData.id, {
+                        accountId: selectedAccountId,
+                        categoryId: selectedCategoryId || undefined,
+                        projectId: selectedProjectId || undefined,
+                        description: `Salary payment for ${employee.name} - ${run.month} ${run.year}`
+                      });
+                      
+                      setIsPaying(false);
+                      
+                      if (result.success) {
+                        setIsPaid(true);
+                        setShowPaymentForm(false);
+                        if (onPaymentComplete) onPaymentComplete();
+                      } else {
+                        setPaymentError(result.error || 'Failed to process payment');
+                      }
+                    }}
+                    disabled={isPaying || !selectedAccountId}
+                    className="px-6 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {isPaying ? (
+                      <><Loader2 size={16} className="animate-spin" /> Processing...</>
+                    ) : (
+                      <><CheckCircle2 size={16} /> Confirm Payment</>
+                    )}
+                  </button>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
