@@ -216,30 +216,33 @@ const ProjectEquityManagement: React.FC = () => {
     const treeData = useMemo<TreeNode[]>(() => {
         const nodes: TreeNode[] = [];
         
+        // Track total balance for All Investors
+        let allInvestorsTotal = 0;
+        const allInvestorsChildren: TreeNode[] = [];
+        
+        equityAccounts.forEach(acc => {
+            const balance = balances.invTotalBal[acc.id] || 0;
+            allInvestorsChildren.push({
+                id: acc.id,
+                label: acc.name,
+                type: 'staff',
+                children: [],
+                value: balance !== 0 ? balance : undefined,
+                valueColor: balance >= 0 ? 'text-emerald-600' : 'text-rose-600'
+            });
+            if (balance !== 0) allInvestorsTotal += balance;
+        });
+        allInvestorsChildren.sort((a, b) => a.label.localeCompare(b.label));
+        
         // 1. All Investors Node (Parent)
         const allInvestorsNode: TreeNode = {
             id: 'root-investors',
-            name: 'All Investors',
+            label: `All Investors (${allInvestorsChildren.length})`,
             type: 'building', 
-            children: [],
-            count: 0,
-            amount: 0
+            children: allInvestorsChildren,
+            value: allInvestorsTotal !== 0 ? allInvestorsTotal : undefined,
+            valueColor: allInvestorsTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'
         };
-
-        equityAccounts.forEach(acc => {
-            const balance = balances.invTotalBal[acc.id] || 0;
-            allInvestorsNode.children.push({
-                id: acc.id,
-                name: acc.name,
-                type: 'staff',
-                children: [],
-                count: 0,
-                amount: balance
-            });
-            if (balance !== 0) allInvestorsNode.amount = (allInvestorsNode.amount || 0) + balance;
-        });
-        allInvestorsNode.children.sort((a, b) => a.name.localeCompare(b.name));
-        allInvestorsNode.count = allInvestorsNode.children.length;
         
         nodes.push(allInvestorsNode); 
 
@@ -247,14 +250,7 @@ const ProjectEquityManagement: React.FC = () => {
         const projectNodes: TreeNode[] = [];
         state.projects.forEach(p => {
              const projBalance = balances.projBal[p.id] || 0;
-             const projectNode: TreeNode = {
-                id: p.id,
-                name: p.name,
-                type: 'project',
-                children: [],
-                count: 0,
-                amount: projBalance
-            };
+             const projectChildren: TreeNode[] = [];
             
             // Find investors active in this project via pre-calc
             const projInvestors = balances.invProjBal[p.id] || {};
@@ -262,22 +258,31 @@ const ProjectEquityManagement: React.FC = () => {
             Object.entries(projInvestors).forEach(([invId, amount]) => {
                 const inv = equityAccounts.find(a => a.id === invId);
                 if (inv) {
-                    projectNode.children.push({
+                    projectChildren.push({
                         id: inv.id,
-                        name: inv.name,
+                        label: inv.name,
                         type: 'staff',
                         children: [],
-                        amount: amount
+                        value: amount !== 0 ? amount : undefined,
+                        valueColor: amount >= 0 ? 'text-emerald-600' : 'text-rose-600'
                     });
                 }
             });
             
-            projectNode.children.sort((a,b) => a.name.localeCompare(b.name));
-            projectNode.count = projectNode.children.length;
+            projectChildren.sort((a,b) => a.label.localeCompare(b.label));
             
-            if (projectNode.count > 0 || Math.abs(projBalance) > 0.01) projectNodes.push(projectNode);
+            if (projectChildren.length > 0 || Math.abs(projBalance) > 0.01) {
+                projectNodes.push({
+                    id: p.id,
+                    label: p.name,
+                    type: 'project',
+                    children: projectChildren,
+                    value: projBalance !== 0 ? projBalance : undefined,
+                    valueColor: projBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                });
+            }
         });
-        projectNodes.sort((a, b) => a.name.localeCompare(b.name));
+        projectNodes.sort((a, b) => a.label.localeCompare(b.label));
         nodes.push(...projectNodes);
 
         return nodes;

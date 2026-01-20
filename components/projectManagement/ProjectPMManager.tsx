@@ -530,14 +530,14 @@ const ProjectPMManager: React.FC = () => {
                 const unallocatedAmount = getUnallocatedAmount(p);
                 return {
                     id: p.id,
-                    name: p.name,
+                    label: p.name,
                     type: 'project' as const,
                     children: [],
-                    count: 0,
-                    amount: unallocatedAmount
+                    value: unallocatedAmount > 0 ? unallocatedAmount : undefined,
+                    valueColor: 'text-rose-600'
                 };
             })
-            .sort((a, b) => a.name.localeCompare(b.name));
+            .sort((a, b) => a.label.localeCompare(b.label));
     }, [state.projects, searchQuery, getUnallocatedAmount]);
 
     // --- Resizing ---
