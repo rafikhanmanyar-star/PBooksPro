@@ -5,14 +5,14 @@
 -- GRADE LEVELS TABLE
 -- =====================================================
 CREATE TABLE IF NOT EXISTS payroll_grades (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name VARCHAR(50) NOT NULL,
     description VARCHAR(255),
     min_salary NUMERIC(15, 2) NOT NULL DEFAULT 0,
     max_salary NUMERIC(15, 2) NOT NULL DEFAULT 0,
-    created_by UUID REFERENCES users(id),
-    updated_by UUID REFERENCES users(id),
+    created_by TEXT REFERENCES users(id),
+    updated_by TEXT REFERENCES users(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(tenant_id, name)
@@ -26,20 +26,20 @@ ALTER TABLE payroll_grades ENABLE ROW LEVEL SECURITY;
 -- RLS Policy
 DROP POLICY IF EXISTS payroll_grades_tenant_isolation ON payroll_grades;
 CREATE POLICY payroll_grades_tenant_isolation ON payroll_grades
-    USING (tenant_id = current_setting('app.current_tenant')::uuid);
+    USING (tenant_id = current_setting('app.current_tenant', true));
 
 -- =====================================================
 -- PAYROLL PROJECTS TABLE (for cost allocation)
 -- =====================================================
 CREATE TABLE IF NOT EXISTS payroll_projects (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     code VARCHAR(50),
     description TEXT,
     status VARCHAR(20) DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'COMPLETED', 'ON_HOLD')),
-    created_by UUID REFERENCES users(id),
-    updated_by UUID REFERENCES users(id),
+    created_by TEXT REFERENCES users(id),
+    updated_by TEXT REFERENCES users(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -53,15 +53,15 @@ ALTER TABLE payroll_projects ENABLE ROW LEVEL SECURITY;
 -- RLS Policy
 DROP POLICY IF EXISTS payroll_projects_tenant_isolation ON payroll_projects;
 CREATE POLICY payroll_projects_tenant_isolation ON payroll_projects
-    USING (tenant_id = current_setting('app.current_tenant')::uuid);
+    USING (tenant_id = current_setting('app.current_tenant', true));
 
 -- =====================================================
 -- PAYROLL EMPLOYEES TABLE
 -- =====================================================
 CREATE TABLE IF NOT EXISTS payroll_employees (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    user_id UUID REFERENCES users(id),
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id TEXT REFERENCES users(id),
     
     -- Personal Info
     name VARCHAR(255) NOT NULL,
@@ -85,8 +85,8 @@ CREATE TABLE IF NOT EXISTS payroll_employees (
     projects JSONB DEFAULT '[]'::jsonb,
     
     -- Audit
-    created_by UUID NOT NULL REFERENCES users(id),
-    updated_by UUID REFERENCES users(id),
+    created_by TEXT NOT NULL REFERENCES users(id),
+    updated_by TEXT REFERENCES users(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -102,14 +102,14 @@ ALTER TABLE payroll_employees ENABLE ROW LEVEL SECURITY;
 -- RLS Policy
 DROP POLICY IF EXISTS payroll_employees_tenant_isolation ON payroll_employees;
 CREATE POLICY payroll_employees_tenant_isolation ON payroll_employees
-    USING (tenant_id = current_setting('app.current_tenant')::uuid);
+    USING (tenant_id = current_setting('app.current_tenant', true));
 
 -- =====================================================
 -- PAYROLL RUNS TABLE
 -- =====================================================
 CREATE TABLE IF NOT EXISTS payroll_runs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     
     -- Period Info
     month VARCHAR(20) NOT NULL,
@@ -123,9 +123,9 @@ CREATE TABLE IF NOT EXISTS payroll_runs (
     employee_count INTEGER DEFAULT 0,
     
     -- Audit
-    created_by UUID NOT NULL REFERENCES users(id),
-    updated_by UUID REFERENCES users(id),
-    approved_by UUID REFERENCES users(id),
+    created_by TEXT NOT NULL REFERENCES users(id),
+    updated_by TEXT REFERENCES users(id),
+    approved_by TEXT REFERENCES users(id),
     approved_at TIMESTAMP WITH TIME ZONE,
     paid_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -144,16 +144,16 @@ ALTER TABLE payroll_runs ENABLE ROW LEVEL SECURITY;
 -- RLS Policy
 DROP POLICY IF EXISTS payroll_runs_tenant_isolation ON payroll_runs;
 CREATE POLICY payroll_runs_tenant_isolation ON payroll_runs
-    USING (tenant_id = current_setting('app.current_tenant')::uuid);
+    USING (tenant_id = current_setting('app.current_tenant', true));
 
 -- =====================================================
 -- PAYSLIPS TABLE
 -- =====================================================
 CREATE TABLE IF NOT EXISTS payslips (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    payroll_run_id UUID NOT NULL REFERENCES payroll_runs(id) ON DELETE CASCADE,
-    employee_id UUID NOT NULL REFERENCES payroll_employees(id) ON DELETE CASCADE,
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    payroll_run_id TEXT NOT NULL REFERENCES payroll_runs(id) ON DELETE CASCADE,
+    employee_id TEXT NOT NULL REFERENCES payroll_employees(id) ON DELETE CASCADE,
     
     -- Amounts
     basic_pay NUMERIC(15, 2) NOT NULL DEFAULT 0,
@@ -189,14 +189,14 @@ ALTER TABLE payslips ENABLE ROW LEVEL SECURITY;
 -- RLS Policy
 DROP POLICY IF EXISTS payslips_tenant_isolation ON payslips;
 CREATE POLICY payslips_tenant_isolation ON payslips
-    USING (tenant_id = current_setting('app.current_tenant')::uuid);
+    USING (tenant_id = current_setting('app.current_tenant', true));
 
 -- =====================================================
 -- SALARY COMPONENT TYPES TABLE
 -- =====================================================
 CREATE TABLE IF NOT EXISTS payroll_salary_components (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
     type VARCHAR(20) NOT NULL CHECK (type IN ('ALLOWANCE', 'DEDUCTION')),
     is_percentage BOOLEAN DEFAULT FALSE,
@@ -216,7 +216,7 @@ ALTER TABLE payroll_salary_components ENABLE ROW LEVEL SECURITY;
 -- RLS Policy
 DROP POLICY IF EXISTS payroll_components_tenant_isolation ON payroll_salary_components;
 CREATE POLICY payroll_components_tenant_isolation ON payroll_salary_components
-    USING (tenant_id = current_setting('app.current_tenant')::uuid);
+    USING (tenant_id = current_setting('app.current_tenant', true));
 
 -- =====================================================
 -- TRIGGER: Update updated_at timestamp

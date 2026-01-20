@@ -26,14 +26,14 @@ router.get('/employees', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await getDb().query(
+    const employees = await getDb().query(
       `SELECT * FROM payroll_employees 
        WHERE tenant_id = $1 
        ORDER BY name ASC`,
       [tenantId]
     );
 
-    res.json(result.rows);
+    res.json(employees);
   } catch (error) {
     console.error('Error fetching payroll employees:', error);
     res.status(500).json({ error: 'Failed to fetch employees' });
@@ -50,16 +50,16 @@ router.get('/employees/:id', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await getDb().query(
+    const employees = await getDb().query(
       `SELECT * FROM payroll_employees WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId]
     );
 
-    if (result.rows.length === 0) {
+    if (employees.length === 0) {
       return res.status(404).json({ error: 'Employee not found' });
     }
 
-    res.json(result.rows[0]);
+    res.json(employees[0]);
   } catch (error) {
     console.error('Error fetching employee:', error);
     res.status(500).json({ error: 'Failed to fetch employee' });
@@ -93,9 +93,9 @@ router.post('/employees', async (req: TenantRequest, res) => {
     );
 
     // Notify via WebSocket
-    emitToTenant(tenantId, 'payroll_employee_created', { id: result.rows[0].id });
+    emitToTenant(tenantId, 'payroll_employee_created', { id: result[0].id });
 
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(result[0]);
   } catch (error) {
     console.error('Error creating employee:', error);
     res.status(500).json({ error: 'Failed to create employee' });
@@ -144,13 +144,13 @@ router.put('/employees/:id', async (req: TenantRequest, res) => {
        userId, id, tenantId]
     );
 
-    if (result.rows.length === 0) {
+    if (result.length === 0) {
       return res.status(404).json({ error: 'Employee not found' });
     }
 
     emitToTenant(tenantId, 'payroll_employee_updated', { id });
 
-    res.json(result.rows[0]);
+    res.json(result[0]);
   } catch (error) {
     console.error('Error updating employee:', error);
     res.status(500).json({ error: 'Failed to update employee' });
@@ -172,7 +172,7 @@ router.delete('/employees/:id', async (req: TenantRequest, res) => {
       [id, tenantId]
     );
 
-    if (result.rows.length === 0) {
+    if (result.length === 0) {
       return res.status(404).json({ error: 'Employee not found' });
     }
 
@@ -197,14 +197,14 @@ router.get('/runs', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await getDb().query(
+    const runs = await getDb().query(
       `SELECT * FROM payroll_runs 
        WHERE tenant_id = $1 
        ORDER BY year DESC, created_at DESC`,
       [tenantId]
     );
 
-    res.json(result.rows);
+    res.json(runs);
   } catch (error) {
     console.error('Error fetching payroll runs:', error);
     res.status(500).json({ error: 'Failed to fetch payroll runs' });
@@ -221,16 +221,16 @@ router.get('/runs/:id', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await getDb().query(
+    const runs = await getDb().query(
       `SELECT * FROM payroll_runs WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId]
     );
 
-    if (result.rows.length === 0) {
+    if (runs.length === 0) {
       return res.status(404).json({ error: 'Payroll run not found' });
     }
 
-    res.json(result.rows[0]);
+    res.json(runs[0]);
   } catch (error) {
     console.error('Error fetching payroll run:', error);
     res.status(500).json({ error: 'Failed to fetch payroll run' });
@@ -261,12 +261,12 @@ router.post('/runs', async (req: TenantRequest, res) => {
        (tenant_id, month, year, status, employee_count, created_by)
        VALUES ($1, $2, $3, 'DRAFT', $4, $5)
        RETURNING *`,
-      [tenantId, month, year, empCount.rows[0].count, userId]
+      [tenantId, month, year, empCount[0].count, userId]
     );
 
-    emitToTenant(tenantId, 'payroll_run_created', { id: result.rows[0].id });
+    emitToTenant(tenantId, 'payroll_run_created', { id: result[0].id });
 
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(result[0]);
   } catch (error) {
     console.error('Error creating payroll run:', error);
     res.status(500).json({ error: 'Failed to create payroll run' });
@@ -312,13 +312,13 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
       params
     );
 
-    if (result.rows.length === 0) {
+    if (result.length === 0) {
       return res.status(404).json({ error: 'Payroll run not found' });
     }
 
     emitToTenant(tenantId, 'payroll_run_updated', { id });
 
-    res.json(result.rows[0]);
+    res.json(result[0]);
   } catch (error) {
     console.error('Error updating payroll run:', error);
     res.status(500).json({ error: 'Failed to update payroll run' });
@@ -346,7 +346,7 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
     let totalAmount = 0;
 
     // Generate payslips for each employee
-    for (const emp of employees.rows) {
+    for (const emp of employees) {
       const salary = emp.salary;
       const basic = salary.basic || 0;
       
@@ -406,12 +406,12 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
         updated_by = $3
        WHERE id = $4 AND tenant_id = $5
        RETURNING *`,
-      [totalAmount, employees.rows.length, userId, id, tenantId]
+      [totalAmount, employees.length, userId, id, tenantId]
     );
 
     emitToTenant(tenantId, 'payroll_run_updated', { id });
 
-    res.json(result.rows[0]);
+    res.json(result[0]);
   } catch (error) {
     console.error('Error processing payroll:', error);
     res.status(500).json({ error: 'Failed to process payroll' });
@@ -428,7 +428,7 @@ router.get('/runs/:runId/payslips', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await getDb().query(
+    const payslips = await getDb().query(
       `SELECT p.*, e.name as employee_name, e.designation, e.department
        FROM payslips p
        JOIN payroll_employees e ON p.employee_id = e.id
@@ -437,7 +437,7 @@ router.get('/runs/:runId/payslips', async (req: TenantRequest, res) => {
       [runId, tenantId]
     );
 
-    res.json(result.rows);
+    res.json(payslips);
   } catch (error) {
     console.error('Error fetching payslips:', error);
     res.status(500).json({ error: 'Failed to fetch payslips' });
@@ -454,7 +454,7 @@ router.get('/employees/:employeeId/payslips', async (req: TenantRequest, res) =>
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await getDb().query(
+    const payslips = await getDb().query(
       `SELECT p.*, r.month, r.year, r.status as run_status
        FROM payslips p
        JOIN payroll_runs r ON p.payroll_run_id = r.id
@@ -463,7 +463,7 @@ router.get('/employees/:employeeId/payslips', async (req: TenantRequest, res) =>
       [employeeId, tenantId]
     );
 
-    res.json(result.rows);
+    res.json(payslips);
   } catch (error) {
     console.error('Error fetching employee payslips:', error);
     res.status(500).json({ error: 'Failed to fetch payslips' });
@@ -482,12 +482,12 @@ router.get('/grades', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await getDb().query(
+    const grades = await getDb().query(
       `SELECT * FROM payroll_grades WHERE tenant_id = $1 ORDER BY name ASC`,
       [tenantId]
     );
 
-    res.json(result.rows);
+    res.json(grades);
   } catch (error) {
     console.error('Error fetching grades:', error);
     res.status(500).json({ error: 'Failed to fetch grades' });
@@ -514,7 +514,7 @@ router.post('/grades', async (req: TenantRequest, res) => {
       [tenantId, name, description, min_salary || 0, max_salary || 0, userId]
     );
 
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(result[0]);
   } catch (error) {
     console.error('Error creating grade:', error);
     res.status(500).json({ error: 'Failed to create grade' });
@@ -546,11 +546,11 @@ router.put('/grades/:id', async (req: TenantRequest, res) => {
       [name, description, min_salary, max_salary, userId, id, tenantId]
     );
 
-    if (result.rows.length === 0) {
+    if (result.length === 0) {
       return res.status(404).json({ error: 'Grade not found' });
     }
 
-    res.json(result.rows[0]);
+    res.json(result[0]);
   } catch (error) {
     console.error('Error updating grade:', error);
     res.status(500).json({ error: 'Failed to update grade' });
@@ -569,12 +569,12 @@ router.get('/projects', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await getDb().query(
+    const projects = await getDb().query(
       `SELECT * FROM payroll_projects WHERE tenant_id = $1 ORDER BY name ASC`,
       [tenantId]
     );
 
-    res.json(result.rows);
+    res.json(projects);
   } catch (error) {
     console.error('Error fetching projects:', error);
     res.status(500).json({ error: 'Failed to fetch projects' });
@@ -601,7 +601,7 @@ router.post('/projects', async (req: TenantRequest, res) => {
       [tenantId, name, code, description, status || 'ACTIVE', userId]
     );
 
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(result[0]);
   } catch (error) {
     console.error('Error creating project:', error);
     res.status(500).json({ error: 'Failed to create project' });
@@ -633,11 +633,11 @@ router.put('/projects/:id', async (req: TenantRequest, res) => {
       [name, code, description, status, userId, id, tenantId]
     );
 
-    if (result.rows.length === 0) {
+    if (result.length === 0) {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    res.json(result.rows[0]);
+    res.json(result[0]);
   } catch (error) {
     console.error('Error updating project:', error);
     res.status(500).json({ error: 'Failed to update project' });
@@ -656,14 +656,14 @@ router.get('/earning-types', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await getDb().query(
+    const components = await getDb().query(
       `SELECT * FROM payroll_salary_components 
        WHERE tenant_id = $1 AND type = 'ALLOWANCE' AND is_active = true
        ORDER BY name ASC`,
       [tenantId]
     );
 
-    res.json(result.rows.map((r: { name: string; default_value: number; is_percentage: boolean }) => ({
+    res.json(components.map((r: { name: string; default_value: number; is_percentage: boolean }) => ({
       name: r.name,
       amount: r.default_value,
       is_percentage: r.is_percentage,
@@ -683,14 +683,14 @@ router.get('/deduction-types', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await getDb().query(
+    const components = await getDb().query(
       `SELECT * FROM payroll_salary_components 
        WHERE tenant_id = $1 AND type = 'DEDUCTION' AND is_active = true
        ORDER BY name ASC`,
       [tenantId]
     );
 
-    res.json(result.rows.map((r: { name: string; default_value: number; is_percentage: boolean }) => ({
+    res.json(components.map((r: { name: string; default_value: number; is_percentage: boolean }) => ({
       name: r.name,
       amount: r.default_value,
       is_percentage: r.is_percentage,
