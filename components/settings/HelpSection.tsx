@@ -35,7 +35,7 @@ const MockButton: React.FC<{ label: string; variant?: 'primary' | 'secondary' | 
 
 // --- DATA STRUCTURE ---
 
-type HelpCategory = 'Getting Started' | 'General Finance' | 'Rental Management' | 'Project Management' | 'Payroll' | 'Advanced Tools';
+type HelpCategory = 'Getting Started' | 'General Finance' | 'Rental Management' | 'Project Management' | 'Advanced Tools';
 
 interface HelpTopic {
     id: string;
@@ -65,7 +65,6 @@ const HELP_TOPICS: HelpTopic[] = [
                     <li><strong>General Ledger:</strong> Robust tracking of income, expenses, assets, and liabilities with double-entry principles.</li>
                     <li><strong>Rental Management:</strong> End-to-end workflow from tenant agreements to automated invoicing and owner payouts.</li>
                     <li><strong>Project Management:</strong> Advanced costing for construction projects, including installment plans and investor equity tracking.</li>
-                    <li><strong>Payroll:</strong> Integrated staff management and salary processing with multi-project allocation.</li>
                     <li><strong>Reports & Analytics:</strong> Comprehensive reporting and KPI dashboard for real-time insights.</li>
                 </ul>
                 <p className="text-xs text-slate-400 mt-4 border-t pt-2">Version {APP_VERSION}</p>
@@ -156,7 +155,7 @@ const HELP_TOPICS: HelpTopic[] = [
                 <p>The General Ledger is the core of your financial tracking. It records all income and expense transactions.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Recording Transactions:</strong> Click "New Transaction" and select Income or Expense. Choose account, category, date, amount, and description.</li>
-                    <li><strong>Linking to Entities:</strong> Transactions can be linked to Projects, Properties, Contacts (vendors/tenants), Bills, Invoices, or Payslips for detailed tracking.</li>
+                    <li><strong>Linking to Entities:</strong> Transactions can be linked to Projects, Properties, Contacts (vendors/tenants), Bills, or Invoices for detailed tracking.</li>
                     <li><strong>Account Impact:</strong> Income increases account balance; Expense decreases it. The system automatically updates account balances.</li>
                     <li><strong>Transfer Transactions:</strong> Use Transfer type to move money between accounts (e.g., Bank to Cash).</li>
                     <li><strong>System Transactions:</strong> Some transactions are auto-generated (like invoice payments). Toggle "Show System Transactions" to view/hide them.</li>
@@ -556,157 +555,6 @@ const HELP_TOPICS: HelpTopic[] = [
         )
     },
 
-    // --- Payroll ---
-    {
-        id: 'employee-management',
-        title: 'Employee Management',
-        category: 'Payroll',
-        keywords: ['employee', 'staff', 'employee setup', 'salary', 'designation'],
-        content: (
-            <div className="space-y-3 text-sm text-slate-600">
-                <p>Manage employee records and salary structures comprehensively.</p>
-                <ul className="list-disc list-inside space-y-1 pl-2">
-                    <li><strong>Adding Employees:</strong> Payroll &gt; Employee Management &gt; New Employee. Enter personal details, designation, department, and employment dates.</li>
-                    <li><strong>Salary Structure:</strong> Assign salary components (Basic, Allowances, Deductions) to each employee. Use Salary Structure Manager for templates.</li>
-                    <li><strong>Multi-Project Allocation:</strong> Assign employees to multiple projects with percentage or hours allocation for cost distribution.</li>
-                    <li><strong>Employee Status:</strong> Active, On Leave, Terminated. Status affects payroll processing eligibility.</li>
-                    <li><strong>Contact Linking:</strong> Employees are linked to Contacts. Ensure contact exists before creating employee.</li>
-                    <li><strong>Employment History:</strong> Track join dates, promotions, transfers, and exits with lifecycle events.</li>
-                </ul>
-            </div>
-        ),
-        visual: (
-            <MockWindow title="Employee">
-                <div className="space-y-1 text-[10px]">
-                    <div><strong>Name:</strong> John Doe</div>
-                    <div><strong>Designation:</strong> Manager</div>
-                    <div><strong>Basic Salary:</strong> $5,000</div>
-                    <div><strong>Status:</strong> Active</div>
-                </div>
-            </MockWindow>
-        )
-    },
-    {
-        id: 'salary-components',
-        title: 'Salary Components & Structures',
-        category: 'Payroll',
-        keywords: ['salary components', 'allowances', 'deductions', 'salary structure', 'pay structure'],
-        content: (
-            <div className="space-y-3 text-sm text-slate-600">
-                <p>Define reusable salary components for consistent payroll processing.</p>
-                <ul className="list-disc list-inside space-y-1 pl-2">
-                    <li><strong>Component Types:</strong> Basic Salary, Allowances (HRA, Transport, etc.), Bonuses, Deductions (Insurance, Loan), Tax Deductions, Statutory (EPF, ESI).</li>
-                    <li><strong>Creating Components:</strong> Payroll &gt; Salary Structure Manager &gt; Components. Define name, type, calculation method, and tax status.</li>
-                    <li><strong>Salary Structures:</strong> Create templates combining multiple components. Assign structures to employees for quick setup.</li>
-                    <li><strong>Tax Configuration:</strong> Set up tax slabs and rules in Settings. System calculates tax deductions automatically during payroll.</li>
-                    <li><strong>Statutory Setup:</strong> Configure EPF, ESI, and other statutory deductions. System applies rules during payroll processing.</li>
-                    <li><strong>Component Assignment:</strong> Assign components to employees individually or via salary structures. Amounts can be fixed or percentage-based.</li>
-                </ul>
-            </div>
-        ),
-        visual: (
-            <MockWindow title="Salary Components">
-                <div className="space-y-1 text-[10px]">
-                    <div className="text-green-600">+ Basic Salary</div>
-                    <div className="text-green-600">+ HRA</div>
-                    <div className="text-green-600">+ Transport</div>
-                    <div className="text-red-600">- Tax</div>
-                    <div className="text-red-600">- EPF</div>
-                    <div className="border-t pt-1"><strong>Net Salary</strong></div>
-                </div>
-            </MockWindow>
-        )
-    },
-    {
-        id: 'payroll-processing',
-        title: 'Payroll Processing & Payslips',
-        category: 'Payroll',
-        keywords: ['payroll', 'payslip', 'salary processing', 'payroll cycle', 'generate payslip'],
-        content: (
-            <div className="space-y-3 text-sm text-slate-600">
-                <p>Process payroll cycles and generate payslips for all employees.</p>
-                <ul className="list-disc list-inside space-y-1 pl-2">
-                    <li><strong>Payroll Cycles:</strong> Create cycles (Monthly, Bi-weekly, etc.) for each pay period. Define start date, end date, and payment date.</li>
-                    <li><strong>Processing Payroll:</strong> Payroll Processing tab &gt; Select cycle &gt; Process Payroll. System generates payslips for all active employees.</li>
-                    <li><strong>Proration:</strong> System automatically prorates salary for employees who joined/left mid-cycle based on days worked.</li>
-                    <li><strong>Calculations:</strong> System calculates gross salary, deductions, tax, statutory contributions, and net salary automatically.</li>
-                    <li><strong>Bonuses & Adjustments:</strong> Add bonuses and payroll adjustments before processing. They're included in payslip calculations.</li>
-                    <li><strong>Attendance Integration:</strong> Link attendance records to adjust salary for leaves, overtime, etc.</li>
-                    <li><strong>Payslip Management:</strong> Review, approve, and pay payslips. Record payments to update payslip status.</li>
-                    <li><strong>Bulk Payments:</strong> Pay multiple payslips at once using bulk payment feature.</li>
-                </ul>
-            </div>
-        ),
-        visual: (
-            <MockWindow title="Payroll Cycle">
-                <div className="space-y-1 text-[10px]">
-                    <div><strong>Cycle:</strong> January 2024</div>
-                    <div><strong>Period:</strong> 1-31 Jan</div>
-                    <div><strong>Employees:</strong> 25</div>
-                    <div><strong>Total Payroll:</strong> $125,000</div>
-                </div>
-            </MockWindow>
-        )
-    },
-    {
-        id: 'loans-advances',
-        title: 'Employee Loans & Advances',
-        category: 'Payroll',
-        keywords: ['loan', 'advance', 'employee loan', 'salary advance', 'deduction'],
-        content: (
-            <div className="space-y-3 text-sm text-slate-600">
-                <p>Manage employee loans and salary advances with automatic deduction tracking.</p>
-                <ul className="list-disc list-inside space-y-1 pl-2">
-                    <li><strong>Recording Loans:</strong> Payroll &gt; Loans & Advances &gt; New Loan. Enter employee, amount, interest rate, term, and deduction amount per cycle.</li>
-                    <li><strong>Salary Advances:</strong> Record advances given to employees. Link to "Salary Advance" category for proper tracking.</li>
-                    <li><strong>Automatic Deductions:</strong> Configure loan deductions in salary structure. System deducts automatically during payroll processing.</li>
-                    <li><strong>Loan Balance Tracking:</strong> System tracks outstanding loan balance. View remaining principal and interest per employee.</li>
-                    <li><strong>Repayment Schedule:</strong> View repayment schedule and track payments. Mark loans as completed when fully repaid.</li>
-                    <li><strong>Loan Reports:</strong> Access employee loan reports to see all active loans, repayment history, and outstanding balances.</li>
-                </ul>
-            </div>
-        ),
-        visual: (
-            <MockWindow title="Loan Record">
-                <div className="space-y-1 text-[10px]">
-                    <div><strong>Employee:</strong> John Doe</div>
-                    <div><strong>Principal:</strong> $10,000</div>
-                    <div><strong>Monthly Deduction:</strong> $500</div>
-                    <div><strong>Balance:</strong> $8,000</div>
-                </div>
-            </MockWindow>
-        )
-    },
-    {
-        id: 'attendance-bonuses',
-        title: 'Attendance & Bonuses',
-        category: 'Payroll',
-        keywords: ['attendance', 'bonus', 'overtime', 'leave', 'incentive'],
-        content: (
-            <div className="space-y-3 text-sm text-slate-600">
-                <p>Track attendance and manage bonuses for accurate payroll calculations.</p>
-                <ul className="list-disc list-inside space-y-1 pl-2">
-                    <li><strong>Attendance Records:</strong> Record employee attendance (Present, Absent, Leave, Overtime) per day. Link to payroll cycles.</li>
-                    <li><strong>Leave Deduction:</strong> System calculates salary deduction for unpaid leaves based on attendance records during payroll processing.</li>
-                    <li><strong>Overtime Calculation:</strong> Record overtime hours. Configure overtime rates in salary components to include in payroll.</li>
-                    <li><strong>Bonus Management:</strong> Create bonus records (Annual, Performance, etc.). Approve bonuses before payroll processing to include in payslips.</li>
-                    <li><strong>Payroll Adjustments:</strong> Create temporary adjustments (increment, penalty, etc.) for specific payroll cycles.</li>
-                    <li><strong>Integration:</strong> Attendance and bonuses are automatically considered during payroll processing for accurate salary calculation.</li>
-                </ul>
-            </div>
-        ),
-        visual: (
-            <MockWindow title="Attendance">
-                <div className="space-y-1 text-[10px]">
-                    <div><strong>Employee:</strong> John Doe</div>
-                    <div><strong>Days Present:</strong> 22</div>
-                    <div><strong>Leaves:</strong> 2</div>
-                    <div><strong>Overtime:</strong> 5 hours</div>
-                </div>
-            </MockWindow>
-        )
-    },
-
     // --- Advanced Tools ---
     {
         id: 'dashboard-kpis',
@@ -749,7 +597,6 @@ const HELP_TOPICS: HelpTopic[] = [
                     <li><strong>Rental Reports:</strong> Building Analysis, Property Status, Owner Income, Tenant Ledger, Vendor Ledger, Broker Fees, Service Charges, Security Deposits, Visual Layout.</li>
                     <li><strong>Project Reports:</strong> Project Summary, Revenue Analysis, PM Cost, Income/Expense by Category, Unit Report, Client Ledger, Broker Report, Vendor Ledger, Contract Report, Visual Layout.</li>
                     <li><strong>General Reports:</strong> Transfer Statistics, Category Analysis, Account Statements (from General Ledger filters).</li>
-                    <li><strong>Payroll Reports:</strong> Employee Payment Report, Payroll Summary, Loan Reports (from Payroll module).</li>
                     <li><strong>Report Access:</strong> Reports are in respective modules (Rental/Project Management &gt; Reports tab) or via KPI Panel &gt; Reports tab.</li>
                     <li><strong>Export:</strong> Most reports can be exported to Excel/PDF for sharing or further analysis.</li>
                     <li><strong>Filtering:</strong> Reports support date range, project, property, and other filters for customized analysis.</li>
@@ -777,7 +624,7 @@ const HELP_TOPICS: HelpTopic[] = [
                 <p>Import data from Excel or export for backup and analysis.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>MigratAI Import:</strong> Settings &gt; Import Data. Upload Excel file. System intelligently detects columns and maps to your data structure. Review mapping before importing.</li>
-                    <li><strong>Supported Data:</strong> Import Contacts, Transactions, Invoices, Bills, Projects, Properties, Employees, and more.</li>
+                    <li><strong>Supported Data:</strong> Import Contacts, Transactions, Invoices, Bills, Projects, Properties, and more.</li>
                     <li><strong>Export Transactions:</strong> General Ledger &gt; Use filters &gt; Export to Excel. Export any filtered transaction list.</li>
                     <li><strong>Export Reports:</strong> Most reports have Export button. Export to Excel or PDF format.</li>
                     <li><strong>Full Backup:</strong> Settings &gt; Data Management &gt; Backup Data. Downloads complete JSON backup of all data. Restore using Import.</li>
@@ -865,7 +712,7 @@ const HELP_TOPICS: HelpTopic[] = [
                     <li><strong>Vendor Directory:</strong> Dedicated page for vendors. View all bills, payment history, and outstanding balances per vendor.</li>
                     <li><strong>Vendor Ledger:</strong> Access detailed ledger showing all bills and payments for each vendor with running balance.</li>
                     <li><strong>Bulk Payments:</strong> Pay multiple vendor bills at once. Select bills and record single payment transaction.</li>
-                    <li><strong>Contact Linking:</strong> Contacts are linked across modules - invoices, bills, agreements, payroll all reference contacts.</li>
+                    <li><strong>Contact Linking:</strong> Contacts are linked across modules - invoices, bills, and agreements all reference contacts.</li>
                     <li><strong>Reports:</strong> Vendor Ledger reports available in both Rental and Project contexts for comprehensive tracking.</li>
                 </ul>
             </div>
@@ -915,7 +762,7 @@ const HelpSection: React.FC = () => {
     const [activeCategory, setActiveCategory] = useState<HelpCategory | 'All'>('Getting Started');
     const [expandedTopicId, setExpandedTopicId] = useState<string | null>(null);
 
-    const categories: (HelpCategory | 'All')[] = ['Getting Started', 'General Finance', 'Rental Management', 'Project Management', 'Payroll', 'Advanced Tools', 'All'];
+    const categories: (HelpCategory | 'All')[] = ['Getting Started', 'General Finance', 'Rental Management', 'Project Management', 'Advanced Tools', 'All'];
 
     const filteredTopics = useMemo(() => {
         return HELP_TOPICS.filter(topic => {

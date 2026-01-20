@@ -564,7 +564,6 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
         if (!tx) return '';
         if (tx.invoiceId) return 'an Invoice';
         if (tx.billId) return 'a Bill';
-        if (tx.payslipId) return 'a Payslip';
         return 'linked item';
     };
 

@@ -151,32 +151,7 @@ export async function exportToExcel(state: AppState, filename: string, progress:
             description: u.description ?? '',
         }));
 
-        // --- Staff (legacy) ---
-        const staffRows = [...s.projectStaff, ...s.rentalStaff].map(st => ({
-            id: st.id,
-            Name: getName(contactsById, st.id),
-            employeeId: st.employeeId ?? '',
-            designation: st.designation ?? '',
-            basicSalary: st.basicSalary ?? 0,
-            joiningDate: st.joiningDate ?? '',
-            status: st.status ?? '',
-            email: st.email ?? '',
-            ProjectName: getName(projectsById, st.projectId),
-            BuildingName: getName(buildingsById, st.buildingId),
-            salaryStructure: JSON.stringify(st.salaryStructure ?? []),
-            bankDetails: JSON.stringify(st.bankDetails ?? null),
-            history: JSON.stringify(st.history ?? []),
-            exitDetails: st.exitDetails ? JSON.stringify(st.exitDetails) : '',
-            advanceBalance: st.advanceBalance ?? 0,
-        }));
-
-        const salaryComponentsRows = s.salaryComponents.map(sc => ({
-            id: sc.id,
-            name: sc.name,
-            type: sc.type,
-            isTaxable: sc.isTaxable,
-            isSystem: sc.isSystem ?? false,
-        }));
+        // --- Staff (legacy) - REMOVED ---
 
         // --- Agreements / Contracts ---
         const rentalAgreementsRows = s.rentalAgreements.map(a => ({
@@ -454,23 +429,6 @@ export async function exportToExcel(state: AppState, filename: string, progress:
             amount: b.amount,
         }));
 
-        // --- Payslips (legacy) ---
-        const payslipsRows = [...s.projectPayslips, ...s.rentalPayslips].map(p => ({
-            id: p.id,
-            staffName: getName(contactsById, (p as any).staffId),
-            month: (p as any).month ?? '',
-            issueDate: p.issueDate ?? '',
-            basicSalary: (p as any).basicSalary ?? 0,
-            allowances: JSON.stringify((p as any).allowances ?? []),
-            deductions: JSON.stringify((p as any).deductions ?? []),
-            bonuses: JSON.stringify((p as any).bonuses ?? []),
-            totalAllowances: (p as any).totalAllowances ?? 0,
-            totalDeductions: (p as any).totalDeductions ?? 0,
-            totalBonuses: (p as any).totalBonuses ?? 0,
-            grossSalary: (p as any).grossSalary ?? 0,
-            netSalary: (p as any).netSalary ?? 0,
-            status: p.status ?? '',
-        }));
 
         // --- Transactions (combined + split sheets) ---
         const rentalAgreementIds = new Set(s.rentalAgreements.map(a => a.id));
@@ -515,7 +473,6 @@ export async function exportToExcel(state: AppState, filename: string, progress:
                 billNumber: getName(billNoById, tx.billId),
                 contractNumber: getName(contractNoById, tx.contractId),
                 agreementNumber: getAgreementNumber(tx.agreementId),
-                payslipId: tx.payslipId ?? '',
                 batchId: tx.batchId ?? '',
             }));
 
@@ -637,7 +594,6 @@ export async function exportToExcel(state: AppState, filename: string, progress:
 
         const sheets: Array<{ name: string; headers: string[]; rows: any[] }> = [
             { name: 'Settings', headers: ['Key', 'Value'], rows: settingsRows },
-            { name: 'SalaryComponents', headers: ['id', 'name', 'type', 'isTaxable', 'isSystem'], rows: salaryComponentsRows },
             { name: 'Accounts', headers: ['id', 'name', 'type', 'balance', 'isPermanent', 'description', 'parentAccountName'], rows: accountsRows },
             { name: 'Contacts', headers: ['id', 'name', 'type', 'description', 'contactNo', 'companyName', 'address'], rows: contactsRows },
             { name: 'Categories', headers: ['id', 'name', 'type', 'description', 'isPermanent', 'isRental', 'parentCategoryName'], rows: categoriesRows },
@@ -645,7 +601,6 @@ export async function exportToExcel(state: AppState, filename: string, progress:
             { name: 'Buildings', headers: ['id', 'name', 'description', 'color'], rows: buildingsRows },
             { name: 'Properties', headers: ['id', 'name', 'ownerName', 'buildingName', 'description', 'monthlyServiceCharge'], rows: propertiesRows },
             { name: 'Units', headers: ['id', 'name', 'projectName', 'ownerName', 'salePrice', 'description'], rows: unitsRows },
-            { name: 'Staff', headers: ['id', 'Name', 'employeeId', 'designation', 'basicSalary', 'joiningDate', 'status', 'email', 'ProjectName', 'BuildingName', 'salaryStructure', 'bankDetails', 'history', 'exitDetails', 'advanceBalance'], rows: staffRows },
             { name: 'RentalAgreements', headers: ['id', 'agreementNumber', 'tenantName', 'propertyName', 'startDate', 'endDate', 'monthlyRent', 'rentDueDate', 'status', 'description', 'securityDeposit', 'brokerName', 'brokerFee'], rows: rentalAgreementsRows },
             { name: 'ProjectAgreements', headers: ['id', 'agreementNumber', 'clientName', 'projectName', 'UnitNames', 'issueDate', 'status', 'description', 'cancellationDetails', 'listPrice', 'customerDiscount', 'floorDiscount', 'lumpSumDiscount', 'miscDiscount', 'sellingPrice', 'rebateAmount', 'rebateBrokerName', 'listPriceCategoryName', 'customerDiscountCategoryName', 'floorDiscountCategoryName', 'lumpSumDiscountCategoryName', 'miscDiscountCategoryName', 'sellingPriceCategoryName', 'rebateCategoryName'], rows: projectAgreementsRows },
             { name: 'Contracts', headers: ['id', 'contractNumber', 'name', 'projectName', 'vendorName', 'totalAmount', 'area', 'rate', 'startDate', 'endDate', 'status', 'categoryNames', 'expenseCategoryNames', 'expenseQuantities', 'expensePricePerUnits', 'expenseNetValues', 'expenseUnits', 'paymentTerms', 'termsAndConditions', 'description'], rows: contractsRows },
@@ -664,8 +619,7 @@ export async function exportToExcel(state: AppState, filename: string, progress:
             { name: 'IncomeTransactions', headers: ['id', 'amount', 'date', 'description', 'accountName', 'contactName', 'categoryName', 'projectName'], rows: standaloneIncomeRows },
             { name: 'ExpenseTransactions', headers: ['id', 'amount', 'date', 'description', 'accountName', 'contactName', 'categoryName'], rows: standaloneExpenseRows },
             { name: 'Budgets', headers: ['id', 'categoryId', 'categoryName', 'projectId', 'projectName', 'amount'], rows: budgetsRows },
-            { name: 'Payslips', headers: ['id', 'staffName', 'month', 'issueDate', 'basicSalary', 'allowances', 'deductions', 'bonuses', 'totalAllowances', 'totalDeductions', 'totalBonuses', 'grossSalary', 'netSalary', 'status'], rows: payslipsRows },
-            { name: 'Transactions', headers: ['id', 'type', 'subtype', 'amount', 'date', 'description', 'accountName', 'fromAccountName', 'toAccountName', 'contactName', 'projectName', 'buildingName', 'propertyName', 'unitName', 'categoryName', 'invoiceNumber', 'billNumber', 'contractNumber', 'agreementNumber', 'payslipId', 'batchId'], rows: txRows },
+            { name: 'Transactions', headers: ['id', 'type', 'subtype', 'amount', 'date', 'description', 'accountName', 'fromAccountName', 'toAccountName', 'contactName', 'projectName', 'buildingName', 'propertyName', 'unitName', 'categoryName', 'invoiceNumber', 'billNumber', 'contractNumber', 'agreementNumber', 'batchId'], rows: txRows },
         ];
 
         sheets.forEach(sh => appendSheet(workbook, sh.name, sh.headers, sh.rows));

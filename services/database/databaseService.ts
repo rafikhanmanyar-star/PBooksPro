@@ -659,7 +659,7 @@ class DatabaseService {
     /**
      * Clear all transaction-related data (keeps configuration and master data)
      * Preserves: Contacts, categories, projects, buildings, properties, units, settings
-     * Clears: Transactions, invoices, bills, contracts, agreements, sales returns, payslips, accounts
+     * Clears: Transactions, invoices, bills, contracts, agreements, sales returns, accounts
      * Note: Accounts are deleted (not just reset) to avoid duplicate key errors on reload
      */
     clearTransactionData(): void {
@@ -671,12 +671,6 @@ class DatabaseService {
             'pm_cycle_allocations',
             'invoices',
             'bills',
-            'payslips',
-            'legacy_payslips',
-            'bonus_records',
-            'payroll_adjustments',
-            'loan_advance_records',
-            'attendance_records',
             'quotations',
             'recurring_invoice_templates',
             'contracts',
@@ -733,11 +727,7 @@ class DatabaseService {
             'users', 'accounts', 'contacts', 'categories', 'projects', 'buildings',
             'properties', 'units', 'transactions', 'invoices', 'bills', 'budgets',
             'rental_agreements', 'project_agreements', 'sales_returns', 'contracts',
-            'recurring_invoice_templates', 'salary_components', 'staff',
-            'employees', 'payroll_cycles', 'payslips', 'legacy_payslips',
-            'bonus_records', 'payroll_adjustments', 'loan_advance_records',
-            'attendance_records', 'tax_configurations', 'statutory_configurations',
-                'transaction_log', 'error_log', 'app_settings', 'license_settings',
+            'recurring_invoice_templates', 'transaction_log', 'error_log', 'app_settings', 'license_settings',
             'project_agreement_units', 'contract_categories', 'pm_cycle_allocations'
         ];
 
@@ -998,10 +988,7 @@ class DatabaseService {
                 'properties', 'units', 'transactions', 'invoices', 'bills', 'budgets',
                 'quotations', 'documents', 'rental_agreements', 'project_agreements',
                 'project_agreement_units', 'contracts', 'contract_categories',
-                'recurring_invoice_templates', 'salary_components', 'staff',
-                'employees', 'payroll_cycles', 'payslips', 'legacy_payslips',
-                'bonus_records', 'payroll_adjustments', 'loan_advance_records',
-                'attendance_records', 'tax_configurations', 'statutory_configurations',
+                'recurring_invoice_templates',
                 'transaction_log', 'error_log', 'app_settings', 'license_settings',
                 'chat_messages'
             ];

@@ -97,22 +97,6 @@ export const ORGANIZATION_DATA_FIELDS = [
     'salesReturns',
     'contracts',
     
-    // Payroll
-    'projectStaff',
-    'rentalStaff',
-    'employees',
-    'salaryComponents',
-    'payrollCycles',
-    'payslips',
-    'bonusRecords',
-    'payrollAdjustments',
-    'loanAdvanceRecords',
-    'attendanceRecords',
-    'taxConfigurations',
-    'statutoryConfigurations',
-    'projectPayslips',
-    'rentalPayslips',
-    
     // Templates & Settings (organization-wide)
     'recurringInvoiceTemplates',
     'agreementSettings',

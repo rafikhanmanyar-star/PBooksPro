@@ -2,16 +2,16 @@
 
 ## 🎯 Executive Summary
 
-**PBooksPro** is a comprehensive, all-in-one financial management system specifically designed for real estate professionals, construction project developers, and small business owners. Unlike generic accounting software, it combines General Ledger, Rental Management, Project Management, and Payroll into a single, intuitive desktop application.
+**PBooksPro** is a comprehensive, all-in-one financial management system specifically designed for real estate professionals, construction project developers, and small business owners. Unlike generic accounting software, it combines General Ledger, Rental Management, and Project Management into a single, intuitive desktop application.
 
 ---
 
 ## 💎 Unique Selling Points (USPs)
 
 ### 1. **All-in-One Financial Ecosystem**
-- **Single Platform Solution**: Unlike competitors that require multiple software subscriptions, PBooksPro integrates General Ledger, Rental Management, Project Management, and Payroll in one application
-- **No Software Fragmentation**: Eliminates the need to juggle between QuickBooks, property management software, project management tools, and payroll systems
-- **Unified Data**: All financial data is interconnected - transactions, invoices, bills, payroll, and reports share the same database
+- **Single Platform Solution**: Unlike competitors that require multiple software subscriptions, PBooksPro integrates General Ledger, Rental Management, and Project Management in one application
+- **No Software Fragmentation**: Eliminates the need to juggle between QuickBooks, property management software, and project management tools
+- **Unified Data**: All financial data is interconnected - transactions, invoices, bills, and reports share the same database
 
 ### 2. **Real Estate & Construction-Specific Features**
 - **Rental Management Workflow**: Complete tenant lifecycle management from agreement creation to automated invoicing and owner payouts
@@ -19,53 +19,46 @@
 - **Broker & PM Payouts**: Built-in commission and property management fee calculation and distribution
 - **Property Hierarchy**: Manage Buildings → Properties → Units with full financial tracking at each level
 
-### 3. **Enterprise-Grade Payroll System**
-- **Multi-Project Allocation**: Allocate employee costs across multiple projects with percentage or hours-based distribution
-- **Comprehensive Salary Structure**: Support for basic salary, allowances, bonuses, deductions, taxes, and statutory compliance
-- **Attendance Integration**: Link payroll with attendance records for accurate salary calculation
-- **Proration Support**: Automatic salary proration for new hires, terminations, promotions, and transfers
-- **Cost Allocation Reports**: Track payroll costs per project for accurate project costing
-
-### 4. **Offline-First Desktop Application**
+### 3. **Offline-First Desktop Application**
 - **No Internet Required**: Full functionality works offline - critical for construction sites and remote locations
 - **Data Privacy**: All data stored locally on your computer - no cloud dependency or data privacy concerns
 - **Fast Performance**: Native desktop app with SQLite database - handles 10,000+ transactions with instant search and filtering
 - **Auto-Updates**: Seamless automatic updates without losing data
 
-### 5. **Advanced General Ledger with Double-Entry Accounting**
+### 4. **Advanced General Ledger with Double-Entry Accounting**
 - **Enhanced Ledger Interface**: Modern, intuitive ledger with real-time search, filtering, and sorting
-- **Batch Transactions**: Group related transactions (e.g., payroll with multiple deductions) for cleaner records
+- **Batch Transactions**: Group related transactions for cleaner records
 - **Running Balance Tracking**: Real-time account balance calculation with sticky columns for easy viewing
-- **Transaction Linking**: Link transactions to invoices, bills, payslips, projects, and properties for complete audit trail
+- **Transaction Linking**: Link transactions to invoices, bills, projects, and properties for complete audit trail
 - **Financial Summary Cards**: Instant overview of income, expenses, transfers, and balances
 
-### 6. **Comprehensive Reporting & Analytics**
+### 5. **Comprehensive Reporting & Analytics**
 - **30+ Report Types**: Project Summary, Profit & Loss, Balance Sheet, Owner Ledger, Vendor Ledger, Broker Reports, Budget vs Actual, and more
 - **KPI Dashboard**: Real-time key performance indicators with visual charts and graphs
 - **Visual Project Layout**: Interactive visual representation of project units with status indicators
 - **Export Capabilities**: Export any report to Excel for further analysis or sharing
 - **Custom Date Ranges**: Analyze data for any time period with flexible filtering
 
-### 7. **Automated Workflows**
+### 6. **Automated Workflows**
 - **Recurring Invoices**: Set up automatic monthly rent invoices and other recurring billing
 - **Auto-Invoice Generation**: Rental agreements automatically create initial invoices and recurring templates
 - **WhatsApp Integration**: Send invoices and payment reminders directly via WhatsApp Business API
 - **QR Code Generation**: Generate QR codes for invoices for easy payment processing
 
-### 8. **User-Friendly Interface**
+### 7. **User-Friendly Interface**
 - **QuickBooks-Style Design**: Familiar, professional interface that feels intuitive to accountants and business owners
 - **Mobile-Responsive**: Works on tablets and mobile devices with optimized layouts
 - **Keyboard Shortcuts**: Power user features for faster data entry
 - **Contextual Help**: Built-in help system with searchable topics and visual guides
 - **Multi-User Support**: Role-based access control (Admin, User) with user management
 
-### 9. **Data Import/Export Capabilities**
+### 8. **Data Import/Export Capabilities**
 - **Excel Import**: Import transactions, contacts, and other data from Excel spreadsheets
 - **Excel Export**: Export reports, transactions, and data for external analysis
 - **Backup & Restore**: Easy data backup and restoration for disaster recovery
 - **Migration Tools**: Built-in tools to migrate from other systems
 
-### 10. **Cost-Effective Solution**
+### 9. **Cost-Effective Solution**
 - **One-Time Purchase**: No monthly subscriptions or per-user fees (depending on licensing model)
 - **No Hidden Costs**: All features included - no premium add-ons or feature gates
 - **Reduced Software Costs**: Replace 3-4 separate software subscriptions with one solution
@@ -86,11 +79,9 @@
    - Manage construction projects with multiple units
    - Track installment payments from buyers
    - Need project costing and investor distribution reports
-   - Require payroll allocation across projects
 
 3. **Small to Medium Construction Companies**
    - Need project management with financial tracking
-   - Require payroll with multi-project cost allocation
    - Want integrated invoicing and bill management
 
 4. **Real Estate Brokers**
@@ -116,21 +107,18 @@
 ### vs. QuickBooks
 - ✅ Real estate-specific features (rental agreements, property management)
 - ✅ Project management with installment tracking
-- ✅ Multi-project payroll allocation
 - ✅ Offline-first (no cloud dependency)
 - ✅ Lower cost (one-time vs. subscription)
 
 ### vs. Property Management Software (Buildium, AppFolio)
 - ✅ Includes full accounting (General Ledger)
 - ✅ Project management capabilities
-- ✅ Payroll system included
 - ✅ Offline functionality
 - ✅ No per-property or per-unit fees
 
 ### vs. Generic Project Management Tools
 - ✅ Full financial accounting built-in
 - ✅ Rental management features
-- ✅ Payroll integration
 - ✅ Real estate-specific workflows
 
 ### vs. Cloud-Based Solutions
@@ -148,7 +136,7 @@
 
 #### 1.1 Website Development
 - **Landing Page**: Professional website with clear value proposition
-- **Feature Pages**: Detailed pages for each major module (Rental, Project, Payroll, Ledger)
+- **Feature Pages**: Detailed pages for each major module (Rental, Project, Ledger)
 - **Demo Videos**: Screen recordings showing key workflows
 - **Pricing Page**: Clear pricing structure and licensing options
 - **Testimonials Section**: Customer success stories (as they become available)
@@ -159,7 +147,7 @@
 - **Color Scheme**: Business-appropriate (suggest: blue/green for finance, professional)
 - **Tagline Options**:
   - "All-in-One Financial Management for Real Estate Professionals"
-  - "From Rentals to Projects to Payroll - One Platform"
+  - "From Rentals to Projects - One Platform"
   - "Your Complete Real Estate Financial Ecosystem"
 
 #### 1.3 Content Creation
@@ -173,7 +161,7 @@
 #### 2.1 Search Engine Optimization (SEO)
 - **Keyword Strategy**:
   - Primary: "real estate accounting software", "property management accounting", "construction project management software"
-  - Secondary: "rental property management", "project costing software", "real estate payroll software"
+  - Secondary: "rental property management", "project costing software", "property management financial software"
 - **Content Marketing**:
   - Blog posts: "10 Tips for Real Estate Financial Management"
   - Guides: "Complete Guide to Rental Property Accounting"
@@ -306,8 +294,8 @@
 **"The Only Financial Management Software Built Specifically for Real Estate Professionals"**
 
 ### Supporting Messages
-1. **"Replace 4 Software Subscriptions with One Platform"**
-   - General Ledger + Rental Management + Project Management + Payroll
+1. **"Replace 3 Software Subscriptions with One Platform"**
+   - General Ledger + Rental Management + Project Management
 
 2. **"Work Offline, Keep Your Data Private"**
    - No cloud dependency, all data stored locally
@@ -317,9 +305,6 @@
 
 4. **"Track Construction Projects with Financial Precision"**
    - Project costing, installments, investor tracking
-
-5. **"Payroll That Understands Real Estate"**
-   - Multi-project allocation, property-specific costing
 
 ---
 

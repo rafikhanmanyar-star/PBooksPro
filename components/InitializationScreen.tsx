@@ -21,7 +21,7 @@ const APP_FEATURES = [
     },
     {
         title: 'Project Management',
-        description: 'Track projects, budgets, and payroll efficiently'
+        description: 'Track projects, budgets, and contracts efficiently'
     },
     {
         title: 'Contact & Vendor Management',

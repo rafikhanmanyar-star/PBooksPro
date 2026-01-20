@@ -121,9 +121,6 @@ export async function migrateFromLocalStorage(
             rentalAgreements: oldState.rentalAgreements?.length || 0,
             projectAgreements: oldState.projectAgreements?.length || 0,
             contracts: oldState.contracts?.length || 0,
-            employees: oldState.employees?.length || 0,
-            payrollCycles: oldState.payrollCycles?.length || 0,
-            payslips: oldState.payslips?.length || 0,
         };
 
         // Set migration flag

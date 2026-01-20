@@ -28,7 +28,6 @@ const ExportDataModal: React.FC<ExportDataModalProps> = ({ isOpen, onClose }) =>
         master: 'Master Data',
         projects: 'Projects & Properties',
         agreements: 'Agreements & Contracts',
-        payroll: 'Payroll & HR',
         pm: 'PM Management',
         other: 'Other',
     };

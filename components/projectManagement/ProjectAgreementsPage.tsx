@@ -8,7 +8,7 @@ import Modal from '../ui/Modal';
 import ProjectAgreementForm from './ProjectAgreementForm';
 import CancelAgreementModal from './CancelAgreementModal';
 import { formatDate } from '../../utils/dateUtils';
-import PayrollTreeView, { PayrollTreeNode } from '../payroll/PayrollTreeView';
+import TreeView, { TreeNode } from '../ui/TreeView';
 import DatePicker from '../ui/DatePicker';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import ResizeHandle from '../ui/ResizeHandle';
@@ -134,8 +134,8 @@ const ProjectAgreementsPage: React.FC = () => {
 
     // --- Tree Data Construction ---
     // Hierarchy: Project -> Owner
-    const treeData = useMemo<PayrollTreeNode[]>(() => {
-        const projectMap = new Map<string, PayrollTreeNode>();
+    const treeData = useMemo<TreeNode[]>(() => {
+        const projectMap = new Map<string, TreeNode>();
 
         // Initialize Projects
         state.projects.forEach(p => {
@@ -386,7 +386,7 @@ const ProjectAgreementsPage: React.FC = () => {
                         )}
                     </div>
                     <div className="flex-grow overflow-y-auto p-2">
-                        <PayrollTreeView
+                        <TreeView
                             treeData={treeData}
                             selectedId={selectedTreeId}
                             onSelect={(id, type) => {

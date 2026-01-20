@@ -16,7 +16,7 @@
 
 #### **Starter License** - PKR 75,000 - 95,000 (~$260-330)
 - Single user
-- All core features (General Ledger, Rental Management, Project Management, Payroll)
+- All core features (General Ledger, Rental Management, Project Management)
 - 30-day free trial
 - Email support
 - 1 year of free updates
@@ -127,10 +127,9 @@
 | Software Type | Local Price Range | PBooksPro | Advantage |
 |---------------|-------------------|-----------------|-----------|
 | Basic Accounting | PKR 15,000 - 50,000 | PKR 85,000 | More features, real estate-specific |
-| Property Management | PKR 50,000 - 150,000 | Included | Includes accounting + payroll |
+| Property Management | PKR 50,000 - 150,000 | Included | Includes accounting |
 | Project Management | PKR 100,000 - 200,000 | Included | Integrated with finance |
-| Payroll Software | PKR 200,000 - 500,000 | Included | Multi-project allocation |
-| **Total if Separate** | **PKR 365,000 - 900,000** | **PKR 85,000 - 275,000** | **60-70% Savings** |
+| **Total if Separate** | **PKR 165,000 - 400,000** | **PKR 85,000 - 275,000** | **50-60% Savings** |
 
 ---
 

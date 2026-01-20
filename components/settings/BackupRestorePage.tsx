@@ -242,7 +242,6 @@ const BackupRestorePage: React.FC = () => {
                     <p className="text-xs text-blue-800 font-medium mb-1">What's included:</p>
                     <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
                         <li>All loan transactions (Give, Receive, Repay, Collect)</li>
-                        <li>Loan advance records from payroll</li>
                         <li>All investor/equity accounts and related transactions</li>
                         <li>PM configuration settings for all projects</li>
                         <li>Related contacts, vendors, accounts, and categories</li>

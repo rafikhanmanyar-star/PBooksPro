@@ -70,7 +70,6 @@ const ClearTransactionsModal: React.FC<ClearTransactionsModalProps> = ({
             <li>• All rental agreements</li>
             <li>• All project agreements</li>
             <li>• All sales returns</li>
-            <li>• All payslips</li>
             <li>• All quotations</li>
           </ul>
         </div>

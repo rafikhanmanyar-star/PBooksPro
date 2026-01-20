@@ -17,7 +17,6 @@ export type Page =
   | 'bills'
   | 'investmentManagement'
   | 'pmConfig'
-  | 'payroll'
   | 'settings'
   | 'import'
   | 'tasks'
@@ -134,7 +133,6 @@ export enum ImportType {
   BUILDINGS = 'buildings',
   PROPERTIES = 'properties',
   UNITS = 'units',
-  STAFF = 'staff',
   AGREEMENTS = 'agreements',
   RENTAL_AGREEMENTS = 'rental_agreements',
   PROJECT_AGREEMENTS = 'project_agreements',
@@ -154,18 +152,10 @@ export enum ImportType {
   INCOME_TRANSACTIONS = 'income_transactions',
   EXPENSE_TRANSACTIONS = 'expense_transactions',
   RECURRING_TEMPLATES = 'recurring_templates',
-  PAYSLIPS = 'payslips',
   BUDGETS = 'budgets'
 }
 
 
-export enum PayslipStatus {
-  PENDING = 'Pending',
-  APPROVED = 'Approved',
-  PAID = 'Paid',
-  PARTIALLY_PAID = 'Partially Paid',
-  DRAFT = 'Draft'
-}
 
 export type UserRole = 'Admin' | 'Manager' | 'Accounts';
 
@@ -305,7 +295,6 @@ export interface Transaction {
   unitId?: string;
   invoiceId?: string;
   billId?: string;
-  payslipId?: string;
   contractId?: string;
   agreementId?: string;
   batchId?: string;
@@ -382,7 +371,7 @@ export interface Document {
   name: string;
   type: 'quotation' | 'bill' | 'agreement' | 'contract' | 'id_card' | 'other';
   entityId: string; // ID of the related entity (quotation, bill, etc.)
-  entityType: 'quotation' | 'bill' | 'agreement' | 'contract' | 'employee' | 'other';
+  entityType: 'quotation' | 'bill' | 'agreement' | 'contract' | 'other';
   fileData: string; // Base64 encoded file data or blob URL
   fileName: string;
   fileSize: number;
@@ -519,413 +508,6 @@ export interface RecurringInvoiceTemplate {
   lastGeneratedDate?: string;
 }
 
-// ==================== ENTERPRISE PAYROLL TYPES ====================
-
-export type SalaryComponentType = 'Earning' | 'Deduction' | 'Information' | 'Allowance' | 'Bonus' | 'Overtime' | 'Commission' | 'Benefit' | 'Tax' | 'Statutory';
-export type CalculationType = 'Fixed' | 'Percentage of Basic' | 'Percentage of Gross' | 'Formula' | 'Per Day' | 'Per Hour';
-export type PayrollFrequency = 'Monthly' | 'Semi-Monthly' | 'Weekly' | 'Bi-Weekly';
-export type EmployeeStatus = 'Active' | 'Inactive' | 'On Leave' | 'Transferred' | 'Promoted' | 'Resigned' | 'Terminated' | 'Suspended';
-export type BonusType = 'Performance' | 'Project Completion' | 'Annual' | 'Quarterly' | 'Celebratory' | 'Ad-Hoc' | 'Recurring' | string; // Allow custom types
-export type DeductionType = 'Tax' | 'PF' | 'ESI' | 'Insurance' | 'Loan' | 'Advance' | 'Penalty' | 'Fine' | 'Custom';
-export type LifecycleEventType = 'Join' | 'Promotion' | 'Transfer' | 'Exit' | 'Increment' | 'Salary Revision' | 'Status Change' | 'Other';
-
-// Enhanced Salary Component
-export interface SalaryComponent {
-  id: string;
-  name: string;
-  type: SalaryComponentType;
-  isTaxable: boolean;
-  isSystem?: boolean;
-  calculationType?: CalculationType;
-  formula?: string; // For formula-based calculations
-  eligibilityRules?: string; // JSON string for eligibility conditions
-  effectiveFrom?: string;
-  effectiveTo?: string;
-  countryCode?: string; // For country-specific components
-  category?: string; // Transport, Housing, Food, etc.
-}
-
-// Employee Salary Component with effective dates
-export interface EmployeeSalaryComponent {
-  componentId: string;
-  amount: number;
-  calculationType: CalculationType;
-  effectiveDate: string;
-  endDate?: string;
-  formula?: string;
-  metadata?: Record<string, any>;
-}
-
-// Project Assignment
-export interface ProjectAssignment {
-  projectId: string;
-  percentage?: number; // For split assignments
-  hoursPerMonth?: number; // Alternative to percentage
-  effectiveDate: string;
-  endDate?: string;
-  costCenter?: string;
-}
-
-// Bank Details
-export interface BankDetails {
-  bankName: string;
-  accountTitle: string;
-  accountNumber: string;
-  iban?: string;
-  swiftCode?: string;
-  branchCode?: string;
-  branchAddress?: string;
-}
-
-// Document Management
-export interface EmployeeDocument {
-  id: string;
-  type: 'ID' | 'Contract' | 'Certificate' | 'License' | 'Other';
-  name: string;
-  fileUrl?: string;
-  issueDate?: string;
-  expiryDate?: string;
-  uploadedAt: string;
-  uploadedBy?: string;
-}
-
-// Attendance & Timesheet
-export interface AttendanceRecord {
-  id: string;
-  employeeId: string;
-  date: string;
-  checkIn?: string;
-  checkOut?: string;
-  hoursWorked?: number;
-  status: 'Present' | 'Absent' | 'Leave' | 'Holiday' | 'Half Day' | string; // Allow custom statuses
-  leaveType?: string;
-  projectId?: string;
-  notes?: string;
-}
-
-// Lifecycle Event (Enhanced)
-export interface LifeCycleEvent {
-  id: string;
-  date: string;
-  type: LifecycleEventType;
-  description: string;
-  prevSalary?: number;
-  newSalary?: number;
-  prevDesignation?: string;
-  newDesignation?: string;
-  prevProjectId?: string;
-  newProjectId?: string;
-  prevDepartment?: string;
-  newDepartment?: string;
-  prevGrade?: string;
-  newGrade?: string;
-  performedBy?: string;
-  metadata?: Record<string, any>;
-}
-
-// Termination & Settlement
-export interface TerminationDetails {
-  date: string;
-  type: 'Resignation' | 'Termination' | 'Retirement' | 'Contract End';
-  reason: string;
-  noticePeriodDays?: number;
-  lastWorkingDay: string;
-  gratuityAmount?: number;
-  leaveEncashment?: number;
-  benefitsAmount?: number;
-  outstandingLoans?: number;
-  outstandingAdvances?: number;
-  finalSettlementAmount: number;
-  paymentAccountId?: string;
-  paymentDate?: string;
-  settlementPayslipId?: string;
-  notes?: string;
-}
-
-// Bonus Record
-export interface BonusRecord {
-  id: string;
-  employeeId: string;
-  type: BonusType;
-  amount: number;
-  description: string;
-  effectiveDate: string;
-  payrollMonth?: string; // Which payroll cycle to include
-  isRecurring?: boolean;
-  recurrencePattern?: string; // Monthly, Quarterly, etc.
-  eligibilityRule?: string;
-  approvedBy?: string;
-  approvedAt?: string;
-  status: 'Pending' | 'Approved' | 'Paid' | 'Cancelled' | string; // Allow custom statuses
-  projectId?: string; // For project completion bonuses
-}
-
-// Deduction/Addition Record
-export interface PayrollAdjustment {
-  id: string;
-  employeeId: string;
-  type: 'Deduction' | 'Addition';
-  category: DeductionType | string;
-  amount: number;
-  description: string;
-  effectiveDate: string;
-  payrollMonth?: string;
-  isRecurring?: boolean;
-  recurrencePattern?: string;
-  formula?: string;
-  reason: string;
-  performedBy: string;
-  performedAt: string;
-  status: 'Active' | 'Applied' | 'Cancelled' | string; // Allow custom statuses
-}
-
-// Loan/Advance Record
-export interface LoanAdvanceRecord {
-  id: string;
-  employeeId: string;
-  type: 'Loan' | 'Advance';
-  amount: number;
-  issuedDate: string;
-  repaymentStartDate: string;
-  totalInstallments?: number;
-  installmentAmount?: number;
-  repaymentFrequency: 'Monthly' | 'Weekly' | 'One-Time';
-  outstandingBalance: number;
-  status: 'Active' | 'Completed' | 'Written Off';
-  description?: string;
-  transactionId?: string;
-}
-
-// Enhanced Employee/Staff
-export interface Employee {
-  id: string;
-  employeeId: string;
-  personalDetails: {
-    firstName: string;
-    lastName: string;
-    email?: string;
-    phone?: string;
-    dateOfBirth?: string;
-    address?: string;
-    emergencyContact?: {
-      name: string;
-      relationship: string;
-      phone: string;
-    };
-  };
-  employmentDetails: {
-    designation: string;
-    department?: string;
-    grade?: string;
-    role?: string;
-    joiningDate: string;
-    confirmationDate?: string;
-    employmentType: 'Full-Time' | 'Part-Time' | 'Contract' | 'Intern';
-    reportingManager?: string;
-  };
-  status: EmployeeStatus;
-  basicSalary: number;
-  salaryStructure: EmployeeSalaryComponent[];
-  projectAssignments: ProjectAssignment[]; // Multi-project support
-  bankDetails?: BankDetails;
-  documents: EmployeeDocument[];
-  lifecycleHistory: LifeCycleEvent[];
-  terminationDetails?: TerminationDetails;
-  advanceBalance: number;
-  loanBalance: number;
-  createdAt: string;
-  updatedAt: string;
-  createdBy?: string;
-  updatedBy?: string;
-}
-
-// Legacy Staff (used by Rental/Project payroll UIs and older data exports)
-// Note: This is intentionally lightweight and permissive to support older datasets.
-export interface Staff {
-  id: string; // Typically the linked Contact id
-  employeeId: string;
-  designation: string;
-  basicSalary: number;
-  joiningDate: string;
-  status: 'Active' | 'Inactive' | 'Resigned' | 'Terminated' | string;
-  email?: string;
-  projectId?: string;
-  buildingId?: string;
-  salaryStructure: any[];
-  bankDetails?: any;
-  history: any[];
-  advanceBalance: number;
-  exitDetails?: any;
-}
-
-// Payslip Item (Enhanced)
-export interface PayslipItem {
-  name: string;
-  amount: number;
-  isTaxable?: boolean;
-  date?: string;
-  componentId?: string;
-  type?: SalaryComponentType;
-  calculation?: string;
-}
-
-// Payroll Cost Allocation
-export interface PayrollCostAllocation {
-  projectId: string;
-  percentage?: number;
-  hours?: number;
-  amount: number;
-  basicSalary: number;
-  allowances: number;
-  bonuses: number;
-  deductions: number;
-  netAmount: number;
-}
-
-// Enhanced Payslip
-export interface Payslip {
-  id: string;
-  employeeId: string;
-  // Legacy alias (older parts of the app use staffId to link to Contact/Staff)
-  staffId?: string;
-  payrollCycleId: string;
-  month: string; // YYYY-MM format
-  issueDate: string;
-  payPeriodStart: string;
-  payPeriodEnd: string;
-
-  // Salary Breakdown
-  basicSalary: number;
-  allowances: PayslipItem[];
-  totalAllowances: number;
-  bonuses: PayslipItem[];
-  totalBonuses: number;
-  overtime?: PayslipItem[];
-  totalOvertime?: number;
-  commissions?: PayslipItem[];
-  totalCommissions?: number;
-
-  // Deductions
-  deductions: PayslipItem[];
-  totalDeductions: number;
-  taxDeductions: PayslipItem[];
-  totalTax: number;
-  statutoryDeductions: PayslipItem[];
-  totalStatutory: number;
-  loanDeductions: PayslipItem[];
-  totalLoanDeductions: number;
-
-  // Totals
-  grossSalary: number;
-  taxableIncome: number;
-  netSalary: number;
-
-  // Cost Allocation (Multi-project)
-  costAllocations: PayrollCostAllocation[];
-
-  // Proration Info
-  isProrated: boolean;
-  prorationDays?: number;
-  prorationReason?: string; // Join, Leave, Transfer, Promotion
-
-  // Status & Payment
-  status: PayslipStatus;
-  paidAmount: number;
-  paymentDate?: string;
-  transactionId?: string;
-  paymentAccountId?: string;
-  // Legacy allocation fields used by older payroll pages
-  projectId?: string;
-  buildingId?: string;
-
-  // Metadata
-  generatedAt: string;
-  generatedBy?: string;
-  approvedAt?: string;
-  approvedBy?: string;
-  notes?: string;
-
-  // Snapshot (Immutable payroll data)
-  snapshot?: {
-    salaryStructure: EmployeeSalaryComponent[];
-    projectAssignments: ProjectAssignment[];
-    bonuses: BonusRecord[];
-    adjustments: PayrollAdjustment[];
-    attendanceDays: number;
-    workingDays: number;
-  };
-}
-
-// Payroll Cycle
-export interface PayrollCycle {
-  id: string;
-  name: string;
-  month: string; // YYYY-MM
-  frequency: PayrollFrequency;
-  startDate: string;
-  endDate: string;
-  payDate: string;
-  issueDate: string;
-  status: 'Draft' | 'Processing' | 'Review' | 'Approved' | 'Paid' | 'Locked';
-  payslipIds: string[];
-  totalEmployees: number;
-  totalGrossSalary: number;
-  totalDeductions: number;
-  totalNetSalary: number;
-  projectCosts: Record<string, number>; // Project-wise totals
-  createdAt: string;
-  createdBy?: string;
-  approvedAt?: string;
-  approvedBy?: string;
-  lockedAt?: string;
-  lockedBy?: string;
-  notes?: string;
-}
-
-// Tax Configuration
-export interface TaxConfiguration {
-  id: string;
-  countryCode: string;
-  stateCode?: string;
-  effectiveFrom: string;
-  effectiveTo?: string;
-  taxSlabs: TaxSlab[];
-  exemptions: TaxExemption[];
-  credits: TaxCredit[];
-  metadata?: Record<string, any>;
-}
-
-export interface TaxSlab {
-  minIncome: number;
-  maxIncome?: number;
-  rate: number;
-  fixedAmount?: number;
-}
-
-export interface TaxExemption {
-  name: string;
-  maxAmount?: number;
-  applicableTo: string[];
-}
-
-export interface TaxCredit {
-  name: string;
-  amount: number;
-  conditions?: string;
-}
-
-// Statutory Configuration
-export interface StatutoryConfiguration {
-  id: string;
-  countryCode: string;
-  type: 'PF' | 'ESI' | 'Social Security' | 'Insurance' | 'Other';
-  employeeContributionRate?: number;
-  employerContributionRate?: number;
-  maxSalaryLimit?: number;
-  effectiveFrom: string;
-  effectiveTo?: string;
-  rules?: Record<string, any>;
-}
 
 export interface AgreementSettings {
   prefix: string;
@@ -1016,25 +598,6 @@ export interface AppState {
   salesReturns: SalesReturn[];
   contracts: Contract[];
 
-  // Legacy staff (for backward compatibility)
-  projectStaff: Staff[];
-  rentalStaff: Staff[];
-
-  // New Enterprise Payroll System
-  employees: Employee[];
-  salaryComponents: SalaryComponent[];
-  payrollCycles: PayrollCycle[];
-  payslips: Payslip[];
-  bonusRecords: BonusRecord[];
-  payrollAdjustments: PayrollAdjustment[];
-  loanAdvanceRecords: LoanAdvanceRecord[];
-  attendanceRecords: AttendanceRecord[];
-  taxConfigurations: TaxConfiguration[];
-  statutoryConfigurations: StatutoryConfiguration[];
-
-  // Legacy payslips (for backward compatibility)
-  projectPayslips: Payslip[];
-  rentalPayslips: Payslip[];
 
   recurringInvoiceTemplates: RecurringInvoiceTemplate[];
   pmCycleAllocations: PMCycleAllocation[];
@@ -1146,26 +709,6 @@ export type AppAction =
   | { type: 'ADD_RECURRING_TEMPLATE'; payload: RecurringInvoiceTemplate }
   | { type: 'UPDATE_RECURRING_TEMPLATE'; payload: RecurringInvoiceTemplate }
   | { type: 'DELETE_RECURRING_TEMPLATE'; payload: string }
-  | { type: 'ADD_SALARY_COMPONENT'; payload: SalaryComponent }
-  | { type: 'UPDATE_SALARY_COMPONENT'; payload: SalaryComponent }
-  | { type: 'DELETE_SALARY_COMPONENT'; payload: string }
-  | { type: 'ADD_PROJECT_STAFF'; payload: Staff }
-  | { type: 'UPDATE_PROJECT_STAFF'; payload: Staff }
-  | { type: 'DELETE_PROJECT_STAFF'; payload: string }
-  | { type: 'ADD_RENTAL_STAFF'; payload: Staff }
-  | { type: 'UPDATE_RENTAL_STAFF'; payload: Staff }
-  | { type: 'DELETE_RENTAL_STAFF'; payload: string }
-  | { type: 'PROMOTE_STAFF'; payload: { staffId: string; newDesignation: string; newSalary: number; effectiveDate: string; type: string } }
-  | { type: 'TRANSFER_STAFF'; payload: { staffId: string; newProjectId?: string; newBuildingId?: string; effectiveDate: string } }
-  | { type: 'STAFF_EXIT'; payload: { staffId: string; type: 'Resignation' | 'Termination'; date: string; reason: string; gratuityAmount: number; benefitsAmount: number; paymentAccountId?: string } }
-  | { type: 'GENERATE_PAYROLL'; payload: { month: string; issueDate: string; type: 'All' | 'Project' | 'Rental' } }
-  | { type: 'GENERATE_PROJECT_PAYROLL'; payload: { month: string; issueDate: string } }
-  | { type: 'GENERATE_RENTAL_PAYROLL'; payload: { month: string; issueDate: string } }
-  | { type: 'UPDATE_PAYSLIP'; payload: Payslip }
-  | { type: 'MARK_PROJECT_PAYSLIP_PAID'; payload: { payslipId: string; accountId: string; paymentDate: string; amount: number; projectId?: string; description?: string } }
-  | { type: 'MARK_RENTAL_PAYSLIP_PAID'; payload: { payslipId: string; accountId: string; paymentDate: string; amount: number; description?: string } }
-  | { type: 'DELETE_PROJECT_PAYSLIP'; payload: string }
-  | { type: 'DELETE_RENTAL_PAYSLIP'; payload: string }
   | { type: 'UPDATE_DASHBOARD_CONFIG'; payload: DashboardConfig }
   | { type: 'UPDATE_AGREEMENT_SETTINGS'; payload: AgreementSettings }
   | { type: 'UPDATE_PROJECT_AGREEMENT_SETTINGS'; payload: AgreementSettings }
@@ -1200,43 +743,6 @@ export type AppAction =
   | { type: 'SET_INITIAL_TABS'; payload: string[] }
   | { type: 'CLEAR_INITIAL_TABS' }
   | { type: 'SET_UPDATE_AVAILABLE'; payload: boolean }
-  // Enterprise Payroll Actions
-  | { type: 'ADD_EMPLOYEE'; payload: Employee }
-  | { type: 'UPDATE_EMPLOYEE'; payload: Employee }
-  | { type: 'DELETE_EMPLOYEE'; payload: string }
-  | { type: 'PROMOTE_EMPLOYEE'; payload: { employeeId: string; newDesignation: string; newSalary: number; effectiveDate: string; newGrade?: string; newDepartment?: string } }
-  | { type: 'TRANSFER_EMPLOYEE'; payload: { employeeId: string; projectAssignments: ProjectAssignment[]; effectiveDate: string } }
-  | { type: 'TERMINATE_EMPLOYEE'; payload: { employeeId: string; terminationDetails: TerminationDetails } }
-  | { type: 'ADD_BONUS'; payload: BonusRecord }
-  | { type: 'UPDATE_BONUS'; payload: BonusRecord }
-  | { type: 'DELETE_BONUS'; payload: string }
-  | { type: 'BULK_ADD_BONUSES'; payload: BonusRecord[] }
-  | { type: 'ADD_PAYROLL_ADJUSTMENT'; payload: PayrollAdjustment }
-  | { type: 'UPDATE_PAYROLL_ADJUSTMENT'; payload: PayrollAdjustment }
-  | { type: 'DELETE_PAYROLL_ADJUSTMENT'; payload: string }
-  | { type: 'ADD_LOAN_ADVANCE'; payload: LoanAdvanceRecord }
-  | { type: 'UPDATE_LOAN_ADVANCE'; payload: LoanAdvanceRecord }
-  | { type: 'DELETE_LOAN_ADVANCE'; payload: string }
-  | { type: 'ADD_ATTENDANCE'; payload: AttendanceRecord }
-  | { type: 'UPDATE_ATTENDANCE'; payload: AttendanceRecord }
-  | { type: 'DELETE_ATTENDANCE'; payload: string }
-  | { type: 'BULK_ADD_ATTENDANCE'; payload: AttendanceRecord[] }
-  | { type: 'CREATE_PAYROLL_CYCLE'; payload: PayrollCycle }
-  | { type: 'UPDATE_PAYROLL_CYCLE'; payload: PayrollCycle }
-  | { type: 'LOCK_PAYROLL_CYCLE'; payload: { cycleId: string; lockedBy: string } }
-  | { type: 'APPROVE_PAYROLL_CYCLE'; payload: { cycleId: string; approvedBy: string } }
-  | { type: 'PROCESS_PAYROLL_CYCLE'; payload: { cycleId: string; month: string; frequency: PayrollFrequency } }
-  | { type: 'ADD_PAYSLIP'; payload: Payslip }
-  | { type: 'UPDATE_PAYSLIP'; payload: Payslip }
-  | { type: 'MARK_PAYSLIP_PAID'; payload: { payslipId: string; accountId: string; paymentDate: string; amount: number; description?: string } }
-  | { type: 'BULK_APPROVE_PAYSLIPS'; payload: { payslipIds: string[]; approvedBy: string } }
-  | { type: 'BULK_PAY_PAYSLIPS'; payload: { payslipIds: string[]; accountId: string; paymentDate: string } }
-  | { type: 'ADD_TAX_CONFIGURATION'; payload: TaxConfiguration }
-  | { type: 'UPDATE_TAX_CONFIGURATION'; payload: TaxConfiguration }
-  | { type: 'DELETE_TAX_CONFIGURATION'; payload: string }
-  | { type: 'ADD_STATUTORY_CONFIGURATION'; payload: StatutoryConfiguration }
-  | { type: 'UPDATE_STATUTORY_CONFIGURATION'; payload: StatutoryConfiguration }
-  | { type: 'DELETE_STATUTORY_CONFIGURATION'; payload: string }
   // Task Management Actions
   | { type: 'ADD_TASK'; payload: Task }
   | { type: 'UPDATE_TASK'; payload: Task }

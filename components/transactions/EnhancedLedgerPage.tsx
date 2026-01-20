@@ -147,9 +147,7 @@ const EnhancedLedgerPage: React.FC = () => {
                 return cat?.isRental;
             });
 
-            const isPayroll = batchTxs.some(t => t.payslipId);
-
-            if (isRental || isPayroll) {
+            if (isRental) {
                 const totalAmount = batchTxs.reduce((sum, t) => sum + t.amount, 0);
                 const template = batchTxs[0];
                 const uniqueContacts = new Set(batchTxs.map(t => t.contactId).filter(Boolean));
@@ -157,9 +155,7 @@ const EnhancedLedgerPage: React.FC = () => {
                 const uniqueBuildings = new Set(batchTxs.map(t => t.buildingId).filter(Boolean));
                 const commonBuildingId = uniqueBuildings.size === 1 ? Array.from(uniqueBuildings)[0] : undefined;
 
-                let desc = `Bulk Payment (${batchTxs.length} items)`;
-                if (isPayroll) desc = `Payroll Batch (${batchTxs.length} items)`;
-                else if (isRental) desc = `Rental Bulk Payment (${batchTxs.length} items)`;
+                const desc = `Rental Bulk Payment (${batchTxs.length} items)`;
 
                 const parent: Transaction = {
                     ...template,
@@ -171,8 +167,7 @@ const EnhancedLedgerPage: React.FC = () => {
                     buildingId: commonBuildingId,
                     projectId: undefined,
                     invoiceId: undefined,
-                    billId: undefined,
-                    payslipId: undefined
+                    billId: undefined
                 };
                 result.push(parent);
                 processedBatchIds.add(tx.batchId);

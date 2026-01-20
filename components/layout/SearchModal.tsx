@@ -212,38 +212,6 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, currentPage 
           break;
         }
 
-        case 'payroll': {
-          // Search employees/staff
-          const employees = state.employees || [];
-          employees
-            .filter(emp => {
-              const firstName = emp.personalDetails?.firstName?.toLowerCase() || '';
-              const lastName = emp.personalDetails?.lastName?.toLowerCase() || '';
-              const name = `${firstName} ${lastName}`.trim().toLowerCase();
-              const employeeId = emp.employeeId?.toLowerCase() || '';
-              const department = emp.employmentDetails?.department?.toLowerCase() || '';
-              return name.includes(query) || employeeId.includes(query) || department.includes(query);
-            })
-            .slice(0, 20)
-            .forEach(emp => {
-              const firstName = emp.personalDetails?.firstName || '';
-              const lastName = emp.personalDetails?.lastName || '';
-              const name = `${firstName} ${lastName}`.trim() || 'No name';
-              results.push({
-                id: emp.id,
-                type: 'Employee',
-                title: name,
-                subtitle: `${emp.employeeId || ''} • ${emp.employmentDetails?.department || ''}`,
-                onClick: () => {
-                  sessionStorage.setItem('openEmployeeId', emp.id);
-                  dispatch({ type: 'SET_PAGE', payload: 'payroll' });
-                  onClose();
-                }
-              });
-            });
-          break;
-        }
-
         default:
           // Generic search across common entities
           state.contacts
@@ -281,7 +249,6 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, currentPage 
       case 'rentalAgreements': return 'Search rental agreements...';
       case 'vendorDirectory': return 'Search vendors...';
       case 'contacts': return 'Search contacts...';
-      case 'payroll': return 'Search employees...';
       default: return 'Search...';
     }
   };

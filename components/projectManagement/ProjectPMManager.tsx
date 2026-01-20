@@ -11,7 +11,7 @@ import ResizeHandle from '../ui/ResizeHandle';
 import ProjectPMConfigForm from './ProjectPMConfigForm';
 import ProjectPMPaymentModal from './ProjectPMPaymentModal';
 import { formatDate } from '../../utils/dateUtils';
-import PayrollTreeView, { PayrollTreeNode } from '../payroll/PayrollTreeView';
+import TreeView, { TreeNode } from '../ui/TreeView';
 
 // Interface for Ledger Item
 interface PMLedgerItem {
@@ -523,7 +523,7 @@ const ProjectPMManager: React.FC = () => {
     }, [getExcludedCategories, getCycleIdentifier, hasAllocationForCycle, getCycleDateRange, getExpensesInRange]);
 
     // Tree Data
-    const treeData = useMemo<PayrollTreeNode[]>(() => {
+    const treeData = useMemo<TreeNode[]>(() => {
         return state.projects
             .filter(p => !searchQuery || p.name.toLowerCase().includes(searchQuery.toLowerCase()))
             .map(p => {
@@ -843,7 +843,7 @@ const ProjectPMManager: React.FC = () => {
                     </div>
                 </div>
                 <div className="flex-grow overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-slate-200 hover:scrollbar-thumb-slate-300">
-                    <PayrollTreeView
+                    <TreeView
                         treeData={treeData}
                         selectedId={selectedProjectId}
                         onSelect={(id) => setSelectedProjectId(id)}

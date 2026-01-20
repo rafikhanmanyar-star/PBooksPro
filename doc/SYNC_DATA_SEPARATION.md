@@ -61,18 +61,6 @@ Organization data includes all accounting and business data shared across the or
 - Sales Returns
 - Contracts
 
-### Payroll
-- Employees
-- Salary Components
-- Payroll Cycles
-- Payslips
-- Bonus Records
-- Payroll Adjustments
-- Loan/Advance Records
-- Attendance Records
-- Tax Configurations
-- Statutory Configurations
-
 ### Organization Settings (Synced)
 - `agreementSettings` - Agreement numbering settings
 - `projectAgreementSettings` - Project agreement numbering

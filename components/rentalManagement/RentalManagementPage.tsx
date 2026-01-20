@@ -21,7 +21,6 @@ import TenantLedgerReport from '../reports/TenantLedgerReport';
 import VendorLedgerReport from '../reports/VendorLedgerReport';
 import OwnerSecurityDepositReport from '../reports/OwnerSecurityDepositReport';
 import BrokerFeeReport from '../reports/BrokerFeeReport';
-import EmployeePaymentReport from '../reports/EmployeePaymentReport';
 
 interface RentalManagementPageProps {
   initialPage: Page;
@@ -33,7 +32,7 @@ type RentalView =
     | 'Visual Layout' | 'Tabular Layout'
     | 'Agreement Expiry' | 'Building Analysis' | 'BM Analysis' | 'Owner Income'
     | 'Service Charges Deduction' | 'Tenant Ledger' | 'Vendor Ledger'
-    | 'Owner Security Deposit' | 'Broker Fees' | 'Employee Payments (Rental)';
+    | 'Owner Security Deposit' | 'Broker Fees';
 
 const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage }) => {
     const { state, dispatch } = useAppContext();
@@ -133,7 +132,6 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
             case 'Vendor Ledger': return <VendorLedgerReport context="Rental" />;
             case 'Owner Security Deposit': return <OwnerSecurityDepositReport />;
             case 'Broker Fees': return <BrokerFeeReport />;
-            case 'Employee Payments (Rental)': return <EmployeePaymentReport payrollType="Rental" />;
             
             default: return null;
         }
@@ -142,7 +140,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
     const isReportActive = [
         'Agreement Expiry', 'Building Analysis', 'BM Analysis', 'Owner Income',
         'Service Charges Deduction', 'Tenant Ledger', 'Vendor Ledger',
-        'Owner Security Deposit', 'Broker Fees', 'Employee Payments (Rental)'
+        'Owner Security Deposit', 'Broker Fees'
     ].includes(activeView);
 
     const NavButton = ({ view, label }: { view: RentalView, label: string }) => (
@@ -220,8 +218,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                                         'Tenant Ledger',
                                         'Vendor Ledger',
                                         'Owner Security Deposit',
-                                        'Broker Fees',
-                                        'Employee Payments (Rental)'
+                                        'Broker Fees'
                                     ].map((reportName) => (
                                         <button
                                             key={reportName}

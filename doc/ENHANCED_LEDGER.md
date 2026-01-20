@@ -87,7 +87,7 @@ The Enhanced Ledger Page is a **world-class, high-performance** financial ledger
 - ✅ **Visual indicators** - Border colors for batch rows
 - ✅ **Batch summaries** - Total amount for batches
 - ✅ **Child transaction details** - Full details for each item in batch
-- ✅ **Rental/Payroll batches** - Special handling for bulk payments
+- ✅ **Rental batches** - Special handling for bulk payments
 
 ### 10. **Export & Import**
 - ✅ **Export to Excel** - One-click export

@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useState, useRef } from 'react';
-import { AppState, AppAction, Transaction, TransactionType, Account, Category, AccountType, LoanSubtype, InvoiceStatus, TransactionLogEntry, Page, ContractStatus, User, UserRole, Staff, Payslip, PayslipStatus, SalaryComponent, SalaryComponentType, LifeCycleEvent, ProjectAgreementStatus, Bill, SalesReturn, SalesReturnStatus, SalesReturnReason, Contact, Invoice } from '../types';
+import { AppState, AppAction, Transaction, TransactionType, Account, Category, AccountType, LoanSubtype, InvoiceStatus, TransactionLogEntry, Page, ContractStatus, User, UserRole, ProjectAgreementStatus, Bill, SalesReturn, SalesReturnStatus, SalesReturnReason, Contact, Invoice } from '../types';
 import useDatabaseState from '../hooks/useDatabaseState';
 import { useDatabaseStateFallback } from '../hooks/useDatabaseStateFallback';
 import { runAllMigrations, needsMigration } from '../services/database/migration';
@@ -67,23 +67,6 @@ const SYSTEM_CATEGORIES: Category[] = [
     { id: 'sys-cat-sal-adv', name: 'Salary Advance', type: TransactionType.EXPENSE, isPermanent: true },
     { id: 'sys-cat-proj-sal', name: 'Project Staff Salary', type: TransactionType.EXPENSE, isPermanent: true },
     { id: 'sys-cat-rent-sal', name: 'Rental Staff Salary', type: TransactionType.EXPENSE, isPermanent: true },
-    
-    // Payroll System Categories (Enterprise Payroll)
-    { id: 'sys-cat-emp-sal', name: 'Employee Salary', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for enterprise employee salaries' },
-    { id: 'sys-cat-payroll-tax', name: 'Payroll Tax Expense', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for payroll tax expenses' },
-    { id: 'sys-cat-emp-benefits', name: 'Employee Benefits', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee benefits expenses' },
-    { id: 'sys-cat-emp-allow', name: 'Employee Allowances', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee allowances (transport, meal, etc.)' },
-    { id: 'sys-cat-emp-deduct', name: 'Employee Deductions', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee deductions' },
-    { id: 'sys-cat-pf-expense', name: 'Provident Fund (PF)', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for Provident Fund contributions' },
-    { id: 'sys-cat-esi-expense', name: 'Employee State Insurance (ESI)', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for ESI contributions' },
-    { id: 'sys-cat-emp-insurance', name: 'Employee Insurance', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee insurance expenses' },
-    { id: 'sys-cat-bonus-inc', name: 'Bonuses & Incentives', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee bonuses and incentives' },
-    { id: 'sys-cat-overtime', name: 'Overtime Pay', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for overtime pay expenses' },
-    { id: 'sys-cat-commission', name: 'Commission Expense', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee commission expenses' },
-    { id: 'sys-cat-gratuity', name: 'Gratuity Expense', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for gratuity payments' },
-    { id: 'sys-cat-leave-encash', name: 'Leave Encashment', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for leave encashment expenses' },
-    { id: 'sys-cat-termination-settle', name: 'Employee Termination Settlement', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for employee termination settlements' },
-    { id: 'sys-cat-payroll-processing', name: 'Payroll Processing Fee', type: TransactionType.EXPENSE, isPermanent: true, description: 'System category for payroll processing fees' },
     { id: 'sys-cat-bld-maint', name: 'Building Maintenance', type: TransactionType.EXPENSE, isPermanent: true, isRental: true },
     { id: 'sys-cat-bld-util', name: 'Building Utilities', type: TransactionType.EXPENSE, isPermanent: true, isRental: true },
     { id: 'sys-cat-own-pay', name: 'Owner Payout', type: TransactionType.EXPENSE, isPermanent: true, isRental: true },
@@ -280,29 +263,6 @@ const initialState: AppState = {
     initialTransactionFilter: null,
     initialTabs: [],
     initialImportType: null,
-    salaryComponents: [
-        { id: 'sys-sal-basic', name: 'Basic Salary', type: 'Earning', isTaxable: true, isSystem: true },
-        { id: 'sys-sal-allow', name: 'Allowances', type: 'Earning', isTaxable: true, isSystem: true },
-        { id: 'sys-sal-bonus', name: 'Bonus', type: 'Earning', isTaxable: true, isSystem: true },
-        { id: 'sys-sal-adv-ded', name: 'Advance Adjustment', type: 'Deduction', isTaxable: false, isSystem: true },
-        { id: 'sys-sal-tax', name: 'Tax Deduction', type: 'Deduction', isTaxable: false, isSystem: true },
-        { id: 'sys-sal-pf', name: 'Provident Fund', type: 'Deduction', isTaxable: false, isSystem: true }
-    ],
-    // Legacy staff (for backward compatibility)
-    projectStaff: [],
-    rentalStaff: [],
-    projectPayslips: [],
-    rentalPayslips: [],
-    // New Enterprise Payroll System
-    employees: [],
-    payrollCycles: [],
-    payslips: [],
-    bonusRecords: [],
-    payrollAdjustments: [],
-    loanAdvanceRecords: [],
-    attendanceRecords: [],
-    taxConfigurations: [],
-    statutoryConfigurations: [],
     quotations: [],
     documents: [],
 }
@@ -398,39 +358,6 @@ const applyTransactionEffect = (state: AppState, tx: Transaction, isAdd: boolean
             }
             return b;
         });
-    }
-
-    // 4. Payslip Status
-    if (tx.payslipId && tx.type === TransactionType.EXPENSE) {
-        // Find payslip in either project, rental, or enterprise payroll list
-        const findAndUpdate = (list: Payslip[]) => list.map(p => {
-            if (p.id === tx.payslipId) {
-                const newPaid = Math.max(0, (p.paidAmount || 0) + (tx.amount * factor));
-                let newStatus = p.status;
-                // Allow paying more than net if advance is handled, but status caps at Paid
-                if (newPaid >= p.netSalary - 1) newStatus = PayslipStatus.PAID;
-                else if (newPaid > 0) newStatus = PayslipStatus.PARTIALLY_PAID;
-                else newStatus = PayslipStatus.APPROVED; // Revert to Approved if unpaid
-                return { ...p, paidAmount: newPaid, status: newStatus };
-            }
-            return p;
-        });
-        newState.projectPayslips = findAndUpdate(newState.projectPayslips);
-        newState.rentalPayslips = findAndUpdate(newState.rentalPayslips);
-        newState.payslips = findAndUpdate(newState.payslips || []);
-    }
-
-    // 5. Staff Advance Balance (If transaction Category is Salary Advance)
-    const advCat = state.categories.find(c => c.name === 'Salary Advance');
-    if (advCat && tx.categoryId === advCat.id && tx.contactId && tx.type === TransactionType.EXPENSE) {
-        const updateStaff = (list: Staff[]) => list.map(s => {
-            if (s.id === tx.contactId) {
-                return { ...s, advanceBalance: (s.advanceBalance || 0) + (tx.amount * factor) };
-            }
-            return s;
-        });
-        newState.projectStaff = updateStaff(newState.projectStaff);
-        newState.rentalStaff = updateStaff(newState.rentalStaff);
     }
 
     return newState;
@@ -928,554 +855,6 @@ const reducer = (state: AppState, action: AppAction): AppState => {
         case 'DELETE_RECURRING_TEMPLATE':
             return { ...state, recurringInvoiceTemplates: state.recurringInvoiceTemplates.filter(t => t.id !== action.payload) };
 
-        // --- PAYROLL & STAFF ---
-        case 'ADD_SALARY_COMPONENT':
-            return { ...state, salaryComponents: [...state.salaryComponents, action.payload] };
-        case 'UPDATE_SALARY_COMPONENT':
-            return { ...state, salaryComponents: state.salaryComponents.map(c => c.id === action.payload.id ? action.payload : c) };
-        case 'DELETE_SALARY_COMPONENT':
-            return { ...state, salaryComponents: state.salaryComponents.filter(c => c.id !== action.payload) };
-
-        case 'ADD_PROJECT_STAFF':
-            return { ...state, projectStaff: [...state.projectStaff, action.payload] };
-        case 'UPDATE_PROJECT_STAFF':
-            return { ...state, projectStaff: state.projectStaff.map(s => s.id === action.payload.id ? action.payload : s) };
-        case 'DELETE_PROJECT_STAFF':
-            return { ...state, projectStaff: state.projectStaff.filter(s => s.id !== action.payload) };
-
-        case 'ADD_RENTAL_STAFF':
-            return { ...state, rentalStaff: [...state.rentalStaff, action.payload] };
-        case 'UPDATE_RENTAL_STAFF':
-            return { ...state, rentalStaff: state.rentalStaff.map(s => s.id === action.payload.id ? action.payload : s) };
-        case 'DELETE_RENTAL_STAFF':
-            return { ...state, rentalStaff: state.rentalStaff.filter(s => s.id !== action.payload) };
-
-        case 'PROMOTE_STAFF': {
-            const { staffId, newDesignation, newSalary, effectiveDate, type } = action.payload;
-            const updateStaff = (list: Staff[]) => list.map(s => {
-                if (s.id === staffId) {
-                    const event: LifeCycleEvent = { date: effectiveDate, type: type as any, description: `Promoted to ${newDesignation}`, prevSalary: s.basicSalary, newSalary, prevDesignation: s.designation, newDesignation };
-                    return { ...s, designation: newDesignation, basicSalary: newSalary, history: [event, ...s.history] };
-                }
-                return s;
-            });
-            return { ...state, projectStaff: updateStaff(state.projectStaff), rentalStaff: updateStaff(state.rentalStaff) };
-        }
-
-        case 'TRANSFER_STAFF': {
-            const { staffId, newProjectId, newBuildingId, effectiveDate } = action.payload;
-            let staffToMove: Staff | undefined;
-            let sourceListType: 'project' | 'rental' = 'project';
-
-            // Find and Remove from old list
-            let newProjectStaff = state.projectStaff.filter(s => {
-                if (s.id === staffId) { staffToMove = s; sourceListType = 'project'; return false; }
-                return true;
-            });
-            let newRentalStaff = state.rentalStaff.filter(s => {
-                if (s.id === staffId) { staffToMove = s; sourceListType = 'rental'; return false; }
-                return true;
-            });
-
-            if (staffToMove) {
-                const event: LifeCycleEvent = { date: effectiveDate, type: 'Transfer', description: `Transferred to ${newProjectId ? 'Project' : 'Building'}` };
-                const updatedStaff = { ...staffToMove, projectId: newProjectId, buildingId: newBuildingId, history: [event, ...staffToMove.history] };
-
-                if (newProjectId) newProjectStaff.push(updatedStaff);
-                else newRentalStaff.push(updatedStaff);
-            }
-
-            return { ...state, projectStaff: newProjectStaff, rentalStaff: newRentalStaff };
-        }
-
-        case 'STAFF_EXIT': {
-            const { staffId, type, date, reason, gratuityAmount, benefitsAmount, paymentAccountId } = action.payload;
-            const updateExit = (list: Staff[]) => list.map(s => {
-                if (s.id === staffId) {
-                    const event: LifeCycleEvent = { date, type: 'Exit', description: `${type}: ${reason}` };
-                    // Correctly type the new status using type assertion if needed, though ternary should infer correctly
-                    const newStatus: Staff['status'] = type === 'Resignation' ? 'Resigned' : 'Terminated';
-                    return {
-                        ...s,
-                        status: newStatus,
-                        exitDetails: { date, type, reason, gratuityAmount, benefitsAmount, paymentAccountId },
-                        history: [event, ...s.history]
-                    };
-                }
-                return s;
-            });
-
-            let newState = { ...state, projectStaff: updateExit(state.projectStaff), rentalStaff: updateExit(state.rentalStaff) };
-
-            // If settlement payment is needed, create transaction
-            if ((gratuityAmount > 0 || benefitsAmount > 0) && paymentAccountId) {
-                const total = gratuityAmount + benefitsAmount;
-                // Find Category (Assuming 'Salary' category for simplicity, or specific 'Settlement' category could be used)
-                const salaryCat = state.categories.find(c => c.name.includes('Salary'))?.id;
-                if (salaryCat) {
-                    const tx: Transaction = {
-                        id: `settlement-${staffId}-${Date.now()}`,
-                        type: TransactionType.EXPENSE,
-                        amount: total,
-                        date,
-                        description: `Final Settlement for ${state.contacts.find(c => c.id === staffId)?.name}`,
-                        accountId: paymentAccountId,
-                        categoryId: salaryCat,
-                        contactId: staffId
-                    };
-                    newState.transactions = [...newState.transactions, tx];
-                    newState = applyTransactionEffect(newState, tx, true);
-                }
-            }
-            return newState;
-        }
-
-        case 'GENERATE_PAYROLL':
-        case 'GENERATE_PROJECT_PAYROLL':
-        case 'GENERATE_RENTAL_PAYROLL': {
-            const { month, issueDate } = action.payload;
-            // Handle type for GENERATE_PAYROLL action
-            const genType = 'type' in action.payload ? action.payload.type : undefined;
-
-            // Common logic for generating payslips
-            const generateForStaff = (staffList: Staff[], payslipList: Payslip[], isProject: boolean) => {
-                const newPayslips: Payslip[] = [];
-                staffList.forEach(s => {
-                    if (s.status === 'Active' && !payslipList.some(p => p.staffId === s.id && p.month === month)) {
-                        // Logic to calculate allowances/deductions
-                        let totalAllow = 0;
-                        const allowances = s.salaryStructure.filter(comp => {
-                            const def = state.salaryComponents.find(c => c.id === comp.componentId);
-                            return def?.type === 'Earning';
-                        }).map(comp => {
-                            const def = state.salaryComponents.find(c => c.id === comp.componentId);
-                            const amount = comp.calculationType === 'Fixed' ? comp.amount : (s.basicSalary * comp.amount / 100);
-                            totalAllow += amount;
-                            return { name: def?.name || 'Unknown', amount };
-                        });
-
-                        let totalDeduct = 0;
-                        const deductions = s.salaryStructure.filter(comp => {
-                            const def = state.salaryComponents.find(c => c.id === comp.componentId);
-                            return def?.type === 'Deduction';
-                        }).map(comp => {
-                            const def = state.salaryComponents.find(c => c.id === comp.componentId);
-                            const amount = comp.calculationType === 'Fixed' ? comp.amount : (s.basicSalary * comp.amount / 100);
-                            totalDeduct += amount;
-                            return { name: def?.name || 'Unknown', amount };
-                        });
-
-                        // Loan/Advance Deduction Logic (Simplified: Check balance)
-                        if (s.advanceBalance > 0) {
-                            deductions.push({ name: 'Advance Adjustment', amount: s.advanceBalance }); // Fully deduct if possible, or partial logic can be added
-                            totalDeduct += s.advanceBalance;
-                        }
-
-                        newPayslips.push({
-                            id: `pay-${s.id}-${month}`,
-                            staffId: s.id,
-                            month,
-                            issueDate,
-                            basicSalary: s.basicSalary,
-                            allowances,
-                            totalAllowances: totalAllow,
-                            deductions,
-                            totalDeductions: totalDeduct,
-                            grossSalary: s.basicSalary + totalAllow,
-                            netSalary: (s.basicSalary + totalAllow) - totalDeduct,
-                            status: PayslipStatus.PENDING,
-                            paidAmount: 0,
-                            projectId: s.projectId,
-                            buildingId: s.buildingId,
-                            generatedAt: new Date().toISOString()
-                        });
-                    }
-                });
-                return [...payslipList, ...newPayslips];
-            };
-
-            const doProject = action.type === 'GENERATE_PAYROLL' ? (genType === 'All' || genType === 'Project') : action.type === 'GENERATE_PROJECT_PAYROLL';
-            const doRental = action.type === 'GENERATE_PAYROLL' ? (genType === 'All' || genType === 'Rental') : action.type === 'GENERATE_RENTAL_PAYROLL';
-
-            let newState = { ...state };
-            if (doProject) newState.projectPayslips = generateForStaff(state.projectStaff, state.projectPayslips, true);
-            if (doRental) newState.rentalPayslips = generateForStaff(state.rentalStaff, state.rentalPayslips, false);
-
-            return newState;
-        }
-
-        case 'MARK_PROJECT_PAYSLIP_PAID':
-        case 'MARK_RENTAL_PAYSLIP_PAID': {
-            const { payslipId, accountId, paymentDate, amount, description } = action.payload;
-            const isProject = action.type === 'MARK_PROJECT_PAYSLIP_PAID';
-            const list = isProject ? state.projectPayslips : state.rentalPayslips;
-            const payslip = list.find(p => p.id === payslipId);
-
-            if (!payslip) return state;
-
-            // Create Transaction
-            const catName = isProject ? 'Project Staff Salary' : 'Rental Staff Salary';
-            const categoryId = state.categories.find(c => c.name === catName)?.id;
-
-            const tx: Transaction = {
-                id: `pay-tx-${payslipId}-${Date.now()}`,
-                type: TransactionType.EXPENSE,
-                amount,
-                date: paymentDate,
-                description: description || `Salary Payment for ${payslip.month}`,
-                accountId,
-                categoryId,
-                contactId: payslip.staffId,
-                payslipId: payslip.id,
-                projectId: isProject ? action.payload.projectId : undefined, // Only for project payslips
-                buildingId: !isProject ? payslip.buildingId : undefined // Only for rental payslips
-            };
-
-            let newState = { ...state, transactions: [...state.transactions, tx] };
-            newState = applyTransactionEffect(newState, tx, true);
-
-            // Update Payslip Status (Handled in applyTransactionEffect implicitly via payslipId, but explicit here for clarity/safety if effect misses it)
-            // Actually applyTransactionEffect handles it.
-
-            return newState;
-        }
-
-        case 'DELETE_PROJECT_PAYSLIP':
-            return { ...state, projectPayslips: state.projectPayslips.filter(p => p.id !== action.payload) };
-        case 'DELETE_RENTAL_PAYSLIP':
-            return { ...state, rentalPayslips: state.rentalPayslips.filter(p => p.id !== action.payload) };
-
-        // --- ENTERPRISE PAYROLL ACTIONS ---
-        case 'ADD_EMPLOYEE': {
-            const employee = { ...action.payload, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-            const logEntry = createLogEntry('CREATE', 'Employee', employee.id, `Added employee: ${employee.employeeId}`, state.currentUser, employee);
-            return {
-                ...state,
-                employees: [...(state.employees || []), employee],
-                transactionLog: [logEntry, ...(state.transactionLog || [])]
-            };
-        }
-        case 'UPDATE_EMPLOYEE': {
-            const updated = { ...action.payload, updatedAt: new Date().toISOString() };
-            const logEntry = createLogEntry('UPDATE', 'Employee', updated.id, `Updated employee: ${updated.employeeId}`, state.currentUser, updated);
-            return {
-                ...state,
-                employees: (state.employees || []).map(e => e.id === updated.id ? updated : e),
-                transactionLog: [logEntry, ...(state.transactionLog || [])]
-            };
-        }
-        case 'DELETE_EMPLOYEE': {
-            const logEntry = createLogEntry('DELETE', 'Employee', action.payload, 'Deleted employee', state.currentUser);
-            return {
-                ...state,
-                employees: (state.employees || []).filter(e => e.id !== action.payload),
-                transactionLog: [logEntry, ...(state.transactionLog || [])]
-            };
-        }
-        case 'PROMOTE_EMPLOYEE': {
-            const { employeeId, newDesignation, newSalary, effectiveDate, newGrade, newDepartment } = action.payload;
-            const employee = (state.employees || []).find(e => e.id === employeeId);
-            if (!employee) return state;
-
-            const event: LifeCycleEvent = {
-                id: Date.now().toString(),
-                date: effectiveDate,
-                type: 'Promotion',
-                description: `Promoted to ${newDesignation}`,
-                prevSalary: employee.basicSalary,
-                newSalary,
-                prevDesignation: employee.employmentDetails.designation,
-                newDesignation,
-                prevGrade: employee.employmentDetails.grade,
-                newGrade,
-                prevDepartment: employee.employmentDetails.department,
-                newDepartment,
-                performedBy: state.currentUser?.id
-            };
-
-            const updated = {
-                ...employee,
-                basicSalary: newSalary,
-                employmentDetails: {
-                    ...employee.employmentDetails,
-                    designation: newDesignation,
-                    grade: newGrade || employee.employmentDetails.grade,
-                    department: newDepartment || employee.employmentDetails.department
-                },
-                lifecycleHistory: [event, ...employee.lifecycleHistory],
-                updatedAt: new Date().toISOString()
-            };
-
-            const logEntry = createLogEntry('UPDATE', 'Employee', employeeId, `Promoted employee: ${newDesignation}`, state.currentUser);
-            return {
-                ...state,
-                employees: (state.employees || []).map(e => e.id === employeeId ? updated : e),
-                transactionLog: [logEntry, ...(state.transactionLog || [])]
-            };
-        }
-        case 'TRANSFER_EMPLOYEE': {
-            const { employeeId, projectAssignments, effectiveDate } = action.payload;
-            const employee = (state.employees || []).find(e => e.id === employeeId);
-            if (!employee) return state;
-
-            const prevAssignments = employee.projectAssignments;
-            const event: LifeCycleEvent = {
-                id: Date.now().toString(),
-                date: effectiveDate,
-                type: 'Transfer',
-                description: `Transferred to ${projectAssignments.map(a => a.projectId).join(', ')}`,
-                prevProjectId: prevAssignments[0]?.projectId,
-                newProjectId: projectAssignments[0]?.projectId,
-                performedBy: state.currentUser?.id
-            };
-
-            const updated = {
-                ...employee,
-                projectAssignments,
-                lifecycleHistory: [event, ...employee.lifecycleHistory],
-                updatedAt: new Date().toISOString()
-            };
-
-            const logEntry = createLogEntry('UPDATE', 'Employee', employeeId, 'Transferred employee', state.currentUser);
-            return {
-                ...state,
-                employees: (state.employees || []).map(e => e.id === employeeId ? updated : e),
-                transactionLog: [logEntry, ...(state.transactionLog || [])]
-            };
-        }
-        case 'TERMINATE_EMPLOYEE': {
-            const { employeeId, terminationDetails } = action.payload;
-            const employee = (state.employees || []).find(e => e.id === employeeId);
-            if (!employee) return state;
-
-            const event: LifeCycleEvent = {
-                id: Date.now().toString(),
-                date: terminationDetails.date,
-                type: 'Exit',
-                description: `${terminationDetails.type}: ${terminationDetails.reason}`,
-                performedBy: state.currentUser?.id
-            };
-
-            const updated = {
-                ...employee,
-                status: terminationDetails.type === 'Resignation' ? 'Resigned' : 'Terminated',
-                terminationDetails,
-                lifecycleHistory: [event, ...employee.lifecycleHistory],
-                updatedAt: new Date().toISOString()
-            };
-
-            const logEntry = createLogEntry('UPDATE', 'Employee', employeeId, `Terminated employee: ${terminationDetails.type}`, state.currentUser);
-            return {
-                ...state,
-                employees: (state.employees || []).map(e => e.id === employeeId ? updated : e),
-                transactionLog: [logEntry, ...(state.transactionLog || [])]
-            };
-        }
-        case 'ADD_BONUS':
-            return { ...state, bonusRecords: [...(state.bonusRecords || []), action.payload] };
-        case 'UPDATE_BONUS':
-            return { ...state, bonusRecords: (state.bonusRecords || []).map(b => b.id === action.payload.id ? action.payload : b) };
-        case 'DELETE_BONUS':
-            return { ...state, bonusRecords: (state.bonusRecords || []).filter(b => b.id !== action.payload) };
-        case 'BULK_ADD_BONUSES':
-            return { ...state, bonusRecords: [...(state.bonusRecords || []), ...action.payload] };
-        case 'ADD_PAYROLL_ADJUSTMENT':
-            return { ...state, payrollAdjustments: [...(state.payrollAdjustments || []), action.payload] };
-        case 'UPDATE_PAYROLL_ADJUSTMENT':
-            return { ...state, payrollAdjustments: (state.payrollAdjustments || []).map(a => a.id === action.payload.id ? action.payload : a) };
-        case 'DELETE_PAYROLL_ADJUSTMENT':
-            return { ...state, payrollAdjustments: (state.payrollAdjustments || []).filter(a => a.id !== action.payload) };
-        case 'ADD_LOAN_ADVANCE':
-            return { ...state, loanAdvanceRecords: [...(state.loanAdvanceRecords || []), action.payload] };
-        case 'UPDATE_LOAN_ADVANCE':
-            return { ...state, loanAdvanceRecords: (state.loanAdvanceRecords || []).map(l => l.id === action.payload.id ? action.payload : l) };
-        case 'DELETE_LOAN_ADVANCE':
-            return { ...state, loanAdvanceRecords: (state.loanAdvanceRecords || []).filter(l => l.id !== action.payload) };
-        case 'ADD_ATTENDANCE':
-            return { ...state, attendanceRecords: [...(state.attendanceRecords || []), action.payload] };
-        case 'UPDATE_ATTENDANCE':
-            return { ...state, attendanceRecords: (state.attendanceRecords || []).map(a => a.id === action.payload.id ? action.payload : a) };
-        case 'DELETE_ATTENDANCE':
-            return { ...state, attendanceRecords: (state.attendanceRecords || []).filter(a => a.id !== action.payload) };
-        case 'BULK_ADD_ATTENDANCE':
-            return { ...state, attendanceRecords: [...(state.attendanceRecords || []), ...action.payload] };
-        case 'CREATE_PAYROLL_CYCLE':
-            return { ...state, payrollCycles: [...(state.payrollCycles || []), action.payload] };
-        case 'UPDATE_PAYROLL_CYCLE':
-            return { ...state, payrollCycles: (state.payrollCycles || []).map(c => c.id === action.payload.id ? action.payload : c) };
-        case 'LOCK_PAYROLL_CYCLE': {
-            const { cycleId, lockedBy } = action.payload;
-            return {
-                ...state,
-                payrollCycles: (state.payrollCycles || []).map(c =>
-                    c.id === cycleId
-                        ? { ...c, status: 'Locked' as const, lockedAt: new Date().toISOString(), lockedBy }
-                        : c
-                )
-            };
-        }
-        case 'APPROVE_PAYROLL_CYCLE': {
-            const { cycleId, approvedBy } = action.payload;
-            return {
-                ...state,
-                payrollCycles: (state.payrollCycles || []).map(c =>
-                    c.id === cycleId
-                        ? { ...c, status: 'Approved' as const, approvedAt: new Date().toISOString(), approvedBy }
-                        : c
-                )
-            };
-        }
-        case 'PROCESS_PAYROLL_CYCLE': {
-            // This will use the payroll engine to generate payslips
-            // For now, return state - the actual processing will be handled by the component
-            return state;
-        }
-        case 'ADD_PAYSLIP':
-            return { ...state, payslips: [...(state.payslips || []), action.payload] };
-        case 'UPDATE_PAYSLIP': {
-            const updated = action.payload as Payslip;
-            // Update in all payslip lists (legacy and enterprise)
-            const updateList = (list: Payslip[]) => list.map(p => p.id === updated.id ? updated : p);
-            return {
-                ...state,
-                projectPayslips: updateList(state.projectPayslips),
-                rentalPayslips: updateList(state.rentalPayslips),
-                payslips: updateList(state.payslips || [])
-            };
-        }
-        case 'MARK_PAYSLIP_PAID': {
-            const { payslipId, accountId, paymentDate, amount, description } = action.payload;
-            const payslip = (state.payslips || []).find(p => p.id === payslipId);
-            if (!payslip) return state;
-
-            // Find employee salary category or use default system category
-            const salaryCategoryId = state.categories.find(c => 
-                c.id === 'sys-cat-emp-sal' || c.name === 'Employee Salary' || c.name === 'Staff Salary'
-            )?.id || 'sys-cat-emp-sal'; // Fallback to system category ID
-
-            // Get employee for contactId
-            const employee = (state.employees || []).find(e => e.id === payslip.employeeId);
-            
-            // Create transaction(s) based on cost allocations
-            // If payslip has cost allocations, create multiple transactions
-            const transactions: Transaction[] = [];
-            
-            if (payslip.costAllocations && payslip.costAllocations.length > 0) {
-                // Multi-project allocation - create separate transaction for each project
-                payslip.costAllocations.forEach(allocation => {
-                    const allocationAmount = amount * (allocation.percentage / 100);
-                    transactions.push({
-                        id: `pay-tx-${payslipId}-${allocation.projectId}-${Date.now()}`,
-                        type: TransactionType.EXPENSE,
-                        amount: allocationAmount,
-                        date: paymentDate,
-                        description: description || `Salary Payment for ${payslip.month} - ${allocation.projectId}`,
-                        accountId,
-                        categoryId: salaryCategoryId,
-                        contactId: payslip.employeeId,
-                        projectId: allocation.projectId,
-                        payslipId: payslip.id
-                    });
-                });
-            } else {
-                // Single transaction - use first project assignment if exists
-                const projectId = employee?.projectAssignments?.[0]?.projectId;
-                
-                transactions.push({
-                    id: `pay-tx-${payslipId}-${Date.now()}`,
-                    type: TransactionType.EXPENSE,
-                    amount,
-                    date: paymentDate,
-                    description: description || `Salary Payment for ${payslip.month}`,
-                    accountId,
-                    categoryId: salaryCategoryId,
-                    contactId: payslip.employeeId,
-                    projectId,
-                    payslipId: payslip.id
-                });
-            }
-
-            let newState = { ...state, transactions: [...state.transactions, ...transactions] };
-            
-            // Apply transaction effects
-            transactions.forEach(tx => {
-                newState = applyTransactionEffect(newState, tx, true);
-            });
-
-            // Update payslip status and payment details
-            const updatedPayslip: Payslip = {
-                ...payslip,
-                paidAmount: (payslip.paidAmount || 0) + amount,
-                paymentDate,
-                paymentAccountId: accountId,
-                status: (payslip.paidAmount || 0) + amount >= payslip.netSalary - 0.01 
-                    ? PayslipStatus.PAID 
-                    : PayslipStatus.PARTIALLY_PAID
-            };
-
-            newState = {
-                ...newState,
-                payslips: (newState.payslips || []).map(p => p.id === payslipId ? updatedPayslip : p)
-            };
-
-            return newState;
-        }
-        case 'BULK_APPROVE_PAYSLIPS': {
-            const { payslipIds, approvedBy } = action.payload;
-            return {
-                ...state,
-                payslips: (state.payslips || []).map(p =>
-                    payslipIds.includes(p.id)
-                        ? { ...p, status: 'Approved' as const, approvedAt: new Date().toISOString(), approvedBy }
-                        : p
-                )
-            };
-        }
-        case 'BULK_PAY_PAYSLIPS': {
-            const { payslipIds, accountId, paymentDate } = action.payload;
-            // Create transactions for each payslip payment
-            const transactions = (state.payslips || [])
-                .filter(p => payslipIds.includes(p.id))
-                .map(payslip => ({
-                    id: `pay-tx-${payslip.id}-${Date.now()}`,
-                    type: TransactionType.EXPENSE as const,
-                    amount: payslip.netSalary,
-                    date: paymentDate,
-                    description: `Salary Payment for ${payslip.month}`,
-                    accountId,
-                    payslipId: payslip.id,
-                    contactId: payslip.employeeId
-                }));
-
-            let newState = {
-                ...state,
-                transactions: [...state.transactions, ...transactions],
-                payslips: (state.payslips || []).map(p =>
-                    payslipIds.includes(p.id)
-                        ? { ...p, status: 'Paid' as const, paidAmount: p.netSalary, paymentDate, paymentAccountId: accountId }
-                        : p
-                )
-            };
-
-            // Apply transaction effects
-            transactions.forEach(tx => {
-                newState = applyTransactionEffect(newState, tx, true);
-            });
-
-            return newState;
-        }
-        case 'ADD_TAX_CONFIGURATION':
-            return { ...state, taxConfigurations: [...(state.taxConfigurations || []), action.payload] };
-        case 'UPDATE_TAX_CONFIGURATION':
-            return { ...state, taxConfigurations: (state.taxConfigurations || []).map(t => t.id === action.payload.id ? action.payload : t) };
-        case 'DELETE_TAX_CONFIGURATION':
-            return { ...state, taxConfigurations: (state.taxConfigurations || []).filter(t => t.id !== action.payload) };
-        case 'ADD_STATUTORY_CONFIGURATION':
-            return { ...state, statutoryConfigurations: [...(state.statutoryConfigurations || []), action.payload] };
-        case 'UPDATE_STATUTORY_CONFIGURATION':
-            return { ...state, statutoryConfigurations: (state.statutoryConfigurations || []).map(s => s.id === action.payload.id ? action.payload : s) };
-        case 'DELETE_STATUTORY_CONFIGURATION':
-            return { ...state, statutoryConfigurations: (state.statutoryConfigurations || []).filter(s => s.id !== action.payload) };
 
         // --- SETTINGS ---
         case 'UPDATE_DASHBOARD_CONFIG':
@@ -1519,7 +898,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, errorLog: [] };
 
         case 'RESET_TRANSACTIONS': {
-            const logEntry = createLogEntry('CLEAR_ALL', 'Transactions', undefined, 'Cleared all transactions, invoices, bills, contracts, agreements, sales returns, and payslips', state.currentUser, undefined);
+            const logEntry = createLogEntry('CLEAR_ALL', 'Transactions', undefined, 'Cleared all transactions, invoices, bills, contracts, agreements, and sales returns', state.currentUser, undefined);
             return {
                 ...state,
                 transactions: [],
@@ -1529,8 +908,6 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                 rentalAgreements: [],
                 projectAgreements: [],
                 salesReturns: [],
-                projectPayslips: [],
-                rentalPayslips: [],
                 // Preserve settings: recurringInvoiceTemplates, accounts (balances reset), contacts, categories, projects, buildings, properties, units
                 accounts: state.accounts.map(acc => ({ ...acc, balance: 0 })),
                 transactionLog: [logEntry, ...(state.transactionLog || [])]
@@ -1819,12 +1196,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                             BillsRepository, BudgetsRepository, RentalAgreementsRepository,
                                             ProjectAgreementsRepository, ContractsRepository,
                                             QuotationsRepository, DocumentsRepository,
-                                            RecurringTemplatesRepository, SalaryComponentsRepository,
-                                            StaffRepository, EmployeesRepository, PayrollCyclesRepository,
-                                            PayslipsRepository, LegacyPayslipsRepository, BonusRecordsRepository,
-                                            PayrollAdjustmentsRepository, LoanAdvanceRecordsRepository,
-                                            AttendanceRecordsRepository, TaxConfigurationsRepository,
-                                            StatutoryConfigurationsRepository, PMCycleAllocationsRepository } = await import('../services/database/repositories/index');
+                                            RecurringTemplatesRepository, PMCycleAllocationsRepository } = await import('../services/database/repositories/index');
                                     
                                     // Clear all tenant-specific data to start fresh
                                     // This ensures no cross-tenant data leakage
@@ -1845,18 +1217,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     const quotationsRepo = new QuotationsRepository();
                                     const documentsRepo = new DocumentsRepository();
                                     const recurringTemplatesRepo = new RecurringTemplatesRepository();
-                                    const salaryComponentsRepo = new SalaryComponentsRepository();
-                                    const staffRepo = new StaffRepository();
-                                    const employeesRepo = new EmployeesRepository();
-                                    const payrollCyclesRepo = new PayrollCyclesRepository();
-                                    const payslipsRepo = new PayslipsRepository();
-                                    const legacyPayslipsRepo = new LegacyPayslipsRepository();
-                                    const bonusRecordsRepo = new BonusRecordsRepository();
-                                    const payrollAdjustmentsRepo = new PayrollAdjustmentsRepository();
-                                    const loanAdvanceRecordsRepo = new LoanAdvanceRecordsRepository();
-                                    const attendanceRecordsRepo = new AttendanceRecordsRepository();
-                                    const taxConfigurationsRepo = new TaxConfigurationsRepository();
-                                    const statutoryConfigurationsRepo = new StatutoryConfigurationsRepository();
                                     const pmCycleAllocationsRepo = new PMCycleAllocationsRepository();
                                     
                             // Delete ALL data (from all tenants) to ensure clean state when switching tenants
@@ -1878,18 +1238,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             quotationsRepo.deleteAllUnfiltered();
                             documentsRepo.deleteAllUnfiltered();
                             recurringTemplatesRepo.deleteAllUnfiltered();
-                            salaryComponentsRepo.deleteAllUnfiltered();
-                            staffRepo.deleteAllUnfiltered();
-                            employeesRepo.deleteAllUnfiltered();
-                            payrollCyclesRepo.deleteAllUnfiltered();
-                            payslipsRepo.deleteAllUnfiltered();
-                            legacyPayslipsRepo.deleteAllUnfiltered();
-                            bonusRecordsRepo.deleteAllUnfiltered();
-                            payrollAdjustmentsRepo.deleteAllUnfiltered();
-                            loanAdvanceRecordsRepo.deleteAllUnfiltered();
-                            attendanceRecordsRepo.deleteAllUnfiltered();
-                            taxConfigurationsRepo.deleteAllUnfiltered();
-                            statutoryConfigurationsRepo.deleteAllUnfiltered();
                             pmCycleAllocationsRepo.deleteAllUnfiltered();
                                     
                                     console.log('🗑️ Cleared local database data to prevent cross-tenant leakage');
@@ -2219,10 +1567,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 'ADD_PM_CYCLE_ALLOCATION',
                 'UPDATE_PM_CYCLE_ALLOCATION',
                 'DELETE_PM_CYCLE_ALLOCATION',
-                // Employees
-                'ADD_EMPLOYEE',
-                'UPDATE_EMPLOYEE',
-                'DELETE_EMPLOYEE',
             ]);
 
             if (!SYNC_TO_API_ACTIONS.has(action.type)) {
@@ -2382,67 +1726,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 console.error(`⚠️ Failed to sync contact deletion ${contactId} to API:`, {
                                     error: err,
                                     contactId: contactId,
-                                    errorMessage: err?.message || err?.error || 'Unknown error',
-                                    status: err?.status
-                                });
-                                throw err;
-                            }
-                        }
-
-                        // Handle employee changes
-                        if (action.type === 'ADD_EMPLOYEE') {
-                            const employee = action.payload;
-                            logger.logCategory('sync', `🔄 Starting sync for ADD_EMPLOYEE: ${employee.employeeId} (${employee.id})`);
-                            try {
-                                logger.logCategory('sync', `📤 Calling apiService.saveEmployee for: ${employee.employeeId}`);
-                                const savedEmployee = await apiService.saveEmployee(employee);
-                                logger.logCategory('sync', `✅ Successfully synced employee to API: ${savedEmployee.employeeId} (${savedEmployee.id})`);
-                            } catch (err: any) {
-                                logger.errorCategory('sync', `❌ FAILED to sync employee ${employee.employeeId} to API:`, {
-                                    error: err,
-                                    errorMessage: err?.message || err?.error || 'Unknown error',
-                                    status: err?.status,
-                                    statusText: err?.statusText,
-                                    employee: {
-                                        id: employee.id,
-                                        employeeId: employee.employeeId,
-                                        name: employee.personalDetails?.firstName + ' ' + employee.personalDetails?.lastName
-                                    },
-                                    fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
-                                });
-                                // Don't re-throw - log and continue, data is saved locally
-                            }
-                        } else if (action.type === 'UPDATE_EMPLOYEE') {
-                            const employee = action.payload;
-                            logger.logCategory('sync', `🔄 Starting sync for UPDATE_EMPLOYEE: ${employee.employeeId} (${employee.id})`);
-                            try {
-                                logger.logCategory('sync', `📤 Calling apiService.saveEmployee for update: ${employee.employeeId}`);
-                                const savedEmployee = await apiService.saveEmployee(employee);
-                                logger.logCategory('sync', `✅ Successfully synced employee update to API: ${savedEmployee.employeeId} (${savedEmployee.id})`);
-                            } catch (err: any) {
-                                logger.errorCategory('sync', `❌ FAILED to sync employee update ${employee.employeeId} to API:`, {
-                                    error: err,
-                                    errorMessage: err?.message || err?.error || 'Unknown error',
-                                    status: err?.status,
-                                    statusText: err?.statusText,
-                                    employee: {
-                                        id: employee.id,
-                                        employeeId: employee.employeeId,
-                                        name: employee.personalDetails?.firstName + ' ' + employee.personalDetails?.lastName
-                                    },
-                                    fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
-                                });
-                                // Don't re-throw - log and continue
-                            }
-                        } else if (action.type === 'DELETE_EMPLOYEE') {
-                            const employeeId = action.payload as string;
-                            try {
-                                await apiService.deleteEmployee(employeeId);
-                                logger.logCategory('sync', '✅ Synced employee deletion to API:', employeeId);
-                            } catch (err: any) {
-                                console.error(`⚠️ Failed to sync employee deletion ${employeeId} to API:`, {
-                                    error: err,
-                                    employeeId: employeeId,
                                     errorMessage: err?.message || err?.error || 'Unknown error',
                                     status: err?.status
                                 });
@@ -2962,12 +2245,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         return { type: 'sales_return', action: 'update', data: action.payload };
                     case 'DELETE_SALES_RETURN':
                         return { type: 'sales_return', action: 'delete', data: { id: action.payload } };
-                    case 'ADD_EMPLOYEE':
-                        return { type: 'employee', action: 'create', data: action.payload };
-                    case 'UPDATE_EMPLOYEE':
-                        return { type: 'employee', action: 'update', data: action.payload };
-                    case 'DELETE_EMPLOYEE':
-                        return { type: 'employee', action: 'delete', data: { id: action.payload } };
                     default:
                         return null;
                 }
@@ -3327,7 +2604,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         unitId: t.unit_id ?? t.unitId ?? undefined,
                         invoiceId: t.invoice_id ?? t.invoiceId ?? undefined,
                         billId: t.bill_id ?? t.billId ?? undefined,
-                        payslipId: t.payslip_id ?? t.payslipId ?? undefined,
                         contractId: t.contract_id ?? t.contractId ?? undefined,
                         agreementId: t.agreement_id ?? t.agreementId ?? undefined,
                         batchId: t.batch_id ?? t.batchId ?? undefined,
@@ -3583,80 +2859,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     if (!id) return;
                     dispatch({ 
                         type: 'DELETE_RENTAL_AGREEMENT', 
-                        payload: id,
-                        _isRemote: true 
-                    } as any);
-                }));
-
-                // Loan Advance Record events
-                unsubSpecific.push(ws.on('loan_advance_record:created', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const payloadRecord = data?.record ?? data;
-                    if (!payloadRecord || !payloadRecord.id) return;
-                    
-                    // Normalize snake_case to camelCase
-                    const normalized: any = {
-                        id: payloadRecord.id,
-                        employeeId: payloadRecord.employee_id || payloadRecord.employeeId,
-                        type: payloadRecord.type,
-                        amount: typeof payloadRecord.amount === 'number' ? payloadRecord.amount : parseFloat(payloadRecord.amount || '0'),
-                        issuedDate: payloadRecord.issued_date || payloadRecord.issuedDate,
-                        repaymentStartDate: payloadRecord.repayment_start_date || payloadRecord.repaymentStartDate,
-                        totalInstallments: payloadRecord.total_installments !== undefined ? payloadRecord.total_installments : payloadRecord.totalInstallments,
-                        installmentAmount: payloadRecord.installment_amount !== undefined ? payloadRecord.installment_amount : payloadRecord.installmentAmount,
-                        repaymentFrequency: payloadRecord.repayment_frequency || payloadRecord.repaymentFrequency || 'Monthly',
-                        outstandingBalance: typeof payloadRecord.outstanding_balance === 'number' ? payloadRecord.outstanding_balance : (typeof payloadRecord.outstandingBalance === 'number' ? payloadRecord.outstandingBalance : parseFloat(payloadRecord.outstanding_balance || payloadRecord.outstandingBalance || '0')),
-                        status: payloadRecord.status || 'Active',
-                        description: payloadRecord.description || undefined,
-                        transactionId: payloadRecord.transaction_id || payloadRecord.transactionId || undefined,
-                    };
-                    
-                    const exists = stateRef.current.loanAdvanceRecords?.some(r => r.id === normalized.id);
-                    if (!exists) {
-                        dispatch({ 
-                            type: 'ADD_LOAN_ADVANCE', 
-                            payload: normalized,
-                            _isRemote: true 
-                        } as any);
-                    }
-                }));
-                unsubSpecific.push(ws.on('loan_advance_record:updated', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const payloadRecord = data?.record ?? data;
-                    if (!payloadRecord || !payloadRecord.id) return;
-                    
-                    // Normalize snake_case to camelCase
-                    const normalized: any = {
-                        id: payloadRecord.id,
-                        employeeId: payloadRecord.employee_id || payloadRecord.employeeId,
-                        type: payloadRecord.type,
-                        amount: typeof payloadRecord.amount === 'number' ? payloadRecord.amount : parseFloat(payloadRecord.amount || '0'),
-                        issuedDate: payloadRecord.issued_date || payloadRecord.issuedDate,
-                        repaymentStartDate: payloadRecord.repayment_start_date || payloadRecord.repaymentStartDate,
-                        totalInstallments: payloadRecord.total_installments !== undefined ? payloadRecord.total_installments : payloadRecord.totalInstallments,
-                        installmentAmount: payloadRecord.installment_amount !== undefined ? payloadRecord.installment_amount : payloadRecord.installmentAmount,
-                        repaymentFrequency: payloadRecord.repayment_frequency || payloadRecord.repaymentFrequency || 'Monthly',
-                        outstandingBalance: typeof payloadRecord.outstanding_balance === 'number' ? payloadRecord.outstanding_balance : (typeof payloadRecord.outstandingBalance === 'number' ? payloadRecord.outstandingBalance : parseFloat(payloadRecord.outstanding_balance || payloadRecord.outstandingBalance || '0')),
-                        status: payloadRecord.status || 'Active',
-                        description: payloadRecord.description || undefined,
-                        transactionId: payloadRecord.transaction_id || payloadRecord.transactionId || undefined,
-                    };
-                    
-                    const existing = stateRef.current.loanAdvanceRecords?.find(r => r.id === normalized.id);
-                    const merged = existing ? { ...existing, ...normalized } : normalized;
-                    
-                    dispatch({ 
-                        type: existing ? 'UPDATE_LOAN_ADVANCE' : 'ADD_LOAN_ADVANCE', 
-                        payload: merged,
-                        _isRemote: true 
-                    } as any);
-                }));
-                unsubSpecific.push(ws.on('loan_advance_record:deleted', (data: any) => {
-                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
-                    const id = data?.recordId ?? data?.id;
-                    if (!id) return;
-                    dispatch({ 
-                        type: 'DELETE_LOAN_ADVANCE', 
                         payload: id,
                         _isRemote: true 
                     } as any);

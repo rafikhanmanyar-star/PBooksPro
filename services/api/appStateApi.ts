@@ -24,17 +24,6 @@ import { SalesReturnsApiRepository } from './repositories/salesReturnsApi';
 import { QuotationsApiRepository } from './repositories/quotationsApi';
 import { DocumentsApiRepository } from './repositories/documentsApi';
 import { RecurringInvoiceTemplatesApiRepository } from './repositories/recurringInvoiceTemplatesApi';
-import { SalaryComponentsApiRepository } from './repositories/salaryComponentsApi';
-import { EmployeesApiRepository } from './repositories/employeesApi';
-import { PayrollCyclesApiRepository } from './repositories/payrollCyclesApi';
-import { PayslipsApiRepository } from './repositories/payslipsApi';
-import { LegacyPayslipsApiRepository } from './repositories/legacyPayslipsApi';
-import { BonusRecordsApiRepository } from './repositories/bonusRecordsApi';
-import { PayrollAdjustmentsApiRepository } from './repositories/payrollAdjustmentsApi';
-import { LoanAdvanceRecordsApiRepository } from './repositories/loanAdvanceRecordsApi';
-import { AttendanceRecordsApiRepository } from './repositories/attendanceRecordsApi';
-import { TaxConfigurationsApiRepository } from './repositories/taxConfigurationsApi';
-import { StatutoryConfigurationsApiRepository } from './repositories/statutoryConfigurationsApi';
 import { AppSettingsApiRepository } from './repositories/appSettingsApi';
 import { PMCycleAllocationsApiRepository } from './repositories/pmCycleAllocationsApi';
 import { TransactionLogApiRepository } from './repositories/transactionLogApi';
@@ -59,17 +48,6 @@ export class AppStateApiService {
   private quotationsRepo: QuotationsApiRepository;
   private documentsRepo: DocumentsApiRepository;
   private recurringInvoiceTemplatesRepo: RecurringInvoiceTemplatesApiRepository;
-  private salaryComponentsRepo: SalaryComponentsApiRepository;
-  private employeesRepo: EmployeesApiRepository;
-  private payrollCyclesRepo: PayrollCyclesApiRepository;
-  private payslipsRepo: PayslipsApiRepository;
-  private legacyPayslipsRepo: LegacyPayslipsApiRepository;
-  private bonusRecordsRepo: BonusRecordsApiRepository;
-  private payrollAdjustmentsRepo: PayrollAdjustmentsApiRepository;
-  private loanAdvanceRecordsRepo: LoanAdvanceRecordsApiRepository;
-  private attendanceRecordsRepo: AttendanceRecordsApiRepository;
-  private taxConfigurationsRepo: TaxConfigurationsApiRepository;
-  private statutoryConfigurationsRepo: StatutoryConfigurationsApiRepository;
   private appSettingsRepo: AppSettingsApiRepository;
   private pmCycleAllocationsRepo: PMCycleAllocationsApiRepository;
   private transactionLogRepo: TransactionLogApiRepository;
@@ -93,17 +71,6 @@ export class AppStateApiService {
     this.quotationsRepo = new QuotationsApiRepository();
     this.documentsRepo = new DocumentsApiRepository();
     this.recurringInvoiceTemplatesRepo = new RecurringInvoiceTemplatesApiRepository();
-    this.salaryComponentsRepo = new SalaryComponentsApiRepository();
-    this.employeesRepo = new EmployeesApiRepository();
-    this.payrollCyclesRepo = new PayrollCyclesApiRepository();
-    this.payslipsRepo = new PayslipsApiRepository();
-    this.legacyPayslipsRepo = new LegacyPayslipsApiRepository();
-    this.bonusRecordsRepo = new BonusRecordsApiRepository();
-    this.payrollAdjustmentsRepo = new PayrollAdjustmentsApiRepository();
-    this.loanAdvanceRecordsRepo = new LoanAdvanceRecordsApiRepository();
-    this.attendanceRecordsRepo = new AttendanceRecordsApiRepository();
-    this.taxConfigurationsRepo = new TaxConfigurationsApiRepository();
-    this.statutoryConfigurationsRepo = new StatutoryConfigurationsApiRepository();
     this.appSettingsRepo = new AppSettingsApiRepository();
     this.pmCycleAllocationsRepo = new PMCycleAllocationsApiRepository();
     this.transactionLogRepo = new TransactionLogApiRepository();
@@ -137,17 +104,6 @@ export class AppStateApiService {
         quotations,
         documents,
         recurringInvoiceTemplates,
-        salaryComponents,
-        employees,
-        payrollCycles,
-        payslips,
-        legacyPayslips,
-        bonusRecords,
-        payrollAdjustments,
-        loanAdvanceRecords,
-        attendanceRecords,
-        taxConfigurations,
-        statutoryConfigurations,
         pmCycleAllocations,
         transactionLog
       ] = await Promise.all([
@@ -223,50 +179,6 @@ export class AppStateApiService {
           console.error('Error loading recurring invoice templates from API:', err);
           return [];
         }),
-        this.salaryComponentsRepo.findAll().catch(err => {
-          console.error('Error loading salary components from API:', err);
-          return [];
-        }),
-        this.employeesRepo.findAll().catch(err => {
-          console.error('Error loading employees from API:', err);
-          return [];
-        }),
-        this.payrollCyclesRepo.findAll().catch(err => {
-          console.error('Error loading payroll cycles from API:', err);
-          return [];
-        }),
-        this.payslipsRepo.findAll().catch(err => {
-          console.error('Error loading payslips from API:', err);
-          return [];
-        }),
-        this.legacyPayslipsRepo.findAll().catch(err => {
-          console.error('Error loading legacy payslips from API:', err);
-          return [];
-        }),
-        this.bonusRecordsRepo.findAll().catch(err => {
-          console.error('Error loading bonus records from API:', err);
-          return [];
-        }),
-        this.payrollAdjustmentsRepo.findAll().catch(err => {
-          console.error('Error loading payroll adjustments from API:', err);
-          return [];
-        }),
-        this.loanAdvanceRecordsRepo.findAll().catch(err => {
-          console.error('Error loading loan/advance records from API:', err);
-          return [];
-        }),
-        this.attendanceRecordsRepo.findAll().catch(err => {
-          console.error('Error loading attendance records from API:', err);
-          return [];
-        }),
-        this.taxConfigurationsRepo.findAll().catch(err => {
-          console.error('Error loading tax configurations from API:', err);
-          return [];
-        }),
-        this.statutoryConfigurationsRepo.findAll().catch(err => {
-          console.error('Error loading statutory configurations from API:', err);
-          return [];
-        }),
         this.pmCycleAllocationsRepo.findAll().catch(err => {
           console.error('Error loading PM cycle allocations from API:', err);
           return [];
@@ -296,17 +208,6 @@ export class AppStateApiService {
         quotations: quotations.length,
         documents: documents.length,
         recurringInvoiceTemplates: recurringInvoiceTemplates.length,
-        salaryComponents: salaryComponents.length,
-        employees: employees.length,
-        payrollCycles: payrollCycles.length,
-        payslips: payslips.length,
-        legacyPayslips: legacyPayslips.length,
-        bonusRecords: bonusRecords.length,
-        payrollAdjustments: payrollAdjustments.length,
-        loanAdvanceRecords: loanAdvanceRecords.length,
-        attendanceRecords: attendanceRecords.length,
-        taxConfigurations: taxConfigurations.length,
-        statutoryConfigurations: statutoryConfigurations.length,
         pmCycleAllocations: pmCycleAllocations.length,
       });
 
@@ -368,47 +269,6 @@ export class AppStateApiService {
           return typeof price === 'number' ? price : parseFloat(String(price));
         })(),
         description: u.description || undefined
-      }));
-
-      // Normalize employees from API (transform snake_case to camelCase)
-      const normalizedEmployees = employees.map((e: any) => ({
-        id: e.id,
-        employeeId: e.employeeId || e.employee_id || '',
-        personalDetails: parseJsonSafe(e.personalDetails ?? e.personal_details, {
-          firstName: '',
-          lastName: '',
-        }),
-        employmentDetails: parseJsonSafe(e.employmentDetails ?? e.employment_details, {
-          designation: '',
-          joiningDate: new Date().toISOString().split('T')[0],
-          employmentType: 'Full-Time',
-        }),
-        status: e.status || 'Active',
-        basicSalary: (() => {
-          const salary = e.basicSalary ?? e.basic_salary;
-          if (salary == null) return 0;
-          return typeof salary === 'number' ? salary : parseFloat(String(salary));
-        })(),
-        salaryStructure: parseJsonSafe(e.salaryStructure ?? e.salary_structure, []),
-        projectAssignments: parseJsonSafe(e.projectAssignments ?? e.project_assignments, []),
-        bankDetails: parseJsonSafe(e.bankDetails ?? e.bank_details, undefined),
-        documents: parseJsonSafe(e.documents ?? e.documents, []),
-        lifecycleHistory: parseJsonSafe(e.lifecycleHistory ?? e.lifecycle_history, []),
-        terminationDetails: parseJsonSafe(e.terminationDetails ?? e.termination_details, undefined),
-        advanceBalance: (() => {
-          const balance = e.advanceBalance ?? e.advance_balance;
-          if (balance == null) return 0;
-          return typeof balance === 'number' ? balance : parseFloat(String(balance));
-        })(),
-        loanBalance: (() => {
-          const balance = e.loanBalance ?? e.loan_balance;
-          if (balance == null) return 0;
-          return typeof balance === 'number' ? balance : parseFloat(String(balance));
-        })(),
-        createdAt: e.createdAt || e.created_at || new Date().toISOString(),
-        updatedAt: e.updatedAt || e.updated_at || new Date().toISOString(),
-        createdBy: e.createdBy || e.user_id || undefined,
-        updatedBy: e.updatedBy || e.user_id || undefined
       }));
 
       // Normalize categories from API (transform snake_case to camelCase)
@@ -737,17 +597,6 @@ export class AppStateApiService {
         quotations: quotations || [],
         documents: documents || [],
         recurringInvoiceTemplates: recurringInvoiceTemplates || [],
-        salaryComponents: salaryComponents || [],
-        employees: normalizedEmployees || [],
-        payrollCycles: payrollCycles || [],
-        payslips: payslips || [],
-        legacyPayslips: legacyPayslips || [],
-        bonusRecords: bonusRecords || [],
-        payrollAdjustments: payrollAdjustments || [],
-        loanAdvanceRecords: loanAdvanceRecords || [],
-        attendanceRecords: attendanceRecords || [],
-        taxConfigurations: taxConfigurations || [],
-        statutoryConfigurations: statutoryConfigurations || [],
         pmCycleAllocations: pmCycleAllocations || [],
         transactionLog: transactionLog || [],
       };
@@ -875,82 +724,6 @@ export class AppStateApiService {
    */
   async deleteContact(id: string): Promise<void> {
     return this.contactsRepo.delete(id);
-  }
-
-  /**
-   * Save employee to API
-   */
-  async saveEmployee(employee: Partial<AppState['employees'][0]>): Promise<AppState['employees'][0]> {
-    logger.logCategory('sync', '💾 AppStateApiService.saveEmployee called:', {
-      id: employee.id,
-      employeeId: employee.employeeId,
-      name: employee.personalDetails ? `${employee.personalDetails.firstName} ${employee.personalDetails.lastName}` : 'Unknown',
-      isUpdate: !!employee.id
-    });
-    
-    // Validate required fields
-    if (!employee.employeeId) {
-      const error = new Error('Employee ID is required');
-      logger.errorCategory('sync', '❌ AppStateApiService.saveEmployee validation failed: employeeId missing');
-      throw error;
-    }
-    
-    try {
-      // Ensure employee has an ID
-      const employeeWithId = {
-        ...employee,
-        id: employee.id || `employee_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      };
-      
-      // Always use POST endpoint for employees - it handles upserts automatically
-      logger.logCategory('sync', `💾 Syncing employee (POST upsert): ${employeeWithId.id} - ${employeeWithId.employeeId}`);
-      const saved = await this.employeesRepo.create(employeeWithId);
-      
-      // Normalize the response
-      const normalized = {
-        id: saved.id,
-        employeeId: saved.employeeId,
-        personalDetails: typeof saved.personalDetails === 'string' ? JSON.parse(saved.personalDetails) : saved.personalDetails,
-        employmentDetails: typeof saved.employmentDetails === 'string' ? JSON.parse(saved.employmentDetails) : saved.employmentDetails,
-        status: saved.status,
-        basicSalary: typeof saved.basicSalary === 'number' ? saved.basicSalary : parseFloat(String((saved as any).basic_salary || saved.basicSalary || '0')),
-        salaryStructure: typeof saved.salaryStructure === 'string' ? JSON.parse(saved.salaryStructure) : saved.salaryStructure,
-        projectAssignments: typeof saved.projectAssignments === 'string' ? JSON.parse(saved.projectAssignments) : (saved.projectAssignments || []),
-        bankDetails: saved.bankDetails ? (typeof saved.bankDetails === 'string' ? JSON.parse(saved.bankDetails) : saved.bankDetails) : undefined,
-        documents: typeof saved.documents === 'string' ? JSON.parse(saved.documents) : (saved.documents || []),
-        lifecycleHistory: typeof saved.lifecycleHistory === 'string' ? JSON.parse(saved.lifecycleHistory) : (saved.lifecycleHistory || []),
-        terminationDetails: saved.terminationDetails ? (typeof saved.terminationDetails === 'string' ? JSON.parse(saved.terminationDetails) : saved.terminationDetails) : undefined,
-        advanceBalance: typeof saved.advanceBalance === 'number' ? saved.advanceBalance : parseFloat(String((saved as any).advance_balance || saved.advanceBalance || '0')),
-        loanBalance: typeof saved.loanBalance === 'number' ? saved.loanBalance : parseFloat(String((saved as any).loan_balance || saved.loanBalance || '0'))
-      };
-
-      // Log whether it was created or updated
-      if (employee.id) {
-        logger.logCategory('sync', `✅ Employee synced (upsert) successfully: ${normalized.employeeId} (${normalized.id})`);
-      } else {
-        logger.logCategory('sync', `✅ Employee created successfully: ${normalized.employeeId} (${normalized.id})`);
-      }
-      
-      return normalized;
-    } catch (error: any) {
-      logger.errorCategory('sync', '❌ AppStateApiService.saveEmployee failed:', {
-        error: error,
-        errorMessage: error?.message || error?.error || 'Unknown error',
-        status: error?.status,
-        employee: {
-          id: employee.id,
-          employeeId: employee.employeeId
-        }
-      });
-      throw error;
-    }
-  }
-
-  /**
-   * Delete employee from API
-   */
-  async deleteEmployee(id: string): Promise<void> {
-    return this.employeesRepo.delete(id);
   }
 
   /**

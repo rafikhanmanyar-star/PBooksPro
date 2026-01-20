@@ -179,7 +179,7 @@
         <div class="container">
             <!-- Search -->
             <div class="help-search">
-                <input type="text" id="helpSearch" placeholder="Search for help topics... (e.g., 'invoice', 'transaction', 'payroll')" autocomplete="off">
+                <input type="text" id="helpSearch" placeholder="Search for help topics... (e.g., 'invoice', 'transaction', 'rental')" autocomplete="off">
             </div>
 
             <!-- Category Filters -->
@@ -189,7 +189,6 @@
                 <button class="category-btn" data-category="general-finance">General Finance</button>
                 <button class="category-btn" data-category="rental-management">Rental Management</button>
                 <button class="category-btn" data-category="project-management">Project Management</button>
-                <button class="category-btn" data-category="payroll">Payroll</button>
                 <button class="category-btn" data-category="advanced-tools">Advanced Tools</button>
             </div>
 
@@ -208,9 +207,6 @@
                     </a>
                     <a href="#project-setup" class="quick-link">
                         <i class="fas fa-hard-hat"></i> Project Setup
-                    </a>
-                    <a href="#payroll" class="quick-link">
-                        <i class="fas fa-users"></i> Payroll System
                     </a>
                     <a href="#reports" class="quick-link">
                         <i class="fas fa-chart-bar"></i> Reports & Analytics
@@ -234,7 +230,6 @@
                             <li><strong>General Ledger:</strong> Robust tracking of income, expenses, assets, and liabilities with double-entry principles.</li>
                             <li><strong>Rental Management:</strong> End-to-end workflow from tenant agreements to automated invoicing and owner payouts.</li>
                             <li><strong>Project Management:</strong> Advanced costing for construction projects, including installment plans and investor equity tracking.</li>
-                            <li><strong>Payroll:</strong> Integrated staff management and salary processing with multi-project allocation.</li>
                             <li><strong>Reports & Analytics:</strong> Comprehensive reporting and KPI dashboard for real-time insights.</li>
                         </ul>
                     </div>
@@ -297,7 +292,7 @@
                             <li><strong>Filtering:</strong> Filter by date range, account, category, project, or contact. Export to Excel for analysis.</li>
                             <li><strong>Search:</strong> Real-time search across descriptions, accounts, contacts, amounts, and references.</li>
                             <li><strong>Sorting:</strong> Sort by Date, Type, Amount, Account, Category, or Contact. Click column headers to sort.</li>
-                            <li><strong>Batch Transactions:</strong> View bundled transactions (like payroll) by expanding batch rows.</li>
+                            <li><strong>Batch Transactions:</strong> View bundled transactions by expanding batch rows.</li>
                         </ul>
                     </div>
                 </div>
@@ -552,85 +547,6 @@
                 </div>
             </div>
 
-            <!-- Payroll Section -->
-            <div class="help-section" id="payroll">
-                <h2 class="section-title">Payroll System</h2>
-
-                <div class="help-topic" data-category="payroll">
-                    <div class="topic-header">
-                        <h3 class="topic-title">Employee Management</h3>
-                        <span class="topic-category">Payroll</span>
-                    </div>
-                    <div class="topic-content">
-                        <p>Manage employee records and salary structures comprehensively.</p>
-                        <ul>
-                            <li><strong>Adding Employees:</strong> Payroll → Employee Management → New Employee. Enter personal details, designation, department, and employment dates.</li>
-                            <li><strong>Salary Structure:</strong> Assign salary components (Basic, Allowances, Deductions) to each employee. Use Salary Structure Manager for templates.</li>
-                            <li><strong>Multi-Project Allocation:</strong> Assign employees to multiple projects with percentage or hours allocation for cost distribution.</li>
-                            <li><strong>Employee Status:</strong> Active, On Leave, Terminated. Status affects payroll processing eligibility.</li>
-                            <li><strong>Contact Linking:</strong> Employees are linked to Contacts. Ensure contact exists before creating employee.</li>
-                            <li><strong>Employment History:</strong> Track join dates, promotions, transfers, and exits with lifecycle events.</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <div class="help-topic" data-category="payroll">
-                    <div class="topic-header">
-                        <h3 class="topic-title">Salary Components & Structures</h3>
-                        <span class="topic-category">Payroll</span>
-                    </div>
-                    <div class="topic-content">
-                        <p>Define flexible salary structures with multiple components.</p>
-                        <ul>
-                            <li><strong>Component Types:</strong> Basic Salary, Allowances (Housing, Transport, etc.), Deductions (Insurance, Loans), Bonuses, Overtime, Commissions.</li>
-                            <li><strong>Creating Components:</strong> Payroll → Salary Components → Add Component. Define calculation method (Fixed, Percentage, Formula).</li>
-                            <li><strong>Salary Templates:</strong> Create reusable salary structure templates. Apply to multiple employees for consistency.</li>
-                            <li><strong>Calculation Rules:</strong> Set up formulas for complex calculations (e.g., Allowance = 20% of Basic).</li>
-                            <li><strong>Tax Configuration:</strong> Configure tax slabs and rules. System calculates tax automatically based on taxable income.</li>
-                            <li><strong>Statutory Compliance:</strong> Set up statutory deductions (Provident Fund, ESI, etc.) with percentage or fixed amounts.</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <div class="help-topic" data-category="payroll">
-                    <div class="topic-header">
-                        <h3 class="topic-title">Payroll Processing</h3>
-                        <span class="topic-category">Payroll</span>
-                    </div>
-                    <div class="topic-content">
-                        <p>Process monthly payroll with automatic calculations.</p>
-                        <ul>
-                            <li><strong>Payroll Cycles:</strong> Create monthly payroll cycles. Set start date, end date, and pay date.</li>
-                            <li><strong>Processing Payroll:</strong> Select cycle → Process Payroll. System generates payslips for all active employees.</li>
-                            <li><strong>Automatic Calculations:</strong> System calculates basic salary, allowances, deductions, taxes, and net salary automatically.</li>
-                            <li><strong>Proration:</strong> Automatic salary proration for new hires, terminations, promotions, and transfers.</li>
-                            <li><strong>Bonuses & Adjustments:</strong> Add bonuses and adjustments to payroll. System includes them in calculations.</li>
-                            <li><strong>Attendance Integration:</strong> Link attendance records for accurate salary calculation (overtime, leaves, etc.).</li>
-                            <li><strong>Multi-Project Allocation:</strong> Allocate employee costs across multiple projects based on percentage or hours.</li>
-                            <li><strong>Payslip Generation:</strong> Automatic payslip generation with detailed breakdown. Print or email payslips.</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <div class="help-topic" data-category="payroll">
-                    <div class="topic-header">
-                        <h3 class="topic-title">Attendance & Leave Management</h3>
-                        <span class="topic-category">Payroll</span>
-                    </div>
-                    <div class="topic-content">
-                        <p>Track employee attendance and manage leave records.</p>
-                        <ul>
-                            <li><strong>Recording Attendance:</strong> Payroll → Attendance → Add Record. Enter date, employee, status (Present, Absent, Leave, etc.).</li>
-                            <li><strong>Leave Types:</strong> Track different leave types (Sick, Casual, Annual, etc.) with balance tracking.</li>
-                            <li><strong>Overtime Tracking:</strong> Record overtime hours. System calculates overtime pay based on configured rates.</li>
-                            <li><strong>Leave Balance:</strong> System tracks leave balances per employee. Deducts from balance when leave is recorded.</li>
-                            <li><strong>Attendance Reports:</strong> View attendance summaries, leave reports, and overtime reports by employee or period.</li>
-                            <li><strong>Payroll Integration:</strong> Attendance data automatically affects salary calculations (unpaid leaves, overtime pay, etc.).</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-
             <!-- Reports Section -->
             <div class="help-section" id="reports">
                 <h2 class="section-title">Reports & Analytics</h2>
@@ -647,7 +563,6 @@
                             <li><strong>Rental Reports:</strong> Owner Income Report, Owner Security Deposit Report, Broker Fee Report, Rental Summary.</li>
                             <li><strong>Financial Reports:</strong> Income by Category, Expense by Category, Account Statements, Transaction Reports.</li>
                             <li><strong>Ledger Reports:</strong> Owner Ledger, Vendor Ledger, Client Ledger, Broker Report.</li>
-                            <li><strong>Payroll Reports:</strong> Payroll Cost Allocation, Employee Cost Report, Attendance Summary.</li>
                             <li><strong>Visual Reports:</strong> Visual Project Layout, Visual Rental Layout, Tabular Unit Reports.</li>
                             <li><strong>Export Options:</strong> All reports can be exported to Excel for further analysis or sharing.</li>
                             <li><strong>Date Filtering:</strong> All reports support custom date ranges for period-based analysis.</li>
@@ -797,16 +712,6 @@
 
                 <div class="help-topic">
                     <div class="topic-header">
-                        <h3 class="topic-title">How do I allocate payroll costs to multiple projects?</h3>
-                        <span class="topic-category">FAQ</span>
-                    </div>
-                    <div class="topic-content">
-                        <p>In Employee Management, assign employees to multiple projects with percentage or hours allocation. When processing payroll, costs are automatically allocated based on these assignments. View allocation in Payroll Cost Allocation reports.</p>
-                    </div>
-                </div>
-
-                <div class="help-topic">
-                    <div class="topic-header">
                         <h3 class="topic-title">What happens if I delete a transaction by mistake?</h3>
                         <span class="topic-category">FAQ</span>
                     </div>
@@ -938,7 +843,6 @@
                             'general-finance': 'general-finance',
                             'rental-management': 'rental-management',
                             'project-management': 'project-management',
-                            'payroll': 'payroll',
                             'reports': 'advanced-tools',
                             'advanced-tools': 'advanced-tools'
                         };

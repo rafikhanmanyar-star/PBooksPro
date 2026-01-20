@@ -4,7 +4,7 @@ import { AppState } from '../types';
 export interface ExportSchema {
     key: string;
     displayName: string;
-    category: 'financial' | 'master' | 'projects' | 'agreements' | 'payroll' | 'pm' | 'other';
+    category: 'financial' | 'master' | 'projects' | 'agreements' | 'pm' | 'other';
     headers: string[];
     getData: (state: AppState, maps: ExportMaps) => any[];
 }
@@ -510,7 +510,6 @@ export const getSchemasByCategory = (): Record<string, ExportSchema[]> => {
         master: [],
         projects: [],
         agreements: [],
-        payroll: [],
         pm: [],
         other: [],
     };

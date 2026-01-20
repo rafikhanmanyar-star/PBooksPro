@@ -8,7 +8,7 @@ import ComboBox from '../ui/ComboBox';
 import { CURRENCY, ICONS } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
 import { formatDate } from '../../utils/dateUtils';
-import PayrollTreeView, { PayrollTreeNode } from '../payroll/PayrollTreeView';
+import TreeView, { TreeNode } from '../ui/TreeView';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import ResizeHandle from '../ui/ResizeHandle';
 import Tabs from '../ui/Tabs';
@@ -213,11 +213,11 @@ const ProjectEquityManagement: React.FC = () => {
 
 
     // --- Data ---
-    const treeData = useMemo<PayrollTreeNode[]>(() => {
-        const nodes: PayrollTreeNode[] = [];
+    const treeData = useMemo<TreeNode[]>(() => {
+        const nodes: TreeNode[] = [];
         
         // 1. All Investors Node (Parent)
-        const allInvestorsNode: PayrollTreeNode = {
+        const allInvestorsNode: TreeNode = {
             id: 'root-investors',
             name: 'All Investors',
             type: 'building', 
@@ -244,10 +244,10 @@ const ProjectEquityManagement: React.FC = () => {
         nodes.push(allInvestorsNode); 
 
         // 2. Projects Node Group
-        const projectNodes: PayrollTreeNode[] = [];
+        const projectNodes: TreeNode[] = [];
         state.projects.forEach(p => {
              const projBalance = balances.projBal[p.id] || 0;
-             const projectNode: PayrollTreeNode = {
+             const projectNode: TreeNode = {
                 id: p.id,
                 name: p.name,
                 type: 'project',
@@ -942,7 +942,7 @@ const ProjectEquityManagement: React.FC = () => {
                                 {selectedTreeId && <button onClick={() => { setSelectedTreeId(null); setSelectedTreeType(null); setSelectedParentId(null); }} className="text-xs text-accent hover:underline">Clear</button>}
                             </div>
                             <div className="flex-grow overflow-y-auto p-2">
-                                <PayrollTreeView treeData={treeData} selectedId={selectedTreeId} onSelect={(id, type, parentId) => { setSelectedTreeId(id); setSelectedTreeType(type as any); setSelectedParentId(parentId || null); }} />
+                                <TreeView treeData={treeData} selectedId={selectedTreeId} onSelect={(id, type, parentId) => { setSelectedTreeId(id); setSelectedTreeType(type as any); setSelectedParentId(parentId || null); }} />
                             </div>
                         </div>
                         <div className="hidden md:block h-full">

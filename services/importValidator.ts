@@ -72,8 +72,6 @@ export const validateImport = (
             [normalizeNameForComparison(b.billNumber), b.id])),
         contracts: new Map((currentState.contracts || []).map(c => 
             [normalizeNameForComparison(c.contractNumber), c.id])),
-        salaryComponents: new Map(currentState.salaryComponents.map(sc => 
-            [normalizeNameForComparison(sc.name), sc.id])),
     };
     
     // Build normalized allowed fields maps for each sheet
@@ -153,7 +151,7 @@ export const validateImport = (
             });
             
             // Validate numeric fields
-            const numericFields = ['amount', 'totalAmount', 'paidAmount', 'balance', 'salePrice', 'monthlyRent', 'basicSalary'];
+            const numericFields = ['amount', 'totalAmount', 'paidAmount', 'balance', 'salePrice', 'monthlyRent'];
             numericFields.forEach(field => {
                 const value = row[field] || row[field.charAt(0).toUpperCase() + field.slice(1)];
                 if (value !== undefined && value !== null && value !== '' && isNaN(parseFloat(String(value)))) {

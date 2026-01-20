@@ -22,13 +22,6 @@ export type SyncOperationType =
   | 'document'
   | 'account'
   | 'category'
-  | 'employee'
-  | 'payroll_cycle'
-  | 'payslip'
-  | 'bonus_record'
-  | 'payroll_adjustment'
-  | 'loan_advance_record'
-  | 'attendance_record'
   | 'recurring_invoice_template'
   | 'pm_cycle_allocation';
 

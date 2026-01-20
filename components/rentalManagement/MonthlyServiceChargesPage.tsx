@@ -11,7 +11,7 @@ import ServiceChargeUpdateModal from './ServiceChargeUpdateModal';
 import PropertyForm from '../settings/PropertyForm';
 import { useNotification } from '../../context/NotificationContext';
 import DatePicker from '../ui/DatePicker';
-import PayrollTreeView, { PayrollTreeNode } from '../payroll/PayrollTreeView'; // Reusing TreeView structure
+import TreeView, { TreeNode } from '../ui/TreeView';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import ResizeHandle from '../ui/ResizeHandle';
 
@@ -146,9 +146,9 @@ const MonthlyServiceChargesPage: React.FC = () => {
     }, [state.transactions, serviceIncomeCategoryIds, startDate, endDate]);
 
     // --- Tree Data ---
-    const treeData = useMemo<PayrollTreeNode[]>(() => {
+    const treeData = useMemo<TreeNode[]>(() => {
         // Structure: Building -> Unit (Property)
-        const buildingMap = new Map<string, PayrollTreeNode>();
+        const buildingMap = new Map<string, TreeNode>();
 
         state.buildings.forEach(b => {
             buildingMap.set(b.id, {
@@ -453,7 +453,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                     style={{ width: sidebarWidth }}
                 >
                     <div className="font-bold text-slate-700 mb-2 px-1">Properties</div>
-                    <PayrollTreeView 
+                    <TreeView 
                         treeData={treeData} 
                         selectedId={selectedTreeId} 
                         onSelect={(id, type) => {

@@ -140,8 +140,6 @@ export const createProjectBackup = async (projectId: string, projectName: string
         const projectBills = state.bills.filter((b: any) => b.projectId === projectId);
         const projectAgreements = state.projectAgreements.filter((pa: any) => pa.projectId === projectId);
         const projectContracts = state.contracts.filter((c: any) => c.projectId === projectId);
-        const projectStaff = state.projectStaff.filter((s: any) => s.projectId === projectId);
-        const projectPayslips = state.projectPayslips.filter((p: any) => p.projectId === projectId);
         const projectBudgets = state.budgets.filter((b: any) => b.projectId === projectId);
         
         progress.updateProgress(20, 'Collecting related entity IDs...');
@@ -221,11 +219,6 @@ export const createProjectBackup = async (projectId: string, projectName: string
             if (b.categoryId) categoryIds.add(b.categoryId);
         });
         
-        // Collect from project staff (if they have contactId)
-        projectStaff.forEach((s: any) => {
-            if (s.contactId) contactIds.add(s.contactId);
-        });
-        
         progress.updateProgress(40, 'Including related contacts and vendors...');
         
         // Step 3: Filter related entities
@@ -286,8 +279,6 @@ export const createProjectBackup = async (projectId: string, projectName: string
             bills: projectBills,
             projectAgreements: projectAgreements,
             contracts: projectContracts,
-            projectStaff: projectStaff,
-            projectPayslips: projectPayslips,
             budgets: projectBudgets,
             
             // Related entities
@@ -301,18 +292,6 @@ export const createProjectBackup = async (projectId: string, projectName: string
             buildings: [],
             properties: [],
             rentalAgreements: [],
-            rentalStaff: [],
-            rentalPayslips: [],
-            employees: [],
-            salaryComponents: [],
-            payrollCycles: [],
-            payslips: [],
-            bonusRecords: [],
-            payrollAdjustments: [],
-            loanAdvanceRecords: [],
-            attendanceRecords: [],
-            taxConfigurations: [],
-            statutoryConfigurations: [],
             recurringInvoiceTemplates: [],
             transactionLog: [],
             errorLog: [],
@@ -362,8 +341,6 @@ export const createBuildingBackup = async (buildingId: string, buildingName: str
             bills: state.bills.filter((b: any) => b.buildingId === buildingId || (b.propertyId && state.properties.find((prop: any) => prop.id === b.propertyId && prop.buildingId === buildingId))),
             rentalAgreements: state.rentalAgreements.filter((ra: any) => ra.propertyId && state.properties.find((prop: any) => prop.id === ra.propertyId && prop.buildingId === buildingId)),
             contracts: state.contracts.filter((c: any) => c.buildingId === buildingId),
-            rentalStaff: state.rentalStaff.filter((s: any) => s.buildingId === buildingId),
-            rentalPayslips: state.rentalPayslips.filter((p: any) => p.buildingId === buildingId),
             budgets: state.budgets.filter((b: any) => b.buildingId === buildingId),
         };
         
@@ -449,10 +426,6 @@ export const restoreProjectBuildingBackup = async (file: File, dispatch: React.D
             quotations: mergeById(currentState.quotations || [], migratedBackupData.quotations),
             // Merge budgets
             budgets: mergeById(currentState.budgets, migratedBackupData.budgets),
-            // Merge project staff
-            projectStaff: mergeById(currentState.projectStaff || [], migratedBackupData.projectStaff),
-            // Merge project payslips
-            projectPayslips: mergeById(currentState.projectPayslips || [], migratedBackupData.projectPayslips),
         };
         
         progress.updateProgress(80, 'Saving merged data...');
@@ -495,9 +468,6 @@ export const createLoansInvestorsPMBackup = async (
                    [LoanSubtype.GIVE, LoanSubtype.RECEIVE, LoanSubtype.REPAY, LoanSubtype.COLLECT].includes(tx.subtype as LoanSubtype))
         );
         
-        // Also include loan advance records from payroll
-        const loanAdvanceRecords = state.loanAdvanceRecords || [];
-
         progress.updateProgress(15, 'Identifying investor accounts and transactions...');
 
         // ===== STEP 2: COLLECT INVESTOR DATA =====
@@ -550,11 +520,6 @@ export const createLoansInvestorsPMBackup = async (
             if (tx.projectId) projectIds.add(tx.projectId);
         });
 
-        // Collect from loan advance records
-        loanAdvanceRecords.forEach(loan => {
-            // Loan advance records are linked to employees, which might be contacts
-            // We'll include all employees that have loan records
-        });
 
         // Collect from investor transactions
         investorTransactions.forEach(tx => {

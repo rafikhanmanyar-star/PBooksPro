@@ -208,7 +208,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
             title: 'People',
             items: [
                 { page: 'contacts', label: 'Contacts', icon: ICONS.addressBook },
-                { page: 'payroll', label: 'Payroll', icon: ICONS.users },
             ]
         },
         {
@@ -232,7 +231,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
         if (currentPage === itemPage) return true;
         if (itemPage === 'rentalManagement' && (currentPage.startsWith('rental') || currentPage === 'ownerPayouts')) return true;
         if (itemPage === 'projectManagement' && (currentPage.startsWith('project') || currentPage === 'bills')) return true;
-        if (itemPage === 'payroll' && currentPage === 'payroll') return true;
         return false;
     };
 

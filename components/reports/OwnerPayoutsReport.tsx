@@ -290,9 +290,6 @@ const OwnerPayoutsReport: React.FC = () => {
             const bill = state.bills.find(b => b.id === tx.billId);
             return bill ? `Bill #${bill.billNumber}` : 'a Bill';
         }
-        if (tx.payslipId) {
-            return 'a Payslip';
-        }
         return 'a linked item';
     };
 

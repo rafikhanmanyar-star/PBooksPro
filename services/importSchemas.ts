@@ -14,7 +14,6 @@ export interface ImportMaps {
     invoices: Map<string, string>;
     bills: Map<string, string>;
     contracts: Map<string, string>;
-    salaryComponents: Map<string, string>;
 }
 
 export interface ValidationResult {
@@ -112,15 +111,6 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         allowedFields: new Set(['Key', 'Value'])
     };
 
-    // SalaryComponents
-    schemas.SalaryComponents = {
-        sheetName: 'SalaryComponents',
-        version: '1.0',
-        requiredFields: ['name', 'type'],
-        optionalFields: ['isTaxable', 'isSystem'],
-        allowedFields: new Set(['name', 'type', 'isTaxable', 'isSystem'])
-    };
-
     // Accounts
     schemas.Accounts = {
         sheetName: 'Accounts',
@@ -182,15 +172,6 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         requiredFields: ['name'],
         optionalFields: ['projectName', 'project', 'ownerName', 'clientName', 'owner', 'salePrice', 'description', 'tenantName', 'tenant'],
         allowedFields: new Set(['name', 'projectName', 'project', 'ownerName', 'clientName', 'owner', 'salePrice', 'description', 'tenantName', 'tenant'])
-    };
-
-    // Staff
-    schemas.Staff = {
-        sheetName: 'Staff',
-        version: '1.0',
-        requiredFields: ['Name', 'StaffName'],
-        optionalFields: ['employeeId', 'designation', 'basicSalary', 'joiningDate', 'status', 'email', 'ProjectName', 'Project', 'BuildingName', 'Building', 'salaryStructure', 'bankDetails', 'history', 'exitDetails', 'advanceBalance'],
-        allowedFields: new Set(['Name', 'StaffName', 'employeeId', 'designation', 'basicSalary', 'joiningDate', 'status', 'email', 'ProjectName', 'Project', 'BuildingName', 'Building', 'salaryStructure', 'bankDetails', 'history', 'exitDetails', 'advanceBalance'])
     };
 
     // RentalAgreements
@@ -390,15 +371,6 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         allowedFields: new Set(['categoryId', 'categoryName', 'projectId', 'projectName', 'amount'])
     };
 
-    // Payslips
-    schemas.Payslips = {
-        sheetName: 'Payslips',
-        version: '1.0',
-        requiredFields: [],
-        optionalFields: ['staffName', 'staff', 'month', 'issueDate', 'basicSalary', 'allowances', 'deductions', 'bonuses', 'totalAllowances', 'totalDeductions', 'totalBonuses', 'grossSalary', 'netSalary', 'status'],
-        allowedFields: new Set(['staffName', 'staff', 'month', 'issueDate', 'basicSalary', 'allowances', 'deductions', 'bonuses', 'totalAllowances', 'totalDeductions', 'totalBonuses', 'grossSalary', 'netSalary', 'status'])
-    };
-
     // Transactions
     schemas.Transactions = {
         sheetName: 'Transactions',
@@ -410,7 +382,7 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
             'contactName', 'ContactName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName',
             'propertyName', 'PropertyName', 'unitName', 'UnitName', 'categoryName', 'CategoryName',
             'invoiceNumber', 'InvoiceNumber', 'billNumber', 'BillNumber', 'contractNumber', 'ContractNumber',
-            'agreementNumber', 'AgreementNumber', 'payslipId', 'batchId'
+            'agreementNumber', 'AgreementNumber', 'batchId'
         ],
         allowedFields: new Set([
             'type', 'subtype', 'amount', 'date', 'description',
@@ -418,7 +390,7 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
             'contactName', 'ContactName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName',
             'propertyName', 'PropertyName', 'unitName', 'UnitName', 'categoryName', 'CategoryName',
             'invoiceNumber', 'InvoiceNumber', 'billNumber', 'BillNumber', 'contractNumber', 'ContractNumber',
-            'agreementNumber', 'AgreementNumber', 'payslipId', 'batchId'
+            'agreementNumber', 'AgreementNumber', 'batchId'
         ])
     };
 

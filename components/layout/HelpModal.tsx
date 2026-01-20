@@ -242,28 +242,6 @@ const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose, currentPage }) =
           )
         };
 
-      case 'payroll':
-        return {
-          title: 'Payroll Help',
-          content: (
-            <div className="space-y-4 text-sm text-gray-700">
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-2">Overview</h3>
-                <p>Manage employees, process payroll, track attendance, and handle salary components.</p>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-2">Key Features:</h3>
-                <ul className="list-disc list-inside space-y-1 ml-2">
-                  <li><strong>Employee Management:</strong> Add and manage employee profiles</li>
-                  <li><strong>Salary Structure:</strong> Define salary components and structures</li>
-                  <li><strong>Payroll Processing:</strong> Generate and process payroll cycles</li>
-                  <li><strong>Payslips:</strong> View and manage employee payslips</li>
-                </ul>
-              </div>
-            </div>
-          )
-        };
-
       case 'settings':
         return {
           title: 'Settings Help',

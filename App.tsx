@@ -55,7 +55,6 @@ const VendorDirectoryPage = React.lazy(() => import('./components/vendors/Vendor
 const ContactsPage = React.lazy(() => import('./components/contacts/ContactsPage'));
 const BudgetManagement = React.lazy(() => import('./components/settings/BudgetManagement'));
 const MobilePaymentsPage = React.lazy(() => import('./components/mobile/MobilePaymentsPage'));
-const GlobalPayrollPage = React.lazy(() => import('./components/payroll/GlobalPayrollPage')); // Added
 const TasksPage = React.lazy(() => import('./components/tasks/TasksPage'));
 const TasksCalendarView = React.lazy(() => import('./components/tasks/TasksCalendarView'));
 const TeamRankingPage = React.lazy(() => import('./components/tasks/TeamRankingPage'));
@@ -74,7 +73,6 @@ const PAGE_GROUPS = {
   PROJECT: ['projectManagement', 'projectInvoices', 'bills'],
   INVESTMENT: ['investmentManagement'],
   PM_CONFIG: ['pmConfig'],
-  PAYROLL: ['payroll'], // Added Payroll Group
   TASKS: ['tasks', 'tasksCalendar', 'teamRanking'],
   SETTINGS: ['settings'],
   IMPORT: ['import'],
@@ -423,7 +421,6 @@ const App: React.FC = () => {
       case 'vendorDirectory': return 'Vendor Directory';
       case 'contacts': return 'Contacts';
       case 'budgets': return 'Budget Planner';
-      case 'payroll': return 'Global Payroll';
       case 'tasks': return 'My Tasks';
       case 'tasksCalendar': return 'Task Calendar';
       case 'teamRanking': return 'Team Ranking';
@@ -470,7 +467,7 @@ const App: React.FC = () => {
     const pageId = `page-${groupKey}`;
 
     // Fixed layout for certain complex modules
-    const isFixedLayout = groupKey === 'RENTAL' || groupKey === 'PROJECT' || groupKey === 'INVESTMENT' || groupKey === 'PM_CONFIG' || groupKey === 'PAYMENTS' || groupKey === 'PAYROLL';
+    const isFixedLayout = groupKey === 'RENTAL' || groupKey === 'PROJECT' || groupKey === 'INVESTMENT' || groupKey === 'PM_CONFIG' || groupKey === 'PAYMENTS';
     const overflowClass = isFixedLayout ? 'overflow-hidden' : 'overflow-y-auto';
     const bgClass = getPageBackground(groupKey);
 
@@ -554,7 +551,6 @@ const App: React.FC = () => {
               {renderPersistentPage('PROJECT', <ProjectManagementPage initialPage={currentPage} />)}
               {renderPersistentPage('INVESTMENT', <InvestmentManagementPage />)}
               {renderPersistentPage('PM_CONFIG', <PMConfigPage />)}
-              {renderPersistentPage('PAYROLL', <GlobalPayrollPage />)}
               {renderPersistentPage('BIZ_PLANET', <BizPlanetPage />)}
               {currentPage === 'tasks' && (
                 <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-center"><div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-2"></div><p className="text-sm text-gray-600">Loading...</p></div></div>}>

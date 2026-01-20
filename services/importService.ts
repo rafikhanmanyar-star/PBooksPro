@@ -1,7 +1,7 @@
 
 import type { Dispatch } from 'react';
 export { ImportType } from '../types';
-import { AppState, AppAction, ImportLogEntry, Account, Contact, Project, Category, Building, Property, Unit, Transaction, Invoice, Bill, RentalAgreement, ProjectAgreement, Budget, ContactType, TransactionType, RentalAgreementStatus, ProjectAgreementStatus, InvoiceStatus, InvoiceType, LoanSubtype, AccountType, Contract, ContractExpenseCategoryItem, ContractStatus, Staff, SalaryComponent, Payslip, RecurringInvoiceTemplate, ImportType } from '../types';
+import { AppState, AppAction, ImportLogEntry, Account, Contact, Project, Category, Building, Property, Unit, Transaction, Invoice, Bill, RentalAgreement, ProjectAgreement, Budget, ContactType, TransactionType, RentalAgreementStatus, ProjectAgreementStatus, InvoiceStatus, InvoiceType, LoanSubtype, AccountType, Contract, ContractExpenseCategoryItem, ContractStatus, RecurringInvoiceTemplate, ImportType } from '../types';
 import type { ProgressContextType } from '../context/ProgressContext';
 import * as XLSX from 'xlsx';
 import { normalizeNameForComparison } from '../utils/stringUtils';
@@ -207,12 +207,11 @@ const formatTextField = (value: any, fieldName: string, sheetName: string): any 
         'id', 'amount', 'balance', 'paidAmount', 'salePrice', 'monthlyRent', 'securityDeposit',
         'brokerFee', 'listPrice', 'customerDiscount', 'floorDiscount', 'lumpSumDiscount',
         'miscDiscount', 'sellingPrice', 'rebateAmount', 'totalAmount', 'area', 'rate',
-        'basicSalary', 'totalAllowances', 'totalDeductions', 'totalBonuses', 'grossSalary',
-        'netSalary', 'monthlyServiceCharge', 'rentDueDate', 'dayOfMonth', 'isPermanent',
+        'monthlyServiceCharge', 'rentDueDate', 'dayOfMonth', 'isPermanent',
         'isTaxable', 'isSystem', 'isRental', 'active', 'status', 'type', 'subtype',
         'invoiceType', 'date', 'issueDate', 'dueDate', 'startDate', 'endDate', 'joiningDate',
-        'nextDueDate', 'month', 'color', 'email', 'contactNo', 'employeeId', 'invoiceNumber',
-        'billNumber', 'contractNumber', 'agreementNumber', 'transactionId', 'payslipId',
+        'nextDueDate', 'month', 'color', 'email', 'contactNo', 'invoiceNumber',
+        'billNumber', 'contractNumber', 'agreementNumber', 'transactionId',
         'batchId', 'parentAccountId', 'parentCategoryId', 'projectId', 'buildingId',
         'propertyId', 'unitId', 'categoryId', 'contactId', 'accountId', 'invoiceId',
         'billId', 'contractId', 'agreementId', 'staffId', 'tenantId', 'clientId',
@@ -234,7 +233,6 @@ const formatTextField = (value: any, fieldName: string, sheetName: string): any 
         fieldLower.includes('history') ||
         fieldLower.includes('allowances') ||
         fieldLower.includes('deductions') ||
-        fieldLower.includes('bonuses') ||
         fieldLower.includes('template') ||
         fieldLower.includes('pmconfig') ||
         fieldLower.includes('installmentconfig') ||
@@ -370,16 +368,6 @@ export const generateImportTemplate = (importType: ImportType): void => {
                     exampleRows: [
                         { name: 'Unit 201', projectName: 'Project Alpha', ownerName: 'John Doe', salePrice: '500000', description: '2BHK unit' },
                         { name: 'Unit 202', projectName: 'Project Alpha', ownerName: 'Jane Smith', salePrice: '750000', description: '3BHK unit' }
-                    ]
-                }];
-
-            case ImportType.STAFF:
-                return [{
-                    sheetName: 'Staff',
-                    headers: ['Name', 'employeeId', 'designation', 'basicSalary', 'joiningDate', 'status', 'email', 'ProjectName', 'BuildingName'],
-                    exampleRows: [
-                        { Name: 'Employee One', employeeId: 'EMP001', designation: 'Manager', basicSalary: '50000', joiningDate: '2024-01-01', status: 'Active', email: 'emp1@example.com', ProjectName: 'Project Alpha', BuildingName: '' },
-                        { Name: 'Employee Two', employeeId: 'EMP002', designation: 'Engineer', basicSalary: '40000', joiningDate: '2024-01-15', status: 'Active', email: 'emp2@example.com', ProjectName: '', BuildingName: 'Building A' }
                     ]
                 }];
 
@@ -714,15 +702,6 @@ export const generateImportTemplate = (importType: ImportType): void => {
                     ]
                 }];
 
-            case ImportType.PAYSLIPS:
-                return [{
-                    sheetName: 'Payslips',
-                    headers: ['staffName', 'month', 'issueDate', 'basicSalary', 'totalAllowances', 'totalDeductions', 'grossSalary', 'netSalary', 'status'],
-                    exampleRows: [
-                        { staffName: 'Employee One', month: '2024-01', issueDate: '2024-01-31', basicSalary: '50000', totalAllowances: '5000', totalDeductions: '2000', grossSalary: '55000', netSalary: '53000', status: 'Paid' }
-                    ]
-                }];
-
             case ImportType.BUDGETS:
                 return [{
                     sheetName: 'Budgets',
@@ -882,19 +861,6 @@ export const runImportUnits = async (
         Units: sheets.Units || []
     };
     return runImportProcess(filteredSheets, originalState, dispatch, progress, onLog, ImportType.UNITS);
-};
-
-export const runImportStaff = async (
-    sheets: { [key: string]: any[] },
-    originalState: AppState,
-    dispatch: Dispatch<AppAction>,
-    progress: ProgressReporter,
-    onLog: LogFunction
-): Promise<{ success: number; skipped: number; errors: number }> => {
-    const filteredSheets: { [key: string]: any[] } = {
-        Staff: sheets.Staff || []
-    };
-    return runImportProcess(filteredSheets, originalState, dispatch, progress, onLog, ImportType.STAFF);
 };
 
 export const runImportAgreements = async (
@@ -1104,18 +1070,6 @@ export const runImportRecurringTemplates = async (
     return runImportProcess(filteredSheets, originalState, dispatch, progress, onLog, ImportType.RECURRING_TEMPLATES);
 };
 
-export const runImportPayslips = async (
-    sheets: { [key: string]: any[] },
-    originalState: AppState,
-    dispatch: Dispatch<AppAction>,
-    progress: ProgressReporter,
-    onLog: LogFunction
-): Promise<{ success: number; skipped: number; errors: number }> => {
-    const filteredSheets: { [key: string]: any[] } = {
-        Payslips: sheets.Payslips || []
-    };
-    return runImportProcess(filteredSheets, originalState, dispatch, progress, onLog, ImportType.PAYSLIPS);
-};
 
 export const runImportBudgets = async (
     sheets: { [key: string]: any[] },
@@ -1186,8 +1140,6 @@ export const runImportProcess = async (
         invoices: new Map(tempState.invoices.map(i => [normalizeNameForComparison(i.invoiceNumber), i.id])),
         bills: new Map(tempState.bills.map(i => [normalizeNameForComparison(i.billNumber), i.id])),
         contracts: new Map((tempState.contracts || []).map(i => [normalizeNameForComparison(i.contractNumber), i.id])),
-        salaryComponents: new Map(tempState.salaryComponents.map(i => [normalizeNameForComparison(i.name), i.id])),
-        staff: new Map([...tempState.projectStaff, ...tempState.rentalStaff].map(i => [i.id, i.id])), // Use ID for staff as name duplicates are possible, fallback to Name map logic in loop
     };
 
     // Track transaction IDs for duplicate detection
@@ -1336,9 +1288,6 @@ export const runImportProcess = async (
         case ImportType.UNITS:
             orderedSheets = ['Units'];
             break;
-        case ImportType.STAFF:
-            orderedSheets = ['Staff'];
-            break;
         case ImportType.AGREEMENTS:
             orderedSheets = ['RentalAgreements', 'ProjectAgreements'];
             break;
@@ -1396,23 +1345,20 @@ export const runImportProcess = async (
         case ImportType.RECURRING_TEMPLATES:
             orderedSheets = ['RecurringTemplates'];
             break;
-        case ImportType.PAYSLIPS:
-            orderedSheets = ['Payslips'];
-            break;
         case ImportType.BUDGETS:
             orderedSheets = ['Budgets'];
             break;
         default:
             // Full import - all sheets in order
             orderedSheets = [
-                'Settings', 'SalaryComponents', 'Accounts', 'Contacts', 'Categories',
-                'Projects', 'Buildings', 'Properties', 'Units', 'Staff',
+                'Settings', 'Accounts', 'Contacts', 'Categories',
+                'Projects', 'Buildings', 'Properties', 'Units',
                 'RentalAgreements', 'ProjectAgreements', 'Contracts', 'RecurringTemplates',
                 'Invoices',
                 'ProjectBills', 'RentalBills', 'Bills',
                 'RentalInvoicePayments', 'ProjectInvoicePayments', 'RentalBillPayments', 'ProjectBillPayments',
                 'LoanTransactions', 'EquityTransactions', 'TransferTransactions', 'IncomeTransactions', 'ExpenseTransactions',
-                'Budgets', 'Payslips', 'Transactions'
+                'Budgets', 'Transactions'
             ];
     }
 
@@ -1524,31 +1470,6 @@ export const runImportProcess = async (
                             log(sheetName, rowNum, 'Error', `Failed to parse setting: ${row.Key}`);
                         }
                     }
-                }
-
-                // --- SALARY COMPONENTS ---
-                else if (sheetName === 'SalaryComponents') {
-                    if (maps.salaryComponents.has(normalizeNameForComparison(row.name))) {
-                        log(sheetName, rowNum, 'Skipped', `Duplicate entry: A salary component with the name "${row.name}" already exists in the system.`, row);
-                        continue;
-                    }
-                    const missing = validateRecord(row, ['name', 'type']);
-                    if (missing.length > 0) {
-                        const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, missing);
-                        log(sheetName, rowNum, 'Error', errorMsg, row);
-                        continue;
-                    }
-
-                    const newComp: SalaryComponent = {
-                        id: generateImportId('sal', index),
-                        name: row.name,
-                        type: row.type,
-                        isTaxable: row.isTaxable === true || String(row.isTaxable).toLowerCase() === 'true',
-                        isSystem: false
-                    };
-                    tempState.salaryComponents.push(newComp);
-                    maps.salaryComponents.set(normalizeNameForComparison(newComp.name), newComp.id);
-                    log(sheetName, rowNum, 'Success', `Added Salary Component: ${newComp.name}`);
                 }
 
                 // --- ACCOUNTS ---
@@ -1800,40 +1721,6 @@ export const runImportProcess = async (
                     tempState.units.push(newUnit);
                     maps.units.set(normalizeNameForComparison(newUnit.name), newUnit.id);
                     log(sheetName, rowNum, 'Success', `Added Unit: ${newUnit.name}`);
-                }
-
-                // --- STAFF ---
-                else if (sheetName === 'Staff') {
-                    // Try to match by Name since export doesn't guarantee ID stability
-                    const contactId = resolveId(maps.contacts, row, 'Name', 'StaffName');
-                    if (contactId) {
-                        const existingStaff = [...tempState.projectStaff, ...tempState.rentalStaff].find(s => s.id === contactId);
-                        if (existingStaff) { log(sheetName, rowNum, 'Skipped', 'Staff already exists'); continue; }
-
-                        const projectId = resolveId(maps.projects, row, 'projectName', 'ProjectName', 'project', 'Project');
-                        const buildingId = resolveId(maps.buildings, row, 'buildingName', 'BuildingName', 'building', 'Building');
-
-                        const newStaff: Staff = {
-                            id: contactId,
-                            employeeId: row.employeeId || `EMP-${index}`,
-                            designation: row.designation,
-                            basicSalary: parseFloat(row.basicSalary) || 0,
-                            joiningDate: row.joiningDate ? new Date(row.joiningDate).toISOString() : new Date().toISOString(),
-                            status: row.status,
-                            email: row.email,
-                            projectId, buildingId,
-                            salaryStructure: safeJsonParse(row.salaryStructure) || [],
-                            bankDetails: safeJsonParse(row.bankDetails),
-                            history: safeJsonParse(row.history) || [],
-                            exitDetails: safeJsonParse(row.exitDetails),
-                            advanceBalance: parseFloat(row.advanceBalance) || 0
-                        };
-
-                        if (projectId) tempState.projectStaff.push(newStaff);
-                        else tempState.rentalStaff.push(newStaff);
-
-                        log(sheetName, rowNum, 'Success', `Added Staff Record: ${row.Name}`);
-                    }
                 }
 
                 // --- AGREEMENTS & CONTRACTS ---
@@ -2376,66 +2263,6 @@ export const runImportProcess = async (
                     const projectName = projectId ? (tempState.projects.find(p => p.id === projectId)?.name || '') : '';
                     const projectInfo = projectName ? ` (Project: ${projectName})` : '';
                     log(sheetName, rowNum, 'Success', `Added Budget${projectInfo}`, row);
-                }
-
-                // --- PAYSLIPS ---
-                else if (sheetName === 'Payslips') {
-                    const staffId = resolveId(maps.contacts, row, 'staffName', 'StaffName', 'staff', 'Staff'); // link to Contact/Staff
-                    if (staffId) {
-                        // Derive pay period from month if provided as YYYY-MM
-                        const monthStr = String(row.month || '').trim();
-                        const startDate = monthStr && /^\d{4}-\d{2}$/.test(monthStr) ? new Date(`${monthStr}-01`) : new Date();
-                        const endDate = monthStr && /^\d{4}-\d{2}$/.test(monthStr)
-                            ? new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0)
-                            : new Date();
-
-                        const allowances = safeJsonParse(row.allowances) || [];
-                        const deductions = safeJsonParse(row.deductions) || [];
-                        const bonuses = safeJsonParse(row.bonuses) || [];
-                        const totalAllowances = parseFloat(row.totalAllowances) || 0;
-                        const totalDeductions = parseFloat(row.totalDeductions) || 0;
-                        const totalBonuses = parseFloat(row.totalBonuses) || 0;
-                        const grossSalary = parseFloat(row.grossSalary) || 0;
-                        const netSalary = parseFloat(row.netSalary) || 0;
-
-                        const newSlip: Payslip = {
-                            id: generateImportId('pay', index),
-                            employeeId: staffId, // legacy payroll links staff to Contact id
-                            staffId,
-                            payrollCycleId: '',
-                            month: monthStr || String(row.month || ''),
-                            issueDate: row.issueDate ? new Date(row.issueDate).toISOString() : new Date().toISOString(),
-                            payPeriodStart: startDate.toISOString().split('T')[0],
-                            payPeriodEnd: endDate.toISOString().split('T')[0],
-
-                            basicSalary: parseFloat(row.basicSalary) || 0,
-                            allowances,
-                            totalAllowances,
-                            bonuses,
-                            totalBonuses,
-                            deductions,
-                            totalDeductions,
-                            taxDeductions: [],
-                            totalTax: 0,
-                            statutoryDeductions: [],
-                            totalStatutory: 0,
-                            loanDeductions: [],
-                            totalLoanDeductions: 0,
-                            grossSalary,
-                            taxableIncome: grossSalary,
-                            netSalary,
-                            costAllocations: [],
-                            isProrated: false,
-                            status: row.status,
-                            paidAmount: 0,
-                            generatedAt: new Date().toISOString()
-                        };
-                        // Put into project or rental bucket based on provided project reference (if any)
-                        if (resolveId(maps.projects, row, 'projectId', 'projectName', 'ProjectName', 'project', 'Project')) tempState.projectPayslips.push(newSlip);
-                        else tempState.rentalPayslips.push(newSlip);
-
-                        log(sheetName, rowNum, 'Success', `Added Payslip for ${row.StaffName}`);
-                    }
                 }
 
                 // --- TRANSACTIONS ---

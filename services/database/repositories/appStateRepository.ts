@@ -14,13 +14,8 @@ import {
     ProjectsRepository, BuildingsRepository, PropertiesRepository, UnitsRepository,
     TransactionsRepository, InvoicesRepository, BillsRepository, BudgetsRepository,
     RentalAgreementsRepository, ProjectAgreementsRepository, ContractsRepository,
-    RecurringTemplatesRepository, SalaryComponentsRepository, StaffRepository,
-    EmployeesRepository, PayrollCyclesRepository, PayslipsRepository,
-    LegacyPayslipsRepository, BonusRecordsRepository, PayrollAdjustmentsRepository,
-    LoanAdvanceRecordsRepository, AttendanceRecordsRepository,
-    TaxConfigurationsRepository, StatutoryConfigurationsRepository,
-    TransactionLogRepository, ErrorLogRepository, AppSettingsRepository,
-    QuotationsRepository, DocumentsRepository, PMCycleAllocationsRepository
+    RecurringTemplatesRepository, TransactionLogRepository, ErrorLogRepository, 
+    AppSettingsRepository, QuotationsRepository, DocumentsRepository, PMCycleAllocationsRepository
 } from './index';
 import { migrateTenantColumns } from '../tenantMigration';
 
@@ -45,18 +40,6 @@ export class AppStateRepository {
     private projectAgreementsRepo = new ProjectAgreementsRepository();
     private contractsRepo = new ContractsRepository();
     private recurringTemplatesRepo = new RecurringTemplatesRepository();
-    private salaryComponentsRepo = new SalaryComponentsRepository();
-    private staffRepo = new StaffRepository();
-    private employeesRepo = new EmployeesRepository();
-    private payrollCyclesRepo = new PayrollCyclesRepository();
-    private payslipsRepo = new PayslipsRepository();
-    private legacyPayslipsRepo = new LegacyPayslipsRepository();
-    private bonusRecordsRepo = new BonusRecordsRepository();
-    private payrollAdjustmentsRepo = new PayrollAdjustmentsRepository();
-    private loanAdvanceRecordsRepo = new LoanAdvanceRecordsRepository();
-    private attendanceRecordsRepo = new AttendanceRecordsRepository();
-    private taxConfigurationsRepo = new TaxConfigurationsRepository();
-    private statutoryConfigurationsRepo = new StatutoryConfigurationsRepository();
     private transactionLogRepo = new TransactionLogRepository();
     private errorLogRepo = new ErrorLogRepository();
     private quotationsRepo = new QuotationsRepository();
@@ -126,18 +109,6 @@ export class AppStateRepository {
         const projectAgreements = this.projectAgreementsRepo.findAll();
         const contracts = this.contractsRepo.findAll();
         const recurringTemplates = this.recurringTemplatesRepo.findAll();
-        const salaryComponents = this.salaryComponentsRepo.findAll();
-        const staff = this.staffRepo.findAll();
-        const employees = this.employeesRepo.findAll();
-        const payrollCycles = this.payrollCyclesRepo.findAll();
-        const payslips = this.payslipsRepo.findAll();
-        const legacyPayslips = this.legacyPayslipsRepo.findAll();
-        const bonusRecords = this.bonusRecordsRepo.findAll();
-        const payrollAdjustments = this.payrollAdjustmentsRepo.findAll();
-        const loanAdvanceRecords = this.loanAdvanceRecordsRepo.findAll();
-        const attendanceRecords = this.attendanceRecordsRepo.findAll();
-        const taxConfigurations = this.taxConfigurationsRepo.findAll();
-        const statutoryConfigurations = this.statutoryConfigurationsRepo.findAll();
         const transactionLog = this.transactionLogRepo.findAll();
         const errorLog = this.errorLogRepo.findAll();
         const quotations = this.quotationsRepo.findAll();
@@ -166,14 +137,6 @@ export class AppStateRepository {
             console.warn('⚠️ Failed to load settings from cloud, using local settings:', error);
             settings = this.appSettingsRepo.loadAllSettings();
         }
-
-        // Separate project and rental staff
-        const projectStaff = staff.filter(s => s.staff_type === 'project');
-        const rentalStaff = staff.filter(s => s.staff_type === 'rental');
-
-        // Separate project and rental payslips
-        const projectPayslips = legacyPayslips.filter(p => p.payslip_type === 'project');
-        const rentalPayslips = legacyPayslips.filter(p => p.payslip_type === 'rental');
 
         // Get current user
         const currentUserId = this.appSettingsRepo.getSetting('current_user_id');
@@ -478,20 +441,6 @@ export class AppStateRepository {
                     ? (typeof c.expenseCategoryItems === 'string' ? JSON.parse(c.expenseCategoryItems) : c.expenseCategoryItems)
                     : undefined
             })),
-            projectStaff,
-            rentalStaff,
-            employees,
-            salaryComponents,
-            payrollCycles,
-            payslips,
-            bonusRecords,
-            payrollAdjustments,
-            loanAdvanceRecords,
-            attendanceRecords,
-            taxConfigurations,
-            statutoryConfigurations,
-            projectPayslips,
-            rentalPayslips,
             recurringInvoiceTemplates: recurringTemplates,
             agreementSettings: settings.agreementSettings || { prefix: 'AGR-', nextNumber: 1, padding: 4 },
             projectAgreementSettings: settings.projectAgreementSettings || { prefix: 'P-AGR-', nextNumber: 1, padding: 4 },
@@ -695,55 +644,15 @@ export class AppStateRepository {
                                     : undefined
                             })));
                             this.recurringTemplatesRepo.saveAll(state.recurringInvoiceTemplates);
-                            this.salaryComponentsRepo.saveAll(state.salaryComponents);
                         } catch (e) {
                             console.error('❌ Failed to save documents/budgets/agreements/contracts:', e);
                             throw e;
                         }
                         
-                        // Save staff (combine project and rental)
                         try {
-                            const allStaff = [
-                                ...state.projectStaff.map(s => ({ ...s, staff_type: 'project' as const })),
-                                ...state.rentalStaff.map(s => ({ ...s, staff_type: 'rental' as const }))
-                            ];
-                            this.staffRepo.saveAll(allStaff);
-                        } catch (e) {
-                            console.error('❌ Failed to save staff:', e);
-                            throw e;
-                        }
-
-                        try {
-                            this.employeesRepo.saveAll(state.employees);
-                            this.payrollCyclesRepo.saveAll(state.payrollCycles);
-                            this.payslipsRepo.saveAll(state.payslips);
-                        } catch (e) {
-                            console.error('❌ Failed to save employees/payroll:', e);
-                            throw e;
-                        }
-                        
-                        // Save legacy payslips (combine project and rental)
-                        try {
-                            const allLegacyPayslips = [
-                                ...state.projectPayslips.map(p => ({ ...p, payslip_type: 'project' as const })),
-                                ...state.rentalPayslips.map(p => ({ ...p, payslip_type: 'rental' as const }))
-                            ];
-                            this.legacyPayslipsRepo.saveAll(allLegacyPayslips);
-                        } catch (e) {
-                            console.error('❌ Failed to save legacy payslips:', e);
-                            throw e;
-                        }
-
-                        try {
-                            this.bonusRecordsRepo.saveAll(state.bonusRecords);
-                            this.payrollAdjustmentsRepo.saveAll(state.payrollAdjustments);
-                            this.loanAdvanceRecordsRepo.saveAll(state.loanAdvanceRecords);
-                            this.attendanceRecordsRepo.saveAll(state.attendanceRecords);
-                            this.taxConfigurationsRepo.saveAll(state.taxConfigurations);
-                            this.statutoryConfigurationsRepo.saveAll(state.statutoryConfigurations);
                             this.transactionLogRepo.saveAll(state.transactionLog);
                         } catch (e) {
-                            console.error('❌ Failed to save payroll records:', e);
+                            console.error('❌ Failed to save transaction log:', e);
                             throw e;
                         }
 

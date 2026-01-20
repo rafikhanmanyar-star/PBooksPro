@@ -39,20 +39,6 @@ The database consists of the following main tables:
 - `project_agreement_units` - Junction table for project agreements and units
 - `contract_categories` - Junction table for contracts and categories
 
-#### Payroll
-- `salary_components` - Salary component definitions
-- `staff` - Legacy staff records
-- `employees` - Enterprise payroll employees
-- `payroll_cycles` - Payroll cycles
-- `payslips` - Enterprise payslips
-- `legacy_payslips` - Legacy payslips
-- `bonus_records` - Bonus records
-- `payroll_adjustments` - Payroll adjustments
-- `loan_advance_records` - Loan and advance records
-- `attendance_records` - Attendance records
-- `tax_configurations` - Tax configurations
-- `statutory_configurations` - Statutory configurations
-
 #### Other
 - `recurring_invoice_templates` - Recurring invoice templates
 - `tasks` - Todo list tasks

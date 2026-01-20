@@ -32,18 +32,6 @@ const TABLES_WITH_TENANT_ID = [
     'project_agreements',
     'contracts',
     'recurring_invoice_templates',
-    'salary_components',
-    'staff',
-    'employees',
-    'payroll_cycles',
-    'payslips',
-    'legacy_payslips',
-    'bonus_records',
-    'payroll_adjustments',
-    'loan_advance_records',
-    'attendance_records',
-    'tax_configurations',
-    'statutory_configurations',
     'transaction_log',
     'pm_cycle_allocations'
 ];

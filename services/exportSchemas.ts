@@ -59,20 +59,6 @@ const createExportSchemas = (): Record<string, ExportSchema> => {
         ]
     };
 
-    // SalaryComponents
-    schemas.SalaryComponents = {
-        sheetName: 'SalaryComponents',
-        version: '1.0',
-        headers: ['id', 'name', 'type', 'isTaxable', 'isSystem'],
-        transform: (state: AppState) => state.salaryComponents.map(sc => ({
-            id: sc.id,
-            name: sc.name,
-            type: sc.type,
-            isTaxable: sc.isTaxable,
-            isSystem: sc.isSystem ?? false,
-        }))
-    };
-
     // Accounts
     schemas.Accounts = {
         sheetName: 'Accounts',
@@ -180,31 +166,6 @@ const createExportSchemas = (): Record<string, ExportSchema> => {
             salePrice: u.salePrice ?? 0,
             description: u.description ?? '',
         }))
-    };
-
-    // Staff
-    schemas.Staff = {
-        sheetName: 'Staff',
-        version: '1.0',
-        headers: ['id', 'Name', 'employeeId', 'designation', 'basicSalary', 'joiningDate', 'status', 'email', 'ProjectName', 'BuildingName', 'salaryStructure', 'bankDetails', 'history', 'exitDetails', 'advanceBalance'],
-        transform: (state: AppState, maps: ExportMaps, helpers: ExportHelpers) => 
-            [...state.projectStaff, ...state.rentalStaff].map(st => ({
-                id: st.id,
-                Name: helpers.getName(maps.contactsById, st.id),
-                employeeId: st.employeeId ?? '',
-                designation: st.designation ?? '',
-                basicSalary: st.basicSalary ?? 0,
-                joiningDate: st.joiningDate ?? '',
-                status: st.status ?? '',
-                email: st.email ?? '',
-                ProjectName: helpers.getName(maps.projectsById, st.projectId),
-                BuildingName: helpers.getName(maps.buildingsById, st.buildingId),
-                salaryStructure: helpers.safeJson(st.salaryStructure ?? []),
-                bankDetails: helpers.safeJson(st.bankDetails ?? null),
-                history: helpers.safeJson(st.history ?? []),
-                exitDetails: st.exitDetails ? helpers.safeJson(st.exitDetails) : '',
-                advanceBalance: st.advanceBalance ?? 0,
-            }))
     };
 
     // RentalAgreements
@@ -735,35 +696,11 @@ const createExportSchemas = (): Record<string, ExportSchema> => {
         }))
     };
 
-    // Payslips
-    schemas.Payslips = {
-        sheetName: 'Payslips',
-        version: '1.0',
-        headers: ['id', 'staffName', 'month', 'issueDate', 'basicSalary', 'allowances', 'deductions', 'bonuses', 'totalAllowances', 'totalDeductions', 'totalBonuses', 'grossSalary', 'netSalary', 'status'],
-        transform: (state: AppState, maps: ExportMaps, helpers: ExportHelpers) => 
-            [...state.projectPayslips, ...state.rentalPayslips].map(p => ({
-                id: p.id,
-                staffName: helpers.getName(maps.contactsById, (p as any).staffId),
-                month: (p as any).month ?? '',
-                issueDate: p.issueDate ?? '',
-                basicSalary: (p as any).basicSalary ?? 0,
-                allowances: helpers.safeJson((p as any).allowances ?? []),
-                deductions: helpers.safeJson((p as any).deductions ?? []),
-                bonuses: helpers.safeJson((p as any).bonuses ?? []),
-                totalAllowances: (p as any).totalAllowances ?? 0,
-                totalDeductions: (p as any).totalDeductions ?? 0,
-                totalBonuses: (p as any).totalBonuses ?? 0,
-                grossSalary: (p as any).grossSalary ?? 0,
-                netSalary: (p as any).netSalary ?? 0,
-                status: p.status ?? '',
-            }))
-    };
-
     // Transactions (main sheet - excludes split transactions)
     schemas.Transactions = {
         sheetName: 'Transactions',
         version: '1.0',
-        headers: ['id', 'type', 'subtype', 'amount', 'date', 'description', 'accountName', 'fromAccountName', 'toAccountName', 'contactName', 'projectName', 'buildingName', 'propertyName', 'unitName', 'categoryName', 'invoiceNumber', 'billNumber', 'contractNumber', 'agreementNumber', 'payslipId', 'batchId'],
+        headers: ['id', 'type', 'subtype', 'amount', 'date', 'description', 'accountName', 'fromAccountName', 'toAccountName', 'contactName', 'projectName', 'buildingName', 'propertyName', 'unitName', 'categoryName', 'invoiceNumber', 'billNumber', 'contractNumber', 'agreementNumber', 'batchId'],
         transform: (state: AppState, maps: ExportMaps, helpers: ExportHelpers) => 
             state.transactions
                 .filter(tx => !tx.billId && !tx.invoiceId && tx.type !== TransactionType.LOAN && tx.type !== TransactionType.TRANSFER)
@@ -787,7 +724,6 @@ const createExportSchemas = (): Record<string, ExportSchema> => {
                     billNumber: helpers.getName(maps.billNoById, tx.billId),
                     contractNumber: helpers.getName(maps.contractNoById, tx.contractId),
                     agreementNumber: helpers.getAgreementNumber(tx.agreementId),
-                    payslipId: tx.payslipId ?? '',
                     batchId: tx.batchId ?? '',
                 }))
     };
@@ -800,13 +736,13 @@ export const EXPORT_SCHEMAS: Record<string, ExportSchema> = createExportSchemas(
 // Helper to get all export schemas in dependency order
 export const getExportSchemasInOrder = (): ExportSchema[] => {
     const order = [
-        'Settings', 'SalaryComponents', 'Accounts', 'Contacts', 'Categories', 
-        'Projects', 'Buildings', 'Properties', 'Units', 'Staff',
+        'Settings', 'Accounts', 'Contacts', 'Categories', 
+        'Projects', 'Buildings', 'Properties', 'Units',
         'RentalAgreements', 'ProjectAgreements', 'Contracts', 'RecurringTemplates',
         'Invoices', 'ProjectBills', 'RentalBills', 'Bills',
         'RentalInvoicePayments', 'ProjectInvoicePayments', 'RentalBillPayments', 'ProjectBillPayments',
         'LoanTransactions', 'EquityTransactions', 'TransferTransactions', 'IncomeTransactions', 'ExpenseTransactions',
-        'Budgets', 'Payslips', 'Transactions'
+        'Budgets', 'Transactions'
     ];
     
     return order

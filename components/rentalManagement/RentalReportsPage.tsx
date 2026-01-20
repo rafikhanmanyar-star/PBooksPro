@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import OwnerPayoutsReport from '../reports/OwnerPayoutsReport';
 import UnitStatusReport from '../reports/UnitStatusReport';
 import TenantLedgerReport from '../reports/TenantLedgerReport';
-import EmployeePaymentReport from '../reports/EmployeePaymentReport';
 import BuildingAccountsReport from '../reports/BuildingAccountsReport';
 import VendorLedgerReport from '../reports/VendorLedgerReport';
 import { useAppContext } from '../../context/AppContext';
@@ -25,8 +24,7 @@ const ALL_REPORTS = [
     'Tenant Ledger',
     'Vendor Ledger',
     'Owner Security Deposit',
-    'Broker Fees',
-    'Employee Payments (Rental)'
+    'Broker Fees'
 ];
 
 interface RentalReportsPageProps {
@@ -91,8 +89,6 @@ const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => 
                 return <OwnerSecurityDepositReport />;
             case 'Broker Fees':
                 return <BrokerFeeReport />;
-            case 'Employee Payments (Rental)':
-                return <EmployeePaymentReport payrollType="Rental" />;
             default:
                 return <p>Select a report to view.</p>;
         }

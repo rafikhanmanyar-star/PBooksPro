@@ -12,7 +12,7 @@ router.use(adminOnlyMiddleware());
 
 /**
  * DELETE /api/data-management/clear-transactions
- * Clear all transactions, bills, invoices, contracts, agreements, sales returns, payslips
+ * Clear all transactions, bills, invoices, contracts, agreements, sales returns
  * Preserves: Accounts, contacts, categories, projects, buildings, properties, units, settings
  * Requires: Admin role
  */
@@ -35,12 +35,6 @@ router.delete('/clear-transactions', async (req: TenantRequest, res) => {
         'pm_cycle_allocations',
         'invoices',
         'bills',
-        'payslips',
-        'legacy_payslips',
-        'bonus_records',
-        'payroll_adjustments',
-        'loan_advance_records',
-        'attendance_records',
         'quotations',
         'recurring_invoice_templates',
         'contracts',

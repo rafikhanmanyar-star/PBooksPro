@@ -8,7 +8,7 @@ export class DataManagementApiRepository {
   /**
    * Clear all transaction-related data
    * Requires: Admin role
-   * Clears: Transactions, invoices, bills, contracts, agreements, sales returns, payslips
+   * Clears: Transactions, invoices, bills, contracts, agreements, sales returns
    * Preserves: Accounts, contacts, categories, projects, buildings, properties, units, settings
    */
   async clearTransactions(): Promise<{

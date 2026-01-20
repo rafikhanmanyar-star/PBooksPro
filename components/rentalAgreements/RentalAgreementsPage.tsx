@@ -11,7 +11,7 @@ import Input from '../ui/Input';
 import Select from '../ui/Select';
 import DatePicker from '../ui/DatePicker';
 import { formatDate } from '../../utils/dateUtils';
-import PayrollTreeView, { PayrollTreeNode } from '../payroll/PayrollTreeView'; 
+import TreeView, { TreeNode } from '../ui/TreeView'; 
 import useLocalStorage from '../../hooks/useLocalStorage';
 import ResizeHandle from '../ui/ResizeHandle';
 import { ImportType } from '../../services/importService';
@@ -145,8 +145,8 @@ const RentalAgreementsPage: React.FC = () => {
 
     // --- Tree Data Construction ---
     // Hierarchy: Building -> [Selected Subgroup]
-    const treeData = useMemo<PayrollTreeNode[]>(() => {
-        const buildingMap = new Map<string, PayrollTreeNode>();
+    const treeData = useMemo<TreeNode[]>(() => {
+        const buildingMap = new Map<string, TreeNode>();
         
         // Initialize Buildings
         state.buildings.forEach(b => {
@@ -408,7 +408,7 @@ const RentalAgreementsPage: React.FC = () => {
                             <button onClick={() => setSelectedTreeId(null)} className="text-xs text-accent hover:underline">Clear</button>
                         )}
                     </div>
-                    <PayrollTreeView 
+                    <TreeView 
                         treeData={treeData} 
                         selectedId={selectedTreeId} 
                         onSelect={(id, type) => {

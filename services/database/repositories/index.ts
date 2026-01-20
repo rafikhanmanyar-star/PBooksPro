@@ -231,53 +231,6 @@ export class RecurringTemplatesRepository extends BaseRepository<any> {
     constructor() { super('recurring_invoice_templates'); }
 }
 
-export class SalaryComponentsRepository extends BaseRepository<any> {
-    constructor() { super('salary_components'); }
-}
-
-export class StaffRepository extends BaseRepository<any> {
-    constructor() { super('staff'); }
-}
-
-export class EmployeesRepository extends BaseRepository<any> {
-    constructor() { super('employees'); }
-}
-
-export class PayrollCyclesRepository extends BaseRepository<any> {
-    constructor() { super('payroll_cycles'); }
-}
-
-export class PayslipsRepository extends BaseRepository<any> {
-    constructor() { super('payslips'); }
-}
-
-export class LegacyPayslipsRepository extends BaseRepository<any> {
-    constructor() { super('legacy_payslips'); }
-}
-
-export class BonusRecordsRepository extends BaseRepository<any> {
-    constructor() { super('bonus_records'); }
-}
-
-export class PayrollAdjustmentsRepository extends BaseRepository<any> {
-    constructor() { super('payroll_adjustments'); }
-}
-
-export class LoanAdvanceRecordsRepository extends BaseRepository<any> {
-    constructor() { super('loan_advance_records'); }
-}
-
-export class AttendanceRecordsRepository extends BaseRepository<any> {
-    constructor() { super('attendance_records'); }
-}
-
-export class TaxConfigurationsRepository extends BaseRepository<any> {
-    constructor() { super('tax_configurations'); }
-}
-
-export class StatutoryConfigurationsRepository extends BaseRepository<any> {
-    constructor() { super('statutory_configurations'); }
-}
 
 export class TransactionLogRepository extends BaseRepository<any> {
     constructor() { super('transaction_log'); }

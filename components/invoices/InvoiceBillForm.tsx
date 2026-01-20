@@ -745,21 +745,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   const handleStaffSelect = (item: any) => {
       const selectedId = item?.id || '';
       setStaffId(selectedId);
-      // Auto-populate context based on staff assignment
-      if (selectedId) {
-          const staffMember = [...state.projectStaff, ...state.rentalStaff].find(s => s.id === selectedId);
-          if (staffMember) {
-              if (staffMember.projectId) {
-                  setProjectId(staffMember.projectId);
-                  setBuildingId('');
-                  setRootAllocationType('project'); // Might flip root visually if auto-assigned to project
-              } else if (staffMember.buildingId) {
-                  setBuildingId(staffMember.buildingId);
-                  setProjectId('');
-                  setRootAllocationType('building');
-              }
-          }
-      }
+      // Staff selection - user can manually select project/building
   };
 
   const handleDelete = async () => {
@@ -1087,10 +1073,11 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   }, [state.contacts, state.properties, state.rentalAgreements, buildingId]);
 
   const staffList = useMemo(() => {
-      const allStaff = [...state.projectStaff, ...state.rentalStaff];
-      const uniqueStaff = Array.from(new Map(allStaff.map(s => [s.id, s])).values());
-      return uniqueStaff.map(s => ({ id: s.id, name: state.contacts.find(c=>c.id===s.id)?.name || 'Unknown' }));
-  }, [state.projectStaff, state.rentalStaff, state.contacts]);
+      // Staff contacts (those marked as type STAFF)
+      return state.contacts
+          .filter(c => c.type === ContactType.STAFF)
+          .map(c => ({ id: c.id, name: c.name || 'Unknown' }));
+  }, [state.contacts]);
 
 
   const renderRentalInvoiceForm = () => {

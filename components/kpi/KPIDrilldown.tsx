@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { useKpis } from '../../context/KPIContext';
 import { useAppContext } from '../../context/AppContext';
 import { ICONS, CURRENCY } from '../../constants';
-import { InvoiceStatus, RentalAgreementStatus, ContactType, TransactionType, LoanSubtype, PayslipStatus, AccountType } from '../../types';
+import { InvoiceStatus, RentalAgreementStatus, ContactType, TransactionType, LoanSubtype, AccountType } from '../../types';
 import { formatDate } from '../../utils/dateUtils';
 import { formatCurrency } from '../../utils/numberUtils';
 
@@ -166,24 +166,8 @@ const KPIDrilldown: React.FC = () => {
                     balance: b.amount - b.paidAmount,
                     filter: { name: b.billNumber }
                 }));
-            
-            const allPayslips = [...state.projectPayslips, ...state.rentalPayslips];
-            const unpaidPayslips = allPayslips
-                .filter(p => p.status !== PayslipStatus.PAID)
-                .map(p => {
-                    const paidAmount = state.transactions
-                        .filter(tx => tx.payslipId === p.id)
-                        .reduce((sum, tx) => sum + tx.amount, 0);
-                    return {
-                        id: p.id,
-                        number: `Payslip ${p.month}`,
-                        contact: state.contacts.find(c => c.id === p.staffId)?.name || 'Staff',
-                        balance: p.netSalary - paidAmount,
-                        filter: { name: state.contacts.find(c => c.id === p.staffId)?.name || '' }
-                    };
-                });
 
-            items = [...unpaidBills, ...unpaidPayslips];
+            items = unpaidBills;
         } else if (id === 'bmFunds') {
              headers = [{ key: 'buildingName', label: 'Building' }, { key: 'amount', label: 'Net Funds', isNumeric: true }];
              
