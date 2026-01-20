@@ -17,6 +17,8 @@ import {
   PayrollEmployeeUpdateRequest,
   PayrollRunCreateRequest,
   PayrollRunUpdateRequest,
+  PayrollRunWithSummary,
+  PayrollProcessingSummary,
   normalizeEmployee,
   normalizePayrollRun,
   EmploymentStatus,
@@ -127,11 +129,18 @@ export const payrollApi = {
     }
   },
 
-  // Process payroll run (calculate all payslips)
-  async processPayrollRun(id: string): Promise<PayrollRun | null> {
+  // Process payroll run (calculate payslips for new employees only)
+  // Returns processing summary with info about new vs skipped payslips
+  async processPayrollRun(id: string): Promise<PayrollRunWithSummary | null> {
     try {
       const response = await apiClient.post<any>(`/payroll/runs/${id}/process`);
-      return response ? normalizePayrollRun(response) : null;
+      if (!response) return null;
+      
+      const normalizedRun = normalizePayrollRun(response);
+      return {
+        ...normalizedRun,
+        processing_summary: response.processing_summary
+      };
     } catch (error) {
       console.error('Error processing payroll run:', error);
       throw error;

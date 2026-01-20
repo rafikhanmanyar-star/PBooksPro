@@ -326,6 +326,7 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
 });
 
 // POST /payroll/runs/:id/process - Process payroll and generate payslips
+// Only generates payslips for employees who don't already have one for this payroll run
 router.post('/runs/:id/process', async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
@@ -336,16 +337,41 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Authentication required' });
     }
 
-    // Get active employees
-    const employees = await getDb().query(
-      `SELECT * FROM payroll_employees 
-       WHERE tenant_id = $1 AND status = 'ACTIVE'`,
-      [tenantId]
+    // Get the payroll run to check its status
+    const runCheck = await getDb().query(
+      `SELECT * FROM payroll_runs WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId]
     );
 
-    let totalAmount = 0;
+    if (runCheck.length === 0) {
+      return res.status(404).json({ error: 'Payroll run not found' });
+    }
 
-    // Generate payslips for each employee
+    // Get employees who already have payslips for this run
+    const existingPayslips = await getDb().query(
+      `SELECT employee_id, net_pay FROM payslips 
+       WHERE payroll_run_id = $1 AND tenant_id = $2`,
+      [id, tenantId]
+    );
+
+    const existingEmployeeIds = new Set(existingPayslips.map((p: any) => p.employee_id));
+    const existingTotalAmount = existingPayslips.reduce((sum: number, p: any) => sum + parseFloat(p.net_pay || 0), 0);
+
+    // Get active employees who DON'T already have a payslip for this run
+    const employees = await getDb().query(
+      `SELECT * FROM payroll_employees 
+       WHERE tenant_id = $1 AND status = 'ACTIVE'
+       AND id NOT IN (
+         SELECT employee_id FROM payslips 
+         WHERE payroll_run_id = $2 AND tenant_id = $1
+       )`,
+      [tenantId, id]
+    );
+
+    let newTotalAmount = 0;
+    let newPayslipsCount = 0;
+
+    // Generate payslips only for new employees (those without existing payslips)
     for (const emp of employees) {
       const salary = emp.salary;
       const basic = salary.basic || 0;
@@ -373,22 +399,16 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
       const grossPay = basic + totalAllowances + earningAdj;
       const netPay = grossPay - totalDeductions - deductionAdj;
       
-      totalAmount += netPay;
+      newTotalAmount += netPay;
+      newPayslipsCount++;
 
-      // Insert payslip
+      // Insert payslip (no ON CONFLICT update - we only insert new ones)
       await getDb().query(
         `INSERT INTO payslips 
          (tenant_id, payroll_run_id, employee_id, basic_pay, total_allowances, 
           total_deductions, total_adjustments, gross_pay, net_pay,
           allowance_details, deduction_details, adjustment_details)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-         ON CONFLICT (payroll_run_id, employee_id) DO UPDATE SET
-          basic_pay = EXCLUDED.basic_pay,
-          total_allowances = EXCLUDED.total_allowances,
-          total_deductions = EXCLUDED.total_deductions,
-          total_adjustments = EXCLUDED.total_adjustments,
-          gross_pay = EXCLUDED.gross_pay,
-          net_pay = EXCLUDED.net_pay`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
         [tenantId, id, emp.id, basic, totalAllowances, totalDeductions,
          earningAdj - deductionAdj, grossPay, netPay,
          JSON.stringify(salary.allowances || []),
@@ -397,7 +417,11 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
       );
     }
 
-    // Update payroll run with totals
+    // Calculate combined totals (existing + new)
+    const combinedTotalAmount = existingTotalAmount + newTotalAmount;
+    const totalEmployeeCount = existingEmployeeIds.size + newPayslipsCount;
+
+    // Update payroll run with combined totals
     const result = await getDb().query(
       `UPDATE payroll_runs SET
         status = 'PROCESSING',
@@ -406,12 +430,23 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
         updated_by = $3
        WHERE id = $4 AND tenant_id = $5
        RETURNING *`,
-      [totalAmount, employees.length, userId, id, tenantId]
+      [combinedTotalAmount, totalEmployeeCount, userId, id, tenantId]
     );
 
     emitToTenant(tenantId, 'payroll_run_updated', { id });
 
-    res.json(result[0]);
+    // Return detailed response with info about new vs existing payslips
+    res.json({
+      ...result[0],
+      processing_summary: {
+        new_payslips_generated: newPayslipsCount,
+        existing_payslips_skipped: existingEmployeeIds.size,
+        total_payslips: totalEmployeeCount,
+        new_amount_added: newTotalAmount,
+        previous_amount: existingTotalAmount,
+        total_amount: combinedTotalAmount
+      }
+    });
   } catch (error) {
     console.error('Error processing payroll:', error);
     res.status(500).json({ error: 'Failed to process payroll' });

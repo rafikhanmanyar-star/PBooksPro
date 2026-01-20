@@ -247,6 +247,20 @@ export interface PayrollRunUpdateRequest {
   status?: PayrollStatus;
 }
 
+// Processing summary returned when running payroll
+export interface PayrollProcessingSummary {
+  new_payslips_generated: number;
+  existing_payslips_skipped: number;
+  total_payslips: number;
+  new_amount_added: number;
+  previous_amount: number;
+  total_amount: number;
+}
+
+export interface PayrollRunWithSummary extends PayrollRun {
+  processing_summary?: PayrollProcessingSummary;
+}
+
 // ==================== COMPONENT PROPS ====================
 
 export interface EmployeeListProps {

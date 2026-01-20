@@ -22,7 +22,8 @@ import {
   EmploymentStatus, 
   PayrollRun, 
   PayrollEmployee,
-  Payslip
+  Payslip,
+  PayrollProcessingSummary
 } from './types';
 import { storageService } from './services/storageService';
 import { payrollApi } from '../../services/api/payrollApi';
@@ -43,6 +44,8 @@ const PayrollRunScreen: React.FC = () => {
   const [selectedEmployeeForPayslip, setSelectedEmployeeForPayslip] = useState<PayrollEmployee | null>(null);
   const [payslipsForRun, setPayslipsForRun] = useState<Payslip[]>([]);
   const [loadingPayslips, setLoadingPayslips] = useState(false);
+  const [processingSummary, setProcessingSummary] = useState<PayrollProcessingSummary | null>(null);
+  const [reprocessing, setReprocessing] = useState(false);
 
   const [newRunData, setNewRunData] = useState({
     month: 'January',
@@ -118,6 +121,7 @@ const PayrollRunScreen: React.FC = () => {
   const handleStartRun = async () => {
     if (!tenantId || !userId) return;
     setCalculating(true);
+    setProcessingSummary(null);
     
     try {
       // Create payroll run via API
@@ -127,8 +131,13 @@ const PayrollRunScreen: React.FC = () => {
       });
       
       if (newRun) {
-        // Process payroll to generate payslips
-        await payrollApi.processPayrollRun(newRun.id);
+        // Process payroll to generate payslips (only for new employees)
+        const processedRun = await payrollApi.processPayrollRun(newRun.id);
+        
+        // Store the processing summary to show feedback
+        if (processedRun?.processing_summary) {
+          setProcessingSummary(processedRun.processing_summary);
+        }
         
         // Also cache in localStorage
         storageService.addPayrollRun(tenantId, newRun, userId);
@@ -167,6 +176,40 @@ const PayrollRunScreen: React.FC = () => {
     setCalculating(false);
     setIsCreating(false);
     await refreshRuns();
+  };
+
+  // Re-process an existing payroll run to add payslips for new employees
+  const handleReprocessRun = async (run: PayrollRun) => {
+    if (!tenantId || !userId) return;
+    setReprocessing(true);
+    setProcessingSummary(null);
+    
+    try {
+      const processedRun = await payrollApi.processPayrollRun(run.id);
+      
+      if (processedRun?.processing_summary) {
+        setProcessingSummary(processedRun.processing_summary);
+        
+        // Refresh payslips for the run
+        const payslips = await payrollApi.getPayslipsByRun(run.id);
+        setPayslipsForRun(payslips);
+        
+        // Update run details
+        if (processedRun) {
+          setSelectedRunDetail({
+            ...run,
+            total_amount: processedRun.total_amount,
+            employee_count: processedRun.employee_count
+          });
+        }
+      }
+      
+      await refreshRuns();
+    } catch (error) {
+      console.error('Failed to reprocess payroll run:', error);
+    } finally {
+      setReprocessing(false);
+    }
   };
 
   // Handle viewing run detail and fetching payslips
@@ -351,9 +394,60 @@ const PayrollRunScreen: React.FC = () => {
           </div>
         </div>
 
+        {/* Processing Summary Alert */}
+        {processingSummary && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 no-print">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="text-blue-600 mt-0.5" size={20} />
+              <div className="flex-1">
+                <h4 className="font-bold text-blue-900 text-sm">Payroll Processing Complete</h4>
+                <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-4 text-xs">
+                  <div>
+                    <span className="text-blue-600 font-medium">New Payslips:</span>
+                    <span className="ml-2 font-bold text-blue-900">{processingSummary.new_payslips_generated}</span>
+                  </div>
+                  <div>
+                    <span className="text-blue-600 font-medium">Already Existed:</span>
+                    <span className="ml-2 font-bold text-blue-900">{processingSummary.existing_payslips_skipped}</span>
+                  </div>
+                  <div>
+                    <span className="text-blue-600 font-medium">Total Employees:</span>
+                    <span className="ml-2 font-bold text-blue-900">{processingSummary.total_payslips}</span>
+                  </div>
+                </div>
+                {processingSummary.existing_payslips_skipped > 0 && (
+                  <p className="text-[11px] text-blue-700 mt-2">
+                    Existing payslips were preserved. Only new employees received payslips.
+                  </p>
+                )}
+              </div>
+              <button 
+                onClick={() => setProcessingSummary(null)} 
+                className="text-blue-400 hover:text-blue-600 text-xs font-bold"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Status Action Buttons */}
         {selectedRunDetail.status !== PayrollStatus.PAID && selectedRunDetail.status !== PayrollStatus.CANCELLED && (
-          <div className="flex gap-3 justify-end no-print">
+          <div className="flex gap-3 justify-end no-print flex-wrap">
+            {/* Re-process button - to add payslips for new employees */}
+            {(selectedRunDetail.status === PayrollStatus.DRAFT || selectedRunDetail.status === PayrollStatus.PROCESSING) && (
+              <button 
+                onClick={() => handleReprocessRun(selectedRunDetail)}
+                disabled={reprocessing}
+                className="px-6 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-200 transition-all disabled:opacity-50 flex items-center gap-2"
+              >
+                {reprocessing ? (
+                  <><Loader2 size={16} className="animate-spin" /> Processing...</>
+                ) : (
+                  <><PlayCircle size={16} /> Add New Employees</>
+                )}
+              </button>
+            )}
             {selectedRunDetail.status === PayrollStatus.DRAFT && (
               <button 
                 onClick={() => handleUpdateStatus(selectedRunDetail, PayrollStatus.APPROVED)}
@@ -400,51 +494,65 @@ const PayrollRunScreen: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {activeEmployees.map(emp => {
-                  const payslip = getPayslipForEmployee(emp.id);
-                  const isPaid = payslip?.is_paid || false;
-                  return (
-                    <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-8 py-4">
-                        <div className="font-bold text-slate-900">{emp.name}</div>
-                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{emp.employee_code || emp.id.substring(0, 8)}</div>
-                      </td>
-                      <td className="px-8 py-4 text-sm font-medium text-slate-600">{emp.department}</td>
-                      <td className="px-8 py-4">
-                        <span className="font-bold text-slate-900">
-                          PKR {payslip?.net_pay?.toLocaleString() || '—'}
-                        </span>
-                      </td>
-                      <td className="px-8 py-4">
-                        {isPaid ? (
-                          <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 bg-green-50 text-green-600 rounded border border-green-100 flex items-center gap-1 w-fit">
-                            <CheckCircle2 size={10} /> Paid
+                {payslipsForRun.length > 0 ? (
+                  payslipsForRun.map(payslip => {
+                    // Find the employee for this payslip (use data from payslip if available)
+                    const emp = activeEmployees.find(e => e.id === payslip.employee_id);
+                    const employeeName = (payslip as any).employee_name || emp?.name || 'Unknown Employee';
+                    const employeeDept = (payslip as any).department || emp?.department || '—';
+                    const employeeCode = emp?.employee_code || payslip.employee_id.substring(0, 8);
+                    const isPaid = payslip.is_paid || false;
+                    
+                    return (
+                      <tr key={payslip.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-8 py-4">
+                          <div className="font-bold text-slate-900">{employeeName}</div>
+                          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{employeeCode}</div>
+                        </td>
+                        <td className="px-8 py-4 text-sm font-medium text-slate-600">{employeeDept}</td>
+                        <td className="px-8 py-4">
+                          <span className="font-bold text-slate-900">
+                            PKR {payslip.net_pay?.toLocaleString() || '—'}
                           </span>
-                        ) : payslip ? (
-                          <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 bg-amber-50 text-amber-600 rounded border border-amber-100">
-                            Pending
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 bg-slate-50 text-slate-400 rounded border border-slate-100">
-                            Not Generated
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-8 py-4 text-right no-print">
-                        <button 
-                          onClick={() => setSelectedEmployeeForPayslip(emp)} 
-                          className={`font-black text-xs uppercase tracking-widest flex items-center gap-2 ml-auto px-3 py-1.5 rounded-lg transition-all ${
-                            isPaid 
-                              ? 'text-slate-600 hover:bg-slate-100' 
-                              : 'text-blue-600 hover:bg-blue-50'
-                          }`}
-                        >
-                          <Eye size={14} /> {isPaid ? 'View' : 'View / Pay'}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                        </td>
+                        <td className="px-8 py-4">
+                          {isPaid ? (
+                            <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 bg-green-50 text-green-600 rounded border border-green-100 flex items-center gap-1 w-fit">
+                              <CheckCircle2 size={10} /> Paid
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 bg-amber-50 text-amber-600 rounded border border-amber-100">
+                              Pending
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-8 py-4 text-right no-print">
+                          {emp && (
+                            <button 
+                              onClick={() => setSelectedEmployeeForPayslip(emp)} 
+                              className={`font-black text-xs uppercase tracking-widest flex items-center gap-2 ml-auto px-3 py-1.5 rounded-lg transition-all ${
+                                isPaid 
+                                  ? 'text-slate-600 hover:bg-slate-100' 
+                                  : 'text-blue-600 hover:bg-blue-50'
+                              }`}
+                            >
+                              <Eye size={14} /> {isPaid ? 'View' : 'View / Pay'}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="px-8 py-12 text-center">
+                      <div className="text-slate-400 font-medium">No payslips generated yet.</div>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Click "Add New Employees" to generate payslips for active employees.
+                      </p>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           )}
