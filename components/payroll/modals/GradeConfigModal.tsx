@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, AlertCircle, Award } from 'lucide-react';
+import { X, Save, AlertCircle, Award, Loader2 } from 'lucide-react';
 import { storageService } from '../services/storageService';
+import { payrollApi } from '../../../services/api/payrollApi';
 import { GradeLevel } from '../types';
 import { useAuth } from '../../../context/AuthContext';
 
@@ -17,6 +18,7 @@ const GradeConfigModal: React.FC<GradeConfigModalProps> = ({ isOpen, onClose, in
   const tenantId = tenant?.id || '';
   const userId = user?.id || '';
 
+  const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState<GradeLevel>({
     id: '',
     tenant_id: '',
@@ -43,17 +45,52 @@ const GradeConfigModal: React.FC<GradeConfigModalProps> = ({ isOpen, onClose, in
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!tenantId || !userId) return;
     
-    const gradeData: GradeLevel = {
-      ...formData,
-      tenant_id: tenantId
-    };
-    storageService.updateGradeLevel(tenantId, gradeData, userId);
-    onSave(gradeData);
-    onClose();
+    setIsSaving(true);
+    
+    try {
+      let savedGrade: GradeLevel;
+      
+      if (initialData?.id && !initialData.id.startsWith('grade-')) {
+        // Update existing grade in cloud DB
+        const result = await payrollApi.updateGradeLevel(initialData.id, {
+          name: formData.name,
+          description: formData.description,
+          min_salary: formData.min_salary,
+          max_salary: formData.max_salary
+        });
+        savedGrade = result || { ...formData, tenant_id: tenantId };
+      } else {
+        // Create new grade in cloud DB
+        const result = await payrollApi.createGradeLevel({
+          name: formData.name,
+          description: formData.description,
+          min_salary: formData.min_salary,
+          max_salary: formData.max_salary
+        });
+        savedGrade = result || { ...formData, tenant_id: tenantId, id: `grade-${Date.now()}` };
+      }
+      
+      // Also update localStorage as cache
+      storageService.updateGradeLevel(tenantId, savedGrade, userId);
+      onSave(savedGrade);
+      onClose();
+    } catch (error) {
+      console.error('Failed to save grade to cloud:', error);
+      // Fallback to local storage only
+      const gradeData: GradeLevel = {
+        ...formData,
+        tenant_id: tenantId
+      };
+      storageService.updateGradeLevel(tenantId, gradeData, userId);
+      onSave(gradeData);
+      onClose();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -78,8 +115,10 @@ const GradeConfigModal: React.FC<GradeConfigModalProps> = ({ isOpen, onClose, in
           </div>
           <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex gap-3"><AlertCircle size={20} className="text-blue-500 shrink-0" /><p className="text-xs text-blue-700 leading-relaxed font-medium">Grade levels help define standard salary bands across the organization.</p></div>
           <div className="flex gap-3 pt-4">
-            <button type="button" onClick={onClose} className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl transition-colors border border-slate-200">Cancel</button>
-            <button type="submit" className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-200"><Save size={18} /> Save Grade</button>
+            <button type="button" onClick={onClose} disabled={isSaving} className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl transition-colors border border-slate-200 disabled:opacity-50">Cancel</button>
+            <button type="submit" disabled={isSaving} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-200 disabled:opacity-50">
+              {isSaving ? <><Loader2 size={18} className="animate-spin" /> Saving...</> : <><Save size={18} /> Save Grade</>}
+            </button>
           </div>
         </form>
       </div>

@@ -11,9 +11,11 @@ import {
   BadgeCheck,
   X,
   Printer,
-  FileCheck
+  FileCheck,
+  Loader2
 } from 'lucide-react';
 import { storageService } from './services/storageService';
+import { payrollApi } from '../../services/api/payrollApi';
 import { PayrollRun, PayrollStatus } from './types';
 import { useAuth } from '../../context/AuthContext';
 
@@ -25,13 +27,38 @@ const PaymentHistory: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterYear, setFilterYear] = useState<string>('All');
   const [isExporting, setIsExporting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [selectedBatch, setSelectedBatch] = useState<PayrollRun | null>(null);
 
   useEffect(() => {
-    if (tenantId) {
-      const runs = storageService.getPayrollRuns(tenantId).filter(r => r.status === PayrollStatus.PAID);
-      setHistory(runs);
-    }
+    const fetchHistory = async () => {
+      if (!tenantId) {
+        setIsLoading(false);
+        return;
+      }
+      
+      setIsLoading(true);
+      try {
+        // Fetch from cloud API first
+        const apiRuns = await payrollApi.getPayrollRuns();
+        if (apiRuns.length > 0) {
+          setHistory(apiRuns.filter(r => r.status === PayrollStatus.PAID));
+        } else {
+          // Fallback to localStorage
+          const runs = storageService.getPayrollRuns(tenantId).filter(r => r.status === PayrollStatus.PAID);
+          setHistory(runs);
+        }
+      } catch (error) {
+        console.warn('Failed to fetch payment history from API:', error);
+        // Fallback to localStorage
+        const runs = storageService.getPayrollRuns(tenantId).filter(r => r.status === PayrollStatus.PAID);
+        setHistory(runs);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchHistory();
   }, [tenantId]);
 
   const years = useMemo(() => {
@@ -72,10 +99,11 @@ const PaymentHistory: React.FC = () => {
     }, 800);
   };
 
-  if (!tenantId) {
+  if (!tenantId || isLoading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <p className="text-slate-400 font-bold">Loading...</p>
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <Loader2 size={32} className="text-amber-600 animate-spin" />
+        <p className="text-slate-400 font-bold">Loading payment history...</p>
       </div>
     );
   }

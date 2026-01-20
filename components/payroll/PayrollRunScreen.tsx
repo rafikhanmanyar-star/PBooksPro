@@ -23,6 +23,7 @@ import {
   PayrollEmployee 
 } from './types';
 import { storageService } from './services/storageService';
+import { payrollApi } from '../../services/api/payrollApi';
 import PayslipModal from './modals/PayslipModal';
 import { useAuth } from '../../context/AuthContext';
 
@@ -44,18 +45,47 @@ const PayrollRunScreen: React.FC = () => {
     year: new Date().getFullYear()
   });
 
-  const refreshRuns = () => {
-    if (tenantId) {
+  const refreshRuns = async () => {
+    if (!tenantId) return;
+    
+    try {
+      // Fetch payroll runs from API first
+      const apiRuns = await payrollApi.getPayrollRuns();
+      if (apiRuns.length > 0) {
+        setRuns(apiRuns);
+      } else {
+        // Fallback to localStorage
+        setRuns(storageService.getPayrollRuns(tenantId));
+      }
+    } catch (error) {
+      console.warn('Failed to fetch payroll runs from API:', error);
       setRuns(storageService.getPayrollRuns(tenantId));
     }
   };
 
   useEffect(() => {
-    if (tenantId) {
-      refreshRuns();
-      const employees = storageService.getEmployees(tenantId);
-      setActiveEmployees(employees.filter(e => e.status === EmploymentStatus.ACTIVE));
-    }
+    const loadData = async () => {
+      if (!tenantId) return;
+      
+      await refreshRuns();
+      
+      // Load employees from API first
+      try {
+        const apiEmployees = await payrollApi.getEmployees();
+        if (apiEmployees.length > 0) {
+          setActiveEmployees(apiEmployees.filter(e => e.status === EmploymentStatus.ACTIVE));
+        } else {
+          const employees = storageService.getEmployees(tenantId);
+          setActiveEmployees(employees.filter(e => e.status === EmploymentStatus.ACTIVE));
+        }
+      } catch (error) {
+        console.warn('Failed to fetch employees from API:', error);
+        const employees = storageService.getEmployees(tenantId);
+        setActiveEmployees(employees.filter(e => e.status === EmploymentStatus.ACTIVE));
+      }
+    };
+    
+    loadData();
   }, [tenantId]);
 
   const calculatePayrollTotals = () => {
@@ -84,32 +114,92 @@ const PayrollRunScreen: React.FC = () => {
   const handleStartRun = async () => {
     if (!tenantId || !userId) return;
     setCalculating(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    const totalAmount = calculatePayrollTotals();
-    const newRun: PayrollRun = {
-      id: `run-${Date.now()}`,
-      tenant_id: tenantId,
-      month: newRunData.month,
-      year: newRunData.year,
-      status: PayrollStatus.DRAFT,
-      total_amount: totalAmount,
-      employee_count: activeEmployees.length,
-      created_by: userId,
-    };
-    storageService.addPayrollRun(tenantId, newRun, userId);
+    
+    try {
+      // Create payroll run via API
+      const newRun = await payrollApi.createPayrollRun({
+        month: newRunData.month,
+        year: newRunData.year
+      });
+      
+      if (newRun) {
+        // Process payroll to generate payslips
+        await payrollApi.processPayrollRun(newRun.id);
+        
+        // Also cache in localStorage
+        storageService.addPayrollRun(tenantId, newRun, userId);
+      } else {
+        // Fallback to localStorage only
+        const totalAmount = calculatePayrollTotals();
+        const localRun: PayrollRun = {
+          id: `run-${Date.now()}`,
+          tenant_id: tenantId,
+          month: newRunData.month,
+          year: newRunData.year,
+          status: PayrollStatus.DRAFT,
+          total_amount: totalAmount,
+          employee_count: activeEmployees.length,
+          created_by: userId,
+        };
+        storageService.addPayrollRun(tenantId, localRun, userId);
+      }
+    } catch (error) {
+      console.error('Failed to create payroll run via API:', error);
+      // Fallback to localStorage only
+      const totalAmount = calculatePayrollTotals();
+      const localRun: PayrollRun = {
+        id: `run-${Date.now()}`,
+        tenant_id: tenantId,
+        month: newRunData.month,
+        year: newRunData.year,
+        status: PayrollStatus.DRAFT,
+        total_amount: totalAmount,
+        employee_count: activeEmployees.length,
+        created_by: userId,
+      };
+      storageService.addPayrollRun(tenantId, localRun, userId);
+    }
+    
     setCalculating(false);
     setIsCreating(false);
-    refreshRuns();
+    await refreshRuns();
   };
 
-  const handleUpdateStatus = (run: PayrollRun, nextStatus: PayrollStatus) => {
+  const handleUpdateStatus = async (run: PayrollRun, nextStatus: PayrollStatus) => {
     if (!tenantId || !userId) return;
-    const updatedRun = { ...run, status: nextStatus };
-    storageService.updatePayrollRun(tenantId, updatedRun, userId);
-    refreshRuns();
-    if (selectedRunDetail?.id === run.id) {
-      setSelectedRunDetail(updatedRun);
+    
+    try {
+      // Update status via API
+      const updatedRun = await payrollApi.updatePayrollRun(run.id, { 
+        status: nextStatus,
+        total_amount: run.total_amount
+      });
+      
+      if (updatedRun) {
+        // Also update localStorage cache
+        storageService.updatePayrollRun(tenantId, updatedRun, userId);
+        if (selectedRunDetail?.id === run.id) {
+          setSelectedRunDetail(updatedRun);
+        }
+      } else {
+        // Fallback
+        const localUpdatedRun = { ...run, status: nextStatus };
+        storageService.updatePayrollRun(tenantId, localUpdatedRun, userId);
+        if (selectedRunDetail?.id === run.id) {
+          setSelectedRunDetail(localUpdatedRun);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to update payroll run status via API:', error);
+      // Fallback to localStorage only
+      const localUpdatedRun = { ...run, status: nextStatus };
+      storageService.updatePayrollRun(tenantId, localUpdatedRun, userId);
+      if (selectedRunDetail?.id === run.id) {
+        setSelectedRunDetail(localUpdatedRun);
+      }
     }
+    
+    await refreshRuns();
   };
 
   const getStatusBadge = (status: PayrollStatus) => {

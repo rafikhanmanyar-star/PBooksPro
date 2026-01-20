@@ -142,8 +142,10 @@ const SalaryConfigModal: React.FC<SalaryConfigModalProps> = ({ isOpen, onClose, 
             <AlertCircle size={20} className="text-blue-500 shrink-0" /><p className="text-xs text-blue-700 leading-relaxed font-medium">Changes to this rule will apply globally to all employees using this {type}. Historical data remains locked for audit purposes.</p>
           </div>
           <div className="flex gap-3 pt-4">
-            <button type="button" onClick={onClose} className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl transition-colors border border-slate-200">Cancel</button>
-            <button type="submit" className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-200"><Save size={18} /> Save Component</button>
+            <button type="button" onClick={onClose} disabled={isSaving} className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl transition-colors border border-slate-200 disabled:opacity-50">Cancel</button>
+            <button type="submit" disabled={isSaving} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-200 disabled:opacity-50">
+              {isSaving ? <><Loader2 size={18} className="animate-spin" /> Saving...</> : <><Save size={18} /> Save Component</>}
+            </button>
           </div>
         </form>
       </div>

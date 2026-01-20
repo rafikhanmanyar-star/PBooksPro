@@ -68,30 +68,43 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
   }, [tenantId]);
 
   useEffect(() => {
-    if (tenantId) {
-      const runs = storageService.getPayrollRuns(tenantId).filter(r => r.status === PayrollStatus.PAID);
-      setAvailableRuns(runs);
+    if (!tenantId) return;
+    
+    const fetchData = async () => {
+      // Fetch payroll runs from API
+      try {
+        const apiRuns = await payrollApi.getPayrollRuns();
+        if (apiRuns.length > 0) {
+          setAvailableRuns(apiRuns.filter(r => r.status === PayrollStatus.PAID));
+        } else {
+          const runs = storageService.getPayrollRuns(tenantId).filter(r => r.status === PayrollStatus.PAID);
+          setAvailableRuns(runs);
+        }
+      } catch (error) {
+        console.warn('Failed to fetch payroll runs from API:', error);
+        const runs = storageService.getPayrollRuns(tenantId).filter(r => r.status === PayrollStatus.PAID);
+        setAvailableRuns(runs);
+      }
       
       // Fetch projects from main application API
-      const fetchProjects = async () => {
-        try {
-          const projects = await payrollApi.getMainAppProjects();
-          if (projects.length > 0) {
-            const activeProjects = projects.filter(p => p.status === 'ACTIVE');
-            setGlobalProjects(activeProjects);
-            storageService.setProjectsCache(projects);
-          } else {
-            // Fallback to localStorage
-            setGlobalProjects(storageService.getProjects(tenantId).filter(p => p.status === 'ACTIVE'));
-          }
-        } catch (error) {
-          console.error('Error fetching projects:', error);
+      try {
+        const projects = await payrollApi.getMainAppProjects();
+        if (projects.length > 0) {
+          const activeProjects = projects.filter(p => p.status === 'ACTIVE');
+          setGlobalProjects(activeProjects);
+          storageService.setProjectsCache(projects);
+        } else {
           // Fallback to localStorage
           setGlobalProjects(storageService.getProjects(tenantId).filter(p => p.status === 'ACTIVE'));
         }
-      };
-      fetchProjects();
-    }
+      } catch (error) {
+        console.error('Error fetching projects:', error);
+        // Fallback to localStorage
+        setGlobalProjects(storageService.getProjects(tenantId).filter(p => p.status === 'ACTIVE'));
+      }
+    };
+    
+    fetchData();
   }, [tenantId]);
 
   const getStatusColor = (status: EmploymentStatus) => {
@@ -130,8 +143,38 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
     return gross - deductions - deductionAdjustments;
   };
 
-  const handleUpdate = (updated: PayrollEmployee) => {
-    if (tenantId && userId) {
+  const handleUpdate = async (updated: PayrollEmployee) => {
+    if (!tenantId || !userId) return;
+    
+    try {
+      // Save to cloud API first
+      const result = await payrollApi.updateEmployee(updated.id, {
+        name: updated.name,
+        email: updated.email,
+        phone: updated.phone,
+        address: updated.address,
+        photo: updated.photo,
+        designation: updated.designation,
+        department: updated.department,
+        grade: updated.grade,
+        status: updated.status,
+        salary: updated.salary,
+        adjustments: updated.adjustments,
+        projects: updated.projects
+      });
+      
+      if (result) {
+        // Update local cache with response from server
+        storageService.updateEmployee(tenantId, result, userId);
+        setEmployee(result);
+      } else {
+        // Fallback to local storage only
+        storageService.updateEmployee(tenantId, updated, userId);
+        setEmployee(updated);
+      }
+    } catch (error) {
+      console.error('Failed to update employee via API:', error);
+      // Fallback to local storage only
       storageService.updateEmployee(tenantId, updated, userId);
       setEmployee(updated);
     }

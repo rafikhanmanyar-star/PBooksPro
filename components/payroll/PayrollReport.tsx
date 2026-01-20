@@ -21,6 +21,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { storageService } from './services/storageService';
+import { payrollApi } from '../../services/api/payrollApi';
 import { PayrollEmployee } from './types';
 import { useAuth } from '../../context/AuthContext';
 
@@ -30,12 +31,35 @@ const PayrollReport: React.FC = () => {
   
   const [employees, setEmployees] = useState<PayrollEmployee[]>([]);
   const [isExporting, setIsExporting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (tenantId) {
-      const data = storageService.getEmployees(tenantId);
-      setEmployees(data);
-    }
+    const fetchEmployees = async () => {
+      if (!tenantId) {
+        setIsLoading(false);
+        return;
+      }
+      
+      setIsLoading(true);
+      try {
+        // Fetch from cloud API first
+        const apiEmployees = await payrollApi.getEmployees();
+        if (apiEmployees.length > 0) {
+          setEmployees(apiEmployees);
+        } else {
+          // Fallback to localStorage
+          setEmployees(storageService.getEmployees(tenantId));
+        }
+      } catch (error) {
+        console.warn('Failed to fetch employees from API:', error);
+        // Fallback to localStorage
+        setEmployees(storageService.getEmployees(tenantId));
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchEmployees();
   }, [tenantId]);
 
   // Calculate department-wise salary data
@@ -99,10 +123,11 @@ const PayrollReport: React.FC = () => {
     }, 800);
   };
 
-  if (!tenantId) {
+  if (!tenantId || isLoading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <p className="text-slate-400 font-bold">Loading...</p>
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <Loader2 size={32} className="text-indigo-600 animate-spin" />
+        <p className="text-slate-400 font-bold">Loading analytics data...</p>
       </div>
     );
   }
