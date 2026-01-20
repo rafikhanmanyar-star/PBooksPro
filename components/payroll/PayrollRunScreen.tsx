@@ -308,63 +308,97 @@ const PayrollRunScreen: React.FC = () => {
 
   // Main list view
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-4 sm:space-y-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Payroll Cycles</h1>
-          <p className="text-slate-500 text-sm">Review, approve and disburse monthly workforce compensation.</p>
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Payroll Cycles</h1>
+          <p className="text-slate-500 text-xs sm:text-sm">Review, approve and disburse monthly workforce compensation.</p>
         </div>
         <button 
           onClick={() => setIsCreating(true)} 
-          className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black hover:bg-blue-700 transition-all flex items-center gap-2 shadow-xl shadow-blue-100"
+          className="bg-blue-600 text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl font-black hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-xl shadow-blue-100 text-sm"
         >
           <PlayCircle size={20} /> Run New Payroll
         </button>
       </div>
 
-      <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Payroll Period</th>
-              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Headcount</th>
-              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Net Amount</th>
-              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Current Status</th>
-              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {runs.length > 0 ? (
-              runs.map((run) => (
-                <tr key={run.id} className="hover:bg-slate-50 transition-colors group">
-                  <td className="px-8 py-5">
-                    <div className="font-black text-slate-900 tracking-tight">{run.month} {run.year}</div>
-                    <div className="text-[10px] text-slate-400 font-bold">ID: {run.id}</div>
-                  </td>
-                  <td className="px-8 py-5 text-slate-600 font-bold">{run.employee_count} Members</td>
-                  <td className="px-8 py-5 font-black text-slate-900">
-                    {run.total_amount > 0 ? `PKR ${run.total_amount.toLocaleString()}` : '—'}
-                  </td>
-                  <td className="px-8 py-5">{getStatusBadge(run.status)}</td>
-                  <td className="px-8 py-5 text-right">
-                    <button 
-                      onClick={() => setSelectedRunDetail(run)} 
-                      className="px-4 py-2 text-xs font-black bg-slate-100 text-slate-900 rounded-xl hover:bg-slate-200 transition-all flex items-center gap-2 ml-auto"
-                    >
-                      <Eye size={14} /> View Batch
-                    </button>
+      {/* Mobile Cards */}
+      <div className="block md:hidden space-y-3">
+        {runs.length > 0 ? (
+          runs.map((run) => (
+            <div 
+              key={run.id} 
+              className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm"
+              onClick={() => setSelectedRunDetail(run)}
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <div className="font-black text-slate-900 tracking-tight">{run.month} {run.year}</div>
+                  <div className="text-[10px] text-slate-400 font-bold">ID: {run.id}</div>
+                </div>
+                {getStatusBadge(run.status)}
+              </div>
+              <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                <div className="text-xs text-slate-500">{run.employee_count} Members</div>
+                <div className="font-black text-slate-900 text-sm">
+                  {run.total_amount > 0 ? `PKR ${run.total_amount.toLocaleString()}` : '—'}
+                </div>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="bg-white rounded-2xl border border-slate-200 px-4 py-12 text-center text-slate-400 font-medium text-sm">
+            No payroll cycles yet. Click "Run New Payroll" to get started.
+          </div>
+        )}
+      </div>
+
+      {/* Desktop Table */}
+      <div className="hidden md:block bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="px-6 lg:px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Payroll Period</th>
+                <th className="px-6 lg:px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Headcount</th>
+                <th className="px-6 lg:px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Net Amount</th>
+                <th className="px-6 lg:px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Current Status</th>
+                <th className="px-6 lg:px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {runs.length > 0 ? (
+                runs.map((run) => (
+                  <tr key={run.id} className="hover:bg-slate-50 transition-colors group">
+                    <td className="px-6 lg:px-8 py-5">
+                      <div className="font-black text-slate-900 tracking-tight">{run.month} {run.year}</div>
+                      <div className="text-[10px] text-slate-400 font-bold">ID: {run.id}</div>
+                    </td>
+                    <td className="px-6 lg:px-8 py-5 text-slate-600 font-bold">{run.employee_count} Members</td>
+                    <td className="px-6 lg:px-8 py-5 font-black text-slate-900">
+                      {run.total_amount > 0 ? `PKR ${run.total_amount.toLocaleString()}` : '—'}
+                    </td>
+                    <td className="px-6 lg:px-8 py-5">{getStatusBadge(run.status)}</td>
+                    <td className="px-6 lg:px-8 py-5 text-right">
+                      <button 
+                        onClick={() => setSelectedRunDetail(run)} 
+                        className="px-4 py-2 text-xs font-black bg-slate-100 text-slate-900 rounded-xl hover:bg-slate-200 transition-all flex items-center gap-2 ml-auto"
+                      >
+                        <Eye size={14} /> View Batch
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={5} className="px-8 py-20 text-center text-slate-400 font-medium">
+                    No payroll cycles yet. Click "Run New Payroll" to get started.
                   </td>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={5} className="px-8 py-20 text-center text-slate-400 font-medium">
-                  No payroll cycles yet. Click "Run New Payroll" to get started.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

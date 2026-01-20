@@ -235,17 +235,17 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
   }
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl mx-auto pb-20">
+    <div className="space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl mx-auto pb-20">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <button onClick={onBack} className="text-blue-600 hover:underline flex items-center gap-1 font-bold group">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <button onClick={onBack} className="text-blue-600 hover:underline flex items-center gap-1 font-bold group text-sm">
           <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" /> Back to Workforce
         </button>
         <div className="flex items-center gap-3">
-          <div className="bg-blue-100 p-2 rounded-xl text-blue-600">
+          <div className="bg-blue-100 p-2 rounded-xl text-blue-600 hidden sm:block">
             <UserPlus size={20} />
           </div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
             {employee ? 'Edit Employee' : 'Onboard New Employee'}
           </h1>
         </div>
@@ -272,8 +272,8 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
             {isPersonalInfoOpen ? <ChevronUp size={20} className="text-slate-400" /> : <ChevronDown size={20} className="text-slate-400" />}
           </button>
 
-          <div className={`transition-all duration-300 ease-in-out ${isPersonalInfoOpen ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'} overflow-hidden`}>
-            <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50/30">
+          <div className={`transition-all duration-300 ease-in-out ${isPersonalInfoOpen ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'} overflow-hidden`}>
+            <div className="p-4 sm:p-8 grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 bg-slate-50/30">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1.5">
                   <Mail size={12} className="text-slate-400" /> Professional Email
@@ -282,7 +282,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
                   type="email" placeholder="john.doe@company.com"
                   value={formData.email}
                   onChange={e => setFormData({...formData, email: e.target.value})}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none transition-all font-medium bg-white"
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none transition-all font-medium bg-white text-sm"
                 />
               </div>
               <div>
@@ -293,10 +293,10 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
                   type="tel" placeholder="+92 3XX XXXXXXX"
                   value={formData.phone}
                   onChange={e => setFormData({...formData, phone: e.target.value})}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none transition-all font-medium bg-white"
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none transition-all font-medium bg-white text-sm"
                 />
               </div>
-              <div className="col-span-2">
+              <div className="md:col-span-2">
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1.5">
                   <MapPin size={12} className="text-slate-400" /> Residential Address
                 </label>
@@ -305,7 +305,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
                   placeholder="Street address, City, Province"
                   value={formData.address}
                   onChange={e => setFormData({...formData, address: e.target.value})}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none transition-all font-medium bg-white resize-none"
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none transition-all font-medium bg-white resize-none text-sm"
                 />
               </div>
             </div>
@@ -313,29 +313,29 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
         </div>
 
         {/* Employment Details */}
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-8 py-5 bg-slate-50 border-b border-slate-100">
-            <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
+        <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-4 sm:px-8 py-4 sm:py-5 bg-slate-50 border-b border-slate-100">
+            <h3 className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
               <Briefcase size={14} className="text-blue-600" /> Employment Details
             </h3>
           </div>
-          <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="col-span-2 md:col-span-1">
+          <div className="p-4 sm:p-8 grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+            <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Full Name <span className="text-red-500">*</span></label>
               <input 
                 type="text" required placeholder="Full Name"
                 value={formData.name}
                 onChange={e => setFormData({...formData, name: e.target.value})}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none transition-all font-medium"
+                className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none transition-all font-medium text-sm"
               />
             </div>
-            <div className="col-span-2 md:col-span-1">
+            <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Designation <span className="text-red-500">*</span></label>
               <input 
                 type="text" required placeholder="Senior Engineer"
                 value={formData.designation}
                 onChange={e => setFormData({...formData, designation: e.target.value})}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none transition-all font-medium"
+                className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none transition-all font-medium text-sm"
               />
             </div>
             <div>
@@ -343,7 +343,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
               <select 
                 value={formData.department}
                 onChange={e => setFormData({...formData, department: e.target.value})}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none bg-white font-medium"
+                className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none bg-white font-medium text-sm"
               >
                 <option value="Engineering">Engineering</option>
                 <option value="Product">Product</option>
@@ -361,7 +361,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
               <select 
                 value={formData.grade}
                 onChange={e => setFormData({...formData, grade: e.target.value})}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none bg-white font-medium"
+                className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none bg-white font-medium text-sm"
               >
                 {availableGrades.map(g => (
                   <option key={g.id} value={g.name}>{g.name} - {g.description}</option>
@@ -369,11 +369,11 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
               </select>
               {selectedGradeInfo && (
                 <p className="mt-2 text-[10px] font-black uppercase text-blue-600 tracking-widest px-1">
-                  Salary Range: PKR {selectedGradeInfo.min_salary.toLocaleString()} - {selectedGradeInfo.max_salary.toLocaleString()}
+                  Range: PKR {selectedGradeInfo.min_salary.toLocaleString()} - {selectedGradeInfo.max_salary.toLocaleString()}
                 </p>
               )}
             </div>
-            <div className="col-span-2">
+            <div className="md:col-span-2">
               <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1.5">
                 <Calendar size={12} className="text-slate-400" /> Joining Date
               </label>
@@ -381,7 +381,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
                 type="date" required
                 value={formData.joiningDate}
                 onChange={e => setFormData({...formData, joiningDate: e.target.value})}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none transition-all font-medium"
+                className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none transition-all font-medium text-sm"
               />
             </div>
           </div>
@@ -612,30 +612,30 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
         </div>
 
         {/* Form Actions */}
-        <div className="flex items-center justify-between p-6 bg-blue-50/50 rounded-3xl border border-blue-100/50">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 p-4 sm:p-6 bg-blue-50/50 rounded-2xl sm:rounded-3xl border border-blue-100/50">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
+            <div className="p-2 bg-blue-100 text-blue-600 rounded-lg shrink-0">
               <AlertCircle size={20} />
             </div>
             <div>
               <p className="text-sm font-bold text-blue-900">Final Verification</p>
-              <p className="text-xs text-blue-700">Individual component changes here apply only to this employee record.</p>
+              <p className="text-xs text-blue-700 hidden sm:block">Individual component changes here apply only to this employee record.</p>
             </div>
           </div>
-          <div className="flex gap-4">
+          <div className="flex gap-3 sm:gap-4 w-full lg:w-auto">
             <button 
               type="button" 
               onClick={onBack}
-              className="px-8 py-3 text-slate-600 font-bold hover:bg-slate-200 rounded-2xl transition-colors"
+              className="flex-1 lg:flex-none px-4 sm:px-8 py-2.5 sm:py-3 text-slate-600 font-bold hover:bg-slate-200 rounded-xl sm:rounded-2xl transition-colors text-sm"
             >
               Cancel
             </button>
             <button 
               type="submit"
               disabled={assignedProjects.length > 0 && totalAllocation !== 100}
-              className="px-10 py-3 bg-blue-600 text-white font-black rounded-2xl shadow-xl shadow-blue-200 hover:bg-blue-700 hover:-translate-y-0.5 transition-all flex items-center gap-2 disabled:opacity-50 disabled:translate-y-0"
+              className="flex-1 lg:flex-none px-4 sm:px-10 py-2.5 sm:py-3 bg-blue-600 text-white font-black rounded-xl sm:rounded-2xl shadow-xl shadow-blue-200 hover:bg-blue-700 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:translate-y-0 text-sm"
             >
-              <Save size={18} /> {employee ? 'Save Changes' : 'Complete Onboarding'}
+              <Save size={18} /> <span className="hidden sm:inline">{employee ? 'Save Changes' : 'Complete Onboarding'}</span><span className="sm:hidden">Save</span>
             </button>
           </div>
         </div>

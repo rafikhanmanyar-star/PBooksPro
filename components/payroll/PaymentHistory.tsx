@@ -81,24 +81,24 @@ const PaymentHistory: React.FC = () => {
   }
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
+    <div className="space-y-4 sm:space-y-8 animate-in fade-in duration-500">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 no-print">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-            <div className="p-2 bg-amber-100 text-amber-600 rounded-xl"><History size={24} /></div>
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+            <div className="p-2 bg-amber-100 text-amber-600 rounded-xl hidden sm:block"><History size={24} /></div>
             Disbursement Ledger
           </h1>
-          <p className="text-slate-500 text-sm font-medium">Historical archive of all completed payment cycles.</p>
+          <p className="text-slate-500 text-xs sm:text-sm font-medium">Historical archive of all completed payment cycles.</p>
         </div>
       </div>
 
-      {/* Main Table */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+      {/* Main Content */}
+      <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
         {/* Filters */}
-        <div className="p-6 border-b border-slate-100 flex flex-col xl:flex-row gap-4 justify-between items-center bg-slate-50/30 no-print">
-          <div className="flex flex-col sm:flex-row gap-4 w-full xl:w-auto">
-            <div className="relative flex-1 sm:w-64">
+        <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-col gap-3 sm:gap-4 bg-slate-50/30 no-print">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 w-full">
+            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <input 
                 type="text" 
@@ -108,63 +108,98 @@ const PaymentHistory: React.FC = () => {
                 className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 ring-blue-500/20" 
               />
             </div>
-            <select 
-              value={filterYear} 
-              onChange={(e) => setFilterYear(e.target.value)}
-              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none"
-            >
-              {years.map(y => (
-                <option key={y} value={y}>{y === 'All' ? 'All Years' : y}</option>
-              ))}
-            </select>
+            <div className="flex gap-3">
+              <select 
+                value={filterYear} 
+                onChange={(e) => setFilterYear(e.target.value)}
+                className="flex-1 sm:flex-none px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none"
+              >
+                {years.map(y => (
+                  <option key={y} value={y}>{y === 'All' ? 'All Years' : y}</option>
+                ))}
+              </select>
+              <button 
+                disabled={isExporting} 
+                onClick={handleExportCSV} 
+                className="px-4 sm:px-6 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-slate-800 shadow-lg disabled:opacity-50 shrink-0"
+              >
+                {isExporting ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <FileText size={14} />} 
+                <span className="hidden sm:inline">Export CSV</span>
+              </button>
+            </div>
           </div>
-          <button 
-            disabled={isExporting} 
-            onClick={handleExportCSV} 
-            className="px-6 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-slate-800 shadow-lg disabled:opacity-50"
-          >
-            {isExporting ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <FileText size={14} />} 
-            Export CSV
-          </button>
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto print-full">
+        {/* Mobile Cards */}
+        <div className="block md:hidden p-4 space-y-3">
+          {filteredHistory.length > 0 ? (
+            filteredHistory.map((run) => (
+              <div 
+                key={run.id} 
+                className="bg-slate-50/50 rounded-xl border border-slate-100 p-4"
+                onClick={() => setSelectedBatch(run)}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <div className="font-bold text-slate-900">{run.month} {run.year}</div>
+                    <code className="text-[10px] font-mono text-slate-400">TXN-{run.id.split('-')[1]}</code>
+                  </div>
+                  <span className="inline-flex items-center gap-1 text-[9px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded uppercase tracking-widest border border-emerald-100">
+                    <BadgeCheck size={10} /> Confirmed
+                  </span>
+                </div>
+                <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                  <span className="text-xs text-slate-500">{run.employee_count} Employees</span>
+                  <span className="font-black text-slate-900 text-sm">PKR {run.total_amount.toLocaleString()}</span>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="py-12 text-center text-slate-400 font-medium text-sm">
+              {searchTerm || filterYear !== 'All' 
+                ? 'No matching payment records found.'
+                : 'No completed payment cycles yet.'}
+            </div>
+          )}
+        </div>
+
+        {/* Desktop Table */}
+        <div className="hidden md:block overflow-x-auto print-full">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50/50 text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">
-                <th className="px-8 py-5">Period</th>
-                <th className="px-8 py-5">Transaction ID</th>
-                <th className="px-8 py-5">Headcount</th>
-                <th className="px-8 py-5">Net Disbursement</th>
-                <th className="px-8 py-5">Verification</th>
-                <th className="px-8 py-5 text-right no-print">Actions</th>
+                <th className="px-6 lg:px-8 py-5">Period</th>
+                <th className="px-6 lg:px-8 py-5">Transaction ID</th>
+                <th className="px-6 lg:px-8 py-5">Headcount</th>
+                <th className="px-6 lg:px-8 py-5">Net Disbursement</th>
+                <th className="px-6 lg:px-8 py-5">Verification</th>
+                <th className="px-6 lg:px-8 py-5 text-right no-print">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredHistory.length > 0 ? (
                 filteredHistory.map((run) => (
                   <tr key={run.id} className="group hover:bg-slate-50/50 transition-colors">
-                    <td className="px-8 py-5">
+                    <td className="px-6 lg:px-8 py-5">
                       <div className="font-bold text-slate-900">{run.month} {run.year}</div>
                     </td>
-                    <td className="px-8 py-5">
+                    <td className="px-6 lg:px-8 py-5">
                       <code className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
                         TXN-{run.id.split('-')[1]}
                       </code>
                     </td>
-                    <td className="px-8 py-5">
+                    <td className="px-6 lg:px-8 py-5">
                       <span className="text-sm font-bold text-slate-700">{run.employee_count} Employees</span>
                     </td>
-                    <td className="px-8 py-5">
+                    <td className="px-6 lg:px-8 py-5">
                       <span className="font-black text-slate-900">PKR {run.total_amount.toLocaleString()}</span>
                     </td>
-                    <td className="px-8 py-5">
+                    <td className="px-6 lg:px-8 py-5">
                       <span className="inline-flex items-center gap-1.5 text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg uppercase tracking-widest border border-emerald-100">
                         <BadgeCheck size={12} /> Confirmed
                       </span>
                     </td>
-                    <td className="px-8 py-5 text-right no-print">
+                    <td className="px-6 lg:px-8 py-5 text-right no-print">
                       <button 
                         onClick={() => setSelectedBatch(run)} 
                         className="p-2 text-slate-400 hover:text-blue-600 transition-colors"

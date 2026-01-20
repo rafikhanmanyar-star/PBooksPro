@@ -217,50 +217,50 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
   }
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto pb-20 animate-in fade-in duration-300">
+    <div className="space-y-4 sm:space-y-6 max-w-5xl mx-auto pb-20 animate-in fade-in duration-300">
       {/* Header Actions */}
-      <div className="flex items-center justify-between no-print">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print">
         <button 
           onClick={viewMode !== 'details' ? () => setViewMode('details') : onBack} 
-          className="text-blue-600 hover:underline flex items-center gap-1 font-bold group"
+          className="text-blue-600 hover:underline flex items-center gap-1 font-bold group text-sm"
         >
           <span className="group-hover:-translate-x-1 transition-transform">&larr;</span> 
           {viewMode !== 'details' ? 'Back to Profile' : 'Back to Workforce'}
         </button>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {viewMode === 'details' && (
             <>
               <button 
                 onClick={() => window.print()}
-                className="px-4 py-2 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-colors font-bold text-sm flex items-center gap-2"
+                className="p-2 sm:px-4 sm:py-2 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-colors font-bold text-sm flex items-center gap-2"
                 title="Print Profile Summary"
               >
                 <Printer size={16} className="text-slate-600" />
               </button>
               <button 
                 onClick={startEditing}
-                className="px-5 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-colors font-bold text-sm flex items-center gap-2"
+                className="px-3 sm:px-5 py-2 sm:py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-colors font-bold text-xs sm:text-sm flex items-center gap-2"
               >
-                <Edit3 size={16} className="text-slate-600" /> Edit Profile
+                <Edit3 size={16} className="text-slate-600" /> <span className="hidden sm:inline">Edit Profile</span><span className="sm:hidden">Edit</span>
               </button>
               <button 
                 onClick={() => setIsAdjustmentModalOpen(true)}
                 disabled={employee.status !== EmploymentStatus.ACTIVE}
-                className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-colors font-bold text-sm flex items-center gap-2 disabled:opacity-50"
+                className="px-3 sm:px-5 py-2 sm:py-2.5 bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-colors font-bold text-xs sm:text-sm flex items-center gap-2 disabled:opacity-50"
               >
-                <Plus size={16} /> Add Bonus
+                <Plus size={16} /> <span className="hidden sm:inline">Add Bonus</span><span className="sm:hidden">Bonus</span>
               </button>
               <button 
                 onClick={() => setActiveModal('promote')}
                 disabled={employee.status !== EmploymentStatus.ACTIVE}
-                className="px-5 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-colors font-bold text-sm flex items-center gap-2 disabled:opacity-50"
+                className="hidden sm:flex px-5 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-colors font-bold text-sm items-center gap-2 disabled:opacity-50"
               >
                 <TrendingUp size={16} className="text-blue-600" /> Promote
               </button>
               {employee.status === EmploymentStatus.ACTIVE && (
                 <button 
                   onClick={() => setActiveModal('terminate')}
-                  className="px-5 py-2.5 bg-red-600 text-white rounded-xl shadow-lg shadow-red-200 hover:bg-red-700 transition-colors font-bold text-sm"
+                  className="hidden sm:block px-5 py-2.5 bg-red-600 text-white rounded-xl shadow-lg shadow-red-200 hover:bg-red-700 transition-colors font-bold text-sm"
                 >
                   Offboard
                 </button>
@@ -271,15 +271,15 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
             <>
               <button 
                 onClick={() => setViewMode('details')}
-                className="px-6 py-2.5 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-200 transition-colors"
+                className="px-4 sm:px-6 py-2 sm:py-2.5 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-200 transition-colors"
               >
                 Cancel
               </button>
               <button 
                 onClick={saveEdit}
-                className="px-8 py-2.5 bg-blue-600 text-white rounded-xl font-black text-sm shadow-xl shadow-blue-200 hover:bg-blue-700 transition-all flex items-center gap-2"
+                className="px-4 sm:px-8 py-2 sm:py-2.5 bg-blue-600 text-white rounded-xl font-black text-sm shadow-xl shadow-blue-200 hover:bg-blue-700 transition-all flex items-center gap-2"
               >
-                <Save size={16} /> Save Changes
+                <Save size={16} /> Save
               </button>
             </>
           )}
@@ -288,93 +288,93 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
 
       {/* Profile Details View */}
       {viewMode === 'details' && (
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden print-full">
-          <div className="h-32 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-700 no-print"></div>
-          <div className="px-8 pb-8 -mt-16 print:mt-0">
+        <div className="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-slate-200 overflow-hidden print-full">
+          <div className="h-24 sm:h-32 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-700 no-print"></div>
+          <div className="px-4 sm:px-8 pb-6 sm:pb-8 -mt-12 sm:-mt-16 print:mt-0">
             {/* Profile Header */}
-            <div className="flex flex-col md:flex-row items-end gap-6 mb-10 print:items-start">
-              <div className="w-32 h-32 bg-slate-100 rounded-3xl border-4 border-white shadow-xl overflow-hidden flex items-center justify-center relative print:shadow-none print:border-slate-100">
+            <div className="flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-6 mb-6 sm:mb-10 print:items-start">
+              <div className="w-24 h-24 sm:w-32 sm:h-32 bg-slate-100 rounded-2xl sm:rounded-3xl border-4 border-white shadow-xl overflow-hidden flex items-center justify-center relative print:shadow-none print:border-slate-100 shrink-0">
                 {employee.photo ? (
                   <img src={employee.photo} alt={employee.name} className="w-full h-full object-cover" />
                 ) : (
-                  <UserCircle size={80} className="text-slate-300" />
+                  <UserCircle size={60} className="text-slate-300 sm:w-20 sm:h-20" />
                 )}
                 {employee.status === EmploymentStatus.ACTIVE && (
-                  <div className="absolute bottom-1 right-1 w-4 h-4 rounded-full bg-green-500 border-2 border-white no-print"></div>
+                  <div className="absolute bottom-1 right-1 w-3 h-3 sm:w-4 sm:h-4 rounded-full bg-green-500 border-2 border-white no-print"></div>
                 )}
               </div>
-              <div className="flex-1 pb-2">
-                <h2 className="text-3xl font-black text-slate-900 tracking-tight">{employee.name}</h2>
-                <div className="flex flex-wrap gap-4 mt-2 text-slate-500 font-bold text-sm">
-                  <span className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 rounded-lg">
-                    <Briefcase size={16} className="text-blue-500" /> {employee.designation}
+              <div className="flex-1 pb-0 sm:pb-2">
+                <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">{employee.name}</h2>
+                <div className="flex flex-wrap gap-2 sm:gap-4 mt-2 text-slate-500 font-bold text-xs sm:text-sm">
+                  <span className="flex items-center gap-1.5 px-2 sm:px-3 py-1 bg-slate-50 rounded-lg">
+                    <Briefcase size={14} className="text-blue-500" /> {employee.designation}
                   </span>
-                  <span className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 rounded-lg">
-                    <Building2 size={16} className="text-purple-500" /> {employee.department}
+                  <span className="flex items-center gap-1.5 px-2 sm:px-3 py-1 bg-slate-50 rounded-lg">
+                    <Building2 size={14} className="text-purple-500" /> {employee.department}
                   </span>
-                  <span className={`px-4 py-1 rounded-full text-xs font-black border uppercase tracking-widest ${getStatusColor(employee.status)}`}>
+                  <span className={`px-2 sm:px-4 py-1 rounded-full text-[10px] sm:text-xs font-black border uppercase tracking-widest ${getStatusColor(employee.status)}`}>
                     {employee.status}
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 print-full">
-              <div className="lg:col-span-2 space-y-8 print:w-full">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8 print-full">
+              <div className="lg:col-span-2 space-y-4 sm:space-y-8 print:w-full">
                 {/* Contact Info */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-slate-50/50 p-6 rounded-3xl border border-slate-100">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 bg-slate-50/50 p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-100">
                   <div className="space-y-1">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Email Address</p>
-                    <p className="text-sm font-bold text-slate-700 flex items-center gap-2 truncate">
+                    <p className="text-xs sm:text-sm font-bold text-slate-700 flex items-center gap-2 truncate">
                       <Mail size={14} className="text-slate-400 shrink-0" /> {employee.email || 'Not provided'}
                     </p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Phone Number</p>
-                    <p className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                    <p className="text-xs sm:text-sm font-bold text-slate-700 flex items-center gap-2">
                       <Phone size={14} className="text-slate-400 shrink-0" /> {employee.phone || 'Not provided'}
                     </p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Grade Level</p>
-                    <p className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                    <p className="text-xs sm:text-sm font-bold text-slate-700 flex items-center gap-2">
                       <Award size={14} className="text-slate-400 shrink-0" /> {employee.grade}
                     </p>
                   </div>
                 </div>
 
                 {/* Salary Structure */}
-                <div className="bg-slate-50/50 rounded-3xl p-8 border border-slate-200/60 print:border-slate-100 print-card">
-                  <h3 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-3">
-                    <div className="p-2 bg-blue-100 text-blue-600 rounded-xl no-print"><DollarSign size={20} /></div>
+                <div className="bg-slate-50/50 rounded-2xl sm:rounded-3xl p-4 sm:p-8 border border-slate-200/60 print:border-slate-100 print-card">
+                  <h3 className="text-lg sm:text-xl font-bold text-slate-900 mb-4 sm:mb-6 flex items-center gap-3">
+                    <div className="p-2 bg-blue-100 text-blue-600 rounded-xl no-print hidden sm:block"><DollarSign size={20} /></div>
                     Salary Structure
                   </h3>
-                  <div className="space-y-6">
-                    <div className="flex justify-between items-center py-4 border-b border-slate-200 print:border-slate-100">
+                  <div className="space-y-4 sm:space-y-6">
+                    <div className="flex justify-between items-center py-3 sm:py-4 border-b border-slate-200 print:border-slate-100">
                       <div>
-                        <span className="font-bold text-slate-900">Basic Pay</span>
-                        <p className="text-xs text-slate-400 font-bold uppercase tracking-tighter">Guaranteed Fixed</p>
+                        <span className="font-bold text-slate-900 text-sm sm:text-base">Basic Pay</span>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter hidden sm:block">Guaranteed Fixed</p>
                       </div>
-                      <span className="text-xl font-black text-slate-900">PKR {employee.salary.basic.toLocaleString()}</span>
+                      <span className="text-lg sm:text-xl font-black text-slate-900">PKR {employee.salary.basic.toLocaleString()}</span>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                      <div className="space-y-2 sm:space-y-3">
                         <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Earnings/Allowances</p>
                         {employee.salary.allowances.map((a, i) => (
-                          <div key={i} className="flex justify-between items-center p-3 bg-white rounded-xl border border-slate-100 shadow-sm print:shadow-none">
-                            <span className="text-sm font-bold text-slate-700">{a.name}</span>
-                            <span className="text-green-600 font-black">
+                          <div key={i} className="flex justify-between items-center p-2 sm:p-3 bg-white rounded-xl border border-slate-100 shadow-sm print:shadow-none">
+                            <span className="text-xs sm:text-sm font-bold text-slate-700">{a.name}</span>
+                            <span className="text-green-600 font-black text-xs sm:text-sm">
                               +{a.is_percentage ? `${a.amount}%` : `PKR ${a.amount.toLocaleString()}`}
                             </span>
                           </div>
                         ))}
                       </div>
-                      <div className="space-y-3">
+                      <div className="space-y-2 sm:space-y-3">
                         <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Statutory Deductions</p>
                         {employee.salary.deductions.map((d, i) => (
-                          <div key={i} className="flex justify-between items-center p-3 bg-white rounded-xl border border-slate-100 shadow-sm print:shadow-none">
-                            <span className="text-sm font-bold text-slate-700">{d.name}</span>
-                            <span className="text-red-500 font-black">
+                          <div key={i} className="flex justify-between items-center p-2 sm:p-3 bg-white rounded-xl border border-slate-100 shadow-sm print:shadow-none">
+                            <span className="text-xs sm:text-sm font-bold text-slate-700">{d.name}</span>
+                            <span className="text-red-500 font-black text-xs sm:text-sm">
                               -{d.is_percentage ? `${d.amount}%` : `PKR ${d.amount.toLocaleString()}`}
                             </span>
                           </div>
@@ -464,18 +464,18 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
               </div>
 
               {/* Right Sidebar */}
-              <div className="space-y-6 print:mt-10">
+              <div className="space-y-4 sm:space-y-6 print:mt-10">
                 {/* Net Pay Card */}
-                <div className="bg-gradient-to-br from-blue-600 to-indigo-800 text-white rounded-3xl p-8 shadow-2xl shadow-blue-200 relative overflow-hidden print:bg-slate-900 print:shadow-none">
+                <div className="bg-gradient-to-br from-blue-600 to-indigo-800 text-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-2xl shadow-blue-200 relative overflow-hidden print:bg-slate-900 print:shadow-none">
                   <div className="relative z-10">
-                    <p className="text-blue-100 text-xs font-black uppercase tracking-widest opacity-80 print:text-slate-300">Net Take Home</p>
-                    <p className="text-5xl font-black mt-2 leading-none">PKR {calculateNet().toLocaleString()}</p>
-                    <div className="mt-8 pt-6 border-t border-white/10 space-y-3">
-                      <div className="flex justify-between text-sm">
+                    <p className="text-blue-100 text-[10px] sm:text-xs font-black uppercase tracking-widest opacity-80 print:text-slate-300">Net Take Home</p>
+                    <p className="text-3xl sm:text-5xl font-black mt-2 leading-none">PKR {calculateNet().toLocaleString()}</p>
+                    <div className="mt-4 sm:mt-8 pt-4 sm:pt-6 border-t border-white/10 space-y-2 sm:space-y-3">
+                      <div className="flex justify-between text-xs sm:text-sm">
                         <span className="text-blue-200 font-medium">Monthly Gross</span>
                         <span className="font-bold">PKR {calculateGross().toLocaleString()}</span>
                       </div>
-                      <div className="flex justify-between text-sm">
+                      <div className="flex justify-between text-xs sm:text-sm">
                         <span className="text-blue-200 font-medium">Annual CTC</span>
                         <span className="font-bold">PKR {(calculateGross() * 12).toLocaleString()}</span>
                       </div>
@@ -485,21 +485,21 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
                 </div>
 
                 {/* Actions */}
-                <div className="bg-white border border-slate-200 rounded-3xl p-6 no-print">
-                  <h4 className="font-bold text-slate-900 mb-4 text-sm uppercase tracking-widest text-center border-b border-slate-50 pb-4">Actions</h4>
+                <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 sm:p-6 no-print">
+                  <h4 className="font-bold text-slate-900 mb-3 sm:mb-4 text-xs sm:text-sm uppercase tracking-widest text-center border-b border-slate-50 pb-3 sm:pb-4">Actions</h4>
                   <div className="space-y-2">
                     <button 
                       onClick={() => setViewMode('payslips')}
-                      className="w-full flex items-center justify-between p-4 text-sm font-bold rounded-2xl hover:bg-slate-50 transition-all border border-slate-100 group"
+                      className="w-full flex items-center justify-between p-3 sm:p-4 text-xs sm:text-sm font-bold rounded-xl sm:rounded-2xl hover:bg-slate-50 transition-all border border-slate-100 group"
                     >
-                      <span className="flex items-center gap-3"><FileText size={18} className="text-slate-400" /> Past Payslips</span>
+                      <span className="flex items-center gap-2 sm:gap-3"><FileText size={16} className="text-slate-400" /> Past Payslips</span>
                       <ChevronRight size={14} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-all" />
                     </button>
                     <button 
                       onClick={() => setViewMode('history')}
-                      className="w-full flex items-center justify-between p-4 text-sm font-bold rounded-2xl hover:bg-slate-50 transition-all border border-slate-100 group"
+                      className="w-full flex items-center justify-between p-3 sm:p-4 text-xs sm:text-sm font-bold rounded-xl sm:rounded-2xl hover:bg-slate-50 transition-all border border-slate-100 group"
                     >
-                      <span className="flex items-center gap-3"><History size={18} className="text-slate-400" /> Tenure History</span>
+                      <span className="flex items-center gap-2 sm:gap-3"><History size={16} className="text-slate-400" /> Tenure History</span>
                       <ChevronRight size={14} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-all" />
                     </button>
                   </div>

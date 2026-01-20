@@ -99,10 +99,10 @@ const PayrollHub: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Sub-navigation tabs */}
-      <div className="bg-white/80 backdrop-blur-md border-b border-slate-200 -mx-4 lg:-mx-8 -mt-4 lg:-mt-8 px-4 lg:px-8 mb-6 sticky top-16 z-30 shadow-sm no-print">
-        <div className="flex overflow-x-auto no-scrollbar gap-8">
+      <div className="bg-white/80 backdrop-blur-md border-b border-slate-200 -mx-4 lg:-mx-8 -mt-4 lg:-mt-8 px-2 sm:px-4 lg:px-8 mb-4 sm:mb-6 sticky top-14 sm:top-16 z-30 shadow-sm no-print">
+        <div className="flex overflow-x-auto no-scrollbar gap-1 sm:gap-8">
           {hrTabs.map((tab) => (
             <button
               key={tab.id}
@@ -111,14 +111,15 @@ const PayrollHub: React.FC = () => {
                 setSelectedEmployee(null);
                 setIsAddingEmployee(false);
               }}
-              className={`flex items-center gap-2 py-5 px-1 border-b-2 font-black text-[11px] uppercase tracking-[0.15em] transition-all relative whitespace-nowrap ${
+              className={`flex items-center gap-1.5 sm:gap-2 py-3 sm:py-5 px-2 sm:px-1 border-b-2 font-black text-[10px] sm:text-[11px] uppercase tracking-wider sm:tracking-[0.15em] transition-all relative whitespace-nowrap ${
                 activeSubTab === tab.id 
                   ? 'border-blue-600 text-blue-600' 
                   : 'border-transparent text-slate-400 hover:text-slate-700'
               }`}
             >
-              <tab.icon size={16} />
-              {tab.label}
+              <tab.icon size={14} className="sm:w-4 sm:h-4" />
+              <span className="hidden xs:inline sm:inline">{tab.label}</span>
+              <span className="xs:hidden">{tab.label.split(' ')[0]}</span>
             </button>
           ))}
         </div>
@@ -153,24 +154,24 @@ const PayrollHub: React.FC = () => {
         {activeSubTab === 'report' && <PayrollReport />}
         
         {activeSubTab === 'structure' && (
-          <div className="bg-white p-12 rounded-3xl border border-slate-200 flex flex-col items-center justify-center text-center">
-            <Lock size={48} className="text-slate-200 mb-4" />
-            <h3 className="text-xl font-bold text-slate-900">Salary Structure Configuration</h3>
-            <p className="text-slate-500 max-w-sm mt-2">
+          <div className="bg-white p-6 sm:p-12 rounded-2xl sm:rounded-3xl border border-slate-200 flex flex-col items-center justify-center text-center">
+            <Lock size={40} className="text-slate-200 mb-4 sm:w-12 sm:h-12" />
+            <h3 className="text-lg sm:text-xl font-bold text-slate-900">Salary Structure Configuration</h3>
+            <p className="text-slate-500 max-w-sm mt-2 text-sm">
               Configuration for {tenant?.companyName || tenant?.name || 'your organization'} is managed at the organizational level.
             </p>
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                <h4 className="font-bold text-slate-700 text-sm mb-2">Earning Components</h4>
-                <ul className="text-xs text-slate-500 space-y-1">
+            <div className="mt-4 sm:mt-6 grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 w-full max-w-2xl">
+              <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-100">
+                <h4 className="font-bold text-slate-700 text-xs sm:text-sm mb-2">Earning Components</h4>
+                <ul className="text-xs text-slate-500 space-y-1 text-left">
                   {earningTypes.map((e, i) => (
                     <li key={i}>{e.name}: {e.is_percentage ? `${e.amount}%` : `PKR ${e.amount.toLocaleString()}`}</li>
                   ))}
                 </ul>
               </div>
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                <h4 className="font-bold text-slate-700 text-sm mb-2">Deduction Components</h4>
-                <ul className="text-xs text-slate-500 space-y-1">
+              <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-100">
+                <h4 className="font-bold text-slate-700 text-xs sm:text-sm mb-2">Deduction Components</h4>
+                <ul className="text-xs text-slate-500 space-y-1 text-left">
                   {deductionTypes.map((d, i) => (
                     <li key={i}>{d.name}: {d.is_percentage ? `${d.amount}%` : `PKR ${d.amount.toLocaleString()}`}</li>
                   ))}
