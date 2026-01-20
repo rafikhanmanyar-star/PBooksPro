@@ -1,0 +1,266 @@
+/**
+ * Payroll API Service
+ * 
+ * Provides API methods for payroll module operations.
+ * Uses the main application's apiClient for authentication and tenant handling.
+ */
+
+import { apiClient } from './client';
+import {
+  PayrollEmployee,
+  PayrollRun,
+  GradeLevel,
+  PayrollProject,
+  EarningType,
+  DeductionType,
+  PayrollEmployeeCreateRequest,
+  PayrollEmployeeUpdateRequest,
+  PayrollRunCreateRequest,
+  PayrollRunUpdateRequest,
+  normalizeEmployee,
+  normalizePayrollRun,
+  EmploymentStatus,
+  PayrollStatus
+} from '../../components/payroll/types';
+
+// ==================== EMPLOYEES ====================
+
+export const payrollApi = {
+  // Get all employees for current tenant
+  async getEmployees(): Promise<PayrollEmployee[]> {
+    try {
+      const response = await apiClient.get<any[]>('/payroll/employees');
+      return (response || []).map(normalizeEmployee);
+    } catch (error) {
+      console.error('Error fetching employees:', error);
+      return [];
+    }
+  },
+
+  // Get single employee by ID
+  async getEmployee(id: string): Promise<PayrollEmployee | null> {
+    try {
+      const response = await apiClient.get<any>(`/payroll/employees/${id}`);
+      return response ? normalizeEmployee(response) : null;
+    } catch (error) {
+      console.error('Error fetching employee:', error);
+      return null;
+    }
+  },
+
+  // Create new employee
+  async createEmployee(data: PayrollEmployeeCreateRequest): Promise<PayrollEmployee | null> {
+    try {
+      const response = await apiClient.post<any>('/payroll/employees', data);
+      return response ? normalizeEmployee(response) : null;
+    } catch (error) {
+      console.error('Error creating employee:', error);
+      throw error;
+    }
+  },
+
+  // Update employee
+  async updateEmployee(id: string, data: PayrollEmployeeUpdateRequest): Promise<PayrollEmployee | null> {
+    try {
+      const response = await apiClient.put<any>(`/payroll/employees/${id}`, data);
+      return response ? normalizeEmployee(response) : null;
+    } catch (error) {
+      console.error('Error updating employee:', error);
+      throw error;
+    }
+  },
+
+  // Delete employee
+  async deleteEmployee(id: string): Promise<boolean> {
+    try {
+      await apiClient.delete(`/payroll/employees/${id}`);
+      return true;
+    } catch (error) {
+      console.error('Error deleting employee:', error);
+      return false;
+    }
+  },
+
+  // ==================== PAYROLL RUNS ====================
+
+  // Get all payroll runs
+  async getPayrollRuns(): Promise<PayrollRun[]> {
+    try {
+      const response = await apiClient.get<any[]>('/payroll/runs');
+      return (response || []).map(normalizePayrollRun);
+    } catch (error) {
+      console.error('Error fetching payroll runs:', error);
+      return [];
+    }
+  },
+
+  // Get single payroll run
+  async getPayrollRun(id: string): Promise<PayrollRun | null> {
+    try {
+      const response = await apiClient.get<any>(`/payroll/runs/${id}`);
+      return response ? normalizePayrollRun(response) : null;
+    } catch (error) {
+      console.error('Error fetching payroll run:', error);
+      return null;
+    }
+  },
+
+  // Create new payroll run
+  async createPayrollRun(data: PayrollRunCreateRequest): Promise<PayrollRun | null> {
+    try {
+      const response = await apiClient.post<any>('/payroll/runs', data);
+      return response ? normalizePayrollRun(response) : null;
+    } catch (error) {
+      console.error('Error creating payroll run:', error);
+      throw error;
+    }
+  },
+
+  // Update payroll run (status changes)
+  async updatePayrollRun(id: string, data: PayrollRunUpdateRequest): Promise<PayrollRun | null> {
+    try {
+      const response = await apiClient.put<any>(`/payroll/runs/${id}`, data);
+      return response ? normalizePayrollRun(response) : null;
+    } catch (error) {
+      console.error('Error updating payroll run:', error);
+      throw error;
+    }
+  },
+
+  // Process payroll run (calculate all payslips)
+  async processPayrollRun(id: string): Promise<PayrollRun | null> {
+    try {
+      const response = await apiClient.post<any>(`/payroll/runs/${id}/process`);
+      return response ? normalizePayrollRun(response) : null;
+    } catch (error) {
+      console.error('Error processing payroll run:', error);
+      throw error;
+    }
+  },
+
+  // ==================== GRADE LEVELS ====================
+
+  async getGradeLevels(): Promise<GradeLevel[]> {
+    try {
+      const response = await apiClient.get<GradeLevel[]>('/payroll/grades');
+      return response || [];
+    } catch (error) {
+      console.error('Error fetching grade levels:', error);
+      return [];
+    }
+  },
+
+  async createGradeLevel(data: Omit<GradeLevel, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>): Promise<GradeLevel | null> {
+    try {
+      return await apiClient.post<GradeLevel>('/payroll/grades', data);
+    } catch (error) {
+      console.error('Error creating grade level:', error);
+      throw error;
+    }
+  },
+
+  async updateGradeLevel(id: string, data: Partial<GradeLevel>): Promise<GradeLevel | null> {
+    try {
+      return await apiClient.put<GradeLevel>(`/payroll/grades/${id}`, data);
+    } catch (error) {
+      console.error('Error updating grade level:', error);
+      throw error;
+    }
+  },
+
+  // ==================== PROJECTS ====================
+
+  async getProjects(): Promise<PayrollProject[]> {
+    try {
+      const response = await apiClient.get<PayrollProject[]>('/payroll/projects');
+      return response || [];
+    } catch (error) {
+      console.error('Error fetching payroll projects:', error);
+      return [];
+    }
+  },
+
+  async createProject(data: Omit<PayrollProject, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>): Promise<PayrollProject | null> {
+    try {
+      return await apiClient.post<PayrollProject>('/payroll/projects', data);
+    } catch (error) {
+      console.error('Error creating project:', error);
+      throw error;
+    }
+  },
+
+  async updateProject(id: string, data: Partial<PayrollProject>): Promise<PayrollProject | null> {
+    try {
+      return await apiClient.put<PayrollProject>(`/payroll/projects/${id}`, data);
+    } catch (error) {
+      console.error('Error updating project:', error);
+      throw error;
+    }
+  },
+
+  // ==================== SALARY COMPONENT TYPES ====================
+
+  async getEarningTypes(): Promise<EarningType[]> {
+    try {
+      const response = await apiClient.get<EarningType[]>('/payroll/earning-types');
+      return response || [];
+    } catch (error) {
+      console.error('Error fetching earning types:', error);
+      return [];
+    }
+  },
+
+  async getDeductionTypes(): Promise<DeductionType[]> {
+    try {
+      const response = await apiClient.get<DeductionType[]>('/payroll/deduction-types');
+      return response || [];
+    } catch (error) {
+      console.error('Error fetching deduction types:', error);
+      return [];
+    }
+  },
+
+  async saveEarningTypes(types: EarningType[]): Promise<boolean> {
+    try {
+      await apiClient.put('/payroll/earning-types', { types });
+      return true;
+    } catch (error) {
+      console.error('Error saving earning types:', error);
+      return false;
+    }
+  },
+
+  async saveDeductionTypes(types: DeductionType[]): Promise<boolean> {
+    try {
+      await apiClient.put('/payroll/deduction-types', { types });
+      return true;
+    } catch (error) {
+      console.error('Error saving deduction types:', error);
+      return false;
+    }
+  },
+
+  // ==================== PAYSLIPS ====================
+
+  async getPayslipsByRun(runId: string): Promise<any[]> {
+    try {
+      const response = await apiClient.get<any[]>(`/payroll/runs/${runId}/payslips`);
+      return response || [];
+    } catch (error) {
+      console.error('Error fetching payslips:', error);
+      return [];
+    }
+  },
+
+  async getEmployeePayslips(employeeId: string): Promise<any[]> {
+    try {
+      const response = await apiClient.get<any[]>(`/payroll/employees/${employeeId}/payslips`);
+      return response || [];
+    } catch (error) {
+      console.error('Error fetching employee payslips:', error);
+      return [];
+    }
+  }
+};
+
+export default payrollApi;

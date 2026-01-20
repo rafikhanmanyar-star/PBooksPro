@@ -208,6 +208,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
             title: 'People',
             items: [
                 { page: 'contacts', label: 'Contacts', icon: ICONS.addressBook },
+                { page: 'payroll', label: 'Payroll', icon: ICONS.users },
             ]
         },
         {

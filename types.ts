@@ -22,7 +22,8 @@ export type Page =
   | 'tasks'
   | 'tasksCalendar'
   | 'teamRanking'
-  | 'bizPlanet';
+  | 'bizPlanet'
+  | 'payroll';
 
 export enum TransactionType {
   INCOME = 'Income',

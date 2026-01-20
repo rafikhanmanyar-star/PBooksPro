@@ -94,6 +94,7 @@ import purchaseOrdersRouter from './routes/purchaseOrders.js';
 import p2pInvoicesRouter from './routes/p2pInvoices.js';
 import p2pBillsRouter from './routes/p2pBills.js';
 import supplierRegistrationsRouter from './routes/supplierRegistrations.js';
+import payrollRouter from './routes/payroll.js';
 import { tenantMiddleware } from '../middleware/tenantMiddleware.js';
 import { licenseMiddleware } from '../middleware/licenseMiddleware.js';
 
@@ -677,6 +678,7 @@ app.use('/api/purchase-orders', purchaseOrdersRouter); // Purchase Orders (requi
 app.use('/api/p2p-invoices', p2pInvoicesRouter); // P2P Invoices (requires authentication)
 app.use('/api/p2p-bills', p2pBillsRouter); // P2P Bills (requires authentication)
 app.use('/api/supplier-registrations', supplierRegistrationsRouter); // Supplier Registration Requests (requires authentication)
+app.use('/api/payroll', payrollRouter); // Payroll Management (requires authentication)
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
