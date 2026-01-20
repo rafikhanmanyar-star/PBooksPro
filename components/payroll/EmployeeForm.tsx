@@ -24,7 +24,8 @@ import {
   XCircle,
   PieChart,
   Plus,
-  Trash2
+  Trash2,
+  Loader2
 } from 'lucide-react';
 import { 
   PayrollEmployee, 
@@ -209,45 +210,110 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
 
   const totalAllocation = assignedProjects.reduce((sum, p) => sum + p.percentage, 0);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!tenantId || !userId) return;
 
-    const employeeData: PayrollEmployee = {
-      id: employee?.id || `emp-${Date.now()}`,
-      tenant_id: tenantId,
-      name: formData.name,
-      email: formData.email,
-      phone: formData.phone,
-      address: formData.address,
-      designation: formData.designation,
-      department: formData.department,
-      grade: formData.grade,
-      status: employee?.status || EmploymentStatus.ACTIVE,
-      joining_date: formData.joiningDate,
-      salary: {
-        basic: formData.basicSalary,
-        allowances: allowances
-          .filter(a => a.isEnabled)
-          .map(({ name, amount, is_percentage }) => ({ name, amount, is_percentage })),
-        deductions: deductions
-          .filter(d => d.isEnabled)
-          .map(({ name, amount, is_percentage }) => ({ name, amount, is_percentage }))
-      },
-      adjustments: employee?.adjustments || [],
-      projects: assignedProjects,
-      created_by: employee?.created_by || userId,
-      updated_by: employee ? userId : undefined
+    setIsSaving(true);
+    setSaveError(null);
+
+    const salaryData = {
+      basic: formData.basicSalary,
+      allowances: allowances
+        .filter(a => a.isEnabled)
+        .map(({ name, amount, is_percentage }) => ({ name, amount, is_percentage })),
+      deductions: deductions
+        .filter(d => d.isEnabled)
+        .map(({ name, amount, is_percentage }) => ({ name, amount, is_percentage }))
     };
 
-    if (employee) {
-      storageService.updateEmployee(tenantId, employeeData, userId);
-    } else {
-      storageService.addEmployee(tenantId, employeeData, userId);
+    try {
+      if (employee) {
+        // Update existing employee
+        const updateData = {
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          address: formData.address,
+          designation: formData.designation,
+          department: formData.department,
+          grade: formData.grade,
+          joining_date: formData.joiningDate,
+          salary: salaryData,
+          projects: assignedProjects,
+          adjustments: employee.adjustments
+        };
+
+        // Try API first
+        try {
+          await payrollApi.updateEmployee(employee.id, updateData);
+        } catch (apiError) {
+          console.warn('API update failed, falling back to localStorage:', apiError);
+          // Fallback to localStorage
+          const employeeData: PayrollEmployee = {
+            ...employee,
+            ...updateData,
+            updated_by: userId
+          };
+          storageService.updateEmployee(tenantId, employeeData, userId);
+        }
+      } else {
+        // Create new employee
+        const createData = {
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          address: formData.address,
+          designation: formData.designation,
+          department: formData.department,
+          grade: formData.grade,
+          joining_date: formData.joiningDate,
+          salary: salaryData,
+          projects: assignedProjects
+        };
+
+        // Try API first to save to cloud database
+        try {
+          const createdEmployee = await payrollApi.createEmployee(createData);
+          if (createdEmployee) {
+            // Also update localStorage cache for offline access
+            storageService.addEmployee(tenantId, createdEmployee, userId);
+          }
+        } catch (apiError) {
+          console.warn('API create failed, falling back to localStorage:', apiError);
+          // Fallback to localStorage only
+          const employeeData: PayrollEmployee = {
+            id: `emp-${Date.now()}`,
+            tenant_id: tenantId,
+            name: formData.name,
+            email: formData.email,
+            phone: formData.phone,
+            address: formData.address,
+            designation: formData.designation,
+            department: formData.department,
+            grade: formData.grade,
+            status: EmploymentStatus.ACTIVE,
+            joining_date: formData.joiningDate,
+            salary: salaryData,
+            adjustments: [],
+            projects: assignedProjects,
+            created_by: userId
+          };
+          storageService.addEmployee(tenantId, employeeData, userId);
+        }
+      }
+
+      onSave();
+    } catch (error) {
+      console.error('Error saving employee:', error);
+      setSaveError('Failed to save employee. Please try again.');
+    } finally {
+      setIsSaving(false);
     }
-    
-    onSave();
   };
 
   const selectedGradeInfo = availableGrades.find(g => g.name === formData.grade);
@@ -641,28 +707,46 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
         {/* Form Actions */}
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 p-4 sm:p-6 bg-blue-50/50 rounded-2xl sm:rounded-3xl border border-blue-100/50">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-100 text-blue-600 rounded-lg shrink-0">
+            <div className={`p-2 rounded-lg shrink-0 ${saveError ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
               <AlertCircle size={20} />
             </div>
             <div>
-              <p className="text-sm font-bold text-blue-900">Final Verification</p>
-              <p className="text-xs text-blue-700 hidden sm:block">Individual component changes here apply only to this employee record.</p>
+              {saveError ? (
+                <>
+                  <p className="text-sm font-bold text-red-900">Error Saving</p>
+                  <p className="text-xs text-red-700">{saveError}</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-bold text-blue-900">Final Verification</p>
+                  <p className="text-xs text-blue-700 hidden sm:block">Individual component changes here apply only to this employee record.</p>
+                </>
+              )}
             </div>
           </div>
           <div className="flex gap-3 sm:gap-4 w-full lg:w-auto">
             <button 
               type="button" 
               onClick={onBack}
-              className="flex-1 lg:flex-none px-4 sm:px-8 py-2.5 sm:py-3 text-slate-600 font-bold hover:bg-slate-200 rounded-xl sm:rounded-2xl transition-colors text-sm"
+              disabled={isSaving}
+              className="flex-1 lg:flex-none px-4 sm:px-8 py-2.5 sm:py-3 text-slate-600 font-bold hover:bg-slate-200 rounded-xl sm:rounded-2xl transition-colors text-sm disabled:opacity-50"
             >
               Cancel
             </button>
             <button 
               type="submit"
-              disabled={assignedProjects.length > 0 && totalAllocation !== 100}
+              disabled={isSaving || (assignedProjects.length > 0 && totalAllocation !== 100)}
               className="flex-1 lg:flex-none px-4 sm:px-10 py-2.5 sm:py-3 bg-blue-600 text-white font-black rounded-xl sm:rounded-2xl shadow-xl shadow-blue-200 hover:bg-blue-700 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:translate-y-0 text-sm"
             >
-              <Save size={18} /> <span className="hidden sm:inline">{employee ? 'Save Changes' : 'Complete Onboarding'}</span><span className="sm:hidden">Save</span>
+              {isSaving ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" /> <span className="hidden sm:inline">Saving...</span><span className="sm:hidden">Saving</span>
+                </>
+              ) : (
+                <>
+                  <Save size={18} /> <span className="hidden sm:inline">{employee ? 'Save Changes' : 'Complete Onboarding'}</span><span className="sm:hidden">Save</span>
+                </>
+              )}
             </button>
           </div>
         </div>

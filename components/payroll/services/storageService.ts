@@ -201,11 +201,40 @@ export const storageService = {
 
   // ==================== EMPLOYEES ====================
 
+  // Cache for API employees
+  _employeesCache: new Map<string, { data: PayrollEmployee[], timestamp: number }>(),
+  _employeesCacheTimeout: 60000, // 1 minute cache
+
   getEmployees(tenantId: string): PayrollEmployee[] {
     this.init(tenantId);
     const data = localStorage.getItem(getKey(tenantId, STORAGE_KEYS.EMPLOYEES));
     const employees = JSON.parse(data || '[]');
     return employees.map(normalizeEmployee);
+  },
+
+  // Async method to fetch employees from API with localStorage fallback
+  async getEmployeesFromApi(tenantId: string): Promise<PayrollEmployee[]> {
+    // Check cache first
+    const cached = this._employeesCache.get(tenantId);
+    if (cached && (Date.now() - cached.timestamp) < this._employeesCacheTimeout) {
+      return cached.data;
+    }
+
+    try {
+      const employees = await payrollApi.getEmployees();
+      if (employees.length > 0) {
+        // Update cache
+        this._employeesCache.set(tenantId, { data: employees, timestamp: Date.now() });
+        // Also update localStorage for offline access
+        localStorage.setItem(getKey(tenantId, STORAGE_KEYS.EMPLOYEES), JSON.stringify(employees));
+        return employees;
+      }
+    } catch (error) {
+      console.warn('Failed to fetch employees from API, using localStorage:', error);
+    }
+    
+    // Fallback to localStorage
+    return this.getEmployees(tenantId);
   },
 
   addEmployee(tenantId: string, employee: PayrollEmployee, userId: string): void {
@@ -218,6 +247,9 @@ export const storageService = {
     };
     employees.push(newEmployee);
     localStorage.setItem(getKey(tenantId, STORAGE_KEYS.EMPLOYEES), JSON.stringify(employees));
+    
+    // Invalidate cache
+    this._employeesCache.delete(tenantId);
   },
 
   updateEmployee(tenantId: string, employee: PayrollEmployee, userId: string): void {
@@ -231,12 +263,18 @@ export const storageService = {
       };
       localStorage.setItem(getKey(tenantId, STORAGE_KEYS.EMPLOYEES), JSON.stringify(employees));
     }
+    
+    // Invalidate cache
+    this._employeesCache.delete(tenantId);
   },
 
   deleteEmployee(tenantId: string, employeeId: string): void {
     const employees = this.getEmployees(tenantId);
     const filtered = employees.filter(e => e.id !== employeeId);
     localStorage.setItem(getKey(tenantId, STORAGE_KEYS.EMPLOYEES), JSON.stringify(filtered));
+    
+    // Invalidate cache
+    this._employeesCache.delete(tenantId);
   },
 
   // ==================== PAYROLL RUNS ====================

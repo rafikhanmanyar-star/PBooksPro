@@ -2,9 +2,10 @@
  * EmployeeList - Displays all employees in the payroll system
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Search, UserPlus, FileDown, Mail, Phone, Loader2 } from 'lucide-react';
 import { storageService } from './services/storageService';
+import { payrollApi } from '../../services/api/payrollApi';
 import { PayrollEmployee, EmployeeListProps } from './types';
 import { useAuth } from '../../context/AuthContext';
 
@@ -13,12 +14,40 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
   const tenantId = tenant?.id || '';
   
   const [isExporting, setIsExporting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [employees, setEmployees] = useState<PayrollEmployee[]>([]);
 
-  // Get employees from storage
-  const employees = useMemo(() => {
-    if (!tenantId) return [];
-    return storageService.getEmployees(tenantId);
+  // Fetch employees from API with localStorage fallback
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      if (!tenantId) {
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        // Try API first
+        const apiEmployees = await payrollApi.getEmployees();
+        if (apiEmployees.length > 0) {
+          setEmployees(apiEmployees);
+          // Update localStorage cache
+          localStorage.setItem(`payroll_employees_${tenantId}`, JSON.stringify(apiEmployees));
+        } else {
+          // Fallback to localStorage
+          setEmployees(storageService.getEmployees(tenantId));
+        }
+      } catch (error) {
+        console.warn('Failed to fetch employees from API, using localStorage:', error);
+        // Fallback to localStorage
+        setEmployees(storageService.getEmployees(tenantId));
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchEmployees();
   }, [tenantId]);
 
   // Filter employees based on search
@@ -65,10 +94,11 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
     }, 800);
   };
 
-  if (!tenantId) {
+  if (!tenantId || isLoading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <p className="text-slate-400 font-bold">Loading...</p>
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <Loader2 size={32} className="text-blue-600 animate-spin" />
+        <p className="text-slate-400 font-bold">Loading workforce...</p>
       </div>
     );
   }
