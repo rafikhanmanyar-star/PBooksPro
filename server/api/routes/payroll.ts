@@ -5,12 +5,14 @@
  * grades, projects, and salary components.
  */
 
-import express, { Router } from 'express';
-import { TenantRequest } from '../middleware/tenantContext';
-import databaseService from '../../services/databaseService';
-import { websocketHelper } from '../../services/websocket';
+import { Router } from 'express';
+import { TenantRequest } from '../../middleware/tenantMiddleware.js';
+import { getDatabaseService } from '../../services/databaseService.js';
+import { emitToTenant } from '../../services/websocketHelper.js';
 
-const router: Router = express.Router();
+const getDb = () => getDatabaseService();
+
+const router = Router();
 
 // =====================================================
 // EMPLOYEE ROUTES
@@ -24,7 +26,7 @@ router.get('/employees', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await databaseService.query(
+    const result = await getDb().query(
       `SELECT * FROM payroll_employees 
        WHERE tenant_id = $1 
        ORDER BY name ASC`,
@@ -48,7 +50,7 @@ router.get('/employees/:id', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await databaseService.query(
+    const result = await getDb().query(
       `SELECT * FROM payroll_employees WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId]
     );
@@ -79,7 +81,7 @@ router.post('/employees', async (req: TenantRequest, res) => {
       grade, joining_date, salary, projects
     } = req.body;
 
-    const result = await databaseService.query(
+    const result = await getDb().query(
       `INSERT INTO payroll_employees 
        (tenant_id, name, email, phone, address, designation, department, grade, 
         joining_date, salary, projects, status, created_by)
@@ -91,7 +93,7 @@ router.post('/employees', async (req: TenantRequest, res) => {
     );
 
     // Notify via WebSocket
-    websocketHelper.notifyDataChange(tenantId, 'payroll_employee', 'create', result.rows[0].id);
+    emitToTenant(tenantId, 'payroll_employee_created', { id: result.rows[0].id });
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -116,7 +118,7 @@ router.put('/employees/:id', async (req: TenantRequest, res) => {
       grade, status, termination_date, salary, adjustments, projects
     } = req.body;
 
-    const result = await databaseService.query(
+    const result = await getDb().query(
       `UPDATE payroll_employees SET
         name = COALESCE($1, name),
         email = COALESCE($2, email),
@@ -146,7 +148,7 @@ router.put('/employees/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Employee not found' });
     }
 
-    websocketHelper.notifyDataChange(tenantId, 'payroll_employee', 'update', id);
+    emitToTenant(tenantId, 'payroll_employee_updated', { id });
 
     res.json(result.rows[0]);
   } catch (error) {
@@ -165,7 +167,7 @@ router.delete('/employees/:id', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await databaseService.query(
+    const result = await getDb().query(
       `DELETE FROM payroll_employees WHERE id = $1 AND tenant_id = $2 RETURNING id`,
       [id, tenantId]
     );
@@ -174,7 +176,7 @@ router.delete('/employees/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Employee not found' });
     }
 
-    websocketHelper.notifyDataChange(tenantId, 'payroll_employee', 'delete', id);
+    emitToTenant(tenantId, 'payroll_employee_deleted', { id });
 
     res.json({ success: true, id });
   } catch (error) {
@@ -195,7 +197,7 @@ router.get('/runs', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await databaseService.query(
+    const result = await getDb().query(
       `SELECT * FROM payroll_runs 
        WHERE tenant_id = $1 
        ORDER BY year DESC, created_at DESC`,
@@ -219,7 +221,7 @@ router.get('/runs/:id', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await databaseService.query(
+    const result = await getDb().query(
       `SELECT * FROM payroll_runs WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId]
     );
@@ -248,13 +250,13 @@ router.post('/runs', async (req: TenantRequest, res) => {
     const { month, year } = req.body;
 
     // Get active employees count
-    const empCount = await databaseService.query(
+    const empCount = await getDb().query(
       `SELECT COUNT(*) as count FROM payroll_employees 
        WHERE tenant_id = $1 AND status = 'ACTIVE'`,
       [tenantId]
     );
 
-    const result = await databaseService.query(
+    const result = await getDb().query(
       `INSERT INTO payroll_runs 
        (tenant_id, month, year, status, employee_count, created_by)
        VALUES ($1, $2, $3, 'DRAFT', $4, $5)
@@ -262,7 +264,7 @@ router.post('/runs', async (req: TenantRequest, res) => {
       [tenantId, month, year, empCount.rows[0].count, userId]
     );
 
-    websocketHelper.notifyDataChange(tenantId, 'payroll_run', 'create', result.rows[0].id);
+    emitToTenant(tenantId, 'payroll_run_created', { id: result.rows[0].id });
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -300,7 +302,7 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
       params.push(total_amount);
     }
 
-    const result = await databaseService.query(
+    const result = await getDb().query(
       `UPDATE payroll_runs SET
         status = $1,
         updated_by = $2
@@ -314,7 +316,7 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Payroll run not found' });
     }
 
-    websocketHelper.notifyDataChange(tenantId, 'payroll_run', 'update', id);
+    emitToTenant(tenantId, 'payroll_run_updated', { id });
 
     res.json(result.rows[0]);
   } catch (error) {
@@ -335,7 +337,7 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
     }
 
     // Get active employees
-    const employees = await databaseService.query(
+    const employees = await getDb().query(
       `SELECT * FROM payroll_employees 
        WHERE tenant_id = $1 AND status = 'ACTIVE'`,
       [tenantId]
@@ -374,7 +376,7 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
       totalAmount += netPay;
 
       // Insert payslip
-      await databaseService.query(
+      await getDb().query(
         `INSERT INTO payslips 
          (tenant_id, payroll_run_id, employee_id, basic_pay, total_allowances, 
           total_deductions, total_adjustments, gross_pay, net_pay,
@@ -396,7 +398,7 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
     }
 
     // Update payroll run with totals
-    const result = await databaseService.query(
+    const result = await getDb().query(
       `UPDATE payroll_runs SET
         status = 'PROCESSING',
         total_amount = $1,
@@ -407,7 +409,7 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
       [totalAmount, employees.rows.length, userId, id, tenantId]
     );
 
-    websocketHelper.notifyDataChange(tenantId, 'payroll_run', 'update', id);
+    emitToTenant(tenantId, 'payroll_run_updated', { id });
 
     res.json(result.rows[0]);
   } catch (error) {
@@ -426,7 +428,7 @@ router.get('/runs/:runId/payslips', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await databaseService.query(
+    const result = await getDb().query(
       `SELECT p.*, e.name as employee_name, e.designation, e.department
        FROM payslips p
        JOIN payroll_employees e ON p.employee_id = e.id
@@ -452,7 +454,7 @@ router.get('/employees/:employeeId/payslips', async (req: TenantRequest, res) =>
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await databaseService.query(
+    const result = await getDb().query(
       `SELECT p.*, r.month, r.year, r.status as run_status
        FROM payslips p
        JOIN payroll_runs r ON p.payroll_run_id = r.id
@@ -480,7 +482,7 @@ router.get('/grades', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await databaseService.query(
+    const result = await getDb().query(
       `SELECT * FROM payroll_grades WHERE tenant_id = $1 ORDER BY name ASC`,
       [tenantId]
     );
@@ -504,7 +506,7 @@ router.post('/grades', async (req: TenantRequest, res) => {
 
     const { name, description, min_salary, max_salary } = req.body;
 
-    const result = await databaseService.query(
+    const result = await getDb().query(
       `INSERT INTO payroll_grades 
        (tenant_id, name, description, min_salary, max_salary, created_by)
        VALUES ($1, $2, $3, $4, $5, $6)
@@ -532,7 +534,7 @@ router.put('/grades/:id', async (req: TenantRequest, res) => {
 
     const { name, description, min_salary, max_salary } = req.body;
 
-    const result = await databaseService.query(
+    const result = await getDb().query(
       `UPDATE payroll_grades SET
         name = COALESCE($1, name),
         description = COALESCE($2, description),
@@ -567,7 +569,7 @@ router.get('/projects', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await databaseService.query(
+    const result = await getDb().query(
       `SELECT * FROM payroll_projects WHERE tenant_id = $1 ORDER BY name ASC`,
       [tenantId]
     );
@@ -591,7 +593,7 @@ router.post('/projects', async (req: TenantRequest, res) => {
 
     const { name, code, description, status } = req.body;
 
-    const result = await databaseService.query(
+    const result = await getDb().query(
       `INSERT INTO payroll_projects 
        (tenant_id, name, code, description, status, created_by)
        VALUES ($1, $2, $3, $4, $5, $6)
@@ -619,7 +621,7 @@ router.put('/projects/:id', async (req: TenantRequest, res) => {
 
     const { name, code, description, status } = req.body;
 
-    const result = await databaseService.query(
+    const result = await getDb().query(
       `UPDATE payroll_projects SET
         name = COALESCE($1, name),
         code = COALESCE($2, code),
@@ -654,14 +656,14 @@ router.get('/earning-types', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await databaseService.query(
+    const result = await getDb().query(
       `SELECT * FROM payroll_salary_components 
        WHERE tenant_id = $1 AND type = 'ALLOWANCE' AND is_active = true
        ORDER BY name ASC`,
       [tenantId]
     );
 
-    res.json(result.rows.map(r => ({
+    res.json(result.rows.map((r: { name: string; default_value: number; is_percentage: boolean }) => ({
       name: r.name,
       amount: r.default_value,
       is_percentage: r.is_percentage,
@@ -681,14 +683,14 @@ router.get('/deduction-types', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID is required' });
     }
 
-    const result = await databaseService.query(
+    const result = await getDb().query(
       `SELECT * FROM payroll_salary_components 
        WHERE tenant_id = $1 AND type = 'DEDUCTION' AND is_active = true
        ORDER BY name ASC`,
       [tenantId]
     );
 
-    res.json(result.rows.map(r => ({
+    res.json(result.rows.map((r: { name: string; default_value: number; is_percentage: boolean }) => ({
       name: r.name,
       amount: r.default_value,
       is_percentage: r.is_percentage,
@@ -711,7 +713,7 @@ router.put('/earning-types', async (req: TenantRequest, res) => {
     const { types } = req.body;
 
     for (const type of types) {
-      await databaseService.query(
+      await getDb().query(
         `INSERT INTO payroll_salary_components 
          (tenant_id, name, type, is_percentage, default_value)
          VALUES ($1, $2, 'ALLOWANCE', $3, $4)
@@ -740,7 +742,7 @@ router.put('/deduction-types', async (req: TenantRequest, res) => {
     const { types } = req.body;
 
     for (const type of types) {
-      await databaseService.query(
+      await getDb().query(
         `INSERT INTO payroll_salary_components 
          (tenant_id, name, type, is_percentage, default_value)
          VALUES ($1, $2, 'DEDUCTION', $3, $4)
