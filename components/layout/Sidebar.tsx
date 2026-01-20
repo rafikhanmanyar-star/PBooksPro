@@ -171,7 +171,9 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const isAccountsOnly = currentUser?.role === 'Accounts';
     const isAdmin = userRole === 'Admin' || currentUser?.role === 'Admin';
 
-    const navGroups = [
+    // Navigation groups - defined as a stable constant to prevent re-render issues
+    // Payroll and other core modules are always visible regardless of auth state
+    const navGroups = React.useMemo(() => [
         {
             title: 'Overview',
             items: [
@@ -217,7 +219,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 { page: 'bizPlanet', label: 'Biz Planet', icon: ICONS.globe },
             ]
         }
-    ];
+    ], [isAdmin]);
 
     if (!isAccountsOnly) {
         navGroups.push({

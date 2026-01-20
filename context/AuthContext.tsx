@@ -306,16 +306,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   company_name: string;
                 }>('/tenants/me');
                 
+                // Try to decode user info from JWT token
+                let userInfo = {
+                  id: localStorage.getItem('user_id') || 'current-user',
+                  username: 'user',
+                  name: 'User',
+                  role: 'User',
+                  tenantId: tenantInfo.id,
+                };
+                
+                try {
+                  // Decode JWT to get user info
+                  const parts = token.split('.');
+                  if (parts.length === 3) {
+                    const payload = JSON.parse(atob(parts[1]));
+                    userInfo = {
+                      id: payload.userId || payload.sub || localStorage.getItem('user_id') || 'current-user',
+                      username: payload.username || 'user',
+                      name: payload.name || 'User',
+                      role: payload.role || 'User',
+                      tenantId: tenantInfo.id,
+                    };
+                  }
+                } catch (decodeError) {
+                  logger.warnCategory('auth', 'Could not decode user info from token:', decodeError);
+                }
+                
                 if (isMounted) {
                   setState({
                     isAuthenticated: true,
-                    user: {
-                      id: 'current-user', // Will be fetched from token if needed
-                      username: 'user', // Will be fetched from token if needed
-                      name: 'User',
-                      role: 'User',
-                      tenantId: tenantInfo.id,
-                    },
+                    user: userInfo,
                     tenant: {
                       id: tenantInfo.id,
                       name: tenantInfo.name,

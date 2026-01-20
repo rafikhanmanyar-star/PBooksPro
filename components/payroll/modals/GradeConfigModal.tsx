@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Save, AlertCircle, Award } from 'lucide-react';
 import { storageService } from '../services/storageService';
 import { GradeLevel } from '../types';
-import { AppContext } from '../../../App';
+import { useAuth } from '../../../context/AuthContext';
 
 interface GradeConfigModalProps {
   isOpen: boolean;
@@ -13,15 +13,17 @@ interface GradeConfigModalProps {
 }
 
 const GradeConfigModal: React.FC<GradeConfigModalProps> = ({ isOpen, onClose, initialData, onSave }) => {
-  const context = useContext(AppContext);
-  const currentTenant = context?.currentTenant;
+  const { user, tenant } = useAuth();
+  const tenantId = tenant?.id || '';
+  const userId = user?.id || '';
 
   const [formData, setFormData] = useState<GradeLevel>({
     id: '',
+    tenant_id: '',
     name: '',
     description: '',
-    minSalary: 0,
-    maxSalary: 0
+    min_salary: 0,
+    max_salary: 0
   });
 
   useEffect(() => {
@@ -30,23 +32,27 @@ const GradeConfigModal: React.FC<GradeConfigModalProps> = ({ isOpen, onClose, in
     } else {
       setFormData({
         id: `grade-${Date.now()}`,
+        tenant_id: tenantId,
         name: '',
         description: '',
-        minSalary: 0,
-        maxSalary: 0
+        min_salary: 0,
+        max_salary: 0
       });
     }
-  }, [initialData, isOpen]);
+  }, [initialData, isOpen, tenantId]);
 
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Fix: Pass currentUser.id to satisfy storageService requirements
-    if (currentTenant && context?.currentUser) {
-      storageService.updateGradeLevel(currentTenant.id, formData, context.currentUser.id);
-    }
-    onSave(formData);
+    if (!tenantId || !userId) return;
+    
+    const gradeData: GradeLevel = {
+      ...formData,
+      tenant_id: tenantId
+    };
+    storageService.updateGradeLevel(tenantId, gradeData, userId);
+    onSave(gradeData);
     onClose();
   };
 
@@ -67,8 +73,8 @@ const GradeConfigModal: React.FC<GradeConfigModalProps> = ({ isOpen, onClose, in
             <input type="text" value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-700" placeholder="e.g. Individual Contributor" />
           </div>
           <div className="flex gap-4">
-            <div className="flex-1"><label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Min Salary (PKR)</label><input type="number" required value={formData.minSalary} onChange={(e) => setFormData({...formData, minSalary: parseFloat(e.target.value) || 0})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-700" /></div>
-            <div className="flex-1"><label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Max Salary (PKR)</label><input type="number" required value={formData.maxSalary} onChange={(e) => setFormData({...formData, maxSalary: parseFloat(e.target.value) || 0})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-700" /></div>
+            <div className="flex-1"><label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Min Salary (PKR)</label><input type="number" required value={formData.min_salary} onChange={(e) => setFormData({...formData, min_salary: parseFloat(e.target.value) || 0})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-700" /></div>
+            <div className="flex-1"><label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Max Salary (PKR)</label><input type="number" required value={formData.max_salary} onChange={(e) => setFormData({...formData, max_salary: parseFloat(e.target.value) || 0})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-700" /></div>
           </div>
           <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex gap-3"><AlertCircle size={20} className="text-blue-500 shrink-0" /><p className="text-xs text-blue-700 leading-relaxed font-medium">Grade levels help define standard salary bands across the organization.</p></div>
           <div className="flex gap-3 pt-4">

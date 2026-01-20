@@ -470,7 +470,7 @@ const App: React.FC = () => {
     const pageId = `page-${groupKey}`;
 
     // Fixed layout for certain complex modules
-    const isFixedLayout = groupKey === 'RENTAL' || groupKey === 'PROJECT' || groupKey === 'INVESTMENT' || groupKey === 'PM_CONFIG' || groupKey === 'PAYMENTS';
+    const isFixedLayout = groupKey === 'RENTAL' || groupKey === 'PROJECT' || groupKey === 'INVESTMENT' || groupKey === 'PM_CONFIG' || groupKey === 'PAYMENTS' || groupKey === 'PAYROLL';
     const overflowClass = isFixedLayout ? 'overflow-hidden' : 'overflow-y-auto';
     const bgClass = getPageBackground(groupKey);
 

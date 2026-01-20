@@ -12,7 +12,12 @@ import {
   History,
   Users,
   BarChart3,
-  Lock
+  Plus,
+  Edit3,
+  Trash2,
+  TrendingUp,
+  TrendingDown,
+  Award
 } from 'lucide-react';
 import PayrollRunScreen from './PayrollRunScreen';
 import EmployeeList from './EmployeeList';
@@ -20,8 +25,11 @@ import EmployeeProfile from './EmployeeProfile';
 import EmployeeForm from './EmployeeForm';
 import PayrollReport from './PayrollReport';
 import PaymentHistory from './PaymentHistory';
+import SalaryConfigModal from './modals/SalaryConfigModal';
+import GradeConfigModal from './modals/GradeConfigModal';
 import { PayrollEmployee, GradeLevel, EarningType, DeductionType } from './types';
 import { storageService } from './services/storageService';
+import { payrollApi } from '../../services/api/payrollApi';
 import { useAuth } from '../../context/AuthContext';
 
 type PayrollSubTab = 'workforce' | 'cycles' | 'report' | 'structure' | 'history';
@@ -36,6 +44,14 @@ const PayrollHub: React.FC = () => {
   const [earningTypes, setEarningTypes] = useState<EarningType[]>([]);
   const [deductionTypes, setDeductionTypes] = useState<DeductionType[]>([]);
   const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>([]);
+  
+  // Modal states for salary structure configuration
+  const [isEarningModalOpen, setIsEarningModalOpen] = useState(false);
+  const [isDeductionModalOpen, setIsDeductionModalOpen] = useState(false);
+  const [isGradeModalOpen, setIsGradeModalOpen] = useState(false);
+  const [editingEarning, setEditingEarning] = useState<EarningType | null>(null);
+  const [editingDeduction, setEditingDeduction] = useState<DeductionType | null>(null);
+  const [editingGrade, setEditingGrade] = useState<GradeLevel | null>(null);
 
   // Get tenant ID from auth context
   const tenantId = tenant?.id || '';
@@ -51,12 +67,41 @@ const PayrollHub: React.FC = () => {
     }
   }, [activeSubTab, tenantId]);
 
-  const refreshData = () => {
+  const refreshData = async () => {
     if (!tenantId) return;
     
-    setEarningTypes(storageService.getEarningTypes(tenantId));
-    setDeductionTypes(storageService.getDeductionTypes(tenantId));
-    setGradeLevels(storageService.getGradeLevels(tenantId));
+    try {
+      // Fetch from cloud API first, fallback to localStorage
+      const [apiEarnings, apiDeductions, apiGrades] = await Promise.all([
+        payrollApi.getEarningTypes(),
+        payrollApi.getDeductionTypes(),
+        payrollApi.getGradeLevels()
+      ]);
+      
+      // Use API data if available, otherwise fallback to localStorage
+      if (apiEarnings.length > 0) {
+        setEarningTypes(apiEarnings);
+      } else {
+        setEarningTypes(storageService.getEarningTypes(tenantId));
+      }
+      
+      if (apiDeductions.length > 0) {
+        setDeductionTypes(apiDeductions);
+      } else {
+        setDeductionTypes(storageService.getDeductionTypes(tenantId));
+      }
+      
+      if (apiGrades.length > 0) {
+        setGradeLevels(apiGrades);
+      } else {
+        setGradeLevels(storageService.getGradeLevels(tenantId));
+      }
+    } catch (error) {
+      console.warn('Failed to fetch from API, using localStorage:', error);
+      setEarningTypes(storageService.getEarningTypes(tenantId));
+      setDeductionTypes(storageService.getDeductionTypes(tenantId));
+      setGradeLevels(storageService.getGradeLevels(tenantId));
+    }
   };
 
   // Navigation tabs
@@ -99,9 +144,9 @@ const PayrollHub: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col min-h-full">
+    <div className="absolute inset-0 flex flex-col -m-2 sm:-m-3 md:-m-4 lg:-m-6 xl:-m-8">
       {/* Sub-navigation tabs - Fixed at top of payroll section */}
-      <div className="bg-white/95 backdrop-blur-md border-b border-slate-200 -mx-4 lg:-mx-8 -mt-4 lg:-mt-8 px-2 sm:px-4 lg:px-8 sticky top-0 z-30 shadow-sm no-print">
+      <div className="flex-shrink-0 bg-white/95 backdrop-blur-md border-b border-slate-200 px-2 sm:px-4 lg:px-8 z-30 shadow-sm no-print">
         <div className="flex overflow-x-auto no-scrollbar gap-1 sm:gap-8">
           {hrTabs.map((tab) => (
             <button
@@ -125,8 +170,8 @@ const PayrollHub: React.FC = () => {
         </div>
       </div>
 
-      {/* Tab content - starts after navigation with proper spacing */}
-      <div className="flex-1 pt-4 sm:pt-6 animate-in fade-in duration-500">
+      {/* Tab content - scrollable area below fixed navigation */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-3 md:p-4 lg:p-6 xl:p-8 pb-20 sm:pb-24 md:pb-6 animate-in fade-in duration-500">
         {activeSubTab === 'workforce' && (
           selectedEmployee ? (
             <EmployeeProfile 
@@ -154,30 +199,159 @@ const PayrollHub: React.FC = () => {
         {activeSubTab === 'report' && <PayrollReport />}
         
         {activeSubTab === 'structure' && (
-          <div className="bg-white p-6 sm:p-12 rounded-2xl sm:rounded-3xl border border-slate-200 flex flex-col items-center justify-center text-center">
-            <Lock size={40} className="text-slate-200 mb-4 sm:w-12 sm:h-12" />
-            <h3 className="text-lg sm:text-xl font-bold text-slate-900">Salary Structure Configuration</h3>
-            <p className="text-slate-500 max-w-sm mt-2 text-sm">
-              Configuration for {tenant?.companyName || tenant?.name || 'your organization'} is managed at the organizational level.
-            </p>
-            <div className="mt-4 sm:mt-6 grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 w-full max-w-2xl">
-              <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-100">
-                <h4 className="font-bold text-slate-700 text-xs sm:text-sm mb-2">Earning Components</h4>
-                <ul className="text-xs text-slate-500 space-y-1 text-left">
-                  {earningTypes.map((e, i) => (
-                    <li key={i}>{e.name}: {e.is_percentage ? `${e.amount}%` : `PKR ${e.amount.toLocaleString()}`}</li>
-                  ))}
-                </ul>
-              </div>
-              <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-100">
-                <h4 className="font-bold text-slate-700 text-xs sm:text-sm mb-2">Deduction Components</h4>
-                <ul className="text-xs text-slate-500 space-y-1 text-left">
-                  {deductionTypes.map((d, i) => (
-                    <li key={i}>{d.name}: {d.is_percentage ? `${d.amount}%` : `PKR ${d.amount.toLocaleString()}`}</li>
-                  ))}
-                </ul>
+          <div className="space-y-6">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Salary Structure</h1>
+                <p className="text-slate-500 text-xs sm:text-sm">Configure earning components, deductions, and grade levels for {tenant?.companyName || tenant?.name || 'your organization'}.</p>
               </div>
             </div>
+
+            {/* Earning Components */}
+            <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-4 sm:px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <TrendingUp size={18} className="text-emerald-600" />
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Earning Components</h3>
+                </div>
+                <button 
+                  onClick={() => { setEditingEarning(null); setIsEarningModalOpen(true); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors"
+                >
+                  <Plus size={14} /> Add
+                </button>
+              </div>
+              <div className="p-4 sm:p-6">
+                {earningTypes.length === 0 ? (
+                  <p className="text-center text-slate-400 py-8 text-sm">No earning components configured. Click "Add" to create one.</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {earningTypes.map((e, i) => (
+                      <div key={i} className="flex items-center justify-between p-3 bg-emerald-50/50 rounded-xl border border-emerald-100 group hover:border-emerald-200 transition-colors">
+                        <div>
+                          <p className="font-bold text-slate-900 text-sm">{e.name}</p>
+                          <p className="text-xs text-emerald-600 font-medium">
+                            {e.is_percentage ? `${e.amount}% of Basic` : `PKR ${e.amount.toLocaleString()}`}
+                          </p>
+                        </div>
+                        <button 
+                          onClick={() => { setEditingEarning(e); setIsEarningModalOpen(true); }}
+                          className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Deduction Components */}
+            <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-4 sm:px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <TrendingDown size={18} className="text-red-600" />
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Deduction Components</h3>
+                </div>
+                <button 
+                  onClick={() => { setEditingDeduction(null); setIsDeductionModalOpen(true); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition-colors"
+                >
+                  <Plus size={14} /> Add
+                </button>
+              </div>
+              <div className="p-4 sm:p-6">
+                {deductionTypes.length === 0 ? (
+                  <p className="text-center text-slate-400 py-8 text-sm">No deduction components configured. Click "Add" to create one.</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {deductionTypes.map((d, i) => (
+                      <div key={i} className="flex items-center justify-between p-3 bg-red-50/50 rounded-xl border border-red-100 group hover:border-red-200 transition-colors">
+                        <div>
+                          <p className="font-bold text-slate-900 text-sm">{d.name}</p>
+                          <p className="text-xs text-red-600 font-medium">
+                            {d.is_percentage ? `${d.amount}% of Gross` : `PKR ${d.amount.toLocaleString()}`}
+                          </p>
+                        </div>
+                        <button 
+                          onClick={() => { setEditingDeduction(d); setIsDeductionModalOpen(true); }}
+                          className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Grade Levels */}
+            <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-4 sm:px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Award size={18} className="text-blue-600" />
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Grade Levels</h3>
+                </div>
+                <button 
+                  onClick={() => { setEditingGrade(null); setIsGradeModalOpen(true); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
+                >
+                  <Plus size={14} /> Add
+                </button>
+              </div>
+              <div className="p-4 sm:p-6">
+                {gradeLevels.length === 0 ? (
+                  <p className="text-center text-slate-400 py-8 text-sm">No grade levels configured. Click "Add" to create one.</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {gradeLevels.map((g, i) => (
+                      <div key={i} className="flex items-center justify-between p-4 bg-blue-50/50 rounded-xl border border-blue-100 group hover:border-blue-200 transition-colors">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="px-2 py-0.5 bg-blue-600 text-white text-[10px] font-bold rounded">{g.name}</span>
+                            <span className="text-xs text-slate-500">{g.description}</span>
+                          </div>
+                          <p className="text-xs text-blue-600 font-medium">
+                            PKR {g.min_salary.toLocaleString()} - {g.max_salary.toLocaleString()}
+                          </p>
+                        </div>
+                        <button 
+                          onClick={() => { setEditingGrade(g); setIsGradeModalOpen(true); }}
+                          className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Configuration Modals */}
+            <SalaryConfigModal 
+              isOpen={isEarningModalOpen}
+              onClose={() => { setIsEarningModalOpen(false); setEditingEarning(null); }}
+              type="earning"
+              initialData={editingEarning}
+              onSave={() => refreshData()}
+            />
+            <SalaryConfigModal 
+              isOpen={isDeductionModalOpen}
+              onClose={() => { setIsDeductionModalOpen(false); setEditingDeduction(null); }}
+              type="deduction"
+              initialData={editingDeduction}
+              onSave={() => refreshData()}
+            />
+            <GradeConfigModal 
+              isOpen={isGradeModalOpen}
+              onClose={() => { setIsGradeModalOpen(false); setEditingGrade(null); }}
+              initialData={editingGrade}
+              onSave={() => refreshData()}
+            />
           </div>
         )}
         
