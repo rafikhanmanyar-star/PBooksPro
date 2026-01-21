@@ -301,14 +301,32 @@ const MarketingPage: React.FC = () => {
         const items = [];
         const baseDate = new Date();
         
+        // Initial Down Payment
+        let currentBalance = calculations.netValue;
+        const initialRemaining = currentBalance - calculations.dpAmount;
+        
+        items.push({
+            index: 'Initial',
+            dueDate: 'At Booking',
+            amount: calculations.dpAmount,
+            balance: initialRemaining
+        });
+
+        currentBalance = initialRemaining;
+        
         for (let i = 1; i <= calculations.totalInstallments; i++) {
             const dueDate = new Date(baseDate);
             dueDate.setMonth(baseDate.getMonth() + (i * calculations.freqMonths));
             
+            // For the last installment, ensure it zeros out exactly
+            const amount = i === calculations.totalInstallments ? currentBalance : calculations.installmentAmount;
+            currentBalance -= amount;
+            
             items.push({
-                index: i,
-                dueDate: dueDate.toISOString().split('T')[0],
-                amount: calculations.installmentAmount
+                index: i.toString(),
+                dueDate: dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                amount: amount,
+                balance: Math.max(0, currentBalance)
             });
         }
         return items;
@@ -495,60 +513,102 @@ const MarketingPage: React.FC = () => {
                 </div>
             </div>
 
-            <div className="flex-1 overflow-auto p-4">
+            <div className="flex-1 overflow-hidden">
                 {showForm ? (
-                    <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
-                        <Card className="p-6">
-                            <div className="flex items-center justify-between mb-6">
-                                <h2 className="text-lg font-bold text-slate-800">
-                                    {selectedPlanId ? 'Edit Plan' : 'Create Installment Plan'}
-                                </h2>
-                                <Button variant="ghost" onClick={() => setShowForm(false)}>
+                    <div className="flex h-full animate-fade-in bg-slate-100">
+                        {/* Left Sidebar - Form Controls */}
+                        <div className="w-80 flex flex-col bg-white border-r border-slate-200 overflow-y-auto shrink-0">
+                            <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                                <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Project Info</h2>
+                                <Button variant="ghost" onClick={() => setShowForm(false)} size="sm">
                                     <div className="w-4 h-4">{ICONS.x}</div>
                                 </Button>
                             </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                {/* Basic Info */}
+                            
+                            <div className="p-4 space-y-6">
+                                {/* Basic Selection */}
                                 <div className="space-y-4">
                                     <ComboBox 
-                                        label="Lead Name" 
-                                        items={leads} 
-                                        selectedId={leadId} 
-                                        onSelect={item => setLeadId(item?.id || '')} 
-                                        placeholder="Select Lead"
-                                        required
-                                    />
-                                    <ComboBox 
-                                        label="Project" 
+                                        label="Project Name" 
                                         items={state.projects} 
                                         selectedId={projectId} 
                                         onSelect={item => { setProjectId(item?.id || ''); setUnitId(''); }} 
                                         placeholder="Select Project"
-                                        required
                                     />
-                                    <ComboBox 
-                                        label="Unit" 
-                                        items={units} 
-                                        selectedId={unitId} 
-                                        onSelect={item => setUnitId(item?.id || '')} 
-                                        placeholder="Select Unit"
-                                        required
-                                        disabled={!projectId}
-                                    />
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <Input 
-                                            label="Duration (Years)" 
-                                            type="number" 
-                                            value={durationYears} 
-                                            onChange={e => setDurationYears(e.target.value)}
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <ComboBox 
+                                            label="Unit Type" 
+                                            items={[]} // Just text in image usually
+                                            selectedId={""}
+                                            onSelect={() => {}}
+                                            placeholder="3BHK Luxury"
                                         />
-                                        <div className="flex flex-col gap-1">
-                                            <label className="text-sm font-medium text-slate-600">Frequency</label>
+                                        <ComboBox 
+                                            label="Unit #" 
+                                            items={units} 
+                                            selectedId={unitId} 
+                                            onSelect={item => setUnitId(item?.id || '')} 
+                                            placeholder="Select Unit"
+                                            disabled={!projectId}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Pricing & Discount */}
+                                <div className="space-y-4 pt-4 border-t border-slate-100">
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pricing & Discount</h3>
+                                    <Input label="Base Price ($)" type="number" value={listPrice} onChange={e => setListPrice(e.target.value)} />
+                                    <Input label="Amenities ($)" type="number" value={amenitiesTotal.toString()} disabled />
+                                    
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-xs font-medium text-slate-600">
+                                            <span>Discount (%)</span>
+                                            <span className="text-indigo-600 font-bold">{customerDiscount}%</span>
+                                        </div>
+                                        <input 
+                                            type="range" 
+                                            min="0" max="25" 
+                                            value={customerDiscount} 
+                                            onChange={e => setCustomerDiscount(e.target.value)}
+                                            className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Installment Plan */}
+                                <div className="space-y-4 pt-4 border-t border-slate-100">
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Installment Plan</h3>
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-xs font-medium text-slate-600">
+                                            <span>Down Payment (%)</span>
+                                            <span className="text-indigo-600 font-bold">{downPaymentPercentage}%</span>
+                                        </div>
+                                        <input 
+                                            type="range" 
+                                            min="5" max="50" 
+                                            value={downPaymentPercentage} 
+                                            onChange={e => setDownPaymentPercentage(e.target.value)}
+                                            className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase">Years</label>
+                                            <select 
+                                                value={durationYears}
+                                                onChange={e => setDurationYears(e.target.value)}
+                                                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
+                                            >
+                                                {[1, 2, 3, 4, 5, 10].map(y => <option key={y} value={y}>{y} Years</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase">Frequency</label>
                                             <select 
                                                 value={frequency}
                                                 onChange={e => setFrequency(e.target.value as InstallmentFrequency)}
-                                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"
+                                                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
                                             >
                                                 <option value="Monthly">Monthly</option>
                                                 <option value="Quarterly">Quarterly</option>
@@ -556,229 +616,157 @@ const MarketingPage: React.FC = () => {
                                             </select>
                                         </div>
                                     </div>
-                                    <Input 
-                                        label="Down Payment %" 
-                                        type="number" 
-                                        value={downPaymentPercentage} 
-                                        onChange={e => setDownPaymentPercentage(e.target.value)}
+                                </div>
+
+                                {/* Client Info */}
+                                <div className="space-y-4 pt-4 border-t border-slate-100">
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Client Info</h3>
+                                    <ComboBox 
+                                        label="Client Name" 
+                                        items={leads} 
+                                        selectedId={leadId} 
+                                        onSelect={item => setLeadId(item?.id || '')} 
+                                        placeholder="Select Lead"
                                     />
                                 </div>
 
-                                {/* Pricing & Discounts */}
-                                <div className="space-y-4">
-                                    <h3 className="font-bold text-slate-700 border-b pb-2">Pricing & Discounts</h3>
-                                    <Input label="List Price" type="number" value={listPrice} onChange={e => setListPrice(e.target.value)} />
-                                    
-                                    {/* Customer Discount with Category */}
-                                    <div className="space-y-1">
-                                        <div className="flex gap-2">
-                                            <div className="flex-1">
-                                                <Input label="Customer Discount" type="number" value={customerDiscount} onChange={e => setCustomerDiscount(e.target.value)} />
-                                            </div>
-                                            <div className="w-32">
-                                                <label className="text-xs font-medium text-slate-500 block mb-1">Category</label>
-                                                <select 
-                                                    value={customerDiscountCategoryId}
-                                                    onChange={e => setCustomerDiscountCategoryId(e.target.value)}
-                                                    className="w-full px-2 py-2 bg-white border border-slate-300 rounded-md text-xs"
-                                                >
-                                                    <option value="">None</option>
-                                                    {expenseCategories.map(cat => (
-                                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
+                                <div className="pt-6">
+                                    <Button className="w-full justify-center py-3" onClick={handleSave}>
+                                        {selectedPlanId ? 'Update Plan' : 'Save Plan'}
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
 
-                                    {/* Floor Discount with Category */}
-                                    <div className="space-y-1">
-                                        <div className="flex gap-2">
-                                            <div className="flex-1">
-                                                <Input label="Floor Discount" type="number" value={floorDiscount} onChange={e => setFloorDiscount(e.target.value)} />
-                                            </div>
-                                            <div className="w-32">
-                                                <label className="text-xs font-medium text-slate-500 block mb-1">Category</label>
-                                                <select 
-                                                    value={floorDiscountCategoryId}
-                                                    onChange={e => setFloorDiscountCategoryId(e.target.value)}
-                                                    className="w-full px-2 py-2 bg-white border border-slate-300 rounded-md text-xs"
-                                                >
-                                                    <option value="">None</option>
-                                                    {expenseCategories.map(cat => (
-                                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
+                        {/* Right Content - Proposal Preview */}
+                        <div className="flex-1 overflow-y-auto p-8 bg-slate-100">
+                            <div className="max-w-4xl mx-auto bg-white shadow-2xl rounded-sm overflow-hidden min-h-full flex flex-col">
+                                {/* Proposal Header */}
+                                <div className="bg-[#1a237e] p-10 text-white flex justify-between items-start relative overflow-hidden">
+                                    <div className="relative z-10">
+                                        <h1 className="text-4xl font-extrabold tracking-tight mb-2">
+                                            {state.projects.find(p => p.id === projectId)?.name || 'Project Name'}
+                                        </h1>
+                                        <div className="flex items-center gap-2 text-indigo-200 text-sm">
+                                            <div className="w-4 h-4">{ICONS.mapPin}</div>
+                                            <span>Official Investment Proposal</span>
                                         </div>
                                     </div>
-
-                                    {/* Lump Sum Discount with Category */}
-                                    <div className="space-y-1">
-                                        <div className="flex gap-2">
-                                            <div className="flex-1">
-                                                <Input label="Lump Sum Discount" type="number" value={lumpSumDiscount} onChange={e => setLumpSumDiscount(e.target.value)} />
-                                            </div>
-                                            <div className="w-32">
-                                                <label className="text-xs font-medium text-slate-500 block mb-1">Category</label>
-                                                <select 
-                                                    value={lumpSumDiscountCategoryId}
-                                                    onChange={e => setLumpSumDiscountCategoryId(e.target.value)}
-                                                    className="w-full px-2 py-2 bg-white border border-slate-300 rounded-md text-xs"
-                                                >
-                                                    <option value="">None</option>
-                                                    {expenseCategories.map(cat => (
-                                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        </div>
+                                    <div className="text-right relative z-10">
+                                        <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest mb-1">Prepared For</p>
+                                        <p className="text-2xl font-bold">{leads.find(l => l.id === leadId)?.name || 'Client Name'}</p>
                                     </div>
-
-                                    {/* Misc Discount with Category */}
-                                    <div className="space-y-1">
-                                        <div className="flex gap-2">
-                                            <div className="flex-1">
-                                                <Input label="Misc. Discount" type="number" value={miscDiscount} onChange={e => setMiscDiscount(e.target.value)} />
-                                            </div>
-                                            <div className="w-32">
-                                                <label className="text-xs font-medium text-slate-500 block mb-1">Category</label>
-                                                <select 
-                                                    value={miscDiscountCategoryId}
-                                                    onChange={e => setMiscDiscountCategoryId(e.target.value)}
-                                                    className="w-full px-2 py-2 bg-white border border-slate-300 rounded-md text-xs"
-                                                >
-                                                    <option value="">None</option>
-                                                    {expenseCategories.map(cat => (
-                                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    {/* Decorative background element */}
+                                    <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
                                 </div>
 
-                                {/* Summary & Amenities */}
-                                <div className="space-y-4">
-                                    {/* Amenities Selection */}
-                                    {activeAmenities.length > 0 && (
-                                        <div className="bg-purple-50/50 p-4 rounded-lg border border-purple-100">
-                                            <h3 className="font-bold text-purple-900 border-b border-purple-200 pb-2 mb-3">Select Amenities</h3>
-                                            <div className="space-y-2 max-h-32 overflow-y-auto">
-                                                {activeAmenities.map(amenity => {
-                                                    const isSelected = selectedAmenityIds.includes(amenity.id);
-                                                    const lp = parseFloat(listPrice) || 0;
-                                                    const calculatedAmount = amenity.isPercentage 
-                                                        ? (lp * amenity.price / 100)
-                                                        : amenity.price;
-                                                    return (
-                                                        <label 
-                                                            key={amenity.id} 
-                                                            className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
-                                                                isSelected ? 'bg-purple-100 border border-purple-300' : 'bg-white border border-slate-200 hover:border-purple-300'
-                                                            }`}
+                                <div className="p-10 space-y-10 flex-1">
+                                    {/* Intro Text */}
+                                    <div className="border-l-4 border-indigo-600 pl-6 py-2">
+                                        <h3 className="text-lg font-bold text-slate-800 mb-2">Exclusively for You</h3>
+                                        <p className="text-slate-600 italic leading-relaxed">
+                                            "Dear {leads.find(l => l.id === leadId)?.name || 'Mr. Doe'}, Unit #{units.find(u => u.id === unitId)?.name || 'A-1204'} at {state.projects.find(p => p.id === projectId)?.name || 'Project Name'} has been meticulously selected for you as a private sanctuary that epitomizes contemporary elegance and absolute exclusivity. This {units.find(u => u.id === unitId)?.propertyType || '3BHK'} residence offers more than just a sophisticated lifestyle; it serves as a high-performing asset with exceptional capital appreciation potential in an increasingly sought-after corridor. Securing this premier unit is a strategic move to anchor your portfolio with a legacy property that truly reflects your standard of distinction."
+                                        </p>
+                                    </div>
+
+                                    {/* Summary Stats Grid */}
+                                    <div className="grid grid-cols-4 gap-4">
+                                        <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Unit Details</p>
+                                            <p className="text-sm font-bold text-slate-800 line-clamp-1">{units.find(u => u.id === unitId)?.propertyType || '3BHK Luxury Apartment'}</p>
+                                            <p className="text-[10px] text-slate-500">Unit ID: {units.find(u => u.id === unitId)?.name || 'N/A'}</p>
+                                        </div>
+                                        <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Total Net Price</p>
+                                            <p className="text-sm font-bold text-indigo-700">${calculations.netValue.toLocaleString()}</p>
+                                            <p className="text-[10px] text-slate-500">Incl. {customerDiscount}% Discount</p>
+                                        </div>
+                                        <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Down Payment</p>
+                                            <p className="text-sm font-bold text-indigo-700">${calculations.dpAmount.toLocaleString()}</p>
+                                            <p className="text-[10px] text-slate-500">{downPaymentPercentage}% required</p>
+                                        </div>
+                                        <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Installment</p>
+                                            <p className="text-sm font-bold text-indigo-700">${calculations.installmentAmount.toLocaleString()}</p>
+                                            <p className="text-[10px] text-slate-500">{frequency} payments</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Cost Breakdown */}
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-6 border-b border-slate-100 pb-2">
+                                            <div className="w-5 h-5 text-indigo-600">{ICONS.list}</div>
+                                            <h3 className="font-bold text-slate-800">Cost Breakdown</h3>
+                                        </div>
+                                        <div className="space-y-4">
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span className="text-slate-600">Base Price of Unit</span>
+                                                <span className="font-bold text-slate-900">${parseFloat(listPrice).toLocaleString()}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span className="text-slate-600">Premium Amenities & Facilities</span>
+                                                <span className="font-bold text-slate-900">${amenitiesTotal.toLocaleString()}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-sm pt-2 border-t border-slate-100">
+                                                <span className="font-bold text-slate-800">Total Gross Price</span>
+                                                <span className="font-extrabold text-slate-900">${(parseFloat(listPrice) + amenitiesTotal).toLocaleString()}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span className="text-rose-600 italic">Exclusive Offer Discount ({customerDiscount}%)</span>
+                                                <span className="font-bold text-rose-600">-${( (parseFloat(listPrice) + amenitiesTotal) * parseFloat(customerDiscount) / 100 ).toLocaleString()}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center py-4 px-4 bg-indigo-50/50 rounded-lg mt-4">
+                                                <span className="font-extrabold text-slate-800 uppercase tracking-wider">Net Payable Price</span>
+                                                <span className="text-2xl font-black text-indigo-700">${calculations.netValue.toLocaleString()}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Installment Schedule */}
+                                    <div className="pb-10">
+                                        <div className="flex items-center justify-between mb-6 border-b border-slate-100 pb-2">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-5 h-5 text-indigo-600">{ICONS.calendar}</div>
+                                                <h3 className="font-bold text-slate-800">Installment Schedule</h3>
+                                            </div>
+                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                                {durationYears} Years Plan • {calculations.totalInstallments} Installments
+                                            </div>
+                                        </div>
+                                        <div className="rounded-lg border border-slate-200 overflow-hidden shadow-sm">
+                                            <table className="w-full text-left text-sm border-collapse">
+                                                <thead>
+                                                    <tr className="bg-[#1a237e] text-white">
+                                                        <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px]">#</th>
+                                                        <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px]">Due Date</th>
+                                                        <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px]">Amount</th>
+                                                        <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-right">Outstanding Balance</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {schedule.map((item, idx) => (
+                                                        <tr 
+                                                            key={item.index} 
+                                                            className={`border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors ${idx === 0 ? 'bg-indigo-50/30' : ''}`}
                                                         >
-                                                            <div className="flex items-center gap-2">
-                                                                <input 
-                                                                    type="checkbox" 
-                                                                    checked={isSelected}
-                                                                    onChange={() => toggleAmenity(amenity.id)}
-                                                                    className="w-4 h-4 text-purple-600 rounded"
-                                                                />
-                                                                <span className="text-sm font-medium text-slate-800">{amenity.name}</span>
-                                                                <span className="text-xs text-slate-500">
-                                                                    ({amenity.isPercentage ? `${amenity.price}%` : amenity.price.toLocaleString()})
-                                                                </span>
-                                                            </div>
-                                                            {isSelected && (
-                                                                <span className="text-sm font-bold text-purple-700">
-                                                                    +{calculatedAmount.toLocaleString()}
-                                                                </span>
-                                                            )}
-                                                        </label>
-                                                    );
-                                                })}
-                                            </div>
-                                            {amenitiesTotal > 0 && (
-                                                <div className="flex justify-between pt-2 mt-2 border-t border-purple-200 text-sm">
-                                                    <span className="font-medium text-purple-800">Amenities Total:</span>
-                                                    <span className="font-bold text-purple-900">+{amenitiesTotal.toLocaleString()}</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {/* Plan Summary */}
-                                    <div className="bg-indigo-50/50 p-4 rounded-lg border border-indigo-100">
-                                        <h3 className="font-bold text-indigo-900 border-b border-indigo-200 pb-2">Plan Summary</h3>
-                                        <div className="space-y-2 text-sm mt-3">
-                                            <div className="flex justify-between">
-                                                <span className="text-slate-600">List Price:</span>
-                                                <span className="font-medium text-slate-900">{parseFloat(listPrice).toLocaleString()}</span>
-                                            </div>
-                                            {amenitiesTotal > 0 && (
-                                                <div className="flex justify-between text-purple-700">
-                                                    <span>+ Amenities:</span>
-                                                    <span className="font-medium">+{amenitiesTotal.toLocaleString()}</span>
-                                                </div>
-                                            )}
-                                            <div className="flex justify-between border-t border-indigo-200 pt-2">
-                                                <span className="text-slate-600">Net Value:</span>
-                                                <span className="font-bold text-slate-900">{calculations.netValue.toLocaleString()}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-slate-600">Down Payment ({downPaymentPercentage}%):</span>
-                                                <span className="font-bold text-indigo-700">{calculations.dpAmount.toLocaleString()}</span>
-                                            </div>
-                                            <div className="flex justify-between border-t border-indigo-200 pt-2">
-                                                <span className="text-slate-600">Financed Amount:</span>
-                                                <span className="font-bold text-slate-900">{calculations.remaining.toLocaleString()}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-slate-600">Installments:</span>
-                                                <span className="font-bold text-slate-900">{calculations.totalInstallments} x {calculations.installmentAmount.toLocaleString()}</span>
-                                            </div>
-                                        </div>
-                                        <div className="pt-4">
-                                            <Button className="w-full" onClick={handleSave}>
-                                                {selectedPlanId ? 'Update Plan' : 'Save Plan'}
-                                            </Button>
+                                                            <td className="px-6 py-4 font-bold text-slate-800">{item.index}</td>
+                                                            <td className="px-6 py-4 text-slate-600">{item.dueDate}</td>
+                                                            <td className="px-6 py-4 font-extrabold text-indigo-700">
+                                                                ${item.amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                                            </td>
+                                                            <td className="px-6 py-4 text-right font-bold text-slate-800">
+                                                                ${item.balance.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </Card>
-
-                        {/* Installment Table */}
-                        <Card className="p-6 overflow-hidden">
-                            <h3 className="font-bold text-slate-800 mb-4">Installment Schedule</h3>
-                            <div className="overflow-auto max-h-96 border rounded-lg">
-                                <table className="w-full text-left text-sm">
-                                    <thead className="bg-slate-100 sticky top-0">
-                                        <tr>
-                                            <th className="px-4 py-2 border-b">#</th>
-                                            <th className="px-4 py-2 border-b">Due Date</th>
-                                            <th className="px-4 py-2 border-b text-right">Amount</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {schedule.map(item => (
-                                            <tr key={item.index} className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-4 py-2 border-b">{item.index}</td>
-                                                <td className="px-4 py-2 border-b">{item.dueDate}</td>
-                                                <td className="px-4 py-2 border-b text-right font-medium">{item.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                    <tfoot className="bg-slate-50 font-bold">
-                                        <tr>
-                                            <td colSpan={2} className="px-4 py-2 text-right">Total Financed:</td>
-                                            <td className="px-4 py-2 text-right">{calculations.remaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
-                        </Card>
+                        </div>
                     </div>
                 ) : (
                     <div className="max-w-6xl mx-auto space-y-4">
