@@ -15,6 +15,12 @@ class SyncQueueService {
   private db: IDBDatabase | null = null;
   private initPromise: Promise<void> | null = null;
 
+  private notifyQueueChange(): void {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sync-queue:change'));
+    }
+  }
+
   /**
    * Initialize IndexedDB
    */
@@ -96,6 +102,7 @@ class SyncQueueService {
 
       request.onsuccess = () => {
         console.log(`📦 Queued ${action} ${type}:`, item.id);
+        this.notifyQueueChange();
         resolve(item.id);
       };
 
@@ -216,6 +223,7 @@ class SyncQueueService {
 
       request.onsuccess = () => {
         console.log(`📦 Updated status for ${id}: ${status}`);
+        this.notifyQueueChange();
         resolve();
       };
 
@@ -240,6 +248,7 @@ class SyncQueueService {
 
       request.onsuccess = () => {
         console.log(`📦 Removed item from queue: ${id}`);
+        this.notifyQueueChange();
         resolve();
       };
 

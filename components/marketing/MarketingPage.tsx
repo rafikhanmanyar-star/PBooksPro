@@ -215,15 +215,20 @@ const MarketingPage: React.FC = () => {
 
     // Pricing State
     const [listPrice, setListPrice] = useState('0');
-    const [customerDiscount, setCustomerDiscount] = useState('0');
-    const [floorDiscount, setFloorDiscount] = useState('0');
-    const [lumpSumDiscount, setLumpSumDiscount] = useState('0');
-    const [miscDiscount, setMiscDiscount] = useState('0');
+    const [discounts, setDiscounts] = useState<{ id: string, name: string, amount: number, categoryId?: string }[]>([]);
     const [introText, setIntroText] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [status, setStatus] = useState<'Draft' | 'Locked'>('Draft');
     const [version, setVersion] = useState(1);
     const [rootId, setRootId] = useState<string | undefined>(undefined);
+
+    // Dynamic Discount Form State
+    const [newDiscountName, setNewDiscountName] = useState('');
+    const [newDiscountAmount, setNewDiscountAmount] = useState('0');
+    const [newDiscountCategoryId, setNewDiscountCategoryId] = useState('');
+
+    // Dynamic Amenity Selection State
+    const [selectedAmenityIdToAdd, setSelectedAmenityIdToAdd] = useState('');
 
     // Discount Category IDs (link to expense categories)
     const [customerDiscountCategoryId, setCustomerDiscountCategoryId] = useState('');
@@ -233,6 +238,19 @@ const MarketingPage: React.FC = () => {
 
     // Selected Amenities
     const [selectedAmenityIds, setSelectedAmenityIds] = useState<string[]>([]);
+
+    // Helper to get latest versions only
+    const latestVersions = useMemo(() => {
+        const plans = state.installmentPlans || [];
+        const latest: Record<string, number> = {};
+        plans.forEach(p => {
+            const rId = p.rootId || p.id;
+            if (!latest[rId] || p.version > latest[rId]) {
+                latest[rId] = p.version;
+            }
+        });
+        return latest;
+    }, [state.installmentPlans]);
 
     // Get expense categories for discount mapping
     const expenseCategories = useMemo(() => 
@@ -269,11 +287,8 @@ const MarketingPage: React.FC = () => {
     }, [selectedAmenityIds, activeAmenities, listPrice]);
 
     const totalDiscountAmount = useMemo(() => {
-        return (parseFloat(customerDiscount) || 0) + 
-               (parseFloat(floorDiscount) || 0) + 
-               (parseFloat(lumpSumDiscount) || 0) + 
-               (parseFloat(miscDiscount) || 0);
-    }, [customerDiscount, floorDiscount, lumpSumDiscount, miscDiscount]);
+        return discounts.reduce((total, d) => total + (d.amount || 0), 0);
+    }, [discounts]);
 
     // Calculations (now includes amenities)
     const calculations = useMemo(() => {
@@ -392,21 +407,13 @@ const MarketingPage: React.FC = () => {
             downPaymentPercentage: parseFloat(downPaymentPercentage),
             frequency,
             listPrice: parseFloat(listPrice),
-            customerDiscount: parseFloat(customerDiscount),
-            floorDiscount: parseFloat(floorDiscount),
-            lumpSumDiscount: parseFloat(lumpSumDiscount),
-            miscDiscount: parseFloat(miscDiscount),
+            discounts,
             netValue: calculations.netValue,
             downPaymentAmount: calculations.dpAmount,
             installmentAmount: calculations.installmentAmount,
             totalInstallments: calculations.totalInstallments,
             description,
             introText,
-            // New fields
-            customerDiscountCategoryId: customerDiscountCategoryId || undefined,
-            floorDiscountCategoryId: floorDiscountCategoryId || undefined,
-            lumpSumDiscountCategoryId: lumpSumDiscountCategoryId || undefined,
-            miscDiscountCategoryId: miscDiscountCategoryId || undefined,
             selectedAmenities: buildSelectedAmenities(),
             amenitiesTotal,
             createdAt: new Date().toISOString(),
@@ -419,6 +426,36 @@ const MarketingPage: React.FC = () => {
         resetForm();
     };
 
+    const addDiscount = () => {
+        if (!newDiscountName.trim() || parseFloat(newDiscountAmount) <= 0) {
+            showToast('Please enter discount name and amount');
+            return;
+        }
+        setDiscounts(prev => [...prev, {
+            id: `disc_${Date.now()}`,
+            name: newDiscountName.trim(),
+            amount: parseFloat(newDiscountAmount),
+            categoryId: newDiscountCategoryId || undefined
+        }]);
+        setNewDiscountName('');
+        setNewDiscountAmount('0');
+        setNewDiscountCategoryId('');
+    };
+
+    const removeDiscount = (id: string) => {
+        setDiscounts(prev => prev.filter(d => d.id !== id));
+    };
+
+    const addAmenity = () => {
+        if (!selectedAmenityIdToAdd) return;
+        if (selectedAmenityIds.includes(selectedAmenityIdToAdd)) {
+            showToast('Amenity already added');
+            return;
+        }
+        setSelectedAmenityIds(prev => [...prev, selectedAmenityIdToAdd]);
+        setSelectedAmenityIdToAdd('');
+    };
+
     const resetForm = () => {
         setLeadId('');
         setProjectId('');
@@ -428,24 +465,27 @@ const MarketingPage: React.FC = () => {
         setFrequency('Monthly');
         setDescription('');
         setListPrice('0');
-        setCustomerDiscount('0');
-        setFloorDiscount('0');
-        setLumpSumDiscount('0');
-        setMiscDiscount('0');
-        setCustomerDiscountCategoryId('');
-        setFloorDiscountCategoryId('');
-        setLumpSumDiscountCategoryId('');
-        setMiscDiscountCategoryId('');
+        setDiscounts([]);
         setSelectedAmenityIds([]);
         setSelectedPlanId(null);
         setIntroText('');
         setStatus('Draft');
         setVersion(1);
         setRootId(undefined);
+        setNewDiscountName('');
+        setNewDiscountAmount('0');
+        setNewDiscountCategoryId('');
+        setSelectedAmenityIdToAdd('');
         setShowForm(false);
     };
 
     const handleEdit = (plan: InstallmentPlan) => {
+        const isLatest = latestVersions[plan.rootId || plan.id] === plan.version;
+        if (!isLatest) {
+            showAlert('Only the latest version of a plan can be edited.');
+            return;
+        }
+        
         setSelectedPlanId(plan.id);
         setLeadId(plan.leadId);
         setProjectId(plan.projectId);
@@ -454,20 +494,12 @@ const MarketingPage: React.FC = () => {
         setDownPaymentPercentage(plan.downPaymentPercentage.toString());
         setFrequency(plan.frequency);
         setListPrice(plan.listPrice.toString());
-        setCustomerDiscount(plan.customerDiscount.toString());
-        setFloorDiscount(plan.floorDiscount.toString());
-        setLumpSumDiscount(plan.lumpSumDiscount.toString());
-        setMiscDiscount(plan.miscDiscount.toString());
+        setDiscounts(plan.discounts || []);
         setDescription(plan.description || '');
         setIntroText(plan.introText || '');
         setStatus(plan.status || 'Draft');
         setVersion(plan.version || 1);
         setRootId(plan.rootId || plan.id);
-        // Load new fields
-        setCustomerDiscountCategoryId(plan.customerDiscountCategoryId || '');
-        setFloorDiscountCategoryId(plan.floorDiscountCategoryId || '');
-        setLumpSumDiscountCategoryId(plan.lumpSumDiscountCategoryId || '');
-        setMiscDiscountCategoryId(plan.miscDiscountCategoryId || '');
         setSelectedAmenityIds((plan.selectedAmenities || []).map(a => a.amenityId));
         setShowForm(true);
     };
@@ -621,78 +653,129 @@ const MarketingPage: React.FC = () => {
                                 </div>
 
                                 {/* Amenities Selection */}
-                                <div className="space-y-3 pt-2">
-                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Select Amenities</h3>
+                                <div className="space-y-3 pt-4 border-t border-slate-100">
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">Add Amenities</h3>
+                                    
+                                    <div className="space-y-2 p-2 rounded bg-slate-50 border border-slate-100">
+                                        <select 
+                                            value={selectedAmenityIdToAdd}
+                                            onChange={e => setSelectedAmenityIdToAdd(e.target.value)}
+                                            className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-500 outline-none"
+                                        >
+                                            <option value="">Select Amenity...</option>
+                                            {activeAmenities
+                                                .filter(a => !selectedAmenityIds.includes(a.id))
+                                                .map(amenity => (
+                                                    <option key={amenity.id} value={amenity.id}>
+                                                        {amenity.name} ({amenity.isPercentage ? `${amenity.price}%` : `Rs. ${amenity.price.toLocaleString()}`})
+                                                    </option>
+                                                ))
+                                            }
+                                        </select>
+                                        <Button 
+                                            variant="secondary" 
+                                            size="sm" 
+                                            className="w-full justify-center py-1.5 text-[10px]"
+                                            onClick={addAmenity}
+                                            disabled={!selectedAmenityIdToAdd}
+                                        >
+                                            Add Amenity
+                                        </Button>
+                                    </div>
+
                                     <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
-                                        {activeAmenities.map(amenity => {
-                                            const isSelected = selectedAmenityIds.includes(amenity.id);
+                                        {selectedAmenityIds.map(amenityId => {
+                                            const amenity = activeAmenities.find(a => a.id === amenityId);
+                                            if (!amenity) return null;
                                             return (
-                                                <label 
+                                                <div 
                                                     key={amenity.id} 
-                                                    className={`flex items-center justify-between p-2 rounded cursor-pointer transition-all border ${
-                                                        isSelected ? 'bg-indigo-50 border-indigo-200 shadow-sm' : 'bg-white border-slate-100 hover:border-slate-200'
-                                                    }`}
+                                                    className="flex items-center justify-between p-2 rounded bg-indigo-50 border border-indigo-200 shadow-sm animate-fade-in"
                                                 >
-                                                    <div className="flex items-center gap-2">
-                                                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
-                                                            isSelected ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300'
-                                                        }`}>
-                                                            {isSelected && <div className="w-2 h-2 bg-white rounded-full"></div>}
-                                                            <input 
-                                                                type="checkbox" 
-                                                                checked={isSelected}
-                                                                onChange={() => toggleAmenity(amenity.id)}
-                                                                className="hidden"
-                                                            />
-                                                        </div>
-                                                        <span className="text-[11px] font-medium text-slate-700">{amenity.name}</span>
+                                                    <div className="flex-1">
+                                                        <p className="text-[11px] font-medium text-slate-700">{amenity.name}</p>
+                                                        <p className="text-[10px] font-bold text-indigo-600">
+                                                            {amenity.isPercentage ? `${amenity.price}%` : `Rs. ${amenity.price.toLocaleString()}`}
+                                                        </p>
                                                     </div>
-                                                    <span className="text-[10px] font-bold text-slate-400">
-                                                        {amenity.isPercentage ? `${amenity.price}%` : `Rs. ${amenity.price.toLocaleString()}`}
-                                                    </span>
-                                                </label>
+                                                    <button 
+                                                        onClick={() => setSelectedAmenityIds(prev => prev.filter(id => id !== amenityId))}
+                                                        className="text-slate-400 hover:text-rose-600 p-1"
+                                                    >
+                                                        <div className="w-3.5 h-3.5">{ICONS.trash}</div>
+                                                    </button>
+                                                </div>
                                             );
                                         })}
-                                        {activeAmenities.length === 0 && (
-                                            <p className="text-[10px] text-slate-400 italic text-center py-2">No amenities configured</p>
+                                        {selectedAmenityIds.length === 0 && (
+                                            <p className="text-[10px] text-slate-400 italic text-center py-2">No amenities added</p>
                                         )}
                                     </div>
                                 </div>
 
                                 {/* Discount Selection */}
                                 <div className="space-y-4 pt-4 border-t border-slate-100">
-                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Applied Discounts</h3>
-                                    <div className="space-y-4">
-                                        {[
-                                            { label: 'Customer', value: customerDiscount, setter: setCustomerDiscount, catId: customerDiscountCategoryId, catSetter: setCustomerDiscountCategoryId },
-                                            { label: 'Floor', value: floorDiscount, setter: setFloorDiscount, catId: floorDiscountCategoryId, catSetter: setFloorDiscountCategoryId },
-                                            { label: 'Lump Sum', value: lumpSumDiscount, setter: setLumpSumDiscount, catId: lumpSumDiscountCategoryId, catSetter: setLumpSumDiscountCategoryId },
-                                            { label: 'Misc', value: miscDiscount, setter: setMiscDiscount, catId: miscDiscountCategoryId, catSetter: setMiscDiscountCategoryId },
-                                        ].map((d, i) => (
-                                            <div key={i} className="space-y-1.5 p-2 rounded bg-slate-50 border border-slate-100">
-                                                <div className="flex justify-between items-center">
-                                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">{d.label} Discount</label>
-                                                    <div className="flex items-center gap-1">
-                                                        <span className="text-[10px] font-medium text-slate-400">Rs.</span>
-                                                        <input 
-                                                            type="number" 
-                                                            value={d.value}
-                                                            onChange={e => d.setter(e.target.value)}
-                                                            className="w-20 px-1.5 py-0.5 text-right bg-white border border-slate-200 rounded text-xs font-bold text-rose-600 focus:ring-1 focus:ring-rose-500 outline-none"
-                                                            placeholder="0"
-                                                        />
-                                                    </div>
-                                                </div>
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Discounts</h3>
+                                    
+                                    <div className="space-y-2 p-2 rounded bg-slate-50 border border-slate-100">
+                                        <Input 
+                                            label="Discount Name" 
+                                            value={newDiscountName}
+                                            onChange={e => setNewDiscountName(e.target.value)}
+                                            placeholder="e.g. Special Offer"
+                                            className="text-xs"
+                                        />
+                                        <div className="flex gap-2">
+                                            <div className="flex-1">
+                                                <Input 
+                                                    label="Amount (PKR)" 
+                                                    type="number"
+                                                    value={newDiscountAmount}
+                                                    onChange={e => setNewDiscountAmount(e.target.value)}
+                                                    className="text-xs"
+                                                />
+                                            </div>
+                                            <div className="flex-1">
+                                                <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Category</label>
                                                 <select 
-                                                    value={d.catId}
-                                                    onChange={e => d.catSetter(e.target.value)}
-                                                    className="w-full px-1.5 py-1 bg-white border border-slate-200 rounded text-[10px] text-slate-600 focus:ring-1 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
+                                                    value={newDiscountCategoryId}
+                                                    onChange={e => setNewDiscountCategoryId(e.target.value)}
+                                                    className="w-full px-1.5 py-1 bg-white border border-slate-200 rounded text-[10px] text-slate-600 focus:ring-1 focus:ring-indigo-500 outline-none h-9"
                                                 >
-                                                    <option value="">Link to Expense Category...</option>
+                                                    <option value="">Link Category...</option>
                                                     {expenseCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
                                                 </select>
                                             </div>
+                                        </div>
+                                        <Button 
+                                            variant="secondary" 
+                                            size="sm" 
+                                            className="w-full justify-center py-1.5 text-[10px]"
+                                            onClick={addDiscount}
+                                            disabled={!newDiscountName.trim() || parseFloat(newDiscountAmount) <= 0}
+                                        >
+                                            Add Discount
+                                        </Button>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        {discounts.map(d => (
+                                            <div key={d.id} className="flex items-center justify-between p-2 rounded bg-rose-50 border border-rose-100 animate-fade-in">
+                                                <div className="flex-1">
+                                                    <p className="text-[11px] font-bold text-slate-700">{d.name}</p>
+                                                    <p className="text-[10px] font-bold text-rose-600">Rs. {d.amount.toLocaleString()}</p>
+                                                </div>
+                                                <button 
+                                                    onClick={() => removeDiscount(d.id)}
+                                                    className="text-slate-400 hover:text-rose-600 p-1"
+                                                >
+                                                    <div className="w-3.5 h-3.5">{ICONS.trash}</div>
+                                                </button>
+                                            </div>
                                         ))}
+                                        {discounts.length === 0 && (
+                                            <p className="text-[10px] text-slate-400 italic text-center py-2">No discounts added</p>
+                                        )}
                                     </div>
                                 </div>
 
@@ -869,30 +952,12 @@ const MarketingPage: React.FC = () => {
                                                 <span className="font-bold text-slate-800">Total Gross Price</span>
                                                 <span className="font-extrabold text-slate-900">Rs. {(parseFloat(listPrice) + amenitiesTotal).toLocaleString()}</span>
                                             </div>
-                                            {parseFloat(customerDiscount) > 0 && (
-                                                <div className="flex justify-between items-center text-sm">
-                                                    <span className="text-rose-600 italic">Customer Discount</span>
-                                                    <span className="font-bold text-rose-600">-Rs. {parseFloat(customerDiscount).toLocaleString()}</span>
+                                            {discounts.map(d => (
+                                                <div key={d.id} className="flex justify-between items-center text-sm">
+                                                    <span className="text-rose-600 italic">{d.name}</span>
+                                                    <span className="font-bold text-rose-600">-Rs. {d.amount.toLocaleString()}</span>
                                                 </div>
-                                            )}
-                                            {parseFloat(floorDiscount) > 0 && (
-                                                <div className="flex justify-between items-center text-sm">
-                                                    <span className="text-rose-600 italic">Floor Discount</span>
-                                                    <span className="font-bold text-rose-600">-Rs. {parseFloat(floorDiscount).toLocaleString()}</span>
-                                                </div>
-                                            )}
-                                            {parseFloat(lumpSumDiscount) > 0 && (
-                                                <div className="flex justify-between items-center text-sm">
-                                                    <span className="text-rose-600 italic">Lump Sum Discount</span>
-                                                    <span className="font-bold text-rose-600">-Rs. {parseFloat(lumpSumDiscount).toLocaleString()}</span>
-                                                </div>
-                                            )}
-                                            {parseFloat(miscDiscount) > 0 && (
-                                                <div className="flex justify-between items-center text-sm">
-                                                    <span className="text-rose-600 italic">Miscellaneous Discount</span>
-                                                    <span className="font-bold text-rose-600">-Rs. {parseFloat(miscDiscount).toLocaleString()}</span>
-                                                </div>
-                                            )}
+                                            ))}
                                             <div className="flex justify-between items-center py-4 px-4 bg-indigo-50/50 rounded-lg mt-4">
                                                 <span className="font-extrabold text-slate-800 uppercase tracking-wider">Net Payable Price</span>
                                                 <span className="text-2xl font-black text-indigo-700">Rs. {calculations.netValue.toLocaleString()}</span>

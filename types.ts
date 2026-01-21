@@ -221,6 +221,13 @@ export interface Property {
 export type ProjectStatus = 'Active' | 'Completed' | 'On Hold';
 export type InstallmentFrequency = 'Monthly' | 'Quarterly' | 'Yearly';
 
+export interface InstallmentPlanDiscount {
+  id: string;
+  name: string;
+  amount: number;
+  categoryId?: string;
+}
+
 export interface InstallmentPlan {
   id: string;
   projectId: string;
@@ -230,10 +237,7 @@ export interface InstallmentPlan {
   downPaymentPercentage: number;
   frequency: InstallmentFrequency;
   listPrice: number;
-  customerDiscount: number;
-  floorDiscount: number;
-  lumpSumDiscount: number;
-  miscDiscount: number;
+  discounts: InstallmentPlanDiscount[];
   netValue: number;
   downPaymentAmount: number;
   installmentAmount: number;
@@ -243,11 +247,6 @@ export interface InstallmentPlan {
   version: number;
   rootId?: string; // ID of the first version of this plan
   status: 'Draft' | 'Locked';
-  // Discount category mappings (links to expense categories from chart of accounts)
-  customerDiscountCategoryId?: string;
-  floorDiscountCategoryId?: string;
-  lumpSumDiscountCategoryId?: string;
-  miscDiscountCategoryId?: string;
   // Selected amenities with their calculated amounts
   selectedAmenities?: InstallmentPlanAmenity[];
   amenitiesTotal?: number;

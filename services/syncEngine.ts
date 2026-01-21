@@ -223,6 +223,9 @@ class SyncEngine {
       case 'document':
         await this.syncDocument(item);
         break;
+      case 'setting':
+        await this.syncSetting(item);
+        break;
       default:
         throw new Error(`Unknown sync type: ${item.type}`);
     }
@@ -467,6 +470,16 @@ class SyncEngine {
         await this.apiService.deleteDocument(item.data.id);
         break;
     }
+  }
+
+  private async syncSetting(item: SyncQueueItem): Promise<void> {
+    const { key, value } = item.data || {};
+    if (!key) {
+      throw new Error('Missing setting key in sync item');
+    }
+
+    const { settingsSyncService } = await import('./settingsSyncService');
+    await settingsSyncService.saveSetting(key, value);
   }
 
   /**
