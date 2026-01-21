@@ -59,7 +59,10 @@ const TasksPage = React.lazy(() => import('./components/tasks/TasksPage'));
 const TasksCalendarView = React.lazy(() => import('./components/tasks/TasksCalendarView'));
 const TeamRankingPage = React.lazy(() => import('./components/tasks/TeamRankingPage'));
 const BizPlanetPage = React.lazy(() => import('./components/bizPlanet/BizPlanetPage'));
+const BusinessTransactionsPage = React.lazy(() => import('./components/inventory/BusinessTransactionsPage'));
 const PayrollHub = React.lazy(() => import('./components/payroll/PayrollHub'));
+const LandingPage = React.lazy(() => import('./components/auth/LandingPage'));
+const SaaSOnboarding = React.lazy(() => import('./components/auth/SaaSOnboarding'));
 
 // Define page groups to determine which component instance handles which routes
 const PAGE_GROUPS = {
@@ -78,6 +81,7 @@ const PAGE_GROUPS = {
   SETTINGS: ['settings'],
   IMPORT: ['import'],
   BIZ_PLANET: ['bizPlanet'],
+  BUSINESS_TRANSACTIONS: ['businessTransactions'],
   PAYROLL: ['payroll'],
 };
 
@@ -89,6 +93,7 @@ const App: React.FC = () => {
   const { isExpired } = useLicense(); // License Check
   const progress = useProgress();
   const { isAuthenticated, isLoading: authLoading, user, tenant } = useAuth(); // Cloud authentication
+  const [authView, setAuthView] = useState<'landing' | 'onboarding' | 'login'>('landing');
 
   // State to track if the native OS keyboard is likely open
   const [isNativeKeyboardOpen, setIsNativeKeyboardOpen] = useState(false);
@@ -427,6 +432,7 @@ const App: React.FC = () => {
       case 'tasksCalendar': return 'Task Calendar';
       case 'teamRanking': return 'Team Ranking';
       case 'bizPlanet': return 'Biz Planet';
+      case 'businessTransactions': return 'Business transactions';
       case 'payroll': return 'Payroll Management';
       default: return 'PBooks Pro';
     }
@@ -514,6 +520,8 @@ const App: React.FC = () => {
   // If using cloud authentication, check AuthContext first
   // Otherwise fall back to local user check for backward compatibility
   if (!isAuthenticated && !currentUser) {
+    if (authView === 'landing') return <LandingPage onLaunch={() => setAuthView('onboarding')} />;
+    if (authView === 'onboarding') return <SaaSOnboarding onComplete={() => setAuthView('login')} />;
     return <CloudLoginPage />;
   }
 
@@ -555,6 +563,7 @@ const App: React.FC = () => {
               {renderPersistentPage('INVESTMENT', <InvestmentManagementPage />)}
               {renderPersistentPage('PM_CONFIG', <PMConfigPage />)}
               {renderPersistentPage('BIZ_PLANET', <BizPlanetPage />)}
+              {renderPersistentPage('BUSINESS_TRANSACTIONS', <BusinessTransactionsPage />)}
               {renderPersistentPage('PAYROLL', <PayrollHub />)}
               {currentPage === 'tasks' && (
                 <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-center"><div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-2"></div><p className="text-sm text-gray-600">Loading...</p></div></div>}>

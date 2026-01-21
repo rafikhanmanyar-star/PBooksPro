@@ -99,8 +99,8 @@ git push origin main
 git push origin --tags
 
 # 5. After deployment completes, verify migrations
-cd server
-npm run verify-rental-migration
+
+
 ```
 
 ## Handling Merge Conflicts

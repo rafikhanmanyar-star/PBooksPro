@@ -23,6 +23,8 @@ export type Page =
   | 'tasksCalendar'
   | 'teamRanking'
   | 'bizPlanet'
+  | 'businessTransactions'
+  | 'inventory'
   | 'payroll';
 
 export enum TransactionType {
@@ -30,6 +32,85 @@ export enum TransactionType {
   EXPENSE = 'Expense',
   TRANSFER = 'Transfer',
   LOAN = 'Loan',
+}
+
+// ... existing enums ...
+
+// ============================================================================
+// INVENTORY & STOCK MANAGEMENT TYPES
+// ============================================================================
+
+export type InventoryUnit = 'bags' | 'kg' | 'meters' | 'pieces' | 'liters';
+
+export interface InventoryItem {
+  id: string;
+  tenant_Id: string;
+  name: string;
+  category: string;
+  currentStock: number;
+  minStockThreshold: number;
+  unit: InventoryUnit | string;
+  averagePurchasePrice: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PurchaseOrderItem {
+  id: string;
+  itemId: string;
+  name: string;
+  quantity: number;
+  receivedQuantity: number;
+  pricePerUnit: number;
+  total: number;
+}
+
+export type POFinancialStatus = 'Paid' | 'Unpaid' | 'Partial';
+export type POLogisticsStatus = 'Pending' | 'Received' | 'Partial';
+
+export interface InventoryPurchaseOrder {
+  id: string;
+  tenant_Id: string;
+  poNumber: string;
+  supplierName: string;
+  date: string;
+  items: PurchaseOrderItem[];
+  totalAmount: number;
+  financialStatus: POFinancialStatus;
+  logisticsStatus: POLogisticsStatus;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SaleItem {
+  id: string;
+  itemId: string;
+  name: string;
+  quantity: number;
+  costPrice: number; // averagePurchasePrice at time of sale
+  sellingPrice: number;
+  markupPercentage: number;
+  total: number;
+  profit: number;
+}
+
+export type PaymentMethod = 'Cash' | 'Bank';
+export type PaymentStatus = 'Paid' | 'Unpaid' | 'Partial';
+
+export interface CustomerBill {
+  id: string;
+  tenant_Id: string;
+  billNumber: string;
+  customerName: string;
+  date: string;
+  items: SaleItem[];
+  totalAmount: number;
+  totalProfit: number;
+  paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
+  paidAmount: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export enum LoanSubtype {
