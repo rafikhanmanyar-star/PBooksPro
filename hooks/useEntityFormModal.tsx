@@ -1,5 +1,5 @@
 
-import { useState, useCallback } from 'react';
+import React, { useState, useCallback, Suspense } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { ContactType, TransactionType } from '../types';
 import Modal from '../components/ui/Modal';
@@ -8,8 +8,8 @@ import ProjectForm from '../components/ui/ProjectForm';
 import BuildingForm from '../components/settings/BuildingForm';
 import CategoryForm from '../components/settings/CategoryForm';
 import AccountForm from '../components/settings/AccountForm';
-import PropertyForm from '../components/settings/PropertyForm';
-import UnitForm from '../components/settings/UnitForm';
+const LazyPropertyForm = React.lazy(() => import('../components/settings/PropertyForm'));
+const LazyUnitForm = React.lazy(() => import('../components/settings/UnitForm'));
 
 export type EntityType = 'contact' | 'project' | 'building' | 'category' | 'account' | 'property' | 'unit';
 
@@ -183,21 +183,25 @@ export const EntityFormModal: React.FC<{
         />
       )}
       {formType === 'property' && (
-        <PropertyForm
-          onSubmit={onSubmit}
-          onCancel={onClose}
-          contacts={state.contacts}
-          buildings={state.buildings}
-          properties={state.properties}
-          initialName={initialName}
-        />
+        <Suspense fallback={<div className="p-4 text-sm text-gray-600">Loading form...</div>}>
+          <LazyPropertyForm
+            onSubmit={onSubmit}
+            onCancel={onClose}
+            contacts={state.contacts}
+            buildings={state.buildings}
+            properties={state.properties}
+            initialName={initialName}
+          />
+        </Suspense>
       )}
       {formType === 'unit' && (
-        <UnitForm
-          onSubmit={onSubmit}
-          onCancel={onClose}
-          initialName={initialName}
-        />
+        <Suspense fallback={<div className="p-4 text-sm text-gray-600">Loading form...</div>}>
+          <LazyUnitForm
+            onSubmit={onSubmit}
+            onCancel={onClose}
+            initialName={initialName}
+          />
+        </Suspense>
       )}
     </Modal>
   );
