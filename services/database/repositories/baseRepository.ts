@@ -465,9 +465,14 @@ export abstract class BaseRepository<T> {
         try {
             console.log(`🔄 saveAll called for ${this.tableName} with ${records.length} records`);
 
-            // For users, salary_components, and bills tables, use INSERT OR REPLACE to handle UNIQUE constraints
+            // For users, salary_components, bills, accounts, and categories tables, use INSERT OR REPLACE
             // This prevents UNIQUE constraint violations when saving the same records multiple times
-            const useInsertOrReplace = this.tableName === 'users' || this.tableName === 'salary_components' || this.tableName === 'bills';
+            // and avoids cross-tenant collisions for system IDs (e.g., sys-acc-*, sys-cat-*)
+            const useInsertOrReplace = this.tableName === 'users'
+                || this.tableName === 'salary_components'
+                || this.tableName === 'bills'
+                || this.tableName === 'accounts'
+                || this.tableName === 'categories';
 
             if (useInsertOrReplace) {
                 // For users, use INSERT OR REPLACE instead of DELETE + INSERT
