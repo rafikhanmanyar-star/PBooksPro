@@ -162,6 +162,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
         designation: updated.designation,
         department: updated.department,
         grade: updated.grade,
+        joining_date: updated.joining_date,
         status: updated.status,
         salary: updated.salary,
         adjustments: updated.adjustments,

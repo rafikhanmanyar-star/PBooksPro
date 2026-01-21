@@ -218,11 +218,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
             {
                 title: 'B2B',
                 items: [
-                    { page: 'bizPlanet', label: 'Biz Planet', icon: ICONS.globe },
-                ]
-            }
-        ];
-        
+            { page: 'bizPlanet', label: 'Biz Planet', icon: ICONS.globe },
+            { page: 'marketing', label: 'Marketing', icon: ICONS.trendingUp },
+        ]
+    }
+];
+
         // Add Settings for non-Accounts users
         if (!isAccountsOnly) {
             groups.push({

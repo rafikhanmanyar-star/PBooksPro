@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import InvoicesPage from '../invoices/InvoicesPage';
 import BillsPage from '../bills/BillsPage';
 import ProjectAgreementsPage from './ProjectAgreementsPage';
+import MarketingPage from '../marketing/MarketingPage';
 import SalesReturnsPage from './SalesReturnsPage';
 import BrokerPayouts from '../payouts/BrokerPayouts';
 import { Page, InvoiceType, TransactionType } from '../../types';
@@ -120,7 +121,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
     const renderContent = () => {
         switch(activeView) {
             // Operations
-            case 'Marketing': return !isMobile ? <div className="flex items-center justify-center h-full text-slate-400">Marketing</div> : null;
+            case 'Marketing': return !isMobile ? <MarketingPage /> : null;
             case 'Agreements': return !isMobile ? <ProjectAgreementsPage /> : null;
             case 'Contracts': return !isMobile ? <ProjectContractsPage /> : null;
             case 'Invoices': return <InvoicesPage invoiceTypeFilter={InvoiceType.INSTALLMENT} hideTitleAndGoBack={true} />;

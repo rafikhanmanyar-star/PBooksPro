@@ -23,6 +23,7 @@ export type Page =
   | 'tasksCalendar'
   | 'teamRanking'
   | 'bizPlanet'
+  | 'marketing'
   | 'payroll'
   | 'inventory';
 
@@ -223,10 +224,21 @@ export type InstallmentFrequency = 'Monthly' | 'Quarterly' | 'Yearly';
 export interface InstallmentPlan {
   id: string;
   projectId: string;
-  ownerId: string; // clientId/ownerId
+  leadId: string;
+  unitId: string;
   durationYears: number;
   downPaymentPercentage: number;
   frequency: InstallmentFrequency;
+  listPrice: number;
+  customerDiscount: number;
+  floorDiscount: number;
+  lumpSumDiscount: number;
+  miscDiscount: number;
+  netValue: number;
+  downPaymentAmount: number;
+  installmentAmount: number;
+  totalInstallments: number;
+  description?: string;
   createdAt?: string;
   updatedAt?: string;
 }

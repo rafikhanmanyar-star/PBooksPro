@@ -430,6 +430,35 @@ CREATE TABLE IF NOT EXISTS project_agreements (
     UNIQUE(tenant_id, agreement_number)
 );
 
+-- Installment Plans table
+CREATE TABLE IF NOT EXISTS installment_plans (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    project_id TEXT NOT NULL,
+    lead_id TEXT NOT NULL,
+    unit_id TEXT NOT NULL,
+    duration_years INTEGER NOT NULL,
+    down_payment_percentage DECIMAL(5, 2) NOT NULL,
+    frequency TEXT NOT NULL,
+    list_price DECIMAL(15, 2) NOT NULL,
+    customer_discount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    floor_discount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    lump_sum_discount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    misc_discount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    net_value DECIMAL(15, 2) NOT NULL,
+    down_payment_amount DECIMAL(15, 2) NOT NULL,
+    installment_amount DECIMAL(15, 2) NOT NULL,
+    total_installments INTEGER NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (lead_id) REFERENCES contacts(id) ON DELETE RESTRICT,
+    FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE CASCADE
+);
+
 -- Sales Returns table
 CREATE TABLE IF NOT EXISTS sales_returns (
     id TEXT PRIMARY KEY,

@@ -273,6 +273,34 @@ CREATE TABLE IF NOT EXISTS quotations (
     FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE SET NULL
 );
 
+-- Installment Plans table
+CREATE TABLE IF NOT EXISTS installment_plans (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT,
+    user_id TEXT,
+    project_id TEXT NOT NULL,
+    lead_id TEXT NOT NULL,
+    unit_id TEXT NOT NULL,
+    duration_years INTEGER NOT NULL,
+    down_payment_percentage REAL NOT NULL,
+    frequency TEXT NOT NULL,
+    list_price REAL NOT NULL,
+    customer_discount REAL NOT NULL DEFAULT 0,
+    floor_discount REAL NOT NULL DEFAULT 0,
+    lump_sum_discount REAL NOT NULL DEFAULT 0,
+    misc_discount REAL NOT NULL DEFAULT 0,
+    net_value REAL NOT NULL,
+    down_payment_amount REAL NOT NULL,
+    installment_amount REAL NOT NULL,
+    total_installments INTEGER NOT NULL,
+    description TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (lead_id) REFERENCES contacts(id) ON DELETE RESTRICT,
+    FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE CASCADE
+);
+
 -- Documents table
 CREATE TABLE IF NOT EXISTS documents (
     id TEXT PRIMARY KEY,
