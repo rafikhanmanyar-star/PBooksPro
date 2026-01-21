@@ -29,18 +29,26 @@ import { storageService } from './services/storageService';
 import { payrollApi } from '../../services/api/payrollApi';
 import PayslipModal from './modals/PayslipModal';
 import { useAuth } from '../../context/AuthContext';
+import { usePayrollContext } from '../../context/PayrollContext';
 
 const PayrollRunScreen: React.FC = () => {
   const { user, tenant } = useAuth();
   const tenantId = tenant?.id || '';
   const userId = user?.id || '';
 
+  // Use PayrollContext for preserving state across navigation
+  const {
+    selectedRunDetail,
+    setSelectedRunDetail,
+    isCreatingRun: isCreating,
+    setIsCreatingRun: setIsCreating,
+    cyclesSearchTerm,
+    setCyclesSearchTerm,
+  } = usePayrollContext();
+
   const [runs, setRuns] = useState<PayrollRun[]>([]);
-  const [isCreating, setIsCreating] = useState(false);
   const [calculating, setCalculating] = useState(false);
   const [activeEmployees, setActiveEmployees] = useState<PayrollEmployee[]>([]);
-  
-  const [selectedRunDetail, setSelectedRunDetail] = useState<PayrollRun | null>(null);
   const [selectedEmployeeForPayslip, setSelectedEmployeeForPayslip] = useState<PayrollEmployee | null>(null);
   const [payslipsForRun, setPayslipsForRun] = useState<Payslip[]>([]);
   const [loadingPayslips, setLoadingPayslips] = useState(false);

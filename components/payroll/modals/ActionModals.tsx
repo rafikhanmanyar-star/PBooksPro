@@ -2,9 +2,11 @@
  * ActionModal - Handle employee actions (promote, transfer, terminate)
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { X, TrendingUp, MapPin, Skull, Save } from 'lucide-react';
-import { PayrollEmployee, EmploymentStatus } from '../types';
+import { PayrollEmployee, EmploymentStatus, Department } from '../types';
+import { storageService } from '../services/storageService';
+import { useAuth } from '../../../context/AuthContext';
 
 interface ActionModalProps {
   isOpen: boolean;
@@ -15,6 +17,14 @@ interface ActionModalProps {
 }
 
 export const ActionModal: React.FC<ActionModalProps> = ({ isOpen, onClose, employee, onConfirm, type }) => {
+  const { tenant } = useAuth();
+  const tenantId = tenant?.id || '';
+
+  const availableDepartments = useMemo(() => {
+    if (!tenantId) return [];
+    return storageService.getDepartments(tenantId).filter(d => d.is_active);
+  }, [tenantId]);
+
   const [formData, setFormData] = useState({
     designation: employee.designation,
     department: employee.department,
@@ -127,13 +137,21 @@ export const ActionModal: React.FC<ActionModalProps> = ({ isOpen, onClose, emplo
                 onChange={e => setFormData({...formData, department: e.target.value})} 
                 className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 ring-blue-500/20 bg-white"
               >
-                <option value="Engineering">Engineering</option>
-                <option value="Product">Product</option>
-                <option value="Sales">Sales</option>
-                <option value="HR">Human Resources</option>
-                <option value="Operations">Operations</option>
-                <option value="Finance">Finance</option>
-                <option value="Marketing">Marketing</option>
+                {availableDepartments.length > 0 ? (
+                  availableDepartments.map(d => (
+                    <option key={d.id} value={d.name}>{d.name}</option>
+                  ))
+                ) : (
+                  <>
+                    <option value="Engineering">Engineering</option>
+                    <option value="Product">Product</option>
+                    <option value="Sales">Sales</option>
+                    <option value="Human Resources">Human Resources</option>
+                    <option value="Operations">Operations</option>
+                    <option value="Finance">Finance</option>
+                    <option value="Marketing">Marketing</option>
+                  </>
+                )}
               </select>
             </div>
           )}

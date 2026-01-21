@@ -59,6 +59,20 @@ export interface SalaryStructure {
   deductions: EmployeeSalaryComponent[];
 }
 
+// ==================== DEPARTMENTS ====================
+
+export interface Department {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description?: string;
+  is_active: boolean;
+  created_by?: string;
+  updated_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 // ==================== GRADE LEVELS ====================
 
 export interface GradeLevel {

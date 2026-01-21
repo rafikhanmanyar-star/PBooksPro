@@ -816,6 +816,10 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Account ID is required' });
     }
 
+    // System category ID for Salary Expenses - used by default for salary payments
+    const SALARY_EXPENSES_CATEGORY_ID = 'sys-cat-sal-exp';
+    const effectiveCategoryId = categoryId || SALARY_EXPENSES_CATEGORY_ID;
+
     // Get payslip details with employee info
     const payslipResult = await getDb().query(
       `SELECT p.*, e.name as employee_name, e.projects as employee_projects, 
@@ -858,7 +862,7 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
        (tenant_id, type, amount, date, description, account_id, category_id, project_id, user_id)
        VALUES ($1, 'Expense', $2, CURRENT_DATE, $3, $4, $5, $6, $7)
        RETURNING *`,
-      [tenantId, payslip.net_pay, txnDescription, accountId, categoryId || null, effectiveProjectId || null, userId]
+      [tenantId, payslip.net_pay, txnDescription, accountId, effectiveCategoryId, effectiveProjectId || null, userId]
     );
 
     const transaction = transactionResult[0];

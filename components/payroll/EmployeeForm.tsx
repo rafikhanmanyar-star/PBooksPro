@@ -32,6 +32,7 @@ import {
   EmploymentStatus, 
   ProjectAllocation, 
   PayrollProject,
+  Department,
   EmployeeFormProps,
   EmployeeSalaryComponent
 } from './types';
@@ -65,6 +66,11 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
   const availableGrades = useMemo(() => {
     if (!tenantId) return [];
     return storageService.getGradeLevels(tenantId);
+  }, [tenantId]);
+
+  const availableDepartments = useMemo(() => {
+    if (!tenantId) return [];
+    return storageService.getDepartments(tenantId).filter(d => d.is_active);
   }, [tenantId]);
 
   // Projects state - fetched from main application's settings
@@ -105,7 +111,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
     phone: employee?.phone || '',
     address: employee?.address || '',
     designation: employee?.designation || '',
-    department: employee?.department || 'Engineering',
+    department: employee?.department || (availableDepartments.length > 0 ? availableDepartments[0].name : 'Engineering'),
     grade: employee?.grade || (availableGrades.length > 0 ? availableGrades[0].name : ''),
     joiningDate: employee?.joining_date || new Date().toISOString().split('T')[0],
     basicSalary: employee?.salary.basic || 0,
@@ -319,6 +325,33 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
   const selectedGradeInfo = availableGrades.find(g => g.name === formData.grade);
   const QUICK_PERCENTAGES = [0, 25, 50, 75, 100];
 
+  // Calculate net salary from basic salary + allowances - deductions
+  const netSalary = useMemo(() => {
+    const basicSalary = formData.basicSalary || 0;
+    
+    // Calculate total allowances
+    const totalAllowances = allowances
+      .filter(a => a.isEnabled)
+      .reduce((sum, a) => {
+        if (a.is_percentage) {
+          return sum + (basicSalary * a.amount) / 100;
+        }
+        return sum + a.amount;
+      }, 0);
+    
+    // Calculate total deductions
+    const totalDeductions = deductions
+      .filter(d => d.isEnabled)
+      .reduce((sum, d) => {
+        if (d.is_percentage) {
+          return sum + (basicSalary * d.amount) / 100;
+        }
+        return sum + d.amount;
+      }, 0);
+    
+    return basicSalary + totalAllowances - totalDeductions;
+  }, [formData.basicSalary, allowances, deductions]);
+
   if (!tenantId) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -432,19 +465,29 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Department</label>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1.5">
+                <Building2 size={12} className="text-slate-400" /> Department
+              </label>
               <select 
                 value={formData.department}
                 onChange={e => setFormData({...formData, department: e.target.value})}
                 className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none bg-white font-medium text-sm"
               >
-                <option value="Engineering">Engineering</option>
-                <option value="Product">Product</option>
-                <option value="Sales">Sales</option>
-                <option value="HR">Human Resources</option>
-                <option value="Operations">Operations</option>
-                <option value="Finance">Finance</option>
-                <option value="Marketing">Marketing</option>
+                {availableDepartments.length > 0 ? (
+                  availableDepartments.map(d => (
+                    <option key={d.id} value={d.name}>{d.name}</option>
+                  ))
+                ) : (
+                  <>
+                    <option value="Engineering">Engineering</option>
+                    <option value="Product">Product</option>
+                    <option value="Sales">Sales</option>
+                    <option value="Human Resources">Human Resources</option>
+                    <option value="Operations">Operations</option>
+                    <option value="Finance">Finance</option>
+                    <option value="Marketing">Marketing</option>
+                  </>
+                )}
               </select>
             </div>
             <div>
@@ -606,16 +649,37 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
           </div>
           
           <div className="p-8 space-y-10">
-            <div className="max-w-xs">
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Base Salary (Monthly) <span className="text-red-500">*</span></label>
-              <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">PKR</div>
-                <input 
-                  type="number" required placeholder="0.00"
-                  value={formData.basicSalary}
-                  onChange={e => setFormData({...formData, basicSalary: parseFloat(e.target.value) || 0})}
-                  className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 focus:ring-4 ring-emerald-500/10 outline-none transition-all font-black text-lg text-slate-900"
-                />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Base Salary (Monthly) <span className="text-red-500">*</span></label>
+                <div className="relative">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">PKR</div>
+                  <input 
+                    type="number" required placeholder="0.00"
+                    value={formData.basicSalary}
+                    onChange={e => setFormData({...formData, basicSalary: parseFloat(e.target.value) || 0})}
+                    className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 focus:ring-4 ring-emerald-500/10 outline-none transition-all font-black text-lg text-slate-900"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Net Salary (Calculated)</label>
+                <div className="relative">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">PKR</div>
+                  <input 
+                    type="text"
+                    readOnly
+                    value={netSalary.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    className={`w-full pl-12 pr-4 py-3 rounded-xl border outline-none transition-all font-black text-lg cursor-not-allowed ${
+                      netSalary >= 0 
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-700' 
+                        : 'bg-red-50 border-red-200 text-red-700'
+                    }`}
+                  />
+                </div>
+                <p className="mt-1 text-[10px] font-bold text-slate-400 uppercase tracking-tight">
+                  = Basic + Allowances - Deductions
+                </p>
               </div>
             </div>
 

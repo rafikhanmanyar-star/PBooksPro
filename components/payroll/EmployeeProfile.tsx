@@ -67,6 +67,11 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
     return storageService.getGradeLevels(tenantId);
   }, [tenantId]);
 
+  const availableDepartments = useMemo(() => {
+    if (!tenantId) return [];
+    return storageService.getDepartments(tenantId).filter(d => d.is_active);
+  }, [tenantId]);
+
   useEffect(() => {
     if (!tenantId) return;
     
@@ -674,13 +679,21 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
                       onChange={e => setEditFormData({...editFormData, department: e.target.value})}
                       className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none font-bold text-slate-700 bg-white"
                     >
-                      <option value="Engineering">Engineering</option>
-                      <option value="Product">Product</option>
-                      <option value="Sales">Sales</option>
-                      <option value="HR">Human Resources</option>
-                      <option value="Operations">Operations</option>
-                      <option value="Finance">Finance</option>
-                      <option value="Marketing">Marketing</option>
+                      {availableDepartments.length > 0 ? (
+                        availableDepartments.map(d => (
+                          <option key={d.id} value={d.name}>{d.name}</option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="Engineering">Engineering</option>
+                          <option value="Product">Product</option>
+                          <option value="Sales">Sales</option>
+                          <option value="Human Resources">Human Resources</option>
+                          <option value="Operations">Operations</option>
+                          <option value="Finance">Finance</option>
+                          <option value="Marketing">Marketing</option>
+                        </>
+                      )}
                     </select>
                   </div>
                   <div>

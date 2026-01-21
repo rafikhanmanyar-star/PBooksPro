@@ -12,6 +12,7 @@ import {
   PayrollEmployee,
   PayrollRun,
   GradeLevel,
+  Department,
   PayrollProject,
   EarningType,
   DeductionType,
@@ -28,6 +29,7 @@ const STORAGE_KEYS = {
   EARNING_TYPES: 'payroll_earning_types',
   DEDUCTION_TYPES: 'payroll_deduction_types',
   GRADE_LEVELS: 'payroll_grade_levels',
+  DEPARTMENTS: 'payroll_departments',
   PROJECTS: 'payroll_projects'
 };
 
@@ -64,6 +66,17 @@ const DEFAULT_GRADE_LEVELS: GradeLevel[] = [
   { id: 'grade-4', tenant_id: '', name: 'G4', description: 'Senior', min_salary: 120000, max_salary: 180000 },
   { id: 'grade-5', tenant_id: '', name: 'G5', description: 'Lead', min_salary: 180000, max_salary: 300000 },
   { id: 'grade-6', tenant_id: '', name: 'G6', description: 'Manager', min_salary: 300000, max_salary: 500000 }
+];
+
+// Default departments
+const DEFAULT_DEPARTMENTS: Department[] = [
+  { id: 'dept-1', tenant_id: '', name: 'Engineering', description: 'Software development and technical operations', is_active: true },
+  { id: 'dept-2', tenant_id: '', name: 'Product', description: 'Product management and design', is_active: true },
+  { id: 'dept-3', tenant_id: '', name: 'Sales', description: 'Sales and business development', is_active: true },
+  { id: 'dept-4', tenant_id: '', name: 'Human Resources', description: 'HR and people operations', is_active: true },
+  { id: 'dept-5', tenant_id: '', name: 'Operations', description: 'Business operations and administration', is_active: true },
+  { id: 'dept-6', tenant_id: '', name: 'Finance', description: 'Finance and accounting', is_active: true },
+  { id: 'dept-7', tenant_id: '', name: 'Marketing', description: 'Marketing and communications', is_active: true }
 ];
 
 // Mock employees for demo
@@ -188,6 +201,12 @@ export const storageService = {
     if (!localStorage.getItem(gradesKey)) {
       const seededGrades = DEFAULT_GRADE_LEVELS.map(g => ({ ...g, tenant_id: tenantId }));
       localStorage.setItem(gradesKey, JSON.stringify(seededGrades));
+    }
+
+    const departmentsKey = getKey(tenantId, STORAGE_KEYS.DEPARTMENTS);
+    if (!localStorage.getItem(departmentsKey)) {
+      const seededDepartments = DEFAULT_DEPARTMENTS.map(d => ({ ...d, tenant_id: tenantId }));
+      localStorage.setItem(departmentsKey, JSON.stringify(seededDepartments));
     }
 
     const projectsKey = getKey(tenantId, STORAGE_KEYS.PROJECTS);
@@ -366,6 +385,31 @@ export const storageService = {
       grades.push({ ...grade, tenant_id: tenantId, created_by: userId });
     }
     localStorage.setItem(getKey(tenantId, STORAGE_KEYS.GRADE_LEVELS), JSON.stringify(grades));
+  },
+
+  // ==================== DEPARTMENTS ====================
+
+  getDepartments(tenantId: string): Department[] {
+    this.init(tenantId);
+    const data = localStorage.getItem(getKey(tenantId, STORAGE_KEYS.DEPARTMENTS));
+    return JSON.parse(data || '[]');
+  },
+
+  updateDepartment(tenantId: string, department: Department, userId: string): void {
+    const departments = this.getDepartments(tenantId);
+    const index = departments.findIndex(d => d.id === department.id);
+    if (index !== -1) {
+      departments[index] = { ...department, updated_by: userId };
+    } else {
+      departments.push({ ...department, tenant_id: tenantId, created_by: userId });
+    }
+    localStorage.setItem(getKey(tenantId, STORAGE_KEYS.DEPARTMENTS), JSON.stringify(departments));
+  },
+
+  deleteDepartment(tenantId: string, departmentId: string): void {
+    const departments = this.getDepartments(tenantId);
+    const filtered = departments.filter(d => d.id !== departmentId);
+    localStorage.setItem(getKey(tenantId, STORAGE_KEYS.DEPARTMENTS), JSON.stringify(filtered));
   },
 
   // ==================== PROJECTS ====================

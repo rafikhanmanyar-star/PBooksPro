@@ -48,6 +48,9 @@ const SYSTEM_CATEGORIES = [
 
   // Legacy
   { id: 'sys-cat-svc-deduct', name: 'Service Charge Deduction', type: 'Expense', isPermanent: true, isRental: true },
+
+  // Payroll
+  { id: 'sys-cat-sal-exp', name: 'Salary Expenses', type: 'Expense', isPermanent: true },
 ];
 
 export class TenantInitializationService {

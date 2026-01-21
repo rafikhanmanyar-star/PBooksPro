@@ -8,14 +8,17 @@ import { storageService } from './services/storageService';
 import { payrollApi } from '../../services/api/payrollApi';
 import { PayrollEmployee, EmployeeListProps } from './types';
 import { useAuth } from '../../context/AuthContext';
+import { usePayrollContext } from '../../context/PayrollContext';
 
 const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
   const { tenant } = useAuth();
   const tenantId = tenant?.id || '';
   
+  // Use PayrollContext for preserving search term across navigation
+  const { workforceSearchTerm, setWorkforceSearchTerm } = usePayrollContext();
+  
   const [isExporting, setIsExporting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
   const [employees, setEmployees] = useState<PayrollEmployee[]>([]);
 
   // Fetch employees from API with localStorage fallback
@@ -50,10 +53,10 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
     fetchEmployees();
   }, [tenantId]);
 
-  // Filter employees based on search
+  // Filter employees based on search (using context for persistence)
   const filteredEmployees = useMemo(() => {
-    if (!searchTerm) return employees;
-    const term = searchTerm.toLowerCase();
+    if (!workforceSearchTerm) return employees;
+    const term = workforceSearchTerm.toLowerCase();
     return employees.filter(emp => 
       emp.name.toLowerCase().includes(term) ||
       emp.department.toLowerCase().includes(term) ||
@@ -61,7 +64,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
       emp.id.toLowerCase().includes(term) ||
       (emp.email?.toLowerCase().includes(term))
     );
-  }, [employees, searchTerm]);
+  }, [employees, workforceSearchTerm]);
 
   const handleExportCSV = () => {
     setIsExporting(true);
@@ -125,8 +128,8 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
         <input 
           type="text" 
           placeholder="Search workforce..." 
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          value={workforceSearchTerm}
+          onChange={(e) => setWorkforceSearchTerm(e.target.value)}
           className="flex-1 min-w-0 outline-none text-slate-700 placeholder-slate-400 bg-transparent text-sm font-medium"
         />
         <div className="h-6 w-[1px] bg-slate-200 hidden sm:block"></div>
@@ -180,7 +183,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
           ))
         ) : (
           <div className="bg-white rounded-2xl border border-slate-200 px-4 py-12 text-center text-slate-400 font-medium text-sm">
-            {searchTerm ? 'No employees found matching your search.' : 'No employees added yet.'}
+            {workforceSearchTerm ? 'No employees found matching your search.' : 'No employees added yet.'}
           </div>
         )}
       </div>

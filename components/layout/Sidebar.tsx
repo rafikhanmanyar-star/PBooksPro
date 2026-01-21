@@ -173,63 +173,68 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
 
     // Navigation groups - defined as a stable constant to prevent re-render issues
     // Payroll and other core modules are always visible regardless of auth state
-    const navGroups = React.useMemo(() => [
-        {
-            title: 'Overview',
-            items: [
-                { page: 'dashboard', label: 'Dashboard', icon: ICONS.home },
-            ]
-        },
-        {
-            title: 'Financials',
-            items: [
-                { page: 'transactions', label: 'General Ledger', icon: ICONS.trendingUp },
-                { page: 'budgets', label: 'Budget Planner', icon: ICONS.barChart },
-                { page: 'loans', label: 'Loan Manager', icon: ICONS.loan },
-            ]
-        },
-        {
-            title: 'Operations',
-            items: [
-                { page: 'projectManagement', label: 'Projects', icon: ICONS.archive },
-                { page: 'rentalManagement', label: 'Rentals', icon: ICONS.building },
-                { page: 'vendorDirectory', label: 'Vendors', icon: ICONS.briefcase },
-                { page: 'inventory', label: 'My Shop', icon: ICONS.package },
-                ...(isAdmin ? [{ page: 'investmentManagement', label: 'Inv. Cycle', icon: ICONS.dollarSign }] : []),
-                { page: 'pmConfig', label: 'PM Cycle', icon: ICONS.filter },
-            ]
-        },
-        {
-            title: 'Tasks',
-            items: [
-                { page: 'tasks', label: 'My Tasks', icon: ICONS.checkSquare },
-                { page: 'tasksCalendar', label: 'Calendar', icon: ICONS.calendar },
-                ...(isAdmin ? [{ page: 'teamRanking', label: 'Team Ranking', icon: ICONS.trophy }] : []),
-            ]
-        },
-        {
-            title: 'People',
-            items: [
-                { page: 'contacts', label: 'Contacts', icon: ICONS.addressBook },
-                { page: 'payroll', label: 'Payroll', icon: ICONS.users },
-            ]
-        },
-        {
-            title: 'B2B',
-            items: [
-                { page: 'bizPlanet', label: 'Biz Planet', icon: ICONS.globe },
-            ]
+    const navGroups = React.useMemo(() => {
+        const groups = [
+            {
+                title: 'Overview',
+                items: [
+                    { page: 'dashboard', label: 'Dashboard', icon: ICONS.home },
+                ]
+            },
+            {
+                title: 'Financials',
+                items: [
+                    { page: 'transactions', label: 'General Ledger', icon: ICONS.trendingUp },
+                    { page: 'budgets', label: 'Budget Planner', icon: ICONS.barChart },
+                    { page: 'loans', label: 'Loan Manager', icon: ICONS.loan },
+                ]
+            },
+            {
+                title: 'Operations',
+                items: [
+                    { page: 'projectManagement', label: 'Projects', icon: ICONS.archive },
+                    { page: 'rentalManagement', label: 'Rentals', icon: ICONS.building },
+                    { page: 'vendorDirectory', label: 'Vendors', icon: ICONS.briefcase },
+                    { page: 'inventory', label: 'My Shop', icon: ICONS.package },
+                    ...(isAdmin ? [{ page: 'investmentManagement', label: 'Inv. Cycle', icon: ICONS.dollarSign }] : []),
+                    { page: 'pmConfig', label: 'PM Cycle', icon: ICONS.filter },
+                ]
+            },
+            {
+                title: 'Tasks',
+                items: [
+                    { page: 'tasks', label: 'My Tasks', icon: ICONS.checkSquare },
+                    { page: 'tasksCalendar', label: 'Calendar', icon: ICONS.calendar },
+                    ...(isAdmin ? [{ page: 'teamRanking', label: 'Team Ranking', icon: ICONS.trophy }] : []),
+                ]
+            },
+            {
+                title: 'People',
+                items: [
+                    { page: 'contacts', label: 'Contacts', icon: ICONS.addressBook },
+                    { page: 'payroll', label: 'Payroll', icon: ICONS.users },
+                ]
+            },
+            {
+                title: 'B2B',
+                items: [
+                    { page: 'bizPlanet', label: 'Biz Planet', icon: ICONS.globe },
+                ]
+            }
+        ];
+        
+        // Add Settings for non-Accounts users
+        if (!isAccountsOnly) {
+            groups.push({
+                title: 'System',
+                items: [
+                    { page: 'settings', label: 'Settings', icon: ICONS.settings },
+                ]
+            });
         }
-    ], [isAdmin]);
-
-    if (!isAccountsOnly) {
-        navGroups.push({
-            title: 'System',
-            items: [
-                { page: 'settings', label: 'Settings', icon: ICONS.settings },
-            ]
-        });
-    }
+        
+        return groups;
+    }, [isAdmin, isAccountsOnly]);
 
     const isCurrent = (itemPage: Page) => {
         if (currentPage === itemPage) return true;

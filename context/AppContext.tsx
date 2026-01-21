@@ -87,6 +87,9 @@ const SYSTEM_CATEGORIES: Category[] = [
 
     // Legacy
     { id: 'sys-cat-svc-deduct', name: 'Service Charge Deduction', type: TransactionType.EXPENSE, isPermanent: true, isRental: true },
+
+    // Payroll
+    { id: 'sys-cat-sal-exp', name: 'Salary Expenses', type: TransactionType.EXPENSE, isPermanent: true },
 ];
 
 const DEFAULT_INVOICE_TEMPLATE = `<!DOCTYPE html>

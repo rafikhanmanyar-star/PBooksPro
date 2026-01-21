@@ -18,9 +18,7 @@ import {
   TrendingUp,
   TrendingDown,
   Award,
-  Wallet,
-  Save,
-  Loader2
+  Building2,
 } from 'lucide-react';
 import PayrollRunScreen from './PayrollRunScreen';
 import EmployeeList from './EmployeeList';
@@ -30,44 +28,42 @@ import PayrollReport from './PayrollReport';
 import PaymentHistory from './PaymentHistory';
 import SalaryConfigModal from './modals/SalaryConfigModal';
 import GradeConfigModal from './modals/GradeConfigModal';
-import { PayrollEmployee, GradeLevel, EarningType, DeductionType } from './types';
+import DepartmentConfigModal from './modals/DepartmentConfigModal';
+import { PayrollEmployee, GradeLevel, Department, EarningType, DeductionType } from './types';
 import { storageService } from './services/storageService';
 import { payrollApi } from '../../services/api/payrollApi';
-import { apiClient } from '../../services/api/client';
 import { useAuth } from '../../context/AuthContext';
-import { Account, Category, Project, TransactionType } from '../../types';
-
-type PayrollSubTab = 'workforce' | 'cycles' | 'report' | 'structure' | 'history';
+import { usePayrollContext, PayrollSubTab } from '../../context/PayrollContext';
 
 const PayrollHub: React.FC = () => {
   // Use AuthContext for tenant and user info
   const { user, tenant } = useAuth();
   
-  const [activeSubTab, setActiveSubTab] = useState<PayrollSubTab>('workforce');
-  const [selectedEmployee, setSelectedEmployee] = useState<PayrollEmployee | null>(null);
-  const [isAddingEmployee, setIsAddingEmployee] = useState(false);
+  // Use PayrollContext for preserving state across navigation
+  const {
+    activeSubTab,
+    setActiveSubTab,
+    selectedEmployee,
+    setSelectedEmployee,
+    isAddingEmployee,
+    setIsAddingEmployee,
+  } = usePayrollContext();
+  
   const [earningTypes, setEarningTypes] = useState<EarningType[]>([]);
   const [deductionTypes, setDeductionTypes] = useState<DeductionType[]>([]);
   const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   
   // Modal states for salary structure configuration
   const [isEarningModalOpen, setIsEarningModalOpen] = useState(false);
   const [isDeductionModalOpen, setIsDeductionModalOpen] = useState(false);
   const [isGradeModalOpen, setIsGradeModalOpen] = useState(false);
+  const [isDepartmentModalOpen, setIsDepartmentModalOpen] = useState(false);
   const [editingEarning, setEditingEarning] = useState<EarningType | null>(null);
   const [editingDeduction, setEditingDeduction] = useState<DeductionType | null>(null);
   const [editingGrade, setEditingGrade] = useState<GradeLevel | null>(null);
+  const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
   
-  // Payment settings state
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [payrollSettings, setPayrollSettings] = useState({
-    defaultAccountId: '',
-    defaultCategoryId: '',
-    defaultProjectId: ''
-  });
-  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   // Get tenant ID from auth context
   const tenantId = tenant?.id || '';
@@ -88,14 +84,11 @@ const PayrollHub: React.FC = () => {
     
     try {
       // Fetch from cloud API first, fallback to localStorage
-      const [apiEarnings, apiDeductions, apiGrades, accountsData, categoriesData, projectsData, settings] = await Promise.all([
+      const [apiEarnings, apiDeductions, apiGrades, apiDepartments] = await Promise.all([
         payrollApi.getEarningTypes(),
         payrollApi.getDeductionTypes(),
         payrollApi.getGradeLevels(),
-        apiClient.get<Account[]>('/accounts').catch(() => []),
-        apiClient.get<Category[]>('/categories').catch(() => []),
-        apiClient.get<Project[]>('/projects').catch(() => []),
-        payrollApi.getPayrollSettings()
+        payrollApi.getDepartments()
       ]);
       
       // Use API data if available, otherwise fallback to localStorage
@@ -117,22 +110,17 @@ const PayrollHub: React.FC = () => {
         setGradeLevels(storageService.getGradeLevels(tenantId));
       }
       
-      // Set accounts, categories, projects for payment settings
-      setAccounts(accountsData || []);
-      setCategories((categoriesData || []).filter(c => c.type === TransactionType.EXPENSE));
-      setProjects(projectsData || []);
-      
-      // Set payroll settings
-      setPayrollSettings({
-        defaultAccountId: settings.defaultAccountId || '',
-        defaultCategoryId: settings.defaultCategoryId || '',
-        defaultProjectId: settings.defaultProjectId || ''
-      });
+      if (apiDepartments.length > 0) {
+        setDepartments(apiDepartments);
+      } else {
+        setDepartments(storageService.getDepartments(tenantId));
+      }
     } catch (error) {
       console.warn('Failed to fetch from API, using localStorage:', error);
       setEarningTypes(storageService.getEarningTypes(tenantId));
       setDeductionTypes(storageService.getDeductionTypes(tenantId));
       setGradeLevels(storageService.getGradeLevels(tenantId));
+      setDepartments(storageService.getDepartments(tenantId));
     }
   };
 
@@ -184,9 +172,8 @@ const PayrollHub: React.FC = () => {
             <button
               key={tab.id}
               onClick={() => {
+                // Only switch tab - don't reset employee state to preserve view when returning
                 setActiveSubTab(tab.id);
-                setSelectedEmployee(null);
-                setIsAddingEmployee(false);
               }}
               className={`flex items-center gap-1.5 sm:gap-2 py-3 sm:pt-[39px] sm:pb-[39px] px-2 sm:px-0 sm:my-[15px] sm:mx-[3px] border-b-2 font-black text-[10px] sm:text-[11px] uppercase tracking-wider sm:tracking-[0.15em] transition-all relative whitespace-nowrap ${
                 activeSubTab === tab.id 
@@ -195,8 +182,8 @@ const PayrollHub: React.FC = () => {
               }`}
             >
               <tab.icon size={14} className="sm:w-4 sm:h-4" />
-              <span className="hidden xs:inline sm:inline">{tab.label}</span>
-              <span className="xs:hidden">{tab.label.split(' ')[0]}</span>
+              <span className="hidden sm:inline">{tab.label}</span>
+              <span className="sm:hidden">{tab.label.split(' ')[0]}</span>
             </button>
           ))}
         </div>
@@ -363,85 +350,46 @@ const PayrollHub: React.FC = () => {
               </div>
             </div>
 
-            {/* Payment Settings */}
+            {/* Departments */}
             <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="px-4 sm:px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Wallet size={18} className="text-purple-600" />
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Payment Settings</h3>
+                  <Building2 size={18} className="text-purple-600" />
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Departments</h3>
                 </div>
+                <button 
+                  onClick={() => { setEditingDepartment(null); setIsDepartmentModalOpen(true); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-bold hover:bg-purple-700 transition-colors"
+                >
+                  <Plus size={14} /> Add
+                </button>
               </div>
-              <div className="p-4 sm:p-6 space-y-4">
-                <p className="text-xs text-slate-500 mb-4">Configure default account and expense category for salary payments.</p>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Default Payment Account</label>
-                    <select
-                      value={payrollSettings.defaultAccountId}
-                      onChange={(e) => setPayrollSettings({ ...payrollSettings, defaultAccountId: e.target.value })}
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-medium text-sm"
-                    >
-                      <option value="">Select Account</option>
-                      {accounts.map((acc) => (
-                        <option key={acc.id} value={acc.id}>{acc.name} ({acc.type})</option>
-                      ))}
-                    </select>
+              <div className="p-4 sm:p-6">
+                {departments.length === 0 ? (
+                  <p className="text-center text-slate-400 py-8 text-sm">No departments configured. Click "Add" to create one.</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {departments.map((d, i) => (
+                      <div key={i} className={`flex items-center justify-between p-4 rounded-xl border group transition-colors ${d.is_active ? 'bg-purple-50/50 border-purple-100 hover:border-purple-200' : 'bg-slate-50/50 border-slate-100 hover:border-slate-200 opacity-60'}`}>
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`px-2 py-0.5 text-white text-[10px] font-bold rounded ${d.is_active ? 'bg-purple-600' : 'bg-slate-400'}`}>{d.name}</span>
+                            {!d.is_active && <span className="text-[10px] text-slate-400 font-medium">(Inactive)</span>}
+                          </div>
+                          {d.description && (
+                            <p className="text-xs text-slate-500 font-medium line-clamp-1">{d.description}</p>
+                          )}
+                        </div>
+                        <button 
+                          onClick={() => { setEditingDepartment(d); setIsDepartmentModalOpen(true); }}
+                          className="p-2 text-slate-400 hover:text-purple-600 hover:bg-purple-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Default Expense Category</label>
-                    <select
-                      value={payrollSettings.defaultCategoryId}
-                      onChange={(e) => setPayrollSettings({ ...payrollSettings, defaultCategoryId: e.target.value })}
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-medium text-sm"
-                    >
-                      <option value="">Select Category</option>
-                      {categories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>{cat.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Default Project</label>
-                    <select
-                      value={payrollSettings.defaultProjectId}
-                      onChange={(e) => setPayrollSettings({ ...payrollSettings, defaultProjectId: e.target.value })}
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-medium text-sm"
-                    >
-                      <option value="">None (Use Employee's Project)</option>
-                      {projects.map((proj) => (
-                        <option key={proj.id} value={proj.id}>{proj.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                
-                <div className="pt-4 border-t border-slate-100">
-                  <button
-                    onClick={async () => {
-                      setIsSavingSettings(true);
-                      try {
-                        await payrollApi.updatePayrollSettings({
-                          defaultAccountId: payrollSettings.defaultAccountId || null,
-                          defaultCategoryId: payrollSettings.defaultCategoryId || null,
-                          defaultProjectId: payrollSettings.defaultProjectId || null
-                        });
-                      } catch (error) {
-                        console.error('Failed to save payroll settings:', error);
-                      } finally {
-                        setIsSavingSettings(false);
-                      }
-                    }}
-                    disabled={isSavingSettings}
-                    className="px-4 py-2 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-700 transition-all flex items-center gap-2 disabled:opacity-50 text-sm"
-                  >
-                    {isSavingSettings ? (
-                      <><Loader2 size={16} className="animate-spin" /> Saving...</>
-                    ) : (
-                      <><Save size={16} /> Save Settings</>
-                    )}
-                  </button>
-                </div>
+                )}
               </div>
             </div>
 
@@ -464,6 +412,12 @@ const PayrollHub: React.FC = () => {
               isOpen={isGradeModalOpen}
               onClose={() => { setIsGradeModalOpen(false); setEditingGrade(null); }}
               initialData={editingGrade}
+              onSave={() => refreshData()}
+            />
+            <DepartmentConfigModal 
+              isOpen={isDepartmentModalOpen}
+              onClose={() => { setIsDepartmentModalOpen(false); setEditingDepartment(null); }}
+              initialData={editingDepartment}
               onSave={() => refreshData()}
             />
           </div>

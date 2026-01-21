@@ -18,17 +18,25 @@ import { storageService } from './services/storageService';
 import { payrollApi } from '../../services/api/payrollApi';
 import { PayrollRun, PayrollStatus } from './types';
 import { useAuth } from '../../context/AuthContext';
+import { usePayrollContext } from '../../context/PayrollContext';
 
 const PaymentHistory: React.FC = () => {
   const { tenant } = useAuth();
   const tenantId = tenant?.id || '';
   
+  // Use PayrollContext for preserving state across navigation
+  const {
+    historySearchTerm,
+    setHistorySearchTerm,
+    historyFilterYear,
+    setHistoryFilterYear,
+    selectedBatch,
+    setSelectedBatch,
+  } = usePayrollContext();
+  
   const [history, setHistory] = useState<PayrollRun[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterYear, setFilterYear] = useState<string>('All');
   const [isExporting, setIsExporting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedBatch, setSelectedBatch] = useState<PayrollRun | null>(null);
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -68,12 +76,12 @@ const PaymentHistory: React.FC = () => {
 
   const filteredHistory = useMemo(() => {
     return history.filter(run => {
-      const matchesSearch = run.month.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                           run.year.toString().includes(searchTerm);
-      const matchesYear = filterYear === 'All' || run.year.toString() === filterYear;
+      const matchesSearch = run.month.toLowerCase().includes(historySearchTerm.toLowerCase()) || 
+                           run.year.toString().includes(historySearchTerm);
+      const matchesYear = historyFilterYear === 'All' || run.year.toString() === historyFilterYear;
       return matchesSearch && matchesYear;
     });
-  }, [history, searchTerm, filterYear]);
+  }, [history, historySearchTerm, historyFilterYear]);
 
   const handleExportCSV = () => {
     setIsExporting(true);
@@ -131,15 +139,15 @@ const PaymentHistory: React.FC = () => {
               <input 
                 type="text" 
                 placeholder="Search by month or year..." 
-                value={searchTerm} 
-                onChange={(e) => setSearchTerm(e.target.value)} 
+                value={historySearchTerm} 
+                onChange={(e) => setHistorySearchTerm(e.target.value)} 
                 className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 ring-blue-500/20" 
               />
             </div>
             <div className="flex gap-3">
               <select 
-                value={filterYear} 
-                onChange={(e) => setFilterYear(e.target.value)}
+                value={historyFilterYear} 
+                onChange={(e) => setHistoryFilterYear(e.target.value)}
                 className="flex-1 sm:flex-none px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none"
               >
                 {years.map(y => (
@@ -184,7 +192,7 @@ const PaymentHistory: React.FC = () => {
             ))
           ) : (
             <div className="py-12 text-center text-slate-400 font-medium text-sm">
-              {searchTerm || filterYear !== 'All' 
+              {historySearchTerm || historyFilterYear !== 'All' 
                 ? 'No matching payment records found.'
                 : 'No completed payment cycles yet.'}
             </div>

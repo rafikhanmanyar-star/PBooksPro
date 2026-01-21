@@ -10,6 +10,7 @@ import {
   PayrollEmployee,
   PayrollRun,
   GradeLevel,
+  Department,
   PayrollProject,
   EarningType,
   DeductionType,
@@ -174,6 +175,46 @@ export const payrollApi = {
     } catch (error) {
       console.error('Error updating grade level:', error);
       throw error;
+    }
+  },
+
+  // ==================== DEPARTMENTS ====================
+
+  async getDepartments(): Promise<Department[]> {
+    try {
+      const response = await apiClient.get<Department[]>('/payroll/departments');
+      return response || [];
+    } catch (error) {
+      console.error('Error fetching departments:', error);
+      return [];
+    }
+  },
+
+  async createDepartment(data: Omit<Department, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>): Promise<Department | null> {
+    try {
+      return await apiClient.post<Department>('/payroll/departments', data);
+    } catch (error) {
+      console.error('Error creating department:', error);
+      throw error;
+    }
+  },
+
+  async updateDepartment(id: string, data: Partial<Department>): Promise<Department | null> {
+    try {
+      return await apiClient.put<Department>(`/payroll/departments/${id}`, data);
+    } catch (error) {
+      console.error('Error updating department:', error);
+      throw error;
+    }
+  },
+
+  async deleteDepartment(id: string): Promise<boolean> {
+    try {
+      await apiClient.delete(`/payroll/departments/${id}`);
+      return true;
+    } catch (error) {
+      console.error('Error deleting department:', error);
+      return false;
     }
   },
 

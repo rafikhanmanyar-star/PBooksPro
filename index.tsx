@@ -133,7 +133,8 @@ try {
     import('./context/LicenseContext'),
     import('./context/PWAContext'),
     import('./context/UpdateContext'),
-    import('./components/ErrorBoundary')
+    import('./components/ErrorBoundary'),
+    import('./context/PayrollContext')
   ]).then(([
     { default: App },
     { AppProvider },
@@ -146,7 +147,8 @@ try {
     { LicenseProvider },
     { PWAProvider },
     { UpdateProvider },
-    { default: ErrorBoundary }
+    { default: ErrorBoundary },
+    { PayrollProvider }
   ]) => {
     // Top-level error boundary
     const TopLevelErrorBoundary: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -176,7 +178,9 @@ try {
                         <KPIProvider>
                           <NotificationProvider>
                             <WhatsAppProvider>
-                              <App />
+                              <PayrollProvider>
+                                <App />
+                              </PayrollProvider>
                             </WhatsAppProvider>
                           </NotificationProvider>
                         </KPIProvider>

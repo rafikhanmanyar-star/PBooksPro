@@ -37,31 +37,35 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
 
-  // Load accounts, categories, projects and payroll settings on mount
+  // System category ID for Salary Expenses
+  const SALARY_EXPENSES_CATEGORY_ID = 'sys-cat-sal-exp';
+
+  // Load accounts, categories, projects on mount
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [accountsData, categoriesData, projectsData, settings] = await Promise.all([
+        const [accountsData, categoriesData, projectsData] = await Promise.all([
           apiClient.get<Account[]>('/accounts'),
           apiClient.get<Category[]>('/categories'),
-          apiClient.get<Project[]>('/projects'),
-          payrollApi.getPayrollSettings()
+          apiClient.get<Project[]>('/projects')
         ]);
         
         setAccounts(accountsData || []);
         // Filter to only expense categories
-        setCategories((categoriesData || []).filter(c => c.type === TransactionType.EXPENSE));
+        const expenseCategories = (categoriesData || []).filter(c => c.type === TransactionType.EXPENSE);
+        setCategories(expenseCategories);
         setProjects(projectsData || []);
         
-        // Set defaults from settings
-        if (settings.defaultAccountId) setSelectedAccountId(settings.defaultAccountId);
-        if (settings.defaultCategoryId) setSelectedCategoryId(settings.defaultCategoryId);
-        if (settings.defaultProjectId) setSelectedProjectId(settings.defaultProjectId);
+        // Auto-select "Salary Expenses" system category as default
+        const salaryExpensesCat = expenseCategories.find(c => c.id === SALARY_EXPENSES_CATEGORY_ID);
+        if (salaryExpensesCat) {
+          setSelectedCategoryId(salaryExpensesCat.id);
+        }
         
         // If employee has project allocation, use that as default project
         if (employee.projects && employee.projects.length > 0) {
           const sortedProjects = [...employee.projects].sort((a, b) => (b.percentage || 0) - (a.percentage || 0));
-          if (sortedProjects[0].project_id && !settings.defaultProjectId) {
+          if (sortedProjects[0].project_id) {
             setSelectedProjectId(sortedProjects[0].project_id);
           }
         }
@@ -78,34 +82,76 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
 
   if (!isOpen) return null;
 
-  const basic = employee.salary.basic;
+  // Use stored payslip data if available, otherwise calculate from employee salary
+  // This ensures payslip displays the values from when it was generated, not current salary
+  const useStoredData = payslipData && payslipData.basic_pay !== undefined;
   
-  // Calculate allowances
-  const allowances = employee.salary.allowances.map(a => ({
+  // Basic pay from payslip or employee salary
+  const basic = useStoredData ? payslipData.basic_pay : employee.salary.basic;
+  
+  // Get allowances from stored payslip data or calculate from employee salary
+  const rawAllowanceDetails = useStoredData && payslipData.allowance_details 
+    ? (typeof payslipData.allowance_details === 'string' 
+        ? JSON.parse(payslipData.allowance_details) 
+        : payslipData.allowance_details)
+    : employee.salary.allowances;
+  const allowanceDetails = Array.isArray(rawAllowanceDetails) ? rawAllowanceDetails : [];
+  
+  // Calculate allowances with their computed values
+  const allowances = allowanceDetails.map((a: any) => ({
     ...a,
     calculated: a.is_percentage ? (basic * a.amount) / 100 : a.amount
   }));
   
-  // Get adjustments
-  const adjustmentEarnings = (employee.adjustments || []).filter(a => a.type === 'EARNING');
-  const adjustmentDeductions = (employee.adjustments || []).filter(a => a.type === 'DEDUCTION');
-
-  // Calculate totals
-  const totalEarnings = basic + 
-    allowances.reduce((acc, curr) => acc + curr.calculated, 0) + 
-    adjustmentEarnings.reduce((acc, curr) => acc + curr.amount, 0);
+  // Get deductions from stored payslip data or calculate from employee salary
+  const rawDeductionDetails = useStoredData && payslipData.deduction_details
+    ? (typeof payslipData.deduction_details === 'string'
+        ? JSON.parse(payslipData.deduction_details)
+        : payslipData.deduction_details)
+    : employee.salary.deductions;
+  const deductionDetails = Array.isArray(rawDeductionDetails) ? rawDeductionDetails : [];
   
-  const recurringGrossForDeductions = basic + allowances.reduce((acc, curr) => acc + curr.calculated, 0);
+  // Get adjustments from stored payslip data or from employee
+  const rawAdjustmentDetails = useStoredData && payslipData.adjustment_details
+    ? (typeof payslipData.adjustment_details === 'string'
+        ? JSON.parse(payslipData.adjustment_details)
+        : payslipData.adjustment_details)
+    : (employee.adjustments || []);
+  const adjustmentDetails = Array.isArray(rawAdjustmentDetails) ? rawAdjustmentDetails : [];
+  
+  const adjustmentEarnings = adjustmentDetails.filter((a: any) => a.type === 'EARNING');
+  const adjustmentDeductions = adjustmentDetails.filter((a: any) => a.type === 'DEDUCTION');
 
-  const deductions = employee.salary.deductions.map(d => ({
+  // Calculate totals - use stored values if available for accuracy
+  const totalAllowancesAmount = useStoredData && payslipData.total_allowances !== undefined
+    ? payslipData.total_allowances
+    : allowances.reduce((acc: number, curr: any) => acc + curr.calculated, 0);
+  
+  const totalEarnings = useStoredData && payslipData.gross_pay !== undefined
+    ? payslipData.gross_pay
+    : basic + totalAllowancesAmount + adjustmentEarnings.reduce((acc: number, curr: any) => acc + curr.amount, 0);
+  
+  const recurringGrossForDeductions = basic + totalAllowancesAmount;
+
+  const deductions = deductionDetails.map((d: any) => ({
     ...d,
     calculated: d.is_percentage ? (recurringGrossForDeductions * d.amount) / 100 : d.amount
   }));
 
-  const totalDeductions = deductions.reduce((acc, curr) => acc + curr.calculated, 0) + 
-    adjustmentDeductions.reduce((acc, curr) => acc + curr.amount, 0);
+  // Calculate total deductions (regular deductions + adjustment deductions)
+  // Note: payslipData.total_deductions only includes regular deductions, not adjustment deductions
+  const regularDeductionsTotal = useStoredData && payslipData.total_deductions !== undefined
+    ? payslipData.total_deductions
+    : deductions.reduce((acc: number, curr: any) => acc + curr.calculated, 0);
+  
+  const adjustmentDeductionsTotal = adjustmentDeductions.reduce((acc: number, curr: any) => acc + curr.amount, 0);
+  const totalDeductions = regularDeductionsTotal + adjustmentDeductionsTotal;
 
-  const netPay = totalEarnings - totalDeductions;
+  // Net pay - use stored value for accuracy, or calculate
+  // The stored net_pay is the final correct value from server
+  const netPay = useStoredData && payslipData.net_pay !== undefined
+    ? payslipData.net_pay
+    : totalEarnings - totalDeductions;
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200 no-print-backdrop">
