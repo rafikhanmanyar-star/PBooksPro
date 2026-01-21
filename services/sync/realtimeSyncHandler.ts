@@ -58,6 +58,12 @@ const EVENT_MAP: Record<string, { entity: string; action: 'create' | 'update' | 
   'budget:created': { entity: 'budget', action: 'create' },
   'budget:updated': { entity: 'budget', action: 'update' },
   'budget:deleted': { entity: 'budget', action: 'delete' },
+  'plan_amenity:created': { entity: 'plan_amenity', action: 'create' },
+  'plan_amenity:updated': { entity: 'plan_amenity', action: 'update' },
+  'plan_amenity:deleted': { entity: 'plan_amenity', action: 'delete' },
+  'installment_plan:created': { entity: 'installment_plan', action: 'create' },
+  'installment_plan:updated': { entity: 'installment_plan', action: 'update' },
+  'installment_plan:deleted': { entity: 'installment_plan', action: 'delete' },
 };
 
 // Action type mapping: entity + action -> AppAction type
@@ -104,6 +110,12 @@ const ACTION_TYPE_MAP: Record<string, AppAction['type']> = {
   'budget:create': 'ADD_BUDGET',
   'budget:update': 'UPDATE_BUDGET',
   'budget:delete': 'DELETE_BUDGET',
+  'plan_amenity:create': 'ADD_PLAN_AMENITY',
+  'plan_amenity:update': 'UPDATE_PLAN_AMENITY',
+  'plan_amenity:delete': 'DELETE_PLAN_AMENITY',
+  'installment_plan:create': 'ADD_INSTALLMENT_PLAN',
+  'installment_plan:update': 'UPDATE_INSTALLMENT_PLAN',
+  'installment_plan:delete': 'DELETE_INSTALLMENT_PLAN',
 };
 
 // ============================================================================
@@ -496,6 +508,57 @@ function normalizeContract(data: any): any {
 }
 
 /**
+ * Normalize plan amenity data from API/WebSocket (snake_case) to client format (camelCase)
+ */
+function normalizePlanAmenity(data: any): any {
+  if (!data) return data;
+  return {
+    id: data.id,
+    name: data.name || '',
+    price: parseFloat(data.price) || 0,
+    isPercentage: data.is_percentage ?? data.isPercentage ?? false,
+    isActive: data.is_active ?? data.isActive ?? true,
+    description: data.description,
+    createdAt: data.created_at ?? data.createdAt,
+    updatedAt: data.updated_at ?? data.updatedAt,
+  };
+}
+
+/**
+ * Normalize installment plan data from API/WebSocket (snake_case) to client format (camelCase)
+ */
+function normalizeInstallmentPlan(data: any): any {
+  if (!data) return data;
+  return {
+    id: data.id,
+    projectId: data.project_id ?? data.projectId,
+    leadId: data.lead_id ?? data.leadId,
+    unitId: data.unit_id ?? data.unitId,
+    durationYears: data.duration_years ?? data.durationYears,
+    downPaymentPercentage: parseFloat(data.down_payment_percentage ?? data.downPaymentPercentage) || 0,
+    frequency: data.frequency,
+    listPrice: parseFloat(data.list_price ?? data.listPrice) || 0,
+    customerDiscount: parseFloat(data.customer_discount ?? data.customerDiscount) || 0,
+    floorDiscount: parseFloat(data.floor_discount ?? data.floorDiscount) || 0,
+    lumpSumDiscount: parseFloat(data.lump_sum_discount ?? data.lumpSumDiscount) || 0,
+    miscDiscount: parseFloat(data.misc_discount ?? data.miscDiscount) || 0,
+    netValue: parseFloat(data.net_value ?? data.netValue) || 0,
+    downPaymentAmount: parseFloat(data.down_payment_amount ?? data.downPaymentAmount) || 0,
+    installmentAmount: parseFloat(data.installment_amount ?? data.installmentAmount) || 0,
+    totalInstallments: data.total_installments ?? data.totalInstallments,
+    description: data.description,
+    customerDiscountCategoryId: data.customer_discount_category_id ?? data.customerDiscountCategoryId,
+    floorDiscountCategoryId: data.floor_discount_category_id ?? data.floorDiscountCategoryId,
+    lumpSumDiscountCategoryId: data.lump_sum_discount_category_id ?? data.lumpSumDiscountCategoryId,
+    miscDiscountCategoryId: data.misc_discount_category_id ?? data.miscDiscountCategoryId,
+    selectedAmenities: typeof data.selected_amenities === 'string' ? JSON.parse(data.selected_amenities) : (data.selected_amenities ?? data.selectedAmenities ?? []),
+    amenitiesTotal: parseFloat(data.amenities_total ?? data.amenitiesTotal) || 0,
+    createdAt: data.created_at ?? data.createdAt,
+    updatedAt: data.updated_at ?? data.updatedAt,
+  };
+}
+
+/**
  * Get the appropriate normalizer function for an entity type
  */
 function getEntityNormalizer(entity: string): ((data: any) => any) | null {
@@ -514,6 +577,8 @@ function getEntityNormalizer(entity: string): ((data: any) => any) | null {
     case 'rental_agreement': return normalizeRentalAgreement;
     case 'project_agreement': return normalizeProjectAgreement;
     case 'contract': return normalizeContract;
+    case 'plan_amenity': return normalizePlanAmenity;
+    case 'installment_plan': return normalizeInstallmentPlan;
     default: return null;
   }
 }
@@ -790,6 +855,10 @@ class RealtimeSyncHandler {
         'contracts': 'contracts',
         'budget': 'budgets',
         'budgets': 'budgets',
+        'plan_amenity': 'plan_amenities',
+        'plan_amenities': 'plan_amenities',
+        'installment_plan': 'installment_plans',
+        'installment_plans': 'installment_plans',
       };
 
       const tableName = tableMap[entity] || entity;
@@ -858,6 +927,10 @@ class RealtimeSyncHandler {
         'contracts': 'contracts',
         'budget': 'budgets',
         'budgets': 'budgets',
+        'plan_amenity': 'plan_amenities',
+        'plan_amenities': 'plan_amenities',
+        'installment_plan': 'installment_plans',
+        'installment_plans': 'installment_plans',
       };
 
       const tableName = tableMap[entity] || entity;

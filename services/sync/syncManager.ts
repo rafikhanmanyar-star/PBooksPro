@@ -208,6 +208,8 @@ class SyncManager {
       'invoices': '/invoices',
       'bill': '/bills',
       'bills': '/bills',
+      'installment_plans': '/installment-plans',
+      'plan_amenities': '/plan-amenities',
     };
     
     const endpoint = endpointMap[operation.entity] || `/${operation.entity}`;

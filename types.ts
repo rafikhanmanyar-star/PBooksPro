@@ -239,6 +239,10 @@ export interface InstallmentPlan {
   installmentAmount: number;
   totalInstallments: number;
   description?: string;
+  introText?: string; // Custom editable text after "Exclusively for You"
+  version: number;
+  rootId?: string; // ID of the first version of this plan
+  status: 'Draft' | 'Locked';
   // Discount category mappings (links to expense categories from chart of accounts)
   customerDiscountCategoryId?: string;
   floorDiscountCategoryId?: string;

@@ -160,7 +160,7 @@ const AmenityConfigModal: React.FC<{
                                             <div className="flex items-center gap-2">
                                                 <span className="font-medium text-slate-900">{amenity.name}</span>
                                                 <span className={`text-xs px-2 py-0.5 rounded ${amenity.isPercentage ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                                                    {amenity.isPercentage ? `${amenity.price}%` : amenity.price.toLocaleString()}
+                                                    {amenity.isPercentage ? `${amenity.price}%` : `Rs. ${amenity.price.toLocaleString()}`}
                                                 </span>
                                             </div>
                                             {amenity.description && (
@@ -219,6 +219,11 @@ const MarketingPage: React.FC = () => {
     const [floorDiscount, setFloorDiscount] = useState('0');
     const [lumpSumDiscount, setLumpSumDiscount] = useState('0');
     const [miscDiscount, setMiscDiscount] = useState('0');
+    const [introText, setIntroText] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [status, setStatus] = useState<'Draft' | 'Locked'>('Draft');
+    const [version, setVersion] = useState(1);
+    const [rootId, setRootId] = useState<string | undefined>(undefined);
 
     // Discount Category IDs (link to expense categories)
     const [customerDiscountCategoryId, setCustomerDiscountCategoryId] = useState('');
@@ -263,17 +268,20 @@ const MarketingPage: React.FC = () => {
         }, 0);
     }, [selectedAmenityIds, activeAmenities, listPrice]);
 
+    const totalDiscountAmount = useMemo(() => {
+        return (parseFloat(customerDiscount) || 0) + 
+               (parseFloat(floorDiscount) || 0) + 
+               (parseFloat(lumpSumDiscount) || 0) + 
+               (parseFloat(miscDiscount) || 0);
+    }, [customerDiscount, floorDiscount, lumpSumDiscount, miscDiscount]);
+
     // Calculations (now includes amenities)
     const calculations = useMemo(() => {
         const lp = parseFloat(listPrice) || 0;
-        const cd = parseFloat(customerDiscount) || 0;
-        const fd = parseFloat(floorDiscount) || 0;
-        const lsd = parseFloat(lumpSumDiscount) || 0;
-        const md = parseFloat(miscDiscount) || 0;
         
         // Add amenities to list price, then subtract discounts
         const priceWithAmenities = lp + amenitiesTotal;
-        const netValue = priceWithAmenities - cd - fd - lsd - md;
+        const netValue = priceWithAmenities - totalDiscountAmount;
         const dpPercent = parseFloat(downPaymentPercentage) || 0;
         const dpAmount = netValue * (dpPercent / 100);
         const remaining = netValue - dpAmount;
@@ -294,7 +302,7 @@ const MarketingPage: React.FC = () => {
             freqMonths,
             priceWithAmenities
         };
-    }, [listPrice, customerDiscount, floorDiscount, lumpSumDiscount, miscDiscount, downPaymentPercentage, durationYears, frequency, amenitiesTotal]);
+    }, [listPrice, totalDiscountAmount, downPaymentPercentage, durationYears, frequency, amenitiesTotal]);
 
     // Installment Schedule
     const schedule = useMemo(() => {
@@ -359,14 +367,24 @@ const MarketingPage: React.FC = () => {
         }).filter(Boolean) as InstallmentPlanAmenity[];
     };
 
-    const handleSave = () => {
+    const handleSave = (isLocked: boolean = false) => {
         if (!leadId || !projectId || !unitId) {
             showAlert('Please fill all required fields');
             return;
         }
 
+        // If locking, we use the same ID if it was already the latest version, 
+        // but the user wants "save version if edited", so let's always create a new ID for versions
+        // and link them via rootId.
+        const planStatus = isLocked ? 'Locked' : 'Draft';
+        const newVersion = selectedPlanId ? version + 1 : 1;
+        const newRootId = rootId || `root_${Date.now()}`;
+
         const newPlan: InstallmentPlan = {
-            id: selectedPlanId || Date.now().toString(),
+            id: `plan_${Date.now()}`,
+            rootId: newRootId,
+            version: newVersion,
+            status: planStatus,
             leadId,
             projectId,
             unitId,
@@ -383,6 +401,7 @@ const MarketingPage: React.FC = () => {
             installmentAmount: calculations.installmentAmount,
             totalInstallments: calculations.totalInstallments,
             description,
+            introText,
             // New fields
             customerDiscountCategoryId: customerDiscountCategoryId || undefined,
             floorDiscountCategoryId: floorDiscountCategoryId || undefined,
@@ -394,13 +413,8 @@ const MarketingPage: React.FC = () => {
             updatedAt: new Date().toISOString()
         };
 
-        if (selectedPlanId) {
-            dispatch({ type: 'UPDATE_INSTALLMENT_PLAN', payload: newPlan });
-            showToast('Installment plan updated successfully');
-        } else {
-            dispatch({ type: 'ADD_INSTALLMENT_PLAN', payload: newPlan });
-            showToast('Installment plan created successfully');
-        }
+        dispatch({ type: 'ADD_INSTALLMENT_PLAN', payload: newPlan });
+        showToast(isLocked ? 'Plan approved and locked' : 'New version saved successfully');
         
         resetForm();
     };
@@ -424,6 +438,10 @@ const MarketingPage: React.FC = () => {
         setMiscDiscountCategoryId('');
         setSelectedAmenityIds([]);
         setSelectedPlanId(null);
+        setIntroText('');
+        setStatus('Draft');
+        setVersion(1);
+        setRootId(undefined);
         setShowForm(false);
     };
 
@@ -441,6 +459,10 @@ const MarketingPage: React.FC = () => {
         setLumpSumDiscount(plan.lumpSumDiscount.toString());
         setMiscDiscount(plan.miscDiscount.toString());
         setDescription(plan.description || '');
+        setIntroText(plan.introText || '');
+        setStatus(plan.status || 'Draft');
+        setVersion(plan.version || 1);
+        setRootId(plan.rootId || plan.id);
         // Load new fields
         setCustomerDiscountCategoryId(plan.customerDiscountCategoryId || '');
         setFloorDiscountCategoryId(plan.floorDiscountCategoryId || '');
@@ -489,10 +511,43 @@ const MarketingPage: React.FC = () => {
         );
     };
 
+    // Filtered Plans with search
+    const filteredPlans = useMemo(() => {
+        const allPlans = state.installmentPlans || [];
+        if (!searchQuery.trim()) return allPlans;
+
+        const q = searchQuery.toLowerCase();
+        return allPlans.filter(plan => {
+            const lead = state.contacts.find(l => l.id === plan.leadId);
+            const project = state.projects.find(p => p.id === plan.projectId);
+            const unit = state.units.find(u => u.id === plan.unitId);
+            
+            return (
+                lead?.name.toLowerCase().includes(q) ||
+                project?.name.toLowerCase().includes(q) ||
+                unit?.name.toLowerCase().includes(q)
+            );
+        });
+    }, [state.installmentPlans, state.contacts, state.projects, state.units, searchQuery]);
+
     return (
         <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
             <div className="flex items-center justify-between p-4 bg-white border-b border-slate-200">
-                <h1 className="text-xl font-bold text-slate-800">Installment Plans (Marketing)</h1>
+                <div className="flex items-center gap-4">
+                    <h1 className="text-xl font-bold text-slate-800">Installment Plans (Marketing)</h1>
+                    <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <div className="w-4 h-4">{ICONS.search}</div>
+                        </div>
+                        <input 
+                            type="text"
+                            placeholder="Search by Unit, Project or Client..."
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            className="pl-10 pr-4 py-2 bg-slate-100 border-none rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none w-80 transition-all"
+                        />
+                    </div>
+                </div>
                 <div className="flex items-center gap-2">
                     <Button 
                         variant="secondary" 
@@ -556,22 +611,88 @@ const MarketingPage: React.FC = () => {
 
                                 {/* Pricing & Discount */}
                                 <div className="space-y-4 pt-4 border-t border-slate-100">
-                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pricing & Discount</h3>
-                                    <Input label="Base Price ($)" type="number" value={listPrice} onChange={e => setListPrice(e.target.value)} />
-                                    <Input label="Amenities ($)" type="number" value={amenitiesTotal.toString()} disabled />
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pricing</h3>
+                                    <Input label="Base Price (PKR)" type="number" value={listPrice} onChange={e => setListPrice(e.target.value)} />
                                     
-                                    <div className="space-y-2">
-                                        <div className="flex justify-between text-xs font-medium text-slate-600">
-                                            <span>Discount (%)</span>
-                                            <span className="text-indigo-600 font-bold">{customerDiscount}%</span>
-                                        </div>
-                                        <input 
-                                            type="range" 
-                                            min="0" max="25" 
-                                            value={customerDiscount} 
-                                            onChange={e => setCustomerDiscount(e.target.value)}
-                                            className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                                        />
+                                    <div className="flex justify-between items-center px-1">
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase">Amenities Total</span>
+                                        <span className="text-xs font-bold text-indigo-600">Rs. {amenitiesTotal.toLocaleString()}</span>
+                                    </div>
+                                </div>
+
+                                {/* Amenities Selection */}
+                                <div className="space-y-3 pt-2">
+                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Select Amenities</h3>
+                                    <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
+                                        {activeAmenities.map(amenity => {
+                                            const isSelected = selectedAmenityIds.includes(amenity.id);
+                                            return (
+                                                <label 
+                                                    key={amenity.id} 
+                                                    className={`flex items-center justify-between p-2 rounded cursor-pointer transition-all border ${
+                                                        isSelected ? 'bg-indigo-50 border-indigo-200 shadow-sm' : 'bg-white border-slate-100 hover:border-slate-200'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                                                            isSelected ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300'
+                                                        }`}>
+                                                            {isSelected && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={isSelected}
+                                                                onChange={() => toggleAmenity(amenity.id)}
+                                                                className="hidden"
+                                                            />
+                                                        </div>
+                                                        <span className="text-[11px] font-medium text-slate-700">{amenity.name}</span>
+                                                    </div>
+                                                    <span className="text-[10px] font-bold text-slate-400">
+                                                        {amenity.isPercentage ? `${amenity.price}%` : `Rs. ${amenity.price.toLocaleString()}`}
+                                                    </span>
+                                                </label>
+                                            );
+                                        })}
+                                        {activeAmenities.length === 0 && (
+                                            <p className="text-[10px] text-slate-400 italic text-center py-2">No amenities configured</p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Discount Selection */}
+                                <div className="space-y-4 pt-4 border-t border-slate-100">
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Applied Discounts</h3>
+                                    <div className="space-y-4">
+                                        {[
+                                            { label: 'Customer', value: customerDiscount, setter: setCustomerDiscount, catId: customerDiscountCategoryId, catSetter: setCustomerDiscountCategoryId },
+                                            { label: 'Floor', value: floorDiscount, setter: setFloorDiscount, catId: floorDiscountCategoryId, catSetter: setFloorDiscountCategoryId },
+                                            { label: 'Lump Sum', value: lumpSumDiscount, setter: setLumpSumDiscount, catId: lumpSumDiscountCategoryId, catSetter: setLumpSumDiscountCategoryId },
+                                            { label: 'Misc', value: miscDiscount, setter: setMiscDiscount, catId: miscDiscountCategoryId, catSetter: setMiscDiscountCategoryId },
+                                        ].map((d, i) => (
+                                            <div key={i} className="space-y-1.5 p-2 rounded bg-slate-50 border border-slate-100">
+                                                <div className="flex justify-between items-center">
+                                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">{d.label} Discount</label>
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="text-[10px] font-medium text-slate-400">Rs.</span>
+                                                        <input 
+                                                            type="number" 
+                                                            value={d.value}
+                                                            onChange={e => d.setter(e.target.value)}
+                                                            className="w-20 px-1.5 py-0.5 text-right bg-white border border-slate-200 rounded text-xs font-bold text-rose-600 focus:ring-1 focus:ring-rose-500 outline-none"
+                                                            placeholder="0"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <select 
+                                                    value={d.catId}
+                                                    onChange={e => d.catSetter(e.target.value)}
+                                                    className="w-full px-1.5 py-1 bg-white border border-slate-200 rounded text-[10px] text-slate-600 focus:ring-1 focus:ring-indigo-500 outline-none appearance-none cursor-pointer"
+                                                >
+                                                    <option value="">Link to Expense Category...</option>
+                                                    {expenseCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                                                </select>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
 
@@ -630,10 +751,44 @@ const MarketingPage: React.FC = () => {
                                     />
                                 </div>
 
-                                <div className="pt-6">
-                                    <Button className="w-full justify-center py-3" onClick={handleSave}>
-                                        {selectedPlanId ? 'Update Plan' : 'Save Plan'}
+                                <div className="space-y-4 pt-4 border-t border-slate-100">
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Proposal Text</h3>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase">Intro Message</label>
+                                        <textarea 
+                                            value={introText}
+                                            onChange={e => setIntroText(e.target.value)}
+                                            className="w-full h-32 px-2 py-1.5 bg-white border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-500 outline-none resize-none"
+                                            placeholder="Custom intro text... (Leave empty for default)"
+                                        />
+                                        <p className="text-[10px] text-slate-400 italic">This text appears after "Exclusively for You"</p>
+                                    </div>
+                                </div>
+
+                                <div className="pt-6 flex flex-col gap-2">
+                                    <Button 
+                                        className="w-full justify-center py-3" 
+                                        onClick={() => handleSave(false)}
+                                        disabled={status === 'Locked'}
+                                    >
+                                        {selectedPlanId ? 'Save New Version' : 'Save Plan'}
                                     </Button>
+                                    {selectedPlanId && status !== 'Locked' && (
+                                        <Button 
+                                            variant="secondary" 
+                                            className="w-full justify-center py-3 border-green-200 text-green-700 hover:bg-green-50" 
+                                            onClick={() => handleSave(true)}
+                                        >
+                                            Approve & Lock Plan
+                                        </Button>
+                                    )}
+                                    {status === 'Locked' && (
+                                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                                            <p className="text-[11px] text-amber-800 font-medium text-center">
+                                                This version is LOCKED. Save a new version to make changes.
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -664,9 +819,11 @@ const MarketingPage: React.FC = () => {
                                     {/* Intro Text */}
                                     <div className="border-l-4 border-indigo-600 pl-6 py-2">
                                         <h3 className="text-lg font-bold text-slate-800 mb-2">Exclusively for You</h3>
-                                        <p className="text-slate-600 italic leading-relaxed">
-                                            "Dear {leads.find(l => l.id === leadId)?.name || 'Mr. Doe'}, Unit #{units.find(u => u.id === unitId)?.name || 'A-1204'} at {state.projects.find(p => p.id === projectId)?.name || 'Project Name'} has been meticulously selected for you as a private sanctuary that epitomizes contemporary elegance and absolute exclusivity. This {units.find(u => u.id === unitId)?.propertyType || '3BHK'} residence offers more than just a sophisticated lifestyle; it serves as a high-performing asset with exceptional capital appreciation potential in an increasingly sought-after corridor. Securing this premier unit is a strategic move to anchor your portfolio with a legacy property that truly reflects your standard of distinction."
-                                        </p>
+                                        <div className="text-slate-600 italic leading-relaxed whitespace-pre-wrap">
+                                            {introText ? introText : (
+                                                `Dear ${leads.find(l => l.id === leadId)?.name || 'Mr. Doe'}, Unit #${units.find(u => u.id === unitId)?.name || 'A-1204'} at ${state.projects.find(p => p.id === projectId)?.name || 'Project Name'} has been meticulously selected for you as a private sanctuary that epitomizes contemporary elegance and absolute exclusivity. This ${units.find(u => u.id === unitId)?.propertyType || '3BHK'} residence offers more than just a sophisticated lifestyle; it serves as a high-performing asset with exceptional capital appreciation potential in an increasingly sought-after corridor. Securing this premier unit is a strategic move to anchor your portfolio with a legacy property that truly reflects your standard of distinction.`
+                                            )}
+                                        </div>
                                     </div>
 
                                     {/* Summary Stats Grid */}
@@ -678,17 +835,17 @@ const MarketingPage: React.FC = () => {
                                         </div>
                                         <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
                                             <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Total Net Price</p>
-                                            <p className="text-sm font-bold text-indigo-700">${calculations.netValue.toLocaleString()}</p>
-                                            <p className="text-[10px] text-slate-500">Incl. {customerDiscount}% Discount</p>
+                                            <p className="text-sm font-bold text-indigo-700">Rs. {calculations.netValue.toLocaleString()}</p>
+                                            <p className="text-[10px] text-slate-500">Incl. Rs. {totalDiscountAmount.toLocaleString()} Discount</p>
                                         </div>
                                         <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
                                             <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Down Payment</p>
-                                            <p className="text-sm font-bold text-indigo-700">${calculations.dpAmount.toLocaleString()}</p>
+                                            <p className="text-sm font-bold text-indigo-700">Rs. {calculations.dpAmount.toLocaleString()}</p>
                                             <p className="text-[10px] text-slate-500">{downPaymentPercentage}% required</p>
                                         </div>
                                         <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
                                             <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Installment</p>
-                                            <p className="text-sm font-bold text-indigo-700">${calculations.installmentAmount.toLocaleString()}</p>
+                                            <p className="text-sm font-bold text-indigo-700">Rs. {calculations.installmentAmount.toLocaleString()}</p>
                                             <p className="text-[10px] text-slate-500">{frequency} payments</p>
                                         </div>
                                     </div>
@@ -702,23 +859,43 @@ const MarketingPage: React.FC = () => {
                                         <div className="space-y-4">
                                             <div className="flex justify-between items-center text-sm">
                                                 <span className="text-slate-600">Base Price of Unit</span>
-                                                <span className="font-bold text-slate-900">${parseFloat(listPrice).toLocaleString()}</span>
+                                                <span className="font-bold text-slate-900">Rs. {parseFloat(listPrice).toLocaleString()}</span>
                                             </div>
                                             <div className="flex justify-between items-center text-sm">
                                                 <span className="text-slate-600">Premium Amenities & Facilities</span>
-                                                <span className="font-bold text-slate-900">${amenitiesTotal.toLocaleString()}</span>
+                                                <span className="font-bold text-slate-900">Rs. {amenitiesTotal.toLocaleString()}</span>
                                             </div>
                                             <div className="flex justify-between items-center text-sm pt-2 border-t border-slate-100">
                                                 <span className="font-bold text-slate-800">Total Gross Price</span>
-                                                <span className="font-extrabold text-slate-900">${(parseFloat(listPrice) + amenitiesTotal).toLocaleString()}</span>
+                                                <span className="font-extrabold text-slate-900">Rs. {(parseFloat(listPrice) + amenitiesTotal).toLocaleString()}</span>
                                             </div>
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="text-rose-600 italic">Exclusive Offer Discount ({customerDiscount}%)</span>
-                                                <span className="font-bold text-rose-600">-${( (parseFloat(listPrice) + amenitiesTotal) * parseFloat(customerDiscount) / 100 ).toLocaleString()}</span>
-                                            </div>
+                                            {parseFloat(customerDiscount) > 0 && (
+                                                <div className="flex justify-between items-center text-sm">
+                                                    <span className="text-rose-600 italic">Customer Discount</span>
+                                                    <span className="font-bold text-rose-600">-Rs. {parseFloat(customerDiscount).toLocaleString()}</span>
+                                                </div>
+                                            )}
+                                            {parseFloat(floorDiscount) > 0 && (
+                                                <div className="flex justify-between items-center text-sm">
+                                                    <span className="text-rose-600 italic">Floor Discount</span>
+                                                    <span className="font-bold text-rose-600">-Rs. {parseFloat(floorDiscount).toLocaleString()}</span>
+                                                </div>
+                                            )}
+                                            {parseFloat(lumpSumDiscount) > 0 && (
+                                                <div className="flex justify-between items-center text-sm">
+                                                    <span className="text-rose-600 italic">Lump Sum Discount</span>
+                                                    <span className="font-bold text-rose-600">-Rs. {parseFloat(lumpSumDiscount).toLocaleString()}</span>
+                                                </div>
+                                            )}
+                                            {parseFloat(miscDiscount) > 0 && (
+                                                <div className="flex justify-between items-center text-sm">
+                                                    <span className="text-rose-600 italic">Miscellaneous Discount</span>
+                                                    <span className="font-bold text-rose-600">-Rs. {parseFloat(miscDiscount).toLocaleString()}</span>
+                                                </div>
+                                            )}
                                             <div className="flex justify-between items-center py-4 px-4 bg-indigo-50/50 rounded-lg mt-4">
                                                 <span className="font-extrabold text-slate-800 uppercase tracking-wider">Net Payable Price</span>
-                                                <span className="text-2xl font-black text-indigo-700">${calculations.netValue.toLocaleString()}</span>
+                                                <span className="text-2xl font-black text-indigo-700">Rs. {calculations.netValue.toLocaleString()}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -753,10 +930,10 @@ const MarketingPage: React.FC = () => {
                                                             <td className="px-6 py-4 font-bold text-slate-800">{item.index}</td>
                                                             <td className="px-6 py-4 text-slate-600">{item.dueDate}</td>
                                                             <td className="px-6 py-4 font-extrabold text-indigo-700">
-                                                                ${item.amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                                                Rs. {item.amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                                             </td>
                                                             <td className="px-6 py-4 text-right font-bold text-slate-800">
-                                                                ${item.balance.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                                                Rs. {item.balance.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                                             </td>
                                                         </tr>
                                                     ))}
@@ -771,20 +948,26 @@ const MarketingPage: React.FC = () => {
                 ) : (
                     <div className="max-w-6xl mx-auto space-y-4">
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {(state.installmentPlans || []).map(plan => {
-                                const lead = leads.find(l => l.id === plan.leadId);
+                            {filteredPlans.map(plan => {
+                                const lead = state.contacts.find(l => l.id === plan.leadId);
                                 const project = state.projects.find(p => p.id === plan.projectId);
                                 const unit = state.units.find(u => u.id === plan.unitId);
+                                const isLocked = plan.status === 'Locked';
                                 
                                 return (
                                     <Card 
                                         key={plan.id} 
-                                        className="p-4 hover:shadow-lg transition-all cursor-pointer border-l-4 border-indigo-500"
+                                        className={`p-4 hover:shadow-lg transition-all cursor-pointer border-l-4 ${isLocked ? 'border-green-500 bg-green-50/30' : 'border-indigo-500 bg-white'}`}
                                         onClick={() => handleEdit(plan)}
                                     >
                                         <div className="flex justify-between items-start">
                                             <div>
-                                                <h3 className="font-bold text-slate-900">{lead?.name || 'Unknown Lead'}</h3>
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <h3 className="font-bold text-slate-900">{lead?.name || 'Unknown Lead'}</h3>
+                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase ${isLocked ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                        {isLocked ? 'Locked' : 'Draft'} v{plan.version}
+                                                    </span>
+                                                </div>
                                                 <p className="text-xs text-slate-500">{project?.name} - {unit?.name}</p>
                                             </div>
                                             <button 
@@ -798,11 +981,11 @@ const MarketingPage: React.FC = () => {
                                         <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
                                             <div className="bg-slate-50 p-2 rounded">
                                                 <p className="text-[10px] text-slate-500 uppercase font-bold">Net Value</p>
-                                                <p className="font-bold text-indigo-700">{plan.netValue?.toLocaleString()}</p>
+                                                <p className="font-bold text-indigo-700">Rs. {plan.netValue?.toLocaleString()}</p>
                                             </div>
                                             <div className="bg-slate-50 p-2 rounded">
                                                 <p className="text-[10px] text-slate-500 uppercase font-bold">Monthly</p>
-                                                <p className="font-bold text-slate-800">{plan.installmentAmount?.toLocaleString()}</p>
+                                                <p className="font-bold text-slate-800">Rs. {plan.installmentAmount?.toLocaleString()}</p>
                                             </div>
                                         </div>
 
@@ -817,16 +1000,30 @@ const MarketingPage: React.FC = () => {
                                             </div>
                                         )}
                                         
-                                        <div className="mt-4 flex justify-between items-center text-xs text-slate-500">
-                                            <span>{plan.durationYears} Years | {plan.frequency}</span>
-                                            <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">View Detail</span>
+                                        <div className="mt-4 flex justify-between items-center">
+                                            <div className="text-xs text-slate-500">
+                                                <span>{plan.durationYears} Years | {plan.frequency}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                {isLocked && (
+                                                    <Button 
+                                                        variant="primary" 
+                                                        size="sm" 
+                                                        className="py-1 px-2 text-[10px] bg-indigo-600 hover:bg-indigo-700"
+                                                        onClick={(e) => { e.stopPropagation(); showToast('Agreement conversion logic will be developed later'); }}
+                                                    >
+                                                        Convert to Agreement
+                                                    </Button>
+                                                )}
+                                                <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium text-[10px]">View Detail</span>
+                                            </div>
                                         </div>
                                     </Card>
                                 );
                             })}
                         </div>
                         
-                        {(state.installmentPlans || []).length === 0 && (
+                        {filteredPlans.length === 0 && (
                             <div className="text-center py-20 bg-white rounded-xl border-2 border-dashed border-slate-200">
                                 <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
                                     <div className="w-8 h-8">{ICONS.trendingUp}</div>
