@@ -242,41 +242,38 @@ const PayrollHub: React.FC = () => {
                   <Plus size={12} /> Add
                 </button>
               </div>
-              <div className="divide-y divide-slate-100">
+              <div className="p-2">
                 {earningTypes.length === 0 ? (
-                  <p className="text-center text-slate-400 py-6 text-xs">No earning components configured. Click "Add" to create one.</p>
+                  <p className="text-center text-slate-400 py-4 text-xs">No earning components configured. Click "Add" to create one.</p>
                 ) : (
-                  earningTypes.map((e, i) => (
-                    <div key={i} className="flex items-center justify-between px-3 sm:px-4 py-2 hover:bg-emerald-50/50 transition-colors">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                          <TrendingUp size={14} className="text-emerald-600" />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {earningTypes.map((e, i) => (
+                      <div key={i} className="flex items-center justify-between px-2.5 py-2 bg-emerald-50/50 hover:bg-emerald-100/50 rounded-lg border border-emerald-100 transition-colors">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <div className="w-6 h-6 rounded bg-emerald-600 flex items-center justify-center flex-shrink-0">
+                            <TrendingUp size={12} className="text-white" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-slate-900 text-xs truncate">{e.name}</p>
+                            <p className="text-[10px] text-emerald-600 font-medium">
+                              {e.is_percentage ? `${e.amount}% of Basic` : `PKR ${e.amount.toLocaleString()}`}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-slate-900 text-sm truncate">{e.name}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-right">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${e.is_percentage ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
-                            {e.is_percentage ? 'Percentage' : 'Fixed'}
+                        <div className="flex items-center gap-1.5">
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${e.is_percentage ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'}`}>
+                            {e.is_percentage ? '%' : 'Fixed'}
                           </span>
+                          <button 
+                            onClick={() => { setEditingEarning(e); setIsEarningModalOpen(true); }}
+                            className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-200 rounded transition-colors"
+                          >
+                            <Edit3 size={12} />
+                          </button>
                         </div>
-                        <div className="text-right min-w-[100px]">
-                          <p className="text-sm font-bold text-emerald-600">
-                            {e.is_percentage ? `${e.amount}%` : `PKR ${e.amount.toLocaleString()}`}
-                          </p>
-                          <p className="text-[10px] text-slate-400">{e.is_percentage ? 'of Basic' : 'Fixed Amount'}</p>
-                        </div>
-                        <button 
-                          onClick={() => { setEditingEarning(e); setIsEarningModalOpen(true); }}
-                          className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors"
-                        >
-                          <Edit3 size={14} />
-                        </button>
                       </div>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
@@ -296,41 +293,38 @@ const PayrollHub: React.FC = () => {
                   <Plus size={12} /> Add
                 </button>
               </div>
-              <div className="divide-y divide-slate-100">
+              <div className="p-2">
                 {deductionTypes.length === 0 ? (
-                  <p className="text-center text-slate-400 py-6 text-xs">No deduction components configured. Click "Add" to create one.</p>
+                  <p className="text-center text-slate-400 py-4 text-xs">No deduction components configured. Click "Add" to create one.</p>
                 ) : (
-                  deductionTypes.map((d, i) => (
-                    <div key={i} className="flex items-center justify-between px-3 sm:px-4 py-2 hover:bg-red-50/50 transition-colors">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="w-7 h-7 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
-                          <TrendingDown size={14} className="text-red-600" />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {deductionTypes.map((d, i) => (
+                      <div key={i} className="flex items-center justify-between px-2.5 py-2 bg-red-50/50 hover:bg-red-100/50 rounded-lg border border-red-100 transition-colors">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <div className="w-6 h-6 rounded bg-red-600 flex items-center justify-center flex-shrink-0">
+                            <TrendingDown size={12} className="text-white" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-slate-900 text-xs truncate">{d.name}</p>
+                            <p className="text-[10px] text-red-600 font-medium">
+                              {d.is_percentage ? `${d.amount}% of Gross` : `PKR ${d.amount.toLocaleString()}`}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-slate-900 text-sm truncate">{d.name}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-right">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${d.is_percentage ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
-                            {d.is_percentage ? 'Percentage' : 'Fixed'}
+                        <div className="flex items-center gap-1.5">
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${d.is_percentage ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'}`}>
+                            {d.is_percentage ? '%' : 'Fixed'}
                           </span>
+                          <button 
+                            onClick={() => { setEditingDeduction(d); setIsDeductionModalOpen(true); }}
+                            className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-200 rounded transition-colors"
+                          >
+                            <Edit3 size={12} />
+                          </button>
                         </div>
-                        <div className="text-right min-w-[100px]">
-                          <p className="text-sm font-bold text-red-600">
-                            {d.is_percentage ? `${d.amount}%` : `PKR ${d.amount.toLocaleString()}`}
-                          </p>
-                          <p className="text-[10px] text-slate-400">{d.is_percentage ? 'of Gross' : 'Fixed Amount'}</p>
-                        </div>
-                        <button 
-                          onClick={() => { setEditingDeduction(d); setIsDeductionModalOpen(true); }}
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-100 rounded-lg transition-colors"
-                        >
-                          <Edit3 size={14} />
-                        </button>
                       </div>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
@@ -350,39 +344,40 @@ const PayrollHub: React.FC = () => {
                   <Plus size={12} /> Add
                 </button>
               </div>
-              <div className="divide-y divide-slate-100">
+              <div className="p-2">
                 {gradeLevels.length === 0 ? (
-                  <p className="text-center text-slate-400 py-6 text-xs">No grade levels configured. Click "Add" to create one.</p>
+                  <p className="text-center text-slate-400 py-4 text-xs">No grade levels configured. Click "Add" to create one.</p>
                 ) : (
-                  gradeLevels.map((g, i) => (
-                    <div key={i} className="flex items-center justify-between px-3 sm:px-4 py-2 hover:bg-blue-50/50 transition-colors">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
-                          <span className="text-white text-[10px] font-bold">{g.name.substring(0, 2).toUpperCase()}</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {gradeLevels.map((g, i) => (
+                      <div key={i} className="flex items-center justify-between px-2.5 py-2 bg-blue-50/50 hover:bg-blue-100/50 rounded-lg border border-blue-100 transition-colors">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <div className="w-6 h-6 rounded bg-blue-600 flex items-center justify-center flex-shrink-0">
+                            <span className="text-white text-[9px] font-bold">{g.name.substring(0, 2).toUpperCase()}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-slate-900 text-xs truncate">{g.name}</p>
+                            <p className="text-[10px] text-blue-600 font-medium truncate">
+                              {g.min_salary.toLocaleString()} - {g.max_salary.toLocaleString()}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-slate-900 text-sm truncate">{g.name}</p>
-                          {g.description && <p className="text-[10px] text-slate-400 truncate">{g.description}</p>}
+                        <div className="flex items-center gap-1.5">
+                          {g.description && (
+                            <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded text-[9px] font-medium truncate max-w-[60px]" title={g.description}>
+                              {g.description}
+                            </span>
+                          )}
+                          <button 
+                            onClick={() => { setEditingGrade(g); setIsGradeModalOpen(true); }}
+                            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-200 rounded transition-colors"
+                          >
+                            <Edit3 size={12} />
+                          </button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-right min-w-[80px]">
-                          <p className="text-xs font-bold text-slate-700">Min Salary</p>
-                          <p className="text-sm font-bold text-blue-600">PKR {g.min_salary.toLocaleString()}</p>
-                        </div>
-                        <div className="text-right min-w-[80px]">
-                          <p className="text-xs font-bold text-slate-700">Max Salary</p>
-                          <p className="text-sm font-bold text-blue-600">PKR {g.max_salary.toLocaleString()}</p>
-                        </div>
-                        <button 
-                          onClick={() => { setEditingGrade(g); setIsGradeModalOpen(true); }}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
@@ -402,47 +397,38 @@ const PayrollHub: React.FC = () => {
                   <Plus size={12} /> Add
                 </button>
               </div>
-              <div className="divide-y divide-slate-100">
+              <div className="p-2">
                 {departments.length === 0 ? (
-                  <p className="text-center text-slate-400 py-6 text-xs">No departments configured. Click "Add" to create one.</p>
+                  <p className="text-center text-slate-400 py-4 text-xs">No departments configured. Click "Add" to create one.</p>
                 ) : (
-                  departments.map((d, i) => (
-                    <div key={i} className={`flex items-center justify-between px-3 sm:px-4 py-2 transition-colors ${d.is_active ? 'hover:bg-purple-50/50' : 'opacity-60 hover:bg-slate-50/50'}`}>
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${d.is_active ? 'bg-purple-600' : 'bg-slate-400'}`}>
-                          <Building2 size={14} className="text-white" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-slate-900 text-sm truncate">{d.name}</p>
-                          {d.description && <p className="text-[10px] text-slate-400 truncate">{d.description}</p>}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        {d.code && (
-                          <div className="text-right">
-                            <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-bold">{d.code}</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {departments.map((d, i) => (
+                      <div key={i} className={`flex items-center justify-between px-2.5 py-2 rounded-lg border transition-colors ${d.is_active ? 'bg-purple-50/50 hover:bg-purple-100/50 border-purple-100' : 'bg-slate-50/50 hover:bg-slate-100/50 border-slate-200 opacity-70'}`}>
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <div className={`w-6 h-6 rounded flex items-center justify-center flex-shrink-0 ${d.is_active ? 'bg-purple-600' : 'bg-slate-400'}`}>
+                            <Building2 size={12} className="text-white" />
                           </div>
-                        )}
-                        <div className="text-right min-w-[60px]">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${d.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                            {d.is_active ? 'Active' : 'Inactive'}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-slate-900 text-xs truncate">{d.name}</p>
+                            <p className="text-[10px] text-slate-500 font-medium truncate">
+                              {d.description || (d.employee_count ? `${d.employee_count} employees` : 'No description')}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${d.is_active ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-200 text-slate-500'}`}>
+                            {d.is_active ? 'Active' : 'Off'}
                           </span>
+                          <button 
+                            onClick={() => { setEditingDepartment(d); setIsDepartmentModalOpen(true); }}
+                            className="p-1 text-slate-400 hover:text-purple-600 hover:bg-purple-200 rounded transition-colors"
+                          >
+                            <Edit3 size={12} />
+                          </button>
                         </div>
-                        {d.employee_count !== undefined && d.employee_count > 0 && (
-                          <div className="text-right min-w-[60px]">
-                            <p className="text-sm font-bold text-purple-600">{d.employee_count}</p>
-                            <p className="text-[10px] text-slate-400">Employees</p>
-                          </div>
-                        )}
-                        <button 
-                          onClick={() => { setEditingDepartment(d); setIsDepartmentModalOpen(true); }}
-                          className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-100 rounded-lg transition-colors"
-                        >
-                          <Edit3 size={14} />
-                        </button>
                       </div>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
