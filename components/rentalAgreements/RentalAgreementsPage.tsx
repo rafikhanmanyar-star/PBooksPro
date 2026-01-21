@@ -152,20 +152,20 @@ const RentalAgreementsPage: React.FC = () => {
         state.buildings.forEach(b => {
             buildingMap.set(b.id, {
                 id: b.id,
-                name: b.name,
-                type: 'building' as any,
+                label: b.name,
+                type: 'building',
                 children: [],
-                count: 0
+                value: 0
             });
         });
         
         // Fallback 'Unassigned' building
         buildingMap.set('unassigned', {
             id: 'unassigned',
-            name: 'Unassigned',
-            type: 'building' as any,
+            label: 'Unassigned',
+            type: 'building',
             children: [],
-            count: 0
+            value: 0
         });
 
         dateFilteredAgreements.forEach(ra => {
@@ -176,44 +176,44 @@ const RentalAgreementsPage: React.FC = () => {
 
             if (buildingNode) {
                 let subId = '';
-                let subName = 'Unknown';
+                let subLabel = 'Unknown';
 
                 // Determine Child Node based on groupBy
                 if (groupBy === 'tenant') {
                     subId = ra.contactId;
-                    subName = state.contacts.find(c => c.id === ra.contactId)?.name || 'Unknown Tenant';
+                    subLabel = state.contacts.find(c => c.id === ra.contactId)?.name || 'Unknown Tenant';
                 } else if (groupBy === 'owner') {
                     subId = property?.ownerId || 'unknown';
-                    subName = state.contacts.find(c => c.id === subId)?.name || 'Unknown Owner';
+                    subLabel = state.contacts.find(c => c.id === subId)?.name || 'Unknown Owner';
                 } else if (groupBy === 'property') {
                     subId = ra.propertyId;
-                    subName = property?.name || 'Unknown Property';
+                    subLabel = property?.name || 'Unknown Property';
                 }
 
                 // Find or create Child Node
-                let childNode = buildingNode.children.find(c => c.id === subId);
+                let childNode = buildingNode.children?.find(c => c.id === subId);
                 if (!childNode) {
                     childNode = {
                         id: subId,
-                        name: subName,
-                        type: 'staff' as any, // Reusing 'staff' type for styling consistency
+                        label: subLabel,
+                        type: 'staff', // Reusing 'staff' type for styling consistency
                         children: [],
-                        count: 0
+                        value: 0
                     };
-                    buildingNode.children.push(childNode);
+                    buildingNode.children?.push(childNode);
                 }
                 
-                childNode.count!++;
-                buildingNode.count!++;
+                childNode.value = (childNode.value as number || 0) + 1;
+                buildingNode.value = (buildingNode.value as number || 0) + 1;
             }
         });
 
         return Array.from(buildingMap.values())
-            .filter(node => node.count! > 0)
-            .sort((a, b) => a.name.localeCompare(b.name))
+            .filter(node => (node.value as number || 0) > 0)
+            .sort((a, b) => a.label.localeCompare(b.label))
             .map(node => ({
                 ...node,
-                children: node.children.sort((a, b) => a.name.localeCompare(b.name))
+                children: node.children?.sort((a, b) => a.label.localeCompare(b.label))
             }));
 
     }, [dateFilteredAgreements, state.buildings, state.properties, state.contacts, groupBy]);

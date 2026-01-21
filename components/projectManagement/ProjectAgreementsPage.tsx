@@ -141,10 +141,10 @@ const ProjectAgreementsPage: React.FC = () => {
         state.projects.forEach(p => {
             projectMap.set(p.id, {
                 id: p.id,
-                name: p.name,
+                label: p.name,
                 type: 'project',
                 children: [],
-                count: 0
+                value: 0
             });
         });
 
@@ -154,32 +154,32 @@ const ProjectAgreementsPage: React.FC = () => {
             if (projectNode) {
                 const client = state.contacts.find(c => c.id === pa.clientId);
                 const clientId = pa.clientId;
-                const clientName = client?.name || 'Unknown Owner';
+                const clientLabel = client?.name || 'Unknown Owner';
 
                 // Find or create Owner Node
-                let clientNode = projectNode.children.find(c => c.id === clientId);
+                let clientNode = projectNode.children?.find(c => c.id === clientId);
                 if (!clientNode) {
                     clientNode = {
                         id: clientId,
-                        name: clientName,
+                        label: clientLabel,
                         type: 'staff', // Reusing 'staff' type for sub-item styling
                         children: [],
-                        count: 0
+                        value: 0
                     };
-                    projectNode.children.push(clientNode);
+                    projectNode.children?.push(clientNode);
                 }
 
-                clientNode.count!++;
-                projectNode.count!++;
+                clientNode.value = (clientNode.value as number || 0) + 1;
+                projectNode.value = (projectNode.value as number || 0) + 1;
             }
         });
 
         return Array.from(projectMap.values())
-            .filter(node => node.count! > 0)
-            .sort((a, b) => a.name.localeCompare(b.name))
+            .filter(node => (node.value as number || 0) > 0)
+            .sort((a, b) => a.label.localeCompare(b.label))
             .map(node => ({
                 ...node,
-                children: node.children.sort((a, b) => a.name.localeCompare(b.name))
+                children: node.children?.sort((a, b) => a.label.localeCompare(b.label))
             }));
 
     }, [dateFilteredAgreements, state.projects, state.contacts]);
