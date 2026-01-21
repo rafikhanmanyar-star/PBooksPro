@@ -6,7 +6,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { getConnectionMonitor } from '../services/connectionMonitor';
+import { getConnectionMonitor } from '../services/connection/connectionMonitor';
 import { getSyncQueue } from '../services/syncQueue';
 import { getSyncEngine } from '../services/syncEngine';
 import { ConnectionStatus, SyncProgress } from '../types/sync';

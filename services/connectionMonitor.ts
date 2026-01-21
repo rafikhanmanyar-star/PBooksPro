@@ -218,7 +218,12 @@ class ConnectionMonitor {
 // Singleton instance
 let connectionMonitorInstance: ConnectionMonitor | null = null;
 
+/**
+ * @deprecated Use getConnectionMonitor from '../services/connection/connectionMonitor' instead.
+ * This is a legacy wrapper that forwards to the new implementation.
+ */
 export const getConnectionMonitor = (): ConnectionMonitor => {
+  console.warn('[DEPRECATED] services/connectionMonitor.ts is deprecated. Use services/connection/connectionMonitor.ts instead.');
   if (!connectionMonitorInstance) {
     connectionMonitorInstance = new ConnectionMonitor();
   }

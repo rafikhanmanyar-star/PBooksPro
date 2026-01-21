@@ -12,7 +12,7 @@ import packageJson from '../package.json';
 import { shouldSyncAction } from '../services/sync/dataFilter';
 import InitializationScreen from '../components/InitializationScreen';
 import { getSyncQueue } from '../services/syncQueue';
-import { getConnectionMonitor } from '../services/connectionMonitor';
+import { getConnectionMonitor } from '../services/connection/connectionMonitor';
 import { SyncOperationType } from '../types/sync';
 
 // Lazy import AppStateRepository to avoid initialization issues during module load

@@ -27,26 +27,28 @@ try {
     // Unhandled JavaScript errors
     window.addEventListener('error', (event) => {
       event.preventDefault(); // Prevent default error handling
-      const { getErrorLogger } = require('./services/errorLogger');
-      getErrorLogger().logError(event.error || new Error(event.message), {
-        errorType: 'unhandled_error',
-        filename: event.filename,
-        lineno: event.lineno,
-        colno: event.colno,
-        source: 'global_error_handler'
-      }).catch(() => {}); // Don't let error logging fail
+      import('./services/errorLogger').then(({ getErrorLogger }) => {
+        getErrorLogger().logError(event.error || new Error(event.message), {
+          errorType: 'unhandled_error',
+          filename: event.filename,
+          lineno: event.lineno,
+          colno: event.colno,
+          source: 'global_error_handler'
+        }).catch(() => {}); // Don't let error logging fail
+      }).catch(() => {});
     });
 
     // Unhandled promise rejections
     window.addEventListener('unhandledrejection', (event) => {
       event.preventDefault(); // Prevent default error handling
-      const { getErrorLogger } = require('./services/errorLogger');
-      const error = event.reason instanceof Error 
-        ? event.reason 
-        : new Error(String(event.reason));
-      getErrorLogger().logError(error, {
-        errorType: 'unhandled_promise_rejection',
-        source: 'global_promise_handler'
+      import('./services/errorLogger').then(({ getErrorLogger }) => {
+        const error = event.reason instanceof Error 
+          ? event.reason 
+          : new Error(String(event.reason));
+        getErrorLogger().logError(error, {
+          errorType: 'unhandled_promise_rejection',
+          source: 'global_promise_handler'
+        }).catch(() => {});
       }).catch(() => {});
     });
 
@@ -54,11 +56,12 @@ try {
     window.addEventListener('error', (event) => {
       if (event.target && event.target !== window) {
         const target = event.target as HTMLElement;
-        const { getErrorLogger } = require('./services/errorLogger');
-        getErrorLogger().logError(new Error(`Resource loading failed: ${target.tagName}`), {
-          errorType: 'resource_error',
-          resource: target.tagName,
-          source: (target as any).src || (target as any).href
+        import('./services/errorLogger').then(({ getErrorLogger }) => {
+          getErrorLogger().logError(new Error(`Resource loading failed: ${target.tagName}`), {
+            errorType: 'resource_error',
+            resource: target.tagName,
+            source: (target as any).src || (target as any).href
+          }).catch(() => {});
         }).catch(() => {});
       }
     }, true); // Use capture phase
@@ -69,10 +72,11 @@ try {
       originalConsoleError.apply(console, args);
       // Log to error logger if it's an Error object
       if (args.length > 0 && args[0] instanceof Error) {
-        const { getErrorLogger } = require('./services/errorLogger');
-        getErrorLogger().logError(args[0], {
-          errorType: 'console_error',
-          source: 'console_interceptor'
+        import('./services/errorLogger').then(({ getErrorLogger }) => {
+          getErrorLogger().logError(args[0], {
+            errorType: 'console_error',
+            source: 'console_interceptor'
+          }).catch(() => {});
         }).catch(() => {});
       }
     };
