@@ -18,7 +18,7 @@ const router = Router();
 // EMPLOYEE ROUTES
 // =====================================================
 
-// GET /payroll/employees - List all employees
+// GET /payroll/employees - List all employees with department info
 router.get('/employees', async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
@@ -27,9 +27,13 @@ router.get('/employees', async (req: TenantRequest, res) => {
     }
 
     const employees = await getDb().query(
-      `SELECT * FROM payroll_employees 
-       WHERE tenant_id = $1 
-       ORDER BY name ASC`,
+      `SELECT e.*, 
+              d.name as department_name,
+              d.code as department_code
+       FROM payroll_employees e
+       LEFT JOIN payroll_departments d ON e.department_id = d.id
+       WHERE e.tenant_id = $1 
+       ORDER BY e.name ASC`,
       [tenantId]
     );
 
@@ -40,7 +44,7 @@ router.get('/employees', async (req: TenantRequest, res) => {
   }
 });
 
-// GET /payroll/employees/:id - Get single employee
+// GET /payroll/employees/:id - Get single employee with department info
 router.get('/employees/:id', async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
@@ -51,7 +55,13 @@ router.get('/employees/:id', async (req: TenantRequest, res) => {
     }
 
     const employees = await getDb().query(
-      `SELECT * FROM payroll_employees WHERE id = $1 AND tenant_id = $2`,
+      `SELECT e.*, 
+              d.name as department_name,
+              d.code as department_code,
+              d.description as department_description
+       FROM payroll_employees e
+       LEFT JOIN payroll_departments d ON e.department_id = d.id
+       WHERE e.id = $1 AND e.tenant_id = $2`,
       [id, tenantId]
     );
 
@@ -66,7 +76,7 @@ router.get('/employees/:id', async (req: TenantRequest, res) => {
   }
 });
 
-// POST /payroll/employees - Create new employee
+// POST /payroll/employees - Create new employee with department linking
 router.post('/employees', async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
@@ -77,17 +87,29 @@ router.post('/employees', async (req: TenantRequest, res) => {
     }
 
     const {
-      name, email, phone, address, designation, department,
+      name, email, phone, address, designation, department, department_id,
       grade, joining_date, salary, projects
     } = req.body;
 
+    // If department_id is provided, use it; otherwise try to find by department name
+    let effectiveDepartmentId = department_id;
+    if (!effectiveDepartmentId && department) {
+      const deptResult = await getDb().query(
+        `SELECT id FROM payroll_departments WHERE tenant_id = $1 AND name = $2`,
+        [tenantId, department]
+      );
+      if (deptResult.length > 0) {
+        effectiveDepartmentId = deptResult[0].id;
+      }
+    }
+
     const result = await getDb().query(
       `INSERT INTO payroll_employees 
-       (tenant_id, name, email, phone, address, designation, department, grade, 
+       (tenant_id, name, email, phone, address, designation, department, department_id, grade, 
         joining_date, salary, projects, status, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'ACTIVE', $12)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'ACTIVE', $13)
        RETURNING *`,
-      [tenantId, name, email, phone, address, designation, department, grade,
+      [tenantId, name, email, phone, address, designation, department, effectiveDepartmentId || null, grade,
        joining_date, JSON.stringify(salary || { basic: 0, allowances: [], deductions: [] }),
        JSON.stringify(projects || []), userId]
     );
@@ -102,7 +124,7 @@ router.post('/employees', async (req: TenantRequest, res) => {
   }
 });
 
-// PUT /payroll/employees/:id - Update employee
+// PUT /payroll/employees/:id - Update employee with department linking
 router.put('/employees/:id', async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
@@ -114,9 +136,21 @@ router.put('/employees/:id', async (req: TenantRequest, res) => {
     }
 
     const {
-      name, email, phone, address, photo, designation, department,
+      name, email, phone, address, photo, designation, department, department_id,
       grade, status, termination_date, salary, adjustments, projects
     } = req.body;
+
+    // If department_id is provided, use it; otherwise try to find by department name
+    let effectiveDepartmentId = department_id;
+    if (department_id === undefined && department) {
+      const deptResult = await getDb().query(
+        `SELECT id FROM payroll_departments WHERE tenant_id = $1 AND name = $2`,
+        [tenantId, department]
+      );
+      if (deptResult.length > 0) {
+        effectiveDepartmentId = deptResult[0].id;
+      }
+    }
 
     const result = await getDb().query(
       `UPDATE payroll_employees SET
@@ -127,17 +161,18 @@ router.put('/employees/:id', async (req: TenantRequest, res) => {
         photo = COALESCE($5, photo),
         designation = COALESCE($6, designation),
         department = COALESCE($7, department),
-        grade = COALESCE($8, grade),
-        status = COALESCE($9, status),
-        termination_date = COALESCE($10, termination_date),
-        salary = COALESCE($11, salary),
-        adjustments = COALESCE($12, adjustments),
-        projects = COALESCE($13, projects),
-        updated_by = $14
-       WHERE id = $15 AND tenant_id = $16
+        department_id = COALESCE($8, department_id),
+        grade = COALESCE($9, grade),
+        status = COALESCE($10, status),
+        termination_date = COALESCE($11, termination_date),
+        salary = COALESCE($12, salary),
+        adjustments = COALESCE($13, adjustments),
+        projects = COALESCE($14, projects),
+        updated_by = $15
+       WHERE id = $16 AND tenant_id = $17
        RETURNING *`,
-      [name, email, phone, address, photo, designation, department, grade,
-       status, termination_date,
+      [name, email, phone, address, photo, designation, department, effectiveDepartmentId,
+       grade, status, termination_date,
        salary ? JSON.stringify(salary) : null,
        adjustments ? JSON.stringify(adjustments) : null,
        projects ? JSON.stringify(projects) : null,
@@ -997,6 +1032,322 @@ router.put('/settings', async (req: TenantRequest, res) => {
   } catch (error) {
     console.error('Error updating payroll settings:', error);
     res.status(500).json({ error: 'Failed to update payroll settings' });
+  }
+});
+
+// =====================================================
+// DEPARTMENT ROUTES
+// =====================================================
+
+// GET /payroll/departments - List all departments
+router.get('/departments', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant ID is required' });
+    }
+
+    const departments = await getDb().query(
+      `SELECT d.*, 
+              pd.name as parent_department_name,
+              (SELECT COUNT(*) FROM payroll_employees e WHERE e.department_id = d.id AND e.status = 'ACTIVE') as employee_count
+       FROM payroll_departments d
+       LEFT JOIN payroll_departments pd ON d.parent_department_id = pd.id
+       WHERE d.tenant_id = $1 
+       ORDER BY d.name ASC`,
+      [tenantId]
+    );
+
+    res.json(departments);
+  } catch (error) {
+    console.error('Error fetching departments:', error);
+    res.status(500).json({ error: 'Failed to fetch departments' });
+  }
+});
+
+// GET /payroll/departments/:id - Get single department with employees
+router.get('/departments/:id', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    const { id } = req.params;
+
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant ID is required' });
+    }
+
+    const departments = await getDb().query(
+      `SELECT d.*, 
+              pd.name as parent_department_name
+       FROM payroll_departments d
+       LEFT JOIN payroll_departments pd ON d.parent_department_id = pd.id
+       WHERE d.id = $1 AND d.tenant_id = $2`,
+      [id, tenantId]
+    );
+
+    if (departments.length === 0) {
+      return res.status(404).json({ error: 'Department not found' });
+    }
+
+    // Get employees in this department
+    const employees = await getDb().query(
+      `SELECT id, name, email, designation, grade, status, photo
+       FROM payroll_employees 
+       WHERE department_id = $1 AND tenant_id = $2
+       ORDER BY name ASC`,
+      [id, tenantId]
+    );
+
+    res.json({ 
+      ...departments[0],
+      employees 
+    });
+  } catch (error) {
+    console.error('Error fetching department:', error);
+    res.status(500).json({ error: 'Failed to fetch department' });
+  }
+});
+
+// POST /payroll/departments - Create new department
+router.post('/departments', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    const userId = req.userId;
+
+    if (!tenantId || !userId) {
+      return res.status(400).json({ error: 'Authentication required' });
+    }
+
+    const { 
+      name, 
+      code, 
+      description, 
+      parent_department_id,
+      head_employee_id,
+      cost_center_code,
+      budget_allocation,
+      is_active 
+    } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: 'Department name is required' });
+    }
+
+    const result = await getDb().query(
+      `INSERT INTO payroll_departments 
+       (tenant_id, name, code, description, parent_department_id, head_employee_id,
+        cost_center_code, budget_allocation, is_active, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING *`,
+      [tenantId, name, code || null, description || null, 
+       parent_department_id || null, head_employee_id || null,
+       cost_center_code || null, budget_allocation || 0,
+       is_active !== false, userId]
+    );
+
+    emitToTenant(tenantId, 'payroll_department_created', { id: result[0].id });
+
+    res.status(201).json(result[0]);
+  } catch (error: any) {
+    console.error('Error creating department:', error);
+    if (error.code === '23505') {
+      return res.status(400).json({ error: 'Department with this name or code already exists' });
+    }
+    res.status(500).json({ error: 'Failed to create department' });
+  }
+});
+
+// PUT /payroll/departments/:id - Update department
+router.put('/departments/:id', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    const userId = req.userId;
+    const { id } = req.params;
+
+    if (!tenantId || !userId) {
+      return res.status(400).json({ error: 'Authentication required' });
+    }
+
+    const {
+      name,
+      code,
+      description,
+      parent_department_id,
+      head_employee_id,
+      cost_center_code,
+      budget_allocation,
+      is_active
+    } = req.body;
+
+    const result = await getDb().query(
+      `UPDATE payroll_departments SET
+        name = COALESCE($1, name),
+        code = COALESCE($2, code),
+        description = COALESCE($3, description),
+        parent_department_id = $4,
+        head_employee_id = $5,
+        cost_center_code = COALESCE($6, cost_center_code),
+        budget_allocation = COALESCE($7, budget_allocation),
+        is_active = COALESCE($8, is_active),
+        updated_by = $9
+       WHERE id = $10 AND tenant_id = $11
+       RETURNING *`,
+      [name, code, description, parent_department_id || null, 
+       head_employee_id || null, cost_center_code, budget_allocation, 
+       is_active, userId, id, tenantId]
+    );
+
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Department not found' });
+    }
+
+    emitToTenant(tenantId, 'payroll_department_updated', { id });
+
+    res.json(result[0]);
+  } catch (error: any) {
+    console.error('Error updating department:', error);
+    if (error.code === '23505') {
+      return res.status(400).json({ error: 'Department with this name or code already exists' });
+    }
+    res.status(500).json({ error: 'Failed to update department' });
+  }
+});
+
+// DELETE /payroll/departments/:id - Delete department
+router.delete('/departments/:id', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    const { id } = req.params;
+
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant ID is required' });
+    }
+
+    // Check if department has employees
+    const empCount = await getDb().query(
+      `SELECT COUNT(*) as count FROM payroll_employees 
+       WHERE department_id = $1 AND tenant_id = $2`,
+      [id, tenantId]
+    );
+
+    if (parseInt(empCount[0].count) > 0) {
+      return res.status(400).json({ 
+        error: 'Cannot delete department with assigned employees. Please reassign employees first.' 
+      });
+    }
+
+    // Check if department has child departments
+    const childCount = await getDb().query(
+      `SELECT COUNT(*) as count FROM payroll_departments 
+       WHERE parent_department_id = $1 AND tenant_id = $2`,
+      [id, tenantId]
+    );
+
+    if (parseInt(childCount[0].count) > 0) {
+      return res.status(400).json({ 
+        error: 'Cannot delete department with sub-departments. Please delete or reassign sub-departments first.' 
+      });
+    }
+
+    const result = await getDb().query(
+      `DELETE FROM payroll_departments WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+      [id, tenantId]
+    );
+
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Department not found' });
+    }
+
+    emitToTenant(tenantId, 'payroll_department_deleted', { id });
+
+    res.json({ success: true, id });
+  } catch (error) {
+    console.error('Error deleting department:', error);
+    res.status(500).json({ error: 'Failed to delete department' });
+  }
+});
+
+// GET /payroll/departments/:id/employees - Get employees by department
+router.get('/departments/:id/employees', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    const { id } = req.params;
+
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant ID is required' });
+    }
+
+    const employees = await getDb().query(
+      `SELECT * FROM payroll_employees 
+       WHERE department_id = $1 AND tenant_id = $2
+       ORDER BY name ASC`,
+      [id, tenantId]
+    );
+
+    res.json(employees);
+  } catch (error) {
+    console.error('Error fetching department employees:', error);
+    res.status(500).json({ error: 'Failed to fetch employees' });
+  }
+});
+
+// POST /payroll/departments/migrate - Migrate existing department names to normalized structure
+router.post('/departments/migrate', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    const userId = req.userId;
+
+    if (!tenantId || !userId) {
+      return res.status(400).json({ error: 'Authentication required' });
+    }
+
+    // Call the migration function
+    const result = await getDb().query(
+      `SELECT migrate_employee_departments($1) as migrated_count`,
+      [tenantId]
+    );
+
+    const migratedCount = result[0]?.migrated_count || 0;
+
+    res.json({ 
+      success: true, 
+      message: `Successfully migrated ${migratedCount} employee department references`,
+      migrated_count: migratedCount
+    });
+  } catch (error) {
+    console.error('Error migrating departments:', error);
+    res.status(500).json({ error: 'Failed to migrate departments' });
+  }
+});
+
+// GET /payroll/departments/stats - Get department statistics
+router.get('/departments/stats', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant ID is required' });
+    }
+
+    const stats = await getDb().query(
+      `SELECT 
+         d.id,
+         d.name,
+         d.code,
+         COUNT(e.id) as total_employees,
+         COUNT(CASE WHEN e.status = 'ACTIVE' THEN 1 END) as active_employees,
+         COALESCE(SUM(CASE WHEN e.status = 'ACTIVE' THEN (e.salary->>'basic')::numeric ELSE 0 END), 0) as total_basic_salary,
+         d.budget_allocation
+       FROM payroll_departments d
+       LEFT JOIN payroll_employees e ON e.department_id = d.id AND e.tenant_id = $1
+       WHERE d.tenant_id = $1 AND d.is_active = true
+       GROUP BY d.id, d.name, d.code, d.budget_allocation
+       ORDER BY total_employees DESC`,
+      [tenantId]
+    );
+
+    res.json(stats);
+  } catch (error) {
+    console.error('Error fetching department stats:', error);
+    res.status(500).json({ error: 'Failed to fetch department statistics' });
   }
 });
 

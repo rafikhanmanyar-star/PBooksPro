@@ -11,6 +11,8 @@ import {
   PayrollRun,
   GradeLevel,
   Department,
+  DepartmentWithEmployees,
+  DepartmentStats,
   PayrollProject,
   EarningType,
   DeductionType,
@@ -22,6 +24,7 @@ import {
   PayrollProcessingSummary,
   normalizeEmployee,
   normalizePayrollRun,
+  normalizeDepartment,
   EmploymentStatus,
   PayrollStatus
 } from '../../components/payroll/types';
@@ -182,17 +185,32 @@ export const payrollApi = {
 
   async getDepartments(): Promise<Department[]> {
     try {
-      const response = await apiClient.get<Department[]>('/payroll/departments');
-      return response || [];
+      const response = await apiClient.get<any[]>('/payroll/departments');
+      return (response || []).map(normalizeDepartment);
     } catch (error) {
       console.error('Error fetching departments:', error);
       return [];
     }
   },
 
+  async getDepartment(id: string): Promise<DepartmentWithEmployees | null> {
+    try {
+      const response = await apiClient.get<any>(`/payroll/departments/${id}`);
+      if (!response) return null;
+      return {
+        ...normalizeDepartment(response),
+        employees: response.employees || []
+      };
+    } catch (error) {
+      console.error('Error fetching department:', error);
+      return null;
+    }
+  },
+
   async createDepartment(data: Omit<Department, 'id' | 'tenant_id' | 'created_at' | 'updated_at'>): Promise<Department | null> {
     try {
-      return await apiClient.post<Department>('/payroll/departments', data);
+      const response = await apiClient.post<any>('/payroll/departments', data);
+      return response ? normalizeDepartment(response) : null;
     } catch (error) {
       console.error('Error creating department:', error);
       throw error;
@@ -201,7 +219,8 @@ export const payrollApi = {
 
   async updateDepartment(id: string, data: Partial<Department>): Promise<Department | null> {
     try {
-      return await apiClient.put<Department>(`/payroll/departments/${id}`, data);
+      const response = await apiClient.put<any>(`/payroll/departments/${id}`, data);
+      return response ? normalizeDepartment(response) : null;
     } catch (error) {
       console.error('Error updating department:', error);
       throw error;
@@ -215,6 +234,36 @@ export const payrollApi = {
     } catch (error) {
       console.error('Error deleting department:', error);
       return false;
+    }
+  },
+
+  async getDepartmentEmployees(departmentId: string): Promise<PayrollEmployee[]> {
+    try {
+      const response = await apiClient.get<any[]>(`/payroll/departments/${departmentId}/employees`);
+      return (response || []).map(normalizeEmployee);
+    } catch (error) {
+      console.error('Error fetching department employees:', error);
+      return [];
+    }
+  },
+
+  async getDepartmentStats(): Promise<DepartmentStats[]> {
+    try {
+      const response = await apiClient.get<DepartmentStats[]>('/payroll/departments/stats');
+      return response || [];
+    } catch (error) {
+      console.error('Error fetching department stats:', error);
+      return [];
+    }
+  },
+
+  async migrateDepartments(): Promise<{ success: boolean; migrated_count: number }> {
+    try {
+      const response = await apiClient.post<{ success: boolean; migrated_count: number }>('/payroll/departments/migrate');
+      return response || { success: false, migrated_count: 0 };
+    } catch (error) {
+      console.error('Error migrating departments:', error);
+      return { success: false, migrated_count: 0 };
     }
   },
 

@@ -251,7 +251,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
               ) : (
                 <tr>
                   <td colSpan={4} className="px-8 py-20 text-center text-slate-400 font-medium">
-                    {searchTerm ? 'No employees found matching your search.' : 'No employees added yet. Click "Add Employee" to get started.'}
+                    {workforceSearchTerm ? 'No employees found matching your search.' : 'No employees added yet. Click "Add Employee" to get started.'}
                   </td>
                 </tr>
               )}

@@ -794,4 +794,154 @@ CREATE INDEX IF NOT EXISTS idx_registered_suppliers_buyer ON registered_supplier
 CREATE INDEX IF NOT EXISTS idx_registered_suppliers_supplier ON registered_suppliers(supplier_tenant_id);
 CREATE INDEX IF NOT EXISTS idx_registered_suppliers_status ON registered_suppliers(status);
 CREATE INDEX IF NOT EXISTS idx_registered_suppliers_tenant_id ON registered_suppliers(tenant_id);
+
+-- =====================================================
+-- PAYROLL MODULE TABLES
+-- =====================================================
+
+-- Payroll Departments table
+CREATE TABLE IF NOT EXISTS payroll_departments (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    code TEXT,
+    description TEXT,
+    parent_department_id TEXT,
+    head_employee_id TEXT,
+    cost_center_code TEXT,
+    budget_allocation REAL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_by TEXT,
+    updated_by TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (parent_department_id) REFERENCES payroll_departments(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_payroll_departments_tenant ON payroll_departments(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_departments_parent ON payroll_departments(parent_department_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_departments_active ON payroll_departments(tenant_id, is_active);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payroll_departments_name_unique ON payroll_departments(tenant_id, name);
+
+-- Payroll Grade Levels table
+CREATE TABLE IF NOT EXISTS payroll_grades (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    min_salary REAL NOT NULL DEFAULT 0,
+    max_salary REAL NOT NULL DEFAULT 0,
+    created_by TEXT,
+    updated_by TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_payroll_grades_tenant ON payroll_grades(tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payroll_grades_name_unique ON payroll_grades(tenant_id, name);
+
+-- Payroll Employees table
+CREATE TABLE IF NOT EXISTS payroll_employees (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    name TEXT NOT NULL,
+    email TEXT,
+    phone TEXT,
+    address TEXT,
+    photo TEXT,
+    employee_code TEXT,
+    designation TEXT NOT NULL,
+    department TEXT NOT NULL,
+    department_id TEXT,
+    grade TEXT,
+    status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'RESIGNED', 'TERMINATED', 'ON_LEAVE')),
+    joining_date TEXT NOT NULL,
+    termination_date TEXT,
+    salary TEXT NOT NULL DEFAULT '{"basic": 0, "allowances": [], "deductions": []}',
+    adjustments TEXT DEFAULT '[]',
+    projects TEXT DEFAULT '[]',
+    created_by TEXT NOT NULL,
+    updated_by TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (department_id) REFERENCES payroll_departments(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_payroll_employees_tenant ON payroll_employees(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_employees_status ON payroll_employees(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_payroll_employees_department ON payroll_employees(tenant_id, department);
+CREATE INDEX IF NOT EXISTS idx_payroll_employees_department_id ON payroll_employees(department_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_employees_code ON payroll_employees(tenant_id, employee_code);
+
+-- Payroll Runs table
+CREATE TABLE IF NOT EXISTS payroll_runs (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    month TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    period_start TEXT,
+    period_end TEXT,
+    status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PROCESSING', 'APPROVED', 'PAID', 'CANCELLED')),
+    total_amount REAL DEFAULT 0,
+    employee_count INTEGER DEFAULT 0,
+    created_by TEXT NOT NULL,
+    updated_by TEXT,
+    approved_by TEXT,
+    approved_at TEXT,
+    paid_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_payroll_runs_tenant ON payroll_runs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_runs_status ON payroll_runs(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_payroll_runs_period ON payroll_runs(tenant_id, year, month);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payroll_runs_unique ON payroll_runs(tenant_id, month, year);
+
+-- Payslips table
+CREATE TABLE IF NOT EXISTS payslips (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    payroll_run_id TEXT NOT NULL,
+    employee_id TEXT NOT NULL,
+    basic_pay REAL NOT NULL DEFAULT 0,
+    total_allowances REAL NOT NULL DEFAULT 0,
+    total_deductions REAL NOT NULL DEFAULT 0,
+    total_adjustments REAL NOT NULL DEFAULT 0,
+    gross_pay REAL NOT NULL DEFAULT 0,
+    net_pay REAL NOT NULL DEFAULT 0,
+    allowance_details TEXT DEFAULT '[]',
+    deduction_details TEXT DEFAULT '[]',
+    adjustment_details TEXT DEFAULT '[]',
+    is_paid INTEGER DEFAULT 0,
+    paid_at TEXT,
+    transaction_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (payroll_run_id) REFERENCES payroll_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (employee_id) REFERENCES payroll_employees(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_payslips_tenant ON payslips(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_payslips_run ON payslips(payroll_run_id);
+CREATE INDEX IF NOT EXISTS idx_payslips_employee ON payslips(employee_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payslips_unique ON payslips(payroll_run_id, employee_id);
+
+-- Payroll Salary Components table
+CREATE TABLE IF NOT EXISTS payroll_salary_components (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('ALLOWANCE', 'DEDUCTION')),
+    is_percentage INTEGER DEFAULT 0,
+    default_value REAL DEFAULT 0,
+    is_taxable INTEGER DEFAULT 1,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_payroll_components_tenant ON payroll_salary_components(tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payroll_components_unique ON payroll_salary_components(tenant_id, name, type);
 `;

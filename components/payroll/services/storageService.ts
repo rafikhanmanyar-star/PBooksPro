@@ -68,15 +68,15 @@ const DEFAULT_GRADE_LEVELS: GradeLevel[] = [
   { id: 'grade-6', tenant_id: '', name: 'G6', description: 'Manager', min_salary: 300000, max_salary: 500000 }
 ];
 
-// Default departments
+// Default departments with enhanced structure
 const DEFAULT_DEPARTMENTS: Department[] = [
-  { id: 'dept-1', tenant_id: '', name: 'Engineering', description: 'Software development and technical operations', is_active: true },
-  { id: 'dept-2', tenant_id: '', name: 'Product', description: 'Product management and design', is_active: true },
-  { id: 'dept-3', tenant_id: '', name: 'Sales', description: 'Sales and business development', is_active: true },
-  { id: 'dept-4', tenant_id: '', name: 'Human Resources', description: 'HR and people operations', is_active: true },
-  { id: 'dept-5', tenant_id: '', name: 'Operations', description: 'Business operations and administration', is_active: true },
-  { id: 'dept-6', tenant_id: '', name: 'Finance', description: 'Finance and accounting', is_active: true },
-  { id: 'dept-7', tenant_id: '', name: 'Marketing', description: 'Marketing and communications', is_active: true }
+  { id: 'dept-1', tenant_id: '', name: 'Engineering', code: 'ENG', description: 'Software development and technical operations', is_active: true, budget_allocation: 0 },
+  { id: 'dept-2', tenant_id: '', name: 'Product', code: 'PRD', description: 'Product management and design', is_active: true, budget_allocation: 0 },
+  { id: 'dept-3', tenant_id: '', name: 'Sales', code: 'SLS', description: 'Sales and business development', is_active: true, budget_allocation: 0 },
+  { id: 'dept-4', tenant_id: '', name: 'Human Resources', code: 'HR', description: 'HR and people operations', is_active: true, budget_allocation: 0 },
+  { id: 'dept-5', tenant_id: '', name: 'Operations', code: 'OPS', description: 'Business operations and administration', is_active: true, budget_allocation: 0 },
+  { id: 'dept-6', tenant_id: '', name: 'Finance', code: 'FIN', description: 'Finance and accounting', is_active: true, budget_allocation: 0 },
+  { id: 'dept-7', tenant_id: '', name: 'Marketing', code: 'MKT', description: 'Marketing and communications', is_active: true, budget_allocation: 0 }
 ];
 
 // Mock employees for demo

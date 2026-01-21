@@ -248,7 +248,7 @@ const PaymentHistory: React.FC = () => {
               ) : (
                 <tr>
                   <td colSpan={6} className="px-8 py-20 text-center text-slate-400 font-medium">
-                    {searchTerm || filterYear !== 'All' 
+                    {historySearchTerm || historyFilterYear !== 'All' 
                       ? 'No matching payment records found.'
                       : 'No completed payment cycles yet.'}
                   </td>

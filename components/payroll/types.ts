@@ -65,12 +65,43 @@ export interface Department {
   id: string;
   tenant_id: string;
   name: string;
+  code?: string;                      // Short code for department (e.g., 'ENG', 'HR', 'FIN')
   description?: string;
+  parent_department_id?: string;      // For hierarchical organization structure
+  parent_department_name?: string;    // Populated from join
+  head_employee_id?: string;          // Department head reference
+  cost_center_code?: string;          // For accounting integration
+  budget_allocation?: number;         // Department budget
   is_active: boolean;
+  employee_count?: number;            // Computed field from API
   created_by?: string;
   updated_by?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+// Department with employees (for detail view)
+export interface DepartmentWithEmployees extends Department {
+  employees: {
+    id: string;
+    name: string;
+    email?: string;
+    designation: string;
+    grade?: string;
+    status: EmploymentStatus;
+    photo?: string;
+  }[];
+}
+
+// Department statistics for reporting
+export interface DepartmentStats {
+  id: string;
+  name: string;
+  code?: string;
+  total_employees: number;
+  active_employees: number;
+  total_basic_salary: number;
+  budget_allocation: number;
 }
 
 // ==================== GRADE LEVELS ====================
@@ -139,7 +170,10 @@ export interface PayrollEmployee {
   // Employment Info
   employee_code?: string;
   designation: string;
-  department: string;
+  department: string;             // Department name (for backward compatibility)
+  department_id?: string;         // Foreign key to payroll_departments table
+  department_name?: string;       // Populated from join (convenience field)
+  department_code?: string;       // Populated from join (convenience field)
   grade: string;
   status: EmploymentStatus;
   joining_date: string;
@@ -238,7 +272,8 @@ export interface PayrollEmployeeCreateRequest {
   phone?: string;
   address?: string;
   designation: string;
-  department: string;
+  department: string;              // Department name (backward compatibility)
+  department_id?: string;          // Department ID (for normalized structure)
   grade: string;
   joining_date: string;
   salary: SalaryStructure;
@@ -312,7 +347,10 @@ export function normalizeEmployee(emp: any): PayrollEmployee {
     photo: emp.photo,
     employee_code: emp.employee_code || emp.employeeCode,
     designation: emp.designation,
-    department: emp.department,
+    department: emp.department || emp.department_name || '',
+    department_id: emp.department_id || emp.departmentId,
+    department_name: emp.department_name || emp.departmentName,
+    department_code: emp.department_code || emp.departmentCode,
     grade: emp.grade,
     status: emp.status,
     joining_date: emp.joining_date || emp.joiningDate,
@@ -337,6 +375,28 @@ export function normalizeEmployee(emp: any): PayrollEmployee {
     updated_by: emp.updated_by || emp.updatedBy,
     created_at: emp.created_at || emp.createdAt,
     updated_at: emp.updated_at || emp.updatedAt
+  };
+}
+
+// Helper to normalize department data
+export function normalizeDepartment(dept: any): Department {
+  return {
+    id: dept.id,
+    tenant_id: dept.tenant_id || dept.tenantId || '',
+    name: dept.name,
+    code: dept.code,
+    description: dept.description,
+    parent_department_id: dept.parent_department_id || dept.parentDepartmentId,
+    parent_department_name: dept.parent_department_name || dept.parentDepartmentName,
+    head_employee_id: dept.head_employee_id || dept.headEmployeeId,
+    cost_center_code: dept.cost_center_code || dept.costCenterCode,
+    budget_allocation: dept.budget_allocation ?? dept.budgetAllocation ?? 0,
+    is_active: dept.is_active ?? dept.isActive ?? true,
+    employee_count: dept.employee_count ?? dept.employeeCount ?? 0,
+    created_by: dept.created_by || dept.createdBy,
+    updated_by: dept.updated_by || dept.updatedBy,
+    created_at: dept.created_at || dept.createdAt,
+    updated_at: dept.updated_at || dept.updatedAt
   };
 }
 
