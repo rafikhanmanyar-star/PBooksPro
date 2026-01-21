@@ -17,6 +17,7 @@ import ComboBox from '../ui/ComboBox';
 import Card from '../ui/Card';
 import { ICONS } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
+import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
 
 // Amenity Configuration Modal Component
 const AmenityConfigModal: React.FC<{
@@ -199,6 +200,7 @@ const AmenityConfigModal: React.FC<{
 const MarketingPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { showToast, showAlert, showConfirm } = useNotification();
+    const entityFormModal = useEntityFormModal();
     
     const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
     const [showForm, setShowForm] = useState(false);
@@ -382,9 +384,82 @@ const MarketingPage: React.FC = () => {
         }).filter(Boolean) as InstallmentPlanAmenity[];
     };
 
+    const normalizeMoney = (value: number) => Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
+
+    const normalizeDiscounts = (list: { id: string; name: string; amount: number; categoryId?: string }[]) => {
+        return [...list]
+            .map(d => ({
+                id: d.id,
+                name: d.name.trim(),
+                amount: normalizeMoney(d.amount),
+                categoryId: d.categoryId || ''
+            }))
+            .sort((a, b) => a.id.localeCompare(b.id));
+    };
+
+    const normalizeAmenities = (list: InstallmentPlanAmenity[]) => {
+        return [...list]
+            .map(a => ({
+                amenityId: a.amenityId,
+                amenityName: a.amenityName.trim(),
+                calculatedAmount: normalizeMoney(a.calculatedAmount)
+            }))
+            .sort((a, b) => a.amenityId.localeCompare(b.amenityId));
+    };
+
+    const isPlanUnchanged = (plan: InstallmentPlan) => {
+        const currentSnapshot = {
+            leadId,
+            projectId,
+            unitId,
+            durationYears: parseFloat(durationYears) || 0,
+            downPaymentPercentage: parseFloat(downPaymentPercentage) || 0,
+            frequency,
+            listPrice: normalizeMoney(parseFloat(listPrice) || 0),
+            discounts: normalizeDiscounts(discounts),
+            description: description.trim(),
+            introText: introText.trim(),
+            selectedAmenities: normalizeAmenities(buildSelectedAmenities()),
+            amenitiesTotal: normalizeMoney(amenitiesTotal)
+        };
+
+        const planSnapshot = {
+            leadId: plan.leadId,
+            projectId: plan.projectId,
+            unitId: plan.unitId,
+            durationYears: plan.durationYears,
+            downPaymentPercentage: plan.downPaymentPercentage,
+            frequency: plan.frequency,
+            listPrice: normalizeMoney(plan.listPrice),
+            discounts: normalizeDiscounts(plan.discounts || []),
+            description: (plan.description || '').trim(),
+            introText: (plan.introText || '').trim(),
+            selectedAmenities: normalizeAmenities(plan.selectedAmenities || []),
+            amenitiesTotal: normalizeMoney(plan.amenitiesTotal || 0)
+        };
+
+        return JSON.stringify(currentSnapshot) === JSON.stringify(planSnapshot);
+    };
+
     const handleSave = (isLocked: boolean = false) => {
         if (!leadId || !projectId || !unitId) {
             showAlert('Please fill all required fields');
+            return;
+        }
+
+        const existingPlan = selectedPlanId
+            ? (state.installmentPlans || []).find(p => p.id === selectedPlanId)
+            : null;
+
+        if (isLocked && existingPlan && isPlanUnchanged(existingPlan)) {
+            const updatedPlan: InstallmentPlan = {
+                ...existingPlan,
+                status: 'Locked',
+                updatedAt: new Date().toISOString()
+            };
+            dispatch({ type: 'UPDATE_INSTALLMENT_PLAN', payload: updatedPlan });
+            showToast('Plan approved and locked');
+            resetForm();
             return;
         }
 
@@ -736,15 +811,20 @@ const MarketingPage: React.FC = () => {
                                                 />
                                             </div>
                                             <div className="flex-1">
-                                                <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Category</label>
-                                                <select 
-                                                    value={newDiscountCategoryId}
-                                                    onChange={e => setNewDiscountCategoryId(e.target.value)}
-                                                    className="w-full px-1.5 py-1 bg-white border border-slate-200 rounded text-[10px] text-slate-600 focus:ring-1 focus:ring-indigo-500 outline-none h-9"
-                                                >
-                                                    <option value="">Link Category...</option>
-                                                    {expenseCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-                                                </select>
+                                                <ComboBox
+                                                    label="Category"
+                                                    items={expenseCategories}
+                                                    selectedId={newDiscountCategoryId}
+                                                    onSelect={item => setNewDiscountCategoryId(item?.id || '')}
+                                                    placeholder="Search or add category..."
+                                                    entityType="category"
+                                                    onAddNew={(entityType, name) => {
+                                                        entityFormModal.openForm('category', name, undefined, TransactionType.EXPENSE, (newId) => {
+                                                            setNewDiscountCategoryId(newId);
+                                                        });
+                                                    }}
+                                                    compact
+                                                />
                                             </div>
                                         </div>
                                         <Button 
@@ -1115,6 +1195,15 @@ const MarketingPage: React.FC = () => {
                 amenities={state.planAmenities || []}
                 onSave={handleSaveAmenity}
                 onDelete={handleDeleteAmenity}
+            />
+            <EntityFormModal
+                isOpen={entityFormModal.isFormOpen}
+                formType={entityFormModal.formType}
+                initialName={entityFormModal.initialName}
+                contactType={entityFormModal.contactType}
+                categoryType={entityFormModal.categoryType}
+                onClose={entityFormModal.closeForm}
+                onSubmit={entityFormModal.handleSubmit}
             />
         </div>
     );
