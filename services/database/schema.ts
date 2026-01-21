@@ -273,6 +273,19 @@ CREATE TABLE IF NOT EXISTS quotations (
     FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE SET NULL
 );
 
+-- Plan Amenities table (configurable amenities for installment plans)
+CREATE TABLE IF NOT EXISTS plan_amenities (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT,
+    name TEXT NOT NULL,
+    price REAL NOT NULL DEFAULT 0,
+    is_percentage INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    description TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Installment Plans table
 CREATE TABLE IF NOT EXISTS installment_plans (
     id TEXT PRIMARY KEY,
@@ -294,6 +307,14 @@ CREATE TABLE IF NOT EXISTS installment_plans (
     installment_amount REAL NOT NULL,
     total_installments INTEGER NOT NULL,
     description TEXT,
+    -- Discount category mappings
+    customer_discount_category_id TEXT,
+    floor_discount_category_id TEXT,
+    lump_sum_discount_category_id TEXT,
+    misc_discount_category_id TEXT,
+    -- Selected amenities (JSON string)
+    selected_amenities TEXT DEFAULT '[]',
+    amenities_total REAL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,

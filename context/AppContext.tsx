@@ -246,6 +246,7 @@ const initialState: AppState = {
     invoiceHtmlTemplate: DEFAULT_INVOICE_TEMPLATE,
     dashboardConfig: { visibleKpis: [] },
     installmentPlans: [],
+    planAmenities: [],
     agreementSettings: { prefix: 'AGR-', nextNumber: 1, padding: 4 },
     projectAgreementSettings: { prefix: 'P-AGR-', nextNumber: 1, padding: 4 },
     rentalInvoiceSettings: { prefix: 'INV-', nextNumber: 1, padding: 5 },
@@ -880,6 +881,12 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, installmentPlans: state.installmentPlans.map(p => p.id === action.payload.id ? action.payload : p) };
         case 'DELETE_INSTALLMENT_PLAN':
             return { ...state, installmentPlans: state.installmentPlans.filter(p => p.id !== action.payload) };
+        case 'ADD_PLAN_AMENITY':
+            return { ...state, planAmenities: [...(state.planAmenities || []), action.payload] };
+        case 'UPDATE_PLAN_AMENITY':
+            return { ...state, planAmenities: (state.planAmenities || []).map(a => a.id === action.payload.id ? action.payload : a) };
+        case 'DELETE_PLAN_AMENITY':
+            return { ...state, planAmenities: (state.planAmenities || []).filter(a => a.id !== action.payload) };
         case 'UPDATE_PM_COST_PERCENTAGE':
             return { ...state, pmCostPercentage: action.payload };
         case 'UPDATE_DEFAULT_PROJECT':

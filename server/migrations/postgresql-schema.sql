@@ -430,6 +430,23 @@ CREATE TABLE IF NOT EXISTS project_agreements (
     UNIQUE(tenant_id, agreement_number)
 );
 
+-- Plan Amenities table (configurable amenities for installment plans)
+CREATE TABLE IF NOT EXISTS plan_amenities (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    price DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    is_percentage BOOLEAN NOT NULL DEFAULT FALSE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    description TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_plan_amenities_tenant ON plan_amenities(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_plan_amenities_active ON plan_amenities(tenant_id, is_active);
+
 -- Installment Plans table
 CREATE TABLE IF NOT EXISTS installment_plans (
     id TEXT PRIMARY KEY,
@@ -451,6 +468,14 @@ CREATE TABLE IF NOT EXISTS installment_plans (
     installment_amount DECIMAL(15, 2) NOT NULL,
     total_installments INTEGER NOT NULL,
     description TEXT,
+    -- Discount category mappings (links to expense categories)
+    customer_discount_category_id TEXT,
+    floor_discount_category_id TEXT,
+    lump_sum_discount_category_id TEXT,
+    misc_discount_category_id TEXT,
+    -- Selected amenities
+    selected_amenities JSONB DEFAULT '[]'::jsonb,
+    amenities_total DECIMAL(15, 2) DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,

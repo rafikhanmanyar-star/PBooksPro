@@ -239,8 +239,33 @@ export interface InstallmentPlan {
   installmentAmount: number;
   totalInstallments: number;
   description?: string;
+  // Discount category mappings (links to expense categories from chart of accounts)
+  customerDiscountCategoryId?: string;
+  floorDiscountCategoryId?: string;
+  lumpSumDiscountCategoryId?: string;
+  miscDiscountCategoryId?: string;
+  // Selected amenities with their calculated amounts
+  selectedAmenities?: InstallmentPlanAmenity[];
+  amenitiesTotal?: number;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface PlanAmenity {
+  id: string;
+  name: string;
+  price: number;
+  isPercentage: boolean; // If true, price is % of list price; if false, it's a fixed amount
+  isActive: boolean;
+  description?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface InstallmentPlanAmenity {
+  amenityId: string;
+  amenityName: string;
+  calculatedAmount: number; // The actual amount applied (fixed or calculated from percentage)
 }
 
 export interface PMConfig {
@@ -632,6 +657,7 @@ export interface AppState {
   dashboardConfig: DashboardConfig;
   invoiceHtmlTemplate?: string;
   installmentPlans: InstallmentPlan[]; // Per owner per project installment plans
+  planAmenities: PlanAmenity[]; // Configurable amenities that can be added to plans
 
   showSystemTransactions: boolean;
   enableColorCoding: boolean;
@@ -735,6 +761,9 @@ export type AppAction =
   | { type: 'ADD_INSTALLMENT_PLAN'; payload: InstallmentPlan }
   | { type: 'UPDATE_INSTALLMENT_PLAN'; payload: InstallmentPlan }
   | { type: 'DELETE_INSTALLMENT_PLAN'; payload: string }
+  | { type: 'ADD_PLAN_AMENITY'; payload: PlanAmenity }
+  | { type: 'UPDATE_PLAN_AMENITY'; payload: PlanAmenity }
+  | { type: 'DELETE_PLAN_AMENITY'; payload: string }
   | { type: 'UPDATE_PM_COST_PERCENTAGE'; payload: number }
   | { type: 'UPDATE_DEFAULT_PROJECT'; payload: string | undefined }
   | { type: 'UPDATE_DOCUMENT_STORAGE_PATH'; payload: string | undefined }

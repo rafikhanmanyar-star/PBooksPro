@@ -17,6 +17,7 @@ import { UnitsApiRepository } from './repositories/unitsApi';
 import { InvoicesApiRepository } from './repositories/invoicesApi';
 import { BillsApiRepository } from './repositories/billsApi';
 import { BudgetsApiRepository } from './repositories/budgetsApi';
+import { PlanAmenitiesApiRepository } from './repositories/planAmenitiesApi';
 import { RentalAgreementsApiRepository } from './repositories/rentalAgreementsApi';
 import { ProjectAgreementsApiRepository } from './repositories/projectAgreementsApi';
 import { ContractsApiRepository } from './repositories/contractsApi';
@@ -41,6 +42,7 @@ export class AppStateApiService {
   private invoicesRepo: InvoicesApiRepository;
   private billsRepo: BillsApiRepository;
   private budgetsRepo: BudgetsApiRepository;
+  private planAmenitiesRepo: PlanAmenitiesApiRepository;
   private rentalAgreementsRepo: RentalAgreementsApiRepository;
   private projectAgreementsRepo: ProjectAgreementsApiRepository;
   private contractsRepo: ContractsApiRepository;
@@ -64,6 +66,7 @@ export class AppStateApiService {
     this.invoicesRepo = new InvoicesApiRepository();
     this.billsRepo = new BillsApiRepository();
     this.budgetsRepo = new BudgetsApiRepository();
+    this.planAmenitiesRepo = new PlanAmenitiesApiRepository();
     this.rentalAgreementsRepo = new RentalAgreementsApiRepository();
     this.projectAgreementsRepo = new ProjectAgreementsApiRepository();
     this.contractsRepo = new ContractsApiRepository();
@@ -97,6 +100,7 @@ export class AppStateApiService {
         invoices,
         bills,
         budgets,
+        planAmenities,
         rentalAgreements,
         projectAgreements,
         contracts,
@@ -151,6 +155,10 @@ export class AppStateApiService {
           console.error('Error loading budgets from API:', err);
           return [];
         }),
+        this.planAmenitiesRepo.findAll().catch(err => {
+          console.error('Error loading plan amenities from API:', err);
+          return [];
+        }),
         this.rentalAgreementsRepo.findAll().catch(err => {
           console.error('Error loading rental agreements from API:', err);
           return [];
@@ -201,6 +209,7 @@ export class AppStateApiService {
         invoices: invoices.length,
         bills: bills.length,
         budgets: budgets.length,
+        planAmenities: planAmenities.length,
         rentalAgreements: rentalAgreements.length,
         projectAgreements: projectAgreements.length,
         contracts: contracts.length,
@@ -590,6 +599,7 @@ export class AppStateApiService {
         invoices: normalizedInvoices,
         bills: normalizedBills,
         budgets: normalizedBudgets,
+        planAmenities: planAmenities || [],
         rentalAgreements: normalizedRentalAgreements,
         projectAgreements: normalizedProjectAgreements,
         contracts: normalizedContracts,

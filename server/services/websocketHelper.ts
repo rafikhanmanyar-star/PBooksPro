@@ -152,5 +152,15 @@ export const WS_EVENTS = {
   P2P_BILL_CREATED: 'p2p_bill:created',
   P2P_BILL_UPDATED: 'p2p_bill:updated',
   DATA_UPDATED: 'data:updated', // Generic event for any data update
+  
+  // Plan Amenities
+  PLAN_AMENITY_CREATED: 'plan_amenity:created',
+  PLAN_AMENITY_UPDATED: 'plan_amenity:updated',
+  PLAN_AMENITY_DELETED: 'plan_amenity:deleted',
+  
+  // Installment Plans
+  INSTALLMENT_PLAN_CREATED: 'installment_plan:created',
+  INSTALLMENT_PLAN_UPDATED: 'installment_plan:updated',
+  INSTALLMENT_PLAN_DELETED: 'installment_plan:deleted',
 } as const;
 

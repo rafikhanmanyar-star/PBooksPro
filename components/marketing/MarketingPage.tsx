@@ -6,7 +6,10 @@ import {
     Unit, 
     InstallmentPlan, 
     InstallmentFrequency,
-    Contact
+    Contact,
+    PlanAmenity,
+    InstallmentPlanAmenity,
+    TransactionType
 } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -15,12 +18,191 @@ import Card from '../ui/Card';
 import { ICONS } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
 
+// Amenity Configuration Modal Component
+const AmenityConfigModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    amenities: PlanAmenity[];
+    onSave: (amenity: Partial<PlanAmenity>) => void;
+    onDelete: (id: string) => void;
+}> = ({ isOpen, onClose, amenities, onSave, onDelete }) => {
+    const [editingAmenity, setEditingAmenity] = useState<Partial<PlanAmenity> | null>(null);
+    const [name, setName] = useState('');
+    const [price, setPrice] = useState('0');
+    const [isPercentage, setIsPercentage] = useState(false);
+    const [description, setDescription] = useState('');
+    const { showConfirm, showToast } = useNotification();
+
+    const resetForm = () => {
+        setEditingAmenity(null);
+        setName('');
+        setPrice('0');
+        setIsPercentage(false);
+        setDescription('');
+    };
+
+    const handleEdit = (amenity: PlanAmenity) => {
+        setEditingAmenity(amenity);
+        setName(amenity.name);
+        setPrice(amenity.price.toString());
+        setIsPercentage(amenity.isPercentage);
+        setDescription(amenity.description || '');
+    };
+
+    const handleSubmit = () => {
+        if (!name.trim()) {
+            showToast('Please enter amenity name');
+            return;
+        }
+        onSave({
+            id: editingAmenity?.id,
+            name: name.trim(),
+            price: parseFloat(price) || 0,
+            isPercentage,
+            isActive: true,
+            description: description.trim() || undefined
+        });
+        resetForm();
+    };
+
+    const handleDelete = async (id: string) => {
+        const confirmed = await showConfirm('Are you sure you want to delete this amenity?');
+        if (confirmed) {
+            onDelete(id);
+        }
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+                <div className="flex items-center justify-between p-4 border-b border-slate-200">
+                    <h2 className="text-lg font-bold text-slate-800">Configure Amenities</h2>
+                    <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
+                        <div className="w-5 h-5">{ICONS.x}</div>
+                    </button>
+                </div>
+
+                <div className="flex-1 overflow-auto p-4 space-y-4">
+                    {/* Add/Edit Form */}
+                    <Card className="p-4 bg-slate-50">
+                        <h3 className="text-sm font-bold text-slate-700 mb-3">
+                            {editingAmenity ? 'Edit Amenity' : 'Add New Amenity'}
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <Input 
+                                label="Amenity Name" 
+                                value={name} 
+                                onChange={e => setName(e.target.value)} 
+                                placeholder="e.g., Parking Space"
+                                required
+                            />
+                            <div className="space-y-1">
+                                <label className="text-sm font-medium text-slate-600">Price Type</label>
+                                <div className="flex items-center gap-4 py-2">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input 
+                                            type="radio" 
+                                            checked={!isPercentage} 
+                                            onChange={() => setIsPercentage(false)}
+                                            className="w-4 h-4 text-indigo-600"
+                                        />
+                                        <span className="text-sm text-slate-700">Fixed Amount</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input 
+                                            type="radio" 
+                                            checked={isPercentage} 
+                                            onChange={() => setIsPercentage(true)}
+                                            className="w-4 h-4 text-indigo-600"
+                                        />
+                                        <span className="text-sm text-slate-700">% of List Price</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <Input 
+                                label={isPercentage ? "Percentage (%)" : "Price"} 
+                                type="number" 
+                                value={price} 
+                                onChange={e => setPrice(e.target.value)}
+                            />
+                            <Input 
+                                label="Description (Optional)" 
+                                value={description} 
+                                onChange={e => setDescription(e.target.value)} 
+                                placeholder="Optional description"
+                            />
+                        </div>
+                        <div className="flex gap-2 mt-4">
+                            <Button onClick={handleSubmit}>
+                                {editingAmenity ? 'Update' : 'Add Amenity'}
+                            </Button>
+                            {editingAmenity && (
+                                <Button variant="ghost" onClick={resetForm}>Cancel</Button>
+                            )}
+                        </div>
+                    </Card>
+
+                    {/* Amenities List */}
+                    <div className="space-y-2">
+                        <h3 className="text-sm font-bold text-slate-700">Configured Amenities</h3>
+                        {amenities.length === 0 ? (
+                            <p className="text-sm text-slate-500 py-4 text-center">No amenities configured yet. Add one above.</p>
+                        ) : (
+                            <div className="space-y-2">
+                                {amenities.map(amenity => (
+                                    <div 
+                                        key={amenity.id} 
+                                        className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-lg hover:border-indigo-300 transition-colors"
+                                    >
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-medium text-slate-900">{amenity.name}</span>
+                                                <span className={`text-xs px-2 py-0.5 rounded ${amenity.isPercentage ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                                                    {amenity.isPercentage ? `${amenity.price}%` : amenity.price.toLocaleString()}
+                                                </span>
+                                            </div>
+                                            {amenity.description && (
+                                                <p className="text-xs text-slate-500 mt-1">{amenity.description}</p>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <button 
+                                                onClick={() => handleEdit(amenity)}
+                                                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                                            >
+                                                <div className="w-4 h-4">{ICONS.edit}</div>
+                                            </button>
+                                            <button 
+                                                onClick={() => handleDelete(amenity.id)}
+                                                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
+                                            >
+                                                <div className="w-4 h-4">{ICONS.trash}</div>
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="p-4 border-t border-slate-200">
+                    <Button variant="ghost" onClick={onClose} className="w-full">Close</Button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const MarketingPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { showToast, showAlert, showConfirm } = useNotification();
     
     const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
     const [showForm, setShowForm] = useState(false);
+    const [showConfigModal, setShowConfigModal] = useState(false);
 
     // Form State
     const [leadId, setLeadId] = useState('');
@@ -38,6 +220,27 @@ const MarketingPage: React.FC = () => {
     const [lumpSumDiscount, setLumpSumDiscount] = useState('0');
     const [miscDiscount, setMiscDiscount] = useState('0');
 
+    // Discount Category IDs (link to expense categories)
+    const [customerDiscountCategoryId, setCustomerDiscountCategoryId] = useState('');
+    const [floorDiscountCategoryId, setFloorDiscountCategoryId] = useState('');
+    const [lumpSumDiscountCategoryId, setLumpSumDiscountCategoryId] = useState('');
+    const [miscDiscountCategoryId, setMiscDiscountCategoryId] = useState('');
+
+    // Selected Amenities
+    const [selectedAmenityIds, setSelectedAmenityIds] = useState<string[]>([]);
+
+    // Get expense categories for discount mapping
+    const expenseCategories = useMemo(() => 
+        state.categories.filter(c => c.type === TransactionType.EXPENSE),
+        [state.categories]
+    );
+
+    // Get active amenities
+    const activeAmenities = useMemo(() => 
+        (state.planAmenities || []).filter(a => a.isActive),
+        [state.planAmenities]
+    );
+
     // Filtered Leads
     const leads = useMemo(() => state.contacts.filter(c => c.type === ContactType.LEAD), [state.contacts]);
     
@@ -47,7 +250,20 @@ const MarketingPage: React.FC = () => {
         return state.units.filter(u => u.projectId === projectId);
     }, [projectId, state.units]);
 
-    // Calculations
+    // Calculate amenities total
+    const amenitiesTotal = useMemo(() => {
+        const lp = parseFloat(listPrice) || 0;
+        return selectedAmenityIds.reduce((total, amenityId) => {
+            const amenity = activeAmenities.find(a => a.id === amenityId);
+            if (!amenity) return total;
+            if (amenity.isPercentage) {
+                return total + (lp * amenity.price / 100);
+            }
+            return total + amenity.price;
+        }, 0);
+    }, [selectedAmenityIds, activeAmenities, listPrice]);
+
+    // Calculations (now includes amenities)
     const calculations = useMemo(() => {
         const lp = parseFloat(listPrice) || 0;
         const cd = parseFloat(customerDiscount) || 0;
@@ -55,7 +271,9 @@ const MarketingPage: React.FC = () => {
         const lsd = parseFloat(lumpSumDiscount) || 0;
         const md = parseFloat(miscDiscount) || 0;
         
-        const netValue = lp - cd - fd - lsd - md;
+        // Add amenities to list price, then subtract discounts
+        const priceWithAmenities = lp + amenitiesTotal;
+        const netValue = priceWithAmenities - cd - fd - lsd - md;
         const dpPercent = parseFloat(downPaymentPercentage) || 0;
         const dpAmount = netValue * (dpPercent / 100);
         const remaining = netValue - dpAmount;
@@ -73,9 +291,10 @@ const MarketingPage: React.FC = () => {
             remaining,
             totalInstallments,
             installmentAmount,
-            freqMonths
+            freqMonths,
+            priceWithAmenities
         };
-    }, [listPrice, customerDiscount, floorDiscount, lumpSumDiscount, miscDiscount, downPaymentPercentage, durationYears, frequency]);
+    }, [listPrice, customerDiscount, floorDiscount, lumpSumDiscount, miscDiscount, downPaymentPercentage, durationYears, frequency, amenitiesTotal]);
 
     // Installment Schedule
     const schedule = useMemo(() => {
@@ -105,6 +324,23 @@ const MarketingPage: React.FC = () => {
         }
     }, [unitId, state.units]);
 
+    // Build selected amenities array for saving
+    const buildSelectedAmenities = (): InstallmentPlanAmenity[] => {
+        const lp = parseFloat(listPrice) || 0;
+        return selectedAmenityIds.map(amenityId => {
+            const amenity = activeAmenities.find(a => a.id === amenityId);
+            if (!amenity) return null;
+            const calculatedAmount = amenity.isPercentage 
+                ? (lp * amenity.price / 100)
+                : amenity.price;
+            return {
+                amenityId: amenity.id,
+                amenityName: amenity.name,
+                calculatedAmount
+            };
+        }).filter(Boolean) as InstallmentPlanAmenity[];
+    };
+
     const handleSave = () => {
         if (!leadId || !projectId || !unitId) {
             showAlert('Please fill all required fields');
@@ -129,6 +365,13 @@ const MarketingPage: React.FC = () => {
             installmentAmount: calculations.installmentAmount,
             totalInstallments: calculations.totalInstallments,
             description,
+            // New fields
+            customerDiscountCategoryId: customerDiscountCategoryId || undefined,
+            floorDiscountCategoryId: floorDiscountCategoryId || undefined,
+            lumpSumDiscountCategoryId: lumpSumDiscountCategoryId || undefined,
+            miscDiscountCategoryId: miscDiscountCategoryId || undefined,
+            selectedAmenities: buildSelectedAmenities(),
+            amenitiesTotal,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };
@@ -157,6 +400,11 @@ const MarketingPage: React.FC = () => {
         setFloorDiscount('0');
         setLumpSumDiscount('0');
         setMiscDiscount('0');
+        setCustomerDiscountCategoryId('');
+        setFloorDiscountCategoryId('');
+        setLumpSumDiscountCategoryId('');
+        setMiscDiscountCategoryId('');
+        setSelectedAmenityIds([]);
         setSelectedPlanId(null);
         setShowForm(false);
     };
@@ -175,6 +423,12 @@ const MarketingPage: React.FC = () => {
         setLumpSumDiscount(plan.lumpSumDiscount.toString());
         setMiscDiscount(plan.miscDiscount.toString());
         setDescription(plan.description || '');
+        // Load new fields
+        setCustomerDiscountCategoryId(plan.customerDiscountCategoryId || '');
+        setFloorDiscountCategoryId(plan.floorDiscountCategoryId || '');
+        setLumpSumDiscountCategoryId(plan.lumpSumDiscountCategoryId || '');
+        setMiscDiscountCategoryId(plan.miscDiscountCategoryId || '');
+        setSelectedAmenityIds((plan.selectedAmenities || []).map(a => a.amenityId));
         setShowForm(true);
     };
 
@@ -186,18 +440,59 @@ const MarketingPage: React.FC = () => {
         }
     };
 
+    // Amenity handlers
+    const handleSaveAmenity = (amenity: Partial<PlanAmenity>) => {
+        if (amenity.id) {
+            dispatch({ type: 'UPDATE_PLAN_AMENITY', payload: amenity as PlanAmenity });
+            showToast('Amenity updated');
+        } else {
+            const newAmenity: PlanAmenity = {
+                ...amenity,
+                id: `amenity_${Date.now()}`,
+                isActive: true,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            } as PlanAmenity;
+            dispatch({ type: 'ADD_PLAN_AMENITY', payload: newAmenity });
+            showToast('Amenity added');
+        }
+    };
+
+    const handleDeleteAmenity = (id: string) => {
+        dispatch({ type: 'DELETE_PLAN_AMENITY', payload: id });
+        showToast('Amenity deleted');
+    };
+
+    const toggleAmenity = (amenityId: string) => {
+        setSelectedAmenityIds(prev => 
+            prev.includes(amenityId) 
+                ? prev.filter(id => id !== amenityId)
+                : [...prev, amenityId]
+        );
+    };
+
     return (
         <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
             <div className="flex items-center justify-between p-4 bg-white border-b border-slate-200">
                 <h1 className="text-xl font-bold text-slate-800">Installment Plans (Marketing)</h1>
-                <Button 
-                    variant="primary" 
-                    onClick={() => { resetForm(); setShowForm(true); }}
-                    className="flex items-center gap-2"
-                >
-                    <div className="w-4 h-4">{ICONS.plus}</div>
-                    New Plan
-                </Button>
+                <div className="flex items-center gap-2">
+                    <Button 
+                        variant="secondary" 
+                        onClick={() => setShowConfigModal(true)}
+                        className="flex items-center gap-2"
+                    >
+                        <div className="w-4 h-4">{ICONS.settings}</div>
+                        Configuration
+                    </Button>
+                    <Button 
+                        variant="primary" 
+                        onClick={() => { resetForm(); setShowForm(true); }}
+                        className="flex items-center gap-2"
+                    >
+                        <div className="w-4 h-4">{ICONS.plus}</div>
+                        New Plan
+                    </Button>
+                </div>
             </div>
 
             <div className="flex-1 overflow-auto p-4">
@@ -269,41 +564,186 @@ const MarketingPage: React.FC = () => {
                                     />
                                 </div>
 
-                                {/* Pricing */}
+                                {/* Pricing & Discounts */}
                                 <div className="space-y-4">
                                     <h3 className="font-bold text-slate-700 border-b pb-2">Pricing & Discounts</h3>
                                     <Input label="List Price" type="number" value={listPrice} onChange={e => setListPrice(e.target.value)} />
-                                    <Input label="Customer Discount" type="number" value={customerDiscount} onChange={e => setCustomerDiscount(e.target.value)} />
-                                    <Input label="Floor Discount" type="number" value={floorDiscount} onChange={e => setFloorDiscount(e.target.value)} />
-                                    <Input label="Lump Sum Discount" type="number" value={lumpSumDiscount} onChange={e => setLumpSumDiscount(e.target.value)} />
-                                    <Input label="Misc. Discount" type="number" value={miscDiscount} onChange={e => setMiscDiscount(e.target.value)} />
-                                </div>
-
-                                {/* Summary */}
-                                <div className="space-y-4 bg-indigo-50/50 p-4 rounded-lg border border-indigo-100">
-                                    <h3 className="font-bold text-indigo-900 border-b border-indigo-200 pb-2">Plan Summary</h3>
-                                    <div className="space-y-2 text-sm">
-                                        <div className="flex justify-between">
-                                            <span className="text-slate-600">Net Value:</span>
-                                            <span className="font-bold text-slate-900">{calculations.netValue.toLocaleString()}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-slate-600">Down Payment ({downPaymentPercentage}%):</span>
-                                            <span className="font-bold text-indigo-700">{calculations.dpAmount.toLocaleString()}</span>
-                                        </div>
-                                        <div className="flex justify-between border-t border-indigo-200 pt-2">
-                                            <span className="text-slate-600">Financed Amount:</span>
-                                            <span className="font-bold text-slate-900">{calculations.remaining.toLocaleString()}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-slate-600">Installments:</span>
-                                            <span className="font-bold text-slate-900">{calculations.totalInstallments} x {calculations.installmentAmount.toLocaleString()}</span>
+                                    
+                                    {/* Customer Discount with Category */}
+                                    <div className="space-y-1">
+                                        <div className="flex gap-2">
+                                            <div className="flex-1">
+                                                <Input label="Customer Discount" type="number" value={customerDiscount} onChange={e => setCustomerDiscount(e.target.value)} />
+                                            </div>
+                                            <div className="w-32">
+                                                <label className="text-xs font-medium text-slate-500 block mb-1">Category</label>
+                                                <select 
+                                                    value={customerDiscountCategoryId}
+                                                    onChange={e => setCustomerDiscountCategoryId(e.target.value)}
+                                                    className="w-full px-2 py-2 bg-white border border-slate-300 rounded-md text-xs"
+                                                >
+                                                    <option value="">None</option>
+                                                    {expenseCategories.map(cat => (
+                                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div className="pt-4">
-                                        <Button className="w-full" onClick={handleSave}>
-                                            {selectedPlanId ? 'Update Plan' : 'Save Plan'}
-                                        </Button>
+
+                                    {/* Floor Discount with Category */}
+                                    <div className="space-y-1">
+                                        <div className="flex gap-2">
+                                            <div className="flex-1">
+                                                <Input label="Floor Discount" type="number" value={floorDiscount} onChange={e => setFloorDiscount(e.target.value)} />
+                                            </div>
+                                            <div className="w-32">
+                                                <label className="text-xs font-medium text-slate-500 block mb-1">Category</label>
+                                                <select 
+                                                    value={floorDiscountCategoryId}
+                                                    onChange={e => setFloorDiscountCategoryId(e.target.value)}
+                                                    className="w-full px-2 py-2 bg-white border border-slate-300 rounded-md text-xs"
+                                                >
+                                                    <option value="">None</option>
+                                                    {expenseCategories.map(cat => (
+                                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Lump Sum Discount with Category */}
+                                    <div className="space-y-1">
+                                        <div className="flex gap-2">
+                                            <div className="flex-1">
+                                                <Input label="Lump Sum Discount" type="number" value={lumpSumDiscount} onChange={e => setLumpSumDiscount(e.target.value)} />
+                                            </div>
+                                            <div className="w-32">
+                                                <label className="text-xs font-medium text-slate-500 block mb-1">Category</label>
+                                                <select 
+                                                    value={lumpSumDiscountCategoryId}
+                                                    onChange={e => setLumpSumDiscountCategoryId(e.target.value)}
+                                                    className="w-full px-2 py-2 bg-white border border-slate-300 rounded-md text-xs"
+                                                >
+                                                    <option value="">None</option>
+                                                    {expenseCategories.map(cat => (
+                                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Misc Discount with Category */}
+                                    <div className="space-y-1">
+                                        <div className="flex gap-2">
+                                            <div className="flex-1">
+                                                <Input label="Misc. Discount" type="number" value={miscDiscount} onChange={e => setMiscDiscount(e.target.value)} />
+                                            </div>
+                                            <div className="w-32">
+                                                <label className="text-xs font-medium text-slate-500 block mb-1">Category</label>
+                                                <select 
+                                                    value={miscDiscountCategoryId}
+                                                    onChange={e => setMiscDiscountCategoryId(e.target.value)}
+                                                    className="w-full px-2 py-2 bg-white border border-slate-300 rounded-md text-xs"
+                                                >
+                                                    <option value="">None</option>
+                                                    {expenseCategories.map(cat => (
+                                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Summary & Amenities */}
+                                <div className="space-y-4">
+                                    {/* Amenities Selection */}
+                                    {activeAmenities.length > 0 && (
+                                        <div className="bg-purple-50/50 p-4 rounded-lg border border-purple-100">
+                                            <h3 className="font-bold text-purple-900 border-b border-purple-200 pb-2 mb-3">Select Amenities</h3>
+                                            <div className="space-y-2 max-h-32 overflow-y-auto">
+                                                {activeAmenities.map(amenity => {
+                                                    const isSelected = selectedAmenityIds.includes(amenity.id);
+                                                    const lp = parseFloat(listPrice) || 0;
+                                                    const calculatedAmount = amenity.isPercentage 
+                                                        ? (lp * amenity.price / 100)
+                                                        : amenity.price;
+                                                    return (
+                                                        <label 
+                                                            key={amenity.id} 
+                                                            className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                                                                isSelected ? 'bg-purple-100 border border-purple-300' : 'bg-white border border-slate-200 hover:border-purple-300'
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-center gap-2">
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    checked={isSelected}
+                                                                    onChange={() => toggleAmenity(amenity.id)}
+                                                                    className="w-4 h-4 text-purple-600 rounded"
+                                                                />
+                                                                <span className="text-sm font-medium text-slate-800">{amenity.name}</span>
+                                                                <span className="text-xs text-slate-500">
+                                                                    ({amenity.isPercentage ? `${amenity.price}%` : amenity.price.toLocaleString()})
+                                                                </span>
+                                                            </div>
+                                                            {isSelected && (
+                                                                <span className="text-sm font-bold text-purple-700">
+                                                                    +{calculatedAmount.toLocaleString()}
+                                                                </span>
+                                                            )}
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                            {amenitiesTotal > 0 && (
+                                                <div className="flex justify-between pt-2 mt-2 border-t border-purple-200 text-sm">
+                                                    <span className="font-medium text-purple-800">Amenities Total:</span>
+                                                    <span className="font-bold text-purple-900">+{amenitiesTotal.toLocaleString()}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Plan Summary */}
+                                    <div className="bg-indigo-50/50 p-4 rounded-lg border border-indigo-100">
+                                        <h3 className="font-bold text-indigo-900 border-b border-indigo-200 pb-2">Plan Summary</h3>
+                                        <div className="space-y-2 text-sm mt-3">
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-600">List Price:</span>
+                                                <span className="font-medium text-slate-900">{parseFloat(listPrice).toLocaleString()}</span>
+                                            </div>
+                                            {amenitiesTotal > 0 && (
+                                                <div className="flex justify-between text-purple-700">
+                                                    <span>+ Amenities:</span>
+                                                    <span className="font-medium">+{amenitiesTotal.toLocaleString()}</span>
+                                                </div>
+                                            )}
+                                            <div className="flex justify-between border-t border-indigo-200 pt-2">
+                                                <span className="text-slate-600">Net Value:</span>
+                                                <span className="font-bold text-slate-900">{calculations.netValue.toLocaleString()}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-600">Down Payment ({downPaymentPercentage}%):</span>
+                                                <span className="font-bold text-indigo-700">{calculations.dpAmount.toLocaleString()}</span>
+                                            </div>
+                                            <div className="flex justify-between border-t border-indigo-200 pt-2">
+                                                <span className="text-slate-600">Financed Amount:</span>
+                                                <span className="font-bold text-slate-900">{calculations.remaining.toLocaleString()}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-600">Installments:</span>
+                                                <span className="font-bold text-slate-900">{calculations.totalInstallments} x {calculations.installmentAmount.toLocaleString()}</span>
+                                            </div>
+                                        </div>
+                                        <div className="pt-4">
+                                            <Button className="w-full" onClick={handleSave}>
+                                                {selectedPlanId ? 'Update Plan' : 'Save Plan'}
+                                            </Button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -377,6 +817,17 @@ const MarketingPage: React.FC = () => {
                                                 <p className="font-bold text-slate-800">{plan.installmentAmount?.toLocaleString()}</p>
                                             </div>
                                         </div>
+
+                                        {/* Show amenities if any */}
+                                        {plan.selectedAmenities && plan.selectedAmenities.length > 0 && (
+                                            <div className="mt-2 flex flex-wrap gap-1">
+                                                {plan.selectedAmenities.map(a => (
+                                                    <span key={a.amenityId} className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">
+                                                        {a.amenityName}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
                                         
                                         <div className="mt-4 flex justify-between items-center text-xs text-slate-500">
                                             <span>{plan.durationYears} Years | {plan.frequency}</span>
@@ -406,6 +857,15 @@ const MarketingPage: React.FC = () => {
                     </div>
                 )}
             </div>
+
+            {/* Amenity Configuration Modal */}
+            <AmenityConfigModal 
+                isOpen={showConfigModal}
+                onClose={() => setShowConfigModal(false)}
+                amenities={state.planAmenities || []}
+                onSave={handleSaveAmenity}
+                onDelete={handleDeleteAmenity}
+            />
         </div>
     );
 };
