@@ -191,7 +191,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
         {
             title: 'Operations',
             items: [
-                { page: 'businessTransactions', label: 'Business transactions', icon: ICONS.trendingUp },
                 { page: 'projectManagement', label: 'Projects', icon: ICONS.archive },
                 { page: 'rentalManagement', label: 'Rentals', icon: ICONS.building },
                 { page: 'vendorDirectory', label: 'Vendors', icon: ICONS.briefcase },
