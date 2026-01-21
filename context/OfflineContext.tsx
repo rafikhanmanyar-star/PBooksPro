@@ -63,6 +63,52 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [isAuthenticated, user?.tenant?.id, syncQueue]);
 
   /**
+   * Force connection check
+   */
+  const forceCheck = useCallback(async (): Promise<ConnectionStatus> => {
+    const status = await monitor.forceCheck();
+    setConnectionStatus(status);
+    return status;
+  }, [monitor]);
+
+  /**
+   * Start sync process
+   */
+  const startSync = useCallback(async () => {
+    if (!isAuthenticated || !user?.tenant?.id) {
+      console.warn('⚠️ Cannot sync: User not authenticated');
+      return;
+    }
+
+    if (connectionStatus !== 'online') {
+      console.warn('⚠️ Cannot sync: Device is offline');
+      return;
+    }
+
+    if (isSyncing) {
+      console.warn('⚠️ Sync already in progress');
+      return;
+    }
+
+    const currentPending = await syncQueue.getPendingCount(user.tenant.id);
+    setPendingCount(currentPending);
+
+    if (currentPending === 0) {
+      console.log('✅ No pending items to sync');
+      return;
+    }
+
+    try {
+      setIsSyncing(true);
+      await syncEngine.start(user.tenant.id);
+    } catch (error) {
+      console.error('❌ Sync failed:', error);
+      setIsSyncing(false);
+      setSyncProgress(null);
+    }
+  }, [isAuthenticated, user?.tenant?.id, connectionStatus, isSyncing, syncEngine, syncQueue]);
+
+  /**
    * Initialize connection monitor
    */
   useEffect(() => {
@@ -114,52 +160,6 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
       unsubscribeComplete();
     };
   }, [syncEngine, loadQueueCounts]);
-
-  /**
-   * Force connection check
-   */
-  const forceCheck = useCallback(async (): Promise<ConnectionStatus> => {
-    const status = await monitor.forceCheck();
-    setConnectionStatus(status);
-    return status;
-  }, [monitor]);
-
-  /**
-   * Start sync process
-   */
-  const startSync = useCallback(async () => {
-    if (!isAuthenticated || !user?.tenant?.id) {
-      console.warn('⚠️ Cannot sync: User not authenticated');
-      return;
-    }
-
-    if (connectionStatus !== 'online') {
-      console.warn('⚠️ Cannot sync: Device is offline');
-      return;
-    }
-
-    if (isSyncing) {
-      console.warn('⚠️ Sync already in progress');
-      return;
-    }
-
-    const currentPending = await syncQueue.getPendingCount(user.tenant.id);
-    setPendingCount(currentPending);
-
-    if (currentPending === 0) {
-      console.log('✅ No pending items to sync');
-      return;
-    }
-
-    try {
-      setIsSyncing(true);
-      await syncEngine.start(user.tenant.id);
-    } catch (error) {
-      console.error('❌ Sync failed:', error);
-      setIsSyncing(false);
-      setSyncProgress(null);
-    }
-  }, [isAuthenticated, user?.tenant?.id, connectionStatus, isSyncing, syncEngine, syncQueue]);
 
   /**
    * Auto-sync on queue changes while online
