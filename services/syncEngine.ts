@@ -22,8 +22,23 @@ class SyncEngine {
   private currentTenantId: string | null = null;
   private progressListeners: Set<SyncProgressListener> = new Set();
   private completeListeners: Set<SyncCompleteListener> = new Set();
-  private syncQueue = getSyncQueue();
-  private apiService = getAppStateApiService();
+  // Lazy initialization to avoid TDZ errors during module load
+  private _syncQueue: ReturnType<typeof getSyncQueue> | null = null;
+  private _apiService: ReturnType<typeof getAppStateApiService> | null = null;
+
+  private get syncQueue() {
+    if (!this._syncQueue) {
+      this._syncQueue = getSyncQueue();
+    }
+    return this._syncQueue;
+  }
+
+  private get apiService() {
+    if (!this._apiService) {
+      this._apiService = getAppStateApiService();
+    }
+    return this._apiService;
+  }
 
   /**
    * Start syncing queued operations for a tenant

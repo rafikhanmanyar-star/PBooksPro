@@ -224,5 +224,26 @@ class SettingsSyncService {
   }
 }
 
-// Export singleton instance
-export const settingsSyncService = new SettingsSyncService();
+// Lazy singleton instance - avoids TDZ errors during module initialization
+let settingsSyncServiceInstance: SettingsSyncService | null = null;
+
+export const settingsSyncService = {
+    get instance(): SettingsSyncService {
+        if (!settingsSyncServiceInstance) {
+            settingsSyncServiceInstance = new SettingsSyncService();
+        }
+        return settingsSyncServiceInstance;
+    },
+    async loadSettings(): Promise<SettingsToSync> {
+        return this.instance.loadSettings();
+    },
+    async saveSettings(settings: Partial<SettingsToSync>): Promise<void> {
+        return this.instance.saveSettings(settings);
+    },
+    async syncToCloud(settings: Partial<SettingsToSync>): Promise<void> {
+        return this.instance.syncToCloud(settings);
+    },
+    async syncFromCloud(): Promise<SettingsToSync> {
+        return this.instance.syncFromCloud();
+    }
+};

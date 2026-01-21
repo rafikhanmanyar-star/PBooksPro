@@ -29,9 +29,17 @@ class SyncManager {
   private queue: SyncOperation[] = [];
   private isSyncing = false;
   private syncInterval: number | null = null;
-  private connectionMonitor = getConnectionMonitor();
+  // Lazy initialization to avoid TDZ errors during module load
+  private _connectionMonitor: ReturnType<typeof getConnectionMonitor> | null = null;
   private maxRetries = 3;
   private retryDelay = 5000; // 5 seconds
+
+  private get connectionMonitor() {
+    if (!this._connectionMonitor) {
+      this._connectionMonitor = getConnectionMonitor();
+    }
+    return this._connectionMonitor;
+  }
 
   constructor() {
     // Load sync queue from local storage on initialization

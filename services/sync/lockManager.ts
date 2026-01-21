@@ -33,7 +33,15 @@ class LockManager {
   private localLocks: Map<string, RecordLock> = new Map();
   private lockTimeout = 5 * 60 * 1000; // 5 minutes
   private cleanupInterval: number | null = null;
-  private wsClient = getWebSocketClient();
+  // Lazy initialization to avoid TDZ errors during module load
+  private _wsClient: ReturnType<typeof getWebSocketClient> | null = null;
+
+  private get wsClient() {
+    if (!this._wsClient) {
+      this._wsClient = getWebSocketClient();
+    }
+    return this._wsClient;
+  }
 
   constructor() {
     // Load locks from local storage on initialization

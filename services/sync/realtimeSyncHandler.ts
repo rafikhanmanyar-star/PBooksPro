@@ -584,11 +584,26 @@ function getEntityNormalizer(entity: string): ((data: any) => any) | null {
 }
 
 class RealtimeSyncHandler {
-  private wsClient = getWebSocketClient();
-  private lockManager = getLockManager();
+  // Lazy initialization to avoid TDZ errors during module load
+  private _wsClient: ReturnType<typeof getWebSocketClient> | null = null;
+  private _lockManager: ReturnType<typeof getLockManager> | null = null;
   private isInitialized = false;
   private dispatchCallback: ((action: AppAction) => void) | null = null;
   private currentUserId: string | null = null;
+
+  private get wsClient() {
+    if (!this._wsClient) {
+      this._wsClient = getWebSocketClient();
+    }
+    return this._wsClient;
+  }
+
+  private get lockManager() {
+    if (!this._lockManager) {
+      this._lockManager = getLockManager();
+    }
+    return this._lockManager;
+  }
 
   /**
    * Set the dispatch callback from AppContext

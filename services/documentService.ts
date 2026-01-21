@@ -192,5 +192,26 @@ class DocumentService {
     }
 }
 
-export const documentService = new DocumentService();
+// Lazy singleton instance - avoids potential TDZ errors during module initialization
+let documentServiceInstance: DocumentService | null = null;
+
+export function getDocumentService(): DocumentService {
+    if (!documentServiceInstance) {
+        documentServiceInstance = new DocumentService();
+    }
+    return documentServiceInstance;
+}
+
+// Backward compatible export
+export const documentService = {
+    saveDocument: (...args: Parameters<DocumentService['saveDocument']>) => 
+        getDocumentService().saveDocument(...args),
+    getDocument: (...args: Parameters<DocumentService['getDocument']>) => 
+        getDocumentService().getDocument(...args),
+    deleteDocument: (...args: Parameters<DocumentService['deleteDocument']>) => 
+        getDocumentService().deleteDocument(...args),
+    getAllDocuments: () => getDocumentService().getAllDocuments(),
+    downloadDocument: (...args: Parameters<DocumentService['downloadDocument']>) => 
+        getDocumentService().downloadDocument(...args),
+};
 

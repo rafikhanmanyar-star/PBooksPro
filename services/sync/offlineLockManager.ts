@@ -21,9 +21,17 @@ export interface OfflineLock {
 
 class OfflineLockManager {
   private offlineLocks: Map<string, OfflineLock> = new Map();
-  private connectionMonitor = getConnectionMonitor();
+  // Lazy initialization to avoid TDZ errors during module load
+  private _connectionMonitor: ReturnType<typeof getConnectionMonitor> | null = null;
   private currentUserId: string | null = null;
   private currentTenantId: string | null = null;
+
+  private get connectionMonitor() {
+    if (!this._connectionMonitor) {
+      this._connectionMonitor = getConnectionMonitor();
+    }
+    return this._connectionMonitor;
+  }
 
   constructor() {
     // Load offline locks from local storage
