@@ -22,23 +22,8 @@ class SyncEngine {
   private currentTenantId: string | null = null;
   private progressListeners: Set<SyncProgressListener> = new Set();
   private completeListeners: Set<SyncCompleteListener> = new Set();
-  // Lazy initialization to avoid TDZ errors during module load
-  private _syncQueue: ReturnType<typeof getSyncQueue> | null = null;
-  private _apiService: ReturnType<typeof getAppStateApiService> | null = null;
-
-  private get syncQueue() {
-    if (!this._syncQueue) {
-      this._syncQueue = getSyncQueue();
-    }
-    return this._syncQueue;
-  }
-
-  private get apiService() {
-    if (!this._apiService) {
-      this._apiService = getAppStateApiService();
-    }
-    return this._apiService;
-  }
+  private syncQueue = getSyncQueue();
+  private apiService = getAppStateApiService();
 
   /**
    * Start syncing queued operations for a tenant
@@ -237,9 +222,6 @@ class SyncEngine {
         break;
       case 'document':
         await this.syncDocument(item);
-        break;
-      case 'setting':
-        await this.syncSetting(item);
         break;
       default:
         throw new Error(`Unknown sync type: ${item.type}`);
@@ -485,16 +467,6 @@ class SyncEngine {
         await this.apiService.deleteDocument(item.data.id);
         break;
     }
-  }
-
-  private async syncSetting(item: SyncQueueItem): Promise<void> {
-    const { key, value } = item.data || {};
-    if (!key) {
-      throw new Error('Missing setting key in sync item');
-    }
-
-    const { settingsSyncService } = await import('./settingsSyncService');
-    await settingsSyncService.saveSetting(key, value);
   }
 
   /**

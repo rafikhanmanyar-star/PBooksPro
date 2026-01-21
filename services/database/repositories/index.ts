@@ -441,15 +441,7 @@ export class ChatMessagesRepository extends BaseRepository<any> {
 }
 
 export class AppSettingsRepository {
-    // Lazy initialization to avoid TDZ errors during module load
-    private _db: ReturnType<typeof getDatabaseService> | null = null;
-    
-    private get db() {
-        if (!this._db) {
-            this._db = getDatabaseService();
-        }
-        return this._db;
-    }
+    private db = getDatabaseService();
 
     getSetting(key: string): any {
         const result = this.db.query<{ value: string }>(

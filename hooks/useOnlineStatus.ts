@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { getConnectionMonitor } from '../services/connection/connectionMonitor';
+import { getConnectionMonitor } from '../services/connectionMonitor';
 import { ConnectionStatus } from '../types/sync';
 
 export const useOnlineStatus = (): {

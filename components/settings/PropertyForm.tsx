@@ -10,7 +10,7 @@ import ContactForm from './ContactForm';
 import BuildingForm from './BuildingForm';
 import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
-// Note: useEntityFormModal removed to avoid circular dependency - using local modal pattern instead
+import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
 
 interface PropertyFormProps {
     onSubmit: (property: Omit<Property, 'id'>) => void;
@@ -25,6 +25,7 @@ interface PropertyFormProps {
 const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelete, propertyToEdit, contacts, buildings, properties }) => {
     const { state, dispatch } = useAppContext();
     const { showAlert } = useNotification();
+    const entityFormModal = useEntityFormModal();
     
     // Use ref to track the last property ID we initialized with
     // This prevents resetting the form when props change but we're still editing the same property
@@ -135,7 +136,11 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelet
                             onSelect={(item) => setOwnerId(item?.id || '')}
                             placeholder="Search or add new owner..."
                             entityType="contact"
-                            onAddNew={(entityType, name) => handleCreateNew('OWNER', name)}
+                            onAddNew={(entityType, name) => {
+                                entityFormModal.openForm('contact', name, ContactType.OWNER, undefined, (newId) => {
+                                    setOwnerId(newId);
+                                });
+                            }}
                         />
                         <ComboBox 
                             label="Building" 
@@ -144,7 +149,11 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelet
                             onSelect={(item) => setBuildingId(item?.id || '')}
                             placeholder="Search or add new building..."
                             entityType="building"
-                            onAddNew={(entityType, name) => handleCreateNew('BUILDING', name)}
+                            onAddNew={(entityType, name) => {
+                        entityFormModal.openForm('building', name, undefined, undefined, (newId) => {
+                            setBuildingId(newId);
+                        });
+                    }}
                         />
                     </div>
                     <Input 
@@ -188,6 +197,15 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelet
                     initialName={newItemName}
                 />
             </Modal>
+            <EntityFormModal
+                isOpen={entityFormModal.isFormOpen}
+                formType={entityFormModal.formType}
+                initialName={entityFormModal.initialName}
+                contactType={entityFormModal.contactType}
+                categoryType={entityFormModal.categoryType}
+                onClose={entityFormModal.closeForm}
+                onSubmit={entityFormModal.handleSubmit}
+            />
         </>
     );
 };

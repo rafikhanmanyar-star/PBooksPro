@@ -12,7 +12,7 @@ import packageJson from '../package.json';
 import { shouldSyncAction } from '../services/sync/dataFilter';
 import InitializationScreen from '../components/InitializationScreen';
 import { getSyncQueue } from '../services/syncQueue';
-import { getConnectionMonitor } from '../services/connection/connectionMonitor';
+import { getConnectionMonitor } from '../services/connectionMonitor';
 import { SyncOperationType } from '../types/sync';
 
 // Lazy import AppStateRepository to avoid initialization issues during module load
@@ -2255,34 +2255,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         return { type: 'sales_return', action: 'update', data: action.payload };
                     case 'DELETE_SALES_RETURN':
                         return { type: 'sales_return', action: 'delete', data: { id: action.payload } };
-                    case 'UPDATE_PRINT_SETTINGS':
-                        return { type: 'setting', action: 'update', data: { key: 'printSettings', value: action.payload } };
-                    case 'UPDATE_WHATSAPP_TEMPLATES':
-                        return { type: 'setting', action: 'update', data: { key: 'whatsAppTemplates', value: action.payload } };
-                    case 'UPDATE_DASHBOARD_CONFIG':
-                        return { type: 'setting', action: 'update', data: { key: 'dashboardConfig', value: action.payload } };
-                    case 'UPDATE_AGREEMENT_SETTINGS':
-                        return { type: 'setting', action: 'update', data: { key: 'agreementSettings', value: action.payload } };
-                    case 'UPDATE_PROJECT_AGREEMENT_SETTINGS':
-                        return { type: 'setting', action: 'update', data: { key: 'projectAgreementSettings', value: action.payload } };
-                    case 'UPDATE_RENTAL_INVOICE_SETTINGS':
-                        return { type: 'setting', action: 'update', data: { key: 'rentalInvoiceSettings', value: action.payload } };
-                    case 'UPDATE_PROJECT_INVOICE_SETTINGS':
-                        return { type: 'setting', action: 'update', data: { key: 'projectInvoiceSettings', value: action.payload } };
-                    case 'UPDATE_PM_COST_PERCENTAGE':
-                        return { type: 'setting', action: 'update', data: { key: 'pmCostPercentage', value: action.payload } };
-                    case 'TOGGLE_SYSTEM_TRANSACTIONS':
-                        return { type: 'setting', action: 'update', data: { key: 'showSystemTransactions', value: action.payload } };
-                    case 'TOGGLE_COLOR_CODING':
-                        return { type: 'setting', action: 'update', data: { key: 'enableColorCoding', value: action.payload } };
-                    case 'TOGGLE_BEEP_ON_SAVE':
-                        return { type: 'setting', action: 'update', data: { key: 'enableBeepOnSave', value: action.payload } };
-                    case 'TOGGLE_DATE_PRESERVATION':
-                        return { type: 'setting', action: 'update', data: { key: 'enableDatePreservation', value: action.payload } };
-                    case 'UPDATE_DEFAULT_PROJECT':
-                        return { type: 'setting', action: 'update', data: { key: 'defaultProjectId', value: action.payload } };
-                    case 'UPDATE_DOCUMENT_STORAGE_PATH':
-                        return { type: 'setting', action: 'update', data: { key: 'documentStoragePath', value: action.payload } };
                     default:
                         return null;
                 }

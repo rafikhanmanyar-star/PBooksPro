@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { ContactType, TransactionType } from '../types';
 import Modal from '../components/ui/Modal';

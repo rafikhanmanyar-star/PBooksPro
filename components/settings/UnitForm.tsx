@@ -4,11 +4,9 @@ import { Unit, Project, Contact, ContactType } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
-import Modal from '../ui/Modal';
-import ContactForm from './ContactForm';
 import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
-// Note: useEntityFormModal removed to avoid circular dependency - using local modal pattern instead
+import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
 
 interface UnitFormProps {
     onSubmit: (unit: Omit<Unit, 'id'>) => void;
@@ -18,17 +16,14 @@ interface UnitFormProps {
 }
 
 const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitToEdit }) => {
-    const { state, dispatch } = useAppContext();
+    const { state } = useAppContext();
     const { showAlert } = useNotification();
+    const entityFormModal = useEntityFormModal();
     const [name, setName] = useState(unitToEdit?.name || '');
     const [projectId, setProjectId] = useState(unitToEdit?.projectId || state.defaultProjectId || '');
     const [contactId, setContactId] = useState(unitToEdit?.contactId || '');
     const [salePrice, setSalePrice] = useState(unitToEdit?.salePrice?.toString() || '');
     const [nameError, setNameError] = useState('');
-    
-    // Local modal state for adding new contacts
-    const [showContactModal, setShowContactModal] = useState(false);
-    const [newContactName, setNewContactName] = useState('');
 
     // Include both Owners and Clients
     const owners = state.contacts.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
@@ -90,9 +85,10 @@ const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitT
                             onSelect={(item) => setContactId(item?.id || '')}
                             placeholder="Assign to an owner"
                             entityType="contact"
-                            onAddNew={(entityType, inputName) => {
-                                setNewContactName(inputName);
-                                setShowContactModal(true);
+                            onAddNew={(entityType, name) => {
+                                entityFormModal.openForm('contact', name, ContactType.OWNER, undefined, (newId) => {
+                                    setContactId(newId);
+                                });
                             }}
                         />
                     </div>
@@ -111,24 +107,15 @@ const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitT
                     </div>
                 </div>
             </form>
-            
-            {/* Local modal for adding new owner contact */}
-            <Modal isOpen={showContactModal} onClose={() => setShowContactModal(false)} title="Add New Owner">
-                <ContactForm 
-                    onSubmit={(data) => {
-                        const newId = Date.now().toString();
-                        const payload = { ...data, id: newId, type: ContactType.OWNER };
-                        dispatch({ type: 'ADD_CONTACT', payload });
-                        setContactId(newId);
-                        setShowContactModal(false);
-                        setNewContactName('');
-                    }} 
-                    onCancel={() => setShowContactModal(false)} 
-                    existingContacts={state.contacts}
-                    initialName={newContactName}
-                    fixedTypeForNew={ContactType.OWNER}
-                />
-            </Modal>
+            <EntityFormModal
+                isOpen={entityFormModal.isFormOpen}
+                formType={entityFormModal.formType}
+                initialName={entityFormModal.initialName}
+                contactType={entityFormModal.contactType}
+                categoryType={entityFormModal.categoryType}
+                onClose={entityFormModal.closeForm}
+                onSubmit={entityFormModal.handleSubmit}
+            />
         </>
     );
 };

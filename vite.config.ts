@@ -60,10 +60,6 @@ export default defineConfig({
   },
     // Handle CommonJS modules
     build: {
-      // Enable source maps for production debugging
-      // Set to 'hidden' to generate maps without linking in bundle (for error tracking services)
-      // Set to true for full source maps (larger bundle, easier debugging)
-      sourcemap: true,
       cssCodeSplit: false,
       commonjsOptions: {
         include: [/sql\.js/, /socket\.io-client/, /node_modules/],

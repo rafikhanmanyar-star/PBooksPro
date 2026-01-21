@@ -20,63 +20,32 @@ import {
 import { migrateTenantColumns } from '../tenantMigration';
 
 export class AppStateRepository {
+    private db = getDatabaseService();
     private static saveQueue: Promise<void> = Promise.resolve();
 
-    // Lazy initialization to avoid TDZ errors during module load
-    private _db: ReturnType<typeof getDatabaseService> | null = null;
-    private get db() {
-        if (!this._db) {
-            this._db = getDatabaseService();
-        }
-        return this._db;
-    }
-
-    // Lazy-initialized repositories to avoid TDZ errors
-    private _usersRepo: UsersRepository | null = null;
-    private _accountsRepo: AccountsRepository | null = null;
-    private _contactsRepo: ContactsRepository | null = null;
-    private _categoriesRepo: CategoriesRepository | null = null;
-    private _projectsRepo: ProjectsRepository | null = null;
-    private _buildingsRepo: BuildingsRepository | null = null;
-    private _propertiesRepo: PropertiesRepository | null = null;
-    private _unitsRepo: UnitsRepository | null = null;
-    private _transactionsRepo: TransactionsRepository | null = null;
-    private _invoicesRepo: InvoicesRepository | null = null;
-    private _billsRepo: BillsRepository | null = null;
-    private _budgetsRepo: BudgetsRepository | null = null;
-    private _rentalAgreementsRepo: RentalAgreementsRepository | null = null;
-    private _projectAgreementsRepo: ProjectAgreementsRepository | null = null;
-    private _contractsRepo: ContractsRepository | null = null;
-    private _recurringTemplatesRepo: RecurringTemplatesRepository | null = null;
-    private _transactionLogRepo: TransactionLogRepository | null = null;
-    private _errorLogRepo: ErrorLogRepository | null = null;
-    private _quotationsRepo: QuotationsRepository | null = null;
-    private _documentsRepo: DocumentsRepository | null = null;
-    private _pmCycleAllocationsRepo: PMCycleAllocationsRepository | null = null;
-    private _appSettingsRepo: AppSettingsRepository | null = null;
-
-    private get usersRepo() { return this._usersRepo || (this._usersRepo = new UsersRepository()); }
-    private get accountsRepo() { return this._accountsRepo || (this._accountsRepo = new AccountsRepository()); }
-    private get contactsRepo() { return this._contactsRepo || (this._contactsRepo = new ContactsRepository()); }
-    private get categoriesRepo() { return this._categoriesRepo || (this._categoriesRepo = new CategoriesRepository()); }
-    private get projectsRepo() { return this._projectsRepo || (this._projectsRepo = new ProjectsRepository()); }
-    private get buildingsRepo() { return this._buildingsRepo || (this._buildingsRepo = new BuildingsRepository()); }
-    private get propertiesRepo() { return this._propertiesRepo || (this._propertiesRepo = new PropertiesRepository()); }
-    private get unitsRepo() { return this._unitsRepo || (this._unitsRepo = new UnitsRepository()); }
-    private get transactionsRepo() { return this._transactionsRepo || (this._transactionsRepo = new TransactionsRepository()); }
-    private get invoicesRepo() { return this._invoicesRepo || (this._invoicesRepo = new InvoicesRepository()); }
-    private get billsRepo() { return this._billsRepo || (this._billsRepo = new BillsRepository()); }
-    private get budgetsRepo() { return this._budgetsRepo || (this._budgetsRepo = new BudgetsRepository()); }
-    private get rentalAgreementsRepo() { return this._rentalAgreementsRepo || (this._rentalAgreementsRepo = new RentalAgreementsRepository()); }
-    private get projectAgreementsRepo() { return this._projectAgreementsRepo || (this._projectAgreementsRepo = new ProjectAgreementsRepository()); }
-    private get contractsRepo() { return this._contractsRepo || (this._contractsRepo = new ContractsRepository()); }
-    private get recurringTemplatesRepo() { return this._recurringTemplatesRepo || (this._recurringTemplatesRepo = new RecurringTemplatesRepository()); }
-    private get transactionLogRepo() { return this._transactionLogRepo || (this._transactionLogRepo = new TransactionLogRepository()); }
-    private get errorLogRepo() { return this._errorLogRepo || (this._errorLogRepo = new ErrorLogRepository()); }
-    private get quotationsRepo() { return this._quotationsRepo || (this._quotationsRepo = new QuotationsRepository()); }
-    private get documentsRepo() { return this._documentsRepo || (this._documentsRepo = new DocumentsRepository()); }
-    private get pmCycleAllocationsRepo() { return this._pmCycleAllocationsRepo || (this._pmCycleAllocationsRepo = new PMCycleAllocationsRepository()); }
-    private get appSettingsRepo() { return this._appSettingsRepo || (this._appSettingsRepo = new AppSettingsRepository()); }
+    // Initialize all repositories
+    private usersRepo = new UsersRepository();
+    private accountsRepo = new AccountsRepository();
+    private contactsRepo = new ContactsRepository();
+    private categoriesRepo = new CategoriesRepository();
+    private projectsRepo = new ProjectsRepository();
+    private buildingsRepo = new BuildingsRepository();
+    private propertiesRepo = new PropertiesRepository();
+    private unitsRepo = new UnitsRepository();
+    private transactionsRepo = new TransactionsRepository();
+    private invoicesRepo = new InvoicesRepository();
+    private billsRepo = new BillsRepository();
+    private budgetsRepo = new BudgetsRepository();
+    private rentalAgreementsRepo = new RentalAgreementsRepository();
+    private projectAgreementsRepo = new ProjectAgreementsRepository();
+    private contractsRepo = new ContractsRepository();
+    private recurringTemplatesRepo = new RecurringTemplatesRepository();
+    private transactionLogRepo = new TransactionLogRepository();
+    private errorLogRepo = new ErrorLogRepository();
+    private quotationsRepo = new QuotationsRepository();
+    private documentsRepo = new DocumentsRepository();
+    private pmCycleAllocationsRepo = new PMCycleAllocationsRepository();
+    private appSettingsRepo = new AppSettingsRepository();
 
     /**
      * Load complete application state from database

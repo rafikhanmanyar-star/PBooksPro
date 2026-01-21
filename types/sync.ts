@@ -23,8 +23,7 @@ export type SyncOperationType =
   | 'account'
   | 'category'
   | 'recurring_invoice_template'
-  | 'pm_cycle_allocation'
-  | 'setting';
+  | 'pm_cycle_allocation';
 
 export type SyncAction = 'create' | 'update' | 'delete';
 

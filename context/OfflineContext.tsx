@@ -6,7 +6,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { getConnectionMonitor } from '../services/connection/connectionMonitor';
+import { getConnectionMonitor } from '../services/connectionMonitor';
 import { getSyncQueue } from '../services/syncQueue';
 import { getSyncEngine } from '../services/syncEngine';
 import { ConnectionStatus, SyncProgress } from '../types/sync';
@@ -75,14 +75,14 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
       setConnectionStatus(status);
 
       // Auto-sync when connection is restored
-      if (status === 'online') {
+      if (status === 'online' && pendingCount > 0 && !isSyncing) {
         console.log('🔄 Connection restored, starting auto-sync...');
         startSync();
       }
     });
 
     return unsubscribe;
-  }, [monitor, startSync]);
+  }, [monitor, pendingCount, isSyncing]);
 
   /**
    * Load queue counts on mount and when authentication changes
@@ -143,10 +143,7 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
       return;
     }
 
-    const currentPending = await syncQueue.getPendingCount(user.tenant.id);
-    setPendingCount(currentPending);
-
-    if (currentPending === 0) {
+    if (pendingCount === 0) {
       console.log('✅ No pending items to sync');
       return;
     }
@@ -159,53 +156,7 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
       setIsSyncing(false);
       setSyncProgress(null);
     }
-  }, [isAuthenticated, user?.tenant?.id, connectionStatus, isSyncing, syncEngine, syncQueue]);
-
-  /**
-   * Auto-sync on queue changes while online
-   */
-  useEffect(() => {
-    const handleQueueChange = () => {
-      loadQueueCounts();
-      if (monitor.getStatus() === 'online') {
-        startSync();
-      }
-    };
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener('sync-queue:change', handleQueueChange);
-    }
-
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('sync-queue:change', handleQueueChange);
-      }
-    };
-  }, [loadQueueCounts, monitor, startSync]);
-
-  /**
-   * Trigger sync when already online (e.g., after login)
-   */
-  useEffect(() => {
-    if (connectionStatus === 'online' && isAuthenticated && user?.tenant?.id) {
-      startSync();
-    }
-  }, [connectionStatus, isAuthenticated, user?.tenant?.id, startSync]);
-
-  /**
-   * Heartbeat: check for pending items while online
-   */
-  useEffect(() => {
-    if (connectionStatus !== 'online' || !isAuthenticated || !user?.tenant?.id) {
-      return;
-    }
-
-    const interval = window.setInterval(() => {
-      startSync();
-    }, 15000);
-
-    return () => clearInterval(interval);
-  }, [connectionStatus, isAuthenticated, user?.tenant?.id, startSync]);
+  }, [isAuthenticated, user?.tenant?.id, connectionStatus, isSyncing, pendingCount, syncEngine]);
 
   /**
    * Pause sync
