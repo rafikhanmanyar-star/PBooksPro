@@ -188,7 +188,7 @@ const PayrollHub: React.FC = () => {
                 setSelectedEmployee(null);
                 setIsAddingEmployee(false);
               }}
-              className={`flex items-center gap-1.5 sm:gap-2 py-3 sm:py-5 px-2 sm:px-1 border-b-2 font-black text-[10px] sm:text-[11px] uppercase tracking-wider sm:tracking-[0.15em] transition-all relative whitespace-nowrap ${
+              className={`flex items-center gap-1.5 sm:gap-2 py-3 sm:pt-[39px] sm:pb-[39px] px-2 sm:px-0 sm:my-[15px] sm:mx-[3px] border-b-2 font-black text-[10px] sm:text-[11px] uppercase tracking-wider sm:tracking-[0.15em] transition-all relative whitespace-nowrap ${
                 activeSubTab === tab.id 
                   ? 'border-blue-600 text-blue-600' 
                   : 'border-transparent text-slate-400 hover:text-slate-700'

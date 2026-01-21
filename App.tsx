@@ -39,27 +39,28 @@ import { OfflineProvider } from './context/OfflineContext';
 import SyncNotification from './components/ui/SyncNotification';
 import MobileOfflineWarning from './components/ui/MobileOfflineWarning';
 import WebSocketDebugPanel from './components/ui/WebSocketDebugPanel';
+import { lazyWithRetry } from './utils/lazyWithRetry';
 
 
 // Lazy Load Components
-const DashboardPage = React.lazy(() => import('./components/dashboard/DashboardPage'));
-const EnhancedLedgerPage = React.lazy(() => import('./components/transactions/EnhancedLedgerPage'));
-const SettingsPage = React.lazy(() => import('./components/settings/SettingsPage'));
-const ImportExportWizard = React.lazy(() => import('./components/settings/ImportExportWizard'));
-const RentalManagementPage = React.lazy(() => import('./components/rentalManagement/RentalManagementPage'));
-const ProjectManagementPage = React.lazy(() => import('./components/projectManagement/ProjectManagementPage'));
-const InvestmentManagementPage = React.lazy(() => import('./components/investmentManagement/InvestmentManagementPage'));
-const PMConfigPage = React.lazy(() => import('./components/pmConfig/PMConfigPage'));
-const LoanManagementPage = React.lazy(() => import('./components/loans/LoanManagementPage'));
-const VendorDirectoryPage = React.lazy(() => import('./components/vendors/VendorDirectoryPage'));
-const ContactsPage = React.lazy(() => import('./components/contacts/ContactsPage'));
-const BudgetManagement = React.lazy(() => import('./components/settings/BudgetManagement'));
-const MobilePaymentsPage = React.lazy(() => import('./components/mobile/MobilePaymentsPage'));
-const TasksPage = React.lazy(() => import('./components/tasks/TasksPage'));
-const TasksCalendarView = React.lazy(() => import('./components/tasks/TasksCalendarView'));
-const TeamRankingPage = React.lazy(() => import('./components/tasks/TeamRankingPage'));
-const BizPlanetPage = React.lazy(() => import('./components/bizPlanet/BizPlanetPage'));
-const PayrollHub = React.lazy(() => import('./components/payroll/PayrollHub'));
+const DashboardPage = lazyWithRetry(() => import('./components/dashboard/DashboardPage'));
+const EnhancedLedgerPage = lazyWithRetry(() => import('./components/transactions/EnhancedLedgerPage'));
+const SettingsPage = lazyWithRetry(() => import('./components/settings/SettingsPage'));
+const ImportExportWizard = lazyWithRetry(() => import('./components/settings/ImportExportWizard'));
+const RentalManagementPage = lazyWithRetry(() => import('./components/rentalManagement/RentalManagementPage'));
+const ProjectManagementPage = lazyWithRetry(() => import('./components/projectManagement/ProjectManagementPage'));
+const InvestmentManagementPage = lazyWithRetry(() => import('./components/investmentManagement/InvestmentManagementPage'));
+const PMConfigPage = lazyWithRetry(() => import('./components/pmConfig/PMConfigPage'));
+const LoanManagementPage = lazyWithRetry(() => import('./components/loans/LoanManagementPage'));
+const VendorDirectoryPage = lazyWithRetry(() => import('./components/vendors/VendorDirectoryPage'));
+const ContactsPage = lazyWithRetry(() => import('./components/contacts/ContactsPage'));
+const BudgetManagement = lazyWithRetry(() => import('./components/settings/BudgetManagement'));
+const MobilePaymentsPage = lazyWithRetry(() => import('./components/mobile/MobilePaymentsPage'));
+const TasksPage = lazyWithRetry(() => import('./components/tasks/TasksPage'));
+const TasksCalendarView = lazyWithRetry(() => import('./components/tasks/TasksCalendarView'));
+const TeamRankingPage = lazyWithRetry(() => import('./components/tasks/TeamRankingPage'));
+const BizPlanetPage = lazyWithRetry(() => import('./components/bizPlanet/BizPlanetPage'));
+const PayrollHub = lazyWithRetry(() => import('./components/payroll/PayrollHub'));
 
 // Define page groups to determine which component instance handles which routes
 const PAGE_GROUPS = {
