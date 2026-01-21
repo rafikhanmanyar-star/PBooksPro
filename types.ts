@@ -23,7 +23,8 @@ export type Page =
   | 'tasksCalendar'
   | 'teamRanking'
   | 'bizPlanet'
-  | 'payroll';
+  | 'payroll'
+  | 'inventory';
 
 export enum TransactionType {
   INCOME = 'Income',
@@ -819,6 +820,60 @@ export interface TaskPerformanceConfig {
   deadline_adherence_weight: number; // 0-1
   kpi_achievement_weight: number; // 0-1
   updated_at?: string;
+}
+
+// ============================================================================
+// SHOP/INVENTORY MANAGEMENT TYPES
+// ============================================================================
+
+export enum ShopBillStatus {
+  UNPAID = 'Unpaid',
+  PARTIALLY_PAID = 'Partially Paid',
+  PAID = 'Paid',
+}
+
+export interface ShopBillItem {
+  id: string;
+  categoryId: string;       // Links to expense category (inventory item type)
+  itemName: string;         // Display name for the item
+  quantity: number;
+  pricePerItem: number;
+  totalCost: number;        // quantity * pricePerItem
+}
+
+export interface ShopPurchaseBill {
+  id: string;
+  billNumber: string;
+  vendorId: string;         // Links to Contact (Vendor type)
+  billDate: string;         // ISO date string
+  dueDate?: string;         // Optional due date
+  items: ShopBillItem[];
+  totalAmount: number;      // Sum of all items
+  paidAmount: number;
+  status: ShopBillStatus;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ShopInventoryItem {
+  id: string;
+  categoryId: string;       // Links to expense category
+  itemName: string;
+  currentStock: number;
+  averageCost: number;      // Weighted average cost
+  lastPurchaseDate?: string;
+  lastPurchasePrice?: number;
+}
+
+export interface ShopPayment {
+  id: string;
+  billId: string;
+  accountId: string;        // Links to Account for payment
+  amount: number;
+  paymentDate: string;
+  transactionId?: string;   // Links to Transaction if created
+  description?: string;
 }
 
 // ============================================================================

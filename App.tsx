@@ -61,6 +61,7 @@ const TasksCalendarView = lazyWithRetry(() => import('./components/tasks/TasksCa
 const TeamRankingPage = lazyWithRetry(() => import('./components/tasks/TeamRankingPage'));
 const BizPlanetPage = lazyWithRetry(() => import('./components/bizPlanet/BizPlanetPage'));
 const PayrollHub = lazyWithRetry(() => import('./components/payroll/PayrollHub'));
+const InventoryPage = lazyWithRetry(() => import('./components/inventory/InventoryPage'));
 
 // Define page groups to determine which component instance handles which routes
 const PAGE_GROUPS = {
@@ -80,6 +81,7 @@ const PAGE_GROUPS = {
   IMPORT: ['import'],
   BIZ_PLANET: ['bizPlanet'],
   PAYROLL: ['payroll'],
+  INVENTORY: ['inventory'],
 };
 
 const App: React.FC = () => {
@@ -429,6 +431,7 @@ const App: React.FC = () => {
       case 'teamRanking': return 'Team Ranking';
       case 'bizPlanet': return 'Biz Planet';
       case 'payroll': return 'Payroll Management';
+      case 'inventory': return 'Inventory';
       default: return 'PBooks Pro';
     }
   };
@@ -557,6 +560,7 @@ const App: React.FC = () => {
               {renderPersistentPage('PM_CONFIG', <PMConfigPage />)}
               {renderPersistentPage('BIZ_PLANET', <BizPlanetPage />)}
               {renderPersistentPage('PAYROLL', <PayrollHub />)}
+              {renderPersistentPage('INVENTORY', <InventoryPage />)}
               {currentPage === 'tasks' && (
                 <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-center"><div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-2"></div><p className="text-sm text-gray-600">Loading...</p></div></div>}>
                   <TasksPage />

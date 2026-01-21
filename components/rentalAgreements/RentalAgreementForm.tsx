@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
-import { RentalAgreement, ContactType, RentalAgreementStatus, Invoice, InvoiceStatus, InvoiceType, RecurringInvoiceTemplate } from '../../types';
+import { RentalAgreement, ContactType, RentalAgreementStatus, Invoice, InvoiceStatus, InvoiceType, RecurringInvoiceTemplate, InvoiceStatus as InvStatus } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
@@ -128,6 +128,17 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     const existingInvoices = useMemo(() => 
         agreementToEdit ? state.invoices.filter(i => i.agreementId === agreementToEdit.id) : []
     , [agreementToEdit, state.invoices]);
+
+    // Check for open invoices (unpaid, partially paid, or overdue) against this agreement
+    const openInvoices = useMemo(() => {
+        if (!agreementToEdit) return [];
+        return state.invoices.filter(inv => 
+            inv.agreementId === agreementToEdit.id && 
+            inv.status !== InvoiceStatus.PAID
+        );
+    }, [agreementToEdit, state.invoices]);
+
+    const hasOpenInvoices = openInvoices.length > 0;
 
     useEffect(() => {
         if (renewMode) {
@@ -328,6 +339,15 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
 
         // RENEWAL LOGIC
         if (renewMode && agreementToEdit) {
+            
+            // Check for open invoices before allowing renewal
+            if (hasOpenInvoices) {
+                await showAlert(
+                    `Cannot renew this agreement.\n\nThere are ${openInvoices.length} open invoice(s) against this agreement. Please ensure all invoices are fully paid before renewing.`,
+                    { title: 'Open Invoices Found' }
+                );
+                return;
+            }
             
             // 1. STOP PREVIOUS RECURRING TEMPLATES
             const activeOldTemplates = state.recurringInvoiceTemplates.filter(t => t.agreementId === agreementToEdit.id && t.active);
@@ -641,13 +661,55 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                             <Button type="button" size="sm" onClick={onTerminateRequest} className="bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200">
                                 End Agreement
                             </Button>
-                            <Button type="button" size="sm" onClick={() => setRenewMode(true)} className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200">
+                            <Button 
+                                type="button" 
+                                size="sm" 
+                                onClick={async () => {
+                                    if (hasOpenInvoices) {
+                                        await showAlert(
+                                            `Cannot renew this agreement.\n\nThere are ${openInvoices.length} open invoice(s) against this agreement. Please ensure all invoices are fully paid before renewing.`,
+                                            { title: 'Open Invoices Found' }
+                                        );
+                                        return;
+                                    }
+                                    setRenewMode(true);
+                                }} 
+                                className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200"
+                            >
                                 Renew
                             </Button>
                         </>
                     )}
                 </div>
             </div>
+
+            {/* Open Invoices Warning - Show when there are unpaid invoices */}
+            {agreementToEdit && hasOpenInvoices && !renewMode && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <div>
+                            <h4 className="text-sm font-bold text-amber-800 flex items-center gap-2">
+                                <div className="w-4 h-4">{ICONS.alertTriangle}</div> Open Invoices
+                            </h4>
+                            <p className="text-xs text-amber-600 mt-1">
+                                This agreement has <span className="font-bold">{openInvoices.length}</span> unpaid invoice(s). 
+                                Termination and renewal are blocked until all invoices are paid.
+                            </p>
+                            <div className="mt-2 space-y-1">
+                                {openInvoices.slice(0, 3).map(inv => (
+                                    <div key={inv.id} className="text-xs text-amber-700 flex justify-between gap-4">
+                                        <span>{inv.invoiceNumber}</span>
+                                        <span className="font-medium">{CURRENCY} {(inv.amount - inv.paidAmount).toLocaleString()} due</span>
+                                    </div>
+                                ))}
+                                {openInvoices.length > 3 && (
+                                    <div className="text-xs text-amber-500 italic">...and {openInvoices.length - 3} more</div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {agreementToEdit && existingInvoices.length === 0 && !renewMode && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">

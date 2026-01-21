@@ -194,6 +194,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 { page: 'projectManagement', label: 'Projects', icon: ICONS.archive },
                 { page: 'rentalManagement', label: 'Rentals', icon: ICONS.building },
                 { page: 'vendorDirectory', label: 'Vendors', icon: ICONS.briefcase },
+                { page: 'inventory', label: 'My Shop', icon: ICONS.package },
                 ...(isAdmin ? [{ page: 'investmentManagement', label: 'Inv. Cycle', icon: ICONS.dollarSign }] : []),
                 { page: 'pmConfig', label: 'PM Cycle', icon: ICONS.filter },
             ]

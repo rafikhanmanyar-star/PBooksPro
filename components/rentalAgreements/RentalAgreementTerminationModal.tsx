@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { RentalAgreement, RentalAgreementStatus, TransactionType, AccountType } from '../../types';
+import { RentalAgreement, RentalAgreementStatus, TransactionType, AccountType, InvoiceStatus } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
@@ -8,7 +8,7 @@ import Input from '../ui/Input';
 import Select from '../ui/Select';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
-import { CURRENCY } from '../../constants';
+import { CURRENCY, ICONS } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
 
 interface RentalAgreementTerminationModalProps {
@@ -33,6 +33,17 @@ const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalP
     // Filter for Bank Accounts (exclude Internal Clearing)
     const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
 
+    // Check for open invoices against this agreement
+    const openInvoices = useMemo(() => {
+        if (!agreement) return [];
+        return state.invoices.filter(inv => 
+            inv.agreementId === agreement.id && 
+            inv.status !== InvoiceStatus.PAID
+        );
+    }, [agreement, state.invoices]);
+
+    const hasOpenInvoices = openInvoices.length > 0;
+
     useEffect(() => {
         if (isOpen && agreement) {
             setEndDate(new Date().toISOString().split('T')[0]);
@@ -55,6 +66,15 @@ const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalP
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!agreement) return;
+
+        // Block if there are open invoices
+        if (hasOpenInvoices) {
+            await showAlert(
+                `Cannot terminate this agreement.\n\nThere are ${openInvoices.length} open invoice(s) against this agreement. Please ensure all invoices are fully paid before terminating.`,
+                { title: 'Open Invoices Found' }
+            );
+            return;
+        }
 
         // Check for active recurring templates
         const activeTemplates = state.recurringInvoiceTemplates.filter(t => t.agreementId === agreement.id && t.active);
@@ -139,6 +159,35 @@ const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalP
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`End Agreement #${agreement.agreementNumber}`}>
             <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Open Invoices Warning */}
+                {hasOpenInvoices && (
+                    <div className="p-4 bg-rose-50 border border-rose-200 rounded-lg mb-4">
+                        <div className="flex items-start gap-3">
+                            <div className="text-rose-500 flex-shrink-0 mt-0.5">
+                                <div className="w-5 h-5">{ICONS.alertTriangle}</div>
+                            </div>
+                            <div>
+                                <h4 className="text-sm font-bold text-rose-800">Cannot Terminate - Open Invoices</h4>
+                                <p className="text-xs text-rose-600 mt-1">
+                                    This agreement has <span className="font-bold">{openInvoices.length}</span> unpaid invoice(s). 
+                                    All invoices must be fully paid before terminating the agreement.
+                                </p>
+                                <div className="mt-2 space-y-1">
+                                    {openInvoices.slice(0, 3).map(inv => (
+                                        <div key={inv.id} className="text-xs text-rose-700 flex justify-between">
+                                            <span>{inv.invoiceNumber}</span>
+                                            <span className="font-medium">{CURRENCY} {(inv.amount - inv.paidAmount).toLocaleString()} due</span>
+                                        </div>
+                                    ))}
+                                    {openInvoices.length > 3 && (
+                                        <div className="text-xs text-rose-500 italic">...and {openInvoices.length - 3} more</div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <div className="p-3 bg-slate-50 rounded border border-slate-200 text-sm mb-2">
                     <div className="flex justify-between">
                         <span className="text-slate-500">Security Deposit Held:</span>
@@ -236,7 +285,9 @@ const RentalAgreementTerminationModal: React.FC<RentalAgreementTerminationModalP
 
                 <div className="flex justify-end gap-2 pt-4">
                     <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button type="submit" variant="danger">Confirm {status}</Button>
+                    <Button type="submit" variant="danger" disabled={hasOpenInvoices}>
+                        {hasOpenInvoices ? 'Clear Invoices First' : `Confirm ${status}`}
+                    </Button>
                 </div>
             </form>
         </Modal>
