@@ -193,7 +193,7 @@ const PayrollReport: React.FC = () => {
             <h3 className="text-xs sm:text-sm font-black text-slate-400 uppercase tracking-widest mb-4 sm:mb-8">Departmental Cost Distribution</h3>
             <div className="h-[250px] sm:h-[350px]">
               {deptData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                   <BarChart data={deptData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }} interval={0} angle={-45} textAnchor="end" height={60} />
@@ -236,7 +236,7 @@ const PayrollReport: React.FC = () => {
             </div>
             <div className="h-[180px] sm:h-[250px] relative">
               {pieData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                   <RechartsPieChart>
                     <Pie
                       data={pieData}

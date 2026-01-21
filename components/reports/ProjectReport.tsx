@@ -48,9 +48,9 @@ const ProjectPieChart = React.memo(({ data, title }: { data: any[], title: strin
     return (
         <div className="flex flex-col h-full min-h-[300px]">
             <h4 className="text-lg font-semibold text-center mb-2">{title}</h4>
-            <div className="flex-grow w-full relative">
+            <div className="w-full h-[250px] relative">
                 {data.length > 0 ? (
-                    <ResponsiveContainer width="99%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                         <PieChart>
                             <Pie
                                 data={data}

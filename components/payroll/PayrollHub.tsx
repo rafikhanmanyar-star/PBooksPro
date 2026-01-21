@@ -218,177 +218,231 @@ const PayrollHub: React.FC = () => {
         {activeSubTab === 'report' && <PayrollReport />}
         
         {activeSubTab === 'structure' && (
-          <div className="space-y-6">
+          <div className="space-y-4">
             {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
-                <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Salary Structure</h1>
-                <p className="text-slate-500 text-xs sm:text-sm">Configure earning components, deductions, and grade levels for {tenant?.companyName || tenant?.name || 'your organization'}.</p>
+                <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">Salary Structure</h1>
+                <p className="text-slate-500 text-[11px] sm:text-xs">Configure earning components, deductions, grade levels and departments.</p>
               </div>
             </div>
 
             {/* Earning Components */}
-            <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-4 sm:px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-3 sm:px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <TrendingUp size={18} className="text-emerald-600" />
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Earning Components</h3>
+                  <TrendingUp size={16} className="text-emerald-600" />
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Earning Components</h3>
+                  <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded">{earningTypes.length}</span>
                 </div>
                 <button 
                   onClick={() => { setEditingEarning(null); setIsEarningModalOpen(true); }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors"
+                  className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 text-white rounded-lg text-[10px] font-bold hover:bg-emerald-700 transition-colors"
                 >
-                  <Plus size={14} /> Add
+                  <Plus size={12} /> Add
                 </button>
               </div>
-              <div className="p-4 sm:p-6">
+              <div className="divide-y divide-slate-100">
                 {earningTypes.length === 0 ? (
-                  <p className="text-center text-slate-400 py-8 text-sm">No earning components configured. Click "Add" to create one.</p>
+                  <p className="text-center text-slate-400 py-6 text-xs">No earning components configured. Click "Add" to create one.</p>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {earningTypes.map((e, i) => (
-                      <div key={i} className="flex items-center justify-between p-3 bg-emerald-50/50 rounded-xl border border-emerald-100 group hover:border-emerald-200 transition-colors">
-                        <div>
-                          <p className="font-bold text-slate-900 text-sm">{e.name}</p>
-                          <p className="text-xs text-emerald-600 font-medium">
-                            {e.is_percentage ? `${e.amount}% of Basic` : `PKR ${e.amount.toLocaleString()}`}
+                  earningTypes.map((e, i) => (
+                    <div key={i} className="flex items-center justify-between px-3 sm:px-4 py-2 hover:bg-emerald-50/50 transition-colors">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                          <TrendingUp size={14} className="text-emerald-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-slate-900 text-sm truncate">{e.name}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${e.is_percentage ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
+                            {e.is_percentage ? 'Percentage' : 'Fixed'}
+                          </span>
+                        </div>
+                        <div className="text-right min-w-[100px]">
+                          <p className="text-sm font-bold text-emerald-600">
+                            {e.is_percentage ? `${e.amount}%` : `PKR ${e.amount.toLocaleString()}`}
                           </p>
+                          <p className="text-[10px] text-slate-400">{e.is_percentage ? 'of Basic' : 'Fixed Amount'}</p>
                         </div>
                         <button 
                           onClick={() => { setEditingEarning(e); setIsEarningModalOpen(true); }}
-                          className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                          className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors"
                         >
                           <Edit3 size={14} />
                         </button>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))
                 )}
               </div>
             </div>
 
             {/* Deduction Components */}
-            <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-4 sm:px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-3 sm:px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <TrendingDown size={18} className="text-red-600" />
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Deduction Components</h3>
+                  <TrendingDown size={16} className="text-red-600" />
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Deduction Components</h3>
+                  <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded">{deductionTypes.length}</span>
                 </div>
                 <button 
                   onClick={() => { setEditingDeduction(null); setIsDeductionModalOpen(true); }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition-colors"
+                  className="flex items-center gap-1 px-2.5 py-1 bg-red-600 text-white rounded-lg text-[10px] font-bold hover:bg-red-700 transition-colors"
                 >
-                  <Plus size={14} /> Add
+                  <Plus size={12} /> Add
                 </button>
               </div>
-              <div className="p-4 sm:p-6">
+              <div className="divide-y divide-slate-100">
                 {deductionTypes.length === 0 ? (
-                  <p className="text-center text-slate-400 py-8 text-sm">No deduction components configured. Click "Add" to create one.</p>
+                  <p className="text-center text-slate-400 py-6 text-xs">No deduction components configured. Click "Add" to create one.</p>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {deductionTypes.map((d, i) => (
-                      <div key={i} className="flex items-center justify-between p-3 bg-red-50/50 rounded-xl border border-red-100 group hover:border-red-200 transition-colors">
-                        <div>
-                          <p className="font-bold text-slate-900 text-sm">{d.name}</p>
-                          <p className="text-xs text-red-600 font-medium">
-                            {d.is_percentage ? `${d.amount}% of Gross` : `PKR ${d.amount.toLocaleString()}`}
+                  deductionTypes.map((d, i) => (
+                    <div key={i} className="flex items-center justify-between px-3 sm:px-4 py-2 hover:bg-red-50/50 transition-colors">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className="w-7 h-7 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
+                          <TrendingDown size={14} className="text-red-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-slate-900 text-sm truncate">{d.name}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${d.is_percentage ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
+                            {d.is_percentage ? 'Percentage' : 'Fixed'}
+                          </span>
+                        </div>
+                        <div className="text-right min-w-[100px]">
+                          <p className="text-sm font-bold text-red-600">
+                            {d.is_percentage ? `${d.amount}%` : `PKR ${d.amount.toLocaleString()}`}
                           </p>
+                          <p className="text-[10px] text-slate-400">{d.is_percentage ? 'of Gross' : 'Fixed Amount'}</p>
                         </div>
                         <button 
                           onClick={() => { setEditingDeduction(d); setIsDeductionModalOpen(true); }}
-                          className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-100 rounded-lg transition-colors"
                         >
                           <Edit3 size={14} />
                         </button>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))
                 )}
               </div>
             </div>
 
             {/* Grade Levels */}
-            <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-4 sm:px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-3 sm:px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Award size={18} className="text-blue-600" />
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Grade Levels</h3>
+                  <Award size={16} className="text-blue-600" />
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Grade Levels</h3>
+                  <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded">{gradeLevels.length}</span>
                 </div>
                 <button 
                   onClick={() => { setEditingGrade(null); setIsGradeModalOpen(true); }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
+                  className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 text-white rounded-lg text-[10px] font-bold hover:bg-blue-700 transition-colors"
                 >
-                  <Plus size={14} /> Add
+                  <Plus size={12} /> Add
                 </button>
               </div>
-              <div className="p-4 sm:p-6">
+              <div className="divide-y divide-slate-100">
                 {gradeLevels.length === 0 ? (
-                  <p className="text-center text-slate-400 py-8 text-sm">No grade levels configured. Click "Add" to create one.</p>
+                  <p className="text-center text-slate-400 py-6 text-xs">No grade levels configured. Click "Add" to create one.</p>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {gradeLevels.map((g, i) => (
-                      <div key={i} className="flex items-center justify-between p-4 bg-blue-50/50 rounded-xl border border-blue-100 group hover:border-blue-200 transition-colors">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="px-2 py-0.5 bg-blue-600 text-white text-[10px] font-bold rounded">{g.name}</span>
-                            <span className="text-xs text-slate-500">{g.description}</span>
-                          </div>
-                          <p className="text-xs text-blue-600 font-medium">
-                            PKR {g.min_salary.toLocaleString()} - {g.max_salary.toLocaleString()}
-                          </p>
+                  gradeLevels.map((g, i) => (
+                    <div key={i} className="flex items-center justify-between px-3 sm:px-4 py-2 hover:bg-blue-50/50 transition-colors">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
+                          <span className="text-white text-[10px] font-bold">{g.name.substring(0, 2).toUpperCase()}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-slate-900 text-sm truncate">{g.name}</p>
+                          {g.description && <p className="text-[10px] text-slate-400 truncate">{g.description}</p>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right min-w-[80px]">
+                          <p className="text-xs font-bold text-slate-700">Min Salary</p>
+                          <p className="text-sm font-bold text-blue-600">PKR {g.min_salary.toLocaleString()}</p>
+                        </div>
+                        <div className="text-right min-w-[80px]">
+                          <p className="text-xs font-bold text-slate-700">Max Salary</p>
+                          <p className="text-sm font-bold text-blue-600">PKR {g.max_salary.toLocaleString()}</p>
                         </div>
                         <button 
                           onClick={() => { setEditingGrade(g); setIsGradeModalOpen(true); }}
-                          className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
                         >
                           <Edit3 size={14} />
                         </button>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))
                 )}
               </div>
             </div>
 
             {/* Departments */}
-            <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-4 sm:px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-3 sm:px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Building2 size={18} className="text-purple-600" />
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Departments</h3>
+                  <Building2 size={16} className="text-purple-600" />
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Departments</h3>
+                  <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-bold rounded">{departments.length}</span>
                 </div>
                 <button 
                   onClick={() => { setEditingDepartment(null); setIsDepartmentModalOpen(true); }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-bold hover:bg-purple-700 transition-colors"
+                  className="flex items-center gap-1 px-2.5 py-1 bg-purple-600 text-white rounded-lg text-[10px] font-bold hover:bg-purple-700 transition-colors"
                 >
-                  <Plus size={14} /> Add
+                  <Plus size={12} /> Add
                 </button>
               </div>
-              <div className="p-4 sm:p-6">
+              <div className="divide-y divide-slate-100">
                 {departments.length === 0 ? (
-                  <p className="text-center text-slate-400 py-8 text-sm">No departments configured. Click "Add" to create one.</p>
+                  <p className="text-center text-slate-400 py-6 text-xs">No departments configured. Click "Add" to create one.</p>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {departments.map((d, i) => (
-                      <div key={i} className={`flex items-center justify-between p-4 rounded-xl border group transition-colors ${d.is_active ? 'bg-purple-50/50 border-purple-100 hover:border-purple-200' : 'bg-slate-50/50 border-slate-100 hover:border-slate-200 opacity-60'}`}>
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className={`px-2 py-0.5 text-white text-[10px] font-bold rounded ${d.is_active ? 'bg-purple-600' : 'bg-slate-400'}`}>{d.name}</span>
-                            {!d.is_active && <span className="text-[10px] text-slate-400 font-medium">(Inactive)</span>}
-                          </div>
-                          {d.description && (
-                            <p className="text-xs text-slate-500 font-medium line-clamp-1">{d.description}</p>
-                          )}
+                  departments.map((d, i) => (
+                    <div key={i} className={`flex items-center justify-between px-3 sm:px-4 py-2 transition-colors ${d.is_active ? 'hover:bg-purple-50/50' : 'opacity-60 hover:bg-slate-50/50'}`}>
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${d.is_active ? 'bg-purple-600' : 'bg-slate-400'}`}>
+                          <Building2 size={14} className="text-white" />
                         </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-slate-900 text-sm truncate">{d.name}</p>
+                          {d.description && <p className="text-[10px] text-slate-400 truncate">{d.description}</p>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        {d.code && (
+                          <div className="text-right">
+                            <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-bold">{d.code}</span>
+                          </div>
+                        )}
+                        <div className="text-right min-w-[60px]">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${d.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                            {d.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </div>
+                        {d.employee_count !== undefined && d.employee_count > 0 && (
+                          <div className="text-right min-w-[60px]">
+                            <p className="text-sm font-bold text-purple-600">{d.employee_count}</p>
+                            <p className="text-[10px] text-slate-400">Employees</p>
+                          </div>
+                        )}
                         <button 
                           onClick={() => { setEditingDepartment(d); setIsDepartmentModalOpen(true); }}
-                          className="p-2 text-slate-400 hover:text-purple-600 hover:bg-purple-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                          className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-100 rounded-lg transition-colors"
                         >
                           <Edit3 size={14} />
                         </button>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))
                 )}
               </div>
             </div>

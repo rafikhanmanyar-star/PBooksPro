@@ -36,7 +36,7 @@ interface ProjectManagementPageProps {
 
 // Define all possible view keys
 type ProjectView = 
-    | 'Agreements' | 'Contracts' | 'Invoices' | 'Bills' | 'Sales Returns'
+    | 'Marketing' | 'Agreements' | 'Contracts' | 'Invoices' | 'Bills' | 'Sales Returns'
     | 'Broker Payouts' | 'PM Payouts'
     | 'Visual Layout' | 'Tabular View' 
     | 'Project Summary' | 'Revenue Analysis' | 'Owner Ledger' | 'Broker Report' 
@@ -93,7 +93,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
 
     // Ensure we don't land on a hidden view on mobile
     useEffect(() => {
-        if (isMobile && ['Agreements', 'Contracts'].includes(activeView)) {
+        if (isMobile && ['Marketing', 'Agreements', 'Contracts'].includes(activeView)) {
             setActiveView('Invoices');
         }
     }, [isMobile, activeView, setActiveView]);
@@ -106,8 +106,8 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                 else if (subTab === 'Project Units') setActiveView('Tabular View');
                 else if (subTab === 'PM Cost') setActiveView('PM Cost Report');
                 else setActiveView(subTab as ProjectView);
-            } else if (['Agreements', 'Contracts', 'Invoices', 'Bills', 'Sales Returns'].includes(mainTab)) {
-                if (isMobile && ['Agreements', 'Contracts'].includes(mainTab)) {
+            } else if (['Marketing', 'Agreements', 'Contracts', 'Invoices', 'Bills', 'Sales Returns'].includes(mainTab)) {
+                if (isMobile && ['Marketing', 'Agreements', 'Contracts'].includes(mainTab)) {
                     setActiveView('Invoices');
                 } else {
                     setActiveView(mainTab as ProjectView);
@@ -120,6 +120,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
     const renderContent = () => {
         switch(activeView) {
             // Operations
+            case 'Marketing': return !isMobile ? <div className="flex items-center justify-center h-full text-slate-400">Marketing</div> : null;
             case 'Agreements': return !isMobile ? <ProjectAgreementsPage /> : null;
             case 'Contracts': return !isMobile ? <ProjectContractsPage /> : null;
             case 'Invoices': return <InvoicesPage invoiceTypeFilter={InvoiceType.INSTALLMENT} hideTitleAndGoBack={true} />;
@@ -184,6 +185,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                 <div className="flex items-center flex-grow min-w-0">
                     {/* Operational Tabs - Scrollable */}
                     <div className="flex items-center gap-1 overflow-x-auto no-scrollbar flex-shrink">
+                        {!isMobile && <NavButton view="Marketing" label="Marketing" />}
                         {!isMobile && <NavButton view="Agreements" label="Sales Agr." />}
                         <NavButton view="Invoices" label="Invoices" />
                         {!isMobile && <NavButton view="Contracts" label="Contracts" />}
