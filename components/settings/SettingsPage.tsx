@@ -162,6 +162,7 @@ const SettingsPage: React.FC = () => {
                 { id: 'tenants', label: 'Tenants', icon: ICONS.users },
                 { id: 'brokers', label: 'Brokers', icon: ICONS.users },
                 { id: 'friends', label: 'Friends & Family', icon: ICONS.users },
+                { id: 'leads', label: 'Leads', icon: ICONS.target || ICONS.users },
             ]
         }
     ];
@@ -192,6 +193,7 @@ const SettingsPage: React.FC = () => {
         tenants: [{ key: 'name', label: 'Name' }, { key: 'type', label: 'Type' }, { key: 'contactNo', label: 'Phone' }, { key: 'balance', label: 'Balance', isNumeric: true }],
         brokers: [{ key: 'name', label: 'Name' }, { key: 'type', label: 'Type' }, { key: 'contactNo', label: 'Phone' }, { key: 'balance', label: 'Balance', isNumeric: true }],
         friends: [{ key: 'name', label: 'Name' }, { key: 'contactNo', label: 'Phone' }, { key: 'balance', label: 'Balance', isNumeric: true }],
+        leads: [{ key: 'name', label: 'Name' }, { key: 'contactNo', label: 'Phone' }, { key: 'address', label: 'Address' }, { key: 'description', label: 'Description' }],
         projects: [
             {
                 key: 'name', label: 'Name', render: (val, row) => (
@@ -315,14 +317,16 @@ const SettingsPage: React.FC = () => {
             return finalData;
         } else {
             let data: TableRowData[] = [];
-            if (['owners', 'tenants', 'brokers', 'friends'].includes(activeCategory)) {
+            if (['owners', 'tenants', 'brokers', 'friends', 'leads'].includes(activeCategory)) {
                 let contacts = state.contacts;
                 if (activeCategory === 'owners') contacts = contacts.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
                 else if (activeCategory === 'tenants') contacts = contacts.filter(c => c.type === ContactType.TENANT);
                 else if (activeCategory === 'brokers') contacts = contacts.filter(c => c.type === ContactType.BROKER || c.type === ContactType.DEALER);
                 else if (activeCategory === 'friends') contacts = contacts.filter(c => c.type === ContactType.FRIEND_FAMILY);
+                else if (activeCategory === 'leads') contacts = contacts.filter(c => c.type === ContactType.LEAD);
                 data = contacts.map(contact => ({
                     id: contact.id, name: contact.name, type: contact.type, contactNo: contact.contactNo || '-',
+                    address: contact.address || '-', description: contact.description || '-',
                     balance: balances.get(contact.id) || 0, originalItem: contact
                 }));
             } else if (activeCategory === 'projects') {
@@ -376,6 +380,7 @@ const SettingsPage: React.FC = () => {
                 case 'tenants': type = 'CONTACT_TENANT'; break;
                 case 'brokers': type = 'CONTACT_BROKER'; break;
                 case 'friends': type = 'CONTACT_FRIEND'; break;
+                case 'leads': type = 'CONTACT_LEAD'; break;
                 case 'projects': type = 'PROJECT'; break;
                 case 'buildings': type = 'BUILDING'; break;
                 case 'properties': type = 'PROPERTY'; break;
@@ -397,6 +402,7 @@ const SettingsPage: React.FC = () => {
             case 'tenants': type = 'CONTACT_TENANT'; break;
             case 'brokers': type = 'CONTACT_BROKER'; break;
             case 'friends': type = 'CONTACT_FRIEND'; break;
+            case 'leads': type = 'CONTACT_LEAD'; break;
             case 'projects': type = 'PROJECT'; break;
             case 'buildings': type = 'BUILDING'; break;
             case 'properties': type = 'PROPERTY'; break;
@@ -414,7 +420,7 @@ const SettingsPage: React.FC = () => {
     const handleRowClick = (item: TableRowData) => {
         let entityType: any = null;
         if (activeCategory === 'accounts') entityType = item.entityKind === 'CATEGORY' ? 'category' : 'account';
-        else if (['owners', 'tenants', 'brokers', 'friends'].includes(activeCategory)) entityType = 'contact';
+        else if (['owners', 'tenants', 'brokers', 'friends', 'leads'].includes(activeCategory)) entityType = 'contact';
         else if (activeCategory === 'projects') entityType = 'project';
         else if (activeCategory === 'buildings') entityType = 'building';
         else if (activeCategory === 'properties') entityType = 'property';

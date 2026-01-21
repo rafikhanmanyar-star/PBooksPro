@@ -89,6 +89,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
   };
 
   const isBusinessContact = type === ContactType.VENDOR || type === ContactType.BROKER || type === ContactType.DEALER;
+  const isLeadContact = type === ContactType.LEAD;
 
   // Icons
   const UserIcon = <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>;
@@ -103,6 +104,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
       case ContactType.VENDOR: return <div className="p-2 bg-orange-100 text-orange-600 rounded-lg"><div className="w-5 h-5">{TruckIcon}</div></div>;
       case ContactType.BROKER:
       case ContactType.DEALER: return <div className="p-2 bg-purple-100 text-purple-600 rounded-lg"><div className="w-5 h-5">{UserCheckIcon}</div></div>;
+      case ContactType.LEAD: return <div className="p-2 bg-amber-100 text-amber-600 rounded-lg"><div className="w-5 h-5">{ICONS.target || ICONS.users}</div></div>;
       default: return <div className="p-2 bg-slate-100 text-slate-600 rounded-lg"><div className="w-5 h-5">{UserIcon}</div></div>;
     }
   };
@@ -162,6 +164,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
                           {(t === ContactType.BROKER || t === ContactType.DEALER) && 'Intermediary'}
                           {t === ContactType.FRIEND_FAMILY && 'Personal (Loan)'}
                           {t === ContactType.CLIENT && 'Customer'}
+                          {t === ContactType.LEAD && 'Marketing prospect'}
                         </div>
                       </div>
                       {type === t && (
@@ -205,15 +208,15 @@ const ContactForm: React.FC<ContactFormProps> = ({
                 />
               </div>
 
-              {isBusinessContact && (
+              {(isBusinessContact || isLeadContact) && (
                 <div className="sm:col-span-2 animate-in fade-in slide-in-from-top-2 duration-300">
                   <Input
                     id="company-name"
                     name="company-name"
-                    label="Company Name"
+                    label={isLeadContact ? "Company / Organization" : "Company Name"}
                     value={companyName}
                     onChange={(e) => setCompanyName(e.target.value)}
-                    placeholder="e.g. Acme Corp"
+                    placeholder={isLeadContact ? "e.g. ABC Company (optional)" : "e.g. Acme Corp"}
                     icon={<div className="text-slate-400 w-4 h-4"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18" /><path d="M5 21V7l8-4 8 4v14" /><path d="M17 21v-8.85a3.024 3.024 0 0 0-2.95-3.003L9.05 9.15a3.024 3.024 0 0 0-2.95 3.004V21M9 13v1m0 4v1m6-6v1m0 4v1" /></svg></div>}
                   />
                 </div>
@@ -232,12 +235,12 @@ const ContactForm: React.FC<ContactFormProps> = ({
               </div>
             </div>
 
-            {isBusinessContact && (
+            {(isBusinessContact || isLeadContact) && (
               <div className="mb-4 sm:mb-6 animate-in fade-in slide-in-from-top-2 duration-300">
                 <Textarea
                   id="address"
                   name="address"
-                  label="Business Address"
+                  label={isLeadContact ? "Address" : "Business Address"}
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
                   placeholder="123 Main St, Suite 100, City, State"

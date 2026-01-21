@@ -115,6 +115,7 @@ const SettingsDetailPage: React.FC<SettingsDetailPageProps> = ({ goBack: propGoB
                     'CLIENT': ContactType.CLIENT,
                     'BROKER': ContactType.BROKER,
                     'FRIEND': ContactType.FRIEND_FAMILY,
+                    'LEAD': ContactType.LEAD,
                 };
                 return <ContactForm onCancel={goBack} onSubmit={handleFormSubmit} contactToEdit={itemToEdit} onDelete={handleDelete} existingContacts={state.contacts} fixedTypeForNew={contactTypeMap[subType as keyof typeof contactTypeMap]} />;
             case 'PROJECT':
