@@ -30,10 +30,20 @@ router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const { projectId, leadId, unitId } = req.query;
+    const currentUserId = req.user?.userId;
     
+    // Privacy Logic: 
+    // 1. Admins see everything
+    // 2. Others see only plans they created, requested approval for, or are assigned to approve
     let query = 'SELECT * FROM installment_plans WHERE tenant_id = $1';
     const params: any[] = [req.tenantId];
     let paramIndex = 2;
+
+    if (req.userRole !== 'Admin') {
+      query += ` AND (user_id = $${paramIndex} OR approval_requested_by = $${paramIndex} OR approval_requested_to = $${paramIndex})`;
+      params.push(currentUserId);
+      paramIndex++;
+    }
 
     if (projectId) {
       query += ` AND project_id = $${paramIndex++}`;
