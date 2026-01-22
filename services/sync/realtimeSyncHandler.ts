@@ -687,6 +687,7 @@ class RealtimeSyncHandler {
           'rental_agreement': ['agreement', 'rentalAgreement'],
           'project_agreement': ['agreement', 'projectAgreement'],
           'sales_return': ['salesReturn'],
+          'installment_plan': ['plan', 'installmentPlan'],
         };
         const aliases = entityAliases[entity];
         if (aliases) {
