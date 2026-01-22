@@ -54,7 +54,9 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
         state.currentUser.username,
         state.currentUser.name
       ].filter(Boolean).map(item => item.toString().toLowerCase());
-      return candidates.includes(value.toString().toLowerCase());
+      const normalizedValue = value.toString().toLowerCase();
+      const matches = candidates.includes(normalizedValue);
+      return matches;
     };
 
     const items = (state.installmentPlans || []).flatMap(plan => {
@@ -78,7 +80,15 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       }> = [];
 
       // 1. You are the approver and someone requested your approval
-      if (isPendingApproval && (plan.approvalRequestedToId === currentUserId || isMatchingCurrentUser(plan.approvalRequestedToId))) {
+      const isApprover = isPendingApproval && (plan.approvalRequestedToId === currentUserId || isMatchingCurrentUser(plan.approvalRequestedToId));
+      if (isApprover) {
+        console.log('[NOTIFICATION DEBUG] Found approval notification:', {
+          planId: plan.id,
+          approvalRequestedToId: plan.approvalRequestedToId,
+          currentUserId,
+          directMatch: plan.approvalRequestedToId === currentUserId,
+          fuzzyMatch: isMatchingCurrentUser(plan.approvalRequestedToId)
+        });
         const requester = userName(plan.approvalRequestedById || plan.userId);
         results.push({
           ...base,
@@ -107,6 +117,20 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       }
 
       return results;
+    });
+
+    console.log('[NOTIFICATION DEBUG] Total notifications:', {
+      count: items.length,
+      currentUserId,
+      currentUsername: state.currentUser.username,
+      currentName: state.currentUser.name,
+      pendingApprovalPlans: state.installmentPlans.filter(p => 
+        (p.status || '').toString().toLowerCase().replace(/\s+/g, ' ').trim() === 'pending approval'
+      ).map(p => ({
+        id: p.id,
+        approvalRequestedToId: p.approvalRequestedToId,
+        status: p.status
+      }))
     });
 
     return items.sort((a, b) => b.time.localeCompare(a.time));

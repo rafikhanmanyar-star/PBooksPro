@@ -346,9 +346,18 @@ const MarketingPage: React.FC = () => {
 
     const usersForApproval = orgUsers.length > 0 ? orgUsers : state.users;
     const approvers = useMemo(
-        () => usersForApproval
-            .filter(user => user.role === 'Admin')
-            .map(user => ({ id: user.id, name: user.name || user.username })),
+        () => {
+            const filtered = usersForApproval
+                .filter(user => user.role && user.role.toLowerCase() === 'admin')
+                .map(user => ({ id: user.id, name: user.name || user.username }));
+            console.log('[APPROVAL DEBUG] Approvers list:', {
+                totalUsers: usersForApproval.length,
+                approversCount: filtered.length,
+                approvers: filtered,
+                allUsersWithRoles: usersForApproval.map(u => ({ id: u.id, name: u.name, username: u.username, role: u.role }))
+            });
+            return filtered;
+        },
         [usersForApproval]
     );
     
@@ -382,10 +391,36 @@ const MarketingPage: React.FC = () => {
         ].filter(Boolean).map(value => value.toString().toLowerCase());
         return (value?: string) => {
             if (!value) return false;
-            return candidates.includes(value.toString().toLowerCase());
+            const normalizedValue = value.toString().toLowerCase();
+            const matches = candidates.includes(normalizedValue);
+            console.log('[APPROVAL DEBUG] Matching check:', {
+                value,
+                normalizedValue,
+                candidates,
+                matches
+            });
+            return matches;
         };
     }, [state.currentUser]);
     const isApproverForSelectedPlan = isPendingApproval && isMatchingUser(effectiveApprovalRequestedToId);
+
+    // Debug logging for approval workflow
+    useEffect(() => {
+        if (selectedPlanId && activePlan) {
+            console.log('[APPROVAL DEBUG] Active plan approval state:', {
+                planId: activePlan.id,
+                status: activePlan.status,
+                approvalRequestedToId: activePlan.approvalRequestedToId,
+                approvalRequestedById: activePlan.approvalRequestedById,
+                currentUserId: state.currentUser?.id,
+                currentUsername: state.currentUser?.username,
+                currentUserName: state.currentUser?.name,
+                currentUserRole: state.currentUser?.role,
+                isPendingApproval,
+                isApproverForSelectedPlan
+            });
+        }
+    }, [selectedPlanId, activePlan, isPendingApproval, isApproverForSelectedPlan, state.currentUser]);
 
     const isReadOnly = isPendingApproval || isApprovedStatus || isLockedStatus;
     const approvalRequestedToName = effectiveApprovalRequestedToId
@@ -1267,8 +1302,8 @@ const MarketingPage: React.FC = () => {
                                         {selectedPlanId ? 'Save New Version' : 'Save Plan'}
                                     </Button>
 
-                                    {selectedPlanId && (
-                                        <div className="pt-2 space-y-2">
+                                    <div className="pt-2 space-y-2">
+                                        {selectedPlanId && (
                                             {/* Creator Actions: Submit */}
                                             {(normalizedStatus === 'draft' || isRejectedStatus) && (
                                                 <Button 
@@ -1302,8 +1337,8 @@ const MarketingPage: React.FC = () => {
                                                     </Button>
                                                 </div>
                                             )}
-                                        </div>
-                                    )}
+                                        )}
+                                    </div>
 
                                     {isPendingApproval && (
                                         <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -1338,13 +1373,37 @@ const MarketingPage: React.FC = () => {
                                     <div className="p-3 bg-slate-50 border border-dashed border-slate-300 rounded-lg">
                                         <p className="text-[10px] text-slate-600 font-bold uppercase mb-1">Debug Approval</p>
                                         <div className="text-[10px] text-slate-600 space-y-1">
+                                            <div>Selected Plan ID: {String(selectedPlanId || '')}</div>
                                             <div>Status: {String(effectiveStatus || '')}</div>
                                             <div>Normalized: {normalizedStatus}</div>
-                                            <div>Approver Value: {String(effectiveApprovalRequestedToId || '')}</div>
-                                            <div>Current User ID: {String(state.currentUser?.id || '')}</div>
-                                            <div>Current Username: {String(state.currentUser?.username || '')}</div>
-                                            <div>Current Name: {String(state.currentUser?.name || '')}</div>
-                                            <div>isApproverForSelectedPlan: {String(isApproverForSelectedPlan)}</div>
+                                            <div>isPendingApproval: {String(isPendingApproval)}</div>
+                                            <div className="mt-2 pt-2 border-t border-slate-300">
+                                                <div className="font-bold">Approver Matching:</div>
+                                                <div>Approver Value (requested_to): {String(effectiveApprovalRequestedToId || 'NOT SET')}</div>
+                                                <div>Requested By: {String(effectiveApprovalRequestedById || 'NOT SET')}</div>
+                                                <div className="text-rose-600 font-bold">Current User ID: {String(state.currentUser?.id || '')}</div>
+                                                <div>Current Username: {String(state.currentUser?.username || '')}</div>
+                                                <div>Current Name: {String(state.currentUser?.name || '')}</div>
+                                                <div>Current Role: {String(state.currentUser?.role || '')}</div>
+                                            </div>
+                                            <div className="mt-2 pt-2 border-t border-slate-300">
+                                                <div className="font-bold">Matching Result:</div>
+                                                <div className={isApproverForSelectedPlan ? 'text-green-600 font-bold' : 'text-rose-600 font-bold'}>
+                                                    isApproverForSelectedPlan: {String(isApproverForSelectedPlan)}
+                                                </div>
+                                                <div className="text-[9px] mt-1">
+                                                    Match check: Does "{effectiveApprovalRequestedToId || 'EMPTY'}" match any of [{state.currentUser?.id}, {state.currentUser?.username}, {state.currentUser?.name}]?
+                                                </div>
+                                            </div>
+                                            {activePlan && (
+                                                <div className="mt-2 pt-2 border-t border-slate-300">
+                                                    <div className="font-bold">Active Plan Data:</div>
+                                                    <div>Plan ID: {activePlan.id}</div>
+                                                    <div>Plan Status: {activePlan.status}</div>
+                                                    <div>Plan approval_requested_to: {activePlan.approvalRequestedToId || 'NOT SET'}</div>
+                                                    <div>Plan approval_requested_by: {activePlan.approvalRequestedById || 'NOT SET'}</div>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
