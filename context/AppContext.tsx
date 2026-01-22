@@ -488,7 +488,12 @@ const reducer = (state: AppState, action: AppAction): AppState => {
 
         // --- CONTACT HANDLERS ---
         case 'ADD_CONTACT': {
-            const contactToAdd = action.payload;
+            const contactToAdd = {
+                ...action.payload,
+                userId: action.payload?.userId || state.currentUser?.id || undefined,
+                createdAt: action.payload?.createdAt || new Date().toISOString(),
+                updatedAt: action.payload?.updatedAt || new Date().toISOString()
+            };
             // Prevent duplicate contacts by ID
             if (state.contacts.find(c => c.id === contactToAdd.id)) {
                 return state; // Already exists
@@ -693,7 +698,13 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, rentalAgreements: state.rentalAgreements.filter(r => r.id !== action.payload) };
 
         case 'ADD_PROJECT_AGREEMENT':
-            return { ...state, projectAgreements: [...state.projectAgreements, action.payload] };
+            return { 
+                ...state, 
+                projectAgreements: [
+                    ...state.projectAgreements, 
+                    { ...action.payload, userId: action.payload?.userId || state.currentUser?.id || undefined }
+                ] 
+            };
         case 'UPDATE_PROJECT_AGREEMENT':
             return { ...state, projectAgreements: state.projectAgreements.map(p => p.id === action.payload.id ? action.payload : p) };
         case 'DELETE_PROJECT_AGREEMENT':

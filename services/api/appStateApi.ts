@@ -788,7 +788,10 @@ export class AppStateApiService {
         description: saved.description || undefined,
         contactNo: (saved as any).contact_no || saved.contactNo || undefined,
         companyName: (saved as any).company_name || saved.companyName || undefined,
-        address: saved.address || undefined
+        address: saved.address || undefined,
+        userId: (saved as any).user_id || saved.userId || undefined,
+        createdAt: (saved as any).created_at || saved.createdAt || undefined,
+        updatedAt: (saved as any).updated_at || saved.updatedAt || undefined
       };
 
       // Log whether it was created or updated based on whether we had an existing ID

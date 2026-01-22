@@ -796,6 +796,57 @@ const MarketingPage: React.FC = () => {
             .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
     }, [state.installmentPlans]);
 
+    const activityFeed = useMemo(() => {
+        return (state.installmentPlans || []).flatMap(plan => {
+            const lead = state.contacts.find(l => l.id === plan.leadId);
+            const project = state.projects.find(p => p.id === plan.projectId);
+            const unit = state.units.find(u => u.id === plan.unitId);
+            const label = `${lead?.name || 'Lead'} • ${project?.name || 'Project'} • ${unit?.name || 'Unit'}`;
+
+            const requestedBy = usersForApproval.find(u => u.id === plan.approvalRequestedById);
+            const requestedTo = usersForApproval.find(u => u.id === plan.approvalRequestedToId);
+            const reviewedBy = usersForApproval.find(u => u.id === plan.approvalReviewedById);
+
+            const entries: { title: string; detail: string; time: string; planId: string }[] = [];
+
+            if (plan.createdAt) {
+                entries.push({
+                    title: 'Plan created',
+                    detail: label,
+                    time: plan.createdAt,
+                    planId: plan.id
+                });
+            }
+
+            if (plan.approvalRequestedAt) {
+                entries.push({
+                    title: 'Approval requested',
+                    detail: `${label} • ${requestedBy?.name || requestedBy?.username || 'User'} → ${requestedTo?.name || requestedTo?.username || 'Approver'}`,
+                    time: plan.approvalRequestedAt,
+                    planId: plan.id
+                });
+            }
+
+            if (plan.approvalReviewedAt && (plan.status === 'Approved' || plan.status === 'Rejected')) {
+                entries.push({
+                    title: `Plan ${plan.status.toLowerCase()}`,
+                    detail: `${label} • Reviewed by ${reviewedBy?.name || reviewedBy?.username || 'Admin'}`,
+                    time: plan.approvalReviewedAt,
+                    planId: plan.id
+                });
+            }
+
+            return entries;
+        }).sort((a, b) => b.time.localeCompare(a.time));
+    }, [state.installmentPlans, state.contacts, state.projects, state.units, usersForApproval]);
+
+    const formatActivityTime = (time: string) => {
+        if (!time) return '';
+        const date = new Date(time);
+        if (Number.isNaN(date.getTime())) return time;
+        return date.toLocaleString();
+    };
+
     const getStatusMeta = (planStatus: InstallmentPlan['status']) => {
         switch (planStatus) {
             case 'Pending Approval':
@@ -1589,169 +1640,200 @@ const MarketingPage: React.FC = () => {
                         </div>
                     </div>
                 ) : (
-                    <div className="max-w-6xl mx-auto space-y-4 no-print">
-                        {state.currentUser?.role === 'Admin' && approvalTasks.length > 0 && (
-                            <Card className="p-4 bg-white border border-slate-200">
-                                <div className="flex items-center justify-between mb-3">
-                                    <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Approval Tasks</h2>
-                                    <span className="text-xs text-slate-500">{approvalTasks.length} total</span>
-                                </div>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-xs">
-                                        <thead>
-                                            <tr className="text-slate-500 border-b border-slate-200">
-                                                <th className="text-left py-2 font-semibold">Plan</th>
-                                                <th className="text-left py-2 font-semibold">Requested By</th>
-                                                <th className="text-left py-2 font-semibold">Assigned To</th>
-                                                <th className="text-left py-2 font-semibold">Status</th>
-                                                <th className="text-right py-2 font-semibold">Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {approvalTasks.map(plan => {
-                                                const lead = state.contacts.find(l => l.id === plan.leadId);
-                                                const project = state.projects.find(p => p.id === plan.projectId);
-                                                const unit = state.units.find(u => u.id === plan.unitId);
-                                                const statusMeta = getStatusMeta(plan.status);
-                                                return (
-                                                    <tr key={plan.id} className="border-b border-slate-100">
-                                                        <td className="py-2">
-                                                            <div className="font-medium text-slate-800">{lead?.name || 'Unknown Lead'}</div>
-                                                            <div className="text-[10px] text-slate-500">{project?.name} - {unit?.name}</div>
-                                                        </td>
-                                                        <td className="py-2 text-slate-700">
-                                                            {usersForApproval.find(u => u.id === plan.approvalRequestedById)?.name ||
-                                                                usersForApproval.find(u => u.id === plan.approvalRequestedById)?.username ||
-                                                                'N/A'}
-                                                        </td>
-                                                        <td className="py-2 text-slate-700">
-                                                            {usersForApproval.find(u => u.id === plan.approvalRequestedToId)?.name ||
-                                                                usersForApproval.find(u => u.id === plan.approvalRequestedToId)?.username ||
-                                                                'N/A'}
-                                                        </td>
-                                                        <td className="py-2">
-                                                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${statusMeta.badge}`}>
-                                                                {statusMeta.label}
-                                                            </span>
-                                                        </td>
-                                                        <td className="py-2 text-right">
-                                                            <Button
-                                                                variant="secondary"
-                                                                size="sm"
-                                                                className="py-1 px-2 text-[10px]"
-                                                                onClick={() => handleEdit(plan)}
-                                                            >
-                                                                View
-                                                            </Button>
-                                                        </td>
+                    <div className="max-w-6xl mx-auto no-print">
+                        <div className="flex flex-col lg:flex-row gap-4">
+                            <div className="flex-1 space-y-4">
+                                {state.currentUser?.role === 'Admin' && approvalTasks.length > 0 && (
+                                    <Card className="p-4 bg-white border border-slate-200">
+                                        <div className="flex items-center justify-between mb-3">
+                                            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Approval Tasks</h2>
+                                            <span className="text-xs text-slate-500">{approvalTasks.length} total</span>
+                                        </div>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-xs">
+                                                <thead>
+                                                    <tr className="text-slate-500 border-b border-slate-200">
+                                                        <th className="text-left py-2 font-semibold">Plan</th>
+                                                        <th className="text-left py-2 font-semibold">Requested By</th>
+                                                        <th className="text-left py-2 font-semibold">Assigned To</th>
+                                                        <th className="text-left py-2 font-semibold">Status</th>
+                                                        <th className="text-right py-2 font-semibold">Action</th>
                                                     </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </Card>
-                        )}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {filteredPlans.map(plan => {
-                                const lead = state.contacts.find(l => l.id === plan.leadId);
-                                const project = state.projects.find(p => p.id === plan.projectId);
-                                const unit = state.units.find(u => u.id === plan.unitId);
-                                const statusMeta = getStatusMeta(plan.status);
-                                const isConvertible = plan.status === 'Approved' || plan.status === 'Locked';
-                                
-                                return (
-                                    <Card 
-                                        key={plan.id} 
-                                        className={`p-4 hover:shadow-lg transition-all cursor-pointer border-l-4 ${statusMeta.border}`}
-                                        onClick={() => handleEdit(plan)}
-                                    >
-                                        <div className="flex justify-between items-start">
-                                            <div>
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <h3 className="font-bold text-slate-900">{lead?.name || 'Unknown Lead'}</h3>
-                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase ${statusMeta.badge}`}>
-                                                        {statusMeta.label} v{plan.version}
-                                                    </span>
-                                                </div>
-                                                <p className="text-xs text-slate-500">{project?.name} - {unit?.name}</p>
-                                                {plan.status === 'Pending Approval' && plan.approvalRequestedToId && (
-                                                    <p className="text-[10px] text-blue-600">
-                                                        Awaiting: {usersForApproval.find(u => u.id === plan.approvalRequestedToId)?.name ||
-                                                            usersForApproval.find(u => u.id === plan.approvalRequestedToId)?.username ||
-                                                            'Approver'}
-                                                    </p>
-                                                )}
-                                            </div>
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); handleDelete(plan.id); }}
-                                                className="text-slate-400 hover:text-rose-500 p-1"
-                                            >
-                                                <div className="w-4 h-4">{ICONS.trash}</div>
-                                            </button>
-                                        </div>
-                                        
-                                        <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
-                                            <div className="bg-slate-50 p-2 rounded">
-                                                <p className="text-[10px] text-slate-500 uppercase font-bold">Net Value</p>
-                                                <p className="font-bold text-indigo-700">Rs. {plan.netValue?.toLocaleString()}</p>
-                                            </div>
-                                            <div className="bg-slate-50 p-2 rounded">
-                                                <p className="text-[10px] text-slate-500 uppercase font-bold">Monthly</p>
-                                                <p className="font-bold text-slate-800">Rs. {plan.installmentAmount?.toLocaleString()}</p>
-                                            </div>
-                                        </div>
-
-                                        {/* Show amenities if any */}
-                                        {plan.selectedAmenities && plan.selectedAmenities.length > 0 && (
-                                            <div className="mt-2 flex flex-wrap gap-1">
-                                                {plan.selectedAmenities.map(a => (
-                                                    <span key={a.amenityId} className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">
-                                                        {a.amenityName}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        )}
-                                        
-                                        <div className="mt-4 flex justify-between items-center">
-                                            <div className="text-xs text-slate-500">
-                                                <span>{plan.durationYears} Years | {plan.frequency}</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                {isConvertible && (
-                                                    <Button 
-                                                        variant="primary" 
-                                                        size="sm" 
-                                                        className="py-1 px-2 text-[10px] bg-indigo-600 hover:bg-indigo-700"
-                                                        onClick={(e) => { e.stopPropagation(); showToast('Agreement conversion logic will be developed later'); }}
-                                                    >
-                                                        Convert to Agreement
-                                                    </Button>
-                                                )}
-                                                <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium text-[10px]">View Detail</span>
-                                            </div>
+                                                </thead>
+                                                <tbody>
+                                                    {approvalTasks.map(plan => {
+                                                        const lead = state.contacts.find(l => l.id === plan.leadId);
+                                                        const project = state.projects.find(p => p.id === plan.projectId);
+                                                        const unit = state.units.find(u => u.id === plan.unitId);
+                                                        const statusMeta = getStatusMeta(plan.status);
+                                                        return (
+                                                            <tr key={plan.id} className="border-b border-slate-100">
+                                                                <td className="py-2">
+                                                                    <div className="font-medium text-slate-800">{lead?.name || 'Unknown Lead'}</div>
+                                                                    <div className="text-[10px] text-slate-500">{project?.name} - {unit?.name}</div>
+                                                                </td>
+                                                                <td className="py-2 text-slate-700">
+                                                                    {usersForApproval.find(u => u.id === plan.approvalRequestedById)?.name ||
+                                                                        usersForApproval.find(u => u.id === plan.approvalRequestedById)?.username ||
+                                                                        'N/A'}
+                                                                </td>
+                                                                <td className="py-2 text-slate-700">
+                                                                    {usersForApproval.find(u => u.id === plan.approvalRequestedToId)?.name ||
+                                                                        usersForApproval.find(u => u.id === plan.approvalRequestedToId)?.username ||
+                                                                        'N/A'}
+                                                                </td>
+                                                                <td className="py-2">
+                                                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${statusMeta.badge}`}>
+                                                                        {statusMeta.label}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="py-2 text-right">
+                                                                    <Button
+                                                                        variant="secondary"
+                                                                        size="sm"
+                                                                        className="py-1 px-2 text-[10px]"
+                                                                        onClick={() => handleEdit(plan)}
+                                                                    >
+                                                                        View
+                                                                    </Button>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
                                         </div>
                                     </Card>
-                                );
-                            })}
-                        </div>
-                        
-                        {filteredPlans.length === 0 && (
-                            <div className="text-center py-20 bg-white rounded-xl border-2 border-dashed border-slate-200">
-                                <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
-                                    <div className="w-8 h-8">{ICONS.trendingUp}</div>
+                                )}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {filteredPlans.map(plan => {
+                                        const lead = state.contacts.find(l => l.id === plan.leadId);
+                                        const project = state.projects.find(p => p.id === plan.projectId);
+                                        const unit = state.units.find(u => u.id === plan.unitId);
+                                        const statusMeta = getStatusMeta(plan.status);
+                                        const isConvertible = plan.status === 'Approved' || plan.status === 'Locked';
+                                        
+                                        return (
+                                            <Card 
+                                                key={plan.id} 
+                                                className={`p-4 hover:shadow-lg transition-all cursor-pointer border-l-4 ${statusMeta.border}`}
+                                                onClick={() => handleEdit(plan)}
+                                            >
+                                                <div className="flex justify-between items-start">
+                                                    <div>
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <h3 className="font-bold text-slate-900">{lead?.name || 'Unknown Lead'}</h3>
+                                                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase ${statusMeta.badge}`}>
+                                                                {statusMeta.label} v{plan.version}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs text-slate-500">{project?.name} - {unit?.name}</p>
+                                                        {plan.status === 'Pending Approval' && plan.approvalRequestedToId && (
+                                                            <p className="text-[10px] text-blue-600">
+                                                                Awaiting: {usersForApproval.find(u => u.id === plan.approvalRequestedToId)?.name ||
+                                                                    usersForApproval.find(u => u.id === plan.approvalRequestedToId)?.username ||
+                                                                    'Approver'}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); handleDelete(plan.id); }}
+                                                        className="text-slate-400 hover:text-rose-500 p-1"
+                                                    >
+                                                        <div className="w-4 h-4">{ICONS.trash}</div>
+                                                    </button>
+                                                </div>
+                                                
+                                                <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+                                                    <div className="bg-slate-50 p-2 rounded">
+                                                        <p className="text-[10px] text-slate-500 uppercase font-bold">Net Value</p>
+                                                        <p className="font-bold text-indigo-700">Rs. {plan.netValue?.toLocaleString()}</p>
+                                                    </div>
+                                                    <div className="bg-slate-50 p-2 rounded">
+                                                        <p className="text-[10px] text-slate-500 uppercase font-bold">Monthly</p>
+                                                        <p className="font-bold text-slate-800">Rs. {plan.installmentAmount?.toLocaleString()}</p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Show amenities if any */}
+                                                {plan.selectedAmenities && plan.selectedAmenities.length > 0 && (
+                                                    <div className="mt-2 flex flex-wrap gap-1">
+                                                        {plan.selectedAmenities.map(a => (
+                                                            <span key={a.amenityId} className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">
+                                                                {a.amenityName}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                
+                                                <div className="mt-4 flex justify-between items-center">
+                                                    <div className="text-xs text-slate-500">
+                                                        <span>{plan.durationYears} Years | {plan.frequency}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        {isConvertible && (
+                                                            <Button 
+                                                                variant="primary" 
+                                                                size="sm" 
+                                                                className="py-1 px-2 text-[10px] bg-indigo-600 hover:bg-indigo-700"
+                                                                onClick={(e) => { e.stopPropagation(); showToast('Agreement conversion logic will be developed later'); }}
+                                                            >
+                                                                Convert to Agreement
+                                                            </Button>
+                                                        )}
+                                                        <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium text-[10px]">View Detail</span>
+                                                    </div>
+                                                </div>
+                                            </Card>
+                                        );
+                                    })}
                                 </div>
-                                <h3 className="text-lg font-medium text-slate-900">No Installment Plans Yet</h3>
-                                <p className="text-slate-500 max-w-sm mx-auto mt-2">Create your first installment plan to help clients visualize their payment schedule.</p>
-                                <Button 
-                                    variant="primary" 
-                                    onClick={() => setShowForm(true)}
-                                    className="mt-6"
-                                >
-                                    Create First Plan
-                                </Button>
+                                
+                                {filteredPlans.length === 0 && (
+                                    <div className="text-center py-20 bg-white rounded-xl border-2 border-dashed border-slate-200">
+                                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+                                            <div className="w-8 h-8">{ICONS.trendingUp}</div>
+                                        </div>
+                                        <h3 className="text-lg font-medium text-slate-900">No Installment Plans Yet</h3>
+                                        <p className="text-slate-500 max-w-sm mx-auto mt-2">Create your first installment plan to help clients visualize their payment schedule.</p>
+                                        <Button 
+                                            variant="primary" 
+                                            onClick={() => setShowForm(true)}
+                                            className="mt-6"
+                                        >
+                                            Create First Plan
+                                        </Button>
+                                    </div>
+                                )}
                             </div>
-                        )}
+                            <div className="w-full lg:w-80 shrink-0">
+                                <Card className="p-4 bg-white border border-slate-200">
+                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Activity</h3>
+                                    {activityFeed.length === 0 ? (
+                                        <p className="text-xs text-slate-400">No activity yet.</p>
+                                    ) : (
+                                        <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+                                            {activityFeed.map((item, idx) => (
+                                                <button
+                                                    key={`${item.planId}-${item.title}-${idx}`}
+                                                    onClick={() => {
+                                                        const plan = (state.installmentPlans || []).find(p => p.id === item.planId);
+                                                        if (plan) {
+                                                            handleEdit(plan);
+                                                        }
+                                                    }}
+                                                    className="w-full text-left border-b border-slate-100 pb-2 last:border-b-0 last:pb-0 hover:bg-slate-50 rounded-md px-2 py-1"
+                                                >
+                                                    <p className="text-xs font-semibold text-slate-700">{item.title}</p>
+                                                    <p className="text-[10px] text-slate-500">{item.detail}</p>
+                                                    <p className="text-[10px] text-slate-400 mt-1">{formatActivityTime(item.time)}</p>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </Card>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>

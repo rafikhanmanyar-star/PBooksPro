@@ -7,6 +7,7 @@ import { WhatsAppChatService } from '../../services/whatsappChatService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import ConnectionStatusIndicator from '../ui/ConnectionStatusIndicator';
 import SyncStatusIndicator from '../ui/SyncStatusIndicator';
+import { apiClient } from '../../services/api/client';
 
 interface HeaderProps {
   title: string;
@@ -22,6 +23,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [whatsappUnreadCount, setWhatsappUnreadCount] = useState(0);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [orgUsers, setOrgUsers] = useState<{ id: string; name: string; username: string; role: string }[]>([]);
   const { openChat } = useWhatsApp();
   const notificationsRef = useRef<HTMLDivElement>(null);
 
@@ -36,6 +38,12 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       const project = state.projects.find(p => p.id === plan.projectId);
       const unit = state.units.find(u => u.id === plan.unitId);
       return `${lead?.name || 'Lead'} • ${project?.name || 'Project'} • ${unit?.name || 'Unit'}`;
+    };
+
+    const userName = (userId?: string) => {
+      if (!userId) return undefined;
+      const user = usersForNotifications.find(u => u.id === userId);
+      return user?.name || user?.username;
     };
 
     const items = (state.installmentPlans || []).flatMap(plan => {
@@ -55,21 +63,23 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       }> = [];
 
       if (plan.status === 'Pending Approval' && plan.approvalRequestedToId === currentUserId) {
+        const requester = userName(plan.approvalRequestedById);
         results.push({
           ...base,
           id: `approval:${plan.id}`,
           title: 'Plan approval requested',
-          message: planLabel(plan.id),
+          message: requester ? `${planLabel(plan.id)} • Requested by ${requester}` : planLabel(plan.id),
           status: 'Pending Approval'
         });
       }
 
       if ((plan.status === 'Approved' || plan.status === 'Rejected') && plan.approvalRequestedById === currentUserId) {
+        const reviewer = userName(plan.approvalReviewedById);
         results.push({
           ...base,
           id: `decision:${plan.id}:${plan.status}`,
           title: `Plan ${plan.status.toLowerCase()}`,
-          message: planLabel(plan.id),
+          message: reviewer ? `${planLabel(plan.id)} • Reviewed by ${reviewer}` : planLabel(plan.id),
           status: plan.status
         });
       }
@@ -78,7 +88,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     });
 
     return items.sort((a, b) => b.time.localeCompare(a.time));
-  }, [state.currentUser, state.installmentPlans, state.contacts, state.projects, state.units]);
+  }, [state.currentUser, state.installmentPlans, state.contacts, state.projects, state.units, usersForNotifications]);
 
   const handleNotificationClick = useCallback((planId: string) => {
     dispatch({ type: 'SET_PAGE', payload: 'marketing' });
@@ -97,6 +107,21 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isNotificationsOpen]);
+
+  useEffect(() => {
+    const loadOrgUsers = async () => {
+      try {
+        const data = await apiClient.get<{ id: string; name: string; username: string; role: string }[]>('/users');
+        setOrgUsers(data || []);
+      } catch (error) {
+        console.error('Failed to load organization users', error);
+        setOrgUsers([]);
+      }
+    };
+    loadOrgUsers();
+  }, []);
+
+  const usersForNotifications = orgUsers.length > 0 ? orgUsers : state.users;
 
   // Load WhatsApp unread count - only when authenticated
   useEffect(() => {
