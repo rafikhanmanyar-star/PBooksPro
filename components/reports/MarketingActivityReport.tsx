@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { ContactType, ProjectAgreementStatus } from '../../types';
 import Card from '../ui/Card';
 import { ICONS } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
+import { apiClient } from '../../services/api/client';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
@@ -27,6 +28,24 @@ const MarketingActivityReport: React.FC = () => {
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
     const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
     const [endDate, setEndDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]);
+    const [orgUsers, setOrgUsers] = useState<{ id: string; name: string; username: string }[]>([]);
+
+    useEffect(() => {
+        let isMounted = true;
+        const loadOrgUsers = async () => {
+            try {
+                const data = await apiClient.get<{ id: string; name: string; username: string }[]>('/users');
+                if (isMounted) setOrgUsers(data || []);
+            } catch (error) {
+                console.error('Failed to load organization users for marketing report', error);
+                if (isMounted) setOrgUsers([]);
+            }
+        };
+        loadOrgUsers();
+        return () => {
+            isMounted = false;
+        };
+    }, []);
 
     const handleRangeChange = (option: ReportDateRange) => {
         setDateRange(option);
@@ -90,13 +109,37 @@ const MarketingActivityReport: React.FC = () => {
         const draftPlans = plansInRange.filter(plan => plan.status === 'Draft');
         const lockedPlans = plansInRange.filter(plan => plan.status === 'Locked');
 
-        const userLookup = new Map(state.users.map(user => [user.id, user]));
+        const usersForReport = orgUsers.length > 0 ? orgUsers : state.users;
+        const userLookup = new Map(usersForReport.map(user => [user.id, user]));
+        const userAliasLookup = new Map<string, { id: string; name?: string; username?: string }>();
+
+        const normalize = (value?: string) => value?.trim().toLowerCase() || '';
+        usersForReport.forEach(user => {
+            const normalizedId = normalize(user.id);
+            const normalizedName = normalize(user.name);
+            const normalizedUsername = normalize(user.username);
+            if (normalizedId) userAliasLookup.set(normalizedId, user);
+            if (normalizedName) userAliasLookup.set(normalizedName, user);
+            if (normalizedUsername) userAliasLookup.set(normalizedUsername, user);
+        });
+
+        const unassignedUser = usersForReport.find(user => {
+            const normalizedName = normalize(user.name);
+            const normalizedUsername = normalize(user.username);
+            return normalizedName === 'unassigned' || normalizedUsername === 'unassigned';
+        });
+        const unassignedName = unassignedUser?.name || unassignedUser?.username || 'Unassigned';
         const statsMap = new Map<string, UserStats>();
 
         const getUserName = (userId?: string) => {
-            if (!userId) return 'Unassigned';
+            if (!userId) return unassignedName;
             const user = userLookup.get(userId);
-            return user?.name || user?.username || 'Unassigned';
+            if (user?.name || user?.username) {
+                return user.name || user.username || unassignedName;
+            }
+            const normalized = normalize(userId);
+            const aliasUser = normalized ? userAliasLookup.get(normalized) : undefined;
+            return aliasUser?.name || aliasUser?.username || unassignedName;
         };
 
         const getStats = (userId?: string) => {
@@ -153,7 +196,7 @@ const MarketingActivityReport: React.FC = () => {
             lockedPlans,
             userStats
         };
-    }, [state.contacts, state.installmentPlans, state.projectAgreements, state.users, startDate, endDate, dateRange]);
+    }, [state.contacts, state.installmentPlans, state.projectAgreements, state.users, orgUsers, startDate, endDate, dateRange]);
 
     const handleExport = () => {
         const exportRows = reportData.userStats.map(row => ({

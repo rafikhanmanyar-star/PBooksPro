@@ -289,6 +289,8 @@ const MarketingPage: React.FC = () => {
     // Dynamic Amenity Selection State
     const [selectedAmenityIdToAdd, setSelectedAmenityIdToAdd] = useState('');
     const [showApprovalModal, setShowApprovalModal] = useState(false);
+    const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
+    const [historyRootId, setHistoryRootId] = useState<string | null>(null);
     const [approvalModalApproverId, setApprovalModalApproverId] = useState('');
     const [orgUsers, setOrgUsers] = useState<{ id: string; name: string; username: string; role: string }[]>([]);
 
@@ -771,13 +773,26 @@ const MarketingPage: React.FC = () => {
         );
     };
 
-    // Filtered Plans with search
+    // Filtered Plans with search - showing only latest version of each plan
     const filteredPlans = useMemo(() => {
         const allPlans = state.installmentPlans || [];
-        if (!searchQuery.trim()) return allPlans;
+        
+        // Group plans by rootId and find the latest version for each
+        const latestPlansMap = new Map<string, InstallmentPlan>();
+        allPlans.forEach(plan => {
+            const rId = plan.rootId || plan.id;
+            const existing = latestPlansMap.get(rId);
+            if (!existing || (plan.version || 1) > (existing.version || 1)) {
+                latestPlansMap.set(rId, plan);
+            }
+        });
+
+        const latestPlans = Array.from(latestPlansMap.values());
+
+        if (!searchQuery.trim()) return latestPlans;
 
         const q = searchQuery.toLowerCase();
-        return allPlans.filter(plan => {
+        return latestPlans.filter(plan => {
             const lead = state.contacts.find(l => l.id === plan.leadId);
             const project = state.projects.find(p => p.id === plan.projectId);
             const unit = state.units.find(u => u.id === plan.unitId);
@@ -1736,12 +1751,25 @@ const MarketingPage: React.FC = () => {
                                                             </p>
                                                         )}
                                                     </div>
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); handleDelete(plan.id); }}
-                                                        className="text-slate-400 hover:text-rose-500 p-1"
-                                                    >
-                                                        <div className="w-4 h-4">{ICONS.trash}</div>
-                                                    </button>
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setHistoryRootId(plan.rootId || plan.id);
+                                                                setShowHistoryDrawer(true);
+                                                            }}
+                                                            className="text-slate-400 hover:text-indigo-600 p-1 transition-colors"
+                                                            title="View Plan History"
+                                                        >
+                                                            <div className="w-4 h-4">{ICONS.repeat}</div>
+                                                        </button>
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleDelete(plan.id); }}
+                                                            className="text-slate-400 hover:text-rose-500 p-1"
+                                                        >
+                                                            <div className="w-4 h-4">{ICONS.trash}</div>
+                                                        </button>
+                                                    </div>
                                                 </div>
                                                 
                                                 <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
@@ -1870,6 +1898,94 @@ const MarketingPage: React.FC = () => {
                 onClose={entityFormModal.closeForm}
                 onSubmit={entityFormModal.handleSubmit}
             />
+
+            {/* Plan History Drawer */}
+            {showHistoryDrawer && (
+                <div className="fixed inset-0 z-[60] flex justify-end">
+                    <div 
+                        className="absolute inset-0 bg-black/20 backdrop-blur-sm transition-opacity"
+                        onClick={() => setShowHistoryDrawer(false)}
+                    />
+                    <div className="relative w-full max-w-md bg-white shadow-2xl flex flex-col h-full animate-in slide-in-from-right duration-300">
+                        <div className="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-800">Plan History</h2>
+                                <p className="text-xs text-slate-500">View previous versions and status changes</p>
+                            </div>
+                            <button 
+                                onClick={() => setShowHistoryDrawer(false)}
+                                className="p-2 hover:bg-slate-200 rounded-full transition-colors"
+                            >
+                                <div className="w-5 h-5">{ICONS.x}</div>
+                            </button>
+                        </div>
+                        
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                            {(() => {
+                                const history = (state.installmentPlans || [])
+                                    .filter(p => (p.rootId || p.id) === historyRootId)
+                                    .sort((a, b) => (b.version || 1) - (a.version || 1));
+
+                                if (history.length === 0) {
+                                    return (
+                                        <div className="text-center py-10">
+                                            <p className="text-slate-500">No history found for this plan.</p>
+                                        </div>
+                                    );
+                                }
+
+                                return history.map((planVersion) => {
+                                    const statusMeta = getStatusMeta(planVersion.status);
+                                    return (
+                                        <div 
+                                            key={planVersion.id}
+                                            onClick={() => {
+                                                handleEdit(planVersion);
+                                                setShowHistoryDrawer(false);
+                                            }}
+                                            className="group relative bg-white border border-slate-200 rounded-xl p-4 hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer"
+                                        >
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold">
+                                                        v{planVersion.version}
+                                                    </span>
+                                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${statusMeta.badge}`}>
+                                                        {statusMeta.label}
+                                                    </span>
+                                                </div>
+                                                <span className="text-[10px] text-slate-400">
+                                                    {formatActivityTime(planVersion.updatedAt || planVersion.createdAt)}
+                                                </span>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-2 gap-4 mt-3">
+                                                <div>
+                                                    <p className="text-[10px] text-slate-500 uppercase font-bold">Net Value</p>
+                                                    <p className="text-sm font-bold text-slate-700">Rs. {planVersion.netValue?.toLocaleString()}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] text-slate-500 uppercase font-bold">Monthly</p>
+                                                    <p className="text-sm font-bold text-slate-700">Rs. {planVersion.installmentAmount?.toLocaleString()}</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between items-center">
+                                                <span className="text-[10px] text-slate-500">
+                                                    {planVersion.durationYears} Years | {planVersion.frequency}
+                                                </span>
+                                                <span className="text-[10px] font-bold text-indigo-600 group-hover:translate-x-1 transition-transform flex items-center gap-1">
+                                                    View Version <div className="w-3 h-3">{ICONS.chevronRight}</div>
+                                                </span>
+                                            </div>
+                                        </div>
+                                    );
+                                });
+                            })()}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
