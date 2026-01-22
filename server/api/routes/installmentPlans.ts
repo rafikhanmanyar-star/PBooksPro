@@ -92,10 +92,69 @@ router.post('/', async (req: TenantRequest, res) => {
     const db = getDb();
     const plan = req.body;
     
+    console.log('📥 POST /installment-plans - Request received:', {
+      tenantId: req.tenantId,
+      userId: req.user?.userId,
+      planId: plan.id,
+      projectId: plan.projectId,
+      leadId: plan.leadId,
+      unitId: plan.unitId
+    });
+    
     if (!plan.projectId || !plan.leadId || !plan.unitId) {
       return res.status(400).json({ 
         error: 'Validation error',
         message: 'Project ID, Lead ID, and Unit ID are required'
+      });
+    }
+    
+    // Validate required numeric fields
+    if (plan.durationYears === undefined || plan.durationYears === null) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Duration years is required'
+      });
+    }
+    if (plan.downPaymentPercentage === undefined || plan.downPaymentPercentage === null) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Down payment percentage is required'
+      });
+    }
+    if (!plan.frequency) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Frequency is required'
+      });
+    }
+    if (plan.listPrice === undefined || plan.listPrice === null) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'List price is required'
+      });
+    }
+    if (plan.netValue === undefined || plan.netValue === null) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Net value is required'
+      });
+    }
+    if (plan.downPaymentAmount === undefined || plan.downPaymentAmount === null) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Down payment amount is required'
+      });
+    }
+    if (plan.installmentAmount === undefined || plan.installmentAmount === null) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Installment amount is required'
+      });
+    }
+    if (plan.totalInstallments === undefined || plan.totalInstallments === null) {
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Total installments is required'
       });
     }
     
@@ -107,6 +166,35 @@ router.post('/', async (req: TenantRequest, res) => {
     );
     const isUpdate = existing.length > 0;
     
+    // Prepare JSONB fields
+    let discountsJson = '[]';
+    if (plan.discounts) {
+      if (typeof plan.discounts === 'string') {
+        try {
+          JSON.parse(plan.discounts); // Validate it's valid JSON
+          discountsJson = plan.discounts;
+        } catch {
+          discountsJson = '[]';
+        }
+      } else {
+        discountsJson = JSON.stringify(plan.discounts);
+      }
+    }
+    
+    let selectedAmenitiesJson = '[]';
+    if (plan.selectedAmenities) {
+      if (typeof plan.selectedAmenities === 'string') {
+        try {
+          JSON.parse(plan.selectedAmenities); // Validate it's valid JSON
+          selectedAmenitiesJson = plan.selectedAmenities;
+        } catch {
+          selectedAmenitiesJson = '[]';
+        }
+      } else {
+        selectedAmenitiesJson = JSON.stringify(plan.selectedAmenities);
+      }
+    }
+    
     const result = await db.query(
       `INSERT INTO installment_plans (
         id, tenant_id, project_id, lead_id, unit_id, duration_years, 
@@ -117,7 +205,7 @@ router.post('/', async (req: TenantRequest, res) => {
         customer_discount_category_id, floor_discount_category_id, 
         lump_sum_discount_category_id, misc_discount_category_id, 
         selected_amenities, amenities_total, user_id, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23::jsonb, $24, $25, $26, $27, $28::jsonb, $29, $30,
                 COALESCE((SELECT created_at FROM installment_plans WHERE id = $1), NOW()), NOW())
       ON CONFLICT (id) 
       DO UPDATE SET
@@ -174,16 +262,27 @@ router.post('/', async (req: TenantRequest, res) => {
         plan.version || 1,
         plan.rootId || null,
         plan.status || 'Draft',
-        JSON.stringify(plan.discounts || []),
+        discountsJson, // $24 - will be cast to jsonb
         plan.customerDiscountCategoryId || null,
         plan.floorDiscountCategoryId || null,
         plan.lumpSumDiscountCategoryId || null,
         plan.miscDiscountCategoryId || null,
-        JSON.stringify(plan.selectedAmenities || []),
+        selectedAmenitiesJson, // $29 - will be cast to jsonb
         plan.amenitiesTotal || 0,
         req.user?.userId || null
       ]
     );
+    
+    if (!result || result.length === 0) {
+      console.error('❌ POST /installment-plans - No result returned from query');
+      return res.status(500).json({ error: 'Failed to save installment plan', message: 'No data returned from database' });
+    }
+    
+    console.log('✅ POST /installment-plans - Plan saved successfully:', {
+      id: result[0].id,
+      projectId: result[0].project_id,
+      tenantId: req.tenantId
+    });
     
     const saved = result[0];
     const mapped = {
@@ -217,9 +316,21 @@ router.post('/', async (req: TenantRequest, res) => {
     });
     
     res.status(isUpdate ? 200 : 201).json(mapped);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error saving installment plan:', error);
-    res.status(500).json({ error: 'Failed to save installment plan' });
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      detail: error.detail,
+      constraint: error.constraint,
+      table: error.table,
+      column: error.column
+    });
+    res.status(500).json({ 
+      error: 'Failed to save installment plan',
+      message: error.message || 'Unknown error',
+      detail: error.detail || undefined
+    });
   }
 });
 
