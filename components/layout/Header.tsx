@@ -26,6 +26,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const [orgUsers, setOrgUsers] = useState<{ id: string; name: string; username: string; role: string }[]>([]);
   const { openChat } = useWhatsApp();
   const notificationsRef = useRef<HTMLDivElement>(null);
+  const usersForNotifications = orgUsers.length > 0 ? orgUsers : state.users;
 
   const notifications = useMemo(() => {
     if (!state.currentUser) return [];
@@ -120,8 +121,6 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     };
     loadOrgUsers();
   }, []);
-
-  const usersForNotifications = orgUsers.length > 0 ? orgUsers : state.users;
 
   // Load WhatsApp unread count - only when authenticated
   useEffect(() => {
