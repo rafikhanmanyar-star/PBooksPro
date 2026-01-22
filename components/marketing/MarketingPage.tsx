@@ -1237,8 +1237,10 @@ const MarketingPage: React.FC = () => {
                                     >
                                         {selectedPlanId ? 'Save New Version' : 'Save Plan'}
                                     </Button>
-                                    {selectedPlanId && (status === 'Draft' || status === 'Rejected' || (status === 'Pending Approval' && approvalRequestedToId === state.currentUser?.id)) && (
+
+                                    {selectedPlanId && (
                                         <div className="pt-2 space-y-2">
+                                            {/* Creator Actions: Submit */}
                                             {(status === 'Draft' || status === 'Rejected') && (
                                                 <Button 
                                                     variant="secondary" 
@@ -1251,18 +1253,20 @@ const MarketingPage: React.FC = () => {
                                                     Submit for Approval
                                                 </Button>
                                             )}
+
+                                            {/* Approver Actions: Approve/Reject */}
                                             {status === 'Pending Approval' && approvalRequestedToId === state.currentUser?.id && (
                                                 <div className="grid grid-cols-2 gap-2">
                                                     <Button 
                                                         variant="primary" 
-                                                        className="justify-center py-3 bg-green-600 hover:bg-green-700"
+                                                        className="justify-center py-3 bg-green-600 hover:bg-green-700 text-white font-bold"
                                                         onClick={() => handleApprovalDecision('Approved')}
                                                     >
                                                         Approve
                                                     </Button>
                                                     <Button 
                                                         variant="ghost" 
-                                                        className="justify-center py-3 text-rose-600 border border-rose-200 hover:bg-rose-50"
+                                                        className="justify-center py-3 text-rose-600 border border-rose-200 hover:bg-rose-50 font-bold"
                                                         onClick={() => handleApprovalDecision('Rejected')}
                                                     >
                                                         Reject
@@ -1271,6 +1275,7 @@ const MarketingPage: React.FC = () => {
                                             )}
                                         </div>
                                     )}
+
                                     {status === 'Pending Approval' && (
                                         <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                                             <p className="text-[11px] text-blue-800 font-medium text-center">
@@ -1298,24 +1303,6 @@ const MarketingPage: React.FC = () => {
                                             <p className="text-[11px] text-amber-800 font-medium text-center">
                                                 This version is LOCKED. Save a new version to make changes.
                                             </p>
-                                        </div>
-                                    )}
-                                    {status === 'Pending Approval' && approvalRequestedToId === state.currentUser?.id && (
-                                        <div className="space-y-2 pt-2">
-                                            <Button 
-                                                variant="primary" 
-                                                className="w-full justify-center py-3"
-                                                onClick={() => handleApprovalDecision('Approved')}
-                                            >
-                                                Approve Plan
-                                            </Button>
-                                            <Button 
-                                                variant="ghost" 
-                                                className="w-full justify-center py-3 text-rose-600"
-                                                onClick={() => handleApprovalDecision('Rejected')}
-                                            >
-                                                Reject Plan
-                                            </Button>
                                         </div>
                                     )}
                                 </div>
