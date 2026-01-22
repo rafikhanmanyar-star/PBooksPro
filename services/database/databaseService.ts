@@ -990,7 +990,9 @@ class DatabaseService {
                 'project_agreement_units', 'contracts', 'contract_categories',
                 'recurring_invoice_templates',
                 'transaction_log', 'error_log', 'app_settings', 'license_settings',
-                'chat_messages'
+                'chat_messages',
+                // Marketing / installment plans
+                'plan_amenities', 'installment_plans'
             ];
             
             // Check for missing tables
