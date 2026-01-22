@@ -358,15 +358,26 @@ const MarketingPage: React.FC = () => {
         return state.units.filter(u => u.projectId === projectId);
     }, [projectId, state.units]);
 
-    const isReadOnly = status === 'Pending Approval' || status === 'Approved' || status === 'Locked';
-    const approvalRequestedToName = approvalRequestedToId
-        ? usersForApproval.find(u => u.id === approvalRequestedToId)?.name || usersForApproval.find(u => u.id === approvalRequestedToId)?.username
+    const activePlan = useMemo(() => {
+        if (!selectedPlanId) return null;
+        return (state.installmentPlans || []).find(p => p.id === selectedPlanId) || null;
+    }, [selectedPlanId, state.installmentPlans]);
+
+    const effectiveStatus = activePlan?.status || status;
+    const effectiveApprovalRequestedToId = activePlan?.approvalRequestedToId || approvalRequestedToId;
+    const effectiveApprovalRequestedById = activePlan?.approvalRequestedById || approvalRequestedById;
+    const effectiveApprovalReviewedById = activePlan?.approvalReviewedById || approvalReviewedById;
+    const isApproverForSelectedPlan = effectiveStatus === 'Pending Approval' && effectiveApprovalRequestedToId === state.currentUser?.id;
+
+    const isReadOnly = effectiveStatus === 'Pending Approval' || effectiveStatus === 'Approved' || effectiveStatus === 'Locked';
+    const approvalRequestedToName = effectiveApprovalRequestedToId
+        ? usersForApproval.find(u => u.id === effectiveApprovalRequestedToId)?.name || usersForApproval.find(u => u.id === effectiveApprovalRequestedToId)?.username
         : undefined;
-    const approvalRequestedByName = approvalRequestedById
-        ? usersForApproval.find(u => u.id === approvalRequestedById)?.name || usersForApproval.find(u => u.id === approvalRequestedById)?.username
+    const approvalRequestedByName = effectiveApprovalRequestedById
+        ? usersForApproval.find(u => u.id === effectiveApprovalRequestedById)?.name || usersForApproval.find(u => u.id === effectiveApprovalRequestedById)?.username
         : undefined;
-    const approvalReviewedByName = approvalReviewedById
-        ? usersForApproval.find(u => u.id === approvalReviewedById)?.name || usersForApproval.find(u => u.id === approvalReviewedById)?.username
+    const approvalReviewedByName = effectiveApprovalReviewedById
+        ? usersForApproval.find(u => u.id === effectiveApprovalReviewedById)?.name || usersForApproval.find(u => u.id === effectiveApprovalReviewedById)?.username
         : undefined;
 
 
@@ -1241,7 +1252,7 @@ const MarketingPage: React.FC = () => {
                                     {selectedPlanId && (
                                         <div className="pt-2 space-y-2">
                                             {/* Creator Actions: Submit */}
-                                            {(status === 'Draft' || status === 'Rejected') && (
+                                            {(effectiveStatus === 'Draft' || effectiveStatus === 'Rejected') && (
                                                 <Button 
                                                     variant="secondary" 
                                                     className="w-full justify-center py-3 border-green-200 text-green-700 hover:bg-green-50" 
@@ -1255,7 +1266,7 @@ const MarketingPage: React.FC = () => {
                                             )}
 
                                             {/* Approver Actions: Approve/Reject */}
-                                            {status === 'Pending Approval' && approvalRequestedToId === state.currentUser?.id && (
+                                            {isApproverForSelectedPlan && (
                                                 <div className="grid grid-cols-2 gap-2">
                                                     <Button 
                                                         variant="primary" 
@@ -1276,7 +1287,7 @@ const MarketingPage: React.FC = () => {
                                         </div>
                                     )}
 
-                                    {status === 'Pending Approval' && (
+                                    {effectiveStatus === 'Pending Approval' && (
                                         <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                                             <p className="text-[11px] text-blue-800 font-medium text-center">
                                                 Awaiting approval from {approvalRequestedToName || 'approver'}
@@ -1284,21 +1295,21 @@ const MarketingPage: React.FC = () => {
                                             </p>
                                         </div>
                                     )}
-                                    {status === 'Approved' && (
+                                    {effectiveStatus === 'Approved' && (
                                         <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
                                             <p className="text-[11px] text-green-800 font-medium text-center">
                                                 Approved{approvalReviewedByName ? ` by ${approvalReviewedByName}` : ''}. You can convert this plan to a sales agreement.
                                             </p>
                                         </div>
                                     )}
-                                    {status === 'Rejected' && (
+                                    {effectiveStatus === 'Rejected' && (
                                         <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
                                             <p className="text-[11px] text-rose-800 font-medium text-center">
                                                 Rejected{approvalReviewedByName ? ` by ${approvalReviewedByName}` : ''}. Please update and submit for approval again.
                                             </p>
                                         </div>
                                     )}
-                                    {status === 'Locked' && (
+                                    {effectiveStatus === 'Locked' && (
                                         <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                                             <p className="text-[11px] text-amber-800 font-medium text-center">
                                                 This version is LOCKED. Save a new version to make changes.
