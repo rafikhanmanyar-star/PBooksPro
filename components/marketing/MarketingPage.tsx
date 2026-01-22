@@ -364,12 +364,30 @@ const MarketingPage: React.FC = () => {
     }, [selectedPlanId, state.installmentPlans]);
 
     const effectiveStatus = activePlan?.status || status;
+    const normalizedStatus = (effectiveStatus || '').toString().toLowerCase().replace(/\s+/g, ' ').trim();
+    const isPendingApproval = normalizedStatus === 'pending approval';
+    const isApprovedStatus = normalizedStatus === 'approved';
+    const isRejectedStatus = normalizedStatus === 'rejected';
+    const isLockedStatus = normalizedStatus === 'locked';
     const effectiveApprovalRequestedToId = activePlan?.approvalRequestedToId || approvalRequestedToId;
     const effectiveApprovalRequestedById = activePlan?.approvalRequestedById || approvalRequestedById;
     const effectiveApprovalReviewedById = activePlan?.approvalReviewedById || approvalReviewedById;
-    const isApproverForSelectedPlan = effectiveStatus === 'Pending Approval' && effectiveApprovalRequestedToId === state.currentUser?.id;
+    const isMatchingUser = useMemo(() => {
+        const currentUser = state.currentUser;
+        if (!currentUser) return () => false;
+        const candidates = [
+            currentUser.id,
+            currentUser.username,
+            currentUser.name
+        ].filter(Boolean).map(value => value.toString().toLowerCase());
+        return (value?: string) => {
+            if (!value) return false;
+            return candidates.includes(value.toString().toLowerCase());
+        };
+    }, [state.currentUser]);
+    const isApproverForSelectedPlan = isPendingApproval && isMatchingUser(effectiveApprovalRequestedToId);
 
-    const isReadOnly = effectiveStatus === 'Pending Approval' || effectiveStatus === 'Approved' || effectiveStatus === 'Locked';
+    const isReadOnly = isPendingApproval || isApprovedStatus || isLockedStatus;
     const approvalRequestedToName = effectiveApprovalRequestedToId
         ? usersForApproval.find(u => u.id === effectiveApprovalRequestedToId)?.name || usersForApproval.find(u => u.id === effectiveApprovalRequestedToId)?.username
         : undefined;
@@ -1252,7 +1270,7 @@ const MarketingPage: React.FC = () => {
                                     {selectedPlanId && (
                                         <div className="pt-2 space-y-2">
                                             {/* Creator Actions: Submit */}
-                                            {(effectiveStatus === 'Draft' || effectiveStatus === 'Rejected') && (
+                                            {(normalizedStatus === 'draft' || isRejectedStatus) && (
                                                 <Button 
                                                     variant="secondary" 
                                                     className="w-full justify-center py-3 border-green-200 text-green-700 hover:bg-green-50" 
@@ -1287,7 +1305,7 @@ const MarketingPage: React.FC = () => {
                                         </div>
                                     )}
 
-                                    {effectiveStatus === 'Pending Approval' && (
+                                    {isPendingApproval && (
                                         <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                                             <p className="text-[11px] text-blue-800 font-medium text-center">
                                                 Awaiting approval from {approvalRequestedToName || 'approver'}
@@ -1295,21 +1313,21 @@ const MarketingPage: React.FC = () => {
                                             </p>
                                         </div>
                                     )}
-                                    {effectiveStatus === 'Approved' && (
+                                    {isApprovedStatus && (
                                         <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
                                             <p className="text-[11px] text-green-800 font-medium text-center">
                                                 Approved{approvalReviewedByName ? ` by ${approvalReviewedByName}` : ''}. You can convert this plan to a sales agreement.
                                             </p>
                                         </div>
                                     )}
-                                    {effectiveStatus === 'Rejected' && (
+                                    {isRejectedStatus && (
                                         <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
                                             <p className="text-[11px] text-rose-800 font-medium text-center">
                                                 Rejected{approvalReviewedByName ? ` by ${approvalReviewedByName}` : ''}. Please update and submit for approval again.
                                             </p>
                                         </div>
                                     )}
-                                    {effectiveStatus === 'Locked' && (
+                                    {isLockedStatus && (
                                         <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                                             <p className="text-[11px] text-amber-800 font-medium text-center">
                                                 This version is LOCKED. Save a new version to make changes.

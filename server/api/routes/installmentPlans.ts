@@ -31,6 +31,8 @@ router.get('/', async (req: TenantRequest, res) => {
     const db = getDb();
     const { projectId, leadId, unitId } = req.query;
     const currentUserId = req.user?.userId;
+    const currentUsername = req.user?.username;
+    let currentUserName: string | null = null;
     
     // Privacy Logic: 
     // 1. Admins see everything
@@ -40,9 +42,28 @@ router.get('/', async (req: TenantRequest, res) => {
     let paramIndex = 2;
 
     if (req.userRole !== 'Admin') {
-      query += ` AND (user_id = $${paramIndex} OR approval_requested_by = $${paramIndex} OR approval_requested_to = $${paramIndex})`;
-      params.push(currentUserId);
-      paramIndex++;
+      if (currentUserId) {
+        try {
+          const userRows = await db.query(
+            'SELECT name FROM users WHERE id = $1 AND tenant_id = $2',
+            [currentUserId, req.tenantId]
+          );
+          currentUserName = userRows[0]?.name || null;
+        } catch (userError) {
+          console.warn('Failed to fetch current user name for plan filter', userError);
+        }
+      }
+
+      const matchValues = [currentUserId, currentUsername, currentUserName].filter(Boolean);
+      if (matchValues.length > 0) {
+        const matchClauses = matchValues.map((_, index) => {
+          const param = `$${paramIndex + index}`;
+          return `(user_id = ${param} OR approval_requested_by = ${param} OR approval_requested_to = ${param})`;
+        });
+        query += ` AND (${matchClauses.join(' OR ')})`;
+        params.push(...matchValues);
+        paramIndex += matchValues.length;
+      }
     }
 
     if (projectId) {
@@ -194,6 +215,21 @@ router.post('/', async (req: TenantRequest, res) => {
     }
     
     const planId = plan.id || `plan_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    let normalizedApprovalRequestedToId = plan.approvalRequestedToId;
+
+    if (normalizedApprovalRequestedToId && req.tenantId) {
+      try {
+        const approverRows = await db.query(
+          'SELECT id FROM users WHERE tenant_id = $1 AND (id = $2 OR username = $2 OR name = $2) LIMIT 1',
+          [req.tenantId, normalizedApprovalRequestedToId]
+        );
+        if (approverRows.length > 0) {
+          normalizedApprovalRequestedToId = approverRows[0].id;
+        }
+      } catch (approverError) {
+        console.warn('Failed to normalize approval_requested_to value', approverError);
+      }
+    }
     
     const existing = await db.query(
       'SELECT id FROM installment_plans WHERE id = $1 AND tenant_id = $2',
@@ -302,7 +338,7 @@ router.post('/', async (req: TenantRequest, res) => {
       { name: 'root_id', value: plan.rootId || null, update: true },
       { name: 'status', value: plan.status || 'Draft', update: true },
       { name: 'approval_requested_by', value: plan.approvalRequestedById || null, update: true },
-      { name: 'approval_requested_to', value: plan.approvalRequestedToId || null, update: true },
+      { name: 'approval_requested_to', value: normalizedApprovalRequestedToId || null, update: true },
       { name: 'approval_requested_at', value: plan.approvalRequestedAt || null, update: true },
       { name: 'approval_reviewed_by', value: plan.approvalReviewedById || null, update: true },
       { name: 'approval_reviewed_at', value: plan.approvalReviewedAt || null, update: true },

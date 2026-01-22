@@ -47,8 +47,22 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       return user?.name || user?.username;
     };
 
+    const isMatchingCurrentUser = (value?: string) => {
+      if (!value || !state.currentUser) return false;
+      const candidates = [
+        state.currentUser.id,
+        state.currentUser.username,
+        state.currentUser.name
+      ].filter(Boolean).map(item => item.toString().toLowerCase());
+      return candidates.includes(value.toString().toLowerCase());
+    };
+
     const items = (state.installmentPlans || []).flatMap(plan => {
       const time = plan.updatedAt || plan.createdAt || '';
+      const normalizedStatus = (plan.status || '').toString().toLowerCase().replace(/\s+/g, ' ').trim();
+      const isPendingApproval = normalizedStatus === 'pending approval';
+      const isApprovedStatus = normalizedStatus === 'approved';
+      const isRejectedStatus = normalizedStatus === 'rejected';
       const base = {
         planId: plan.id,
         time
@@ -64,7 +78,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       }> = [];
 
       // 1. You are the approver and someone requested your approval
-      if (plan.status === 'Pending Approval' && plan.approvalRequestedToId === currentUserId) {
+      if (isPendingApproval && (plan.approvalRequestedToId === currentUserId || isMatchingCurrentUser(plan.approvalRequestedToId))) {
         const requester = userName(plan.approvalRequestedById || plan.userId);
         results.push({
           ...base,
@@ -76,7 +90,12 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       }
 
       // 2. You are the creator/requester and someone approved/rejected your plan
-      if ((plan.status === 'Approved' || plan.status === 'Rejected') && (plan.approvalRequestedById === currentUserId || plan.userId === currentUserId)) {
+      if ((isApprovedStatus || isRejectedStatus) && (
+        plan.approvalRequestedById === currentUserId ||
+        plan.userId === currentUserId ||
+        isMatchingCurrentUser(plan.approvalRequestedById) ||
+        isMatchingCurrentUser(plan.userId)
+      )) {
         const reviewer = userName(plan.approvalReviewedById);
         results.push({
           ...base,
