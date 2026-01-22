@@ -6,7 +6,7 @@
  * data model.
  */
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const CREATE_SCHEMA_SQL = `
 -- Enable foreign keys
