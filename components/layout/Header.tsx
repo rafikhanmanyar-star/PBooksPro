@@ -1,4 +1,4 @@
-import React, { useState, memo, useEffect, useCallback } from 'react';
+import React, { useState, memo, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import SearchModal from './SearchModal';
@@ -21,7 +21,82 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [whatsappUnreadCount, setWhatsappUnreadCount] = useState(0);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const { openChat } = useWhatsApp();
+  const notificationsRef = useRef<HTMLDivElement>(null);
+
+  const notifications = useMemo(() => {
+    if (!state.currentUser) return [];
+    const currentUserId = state.currentUser.id;
+
+    const planLabel = (planId: string) => {
+      const plan = state.installmentPlans.find(p => p.id === planId);
+      if (!plan) return 'Installment plan';
+      const lead = state.contacts.find(l => l.id === plan.leadId);
+      const project = state.projects.find(p => p.id === plan.projectId);
+      const unit = state.units.find(u => u.id === plan.unitId);
+      return `${lead?.name || 'Lead'} • ${project?.name || 'Project'} • ${unit?.name || 'Unit'}`;
+    };
+
+    const items = (state.installmentPlans || []).flatMap(plan => {
+      const time = plan.updatedAt || plan.createdAt || '';
+      const base = {
+        planId: plan.id,
+        time
+      };
+
+      const results: Array<{
+        id: string;
+        title: string;
+        message: string;
+        planId: string;
+        time: string;
+        status: 'Pending Approval' | 'Approved' | 'Rejected';
+      }> = [];
+
+      if (plan.status === 'Pending Approval' && plan.approvalRequestedToId === currentUserId) {
+        results.push({
+          ...base,
+          id: `approval:${plan.id}`,
+          title: 'Plan approval requested',
+          message: planLabel(plan.id),
+          status: 'Pending Approval'
+        });
+      }
+
+      if ((plan.status === 'Approved' || plan.status === 'Rejected') && plan.approvalRequestedById === currentUserId) {
+        results.push({
+          ...base,
+          id: `decision:${plan.id}:${plan.status}`,
+          title: `Plan ${plan.status.toLowerCase()}`,
+          message: planLabel(plan.id),
+          status: plan.status
+        });
+      }
+
+      return results;
+    });
+
+    return items.sort((a, b) => b.time.localeCompare(a.time));
+  }, [state.currentUser, state.installmentPlans, state.contacts, state.projects, state.units]);
+
+  const handleNotificationClick = useCallback((planId: string) => {
+    dispatch({ type: 'SET_PAGE', payload: 'marketing' });
+    dispatch({ type: 'SET_EDITING_ENTITY', payload: { type: 'INSTALLMENT_PLAN', id: planId } });
+    setIsNotificationsOpen(false);
+  }, [dispatch]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!isNotificationsOpen) return;
+      if (notificationsRef.current && !notificationsRef.current.contains(event.target as Node)) {
+        setIsNotificationsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isNotificationsOpen]);
 
   // Load WhatsApp unread count - only when authenticated
   useEffect(() => {
@@ -115,13 +190,66 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
               <SyncStatusIndicator showDetails={false} />
             </div>
 
+            <div className="relative" ref={notificationsRef}>
+              <button
+                onClick={() => setIsNotificationsOpen(prev => !prev)}
+                className="p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors relative hidden sm:flex min-w-[44px] min-h-[44px] touch-manipulation items-center justify-center"
+                title={notifications.length > 0 ? `${notifications.length} notifications` : 'Notifications'}
+                aria-label="Notifications"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1 1-3.46 0"></path></svg>
+                {notifications.length > 0 && (
+                  <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1.5 bg-indigo-600 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center">
+                    {notifications.length > 99 ? '99+' : notifications.length}
+                  </span>
+                )}
+              </button>
+              {isNotificationsOpen && (
+                <div className="absolute right-0 mt-2 w-96 max-w-[90vw] bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden z-40">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                    <h3 className="text-sm font-bold text-slate-800">Notifications</h3>
+                    <span className="text-xs text-slate-500">{notifications.length} total</span>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="px-4 py-6 text-sm text-slate-500 text-center">No new notifications</div>
+                    ) : (
+                      notifications.map(item => (
+                        <button
+                          key={item.id}
+                          onClick={() => handleNotificationClick(item.planId)}
+                          className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-800">{item.title}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">{item.message}</p>
+                            </div>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                              item.status === 'Pending Approval'
+                                ? 'bg-blue-100 text-blue-700'
+                                : item.status === 'Approved'
+                                  ? 'bg-green-100 text-green-700'
+                                  : 'bg-rose-100 text-rose-700'
+                            }`}>
+                              {item.status}
+                            </span>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <button
               onClick={handleWhatsAppNotificationClick}
               className="p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors relative group hidden sm:block min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
               title={whatsappUnreadCount > 0 ? `${whatsappUnreadCount} unread WhatsApp messages` : 'WhatsApp Messages'}
               aria-label="WhatsApp Messages"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 0 0 1 1-3.46 0"></path></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"></path></svg>
               {whatsappUnreadCount > 0 && (
                 <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1.5 bg-green-500 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center">
                   {whatsappUnreadCount > 99 ? '99+' : whatsappUnreadCount}

@@ -328,7 +328,9 @@ const MarketingPage: React.FC = () => {
     const leads = useMemo(() => state.contacts.filter(c => c.type === ContactType.LEAD), [state.contacts]);
 
     const approvers = useMemo(
-        () => state.users.filter(user => user.role === 'Admin'),
+        () => state.users
+            .filter(user => user.role === 'Admin')
+            .map(user => ({ id: user.id, name: user.name || user.username })),
         [state.users]
     );
     
@@ -348,6 +350,7 @@ const MarketingPage: React.FC = () => {
     const approvalReviewedByName = approvalReviewedById
         ? state.users.find(u => u.id === approvalReviewedById)?.name
         : undefined;
+
 
     // Calculate amenities total
     const amenitiesTotal = useMemo(() => {
@@ -690,6 +693,16 @@ const MarketingPage: React.FC = () => {
         }
     };
 
+    useEffect(() => {
+        if (state.editingEntity?.type === 'INSTALLMENT_PLAN' && state.editingEntity.id) {
+            const plan = (state.installmentPlans || []).find(p => p.id === state.editingEntity?.id);
+            if (plan) {
+                handleEdit(plan);
+            }
+            dispatch({ type: 'CLEAR_EDITING_ENTITY' });
+        }
+    }, [state.editingEntity, state.installmentPlans, dispatch]);
+
     const handleApprovalDecision = async (decision: 'Approved' | 'Rejected') => {
         if (!selectedPlanId) return;
         const plan = (state.installmentPlans || []).find(p => p.id === selectedPlanId);
@@ -760,6 +773,12 @@ const MarketingPage: React.FC = () => {
             );
         });
     }, [state.installmentPlans, state.contacts, state.projects, state.units, searchQuery]);
+
+    const approvalTasks = useMemo(() => {
+        return (state.installmentPlans || [])
+            .filter(plan => plan.approvalRequestedToId)
+            .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+    }, [state.installmentPlans]);
 
     const getStatusMeta = (planStatus: InstallmentPlan['status']) => {
         switch (planStatus) {
@@ -1122,7 +1141,7 @@ const MarketingPage: React.FC = () => {
                                                 setShowApprovalModal(true);
                                             }}
                                         >
-                                            Approve & Lock Plan
+                                            Submit for Approval
                                         </Button>
                                     )}
                                     {status === 'Pending Approval' && (
@@ -1555,6 +1574,64 @@ const MarketingPage: React.FC = () => {
                     </div>
                 ) : (
                     <div className="max-w-6xl mx-auto space-y-4 no-print">
+                        {state.currentUser?.role === 'Admin' && approvalTasks.length > 0 && (
+                            <Card className="p-4 bg-white border border-slate-200">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Approval Tasks</h2>
+                                    <span className="text-xs text-slate-500">{approvalTasks.length} total</span>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-xs">
+                                        <thead>
+                                            <tr className="text-slate-500 border-b border-slate-200">
+                                                <th className="text-left py-2 font-semibold">Plan</th>
+                                                <th className="text-left py-2 font-semibold">Requested By</th>
+                                                <th className="text-left py-2 font-semibold">Assigned To</th>
+                                                <th className="text-left py-2 font-semibold">Status</th>
+                                                <th className="text-right py-2 font-semibold">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {approvalTasks.map(plan => {
+                                                const lead = state.contacts.find(l => l.id === plan.leadId);
+                                                const project = state.projects.find(p => p.id === plan.projectId);
+                                                const unit = state.units.find(u => u.id === plan.unitId);
+                                                const statusMeta = getStatusMeta(plan.status);
+                                                return (
+                                                    <tr key={plan.id} className="border-b border-slate-100">
+                                                        <td className="py-2">
+                                                            <div className="font-medium text-slate-800">{lead?.name || 'Unknown Lead'}</div>
+                                                            <div className="text-[10px] text-slate-500">{project?.name} - {unit?.name}</div>
+                                                        </td>
+                                                        <td className="py-2 text-slate-700">
+                                                            {state.users.find(u => u.id === plan.approvalRequestedById)?.name || 'N/A'}
+                                                        </td>
+                                                        <td className="py-2 text-slate-700">
+                                                            {state.users.find(u => u.id === plan.approvalRequestedToId)?.name || 'N/A'}
+                                                        </td>
+                                                        <td className="py-2">
+                                                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${statusMeta.badge}`}>
+                                                                {statusMeta.label}
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-2 text-right">
+                                                            <Button
+                                                                variant="secondary"
+                                                                size="sm"
+                                                                className="py-1 px-2 text-[10px]"
+                                                                onClick={() => handleEdit(plan)}
+                                                            >
+                                                                View
+                                                            </Button>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </Card>
+                        )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             {filteredPlans.map(plan => {
                                 const lead = state.contacts.find(l => l.id === plan.leadId);
