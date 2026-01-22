@@ -255,6 +255,7 @@ export interface InstallmentPlan {
   approvalRequestedAt?: string;
   approvalReviewedById?: string;
   approvalReviewedAt?: string;
+  userId?: string;
   // Selected amenities with their calculated amounts
   selectedAmenities?: InstallmentPlanAmenity[];
   amenitiesTotal?: number;

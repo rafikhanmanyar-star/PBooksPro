@@ -80,6 +80,7 @@ router.get('/', async (req: TenantRequest, res) => {
       approvalRequestedAt: p.approval_requested_at || undefined,
       approvalReviewedById: p.approval_reviewed_by || undefined,
       approvalReviewedAt: p.approval_reviewed_at || undefined,
+      userId: p.user_id || undefined,
       discounts: (() => {
         if (p.discounts) {
           if (typeof p.discounts === 'string') {
@@ -378,6 +379,7 @@ router.post('/', async (req: TenantRequest, res) => {
       approvalRequestedAt: saved.approval_requested_at || plan.approvalRequestedAt,
       approvalReviewedById: saved.approval_reviewed_by || plan.approvalReviewedById,
       approvalReviewedAt: saved.approval_reviewed_at || plan.approvalReviewedAt,
+      userId: saved.user_id || plan.userId || req.user?.userId,
       discounts: (() => {
         if (saved.discounts) {
           if (typeof saved.discounts === 'string') {
