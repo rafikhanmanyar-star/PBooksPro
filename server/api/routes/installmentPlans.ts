@@ -5,6 +5,25 @@ import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
+const INSTALLMENT_PLAN_COLUMNS_TTL_MS = 5 * 60 * 1000;
+let installmentPlanColumnsCache: { columns: Set<string>; loadedAt: number } | null = null;
+let loggedMissingInstallmentPlanColumns = false;
+
+const getInstallmentPlanColumns = async (db: ReturnType<typeof getDb>): Promise<Set<string>> => {
+  if (installmentPlanColumnsCache && Date.now() - installmentPlanColumnsCache.loadedAt < INSTALLMENT_PLAN_COLUMNS_TTL_MS) {
+    return installmentPlanColumnsCache.columns;
+  }
+
+  const rows = await db.query<{ column_name: string }>(
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_name = 'installment_plans'
+       AND table_schema = current_schema()`
+  );
+  const columns = new Set(rows.map((row) => row.column_name));
+  installmentPlanColumnsCache = { columns, loadedAt: Date.now() };
+  return columns;
+};
 
 // GET all installment plans
 router.get('/', async (req: TenantRequest, res) => {
@@ -195,82 +214,134 @@ router.post('/', async (req: TenantRequest, res) => {
       }
     }
     
+    const availableColumns = await getInstallmentPlanColumns(db);
+    const requiredColumns = [
+      'id',
+      'tenant_id',
+      'project_id',
+      'lead_id',
+      'unit_id',
+      'duration_years',
+      'down_payment_percentage',
+      'frequency',
+      'list_price',
+      'customer_discount',
+      'floor_discount',
+      'lump_sum_discount',
+      'misc_discount',
+      'net_value',
+      'down_payment_amount',
+      'installment_amount',
+      'total_installments',
+      'description',
+      'user_id',
+      'created_at',
+      'updated_at',
+    ];
+
+    const missingRequired = requiredColumns.filter((column) => !availableColumns.has(column));
+    if (missingRequired.length > 0) {
+      console.error('❌ Missing required columns on installment_plans:', missingRequired);
+      return res.status(500).json({
+        error: 'Failed to save installment plan',
+        message: `Database schema missing required columns: ${missingRequired.join(', ')}`
+      });
+    }
+
+    type InsertColumn = {
+      name: string;
+      value?: any;
+      cast?: string;
+      raw?: string;
+      update?: boolean;
+    };
+
+    const insertColumns: InsertColumn[] = [
+      { name: 'id', value: planId },
+      { name: 'tenant_id', value: req.tenantId },
+      { name: 'project_id', value: plan.projectId, update: true },
+      { name: 'lead_id', value: plan.leadId, update: true },
+      { name: 'unit_id', value: plan.unitId, update: true },
+      { name: 'duration_years', value: plan.durationYears, update: true },
+      { name: 'down_payment_percentage', value: plan.downPaymentPercentage, update: true },
+      { name: 'frequency', value: plan.frequency, update: true },
+      { name: 'list_price', value: plan.listPrice, update: true },
+      { name: 'customer_discount', value: plan.customerDiscount || 0, update: true },
+      { name: 'floor_discount', value: plan.floorDiscount || 0, update: true },
+      { name: 'lump_sum_discount', value: plan.lumpSumDiscount || 0, update: true },
+      { name: 'misc_discount', value: plan.miscDiscount || 0, update: true },
+      { name: 'net_value', value: plan.netValue, update: true },
+      { name: 'down_payment_amount', value: plan.downPaymentAmount, update: true },
+      { name: 'installment_amount', value: plan.installmentAmount, update: true },
+      { name: 'total_installments', value: plan.totalInstallments, update: true },
+      { name: 'description', value: plan.description || null, update: true },
+      { name: 'user_id', value: req.user?.userId || null, update: true },
+      { name: 'created_at', raw: 'NOW()' },
+      { name: 'updated_at', raw: 'NOW()' },
+    ];
+
+    const optionalColumns = [
+      { name: 'intro_text', value: plan.introText || null, update: true },
+      { name: 'version', value: plan.version || 1, update: true },
+      { name: 'root_id', value: plan.rootId || null, update: true },
+      { name: 'status', value: plan.status || 'Draft', update: true },
+      { name: 'discounts', value: discountsJson, cast: 'jsonb', update: true },
+      { name: 'customer_discount_category_id', value: plan.customerDiscountCategoryId || null, update: true },
+      { name: 'floor_discount_category_id', value: plan.floorDiscountCategoryId || null, update: true },
+      { name: 'lump_sum_discount_category_id', value: plan.lumpSumDiscountCategoryId || null, update: true },
+      { name: 'misc_discount_category_id', value: plan.miscDiscountCategoryId || null, update: true },
+      { name: 'selected_amenities', value: selectedAmenitiesJson, cast: 'jsonb', update: true },
+      { name: 'amenities_total', value: plan.amenitiesTotal || 0, update: true },
+    ];
+
+    const missingOptional = optionalColumns
+      .map((column) => column.name)
+      .filter((column) => !availableColumns.has(column));
+
+    if (missingOptional.length > 0 && !loggedMissingInstallmentPlanColumns) {
+      loggedMissingInstallmentPlanColumns = true;
+      console.warn('⚠️ installment_plans missing optional columns:', missingOptional);
+    }
+
+    optionalColumns.forEach((column) => {
+      if (availableColumns.has(column.name)) {
+        insertColumns.push(column);
+      }
+    });
+
+    const params: any[] = [];
+    const columnsSql: string[] = [];
+    const valuesSql: string[] = [];
+    const updateSql: string[] = [];
+
+    insertColumns.forEach((column) => {
+      columnsSql.push(column.name);
+
+      if (column.raw) {
+        valuesSql.push(column.raw);
+      } else {
+        const paramIndex = params.length + 1;
+        const castSql = column.cast ? `::${column.cast}` : '';
+        valuesSql.push(`$${paramIndex}${castSql}`);
+        params.push(column.value);
+      }
+
+      if (column.update) {
+        updateSql.push(`${column.name} = EXCLUDED.${column.name}`);
+      }
+    });
+
+    if (availableColumns.has('updated_at')) {
+      updateSql.push('updated_at = NOW()');
+    }
+
     const result = await db.query(
-      `INSERT INTO installment_plans (
-        id, tenant_id, project_id, lead_id, unit_id, duration_years, 
-        down_payment_percentage, frequency, list_price, customer_discount, 
-        floor_discount, lump_sum_discount, misc_discount, net_value, 
-        down_payment_amount, installment_amount, total_installments, 
-        description, intro_text, version, root_id, status, discounts,
-        customer_discount_category_id, floor_discount_category_id, 
-        lump_sum_discount_category_id, misc_discount_category_id, 
-        selected_amenities, amenities_total, user_id, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23::jsonb, $24, $25, $26, $27, $28::jsonb, $29, $30,
-                COALESCE((SELECT created_at FROM installment_plans WHERE id = $1), NOW()), NOW())
-      ON CONFLICT (id) 
-      DO UPDATE SET
-        project_id = EXCLUDED.project_id,
-        lead_id = EXCLUDED.lead_id,
-        unit_id = EXCLUDED.unit_id,
-        duration_years = EXCLUDED.duration_years,
-        down_payment_percentage = EXCLUDED.down_payment_percentage,
-        frequency = EXCLUDED.frequency,
-        list_price = EXCLUDED.list_price,
-        customer_discount = EXCLUDED.customer_discount,
-        floor_discount = EXCLUDED.floor_discount,
-        lump_sum_discount = EXCLUDED.lump_sum_discount,
-        misc_discount = EXCLUDED.misc_discount,
-        net_value = EXCLUDED.net_value,
-        down_payment_amount = EXCLUDED.down_payment_amount,
-        installment_amount = EXCLUDED.installment_amount,
-        total_installments = EXCLUDED.total_installments,
-        description = EXCLUDED.description,
-        intro_text = EXCLUDED.intro_text,
-        version = EXCLUDED.version,
-        root_id = EXCLUDED.root_id,
-        status = EXCLUDED.status,
-        discounts = EXCLUDED.discounts,
-        customer_discount_category_id = EXCLUDED.customer_discount_category_id,
-        floor_discount_category_id = EXCLUDED.floor_discount_category_id,
-        lump_sum_discount_category_id = EXCLUDED.lump_sum_discount_category_id,
-        misc_discount_category_id = EXCLUDED.misc_discount_category_id,
-        selected_amenities = EXCLUDED.selected_amenities,
-        amenities_total = EXCLUDED.amenities_total,
-        user_id = EXCLUDED.user_id,
-        updated_at = NOW()
-      RETURNING *`,
-      [
-        planId,
-        req.tenantId,
-        plan.projectId,
-        plan.leadId,
-        plan.unitId,
-        plan.durationYears,
-        plan.downPaymentPercentage,
-        plan.frequency,
-        plan.listPrice,
-        plan.customerDiscount || 0,
-        plan.floorDiscount || 0,
-        plan.lumpSumDiscount || 0,
-        plan.miscDiscount || 0,
-        plan.netValue,
-        plan.downPaymentAmount,
-        plan.installmentAmount,
-        plan.totalInstallments,
-        plan.description || null,
-        plan.introText || null,
-        plan.version || 1,
-        plan.rootId || null,
-        plan.status || 'Draft',
-        discountsJson, // $24 - will be cast to jsonb
-        plan.customerDiscountCategoryId || null,
-        plan.floorDiscountCategoryId || null,
-        plan.lumpSumDiscountCategoryId || null,
-        plan.miscDiscountCategoryId || null,
-        selectedAmenitiesJson, // $29 - will be cast to jsonb
-        plan.amenitiesTotal || 0,
-        req.user?.userId || null
-      ]
+      `INSERT INTO installment_plans (${columnsSql.join(', ')})
+       VALUES (${valuesSql.join(', ')})
+       ON CONFLICT (id)
+       DO UPDATE SET ${updateSql.join(', ')}
+       RETURNING *`,
+      params
     );
     
     if (!result || result.length === 0) {
