@@ -18,6 +18,7 @@ import { InvoicesApiRepository } from './repositories/invoicesApi';
 import { BillsApiRepository } from './repositories/billsApi';
 import { BudgetsApiRepository } from './repositories/budgetsApi';
 import { PlanAmenitiesApiRepository } from './repositories/planAmenitiesApi';
+import { InstallmentPlansApiRepository } from './repositories/installmentPlansApi';
 import { RentalAgreementsApiRepository } from './repositories/rentalAgreementsApi';
 import { ProjectAgreementsApiRepository } from './repositories/projectAgreementsApi';
 import { ContractsApiRepository } from './repositories/contractsApi';
@@ -43,6 +44,7 @@ export class AppStateApiService {
   private billsRepo: BillsApiRepository;
   private budgetsRepo: BudgetsApiRepository;
   private planAmenitiesRepo: PlanAmenitiesApiRepository;
+  private installmentPlansRepo: InstallmentPlansApiRepository;
   private rentalAgreementsRepo: RentalAgreementsApiRepository;
   private projectAgreementsRepo: ProjectAgreementsApiRepository;
   private contractsRepo: ContractsApiRepository;
@@ -67,6 +69,7 @@ export class AppStateApiService {
     this.billsRepo = new BillsApiRepository();
     this.budgetsRepo = new BudgetsApiRepository();
     this.planAmenitiesRepo = new PlanAmenitiesApiRepository();
+    this.installmentPlansRepo = new InstallmentPlansApiRepository();
     this.rentalAgreementsRepo = new RentalAgreementsApiRepository();
     this.projectAgreementsRepo = new ProjectAgreementsApiRepository();
     this.contractsRepo = new ContractsApiRepository();
@@ -101,6 +104,7 @@ export class AppStateApiService {
         bills,
         budgets,
         planAmenities,
+        installmentPlans,
         rentalAgreements,
         projectAgreements,
         contracts,
@@ -159,6 +163,10 @@ export class AppStateApiService {
           console.error('Error loading plan amenities from API:', err);
           return [];
         }),
+        this.installmentPlansRepo.findAll().catch(err => {
+          console.error('Error loading installment plans from API:', err);
+          return [];
+        }),
         this.rentalAgreementsRepo.findAll().catch(err => {
           console.error('Error loading rental agreements from API:', err);
           return [];
@@ -210,6 +218,7 @@ export class AppStateApiService {
         bills: bills.length,
         budgets: budgets.length,
         planAmenities: planAmenities.length,
+        installmentPlans: installmentPlans.length,
         rentalAgreements: rentalAgreements.length,
         projectAgreements: projectAgreements.length,
         contracts: contracts.length,
@@ -589,6 +598,56 @@ export class AppStateApiService {
         projectId: b.project_id || b.projectId || undefined
       }));
 
+      // Normalize installment plans from API (transform snake_case to camelCase)
+      const normalizedInstallmentPlans = installmentPlans.map((p: any) => ({
+        id: p.id,
+        projectId: p.project_id || p.projectId || '',
+        leadId: p.lead_id || p.leadId || '',
+        unitId: p.unit_id || p.unitId || '',
+        durationYears: p.duration_years || p.durationYears || 1,
+        downPaymentPercentage: typeof p.down_payment_percentage === 'number' ? p.down_payment_percentage : (typeof p.downPaymentPercentage === 'number' ? p.downPaymentPercentage : parseFloat(String(p.down_payment_percentage || p.downPaymentPercentage || '0'))),
+        frequency: p.frequency || 'Monthly',
+        listPrice: typeof p.list_price === 'number' ? p.list_price : (typeof p.listPrice === 'number' ? p.listPrice : parseFloat(String(p.list_price || p.listPrice || '0'))),
+        discounts: (() => {
+          if (p.discounts) {
+            if (typeof p.discounts === 'string') {
+              try {
+                return JSON.parse(p.discounts);
+              } catch {
+                return [];
+              }
+            }
+            return Array.isArray(p.discounts) ? p.discounts : [];
+          }
+          return [];
+        })(),
+        netValue: typeof p.net_value === 'number' ? p.net_value : (typeof p.netValue === 'number' ? p.netValue : parseFloat(String(p.net_value || p.netValue || '0'))),
+        downPaymentAmount: typeof p.down_payment_amount === 'number' ? p.down_payment_amount : (typeof p.downPaymentAmount === 'number' ? p.downPaymentAmount : parseFloat(String(p.down_payment_amount || p.downPaymentAmount || '0'))),
+        installmentAmount: typeof p.installment_amount === 'number' ? p.installment_amount : (typeof p.installmentAmount === 'number' ? p.installmentAmount : parseFloat(String(p.installment_amount || p.installmentAmount || '0'))),
+        totalInstallments: p.total_installments || p.totalInstallments || 0,
+        description: p.description || undefined,
+        introText: p.intro_text || p.introText || undefined,
+        version: p.version || 1,
+        rootId: p.root_id || p.rootId || undefined,
+        status: p.status || 'Draft',
+        selectedAmenities: (() => {
+          if (p.selected_amenities) {
+            if (typeof p.selected_amenities === 'string') {
+              try {
+                return JSON.parse(p.selected_amenities);
+              } catch {
+                return [];
+              }
+            }
+            return Array.isArray(p.selected_amenities) ? p.selected_amenities : (p.selectedAmenities || []);
+          }
+          return p.selectedAmenities || [];
+        })(),
+        amenitiesTotal: typeof p.amenities_total === 'number' ? p.amenities_total : (typeof p.amenitiesTotal === 'number' ? p.amenitiesTotal : parseFloat(String(p.amenities_total || p.amenitiesTotal || '0'))),
+        createdAt: p.created_at || p.createdAt,
+        updatedAt: p.updated_at || p.updatedAt
+      }));
+
       // Normalize rental agreements from API (transform snake_case to camelCase)
       const normalizedRentalAgreements = rentalAgreements.map((ra: any) => this.normalizeRentalAgreement(ra));
 
@@ -607,6 +666,7 @@ export class AppStateApiService {
         bills: normalizedBills,
         budgets: normalizedBudgets,
         planAmenities: planAmenities || [],
+        installmentPlans: normalizedInstallmentPlans,
         rentalAgreements: normalizedRentalAgreements,
         projectAgreements: normalizedProjectAgreements,
         contracts: normalizedContracts,
@@ -948,7 +1008,7 @@ export class AppStateApiService {
     logger.logCategory('sync', `💾 Syncing unit (POST upsert): ${unitWithId.id} - ${unitWithId.name}`);
     const saved = await this.unitsRepo.create(unitWithId);
     
-    // Normalize the response
+    // Normalize the response (server returns snake_case, client expects camelCase)
     return {
       id: saved.id,
       name: saved.name || '',
@@ -959,7 +1019,14 @@ export class AppStateApiService {
         if (price == null) return undefined;
         return typeof price === 'number' ? price : parseFloat(String(price));
       })(),
-      description: saved.description || undefined
+      description: saved.description || undefined,
+      type: (saved as any).type || saved.type || undefined,
+      area: (() => {
+        const areaValue = (saved as any).area ?? saved.area;
+        if (areaValue == null) return undefined;
+        return typeof areaValue === 'number' ? areaValue : parseFloat(String(areaValue));
+      })(),
+      floor: (saved as any).floor || saved.floor || undefined
     };
   }
 
@@ -968,6 +1035,74 @@ export class AppStateApiService {
    */
   async deleteUnit(id: string): Promise<void> {
     return this.unitsRepo.delete(id);
+  }
+
+  /**
+   * Save installment plan to API
+   */
+  async saveInstallmentPlan(plan: Partial<AppState['installmentPlans'][0]>): Promise<AppState['installmentPlans'][0]> {
+    // Always use POST endpoint - it handles upserts automatically
+    const planWithId = {
+      ...plan,
+      id: plan.id || `plan_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+    logger.logCategory('sync', `💾 Syncing installment plan (POST upsert): ${planWithId.id}`);
+    const saved = await this.installmentPlansRepo.create(planWithId);
+    
+    // Normalize the response (server returns snake_case, client expects camelCase)
+    return {
+      id: saved.id,
+      projectId: (saved as any).project_id || saved.projectId || '',
+      leadId: (saved as any).lead_id || saved.leadId || '',
+      unitId: (saved as any).unit_id || saved.unitId || '',
+      durationYears: (saved as any).duration_years || saved.durationYears || 1,
+      downPaymentPercentage: typeof (saved as any).down_payment_percentage === 'number' ? (saved as any).down_payment_percentage : (typeof saved.downPaymentPercentage === 'number' ? saved.downPaymentPercentage : parseFloat(String((saved as any).down_payment_percentage || saved.downPaymentPercentage || '0'))),
+      frequency: saved.frequency || 'Monthly',
+      listPrice: typeof (saved as any).list_price === 'number' ? (saved as any).list_price : (typeof saved.listPrice === 'number' ? saved.listPrice : parseFloat(String((saved as any).list_price || saved.listPrice || '0'))),
+      discounts: (() => {
+        const discounts = (saved as any).discounts || saved.discounts;
+        if (!discounts) return [];
+        if (typeof discounts === 'string') {
+          try {
+            return JSON.parse(discounts);
+          } catch {
+            return [];
+          }
+        }
+        return Array.isArray(discounts) ? discounts : [];
+      })(),
+      netValue: typeof (saved as any).net_value === 'number' ? (saved as any).net_value : (typeof saved.netValue === 'number' ? saved.netValue : parseFloat(String((saved as any).net_value || saved.netValue || '0'))),
+      downPaymentAmount: typeof (saved as any).down_payment_amount === 'number' ? (saved as any).down_payment_amount : (typeof saved.downPaymentAmount === 'number' ? saved.downPaymentAmount : parseFloat(String((saved as any).down_payment_amount || saved.downPaymentAmount || '0'))),
+      installmentAmount: typeof (saved as any).installment_amount === 'number' ? (saved as any).installment_amount : (typeof saved.installmentAmount === 'number' ? saved.installmentAmount : parseFloat(String((saved as any).installment_amount || saved.installmentAmount || '0'))),
+      totalInstallments: (saved as any).total_installments || saved.totalInstallments || 0,
+      description: saved.description || undefined,
+      introText: (saved as any).intro_text || saved.introText || undefined,
+      version: (saved as any).version || saved.version || 1,
+      rootId: (saved as any).root_id || saved.rootId || undefined,
+      status: (saved as any).status || saved.status || 'Draft',
+      selectedAmenities: (() => {
+        const amenities = (saved as any).selected_amenities || saved.selectedAmenities;
+        if (!amenities) return undefined;
+        if (typeof amenities === 'string') {
+          try {
+            return JSON.parse(amenities);
+          } catch {
+            return undefined;
+          }
+        }
+        return Array.isArray(amenities) ? amenities : undefined;
+      })(),
+      amenitiesTotal: typeof (saved as any).amenities_total === 'number' ? (saved as any).amenities_total : (typeof saved.amenitiesTotal === 'number' ? saved.amenitiesTotal : parseFloat(String((saved as any).amenities_total || saved.amenitiesTotal || '0'))),
+      createdAt: (saved as any).created_at || saved.createdAt,
+      updatedAt: (saved as any).updated_at || saved.updatedAt
+    };
+  }
+
+  /**
+   * Delete installment plan from API
+   */
+  async deleteInstallmentPlan(id: string): Promise<void> {
+    return this.installmentPlansRepo.delete(id);
   }
 
   /**

@@ -5,7 +5,7 @@
  * This is the main entry point for state persistence.
  */
 
-import { AppState, Bill, Unit, Building, Property, RentalAgreement, ProjectAgreement, ProjectAgreementStatus } from '../../../types';
+import { AppState, Bill, Unit, Building, Property, RentalAgreement, ProjectAgreement, ProjectAgreementStatus, InstallmentPlan } from '../../../types';
 import { getDatabaseService } from '../databaseService';
 import { objectToDbFormat } from '../columnMapper';
 import { migrateBudgetsToNewStructure, migrateBudgetsArray } from '../budgetMigration';
@@ -14,7 +14,7 @@ import {
     ProjectsRepository, BuildingsRepository, PropertiesRepository, UnitsRepository,
     TransactionsRepository, InvoicesRepository, BillsRepository, BudgetsRepository,
     RentalAgreementsRepository, ProjectAgreementsRepository, ContractsRepository,
-    RecurringTemplatesRepository, TransactionLogRepository, ErrorLogRepository, 
+    InstallmentPlansRepository, RecurringTemplatesRepository, TransactionLogRepository, ErrorLogRepository, 
     AppSettingsRepository, QuotationsRepository, DocumentsRepository, PMCycleAllocationsRepository
 } from './index';
 import { migrateTenantColumns } from '../tenantMigration';
@@ -39,6 +39,7 @@ export class AppStateRepository {
     private rentalAgreementsRepo = new RentalAgreementsRepository();
     private projectAgreementsRepo = new ProjectAgreementsRepository();
     private contractsRepo = new ContractsRepository();
+    private installmentPlansRepo = new InstallmentPlansRepository();
     private recurringTemplatesRepo = new RecurringTemplatesRepository();
     private transactionLogRepo = new TransactionLogRepository();
     private errorLogRepo = new ErrorLogRepository();
@@ -114,6 +115,7 @@ export class AppStateRepository {
         const quotations = this.quotationsRepo.findAll();
         const documents = this.documentsRepo.findAll();
         const pmCycleAllocations = this.pmCycleAllocationsRepo.findAll();
+        const installmentPlans = this.installmentPlansRepo.findAll();
 
         // Load settings - try cloud first, then fallback to local
         let settings: any = {};
@@ -467,7 +469,68 @@ export class AppStateRepository {
                 vendorGreeting: 'Hello {contactName},'
             },
             dashboardConfig: settings.dashboardConfig || { visibleKpis: [] },
-            installmentPlans: settings.installmentPlans || [],
+            installmentPlans: installmentPlans.map(p => {
+                // Normalize installment plan to ensure all fields are properly mapped
+                const normalizedPlan: InstallmentPlan = {
+                    id: p.id || '',
+                    projectId: p.projectId ?? p.project_id ?? '',
+                    leadId: p.leadId ?? p.lead_id ?? '',
+                    unitId: p.unitId ?? p.unit_id ?? '',
+                    durationYears: p.durationYears ?? p.duration_years ?? 1,
+                    downPaymentPercentage: typeof p.downPaymentPercentage === 'number' ? p.downPaymentPercentage : (typeof p.down_payment_percentage === 'number' ? p.down_payment_percentage : parseFloat(String(p.downPaymentPercentage ?? p.down_payment_percentage ?? '0'))),
+                    frequency: p.frequency || 'Monthly',
+                    listPrice: typeof p.listPrice === 'number' ? p.listPrice : (typeof p.list_price === 'number' ? p.list_price : parseFloat(String(p.listPrice ?? p.list_price ?? '0'))),
+                    discounts: (() => {
+                        if (p.discounts) {
+                            if (typeof p.discounts === 'string') {
+                                try {
+                                    return JSON.parse(p.discounts);
+                                } catch {
+                                    return [];
+                                }
+                            }
+                            return Array.isArray(p.discounts) ? p.discounts : [];
+                        }
+                        return [];
+                    })(),
+                    netValue: typeof p.netValue === 'number' ? p.netValue : (typeof p.net_value === 'number' ? p.net_value : parseFloat(String(p.netValue ?? p.net_value ?? '0'))),
+                    downPaymentAmount: typeof p.downPaymentAmount === 'number' ? p.downPaymentAmount : (typeof p.down_payment_amount === 'number' ? p.down_payment_amount : parseFloat(String(p.downPaymentAmount ?? p.down_payment_amount ?? '0'))),
+                    installmentAmount: typeof p.installmentAmount === 'number' ? p.installmentAmount : (typeof p.installment_amount === 'number' ? p.installment_amount : parseFloat(String(p.installmentAmount ?? p.installment_amount ?? '0'))),
+                    totalInstallments: p.totalInstallments ?? p.total_installments ?? 0,
+                    description: p.description || undefined,
+                    introText: p.introText ?? p.intro_text ?? undefined,
+                    version: p.version ?? 1,
+                    rootId: p.rootId ?? p.root_id ?? undefined,
+                    status: (p.status || 'Draft') as 'Draft' | 'Locked',
+                    selectedAmenities: (() => {
+                        if (p.selectedAmenities) {
+                            if (typeof p.selectedAmenities === 'string') {
+                                try {
+                                    return JSON.parse(p.selectedAmenities);
+                                } catch {
+                                    return undefined;
+                                }
+                            }
+                            return Array.isArray(p.selectedAmenities) ? p.selectedAmenities : undefined;
+                        }
+                        if (p.selected_amenities) {
+                            if (typeof p.selected_amenities === 'string') {
+                                try {
+                                    return JSON.parse(p.selected_amenities);
+                                } catch {
+                                    return undefined;
+                                }
+                            }
+                            return Array.isArray(p.selected_amenities) ? p.selected_amenities : undefined;
+                        }
+                        return undefined;
+                    })(),
+                    amenitiesTotal: typeof p.amenitiesTotal === 'number' ? p.amenitiesTotal : (typeof p.amenities_total === 'number' ? p.amenities_total : parseFloat(String(p.amenitiesTotal ?? p.amenities_total ?? '0'))),
+                    createdAt: p.createdAt ?? p.created_at,
+                    updatedAt: p.updatedAt ?? p.updated_at
+                };
+                return normalizedPlan;
+            }),
             invoiceHtmlTemplate: settings.invoiceHtmlTemplate,
             showSystemTransactions: settings.showSystemTransactions ?? false,
             enableColorCoding: settings.enableColorCoding ?? true,
@@ -641,6 +704,11 @@ export class AppStateRepository {
                                     : undefined
                             })));
                             this.budgetsRepo.saveAll(state.budgets);
+                            this.installmentPlansRepo.saveAll((state.installmentPlans || []).map(p => ({
+                                ...p,
+                                discounts: typeof p.discounts === 'string' ? p.discounts : JSON.stringify(p.discounts || []),
+                                selectedAmenities: typeof p.selectedAmenities === 'string' ? p.selectedAmenities : JSON.stringify(p.selectedAmenities || [])
+                            })));
                             this.rentalAgreementsRepo.saveAll(state.rentalAgreements);
                             this.projectAgreementsRepo.saveAll(state.projectAgreements);
                             // Save contracts with expenseCategoryItems serialized as JSON

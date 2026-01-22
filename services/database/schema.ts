@@ -310,6 +310,11 @@ CREATE TABLE IF NOT EXISTS installment_plans (
     installment_amount REAL NOT NULL,
     total_installments INTEGER NOT NULL,
     description TEXT,
+    intro_text TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    root_id TEXT,
+    status TEXT NOT NULL DEFAULT 'Draft',
+    discounts TEXT DEFAULT '[]',
     -- Discount category mappings
     customer_discount_category_id TEXT,
     floor_discount_category_id TEXT,

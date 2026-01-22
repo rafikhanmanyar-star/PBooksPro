@@ -52,6 +52,23 @@ router.get('/', async (req: TenantRequest, res) => {
       installmentAmount: parseFloat(p.installment_amount),
       totalInstallments: p.total_installments,
       description: p.description,
+      introText: p.intro_text || undefined,
+      version: p.version || 1,
+      rootId: p.root_id || undefined,
+      status: p.status || 'Draft',
+      discounts: (() => {
+        if (p.discounts) {
+          if (typeof p.discounts === 'string') {
+            try {
+              return JSON.parse(p.discounts);
+            } catch {
+              return [];
+            }
+          }
+          return Array.isArray(p.discounts) ? p.discounts : [];
+        }
+        return [];
+      })(),
       customerDiscountCategoryId: p.customer_discount_category_id,
       floorDiscountCategoryId: p.floor_discount_category_id,
       lumpSumDiscountCategoryId: p.lump_sum_discount_category_id,
@@ -96,10 +113,11 @@ router.post('/', async (req: TenantRequest, res) => {
         down_payment_percentage, frequency, list_price, customer_discount, 
         floor_discount, lump_sum_discount, misc_discount, net_value, 
         down_payment_amount, installment_amount, total_installments, 
-        description, customer_discount_category_id, floor_discount_category_id, 
+        description, intro_text, version, root_id, status, discounts,
+        customer_discount_category_id, floor_discount_category_id, 
         lump_sum_discount_category_id, misc_discount_category_id, 
         selected_amenities, amenities_total, user_id, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29,
                 COALESCE((SELECT created_at FROM installment_plans WHERE id = $1), NOW()), NOW())
       ON CONFLICT (id) 
       DO UPDATE SET
@@ -119,6 +137,11 @@ router.post('/', async (req: TenantRequest, res) => {
         installment_amount = EXCLUDED.installment_amount,
         total_installments = EXCLUDED.total_installments,
         description = EXCLUDED.description,
+        intro_text = EXCLUDED.intro_text,
+        version = EXCLUDED.version,
+        root_id = EXCLUDED.root_id,
+        status = EXCLUDED.status,
+        discounts = EXCLUDED.discounts,
         customer_discount_category_id = EXCLUDED.customer_discount_category_id,
         floor_discount_category_id = EXCLUDED.floor_discount_category_id,
         lump_sum_discount_category_id = EXCLUDED.lump_sum_discount_category_id,
@@ -147,6 +170,11 @@ router.post('/', async (req: TenantRequest, res) => {
         plan.installmentAmount,
         plan.totalInstallments,
         plan.description || null,
+        plan.introText || null,
+        plan.version || 1,
+        plan.rootId || null,
+        plan.status || 'Draft',
+        JSON.stringify(plan.discounts || []),
         plan.customerDiscountCategoryId || null,
         plan.floorDiscountCategoryId || null,
         plan.lumpSumDiscountCategoryId || null,
@@ -161,6 +189,23 @@ router.post('/', async (req: TenantRequest, res) => {
     const mapped = {
       ...plan,
       id: saved.id,
+      introText: saved.intro_text || plan.introText,
+      version: saved.version || plan.version || 1,
+      rootId: saved.root_id || plan.rootId,
+      status: saved.status || plan.status || 'Draft',
+      discounts: (() => {
+        if (saved.discounts) {
+          if (typeof saved.discounts === 'string') {
+            try {
+              return JSON.parse(saved.discounts);
+            } catch {
+              return plan.discounts || [];
+            }
+          }
+          return Array.isArray(saved.discounts) ? saved.discounts : (plan.discounts || []);
+        }
+        return plan.discounts || [];
+      })(),
       createdAt: saved.created_at,
       updatedAt: saved.updated_at
     };
