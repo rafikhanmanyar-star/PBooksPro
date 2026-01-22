@@ -778,9 +778,12 @@ const MarketingPage: React.FC = () => {
     const filteredPlans = useMemo(() => {
         const currentUserId = state.currentUser?.id;
         const allPlans = (state.installmentPlans || []).filter(plan => 
+            // 1. You created the plan (Draft, Rejected, etc.)
             plan.userId === currentUserId || 
-            plan.approvalRequestedToId === currentUserId ||
-            plan.approvalRequestedById === currentUserId
+            // 2. You submitted it for approval (it's your request)
+            plan.approvalRequestedById === currentUserId ||
+            // 3. You are the specific user assigned to approve it
+            plan.approvalRequestedToId === currentUserId
         );
         
         // Group plans by rootId and find the latest version for each
@@ -814,13 +817,16 @@ const MarketingPage: React.FC = () => {
     const approvalTasks = useMemo(() => {
         const currentUserId = state.currentUser?.id;
         return (state.installmentPlans || [])
-            .filter(plan => plan.approvalRequestedToId === currentUserId && plan.status === 'Pending Approval')
+            .filter(plan => 
+                plan.approvalRequestedToId === currentUserId && 
+                plan.status === 'Pending Approval'
+            )
             .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
     }, [state.installmentPlans, state.currentUser]);
 
     const activityFeed = useMemo(() => {
         const currentUserId = state.currentUser?.id;
-        return (state.installmentPlans || [])
+        const feed = (state.installmentPlans || [])
             .filter(plan => 
                 plan.userId === currentUserId || 
                 plan.approvalRequestedToId === currentUserId ||
@@ -832,7 +838,7 @@ const MarketingPage: React.FC = () => {
             const unit = state.units.find(u => u.id === plan.unitId);
             const label = `${lead?.name || 'Lead'} • ${project?.name || 'Project'} • ${unit?.name || 'Unit'}`;
 
-            const createdBy = usersForApproval.find(u => u.id === (plan.userId || plan.approvalRequestedById));
+            const creatorUser = usersForApproval.find(u => u.id === (plan.userId || plan.approvalRequestedById));
             const requestedBy = usersForApproval.find(u => u.id === plan.approvalRequestedById);
             const requestedTo = usersForApproval.find(u => u.id === plan.approvalRequestedToId);
             const reviewedBy = usersForApproval.find(u => u.id === plan.approvalReviewedById);
@@ -842,7 +848,7 @@ const MarketingPage: React.FC = () => {
             if (plan.createdAt) {
                 entries.push({
                     title: 'Plan created',
-                    detail: `${label} • Created by ${createdBy?.name || createdBy?.username || 'User'}`,
+                    detail: `${label} • Created by ${creatorUser?.name || creatorUser?.username || 'User'}`,
                     time: plan.createdAt,
                     planId: plan.id
                 });
@@ -867,8 +873,10 @@ const MarketingPage: React.FC = () => {
             }
 
             return entries;
-        }).sort((a, b) => b.time.localeCompare(a.time));
-    }, [state.installmentPlans, state.contacts, state.projects, state.units, usersForApproval]);
+        });
+
+        return feed.sort((a, b) => b.time.localeCompare(a.time));
+    }, [state.installmentPlans, state.contacts, state.projects, state.units, state.currentUser, usersForApproval]);
 
     const formatActivityTime = (time: string) => {
         if (!time) return '';
@@ -1229,17 +1237,39 @@ const MarketingPage: React.FC = () => {
                                     >
                                         {selectedPlanId ? 'Save New Version' : 'Save Plan'}
                                     </Button>
-                                    {selectedPlanId && (status === 'Draft' || status === 'Rejected') && (
-                                        <Button 
-                                            variant="secondary" 
-                                            className="w-full justify-center py-3 border-green-200 text-green-700 hover:bg-green-50" 
-                                            onClick={() => {
-                                                setApprovalModalApproverId('');
-                                                setShowApprovalModal(true);
-                                            }}
-                                        >
-                                            Submit for Approval
-                                        </Button>
+                                    {selectedPlanId && (status === 'Draft' || status === 'Rejected' || (status === 'Pending Approval' && approvalRequestedToId === state.currentUser?.id)) && (
+                                        <div className="pt-2 space-y-2">
+                                            {(status === 'Draft' || status === 'Rejected') && (
+                                                <Button 
+                                                    variant="secondary" 
+                                                    className="w-full justify-center py-3 border-green-200 text-green-700 hover:bg-green-50" 
+                                                    onClick={() => {
+                                                        setApprovalModalApproverId('');
+                                                        setShowApprovalModal(true);
+                                                    }}
+                                                >
+                                                    Submit for Approval
+                                                </Button>
+                                            )}
+                                            {status === 'Pending Approval' && approvalRequestedToId === state.currentUser?.id && (
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <Button 
+                                                        variant="primary" 
+                                                        className="justify-center py-3 bg-green-600 hover:bg-green-700"
+                                                        onClick={() => handleApprovalDecision('Approved')}
+                                                    >
+                                                        Approve
+                                                    </Button>
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        className="justify-center py-3 text-rose-600 border border-rose-200 hover:bg-rose-50"
+                                                        onClick={() => handleApprovalDecision('Rejected')}
+                                                    >
+                                                        Reject
+                                                    </Button>
+                                                </div>
+                                            )}
+                                        </div>
                                     )}
                                     {status === 'Pending Approval' && (
                                         <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">

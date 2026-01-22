@@ -648,6 +648,12 @@ export class AppStateApiService {
         version: p.version || 1,
         rootId: p.root_id || p.rootId || undefined,
         status: p.status || 'Draft',
+        approvalRequestedById: p.approval_requested_by || p.approvalRequestedById || undefined,
+        approvalRequestedToId: p.approval_requested_to || p.approvalRequestedToId || undefined,
+        approvalRequestedAt: p.approval_requested_at || p.approvalRequestedAt || undefined,
+        approvalReviewedById: p.approval_reviewed_by || p.approvalReviewedById || undefined,
+        approvalReviewedAt: p.approval_reviewed_at || p.approvalReviewedAt || undefined,
+        userId: p.user_id || p.userId || undefined,
         selectedAmenities: (() => {
           if (p.selected_amenities) {
             if (typeof p.selected_amenities === 'string') {

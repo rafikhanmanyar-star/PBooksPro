@@ -63,8 +63,9 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
         status: 'Pending Approval' | 'Approved' | 'Rejected';
       }> = [];
 
+      // 1. You are the approver and someone requested your approval
       if (plan.status === 'Pending Approval' && plan.approvalRequestedToId === currentUserId) {
-        const requester = userName(plan.approvalRequestedById);
+        const requester = userName(plan.approvalRequestedById || plan.userId);
         results.push({
           ...base,
           id: `approval:${plan.id}`,
@@ -74,7 +75,8 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
         });
       }
 
-      if ((plan.status === 'Approved' || plan.status === 'Rejected') && plan.approvalRequestedById === currentUserId) {
+      // 2. You are the creator/requester and someone approved/rejected your plan
+      if ((plan.status === 'Approved' || plan.status === 'Rejected') && (plan.approvalRequestedById === currentUserId || plan.userId === currentUserId)) {
         const reviewer = userName(plan.approvalReviewedById);
         results.push({
           ...base,
