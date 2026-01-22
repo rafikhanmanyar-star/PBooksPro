@@ -1334,6 +1334,19 @@ const MarketingPage: React.FC = () => {
                                             </p>
                                         </div>
                                     )}
+                                    {/* Temporary debug badges for approval visibility */}
+                                    <div className="p-3 bg-slate-50 border border-dashed border-slate-300 rounded-lg">
+                                        <p className="text-[10px] text-slate-600 font-bold uppercase mb-1">Debug Approval</p>
+                                        <div className="text-[10px] text-slate-600 space-y-1">
+                                            <div>Status: {String(effectiveStatus || '')}</div>
+                                            <div>Normalized: {normalizedStatus}</div>
+                                            <div>Approver Value: {String(effectiveApprovalRequestedToId || '')}</div>
+                                            <div>Current User ID: {String(state.currentUser?.id || '')}</div>
+                                            <div>Current Username: {String(state.currentUser?.username || '')}</div>
+                                            <div>Current Name: {String(state.currentUser?.name || '')}</div>
+                                            <div>isApproverForSelectedPlan: {String(isApproverForSelectedPlan)}</div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
