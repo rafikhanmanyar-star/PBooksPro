@@ -7,10 +7,6 @@ import bcrypt from 'bcryptjs';
 const router = Router();
 const getDb = () => getDatabaseService();
 
-// Apply admin-only middleware to all user management routes
-// Only organization admins (role='Admin') can manage users
-router.use(adminOnlyMiddleware());
-
 // Helper function to check user limit
 async function checkUserLimit(tenantId: string, db: any): Promise<{ allowed: boolean; currentCount: number; maxUsers: number; error?: string }> {
   const tenantInfo = await db.query(
@@ -41,14 +37,19 @@ async function checkUserLimit(tenantId: string, db: any): Promise<{ allowed: boo
   };
 }
 
-// Get all users for the current tenant
+// GET all users for the current tenant - accessible to all logged in users for display purposes
 router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const tenantId = req.tenantId!;
     
+    // Non-admins only get limited info
+    const selectFields = req.userRole === 'Admin' 
+      ? 'id, username, name, role, email, is_active, last_login, created_at'
+      : 'id, username, name';
+
     const users = await db.query(
-      'SELECT id, username, name, role, email, is_active, last_login, created_at FROM users WHERE tenant_id = $1 ORDER BY created_at DESC',
+      `SELECT ${selectFields} FROM users WHERE tenant_id = $1 AND is_active = true ORDER BY name ASC`,
       [tenantId]
     );
     
@@ -58,6 +59,9 @@ router.get('/', async (req: TenantRequest, res) => {
     res.status(500).json({ error: 'Failed to fetch users' });
   }
 });
+
+// Admin-only routes for user management
+router.use(adminOnlyMiddleware());
 
 // Get user by ID
 router.get('/:id', async (req: TenantRequest, res) => {

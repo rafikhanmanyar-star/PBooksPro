@@ -1794,9 +1794,13 @@ const MarketingPage: React.FC = () => {
                                                         )}
                                                         <p className="text-xs text-slate-500">{project?.name} - {unit?.name}</p>
                                                         <p className="text-[10px] text-slate-500 mt-1 italic">
-                                                            Created by: {usersForApproval.find(u => u.id === (plan.userId || plan.approvalRequestedById))?.name || 
-                                                                         usersForApproval.find(u => u.id === (plan.userId || plan.approvalRequestedById))?.username || 
-                                                                         'System'}
+                                                            Created by: {(() => {
+                                                                const uid = plan.userId || plan.approvalRequestedById;
+                                                                if (!uid) return 'System';
+                                                                if (uid === state.currentUser?.id) return state.currentUser.name || state.currentUser.username || 'You';
+                                                                const user = usersForApproval.find(u => u.id === uid);
+                                                                return user?.name || user?.username || uid;
+                                                            })()}
                                                         </p>
                                                         {plan.status === 'Pending Approval' && plan.approvalRequestedToId && (
                                                             <p className="text-[10px] text-blue-600">
