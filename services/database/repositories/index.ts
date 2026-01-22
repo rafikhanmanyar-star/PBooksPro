@@ -231,6 +231,10 @@ export class InstallmentPlansRepository extends BaseRepository<any> {
     constructor() { super('installment_plans'); }
 }
 
+export class PlanAmenitiesRepository extends BaseRepository<any> {
+    constructor() { super('plan_amenities'); }
+}
+
 export class RecurringTemplatesRepository extends BaseRepository<any> {
     constructor() { super('recurring_invoice_templates'); }
 }

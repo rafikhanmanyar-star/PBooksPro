@@ -14,7 +14,7 @@ import {
     ProjectsRepository, BuildingsRepository, PropertiesRepository, UnitsRepository,
     TransactionsRepository, InvoicesRepository, BillsRepository, BudgetsRepository,
     RentalAgreementsRepository, ProjectAgreementsRepository, ContractsRepository,
-    InstallmentPlansRepository, RecurringTemplatesRepository, TransactionLogRepository, ErrorLogRepository, 
+    InstallmentPlansRepository, PlanAmenitiesRepository, RecurringTemplatesRepository, TransactionLogRepository, ErrorLogRepository, 
     AppSettingsRepository, QuotationsRepository, DocumentsRepository, PMCycleAllocationsRepository
 } from './index';
 import { migrateTenantColumns } from '../tenantMigration';
@@ -40,6 +40,7 @@ export class AppStateRepository {
     private projectAgreementsRepo = new ProjectAgreementsRepository();
     private contractsRepo = new ContractsRepository();
     private installmentPlansRepo = new InstallmentPlansRepository();
+    private planAmenitiesRepo = new PlanAmenitiesRepository();
     private recurringTemplatesRepo = new RecurringTemplatesRepository();
     private transactionLogRepo = new TransactionLogRepository();
     private errorLogRepo = new ErrorLogRepository();
@@ -116,6 +117,7 @@ export class AppStateRepository {
         const documents = this.documentsRepo.findAll();
         const pmCycleAllocations = this.pmCycleAllocationsRepo.findAll();
         const installmentPlans = this.installmentPlansRepo.findAll();
+        const planAmenities = this.planAmenitiesRepo.findAll();
 
         // Load settings - try cloud first, then fallback to local
         let settings: any = {};
@@ -300,6 +302,16 @@ export class AppStateRepository {
                     : (pm.excluded_category_ids ? (typeof pm.excluded_category_ids === 'string' ? JSON.parse(pm.excluded_category_ids) : pm.excluded_category_ids) : [])
             })),
             budgets,
+            planAmenities: (planAmenities || []).map(a => ({
+                id: a.id || '',
+                name: a.name || '',
+                price: typeof a.price === 'number' ? a.price : parseFloat(String(a.price || '0')),
+                isPercentage: a.isPercentage ?? a.is_percentage ?? false,
+                isActive: a.isActive ?? a.is_active ?? true,
+                description: a.description ?? undefined,
+                createdAt: a.createdAt ?? a.created_at ?? undefined,
+                updatedAt: a.updatedAt ?? a.updated_at ?? undefined
+            })),
             rentalAgreements: rentalAgreements.map(ra => {
                 // Normalize rental agreement to ensure all fields are properly mapped
                 // Handle both camelCase and snake_case field names for backward compatibility
@@ -704,6 +716,7 @@ export class AppStateRepository {
                                     : undefined
                             })));
                             this.budgetsRepo.saveAll(state.budgets);
+                            this.planAmenitiesRepo.saveAll(state.planAmenities || []);
                             this.installmentPlansRepo.saveAll((state.installmentPlans || []).map(p => ({
                                 ...p,
                                 discounts: typeof p.discounts === 'string' ? p.discounts : JSON.stringify(p.discounts || []),

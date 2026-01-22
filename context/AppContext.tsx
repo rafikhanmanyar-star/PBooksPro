@@ -1564,6 +1564,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 'ADD_INSTALLMENT_PLAN',
                 'UPDATE_INSTALLMENT_PLAN',
                 'DELETE_INSTALLMENT_PLAN',
+                'ADD_PLAN_AMENITY',
+                'UPDATE_PLAN_AMENITY',
+                'DELETE_PLAN_AMENITY',
                 'UPDATE_PM_COST_PERCENTAGE',
                 // General settings (user-based settings in organization)
                 'TOGGLE_SYSTEM_TRANSACTIONS',
@@ -2259,6 +2262,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         return { type: 'budget', action: 'update', data: action.payload };
                     case 'DELETE_BUDGET':
                         return { type: 'budget', action: 'delete', data: { id: action.payload } };
+                    case 'ADD_PLAN_AMENITY':
+                        return { type: 'plan_amenity', action: 'create', data: action.payload };
+                    case 'UPDATE_PLAN_AMENITY':
+                        return { type: 'plan_amenity', action: 'update', data: action.payload };
+                    case 'DELETE_PLAN_AMENITY':
+                        return { type: 'plan_amenity', action: 'delete', data: { id: action.payload } };
                     case 'ADD_RENTAL_AGREEMENT':
                         return { type: 'rental_agreement', action: 'create', data: action.payload };
                     case 'UPDATE_RENTAL_AGREEMENT':

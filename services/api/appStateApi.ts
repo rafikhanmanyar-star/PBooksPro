@@ -296,6 +296,18 @@ export class AppStateApiService {
         floor: u.floor || undefined
       }));
 
+      // Normalize plan amenities from API (transform snake_case to camelCase)
+      const normalizedPlanAmenities = planAmenities.map((a: any) => ({
+        id: a.id,
+        name: a.name || '',
+        price: typeof a.price === 'number' ? a.price : parseFloat(String(a.price || '0')),
+        isPercentage: a.is_percentage ?? a.isPercentage ?? false,
+        isActive: a.is_active ?? a.isActive ?? true,
+        description: a.description ?? undefined,
+        createdAt: a.created_at ?? a.createdAt ?? undefined,
+        updatedAt: a.updated_at ?? a.updatedAt ?? undefined
+      }));
+
       // Normalize categories from API (transform snake_case to camelCase)
       // The server returns snake_case fields, but the client expects camelCase
       const normalizedCategories = categories.map((c: any) => ({
@@ -665,7 +677,7 @@ export class AppStateApiService {
         invoices: normalizedInvoices,
         bills: normalizedBills,
         budgets: normalizedBudgets,
-        planAmenities: planAmenities || [],
+        planAmenities: normalizedPlanAmenities || [],
         installmentPlans: normalizedInstallmentPlans,
         rentalAgreements: normalizedRentalAgreements,
         projectAgreements: normalizedProjectAgreements,

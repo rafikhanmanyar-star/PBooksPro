@@ -90,6 +90,8 @@ export const ORGANIZATION_DATA_FIELDS = [
     'quotations',
     'documents',
     'budgets',
+    'planAmenities',
+    'installmentPlans',
     
     // Agreements & Contracts
     'rentalAgreements',

@@ -205,6 +205,9 @@ class SyncEngine {
       case 'budget':
         await this.syncBudget(item);
         break;
+      case 'plan_amenity':
+        await this.syncPlanAmenity(item);
+        break;
       case 'rental_agreement':
         await this.syncRentalAgreement(item);
         break;
@@ -381,6 +384,20 @@ class SyncEngine {
         break;
       case 'delete':
         await this.apiService.deleteBudget(item.data.id);
+        break;
+    }
+  }
+
+  private async syncPlanAmenity(item: SyncQueueItem): Promise<void> {
+    switch (item.action) {
+      case 'create':
+        await this.apiService.savePlanAmenity(item.data);
+        break;
+      case 'update':
+        await this.apiService.savePlanAmenity(item.data);
+        break;
+      case 'delete':
+        await this.apiService.deletePlanAmenity(item.data.id);
         break;
     }
   }

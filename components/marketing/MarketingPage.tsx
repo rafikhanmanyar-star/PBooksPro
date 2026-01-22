@@ -1014,11 +1014,7 @@ const MarketingPage: React.FC = () => {
                                                 <span className="tracking-widest">PRIMARY DATA</span>
                                                 <div className="flex gap-8">
                                                     <div className="flex items-center gap-3">
-                                                        <span className="text-xs uppercase">{state.projects.find(p => p.id === projectId)?.name || 'Emporium'}</span>
-                                                        <div className="w-10 h-6 border border-slate-800 bg-white"></div>
-                                                    </div>
-                                                    <div className="flex items-center gap-3">
-                                                        <span className="text-xs uppercase">{state.projects.find(p => p.id === projectId)?.name || 'Emporium'} Ext</span>
+                                                        <span className="text-xs uppercase">{state.projects.find(p => p.id === projectId)?.name || 'Project Name'}</span>
                                                         <div className="w-14 h-6 border border-slate-800 bg-slate-200 flex items-center justify-center text-[10px] font-bold">YES</div>
                                                     </div>
                                                 </div>
@@ -1241,6 +1237,20 @@ const MarketingPage: React.FC = () => {
                                             {/* Intro Text */}
                                             <div className="border-l-4 border-indigo-600 pl-6 py-2">
                                                 <h3 className="text-lg font-bold text-slate-800 mb-2">Exclusively for You</h3>
+                                                <div className="mb-4 flex flex-wrap gap-x-6 gap-y-1 text-[10px] font-black text-indigo-700 uppercase tracking-widest border-b border-indigo-50 pb-2">
+                                                    <span className="flex items-center gap-1.5">
+                                                        <span className="text-slate-400">Unit:</span> {units.find(u => u.id === unitId)?.name || 'N/A'}
+                                                    </span>
+                                                    <span className="flex items-center gap-1.5">
+                                                        <span className="text-slate-400">Type:</span> {units.find(u => u.id === unitId)?.type || 'N/A'}
+                                                    </span>
+                                                    <span className="flex items-center gap-1.5">
+                                                        <span className="text-slate-400">Floor:</span> {units.find(u => u.id === unitId)?.floor || 'N/A'}
+                                                    </span>
+                                                    <span className="flex items-center gap-1.5">
+                                                        <span className="text-slate-400">Area:</span> {units.find(u => u.id === unitId)?.area || '0'} SFT
+                                                    </span>
+                                                </div>
                                                 <div className="text-slate-600 italic leading-relaxed whitespace-pre-wrap">
                                                     {introText ? introText : (
                                                         `Dear ${leads.find(l => l.id === leadId)?.name || 'Mr. Doe'}, Unit #${units.find(u => u.id === unitId)?.name || 'A-1204'} at ${state.projects.find(p => p.id === projectId)?.name || 'Project Name'} has been meticulously selected for you as a private sanctuary that epitomizes contemporary elegance and absolute exclusivity. This ${units.find(u => u.id === unitId)?.type || 'Unit'} residence offers more than just a sophisticated lifestyle; it serves as a high-performing asset with exceptional capital appreciation potential in an increasingly sought-after corridor. Securing this premier unit is a strategic move to anchor your portfolio with a legacy property that truly reflects your standard of distinction.`
@@ -1249,14 +1259,7 @@ const MarketingPage: React.FC = () => {
                                             </div>
 
                                             {/* Summary Stats Grid */}
-                                            <div className="grid grid-cols-4 gap-4">
-                                                <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
-                                                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Unit Details</p>
-                                                    <p className="text-sm font-bold text-slate-800 line-clamp-1">{units.find(u => u.id === unitId)?.type || 'Apartment'}</p>
-                                                    <p className="text-[10px] text-slate-500">Unit: {units.find(u => u.id === unitId)?.name || 'N/A'}</p>
-                                                    <p className="text-[10px] text-slate-500">Floor: {units.find(u => u.id === unitId)?.floor || 'N/A'}</p>
-                                                    <p className="text-[10px] text-slate-500">Area: {units.find(u => u.id === unitId)?.area || '0'} SFT</p>
-                                                </div>
+                                            <div className="grid grid-cols-3 gap-4">
                                                 <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
                                                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Total Net Price</p>
                                                     <p className="text-sm font-bold text-indigo-700">Rs. {calculations.netValue.toLocaleString()}</p>
