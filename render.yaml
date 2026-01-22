@@ -32,7 +32,7 @@ services:
       - key: PORT
         value: 3000
       - key: CORS_ORIGIN
-        value: https://www.pbookspro.com,https://www.app.pbookspro.com,https://app.pbookspro.com,https://admin.pbookspro.com,https://pbookspro-client.onrender.com,https://pbookspro-client-8sn6.onrender.com,https://pbookspro-admin.onrender.com,https://pbookspro-admin-8sn6.onrender.com,https://pbookspro-website.onrender.com,http://localhost:5173,http://localhost:5174
+        value: https://www.pbookspro.com,https://www.app.pbookspro.com,https://app.pbookspro.com,https://admin.pbookspro.com,https://pbookspro-client.onrender.com,https://pbookspro-admin.onrender.com,https://pbookspro-website.onrender.com,http://localhost:5173,http://localhost:5174
       - key: API_URL
         value: https://api.pbookspro.com
       - key: SERVER_URL
