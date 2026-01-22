@@ -2430,6 +2430,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (apiState.rentalAgreements) updates.rentalAgreements = mergeById(currentState.rentalAgreements, apiState.rentalAgreements);
             if (apiState.projectAgreements) updates.projectAgreements = mergeById(currentState.projectAgreements, apiState.projectAgreements);
             if (apiState.salesReturns) updates.salesReturns = mergeById(currentState.salesReturns, apiState.salesReturns);
+            if (apiState.installmentPlans) updates.installmentPlans = mergeById(currentState.installmentPlans, apiState.installmentPlans);
+            if (apiState.planAmenities) updates.planAmenities = mergeById(currentState.planAmenities || [], apiState.planAmenities);
             // Merge categories: ensure system categories are always included
             if (apiState.categories) {
                 // First merge API categories with local
@@ -3159,6 +3161,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         rentalAgreements: apiState.rentalAgreements || [],
                         projectAgreements: apiState.projectAgreements || [],
                         contracts: apiState.contracts || [],
+                        installmentPlans: apiState.installmentPlans || [],
+                        planAmenities: apiState.planAmenities || [],
                     }));
                     
                     logger.logCategory('sync', '✅ Reloaded data from API:', {
@@ -3237,6 +3241,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     rentalAgreements: apiState.rentalAgreements || [],
                                     projectAgreements: apiState.projectAgreements || [],
                                     contracts: apiState.contracts || [],
+                                    installmentPlans: apiState.installmentPlans || [],
+                                    planAmenities: apiState.planAmenities || [],
                                 };
                                 
                                 // Save API data to local database with proper tenant_id (async, don't await)
