@@ -202,6 +202,50 @@ const AmenityConfigModal: React.FC<{
     );
 };
 
+const ApprovalRequestModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    approvers: { id: string; name: string }[];
+    selectedApproverId: string;
+    onSelectApprover: (id: string) => void;
+    onSubmit: () => void;
+}> = ({ isOpen, onClose, approvers, selectedApproverId, onSelectApprover, onSubmit }) => {
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
+                <div className="flex items-center justify-between p-4 border-b border-slate-200">
+                    <h2 className="text-lg font-bold text-slate-800">Submit for Approval</h2>
+                    <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
+                        <div className="w-5 h-5">{ICONS.x}</div>
+                    </button>
+                </div>
+                <div className="p-4 space-y-4">
+                    <ComboBox
+                        label="Approver"
+                        items={approvers}
+                        selectedId={selectedApproverId}
+                        onSelect={item => onSelectApprover(item?.id || '')}
+                        placeholder="Select approver"
+                        allowAddNew={false}
+                        entityType="report"
+                    />
+                    <p className="text-xs text-slate-500">
+                        Only users with approval rights are listed.
+                    </p>
+                </div>
+                <div className="p-4 border-t border-slate-200 flex gap-2 justify-end">
+                    <Button variant="ghost" onClick={onClose}>Cancel</Button>
+                    <Button onClick={onSubmit} disabled={!selectedApproverId}>
+                        Send for Approval
+                    </Button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const MarketingPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { showToast, showAlert, showConfirm } = useNotification();
@@ -227,9 +271,14 @@ const MarketingPage: React.FC = () => {
     const [discounts, setDiscounts] = useState<{ id: string, name: string, amount: number, categoryId?: string }[]>([]);
     const [introText, setIntroText] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
-    const [status, setStatus] = useState<'Draft' | 'Locked'>('Draft');
+    const [status, setStatus] = useState<InstallmentPlan['status']>('Draft');
     const [version, setVersion] = useState(1);
     const [rootId, setRootId] = useState<string | undefined>(undefined);
+    const [approvalRequestedById, setApprovalRequestedById] = useState<string | undefined>(undefined);
+    const [approvalRequestedToId, setApprovalRequestedToId] = useState<string>('');
+    const [approvalRequestedAt, setApprovalRequestedAt] = useState<string | undefined>(undefined);
+    const [approvalReviewedById, setApprovalReviewedById] = useState<string | undefined>(undefined);
+    const [approvalReviewedAt, setApprovalReviewedAt] = useState<string | undefined>(undefined);
 
     // Dynamic Discount Form State
     const [newDiscountName, setNewDiscountName] = useState('');
@@ -238,6 +287,8 @@ const MarketingPage: React.FC = () => {
 
     // Dynamic Amenity Selection State
     const [selectedAmenityIdToAdd, setSelectedAmenityIdToAdd] = useState('');
+    const [showApprovalModal, setShowApprovalModal] = useState(false);
+    const [approvalModalApproverId, setApprovalModalApproverId] = useState('');
 
     // Discount Category IDs (link to expense categories)
     const [customerDiscountCategoryId, setCustomerDiscountCategoryId] = useState('');
@@ -275,12 +326,28 @@ const MarketingPage: React.FC = () => {
 
     // Filtered Leads
     const leads = useMemo(() => state.contacts.filter(c => c.type === ContactType.LEAD), [state.contacts]);
+
+    const approvers = useMemo(
+        () => state.users.filter(user => user.role === 'Admin'),
+        [state.users]
+    );
     
     // Units for selected project
     const units = useMemo(() => {
         if (!projectId) return [];
         return state.units.filter(u => u.projectId === projectId);
     }, [projectId, state.units]);
+
+    const isReadOnly = status === 'Pending Approval' || status === 'Approved' || status === 'Locked';
+    const approvalRequestedToName = approvalRequestedToId
+        ? state.users.find(u => u.id === approvalRequestedToId)?.name
+        : undefined;
+    const approvalRequestedByName = approvalRequestedById
+        ? state.users.find(u => u.id === approvalRequestedById)?.name
+        : undefined;
+    const approvalReviewedByName = approvalReviewedById
+        ? state.users.find(u => u.id === approvalReviewedById)?.name
+        : undefined;
 
     // Calculate amenities total
     const amenitiesTotal = useMemo(() => {
@@ -448,9 +515,14 @@ const MarketingPage: React.FC = () => {
         return JSON.stringify(currentSnapshot) === JSON.stringify(planSnapshot);
     };
 
-    const handleSave = (isLocked: boolean = false) => {
+    const handleSave = (mode: 'draft' | 'submitApproval' = 'draft', approverId?: string) => {
         if (!leadId || !projectId || !unitId) {
             showAlert('Please fill all required fields');
+            return;
+        }
+
+        if (mode === 'submitApproval' && !approverId) {
+            showToast('Please select an approver');
             return;
         }
 
@@ -458,22 +530,29 @@ const MarketingPage: React.FC = () => {
             ? (state.installmentPlans || []).find(p => p.id === selectedPlanId)
             : null;
 
-        if (isLocked && existingPlan && isPlanUnchanged(existingPlan)) {
+        const now = new Date().toISOString();
+        const submitStatus: InstallmentPlan['status'] = mode === 'submitApproval' ? 'Pending Approval' : 'Draft';
+        const approvalRequestedBy = mode === 'submitApproval' ? (state.currentUser?.id || undefined) : undefined;
+        const approvalRequestedTo = mode === 'submitApproval' ? approverId : undefined;
+
+        if (mode === 'submitApproval' && existingPlan && isPlanUnchanged(existingPlan)) {
             const updatedPlan: InstallmentPlan = {
                 ...existingPlan,
-                status: 'Locked',
-                updatedAt: new Date().toISOString()
+                status: submitStatus,
+                approvalRequestedById: approvalRequestedBy,
+                approvalRequestedToId: approvalRequestedTo,
+                approvalRequestedAt: now,
+                approvalReviewedById: undefined,
+                approvalReviewedAt: undefined,
+                updatedAt: now
             };
             dispatch({ type: 'UPDATE_INSTALLMENT_PLAN', payload: updatedPlan });
-            showToast('Plan approved and locked');
+            showToast('Approval request sent');
             resetForm();
             return;
         }
 
-        // If locking, we use the same ID if it was already the latest version, 
-        // but the user wants "save version if edited", so let's always create a new ID for versions
-        // and link them via rootId.
-        const planStatus = isLocked ? 'Locked' : 'Draft';
+        // Always create a new version when saving changes for review or draft.
         const newVersion = selectedPlanId ? version + 1 : 1;
         const newRootId = rootId || `root_${Date.now()}`;
 
@@ -481,7 +560,7 @@ const MarketingPage: React.FC = () => {
             id: `plan_${Date.now()}`,
             rootId: newRootId,
             version: newVersion,
-            status: planStatus,
+            status: submitStatus,
             leadId,
             projectId,
             unitId,
@@ -498,12 +577,17 @@ const MarketingPage: React.FC = () => {
             introText,
             selectedAmenities: buildSelectedAmenities(),
             amenitiesTotal,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            approvalRequestedById: approvalRequestedBy,
+            approvalRequestedToId: approvalRequestedTo,
+            approvalRequestedAt: mode === 'submitApproval' ? now : undefined,
+            approvalReviewedById: undefined,
+            approvalReviewedAt: undefined,
+            createdAt: now,
+            updatedAt: now
         };
 
         dispatch({ type: 'ADD_INSTALLMENT_PLAN', payload: newPlan });
-        showToast(isLocked ? 'Plan approved and locked' : 'New version saved successfully');
+        showToast(mode === 'submitApproval' ? 'Approval request sent' : 'New version saved successfully');
         
         resetForm();
     };
@@ -554,10 +638,17 @@ const MarketingPage: React.FC = () => {
         setStatus('Draft');
         setVersion(1);
         setRootId(undefined);
+        setApprovalRequestedById(undefined);
+        setApprovalRequestedToId('');
+        setApprovalRequestedAt(undefined);
+        setApprovalReviewedById(undefined);
+        setApprovalReviewedAt(undefined);
         setNewDiscountName('');
         setNewDiscountAmount('0');
         setNewDiscountCategoryId('');
         setSelectedAmenityIdToAdd('');
+        setShowApprovalModal(false);
+        setApprovalModalApproverId('');
         setShowForm(false);
     };
 
@@ -582,6 +673,11 @@ const MarketingPage: React.FC = () => {
         setStatus(plan.status || 'Draft');
         setVersion(plan.version || 1);
         setRootId(plan.rootId || plan.id);
+        setApprovalRequestedById(plan.approvalRequestedById);
+        setApprovalRequestedToId(plan.approvalRequestedToId || '');
+        setApprovalRequestedAt(plan.approvalRequestedAt);
+        setApprovalReviewedById(plan.approvalReviewedById);
+        setApprovalReviewedAt(plan.approvalReviewedAt);
         setSelectedAmenityIds((plan.selectedAmenities || []).map(a => a.amenityId));
         setShowForm(true);
     };
@@ -592,6 +688,27 @@ const MarketingPage: React.FC = () => {
             dispatch({ type: 'DELETE_INSTALLMENT_PLAN', payload: id });
             showToast('Plan deleted');
         }
+    };
+
+    const handleApprovalDecision = async (decision: 'Approved' | 'Rejected') => {
+        if (!selectedPlanId) return;
+        const plan = (state.installmentPlans || []).find(p => p.id === selectedPlanId);
+        if (!plan) return;
+
+        const confirmed = await showConfirm(`Are you sure you want to ${decision.toLowerCase()} this plan?`);
+        if (!confirmed) return;
+
+        const now = new Date().toISOString();
+        const updatedPlan: InstallmentPlan = {
+            ...plan,
+            status: decision,
+            approvalReviewedById: state.currentUser?.id || undefined,
+            approvalReviewedAt: now,
+            updatedAt: now
+        };
+        dispatch({ type: 'UPDATE_INSTALLMENT_PLAN', payload: updatedPlan });
+        showToast(decision === 'Approved' ? 'Plan approved' : 'Plan rejected');
+        resetForm();
     };
 
     // Amenity handlers
@@ -643,6 +760,42 @@ const MarketingPage: React.FC = () => {
             );
         });
     }, [state.installmentPlans, state.contacts, state.projects, state.units, searchQuery]);
+
+    const getStatusMeta = (planStatus: InstallmentPlan['status']) => {
+        switch (planStatus) {
+            case 'Pending Approval':
+                return {
+                    label: 'Pending Approval',
+                    badge: 'bg-blue-100 text-blue-700',
+                    border: 'border-blue-500 bg-blue-50/30'
+                };
+            case 'Approved':
+                return {
+                    label: 'Approved',
+                    badge: 'bg-green-100 text-green-700',
+                    border: 'border-green-500 bg-green-50/30'
+                };
+            case 'Rejected':
+                return {
+                    label: 'Rejected',
+                    badge: 'bg-rose-100 text-rose-700',
+                    border: 'border-rose-500 bg-rose-50/30'
+                };
+            case 'Locked':
+                return {
+                    label: 'Locked',
+                    badge: 'bg-amber-100 text-amber-700',
+                    border: 'border-amber-500 bg-amber-50/30'
+                };
+            case 'Draft':
+            default:
+                return {
+                    label: 'Draft',
+                    badge: 'bg-slate-100 text-slate-600',
+                    border: 'border-indigo-500 bg-white'
+                };
+        }
+    };
 
     return (
         <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
@@ -955,25 +1108,68 @@ const MarketingPage: React.FC = () => {
                                 <div className="pt-6 flex flex-col gap-2">
                                     <Button 
                                         className="w-full justify-center py-3" 
-                                        onClick={() => handleSave(false)}
-                                        disabled={status === 'Locked'}
+                                        onClick={() => handleSave('draft')}
+                                        disabled={isReadOnly}
                                     >
                                         {selectedPlanId ? 'Save New Version' : 'Save Plan'}
                                     </Button>
-                                    {selectedPlanId && status !== 'Locked' && (
+                                    {selectedPlanId && (status === 'Draft' || status === 'Rejected') && (
                                         <Button 
                                             variant="secondary" 
                                             className="w-full justify-center py-3 border-green-200 text-green-700 hover:bg-green-50" 
-                                            onClick={() => handleSave(true)}
+                                            onClick={() => {
+                                                setApprovalModalApproverId('');
+                                                setShowApprovalModal(true);
+                                            }}
                                         >
                                             Approve & Lock Plan
                                         </Button>
+                                    )}
+                                    {status === 'Pending Approval' && (
+                                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                            <p className="text-[11px] text-blue-800 font-medium text-center">
+                                                Awaiting approval from {approvalRequestedToName || 'approver'}
+                                                {approvalRequestedByName ? `. Requested by ${approvalRequestedByName}.` : '.'}
+                                            </p>
+                                        </div>
+                                    )}
+                                    {status === 'Approved' && (
+                                        <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                                            <p className="text-[11px] text-green-800 font-medium text-center">
+                                                Approved{approvalReviewedByName ? ` by ${approvalReviewedByName}` : ''}. You can convert this plan to a sales agreement.
+                                            </p>
+                                        </div>
+                                    )}
+                                    {status === 'Rejected' && (
+                                        <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
+                                            <p className="text-[11px] text-rose-800 font-medium text-center">
+                                                Rejected{approvalReviewedByName ? ` by ${approvalReviewedByName}` : ''}. Please update and submit for approval again.
+                                            </p>
+                                        </div>
                                     )}
                                     {status === 'Locked' && (
                                         <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                                             <p className="text-[11px] text-amber-800 font-medium text-center">
                                                 This version is LOCKED. Save a new version to make changes.
                                             </p>
+                                        </div>
+                                    )}
+                                    {status === 'Pending Approval' && approvalRequestedToId === state.currentUser?.id && (
+                                        <div className="space-y-2 pt-2">
+                                            <Button 
+                                                variant="primary" 
+                                                className="w-full justify-center py-3"
+                                                onClick={() => handleApprovalDecision('Approved')}
+                                            >
+                                                Approve Plan
+                                            </Button>
+                                            <Button 
+                                                variant="ghost" 
+                                                className="w-full justify-center py-3 text-rose-600"
+                                                onClick={() => handleApprovalDecision('Rejected')}
+                                            >
+                                                Reject Plan
+                                            </Button>
                                         </div>
                                     )}
                                 </div>
@@ -1364,23 +1560,29 @@ const MarketingPage: React.FC = () => {
                                 const lead = state.contacts.find(l => l.id === plan.leadId);
                                 const project = state.projects.find(p => p.id === plan.projectId);
                                 const unit = state.units.find(u => u.id === plan.unitId);
-                                const isLocked = plan.status === 'Locked';
+                                const statusMeta = getStatusMeta(plan.status);
+                                const isConvertible = plan.status === 'Approved' || plan.status === 'Locked';
                                 
                                 return (
                                     <Card 
                                         key={plan.id} 
-                                        className={`p-4 hover:shadow-lg transition-all cursor-pointer border-l-4 ${isLocked ? 'border-green-500 bg-green-50/30' : 'border-indigo-500 bg-white'}`}
+                                        className={`p-4 hover:shadow-lg transition-all cursor-pointer border-l-4 ${statusMeta.border}`}
                                         onClick={() => handleEdit(plan)}
                                     >
                                         <div className="flex justify-between items-start">
                                             <div>
                                                 <div className="flex items-center gap-2 mb-1">
                                                     <h3 className="font-bold text-slate-900">{lead?.name || 'Unknown Lead'}</h3>
-                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase ${isLocked ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
-                                                        {isLocked ? 'Locked' : 'Draft'} v{plan.version}
+                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase ${statusMeta.badge}`}>
+                                                        {statusMeta.label} v{plan.version}
                                                     </span>
                                                 </div>
                                                 <p className="text-xs text-slate-500">{project?.name} - {unit?.name}</p>
+                                                {plan.status === 'Pending Approval' && plan.approvalRequestedToId && (
+                                                    <p className="text-[10px] text-blue-600">
+                                                        Awaiting: {state.users.find(u => u.id === plan.approvalRequestedToId)?.name || 'Approver'}
+                                                    </p>
+                                                )}
                                             </div>
                                             <button 
                                                 onClick={(e) => { e.stopPropagation(); handleDelete(plan.id); }}
@@ -1417,7 +1619,7 @@ const MarketingPage: React.FC = () => {
                                                 <span>{plan.durationYears} Years | {plan.frequency}</span>
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                {isLocked && (
+                                                {isConvertible && (
                                                     <Button 
                                                         variant="primary" 
                                                         size="sm" 
@@ -1462,6 +1664,21 @@ const MarketingPage: React.FC = () => {
                 amenities={state.planAmenities || []}
                 onSave={handleSaveAmenity}
                 onDelete={handleDeleteAmenity}
+            />
+            <ApprovalRequestModal
+                isOpen={showApprovalModal}
+                onClose={() => setShowApprovalModal(false)}
+                approvers={approvers}
+                selectedApproverId={approvalModalApproverId}
+                onSelectApprover={setApprovalModalApproverId}
+                onSubmit={() => {
+                    if (!approvalModalApproverId) {
+                        showToast('Please select an approver');
+                        return;
+                    }
+                    handleSave('submitApproval', approvalModalApproverId);
+                    setShowApprovalModal(false);
+                }}
             />
             <EntityFormModal
                 isOpen={entityFormModal.isFormOpen}

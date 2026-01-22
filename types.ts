@@ -246,7 +246,12 @@ export interface InstallmentPlan {
   introText?: string; // Custom editable text after "Exclusively for You"
   version: number;
   rootId?: string; // ID of the first version of this plan
-  status: 'Draft' | 'Locked';
+  status: 'Draft' | 'Pending Approval' | 'Approved' | 'Rejected' | 'Locked';
+  approvalRequestedById?: string;
+  approvalRequestedToId?: string;
+  approvalRequestedAt?: string;
+  approvalReviewedById?: string;
+  approvalReviewedAt?: string;
   // Selected amenities with their calculated amounts
   selectedAmenities?: InstallmentPlanAmenity[];
   amenitiesTotal?: number;

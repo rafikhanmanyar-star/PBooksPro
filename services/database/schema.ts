@@ -314,6 +314,11 @@ CREATE TABLE IF NOT EXISTS installment_plans (
     version INTEGER NOT NULL DEFAULT 1,
     root_id TEXT,
     status TEXT NOT NULL DEFAULT 'Draft',
+    approval_requested_by TEXT,
+    approval_requested_to TEXT,
+    approval_requested_at TEXT,
+    approval_reviewed_by TEXT,
+    approval_reviewed_at TEXT,
     discounts TEXT DEFAULT '[]',
     -- Discount category mappings
     customer_discount_category_id TEXT,

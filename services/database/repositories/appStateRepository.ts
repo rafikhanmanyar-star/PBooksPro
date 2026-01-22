@@ -513,7 +513,12 @@ export class AppStateRepository {
                     introText: p.introText ?? p.intro_text ?? undefined,
                     version: p.version ?? 1,
                     rootId: p.rootId ?? p.root_id ?? undefined,
-                    status: (p.status || 'Draft') as 'Draft' | 'Locked',
+                    status: (p.status || 'Draft') as InstallmentPlan['status'],
+                    approvalRequestedById: p.approvalRequestedById ?? p.approval_requested_by ?? undefined,
+                    approvalRequestedToId: p.approvalRequestedToId ?? p.approval_requested_to ?? undefined,
+                    approvalRequestedAt: p.approvalRequestedAt ?? p.approval_requested_at ?? undefined,
+                    approvalReviewedById: p.approvalReviewedById ?? p.approval_reviewed_by ?? undefined,
+                    approvalReviewedAt: p.approvalReviewedAt ?? p.approval_reviewed_at ?? undefined,
                     selectedAmenities: (() => {
                         if (p.selectedAmenities) {
                             if (typeof p.selectedAmenities === 'string') {

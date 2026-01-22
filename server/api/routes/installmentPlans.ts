@@ -75,6 +75,11 @@ router.get('/', async (req: TenantRequest, res) => {
       version: p.version || 1,
       rootId: p.root_id || undefined,
       status: p.status || 'Draft',
+      approvalRequestedById: p.approval_requested_by || undefined,
+      approvalRequestedToId: p.approval_requested_to || undefined,
+      approvalRequestedAt: p.approval_requested_at || undefined,
+      approvalReviewedById: p.approval_reviewed_by || undefined,
+      approvalReviewedAt: p.approval_reviewed_at || undefined,
       discounts: (() => {
         if (p.discounts) {
           if (typeof p.discounts === 'string') {
@@ -285,6 +290,11 @@ router.post('/', async (req: TenantRequest, res) => {
       { name: 'version', value: plan.version || 1, update: true },
       { name: 'root_id', value: plan.rootId || null, update: true },
       { name: 'status', value: plan.status || 'Draft', update: true },
+      { name: 'approval_requested_by', value: plan.approvalRequestedById || null, update: true },
+      { name: 'approval_requested_to', value: plan.approvalRequestedToId || null, update: true },
+      { name: 'approval_requested_at', value: plan.approvalRequestedAt || null, update: true },
+      { name: 'approval_reviewed_by', value: plan.approvalReviewedById || null, update: true },
+      { name: 'approval_reviewed_at', value: plan.approvalReviewedAt || null, update: true },
       { name: 'discounts', value: discountsJson, cast: 'jsonb', update: true },
       { name: 'customer_discount_category_id', value: plan.customerDiscountCategoryId || null, update: true },
       { name: 'floor_discount_category_id', value: plan.floorDiscountCategoryId || null, update: true },
@@ -363,6 +373,11 @@ router.post('/', async (req: TenantRequest, res) => {
       version: saved.version || plan.version || 1,
       rootId: saved.root_id || plan.rootId,
       status: saved.status || plan.status || 'Draft',
+      approvalRequestedById: saved.approval_requested_by || plan.approvalRequestedById,
+      approvalRequestedToId: saved.approval_requested_to || plan.approvalRequestedToId,
+      approvalRequestedAt: saved.approval_requested_at || plan.approvalRequestedAt,
+      approvalReviewedById: saved.approval_reviewed_by || plan.approvalReviewedById,
+      approvalReviewedAt: saved.approval_reviewed_at || plan.approvalReviewedAt,
       discounts: (() => {
         if (saved.discounts) {
           if (typeof saved.discounts === 'string') {

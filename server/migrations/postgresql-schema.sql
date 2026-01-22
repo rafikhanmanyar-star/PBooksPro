@@ -474,7 +474,12 @@ CREATE TABLE IF NOT EXISTS installment_plans (
     intro_text TEXT,
     version INTEGER NOT NULL DEFAULT 1,
     root_id TEXT,
-    status TEXT NOT NULL DEFAULT 'Draft' CHECK (status IN ('Draft', 'Locked')),
+    status TEXT NOT NULL DEFAULT 'Draft' CHECK (status IN ('Draft', 'Pending Approval', 'Approved', 'Rejected', 'Locked')),
+    approval_requested_by TEXT,
+    approval_requested_to TEXT,
+    approval_requested_at TEXT,
+    approval_reviewed_by TEXT,
+    approval_reviewed_at TEXT,
     discounts JSONB DEFAULT '[]'::jsonb,
     -- Discount category mappings (links to expense categories)
     customer_discount_category_id TEXT,
