@@ -730,23 +730,26 @@ const MarketingPage: React.FC = () => {
                                         onSelect={item => { setProjectId(item?.id || ''); setUnitId(''); }} 
                                         placeholder="Select Project"
                                     />
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <ComboBox 
-                                            label="Unit Type" 
-                                            items={[]} // Just text in image usually
-                                            selectedId={""}
-                                            onSelect={() => {}}
-                                            placeholder="3BHK Luxury"
-                                        />
-                                        <ComboBox 
-                                            label="Unit #" 
-                                            items={units} 
-                                            selectedId={unitId} 
-                                            onSelect={item => setUnitId(item?.id || '')} 
-                                            placeholder="Select Unit"
-                                            disabled={!projectId}
-                                        />
-                                    </div>
+                                    <ComboBox 
+                                        label="Unit #" 
+                                        items={units} 
+                                        selectedId={unitId} 
+                                        onSelect={item => setUnitId(item?.id || '')} 
+                                        placeholder="Select Unit"
+                                        disabled={!projectId}
+                                    />
+                                </div>
+
+                                {/* Client Info */}
+                                <div className="space-y-4 pt-4 border-t border-slate-100">
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Client Info</h3>
+                                    <ComboBox 
+                                        label="Client Name" 
+                                        items={leads} 
+                                        selectedId={leadId} 
+                                        onSelect={item => setLeadId(item?.id || '')} 
+                                        placeholder="Select Lead"
+                                    />
                                 </div>
 
                                 {/* Pricing & Discount */}
@@ -935,18 +938,6 @@ const MarketingPage: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {/* Client Info */}
-                                <div className="space-y-4 pt-4 border-t border-slate-100">
-                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Client Info</h3>
-                                    <ComboBox 
-                                        label="Client Name" 
-                                        items={leads} 
-                                        selectedId={leadId} 
-                                        onSelect={item => setLeadId(item?.id || '')} 
-                                        placeholder="Select Lead"
-                                    />
-                                </div>
-
                                 <div className="space-y-4 pt-4 border-t border-slate-100">
                                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Proposal Text</h3>
                                     <div className="space-y-2">
@@ -1073,8 +1064,12 @@ const MarketingPage: React.FC = () => {
                                                     </span>
                                                 </div>
                                                 <div className="flex items-end gap-2">
-                                                    <span className="whitespace-nowrap">CORNER *</span>
-                                                    <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 text-center min-h-[1.5em]">NO</span>
+                                                    {selectedAmenityIds[0] && (
+                                                        <>
+                                                            <span className="whitespace-nowrap uppercase">{activeAmenities.find(a => a.id === selectedAmenityIds[0])?.name || 'AMENITY 1'}:</span>
+                                                            <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 text-center min-h-[1.5em]">YES</span>
+                                                        </>
+                                                    )}
                                                 </div>
 
                                                 <div className="flex items-center gap-2 col-span-2">
@@ -1084,8 +1079,12 @@ const MarketingPage: React.FC = () => {
                                                     </div>
                                                 </div>
                                                 <div className="flex items-end gap-2">
-                                                    <span className="whitespace-nowrap text-[9px] leading-tight">MARGALLA FACE**</span>
-                                                    <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 text-center min-h-[1.5em]">NO</span>
+                                                    {selectedAmenityIds[1] && (
+                                                        <>
+                                                            <span className="whitespace-nowrap text-[9px] leading-tight uppercase">{activeAmenities.find(a => a.id === selectedAmenityIds[1])?.name || 'AMENITY 2'}:</span>
+                                                            <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 text-center min-h-[1.5em]">YES</span>
+                                                        </>
+                                                    )}
                                                 </div>
 
                                                 <div className="flex items-end gap-2 col-span-3 justify-end pt-2">
@@ -1254,7 +1253,9 @@ const MarketingPage: React.FC = () => {
                                                 <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
                                                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Unit Details</p>
                                                     <p className="text-sm font-bold text-slate-800 line-clamp-1">{units.find(u => u.id === unitId)?.type || 'Apartment'}</p>
-                                                    <p className="text-[10px] text-slate-500">Unit ID: {units.find(u => u.id === unitId)?.name || 'N/A'}</p>
+                                                    <p className="text-[10px] text-slate-500">Unit: {units.find(u => u.id === unitId)?.name || 'N/A'}</p>
+                                                    <p className="text-[10px] text-slate-500">Floor: {units.find(u => u.id === unitId)?.floor || 'N/A'}</p>
+                                                    <p className="text-[10px] text-slate-500">Area: {units.find(u => u.id === unitId)?.area || '0'} SFT</p>
                                                 </div>
                                                 <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
                                                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Total Net Price</p>

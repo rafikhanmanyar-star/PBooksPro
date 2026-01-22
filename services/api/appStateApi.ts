@@ -1038,6 +1038,25 @@ export class AppStateApiService {
   }
 
   /**
+   * Save plan amenity to API
+   */
+  async savePlanAmenity(amenity: Partial<AppState['planAmenities'][0]>): Promise<AppState['planAmenities'][0]> {
+    const amenityWithId = {
+      ...amenity,
+      id: amenity.id || `amenity_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+    logger.logCategory('sync', `💾 Syncing plan amenity (POST upsert): ${amenityWithId.id} - ${amenityWithId.name}`);
+    return this.planAmenitiesRepo.save(amenityWithId);
+  }
+
+  /**
+   * Delete plan amenity from API
+   */
+  async deletePlanAmenity(id: string): Promise<void> {
+    return this.planAmenitiesRepo.delete(id);
+  }
+
+  /**
    * Save installment plan to API
    */
   async saveInstallmentPlan(plan: Partial<AppState['installmentPlans'][0]>): Promise<AppState['installmentPlans'][0]> {

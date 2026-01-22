@@ -1863,6 +1863,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             logger.logCategory('sync', '✅ Synced installment plan deletion to API:', planId);
                         }
 
+                        // Handle plan amenity changes
+                        if (action.type === 'ADD_PLAN_AMENITY') {
+                            const amenity = action.payload;
+                            await apiService.savePlanAmenity(amenity);
+                            logger.logCategory('sync', '✅ Synced plan amenity to API:', amenity.name);
+                        } else if (action.type === 'UPDATE_PLAN_AMENITY') {
+                            const amenity = action.payload;
+                            await apiService.savePlanAmenity(amenity);
+                            logger.logCategory('sync', '✅ Synced plan amenity update to API:', amenity.name);
+                        } else if (action.type === 'DELETE_PLAN_AMENITY') {
+                            const amenityId = action.payload as string;
+                            await apiService.deletePlanAmenity(amenityId);
+                            logger.logCategory('sync', '✅ Synced plan amenity deletion to API:', amenityId);
+                        }
+
                         // Handle invoice changes
                         if (action.type === 'ADD_INVOICE') {
                             const invoice = action.payload;
