@@ -1715,8 +1715,14 @@ export const runImportProcess = async (
 
                     const newUnit: Unit = {
                         id: generateImportId('unit', index),
-                        name: row.name, projectId, contactId: ownerId,
-                        salePrice: parseFloat(row.salePrice), description: row.description
+                        name: row.name, 
+                        projectId, 
+                        contactId: ownerId,
+                        salePrice: row.salePrice ? parseFloat(row.salePrice) : undefined, 
+                        description: row.description || undefined,
+                        type: row.type || undefined,
+                        area: row.area ? parseFloat(row.area) : undefined,
+                        floor: row.floor || undefined
                     };
                     tempState.units.push(newUnit);
                     maps.units.set(normalizeNameForComparison(newUnit.name), newUnit.id);

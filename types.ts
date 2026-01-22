@@ -318,6 +318,9 @@ export interface Unit {
   contactId?: string;
   salePrice?: number;
   description?: string;
+  type?: string; // e.g., 2BHK, shop, Office
+  area?: number; // Area in square feet
+  floor?: string; // e.g., Ground floor, 1st floor
 }
 
 export interface Transaction {

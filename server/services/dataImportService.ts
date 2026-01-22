@@ -914,7 +914,10 @@ async function validateUnitRow(
     project_id: project[0].id,
     contact_id: contactId,
     sale_price: row.sale_price ? parseFloat(row.sale_price.toString()) : null,
-    description: row.description ? row.description.toString().trim() : null
+    description: row.description ? row.description.toString().trim() : null,
+    type: row.type ? row.type.toString().trim() : null,
+    area: row.area ? parseFloat(row.area.toString()) : null,
+    floor: row.floor ? row.floor.toString().trim() : null
   });
 }
 

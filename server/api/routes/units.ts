@@ -83,8 +83,8 @@ router.post('/', async (req: TenantRequest, res) => {
     // Use PostgreSQL UPSERT (ON CONFLICT) to handle race conditions
     // Explicitly handle all fields with || null to ensure data preservation (same logic as bills)
     const result = await db.query(
-      `INSERT INTO units (id, tenant_id, name, project_id, contact_id, sale_price, description, user_id, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE((SELECT created_at FROM units WHERE id = $1), NOW()), NOW())
+      `INSERT INTO units (id, tenant_id, name, project_id, contact_id, sale_price, description, type, area, floor, user_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE((SELECT created_at FROM units WHERE id = $1), NOW()), NOW())
        ON CONFLICT (id) 
        DO UPDATE SET
          name = EXCLUDED.name,
@@ -92,6 +92,9 @@ router.post('/', async (req: TenantRequest, res) => {
          contact_id = EXCLUDED.contact_id,
          sale_price = EXCLUDED.sale_price,
          description = EXCLUDED.description,
+         type = EXCLUDED.type,
+         area = EXCLUDED.area,
+         floor = EXCLUDED.floor,
          user_id = EXCLUDED.user_id,
          updated_at = NOW()
        RETURNING *`,
@@ -103,6 +106,9 @@ router.post('/', async (req: TenantRequest, res) => {
         unit.contactId || null,
         unit.salePrice || null,
         unit.description || null,
+        unit.type || null,
+        unit.area || null,
+        unit.floor || null,
         req.user?.userId || null
       ]
     );
@@ -139,8 +145,8 @@ router.put('/:id', async (req: TenantRequest, res) => {
     const result = await db.query(
       `UPDATE units 
        SET name = $1, project_id = $2, contact_id = $3, sale_price = $4, 
-           description = $5, user_id = $6, updated_at = NOW()
-       WHERE id = $7 AND tenant_id = $8
+           description = $5, type = $6, area = $7, floor = $8, user_id = $9, updated_at = NOW()
+       WHERE id = $10 AND tenant_id = $11
        RETURNING *`,
       [
         unit.name,
@@ -148,6 +154,9 @@ router.put('/:id', async (req: TenantRequest, res) => {
         unit.contactId || null,
         unit.salePrice || null,
         unit.description || null,
+        unit.type || null,
+        unit.area || null,
+        unit.floor || null,
         req.user?.userId || null,
         req.params.id,
         req.tenantId

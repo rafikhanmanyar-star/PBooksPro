@@ -220,7 +220,7 @@ const SettingsPage: React.FC = () => {
             { key: 'balance', label: 'Balance', isNumeric: true }
         ],
         properties: [{ key: 'name', label: 'Name' }, { key: 'building', label: 'Building' }, { key: 'owner', label: 'Owner' }, { key: 'serviceCharge', label: 'Svc Charge', isNumeric: true }, { key: 'balance', label: 'Balance', isNumeric: true }],
-        units: [{ key: 'name', label: 'Name' }, { key: 'project', label: 'Project' }, { key: 'owner', label: 'Owner' }, { key: 'salePrice', label: 'Price', isNumeric: true }, { key: 'balance', label: 'Balance', isNumeric: true }]
+        units: [{ key: 'name', label: 'Name' }, { key: 'type', label: 'Type' }, { key: 'area', label: 'Area (sq ft)', isNumeric: true }, { key: 'floor', label: 'Floor' }, { key: 'project', label: 'Project' }, { key: 'owner', label: 'Owner' }, { key: 'salePrice', label: 'Price', isNumeric: true }, { key: 'balance', label: 'Balance', isNumeric: true }]
     };
 
     const tableData = useMemo<TableRowData[]>(() => {

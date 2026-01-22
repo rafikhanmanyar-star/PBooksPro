@@ -277,7 +277,14 @@ export class AppStateApiService {
           if (price == null) return undefined;
           return typeof price === 'number' ? price : parseFloat(String(price));
         })(),
-        description: u.description || undefined
+        description: u.description || undefined,
+        type: u.type || undefined,
+        area: (() => {
+          const areaValue = u.area;
+          if (areaValue == null) return undefined;
+          return typeof areaValue === 'number' ? areaValue : parseFloat(String(areaValue));
+        })(),
+        floor: u.floor || undefined
       }));
 
       // Normalize categories from API (transform snake_case to camelCase)

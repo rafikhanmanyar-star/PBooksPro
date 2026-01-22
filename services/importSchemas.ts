@@ -168,10 +168,10 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
     // Units
     schemas.Units = {
         sheetName: 'Units',
-        version: '1.0',
+        version: '1.1',
         requiredFields: ['name'],
-        optionalFields: ['projectName', 'project', 'ownerName', 'clientName', 'owner', 'salePrice', 'description', 'tenantName', 'tenant'],
-        allowedFields: new Set(['name', 'projectName', 'project', 'ownerName', 'clientName', 'owner', 'salePrice', 'description', 'tenantName', 'tenant'])
+        optionalFields: ['type', 'area', 'floor', 'projectName', 'project', 'ownerName', 'clientName', 'owner', 'salePrice', 'description', 'tenantName', 'tenant'],
+        allowedFields: new Set(['name', 'type', 'area', 'floor', 'projectName', 'project', 'ownerName', 'clientName', 'owner', 'salePrice', 'description', 'tenantName', 'tenant'])
     };
 
     // RentalAgreements

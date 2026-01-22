@@ -156,11 +156,14 @@ const createExportSchemas = (): Record<string, ExportSchema> => {
     // Units
     schemas.Units = {
         sheetName: 'Units',
-        version: '1.0',
-        headers: ['id', 'name', 'projectName', 'ownerName', 'salePrice', 'description'],
+        version: '1.1',
+        headers: ['id', 'name', 'type', 'area', 'floor', 'projectName', 'ownerName', 'salePrice', 'description'],
         transform: (state: AppState, maps: ExportMaps, helpers: ExportHelpers) => state.units.map(u => ({
             id: u.id,
             name: u.name,
+            type: u.type ?? '',
+            area: u.area ?? 0,
+            floor: u.floor ?? '',
             projectName: helpers.getName(maps.projectsById, u.projectId),
             ownerName: helpers.getName(maps.contactsById, u.contactId),
             salePrice: u.salePrice ?? 0,

@@ -24,6 +24,9 @@ const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitT
     const [projectId, setProjectId] = useState(unitToEdit?.projectId || state.defaultProjectId || '');
     const [contactId, setContactId] = useState(unitToEdit?.contactId || '');
     const [salePrice, setSalePrice] = useState(unitToEdit?.salePrice?.toString() || '');
+    const [type, setType] = useState(unitToEdit?.type || '');
+    const [area, setArea] = useState(unitToEdit?.area?.toString() || '');
+    const [floor, setFloor] = useState(unitToEdit?.floor || '');
     const [nameError, setNameError] = useState('');
     
     // Local modal state for adding new contacts
@@ -61,7 +64,10 @@ const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitT
             name, 
             projectId, 
             contactId: contactId || undefined, 
-            salePrice: salePrice ? parseFloat(salePrice) : undefined 
+            salePrice: salePrice ? parseFloat(salePrice) : undefined,
+            type: type || undefined,
+            area: area ? parseFloat(area) : undefined,
+            floor: floor || undefined
         });
     };
 
@@ -95,6 +101,11 @@ const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitT
                                 setShowContactModal(true);
                             }}
                         />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <Input label="Type (e.g., 2BHK, Shop, Office)" value={type} onChange={e => setType(e.target.value)} placeholder="Enter unit type" />
+                        <Input label="Area (sq ft)" type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" value={area} onChange={e => setArea(e.target.value)} placeholder="Enter area" />
+                        <Input label="Floor (e.g., Ground floor, 1st floor)" value={floor} onChange={e => setFloor(e.target.value)} placeholder="Enter floor" />
                     </div>
                     <Input label="Sale Price (Optional)" type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" value={salePrice} onChange={e => setSalePrice(e.target.value)} />
                 </div>
