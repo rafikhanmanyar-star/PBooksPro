@@ -190,6 +190,9 @@ export interface Contact {
   contactNo?: string;
   companyName?: string;
   address?: string;
+  userId?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Category {
@@ -483,6 +486,9 @@ export interface ProjectAgreement {
   miscDiscountCategoryId?: string;
   sellingPriceCategoryId?: string;
   rebateCategoryId?: string;
+  userId?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface SalesReturn {

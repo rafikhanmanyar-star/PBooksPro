@@ -30,6 +30,7 @@ import ProjectContractReport from '../reports/ProjectContractReport';
 import ProjectBudgetReport from '../reports/ProjectBudgetReport';
 import ProjectMaterialReport from '../reports/ProjectMaterialReport';
 import ProjectCashFlowReport from '../reports/ProjectCashFlowReport';
+import MarketingActivityReport from '../reports/MarketingActivityReport';
 
 interface ProjectManagementPageProps {
   initialPage: Page;
@@ -43,7 +44,7 @@ type ProjectView =
     | 'Project Summary' | 'Revenue Analysis' | 'Owner Ledger' | 'Broker Report' 
     | 'Income by Category' | 'Expense by Category' | 'Material Report' | 'Vendor Ledger'
     | 'PM Cost Report' | 'Profit & Loss' | 'Balance Sheet' | 'Investor Distribution' | 'Contract Report'
-    | 'Budget vs Actual' | 'Cash Flows';
+    | 'Budget vs Actual' | 'Cash Flows' | 'Marketing Activity';
 
 const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPage }) => {
     const { state, dispatch } = useAppContext();
@@ -138,6 +139,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             
             // Secondary Reports (From Dropdown)
             case 'Project Summary': return <ProjectSummaryReport />;
+            case 'Marketing Activity': return <MarketingActivityReport />;
             case 'Profit & Loss': return isAdmin ? <ProjectProfitLossReport /> : null;
             case 'Balance Sheet': return isAdmin ? <ProjectBalanceSheetReport /> : null;
             case 'Cash Flows': return isAdmin ? <ProjectCashFlowReport /> : null;
@@ -158,7 +160,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
     };
 
     const isReportActive = [
-        'Project Summary', 'Profit & Loss', 'Balance Sheet', 'Investor Distribution', 'Revenue Analysis', 'Owner Ledger', 'Broker Report', 
+        'Project Summary', 'Marketing Activity', 'Profit & Loss', 'Balance Sheet', 'Investor Distribution', 'Revenue Analysis', 'Owner Ledger', 'Broker Report', 
         'Income by Category', 'Expense by Category', 'Material Report', 'Vendor Ledger', 'PM Cost Report', 'Contract Report', 'Budget vs Actual', 'Cash Flows'
     ].includes(activeView);
 
@@ -292,6 +294,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                                         <div className="bg-slate-50 px-4 py-1 text-xs font-semibold text-slate-500 border-b border-slate-200">OPERATIONAL</div>
                                         {[
                                             'Project Summary',
+                                            'Marketing Activity',
                                             'Budget vs Actual',
                                             'Contract Report',
                                             'PM Cost Report',

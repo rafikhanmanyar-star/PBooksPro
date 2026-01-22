@@ -15,10 +15,12 @@ import ProjectContractReport from '../reports/ProjectContractReport';
 import ProjectBudgetReport from '../reports/ProjectBudgetReport';
 import ProjectMaterialReport from '../reports/ProjectMaterialReport';
 import ProjectCashFlowReport from '../reports/ProjectCashFlowReport';
+import MarketingActivityReport from '../reports/MarketingActivityReport';
 
 const PRIMARY_REPORTS = ['Visual Layout', 'Project Units'];
 const SECONDARY_REPORTS = [
     'Project Summary',
+    'Marketing Activity',
     'Budget vs Actual',
     'Cash Flows',
     'Contract Report',
@@ -50,6 +52,8 @@ const ProjectReportsPage: React.FC<ProjectReportsPageProps> = ({ initialTab }) =
                 return <ProjectLayoutReport />;
             case 'Project Summary':
                 return <ProjectSummaryReport />;
+            case 'Marketing Activity':
+                return <MarketingActivityReport />;
             case 'Budget vs Actual':
                 return <ProjectBudgetReport />;
             case 'Cash Flows':

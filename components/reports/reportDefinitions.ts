@@ -24,6 +24,7 @@ export const reportDefinitions: ReportDefinition[] = [
     // Project Reports
     { id: 'project-visual-layout', title: 'Project Visual Layout', group: 'Project', path: 'projectManagement', subPath: 'Reports:Visual Layout' },
     { id: 'project-summary', title: 'Project Summary Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Project Summary' },
+    { id: 'project-marketing-activity', title: 'Marketing Activity Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Marketing Activity' },
     { id: 'project-pm-cost', title: 'Project Management Cost Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:PM Cost' }, 
     { id: 'project-revenue', title: 'Revenue Analysis Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Revenue Analysis' },
     { id: 'project-income-category', title: 'Project Income by Category', group: 'Project', path: 'projectManagement', subPath: 'Reports:Income by Category' },

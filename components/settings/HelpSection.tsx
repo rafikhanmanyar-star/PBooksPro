@@ -595,7 +595,7 @@ const HELP_TOPICS: HelpTopic[] = [
                 <p>Access comprehensive reports for all aspects of your business.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Rental Reports:</strong> Building Analysis, Property Status, Owner Income, Tenant Ledger, Vendor Ledger, Broker Fees, Service Charges, Security Deposits, Visual Layout.</li>
-                    <li><strong>Project Reports:</strong> Project Summary, Revenue Analysis, PM Cost, Income/Expense by Category, Unit Report, Client Ledger, Broker Report, Vendor Ledger, Contract Report, Visual Layout.</li>
+                    <li><strong>Project Reports:</strong> Project Summary, Marketing Activity, Revenue Analysis, PM Cost, Income/Expense by Category, Unit Report, Client Ledger, Broker Report, Vendor Ledger, Contract Report, Visual Layout.</li>
                     <li><strong>General Reports:</strong> Transfer Statistics, Category Analysis, Account Statements (from General Ledger filters).</li>
                     <li><strong>Report Access:</strong> Reports are in respective modules (Rental/Project Management &gt; Reports tab) or via KPI Panel &gt; Reports tab.</li>
                     <li><strong>Export:</strong> Most reports can be exported to Excel/PDF for sharing or further analysis.</li>

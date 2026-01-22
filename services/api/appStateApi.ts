@@ -374,7 +374,10 @@ export class AppStateApiService {
         lumpSumDiscountCategoryId: pa.lump_sum_discount_category_id || pa.lumpSumDiscountCategoryId || undefined,
         miscDiscountCategoryId: pa.misc_discount_category_id || pa.miscDiscountCategoryId || undefined,
         sellingPriceCategoryId: pa.selling_price_category_id || pa.sellingPriceCategoryId || undefined,
-        rebateCategoryId: pa.rebate_category_id || pa.rebateCategoryId || undefined
+        rebateCategoryId: pa.rebate_category_id || pa.rebateCategoryId || undefined,
+        userId: pa.user_id || pa.userId || undefined,
+        createdAt: pa.created_at || pa.createdAt || undefined,
+        updatedAt: pa.updated_at || pa.updatedAt || undefined
       }));
 
       // Normalize bills from API (transform snake_case to camelCase)
@@ -558,7 +561,10 @@ export class AppStateApiService {
         description: c.description || undefined,
         contactNo: c.contact_no || c.contactNo || undefined,
         companyName: c.company_name || c.companyName || undefined,
-        address: c.address || undefined
+        address: c.address || undefined,
+        userId: c.user_id || c.userId || undefined,
+        createdAt: c.created_at || c.createdAt || undefined,
+        updatedAt: c.updated_at || c.updatedAt || undefined
       }));
 
       // Normalize projects from API

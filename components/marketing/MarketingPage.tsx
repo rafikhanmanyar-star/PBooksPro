@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { apiClient } from '../../services/api/client';
 import { useAppContext } from '../../context/AppContext';
 import { 
     ContactType, 
@@ -289,6 +290,7 @@ const MarketingPage: React.FC = () => {
     const [selectedAmenityIdToAdd, setSelectedAmenityIdToAdd] = useState('');
     const [showApprovalModal, setShowApprovalModal] = useState(false);
     const [approvalModalApproverId, setApprovalModalApproverId] = useState('');
+    const [orgUsers, setOrgUsers] = useState<{ id: string; name: string; username: string; role: string }[]>([]);
 
     // Discount Category IDs (link to expense categories)
     const [customerDiscountCategoryId, setCustomerDiscountCategoryId] = useState('');
@@ -327,11 +329,25 @@ const MarketingPage: React.FC = () => {
     // Filtered Leads
     const leads = useMemo(() => state.contacts.filter(c => c.type === ContactType.LEAD), [state.contacts]);
 
+    useEffect(() => {
+        const loadOrgUsers = async () => {
+            try {
+                const data = await apiClient.get<{ id: string; name: string; username: string; role: string }[]>('/users');
+                setOrgUsers(data || []);
+            } catch (error) {
+                console.error('Failed to load organization users', error);
+                setOrgUsers([]);
+            }
+        };
+        loadOrgUsers();
+    }, []);
+
+    const usersForApproval = orgUsers.length > 0 ? orgUsers : state.users;
     const approvers = useMemo(
-        () => state.users
+        () => usersForApproval
             .filter(user => user.role === 'Admin')
             .map(user => ({ id: user.id, name: user.name || user.username })),
-        [state.users]
+        [usersForApproval]
     );
     
     // Units for selected project
@@ -342,13 +358,13 @@ const MarketingPage: React.FC = () => {
 
     const isReadOnly = status === 'Pending Approval' || status === 'Approved' || status === 'Locked';
     const approvalRequestedToName = approvalRequestedToId
-        ? state.users.find(u => u.id === approvalRequestedToId)?.name
+        ? usersForApproval.find(u => u.id === approvalRequestedToId)?.name || usersForApproval.find(u => u.id === approvalRequestedToId)?.username
         : undefined;
     const approvalRequestedByName = approvalRequestedById
-        ? state.users.find(u => u.id === approvalRequestedById)?.name
+        ? usersForApproval.find(u => u.id === approvalRequestedById)?.name || usersForApproval.find(u => u.id === approvalRequestedById)?.username
         : undefined;
     const approvalReviewedByName = approvalReviewedById
-        ? state.users.find(u => u.id === approvalReviewedById)?.name
+        ? usersForApproval.find(u => u.id === approvalReviewedById)?.name || usersForApproval.find(u => u.id === approvalReviewedById)?.username
         : undefined;
 
 
@@ -1604,10 +1620,14 @@ const MarketingPage: React.FC = () => {
                                                             <div className="text-[10px] text-slate-500">{project?.name} - {unit?.name}</div>
                                                         </td>
                                                         <td className="py-2 text-slate-700">
-                                                            {state.users.find(u => u.id === plan.approvalRequestedById)?.name || 'N/A'}
+                                                            {usersForApproval.find(u => u.id === plan.approvalRequestedById)?.name ||
+                                                                usersForApproval.find(u => u.id === plan.approvalRequestedById)?.username ||
+                                                                'N/A'}
                                                         </td>
                                                         <td className="py-2 text-slate-700">
-                                                            {state.users.find(u => u.id === plan.approvalRequestedToId)?.name || 'N/A'}
+                                                            {usersForApproval.find(u => u.id === plan.approvalRequestedToId)?.name ||
+                                                                usersForApproval.find(u => u.id === plan.approvalRequestedToId)?.username ||
+                                                                'N/A'}
                                                         </td>
                                                         <td className="py-2">
                                                             <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${statusMeta.badge}`}>
@@ -1657,7 +1677,9 @@ const MarketingPage: React.FC = () => {
                                                 <p className="text-xs text-slate-500">{project?.name} - {unit?.name}</p>
                                                 {plan.status === 'Pending Approval' && plan.approvalRequestedToId && (
                                                     <p className="text-[10px] text-blue-600">
-                                                        Awaiting: {state.users.find(u => u.id === plan.approvalRequestedToId)?.name || 'Approver'}
+                                                        Awaiting: {usersForApproval.find(u => u.id === plan.approvalRequestedToId)?.name ||
+                                                            usersForApproval.find(u => u.id === plan.approvalRequestedToId)?.username ||
+                                                            'Approver'}
                                                     </p>
                                                 )}
                                             </div>
