@@ -658,6 +658,14 @@ const MarketingPage: React.FC = () => {
                 <div className="flex items-center gap-2">
                     <Button 
                         variant="secondary" 
+                        onClick={() => window.print()}
+                        className="flex items-center gap-2 print:hidden"
+                    >
+                        <div className="w-4 h-4">{ICONS.print}</div>
+                        Print Plan
+                    </Button>
+                    <Button 
+                        variant="secondary" 
                         onClick={() => setShowConfigModal(true)}
                         className="flex items-center gap-2"
                     >
@@ -956,137 +964,229 @@ const MarketingPage: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Right Content - Proposal Preview */}
-                        <div className="flex-1 overflow-y-auto p-8 bg-slate-100">
-                            <div className="max-w-4xl mx-auto bg-white shadow-2xl rounded-sm overflow-hidden min-h-full flex flex-col">
-                                {/* Proposal Header */}
-                                <div className="bg-[#1a237e] p-10 text-white flex justify-between items-start relative overflow-hidden">
-                                    <div className="relative z-10">
-                                        <h1 className="text-4xl font-extrabold tracking-tight mb-2">
-                                            {state.projects.find(p => p.id === projectId)?.name || 'Project Name'}
-                                        </h1>
-                                        <div className="flex items-center gap-2 text-indigo-200 text-sm">
-                                            <div className="w-4 h-4">{ICONS.mapPin}</div>
-                                            <span>Official Investment Proposal</span>
+                        {/* Right Content - Installment Plan Preview */}
+                        <div className="flex-1 overflow-y-auto p-8 bg-slate-100 print:p-0 print:bg-white">
+                            <div className="max-w-4xl mx-auto bg-white shadow-2xl rounded-sm overflow-hidden min-h-full flex flex-col p-10 print:shadow-none print:p-0">
+                                {/* Header */}
+                                <div className="flex flex-col items-center mb-6">
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <div className="w-12 h-12 relative flex items-center justify-center">
+                                            <svg viewBox="0 0 100 100" className="w-full h-full text-slate-800">
+                                                <path d="M50 5 L95 25 L95 75 L50 95 L5 75 L5 25 Z" fill="none" stroke="currentColor" strokeWidth="4"/>
+                                                <path d="M50 20 L80 35 L80 65 L50 80 L20 65 L20 35 Z" fill="currentColor"/>
+                                                <path d="M35 45 L50 35 L65 45 L65 65 L50 75 L35 65 Z" fill="white"/>
+                                            </svg>
+                                        </div>
+                                        <div className="text-4xl font-black tracking-widest text-slate-800 uppercase">
+                                            {state.projects.find(p => p.id === projectId)?.name || 'EMPORIUM'}
                                         </div>
                                     </div>
-                                    <div className="text-right relative z-10">
-                                        <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest mb-1">Prepared For</p>
-                                        <p className="text-2xl font-bold">{leads.find(l => l.id === leadId)?.name || 'Client Name'}</p>
-                                    </div>
-                                    {/* Decorative background element */}
-                                    <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
                                 </div>
 
-                                <div className="p-10 space-y-10 flex-1">
-                                    {/* Intro Text */}
-                                    <div className="border-l-4 border-indigo-600 pl-6 py-2">
-                                        <h3 className="text-lg font-bold text-slate-800 mb-2">Exclusively for You</h3>
-                                        <div className="text-slate-600 italic leading-relaxed whitespace-pre-wrap">
-                                            {introText ? introText : (
-                                                `Dear ${leads.find(l => l.id === leadId)?.name || 'Mr. Doe'}, Unit #${units.find(u => u.id === unitId)?.name || 'A-1204'} at ${state.projects.find(p => p.id === projectId)?.name || 'Project Name'} has been meticulously selected for you as a private sanctuary that epitomizes contemporary elegance and absolute exclusivity. This ${units.find(u => u.id === unitId)?.propertyType || '3BHK'} residence offers more than just a sophisticated lifestyle; it serves as a high-performing asset with exceptional capital appreciation potential in an increasingly sought-after corridor. Securing this premier unit is a strategic move to anchor your portfolio with a legacy property that truly reflects your standard of distinction.`
-                                            )}
+                                {/* Title Box */}
+                                <div className="border-[3px] border-slate-800 py-3 text-center mb-6">
+                                    <h2 className="text-2xl font-black tracking-[0.3em] text-slate-800">INSTALLMENT PLAN</h2>
+                                </div>
+
+                                {/* PRIMARY DATA SECTION */}
+                                <div className="border border-slate-800 mb-6">
+                                    <div className="bg-slate-100 border-b border-slate-800 px-4 py-1.5 font-bold text-sm flex justify-between items-center">
+                                        <span className="tracking-widest">PRIMARY DATA</span>
+                                        <div className="flex gap-8">
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-xs uppercase">{state.projects.find(p => p.id === projectId)?.name || 'Emporium'}</span>
+                                                <div className="w-10 h-6 border border-slate-800 bg-white"></div>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-xs uppercase">{state.projects.find(p => p.id === projectId)?.name || 'Emporium'} Ext</span>
+                                                <div className="w-14 h-6 border border-slate-800 bg-slate-200 flex items-center justify-center text-[10px] font-bold">YES</div>
+                                            </div>
                                         </div>
                                     </div>
+                                    
+                                    <div className="p-4 grid grid-cols-3 gap-y-4 gap-x-8 text-[11px] uppercase font-bold">
+                                        <div className="flex items-end gap-2">
+                                            <span className="whitespace-nowrap">UNIT:</span>
+                                            <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 min-h-[1.5em]">
+                                                {state.units.find(u => u.id === unitId)?.name || ''}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-end gap-2">
+                                            <span className="whitespace-nowrap">CATEGORY:</span>
+                                            <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 min-h-[1.5em]">
+                                                {state.units.find(u => u.id === unitId)?.type || ''}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-end gap-2">
+                                            <span className="whitespace-nowrap">FLOOR:</span>
+                                            <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 min-h-[1.5em]">
+                                                {state.units.find(u => u.id === unitId)?.floor || ''}
+                                            </span>
+                                        </div>
+                                        
+                                        <div className="flex items-end gap-2">
+                                            <span className="whitespace-nowrap">SIZE:</span>
+                                            <div className="border-b border-slate-400 flex-1 flex justify-between px-1 pb-0.5 italic text-slate-900 min-h-[1.5em]">
+                                                <span>{state.units.find(u => u.id === unitId)?.area?.toFixed(2) || ''}</span>
+                                                <span className="text-[9px] font-normal not-italic">SFT</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-end gap-2">
+                                            <span className="whitespace-nowrap">RATE:</span>
+                                            <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 min-h-[1.5em]">
+                                                {(() => {
+                                                    const unit = state.units.find(u => u.id === unitId);
+                                                    if (unit?.salePrice && unit?.area) {
+                                                        return (unit.salePrice / unit.area).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                                    }
+                                                    return '';
+                                                })()}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-end gap-2">
+                                            <span className="whitespace-nowrap">CORNER *</span>
+                                            <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 text-center min-h-[1.5em]">NO</span>
+                                        </div>
 
-                                    {/* Summary Stats Grid */}
-                                    <div className="grid grid-cols-4 gap-4">
-                                        <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Unit Details</p>
-                                            <p className="text-sm font-bold text-slate-800 line-clamp-1">{units.find(u => u.id === unitId)?.propertyType || '3BHK Luxury Apartment'}</p>
-                                            <p className="text-[10px] text-slate-500">Unit ID: {units.find(u => u.id === unitId)?.name || 'N/A'}</p>
+                                        <div className="flex items-center gap-2 col-span-2">
+                                            <span className="whitespace-nowrap">PRICE OF UNIT:</span>
+                                            <div className="bg-slate-200 px-4 py-1.5 flex-1 font-black italic border border-slate-800 text-base">
+                                                {calculations.netValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </div>
                                         </div>
-                                        <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Total Net Price</p>
-                                            <p className="text-sm font-bold text-indigo-700">Rs. {calculations.netValue.toLocaleString()}</p>
-                                            <p className="text-[10px] text-slate-500">Incl. Rs. {totalDiscountAmount.toLocaleString()} Discount</p>
+                                        <div className="flex items-end gap-2">
+                                            <span className="whitespace-nowrap text-[9px] leading-tight">MARGALLA FACE**</span>
+                                            <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 text-center min-h-[1.5em]">NO</span>
                                         </div>
-                                        <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Down Payment</p>
-                                            <p className="text-sm font-bold text-indigo-700">Rs. {calculations.dpAmount.toLocaleString()}</p>
-                                            <p className="text-[10px] text-slate-500">{downPaymentPercentage}% required</p>
-                                        </div>
-                                        <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Installment</p>
-                                            <p className="text-sm font-bold text-indigo-700">Rs. {calculations.installmentAmount.toLocaleString()}</p>
-                                            <p className="text-[10px] text-slate-500">{frequency} payments</p>
+
+                                        <div className="flex items-end gap-2 col-span-3 justify-end pt-2">
+                                            <span className="whitespace-nowrap">DATE:</span>
+                                            <span className="border-b border-slate-400 w-48 px-1 pb-0.5 italic text-slate-900 text-center font-black">
+                                                {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                            </span>
                                         </div>
                                     </div>
+                                </div>
 
-                                    {/* Cost Breakdown */}
-                                    <div>
-                                        <div className="flex items-center gap-2 mb-6 border-b border-slate-100 pb-2">
-                                            <div className="w-5 h-5 text-indigo-600">{ICONS.list}</div>
-                                            <h3 className="font-bold text-slate-800">Cost Breakdown</h3>
+                                {/* PRICING SECTION */}
+                                <div className="flex items-center gap-12 px-6 mb-8 font-black uppercase text-xs tracking-wider">
+                                    <div className="w-32">PRICING</div>
+                                    <div className="flex items-center gap-4">
+                                        <span>Fresh Sale:</span>
+                                        <div className="w-14 h-8 border border-slate-800 bg-slate-200 flex items-center justify-center text-[10px]">YES</div>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <span>Resale</span>
+                                        <div className="w-14 h-8 border border-slate-800"></div>
+                                    </div>
+                                </div>
+
+                                {/* PAYMENT INFO SECTION */}
+                                <div className="grid grid-cols-2 gap-x-16 gap-y-6 px-4 mb-8 uppercase text-[11px] font-black">
+                                    <div className="flex items-center gap-4">
+                                        <span className="w-40">DOWN PAYMENT %</span>
+                                        <span className="border-b border-slate-400 flex-1 text-center italic pb-0.5">{downPaymentPercentage}.00%</span>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <span className="w-40">DOWN PAYMENT:</span>
+                                        <div className="bg-slate-200 px-4 py-2 flex-1 italic border border-slate-800 text-center">
+                                            {calculations.dpAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </div>
-                                        <div className="space-y-4">
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="text-slate-600">Base Price of Unit</span>
-                                                <span className="font-bold text-slate-900">Rs. {parseFloat(listPrice).toLocaleString()}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="text-slate-600">Premium Amenities & Facilities</span>
-                                                <span className="font-bold text-slate-900">Rs. {amenitiesTotal.toLocaleString()}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center text-sm pt-2 border-t border-slate-100">
-                                                <span className="font-bold text-slate-800">Total Gross Price</span>
-                                                <span className="font-extrabold text-slate-900">Rs. {(parseFloat(listPrice) + amenitiesTotal).toLocaleString()}</span>
-                                            </div>
-                                            {discounts.map(d => (
-                                                <div key={d.id} className="flex justify-between items-center text-sm">
-                                                    <span className="text-rose-600 italic">{d.name}</span>
-                                                    <span className="font-bold text-rose-600">-Rs. {d.amount.toLocaleString()}</span>
-                                                </div>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <span className="w-40">NO OF INSTALLEMENTS:</span>
+                                        <span className="border-b border-slate-400 flex-1 text-center italic pb-0.5">{calculations.totalInstallments}.00</span>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <span className="w-40">INSTALLEMENT:</span>
+                                        <span className="border-b border-slate-400 flex-1 text-center italic pb-0.5">
+                                            {calculations.installmentAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* INSTALLMENTS DETAIL TABLE */}
+                                <div className="flex-1 flex flex-col mb-10">
+                                    <div className="bg-slate-100 border border-slate-800 text-center py-1.5 font-black text-xs tracking-[0.2em] uppercase">
+                                        INSTALLMENTS DETAIL
+                                    </div>
+                                    <table className="w-full border-collapse border border-slate-800 text-[11px] uppercase">
+                                        <thead>
+                                            <tr className="bg-slate-200">
+                                                <th className="border border-slate-800 px-3 py-2 w-16 text-center">NO</th>
+                                                <th className="border border-slate-800 px-3 py-2 w-32 text-center">DATE</th>
+                                                <th className="border border-slate-800 px-3 py-2 text-center">DETAIL</th>
+                                                <th className="border border-slate-800 px-3 py-2 w-40 text-center">AMOUNT</th>
+                                                <th className="border border-slate-800 px-3 py-2 w-48 text-center">REMARKS</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="font-bold">
+                                            {schedule.filter(item => item.index !== 'Initial').map((item, idx) => (
+                                                <tr key={idx}>
+                                                    <td className="border border-slate-800 px-3 py-1.5 text-center">{item.index.padStart(2, '0')}</td>
+                                                    <td className="border border-slate-800 px-3 py-1.5 text-center italic text-slate-700">
+                                                        {item.dueDate}
+                                                    </td>
+                                                    <td className="border border-slate-800 px-3 py-1.5">INSTALLEMENT # {item.index}</td>
+                                                    <td className="border border-slate-800 px-3 py-1.5 text-center">{item.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td className="border border-slate-800 px-3 py-1.5"></td>
+                                                </tr>
                                             ))}
-                                            <div className="flex justify-between items-center py-4 px-4 bg-indigo-50/50 rounded-lg mt-4">
-                                                <span className="font-extrabold text-slate-800 uppercase tracking-wider">Net Payable Price</span>
-                                                <span className="text-2xl font-black text-indigo-700">Rs. {calculations.netValue.toLocaleString()}</span>
+                                            {/* Fill empty rows to maintain layout if needed */}
+                                            {schedule.length < 12 && Array.from({ length: 12 - schedule.length }).map((_, i) => (
+                                                <tr key={`empty-${i}`}>
+                                                    <td className="border border-slate-800 px-3 py-4 text-center"></td>
+                                                    <td className="border border-slate-800 px-3 py-4 text-center"></td>
+                                                    <td className="border border-slate-800 px-3 py-4"></td>
+                                                    <td className="border border-slate-800 px-3 py-4 text-center"></td>
+                                                    <td className="border border-slate-800 px-3 py-4"></td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr className="bg-slate-50 font-black">
+                                                <td colSpan={3} className="border border-slate-800 px-4 py-2 text-right tracking-widest">TOTAL</td>
+                                                <td className="border border-slate-800 px-3 py-2 text-center">
+                                                    {(calculations.netValue - calculations.dpAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </td>
+                                                <td className="border border-slate-800 px-3 py-2"></td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+
+                                {/* Footer */}
+                                <div className="mt-auto">
+                                    <div className="flex justify-between items-end gap-20">
+                                        <div className="flex-1">
+                                            <div className="border-t-2 border-slate-800 w-full mb-3"></div>
+                                            <div className="text-center text-[10px] font-bold uppercase tracking-widest">Availability Checked by</div>
+                                            <div className="flex justify-between items-center mt-6 text-[10px] font-bold uppercase">
+                                                <span>Date & Time:</span>
+                                                <span className="italic">{new Date().toLocaleDateString('en-GB')} {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
                                             </div>
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="border-t-2 border-slate-800 w-full mb-3"></div>
+                                            <div className="text-center text-[10px] font-black uppercase tracking-[0.2em]">AUTHORISED SIGN:</div>
                                         </div>
                                     </div>
-
-                                    {/* Installment Schedule */}
-                                    <div className="pb-10">
-                                        <div className="flex items-center justify-between mb-6 border-b border-slate-100 pb-2">
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-5 h-5 text-indigo-600">{ICONS.calendar}</div>
-                                                <h3 className="font-bold text-slate-800">Installment Schedule</h3>
-                                            </div>
-                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                                {durationYears} Years Plan • {calculations.totalInstallments} Installments
-                                            </div>
-                                        </div>
-                                        <div className="rounded-lg border border-slate-200 overflow-hidden shadow-sm">
-                                            <table className="w-full text-left text-sm border-collapse">
-                                                <thead>
-                                                    <tr className="bg-[#1a237e] text-white">
-                                                        <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px]">#</th>
-                                                        <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px]">Due Date</th>
-                                                        <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px]">Amount</th>
-                                                        <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px] text-right">Outstanding Balance</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {schedule.map((item, idx) => (
-                                                        <tr 
-                                                            key={item.index} 
-                                                            className={`border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors ${idx === 0 ? 'bg-indigo-50/30' : ''}`}
-                                                        >
-                                                            <td className="px-6 py-4 font-bold text-slate-800">{item.index}</td>
-                                                            <td className="px-6 py-4 text-slate-600">{item.dueDate}</td>
-                                                            <td className="px-6 py-4 font-extrabold text-indigo-700">
-                                                                Rs. {item.amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                                            </td>
-                                                            <td className="px-6 py-4 text-right font-bold text-slate-800">
-                                                                Rs. {item.balance.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
+                                    
+                                    <div className="mt-10 text-[9px] font-medium text-slate-500 leading-relaxed">
+                                        <p>* 5% Additional charges for Margalla Face</p>
+                                        <p>** 10% Additional charges for corner unit</p>
                                     </div>
                                 </div>
+
+                                {/* Intro Text - Functionality Preserved at Bottom or separate section */}
+                                {introText && (
+                                    <div className="mt-10 pt-10 border-t border-dashed border-slate-300 print:break-before-page">
+                                        <h3 className="text-sm font-bold text-slate-800 mb-2 uppercase tracking-wider">Additional Notes</h3>
+                                        <div className="text-xs text-slate-600 italic leading-relaxed whitespace-pre-wrap">
+                                            {introText}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
