@@ -1304,39 +1304,41 @@ const MarketingPage: React.FC = () => {
 
                                     <div className="pt-2 space-y-2">
                                         {selectedPlanId && (
-                                            {/* Creator Actions: Submit */}
-                                            {(normalizedStatus === 'draft' || isRejectedStatus) && (
-                                                <Button 
-                                                    variant="secondary" 
-                                                    className="w-full justify-center py-3 border-green-200 text-green-700 hover:bg-green-50" 
-                                                    onClick={() => {
-                                                        setApprovalModalApproverId('');
-                                                        setShowApprovalModal(true);
-                                                    }}
-                                                >
-                                                    Submit for Approval
-                                                </Button>
-                                            )}
+                                            <>
+                                                {/* Creator Actions: Submit */}
+                                                {(normalizedStatus === 'draft' || isRejectedStatus) && (
+                                                    <Button 
+                                                        variant="secondary" 
+                                                        className="w-full justify-center py-3 border-green-200 text-green-700 hover:bg-green-50" 
+                                                        onClick={() => {
+                                                            setApprovalModalApproverId('');
+                                                            setShowApprovalModal(true);
+                                                        }}
+                                                    >
+                                                        Submit for Approval
+                                                    </Button>
+                                                )}
 
-                                            {/* Approver Actions: Approve/Reject */}
-                                            {isApproverForSelectedPlan && (
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    <Button 
-                                                        variant="primary" 
-                                                        className="justify-center py-3 bg-green-600 hover:bg-green-700 text-white font-bold"
-                                                        onClick={() => handleApprovalDecision('Approved')}
-                                                    >
-                                                        Approve
-                                                    </Button>
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        className="justify-center py-3 text-rose-600 border border-rose-200 hover:bg-rose-50 font-bold"
-                                                        onClick={() => handleApprovalDecision('Rejected')}
-                                                    >
-                                                        Reject
-                                                    </Button>
-                                                </div>
-                                            )}
+                                                {/* Approver Actions: Approve/Reject */}
+                                                {isApproverForSelectedPlan && (
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <Button 
+                                                            variant="primary" 
+                                                            className="justify-center py-3 bg-green-600 hover:bg-green-700 text-white font-bold"
+                                                            onClick={() => handleApprovalDecision('Approved')}
+                                                        >
+                                                            Approve
+                                                        </Button>
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            className="justify-center py-3 text-rose-600 border border-rose-200 hover:bg-rose-50 font-bold"
+                                                            onClick={() => handleApprovalDecision('Rejected')}
+                                                        >
+                                                            Reject
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                            </>
                                         )}
                                     </div>
 
