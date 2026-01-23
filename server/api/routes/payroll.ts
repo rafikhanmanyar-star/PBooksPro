@@ -896,6 +896,27 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Account ID is required' });
     }
 
+    console.log('🔍 Verifying account:', { accountId, tenantId, accountIdType: typeof accountId });
+
+    // First, check if account exists at all (for debugging)
+    const allAccountsCheck = await getDb().query(
+      'SELECT id, name, type, tenant_id FROM accounts WHERE id = $1',
+      [accountId]
+    );
+    
+    if (allAccountsCheck.length > 0) {
+      const foundAccount = allAccountsCheck[0];
+      console.log('📋 Account found but tenant mismatch:', {
+        accountId,
+        accountName: foundAccount.name,
+        accountTenantId: foundAccount.tenant_id,
+        requestTenantId: tenantId,
+        tenantMatch: foundAccount.tenant_id === tenantId
+      });
+    } else {
+      console.log('❌ Account not found in database at all:', { accountId });
+    }
+
     // Verify account exists and belongs to tenant
     const accountCheck = await getDb().query(
       'SELECT id, name, type, balance FROM accounts WHERE id = $1 AND tenant_id = $2',
@@ -903,8 +924,23 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     );
 
     if (accountCheck.length === 0) {
-      console.error('❌ Account not found:', { accountId, tenantId });
-      return res.status(404).json({ error: 'Payment account not found' });
+      // Get list of available accounts for this tenant for debugging
+      const availableAccounts = await getDb().query(
+        'SELECT id, name, type FROM accounts WHERE tenant_id = $1 ORDER BY name LIMIT 10',
+        [tenantId]
+      );
+      
+      console.error('❌ Account not found for tenant:', { 
+        accountId, 
+        tenantId,
+        availableAccountCount: availableAccounts.length,
+        availableAccounts: availableAccounts.map((a: any) => ({ id: a.id, name: a.name, type: a.type }))
+      });
+      
+      return res.status(404).json({ 
+        error: 'Payment account not found',
+        details: `Account ID ${accountId} does not exist or does not belong to this tenant. Please select a valid account.`
+      });
     }
 
     const account = accountCheck[0];

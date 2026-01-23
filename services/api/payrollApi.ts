@@ -406,14 +406,33 @@ export const payrollApi = {
     description?: string;
   }): Promise<{ success: boolean; payslip?: any; transaction?: any; error?: string }> {
     try {
+      console.log('💰 payPayslip API call:', { payslipId, paymentData });
       const response = await apiClient.post<{ success: boolean; payslip: any; transaction: any }>(
         `/payroll/payslips/${payslipId}/pay`,
         paymentData
       );
+      console.log('✅ payPayslip API response:', response);
       return response;
     } catch (error: any) {
-      console.error('Error paying payslip:', error);
-      return { success: false, error: error.message || 'Failed to pay payslip' };
+      console.error('❌ Error paying payslip:', error);
+      console.error('Error details:', {
+        message: error.message,
+        error: error.error,
+        status: error.status,
+        response: error.response
+      });
+      
+      // Extract more detailed error message
+      let errorMessage = 'Failed to pay payslip';
+      if (error.error) {
+        errorMessage = error.error;
+      } else if (error.message) {
+        errorMessage = error.message;
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      }
+      
+      return { success: false, error: errorMessage };
     }
   },
 

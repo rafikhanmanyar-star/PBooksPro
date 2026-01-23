@@ -616,12 +616,32 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                         return;
                       }
                       
+                      // Verify the selected account exists in our available accounts
+                      const selectedAccount = paymentAccounts.find(acc => acc.id === selectedAccountId);
+                      if (!selectedAccount) {
+                        console.error('❌ Selected account not found in paymentAccounts:', {
+                          selectedAccountId,
+                          availableAccountIds: paymentAccounts.map(a => a.id),
+                          allAccounts: paymentAccounts
+                        });
+                        setPaymentError(`Selected account (${selectedAccountId}) not found. Please select a different account.`);
+                        return;
+                      }
+                      
+                      console.log('✅ Account validation passed:', {
+                        accountId: selectedAccountId,
+                        accountName: selectedAccount.name,
+                        accountType: selectedAccount.type,
+                        accountBalance: selectedAccount.balance
+                      });
+                      
                       setIsPaying(true);
                       setPaymentError(null);
                       
                       console.log('💰 Processing salary payment:', {
                         payslipId: payslipData.id,
                         accountId: selectedAccountId,
+                        accountName: selectedAccount.name,
                         categoryId: selectedCategoryId,
                         projectId: selectedProjectId,
                         amount: netPay
@@ -651,7 +671,13 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                       } catch (error: any) {
                         console.error('❌ Payment exception:', error);
                         setIsPaying(false);
-                        setPaymentError(error.message || 'An unexpected error occurred');
+                        const errorMessage = error.message || error.error || 'An unexpected error occurred';
+                        setPaymentError(errorMessage);
+                        
+                        // If account not found error, provide helpful message
+                        if (errorMessage.includes('account not found') || errorMessage.includes('Payment account not found')) {
+                          setPaymentError(`Account not found in database. The account may have been deleted. Please refresh the page and select a different account.`);
+                        }
                       }
                     }}
                     disabled={isPaying || !selectedAccountId || !selectedCategoryId}
