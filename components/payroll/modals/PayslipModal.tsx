@@ -7,7 +7,7 @@ import { X, Download, Printer, ShieldCheck, Building2, Plus, TrendingDown, Walle
 import { PayrollEmployee, PayrollRun, Payslip } from '../types';
 import { payrollApi } from '../../../services/api/payrollApi';
 import { useAuth } from '../../../context/AuthContext';
-import { Account, Category, Project, TransactionType } from '../../../types';
+import { Account, Category, Project, TransactionType, AccountType } from '../../../types';
 import { apiClient } from '../../../services/api/client';
 
 interface PayslipModalProps {
@@ -50,7 +50,9 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
           apiClient.get<Project[]>('/projects')
         ]);
         
-        setAccounts(accountsData || []);
+        // Filter to only Bank accounts for salary payments
+        const bankAccounts = (accountsData || []).filter(a => a.type === AccountType.BANK);
+        setAccounts(bankAccounts);
         // Filter to only expense categories
         const expenseCategories = (categoriesData || []).filter(c => c.type === TransactionType.EXPENSE);
         setCategories(expenseCategories);
@@ -359,13 +361,22 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                     onChange={(e) => setSelectedAccountId(e.target.value)}
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-medium text-sm"
                   >
-                    <option value="">Select Account</option>
-                    {accounts.map((acc) => (
-                      <option key={acc.id} value={acc.id}>
-                        {acc.name} ({acc.type}) - PKR {acc.balance.toLocaleString()}
-                      </option>
-                    ))}
+                    <option value="">Select Bank Account</option>
+                    {accounts.length > 0 ? (
+                      accounts.map((acc) => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.name} - PKR {acc.balance.toLocaleString()}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="" disabled>No bank accounts available</option>
+                    )}
                   </select>
+                  {accounts.length === 0 && (
+                    <p className="text-[10px] text-red-500 mt-1">
+                      No bank accounts found. Please create a bank account first.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
@@ -418,7 +429,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                   <button
                     onClick={async () => {
                       if (!selectedAccountId) {
-                        setPaymentError('Please select an account to pay from');
+                        setPaymentError('Please select a bank account to pay from');
                         return;
                       }
                       
