@@ -3107,6 +3107,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
     }, [state.contacts.length, state.transactions.length, state.bills.length, state.invoices.length, isInitializing, state]);
 
+    // 🔧 FIX: Sync authenticated user from AuthContext to AppContext state
+    useEffect(() => {
+        if (auth.user && auth.isAuthenticated) {
+            // User is authenticated - sync to state if not already synced
+            if (!state.currentUser || state.currentUser.id !== auth.user.id) {
+                console.log('[AppContext] 🔄 Syncing authenticated user to state:', {
+                    authUserId: auth.user.id,
+                    authUsername: auth.user.username,
+                    currentStateUserId: state.currentUser?.id
+                });
+                dispatch({
+                    type: 'LOGIN',
+                    payload: {
+                        id: auth.user.id,
+                        username: auth.user.username,
+                        name: auth.user.name,
+                        role: auth.user.role as UserRole
+                    }
+                });
+            }
+        } else if (!auth.isAuthenticated && state.currentUser) {
+            // User logged out - clear from state
+            console.log('[AppContext] 🚪 User logged out, clearing from state');
+            dispatch({ type: 'LOGOUT' });
+        }
+    }, [auth.user, auth.isAuthenticated, state.currentUser]);
+
     useEffect(() => {
         if (!isInitializing && state.currentUser) {
             // After login, ensure state is saved immediately
