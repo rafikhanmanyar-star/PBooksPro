@@ -3149,6 +3149,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     }
                 } catch (error) {
                     console.error('Failed to save state after login:', error);
+                    // Check if it's a missing table error
+                    const errorMsg = error instanceof Error ? error.message : String(error);
+                    if (errorMsg.includes('no such table')) {
+                        console.error('❌ CRITICAL: Missing database table!', errorMsg);
+                        console.log('💡 To fix this issue, run in console: localStorage.removeItem("finance_db"); location.reload();');
+                        
+                        // Show user-friendly error
+                        const errorDiv = document.createElement('div');
+                        errorDiv.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#dc2626;color:white;padding:16px 24px;border-radius:8px;z-index:9999;max-width:600px;box-shadow:0 4px 6px rgba(0,0,0,0.1);';
+                        errorDiv.innerHTML = `
+                            <strong>⚠️ Database Error Detected</strong><br/>
+                            <small>Missing table: ${errorMsg.match(/no such table: (\w+)/)?.[1]}</small><br/>
+                            <button onclick="localStorage.removeItem('finance_db');location.reload();" 
+                                style="margin-top:8px;background:white;color:#dc2626;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:bold;">
+                                Click to Fix Now
+                            </button>
+                            <button onclick="this.parentElement.remove()" 
+                                style="margin-top:8px;margin-left:8px;background:transparent;color:white;border:1px solid white;padding:8px 16px;border-radius:4px;cursor:pointer;">
+                                Dismiss
+                            </button>
+                        `;
+                        document.body.appendChild(errorDiv);
+                        setTimeout(() => errorDiv.remove(), 30000); // Auto-remove after 30s
+                    }
                 }
             }, 100); // Small delay to ensure state is updated
 

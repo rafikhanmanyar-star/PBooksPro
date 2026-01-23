@@ -1003,7 +1003,17 @@ class DatabaseService {
                 // Re-run schema creation (CREATE TABLE IF NOT EXISTS will only create missing tables)
                 // Execute each statement separately to handle index creation failures gracefully
                 this.executeSchemaStatements(CREATE_SCHEMA_SQL);
-                console.log('✅ Missing tables created');
+                console.log('✅ Missing tables created successfully');
+                
+                // Verify tables were created
+                const verifyResult = this.db.exec(`SELECT name FROM sqlite_master WHERE type='table'`);
+                const createdTables = verifyResult[0]?.values.flat() || [];
+                const stillMissing = missingTables.filter(t => !createdTables.map((name: string) => name.toLowerCase()).includes(t.toLowerCase()));
+                if (stillMissing.length > 0) {
+                    console.error('❌ Failed to create some tables:', stillMissing);
+                } else {
+                    console.log('✅ All missing tables verified created:', missingTables);
+                }
             }
         } catch (error) {
             console.error('Error ensuring tables exist:', error);
