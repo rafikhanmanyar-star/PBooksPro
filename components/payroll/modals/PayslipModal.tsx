@@ -41,21 +41,27 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
   // System category ID for Salary Expenses
   const SALARY_EXPENSES_CATEGORY_ID = 'sys-cat-sal-exp';
 
-  // Get bank and cash accounts from AppContext (Chart of Accounts)
-  // These are the same accounts from Settings > Financial > Chart of Accounts
-  // Exclude "Internal Clearing" system account
+  // State for accounts fetched directly from API (fallback if AppContext doesn't have them)
+  const [fetchedAccounts, setFetchedAccounts] = useState<Account[]>([]);
+  const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
+
+  // Get bank and cash accounts - try AppContext first, then fetch from API if needed
   const paymentAccounts = React.useMemo(() => {
-    if (!state.accounts || state.accounts.length === 0) {
-      console.warn('⚠️ PayslipModal - No accounts found in state.accounts');
+    // Use fetched accounts if AppContext doesn't have accounts
+    const accountsToUse = state.accounts.length > 0 ? state.accounts : fetchedAccounts;
+    
+    if (!accountsToUse || accountsToUse.length === 0) {
+      console.warn('⚠️ PayslipModal - No accounts found in state.accounts or fetchedAccounts');
       return [];
     }
     
-    console.log('🔍 PayslipModal - Total accounts in state:', state.accounts.length);
+    console.log('🔍 PayslipModal - Total accounts available:', accountsToUse.length);
+    console.log('🔍 PayslipModal - Source:', state.accounts.length > 0 ? 'AppContext' : 'API');
     console.log('🔍 PayslipModal - AccountType.BANK value:', AccountType.BANK);
     console.log('🔍 PayslipModal - AccountType.CASH value:', AccountType.CASH);
     
     // More flexible filtering - check multiple possible type values
-    const filtered = state.accounts.filter(a => {
+    const filtered = accountsToUse.filter(a => {
       if (!a || !a.type) {
         console.warn('⚠️ Account missing type:', a);
         return false;
@@ -81,14 +87,14 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
     console.log('✅ PayslipModal - Filtered payment accounts count:', filtered.length);
     console.log('✅ PayslipModal - Filtered accounts:', filtered.map(a => ({ name: a.name, type: a.type, balance: a.balance })));
     
-    if (filtered.length === 0 && state.accounts.length > 0) {
+    if (filtered.length === 0 && accountsToUse.length > 0) {
       console.error('❌ PayslipModal - No payment accounts found after filtering!');
-      console.error('Available account types:', [...new Set(state.accounts.map(a => a.type))]);
-      console.error('All accounts:', state.accounts.map(a => ({ name: a.name, type: a.type })));
+      console.error('Available account types:', [...new Set(accountsToUse.map(a => a.type))]);
+      console.error('All accounts:', accountsToUse.map(a => ({ name: a.name, type: a.type })));
     }
     
     return filtered.sort((a, b) => b.balance - a.balance); // Sort by balance (highest first)
-  }, [state.accounts]);
+  }, [state.accounts, fetchedAccounts]);
 
   // Get expense categories
   const expenseCategories = React.useMemo(() => {
@@ -102,17 +108,74 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
     return state.projects;
   }, [state.projects]);
 
-  // Initialize form data when modal opens
+  // Fetch accounts from API if AppContext doesn't have them
+  useEffect(() => {
+    if (isOpen && state.accounts.length === 0 && !isLoadingAccounts) {
+      console.log('🔄 PayslipModal - AppContext has no accounts, fetching from API...');
+      setIsLoadingAccounts(true);
+      
+      apiClient.get<Account[]>('/accounts')
+        .then(accountsData => {
+          console.log('✅ PayslipModal - API Response:', {
+            isArray: Array.isArray(accountsData),
+            length: accountsData?.length || 0,
+            data: accountsData
+          });
+          
+          if (accountsData && Array.isArray(accountsData)) {
+            if (accountsData.length === 0) {
+              console.warn('⚠️ PayslipModal - API returned empty array. No accounts exist in database.');
+              console.warn('💡 This could mean:');
+              console.warn('   1. No accounts have been created yet');
+              console.warn('   2. System accounts were not initialized');
+              console.warn('   3. Tenant/authentication issue');
+              console.warn('💡 Solution: Go to Settings → Financial → Chart of Accounts and create a Bank or Cash account');
+              setPaymentError('No accounts found. Please create a Bank or Cash account in Settings → Financial → Chart of Accounts.');
+            } else {
+              console.log('✅ PayslipModal - Successfully loaded accounts from API:', accountsData.length);
+              setFetchedAccounts(accountsData);
+            }
+          } else {
+            console.error('❌ PayslipModal - Invalid accounts data from API:', accountsData);
+            setFetchedAccounts([]);
+            setPaymentError('Invalid account data received. Please refresh the page.');
+          }
+          setIsLoadingAccounts(false);
+        })
+        .catch(error => {
+          console.error('❌ PayslipModal - Error fetching accounts from API:', error);
+          console.error('Error details:', {
+            message: error.message,
+            status: error.status,
+            response: error.response
+          });
+          setFetchedAccounts([]);
+          setIsLoadingAccounts(false);
+          
+          if (error.status === 401) {
+            setPaymentError('Session expired. Please refresh the page and login again.');
+          } else if (error.status === 0) {
+            setPaymentError('No internet connection. Please check your network.');
+          } else {
+            setPaymentError(`Failed to load accounts: ${error.message || 'Unknown error'}. Please refresh the page.`);
+          }
+        });
+    }
+  }, [isOpen, state.accounts.length, isLoadingAccounts]);
+
+  // Initialize form data when modal opens or when accounts become available
   useEffect(() => {
     if (isOpen) {
       setIsPaid(payslipData?.is_paid || false);
       setPaymentError(null);
       
       console.log('🔍 PayslipModal opened - State check:', {
-        totalAccounts: state.accounts.length,
+        totalAccountsInState: state.accounts.length,
+        fetchedAccountsCount: fetchedAccounts.length,
         paymentAccountsCount: paymentAccounts.length,
-        accountTypes: [...new Set(state.accounts.map(a => a.type))],
-        allAccountNames: state.accounts.map(a => ({ name: a.name, type: a.type }))
+        isLoadingAccounts,
+        accountTypes: [...new Set([...state.accounts, ...fetchedAccounts].map(a => a.type))],
+        allAccountNames: [...state.accounts, ...fetchedAccounts].map(a => ({ name: a.name, type: a.type }))
       });
       
       // Auto-select first account if available
@@ -121,12 +184,13 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
         const accountToSelect = cashAccount?.id || paymentAccounts[0].id;
         setSelectedAccountId(accountToSelect);
         console.log('✅ Auto-selected account:', accountToSelect);
-      } else {
+      } else if (!isLoadingAccounts) {
         console.warn('⚠️ No payment accounts available to auto-select');
-        if (state.accounts.length === 0) {
+        const totalAccounts = state.accounts.length + fetchedAccounts.length;
+        if (totalAccounts === 0) {
           setPaymentError('No accounts found in system. Please ensure accounts are loaded.');
         } else {
-          setPaymentError(`Found ${state.accounts.length} account(s) but none are Bank or Cash type. Please create a Bank or Cash account in Settings → Chart of Accounts.`);
+          setPaymentError(`Found ${totalAccounts} account(s) but none are Bank or Cash type. Please create a Bank or Cash account in Settings → Chart of Accounts.`);
         }
       }
       
@@ -148,8 +212,10 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
       setSelectedAccountId('');
       setSelectedCategoryId('');
       setSelectedProjectId('');
+      setFetchedAccounts([]);
+      setIsLoadingAccounts(false);
     }
-  }, [isOpen, payslipData, paymentAccounts, expenseCategories, employee.projects, state.accounts]);
+  }, [isOpen, payslipData, paymentAccounts, expenseCategories, employee.projects, state.accounts, fetchedAccounts, isLoadingAccounts]);
 
   if (!isOpen) return null;
 
@@ -454,16 +520,32 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                         Pay From Account <span className="text-red-500">*</span>
                       </label>
                       <div className="w-full px-3 py-2.5 rounded-xl border-2 border-amber-300 bg-amber-50">
-                        <p className="text-sm text-amber-700 font-medium">
+                        <p className="text-sm text-amber-700 font-medium mb-2">
                           No payment accounts available
                         </p>
+                        {isLoadingAccounts ? (
+                          <p className="text-xs text-amber-600">Loading accounts...</p>
+                        ) : (
+                          <div className="space-y-2">
+                            <p className="text-xs text-amber-700 font-semibold">
+                              To fix this issue:
+                            </p>
+                            <ol className="text-xs text-amber-600 list-decimal list-inside space-y-1 ml-2">
+                              <li>Go to <strong>Settings</strong> → <strong>Financial</strong> → <strong>Chart of Accounts</strong></li>
+                              <li>Click <strong>"Add New Account"</strong></li>
+                              <li>Create an account with type <strong>"Bank"</strong> or <strong>"Cash"</strong></li>
+                              <li>Save the account and return here</li>
+                            </ol>
+                            <p className="text-xs text-amber-600 mt-2">
+                              The system should have created a default "Cash" account. If it's missing, please create one manually.
+                            </p>
+                          </div>
+                        )}
                       </div>
-                      <p className="text-[10px] text-amber-600 mt-1 font-medium">
-                        ⚠️ No Bank or Cash accounts found. Please create a Bank or Cash account in Settings → Financial → Chart of Accounts
-                      </p>
-                      {state.accounts.length > 0 && (
+                      {!isLoadingAccounts && (state.accounts.length > 0 || fetchedAccounts.length > 0) && (
                         <p className="text-[10px] text-slate-500 mt-1">
-                          Found {state.accounts.length} account(s) but none are Bank or Cash type. Available types: {[...new Set(state.accounts.map(a => a.type))].join(', ')}
+                          Found {(state.accounts.length || fetchedAccounts.length)} account(s) but none are Bank or Cash type. 
+                          Available types: {[...new Set([...state.accounts, ...fetchedAccounts].map(a => a.type))].join(', ')}
                         </p>
                       )}
                     </div>
