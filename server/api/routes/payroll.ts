@@ -411,11 +411,16 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
       const salary = emp.salary;
       const basic = salary.basic || 0;
       
-      // Calculate allowances
+      // Calculate allowances (filter out "Basic Pay" if it exists in legacy data)
       let totalAllowances = 0;
-      (salary.allowances || []).forEach((a: any) => {
-        totalAllowances += a.is_percentage ? (basic * a.amount) / 100 : a.amount;
-      });
+      (salary.allowances || [])
+        .filter((a: any) => {
+          const name = (a.name || '').toLowerCase();
+          return name !== 'basic pay' && name !== 'basic salary';
+        })
+        .forEach((a: any) => {
+          totalAllowances += a.is_percentage ? (basic * a.amount) / 100 : a.amount;
+        });
 
       // Calculate deductions
       const grossForDeductions = basic + totalAllowances;
@@ -457,9 +462,10 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
     const totalEmployeeCount = existingEmployeeIds.size + newPayslipsCount;
 
     // Update payroll run with combined totals
+    // Set status to DRAFT so it can be reviewed and approved
     const result = await getDb().query(
       `UPDATE payroll_runs SET
-        status = 'PROCESSING',
+        status = 'DRAFT',
         total_amount = $1,
         employee_count = $2,
         updated_by = $3

@@ -127,12 +127,15 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
   useEffect(() => {
     if (employee) {
       // Use existing employee's salary components
-      setAllowances(employee.salary.allowances.map(a => ({
-        name: a.name,
-        amount: a.amount,
-        is_percentage: a.is_percentage,
-        isEnabled: true
-      })));
+      // Filter out "Basic Pay" if it exists (legacy data cleanup)
+      setAllowances(employee.salary.allowances
+        .filter(a => a.name.toLowerCase() !== 'basic pay' && a.name.toLowerCase() !== 'basic salary')
+        .map(a => ({
+          name: a.name,
+          amount: a.amount,
+          is_percentage: a.is_percentage,
+          isEnabled: true
+        })));
       setDeductions(employee.salary.deductions.map(d => ({
         name: d.name,
         amount: d.amount,
@@ -141,13 +144,16 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
       })));
     } else {
       // Use templates for new employee
+      // Filter out "Basic Pay" if it exists (legacy data cleanup)
       if (earningTemplates.length > 0) {
-        setAllowances(earningTemplates.map(t => ({ 
-          name: t.name,
-          amount: t.amount,
-          is_percentage: t.is_percentage,
-          isEnabled: true 
-        })));
+        setAllowances(earningTemplates
+          .filter(t => t.name.toLowerCase() !== 'basic pay' && t.name.toLowerCase() !== 'basic salary')
+          .map(t => ({ 
+            name: t.name,
+            amount: t.amount,
+            is_percentage: t.is_percentage,
+            isEnabled: true 
+          })));
       }
       if (deductionTemplates.length > 0) {
         setDeductions(deductionTemplates.map(t => ({ 

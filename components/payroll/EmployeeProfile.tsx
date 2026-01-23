@@ -28,7 +28,8 @@ import {
   Phone,
   Award,
   CheckCircle2,
-  Printer
+  Printer,
+  Loader2
 } from 'lucide-react';
 import { 
   PayrollEmployee, 
@@ -61,6 +62,8 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
   const [editFormData, setEditFormData] = useState<Partial<PayrollEmployee>>({});
   const [globalProjects, setGlobalProjects] = useState<PayrollProject[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const availableGrades = useMemo(() => {
     if (!tenantId) return [];
@@ -123,9 +126,11 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
   };
 
   const calculateGross = () => {
-    const allowances = employee.salary.allowances.reduce((acc, curr) => {
-      return acc + (curr.is_percentage ? (employee.salary.basic * curr.amount) / 100 : curr.amount);
-    }, 0);
+    const allowances = employee.salary.allowances
+      .filter(a => a.name.toLowerCase() !== 'basic pay' && a.name.toLowerCase() !== 'basic salary')
+      .reduce((acc, curr) => {
+        return acc + (curr.is_percentage ? (employee.salary.basic * curr.amount) / 100 : curr.amount);
+      }, 0);
     const earningsAdjustments = (employee.adjustments || [])
       .filter(a => a.type === 'EARNING')
       .reduce((acc, curr) => acc + curr.amount, 0);
@@ -133,9 +138,11 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
   };
 
   const calculateNet = () => {
-    const grossWithoutAdjs = employee.salary.basic + employee.salary.allowances.reduce((acc, curr) => {
-      return acc + (curr.is_percentage ? (employee.salary.basic * curr.amount) / 100 : curr.amount);
-    }, 0);
+    const grossWithoutAdjs = employee.salary.basic + employee.salary.allowances
+      .filter(a => a.name.toLowerCase() !== 'basic pay' && a.name.toLowerCase() !== 'basic salary')
+      .reduce((acc, curr) => {
+        return acc + (curr.is_percentage ? (employee.salary.basic * curr.amount) / 100 : curr.amount);
+      }, 0);
     
     const gross = calculateGross();
     const deductions = employee.salary.deductions.reduce((acc, curr) => {
@@ -227,10 +234,38 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
       designation: employee.designation,
       department: employee.department,
       grade: employee.grade,
+      joining_date: employee.joining_date,
       photo: employee.photo,
       salary: { ...employee.salary }
     });
     setViewMode('edit');
+  };
+
+  const handleDeleteEmployee = async () => {
+    if (!tenantId || !userId) return;
+    
+    setIsDeleting(true);
+    try {
+      // Try to delete from API first
+      const success = await payrollApi.deleteEmployee(employee.id);
+      
+      if (success) {
+        // Also remove from local storage
+        storageService.deleteEmployee(tenantId, employee.id);
+      } else {
+        // Fallback to local storage only
+        storageService.deleteEmployee(tenantId, employee.id);
+      }
+      
+      // Navigate back to employee list
+      onBack();
+    } catch (error) {
+      console.error('Failed to delete employee:', error);
+      alert('Failed to delete employee. Please try again.');
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
   };
 
   const saveEdit = () => {
@@ -312,26 +347,43 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
               >
                 <Edit3 size={16} className="text-slate-600" /> <span className="hidden sm:inline">Edit Profile</span><span className="sm:hidden">Edit</span>
               </button>
-              <button 
-                onClick={() => setIsAdjustmentModalOpen(true)}
-                disabled={employee.status !== EmploymentStatus.ACTIVE}
-                className="px-3 sm:px-5 py-2 sm:py-2.5 bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-colors font-bold text-xs sm:text-sm flex items-center gap-2 disabled:opacity-50"
-              >
-                <Plus size={16} /> <span className="hidden sm:inline">Add Bonus</span><span className="sm:hidden">Bonus</span>
-              </button>
-              <button 
-                onClick={() => setActiveModal('promote')}
-                disabled={employee.status !== EmploymentStatus.ACTIVE}
-                className="hidden sm:flex px-5 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-colors font-bold text-sm items-center gap-2 disabled:opacity-50"
-              >
-                <TrendingUp size={16} className="text-blue-600" /> Promote
-              </button>
+              {employee.status === EmploymentStatus.ACTIVE ? (
+                <>
+                  <button 
+                    onClick={() => setIsAdjustmentModalOpen(true)}
+                    className="px-3 sm:px-5 py-2 sm:py-2.5 bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-colors font-bold text-xs sm:text-sm flex items-center gap-2"
+                  >
+                    <Plus size={16} /> <span className="hidden sm:inline">Add Bonus</span><span className="sm:hidden">Bonus</span>
+                  </button>
+                  <button 
+                    onClick={() => setActiveModal('promote')}
+                    className="hidden sm:flex px-5 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:bg-slate-50 transition-colors font-bold text-sm items-center gap-2"
+                  >
+                    <TrendingUp size={16} className="text-blue-600" /> Promote
+                  </button>
+                </>
+              ) : (
+                <button 
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="px-3 sm:px-5 py-2 sm:py-2.5 bg-red-600 text-white rounded-xl shadow-lg shadow-red-200 hover:bg-red-700 transition-colors font-bold text-xs sm:text-sm flex items-center gap-2"
+                >
+                  <Trash2 size={16} /> <span className="hidden sm:inline">Delete Profile</span><span className="sm:hidden">Delete</span>
+                </button>
+              )}
               {employee.status === EmploymentStatus.ACTIVE && (
                 <button 
                   onClick={() => setActiveModal('terminate')}
                   className="hidden sm:block px-5 py-2.5 bg-red-600 text-white rounded-xl shadow-lg shadow-red-200 hover:bg-red-700 transition-colors font-bold text-sm"
                 >
                   Offboard
+                </button>
+              )}
+              {(employee.status === EmploymentStatus.TERMINATED || employee.status === EmploymentStatus.RESIGNED) && (
+                <button 
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="hidden sm:flex px-5 py-2.5 bg-red-600 text-white rounded-xl shadow-lg shadow-red-200 hover:bg-red-700 transition-colors font-bold text-sm items-center gap-2"
+                >
+                  <Trash2 size={16} /> Delete Profile
                 </button>
               )}
             </>
@@ -429,14 +481,16 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                       <div className="space-y-2 sm:space-y-3">
                         <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Earnings/Allowances</p>
-                        {employee.salary.allowances.map((a, i) => (
-                          <div key={i} className="flex justify-between items-center p-2 sm:p-3 bg-white rounded-xl border border-slate-100 shadow-sm print:shadow-none">
-                            <span className="text-xs sm:text-sm font-bold text-slate-700">{a.name}</span>
-                            <span className="text-green-600 font-black text-xs sm:text-sm">
-                              +{a.is_percentage ? `${a.amount}%` : `PKR ${a.amount.toLocaleString()}`}
-                            </span>
-                          </div>
-                        ))}
+                        {employee.salary.allowances
+                          .filter(a => a.name.toLowerCase() !== 'basic pay' && a.name.toLowerCase() !== 'basic salary')
+                          .map((a, i) => (
+                            <div key={i} className="flex justify-between items-center p-2 sm:p-3 bg-white rounded-xl border border-slate-100 shadow-sm print:shadow-none">
+                              <span className="text-xs sm:text-sm font-bold text-slate-700">{a.name}</span>
+                              <span className="text-green-600 font-black text-xs sm:text-sm">
+                                +{a.is_percentage ? `${a.amount}%` : `PKR ${a.amount.toLocaleString()}`}
+                              </span>
+                            </div>
+                          ))}
                       </div>
                       <div className="space-y-2 sm:space-y-3">
                         <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Statutory Deductions</p>
@@ -710,6 +764,15 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
                     </select>
                   </div>
                   <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Joining Date</label>
+                    <input 
+                      type="date" 
+                      value={editFormData.joining_date || ''}
+                      onChange={e => setEditFormData({...editFormData, joining_date: e.target.value})}
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-4 ring-blue-500/10 outline-none font-bold text-slate-700"
+                    />
+                  </div>
+                  <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Basic Salary (Monthly)</label>
                     <div className="relative">
                       <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px]">PKR</div>
@@ -847,6 +910,59 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
           employee={employee} 
           run={selectedPayslip} 
         />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center gap-4 mb-4">
+              <div className="p-3 bg-red-100 rounded-xl">
+                <AlertCircle size={24} className="text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-xl font-black text-slate-900">Delete Employee Profile</h3>
+                <p className="text-sm text-slate-500 font-medium">This action cannot be undone</p>
+              </div>
+            </div>
+            
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+              <p className="text-sm text-slate-700 font-medium mb-2">
+                Are you sure you want to permanently delete <span className="font-black">{employee.name}</span>'s profile?
+              </p>
+              <ul className="text-xs text-slate-600 space-y-1 ml-4 list-disc">
+                <li>All employee records will be removed</li>
+                <li>Historical payslips will remain for audit purposes</li>
+                <li>This action cannot be reversed</li>
+              </ul>
+            </div>
+
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeleting}
+                className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleDeleteEmployee}
+                disabled={isDeleting}
+                className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" /> Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={16} /> Delete
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

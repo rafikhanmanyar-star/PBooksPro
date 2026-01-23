@@ -107,9 +107,12 @@ const PayrollRunScreen: React.FC = () => {
     let total = 0;
     activeEmployees.forEach(emp => {
       const basic = emp.salary.basic;
-      const allowances = emp.salary.allowances.reduce((acc, curr) => {
-        return acc + (curr.is_percentage ? (basic * curr.amount) / 100 : curr.amount);
-      }, 0);
+      // Filter out "Basic Pay" from allowances (legacy data cleanup)
+      const allowances = emp.salary.allowances
+        .filter(a => a.name.toLowerCase() !== 'basic pay' && a.name.toLowerCase() !== 'basic salary')
+        .reduce((acc, curr) => {
+          return acc + (curr.is_percentage ? (basic * curr.amount) / 100 : curr.amount);
+        }, 0);
       const earningsAdjustments = (emp.adjustments || [])
         .filter(a => a.type === 'EARNING')
         .reduce((acc, curr) => acc + curr.amount, 0);

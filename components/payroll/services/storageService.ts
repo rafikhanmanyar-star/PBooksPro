@@ -43,9 +43,8 @@ const getKey = (tenantId: string, key: string): string => {
   return `${key}_${tenantId}`;
 };
 
-// Default earning types
+// Default earning types (allowances only - Basic Pay is a separate field)
 const DEFAULT_EARNING_TYPES: EarningType[] = [
-  { name: 'Basic Pay', amount: 0, is_percentage: false, type: 'Fixed' },
   { name: 'House Rent Allowance', amount: 40, is_percentage: true, type: 'Percentage' },
   { name: 'Transport Allowance', amount: 2500, is_percentage: false, type: 'Fixed' },
   { name: 'Medical Allowance', amount: 1500, is_percentage: false, type: 'Fixed' }
