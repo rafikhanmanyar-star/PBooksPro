@@ -993,7 +993,11 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
 
     const txnDescription = description || `Salary payment for ${payslip.employee_name} - ${payslip.month} ${payslip.year}`;
 
+    // Generate transaction ID
+    const transactionId = `payslip-pay-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
     console.log('💳 Creating transaction:', {
+      id: transactionId,
       type: 'Expense',
       amount: payslip.net_pay,
       accountId,
@@ -1004,10 +1008,10 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     // Create expense transaction for salary payment
     const transactionResult = await getDb().query(
       `INSERT INTO transactions 
-       (tenant_id, type, amount, date, description, account_id, category_id, project_id, user_id)
-       VALUES ($1, 'Expense', $2, CURRENT_DATE, $3, $4, $5, $6, $7)
+       (id, tenant_id, type, amount, date, description, account_id, category_id, project_id, user_id, payslip_id)
+       VALUES ($1, $2, 'Expense', $3, CURRENT_DATE, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
-      [tenantId, payslip.net_pay, txnDescription, accountId, effectiveCategoryId, effectiveProjectId || null, userId]
+      [transactionId, tenantId, payslip.net_pay, txnDescription, accountId, effectiveCategoryId, effectiveProjectId || null, userId, id]
     );
 
     const transaction = transactionResult[0];
