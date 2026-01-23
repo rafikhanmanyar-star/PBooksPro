@@ -10,6 +10,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { Account, Category, Project, TransactionType, AccountType } from '../../../types';
 import { apiClient } from '../../../services/api/client';
 import { formatDate, formatCurrency, calculateAmount, roundToTwo } from '../utils/formatters';
+import ComboBox from '../../../components/ui/ComboBox';
 
 interface PayslipModalProps {
   isOpen: boolean;
@@ -427,25 +428,18 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
-                    Pay From Account <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={selectedAccountId}
-                    onChange={(e) => setSelectedAccountId(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-medium text-sm"
-                  >
-                    <option value="">Select Payment Account</option>
-                    {accounts.length > 0 ? (
-                      accounts.map((acc) => (
-                        <option key={acc.id} value={acc.id}>
-                          {acc.name} ({acc.type}) - PKR {formatCurrency(acc.balance)}
-                        </option>
-                      ))
-                    ) : (
-                      <option value="" disabled>No payment accounts available</option>
-                    )}
-                  </select>
+                  <ComboBox
+                    label="Pay From Account"
+                    items={accounts.map(acc => ({
+                      id: acc.id,
+                      name: `${acc.name} (${acc.type}) - PKR ${formatCurrency(acc.balance)}`
+                    }))}
+                    selectedId={selectedAccountId}
+                    onSelect={(item) => setSelectedAccountId(item?.id || '')}
+                    placeholder="Select Payment Account"
+                    required
+                    entityType="account"
+                  />
                   {accounts.length === 0 && (
                     <p className="text-[10px] text-amber-600 mt-1 font-medium">
                       ⚠️ No payment accounts found. Create a Bank or Cash account in Settings → Chart of Accounts
@@ -453,34 +447,34 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                   )}
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
-                    Expense Category
-                  </label>
-                  <select
-                    value={selectedCategoryId}
-                    onChange={(e) => setSelectedCategoryId(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-medium text-sm"
-                  >
-                    <option value="">Select Category (Optional)</option>
-                    {categories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>{cat.name}</option>
-                    ))}
-                  </select>
+                  <ComboBox
+                    label="Expense Category"
+                    items={categories.map(cat => ({
+                      id: cat.id,
+                      name: cat.name
+                    }))}
+                    selectedId={selectedCategoryId}
+                    onSelect={(item) => setSelectedCategoryId(item?.id || '')}
+                    placeholder="Select Expense Category"
+                    required
+                    entityType="category"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    The project will be charged using this expense category
+                  </p>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
-                    Charge to Project
-                  </label>
-                  <select
-                    value={selectedProjectId}
-                    onChange={(e) => setSelectedProjectId(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-medium text-sm"
-                  >
-                    <option value="">Select Project (Optional)</option>
-                    {projects.map((proj) => (
-                      <option key={proj.id} value={proj.id}>{proj.name}</option>
-                    ))}
-                  </select>
+                  <ComboBox
+                    label="Charge to Project"
+                    items={projects.map(proj => ({
+                      id: proj.id,
+                      name: proj.name
+                    }))}
+                    selectedId={selectedProjectId}
+                    onSelect={(item) => setSelectedProjectId(item?.id || '')}
+                    placeholder="Select Project (Optional)"
+                    entityType="project"
+                  />
                   {employee.projects && employee.projects.length > 0 && (
                     <p className="text-[10px] text-slate-400 mt-1">
                       Employee allocation: {employee.projects.map(p => `${p.project_name} (${p.percentage}%)`).join(', ')}
@@ -507,6 +501,11 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                         return;
                       }
                       
+                      if (!selectedCategoryId) {
+                        setPaymentError('Please select an expense category');
+                        return;
+                      }
+                      
                       if (!payslipData?.id) {
                         setPaymentError('Payslip ID not found');
                         return;
@@ -526,7 +525,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                       try {
                         const result = await payrollApi.payPayslip(payslipData.id, {
                           accountId: selectedAccountId,
-                          categoryId: selectedCategoryId || undefined,
+                          categoryId: selectedCategoryId,
                           projectId: selectedProjectId || undefined,
                           description: `Salary payment for ${employee.name} - ${run.month} ${run.year}`
                         });
@@ -550,7 +549,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                         setPaymentError(error.message || 'An unexpected error occurred');
                       }
                     }}
-                    disabled={isPaying || !selectedAccountId}
+                    disabled={isPaying || !selectedAccountId || !selectedCategoryId}
                     className="px-6 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
                   >
                     {isPaying ? (
