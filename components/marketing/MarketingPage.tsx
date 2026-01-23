@@ -620,6 +620,18 @@ const MarketingPage: React.FC = () => {
         const approvalRequestedBy = mode === 'submitApproval' ? (state.currentUser?.id || undefined) : undefined;
         const approvalRequestedTo = mode === 'submitApproval' ? approverId : undefined;
 
+        // Debug logging for approval submission
+        if (mode === 'submitApproval') {
+            console.log('[APPROVAL DEBUG] Submitting plan for approval:', {
+                currentUserId: state.currentUser?.id,
+                currentUsername: state.currentUser?.username,
+                approvalRequestedBy,
+                approvalRequestedTo,
+                approverId,
+                hasCurrentUser: !!state.currentUser
+            });
+        }
+
         if (mode === 'submitApproval' && existingPlan && isPlanUnchanged(existingPlan)) {
             const updatedPlan: InstallmentPlan = {
                 ...existingPlan,
@@ -1393,21 +1405,35 @@ const MarketingPage: React.FC = () => {
                                             <div>Normalized: {normalizedStatus}</div>
                                             <div>isPendingApproval: {String(isPendingApproval)}</div>
                                             <div className="mt-2 pt-2 border-t border-slate-300">
-                                                <div className="font-bold">Approver Matching:</div>
-                                                <div>Approver Value (requested_to): {String(effectiveApprovalRequestedToId || 'NOT SET')}</div>
+                                                <div className="font-bold mb-2 text-indigo-600">🎯 APPROVER MATCHING:</div>
+                                                <div className="bg-yellow-50 border border-yellow-200 p-2 rounded mb-2">
+                                                    <div className="font-bold text-[11px] mb-1">Values to Compare:</div>
+                                                    <div className="pl-2 space-y-1">
+                                                        <div className="font-mono">
+                                                            <span className="font-bold">Stored Approver:</span><br/>
+                                                            <span className="text-blue-600 break-all">{String(effectiveApprovalRequestedToId || 'NOT SET')}</span>
+                                                        </div>
+                                                        <div className="font-mono">
+                                                            <span className="font-bold">Current User ID:</span><br/>
+                                                            <span className="text-rose-600 break-all">{String(state.currentUser?.id || 'NOT LOGGED IN')}</span>
+                                                        </div>
+                                                        <div className={`font-bold text-[11px] mt-2 ${effectiveApprovalRequestedToId === state.currentUser?.id ? 'text-green-600' : 'text-rose-600'}`}>
+                                                            {effectiveApprovalRequestedToId === state.currentUser?.id ? '✅ IDs MATCH!' : '❌ IDs DO NOT MATCH!'}
+                                                        </div>
+                                                    </div>
+                                                </div>
                                                 <div>Requested By: {String(effectiveApprovalRequestedById || 'NOT SET')}</div>
-                                                <div className="text-rose-600 font-bold">Current User ID: {String(state.currentUser?.id || '')}</div>
                                                 <div>Current Username: {String(state.currentUser?.username || '')}</div>
                                                 <div>Current Name: {String(state.currentUser?.name || '')}</div>
                                                 <div>Current Role: {String(state.currentUser?.role || '')}</div>
                                             </div>
                                             <div className="mt-2 pt-2 border-t border-slate-300">
                                                 <div className="font-bold">Matching Result:</div>
-                                                <div className={isApproverForSelectedPlan ? 'text-green-600 font-bold' : 'text-rose-600 font-bold'}>
+                                                <div className={`text-lg ${isApproverForSelectedPlan ? 'text-green-600 font-bold' : 'text-rose-600 font-bold'}`}>
                                                     isApproverForSelectedPlan: {String(isApproverForSelectedPlan)}
                                                 </div>
-                                                <div className="text-[9px] mt-1">
-                                                    Match check: Does "{effectiveApprovalRequestedToId || 'EMPTY'}" match any of [{state.currentUser?.id}, {state.currentUser?.username}, {state.currentUser?.name}]?
+                                                <div className="text-[9px] mt-1 bg-slate-100 p-1 rounded">
+                                                    Checks if "{effectiveApprovalRequestedToId || 'EMPTY'}" matches any of: [{state.currentUser?.id}, {state.currentUser?.username}, {state.currentUser?.name}]
                                                 </div>
                                             </div>
                                             {activePlan && (
