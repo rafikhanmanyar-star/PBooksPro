@@ -34,6 +34,13 @@ router.get('/', async (req: TenantRequest, res) => {
     const currentUsername = req.user?.username;
     let currentUserName: string | null = null;
     
+    console.log('[PLAN API] GET /installment-plans request:', {
+      tenantId: req.tenantId,
+      currentUserId,
+      currentUsername,
+      userRole: req.userRole
+    });
+    
     // Privacy Logic: 
     // 1. Admins see everything
     // 2. Others see only plans they created, requested approval for, or are assigned to approve
@@ -81,7 +88,24 @@ router.get('/', async (req: TenantRequest, res) => {
 
     query += ' ORDER BY created_at DESC';
 
+    console.log('[PLAN API] Executing query:', {
+      query,
+      params,
+      userRole: req.userRole,
+      isAdmin: req.userRole === 'Admin'
+    });
+
     const plans = await db.query(query, params);
+    
+    console.log('[PLAN API] Query results:', {
+      totalPlans: plans.length,
+      pendingApprovalPlans: plans.filter((p: any) => p.status === 'Pending Approval').length,
+      plansForCurrentUser: plans.filter((p: any) => 
+        p.approval_requested_to === currentUserId || 
+        p.approval_requested_to === currentUsername ||
+        p.approval_requested_to === currentUserName
+      ).length
+    });
     
     // Map snake_case to camelCase
     const mapped = plans.map((p: any) => ({
