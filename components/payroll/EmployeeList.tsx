@@ -158,7 +158,9 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-bold text-slate-900">{emp.name}</div>
-                  <div className="text-xs text-slate-400 font-medium truncate">ID: {emp.id}</div>
+                  <div className="text-xs text-slate-400 font-medium truncate">
+                    {emp.employee_code || `ID: ${emp.id}`}
+                  </div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">{emp.designation}</span>
                     <span className="text-xs font-medium text-slate-500 bg-slate-50 px-2 py-0.5 rounded">{emp.department}</span>
@@ -215,7 +217,9 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
                         </div>
                         <div className="min-w-0">
                           <div className="font-bold text-slate-900 group-hover:text-blue-700 transition-colors truncate">{emp.name}</div>
-                          <div className="text-xs text-slate-400 font-medium truncate">ID: {emp.id}</div>
+                          <div className="text-xs text-slate-400 font-medium truncate">
+                            {emp.employee_code || `ID: ${emp.id}`}
+                          </div>
                         </div>
                       </div>
                     </td>

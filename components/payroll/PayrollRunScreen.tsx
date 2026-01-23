@@ -28,6 +28,7 @@ import {
 import { storageService } from './services/storageService';
 import { payrollApi } from '../../services/api/payrollApi';
 import PayslipModal from './modals/PayslipModal';
+import { formatCurrency, calculateAmount, roundToTwo } from './utils/formatters';
 import { useAuth } from '../../context/AuthContext';
 import { usePayrollContext } from '../../context/PayrollContext';
 
@@ -111,22 +112,22 @@ const PayrollRunScreen: React.FC = () => {
       const allowances = emp.salary.allowances
         .filter(a => a.name.toLowerCase() !== 'basic pay' && a.name.toLowerCase() !== 'basic salary')
         .reduce((acc, curr) => {
-          return acc + (curr.is_percentage ? (basic * curr.amount) / 100 : curr.amount);
+          return acc + calculateAmount(basic, curr.amount, curr.is_percentage);
         }, 0);
       const earningsAdjustments = (emp.adjustments || [])
         .filter(a => a.type === 'EARNING')
         .reduce((acc, curr) => acc + curr.amount, 0);
-      const gross = basic + allowances + earningsAdjustments;
-      const standardGross = basic + allowances;
+      const gross = roundToTwo(basic + allowances + earningsAdjustments);
+      const standardGross = roundToTwo(basic + allowances);
       const deductions = emp.salary.deductions.reduce((acc, curr) => {
-        return acc + (curr.is_percentage ? (standardGross * curr.amount) / 100 : curr.amount);
+        return acc + calculateAmount(standardGross, curr.amount, curr.is_percentage);
       }, 0);
       const deductionAdjustments = (emp.adjustments || [])
         .filter(a => a.type === 'DEDUCTION')
         .reduce((acc, curr) => acc + curr.amount, 0);
-      total += (gross - deductions - deductionAdjustments);
+      total += roundToTwo(gross - deductions - deductionAdjustments);
     });
-    return total;
+    return roundToTwo(total);
   };
 
   const handleStartRun = async () => {
@@ -368,7 +369,7 @@ const PayrollRunScreen: React.FC = () => {
                 </div>
                 <div className="flex justify-between items-center py-3 border-b border-white/10">
                   <span className="text-slate-400 font-medium">Estimated Net Payout</span>
-                  <span className="text-xl font-black text-emerald-400">PKR {calculatePayrollTotals().toLocaleString()}</span>
+                  <span className="text-xl font-black text-emerald-400">PKR {formatCurrency(calculatePayrollTotals())}</span>
                 </div>
               </div>
             </div>
@@ -523,7 +524,7 @@ const PayrollRunScreen: React.FC = () => {
                         <td className="px-8 py-4 text-sm font-medium text-slate-600">{employeeDept}</td>
                         <td className="px-8 py-4">
                           <span className="font-bold text-slate-900">
-                            PKR {payslip.net_pay?.toLocaleString() || '—'}
+                            PKR {payslip.net_pay ? formatCurrency(payslip.net_pay) : '—'}
                           </span>
                         </td>
                         <td className="px-8 py-4">
@@ -618,7 +619,7 @@ const PayrollRunScreen: React.FC = () => {
               <div className="flex items-center justify-between pt-3 border-t border-slate-100">
                 <div className="text-xs text-slate-500">{run.employee_count} Members</div>
                 <div className="font-black text-slate-900 text-sm">
-                  {run.total_amount > 0 ? `PKR ${run.total_amount.toLocaleString()}` : '—'}
+                  {run.total_amount > 0 ? `PKR ${formatCurrency(run.total_amount)}` : '—'}
                 </div>
               </div>
             </div>
@@ -653,7 +654,7 @@ const PayrollRunScreen: React.FC = () => {
                     </td>
                     <td className="px-6 lg:px-8 py-5 text-slate-600 font-bold">{run.employee_count} Members</td>
                     <td className="px-6 lg:px-8 py-5 font-black text-slate-900">
-                      {run.total_amount > 0 ? `PKR ${run.total_amount.toLocaleString()}` : '—'}
+                      {run.total_amount > 0 ? `PKR ${formatCurrency(run.total_amount)}` : '—'}
                     </td>
                     <td className="px-6 lg:px-8 py-5">{getStatusBadge(run.status)}</td>
                     <td className="px-6 lg:px-8 py-5 text-right">

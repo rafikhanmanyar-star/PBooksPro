@@ -34,6 +34,7 @@ import { storageService } from './services/storageService';
 import { payrollApi } from '../../services/api/payrollApi';
 import { useAuth } from '../../context/AuthContext';
 import { usePayrollContext, PayrollSubTab } from '../../context/PayrollContext';
+import { formatCurrency } from './utils/formatters';
 
 const PayrollHub: React.FC = () => {
   // Use AuthContext for tenant and user info
@@ -256,7 +257,7 @@ const PayrollHub: React.FC = () => {
                           <div className="flex-1 min-w-0">
                             <p className="font-bold text-slate-900 text-xs truncate">{e.name}</p>
                             <p className="text-[10px] text-emerald-600 font-medium">
-                              {e.is_percentage ? `${e.amount}% of Basic` : `PKR ${e.amount.toLocaleString()}`}
+                              {e.is_percentage ? `${e.amount}% of Basic` : `PKR ${formatCurrency(e.amount)}`}
                             </p>
                           </div>
                         </div>
@@ -307,7 +308,7 @@ const PayrollHub: React.FC = () => {
                           <div className="flex-1 min-w-0">
                             <p className="font-bold text-slate-900 text-xs truncate">{d.name}</p>
                             <p className="text-[10px] text-red-600 font-medium">
-                              {d.is_percentage ? `${d.amount}% of Gross` : `PKR ${d.amount.toLocaleString()}`}
+                              {d.is_percentage ? `${d.amount}% of Gross` : `PKR ${formatCurrency(d.amount)}`}
                             </p>
                           </div>
                         </div>
@@ -358,7 +359,7 @@ const PayrollHub: React.FC = () => {
                           <div className="flex-1 min-w-0">
                             <p className="font-bold text-slate-900 text-xs truncate">{g.name}</p>
                             <p className="text-[10px] text-blue-600 font-medium truncate">
-                              {g.min_salary.toLocaleString()} - {g.max_salary.toLocaleString()}
+                              {formatCurrency(g.min_salary)} - {formatCurrency(g.max_salary)}
                             </p>
                           </div>
                         </div>

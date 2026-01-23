@@ -9,6 +9,7 @@ import { payrollApi } from '../../../services/api/payrollApi';
 import { useAuth } from '../../../context/AuthContext';
 import { Account, Category, Project, TransactionType, AccountType } from '../../../types';
 import { apiClient } from '../../../services/api/client';
+import { formatDate, formatCurrency, calculateAmount, roundToTwo } from '../utils/formatters';
 
 interface PayslipModalProps {
   isOpen: boolean;
@@ -51,12 +52,12 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
           apiClient.get<Project[]>('/projects')
         ]);
         
-        // Filter to only Bank accounts for salary payments
+        // Filter to Bank and Cash accounts for salary payments
         // These are the same accounts from Settings > Chart of Accounts
-        const bankAccounts = (accountsData || [])
-          .filter(a => a.type === AccountType.BANK)
+        const paymentAccounts = (accountsData || [])
+          .filter(a => a.type === AccountType.BANK || a.type === AccountType.CASH)
           .sort((a, b) => b.balance - a.balance); // Sort by balance (highest first)
-        setAccounts(bankAccounts);
+        setAccounts(paymentAccounts);
         // Filter to only expense categories
         const expenseCategories = (categoriesData || []).filter(c => c.type === TransactionType.EXPENSE);
         setCategories(expenseCategories);
@@ -92,8 +93,8 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
   // This ensures payslip displays the values from when it was generated, not current salary
   const useStoredData = payslipData && payslipData.basic_pay !== undefined;
   
-  // Basic pay from payslip or employee salary
-  const basic = useStoredData ? payslipData.basic_pay : employee.salary.basic;
+  // Basic pay from payslip or employee salary (rounded to 2 decimal places)
+  const basic = roundToTwo(useStoredData ? payslipData.basic_pay : employee.salary.basic);
   
   // Get allowances from stored payslip data or calculate from employee salary
   const rawAllowanceDetails = useStoredData && payslipData.allowance_details 
@@ -103,10 +104,10 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
     : employee.salary.allowances;
   const allowanceDetails = Array.isArray(rawAllowanceDetails) ? rawAllowanceDetails : [];
   
-  // Calculate allowances with their computed values
+  // Calculate allowances with their computed values (rounded to 2 decimal places)
   const allowances = allowanceDetails.map((a: any) => ({
     ...a,
-    calculated: a.is_percentage ? (basic * a.amount) / 100 : a.amount
+    calculated: calculateAmount(basic, a.amount, a.is_percentage)
   }));
   
   // Get deductions from stored payslip data or calculate from employee salary
@@ -128,40 +129,50 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
   const adjustmentEarnings = adjustmentDetails.filter((a: any) => a.type === 'EARNING');
   const adjustmentDeductions = adjustmentDetails.filter((a: any) => a.type === 'DEDUCTION');
 
-  // Calculate totals - use stored values if available for accuracy
-  const totalAllowancesAmount = useStoredData && payslipData.total_allowances !== undefined
-    ? payslipData.total_allowances
-    : allowances.reduce((acc: number, curr: any) => acc + curr.calculated, 0);
+  // Calculate totals - use stored values if available for accuracy (all rounded to 2 decimal places)
+  const totalAllowancesAmount = roundToTwo(
+    useStoredData && payslipData.total_allowances !== undefined
+      ? payslipData.total_allowances
+      : allowances.reduce((acc: number, curr: any) => acc + curr.calculated, 0)
+  );
   
-  const totalEarnings = useStoredData && payslipData.gross_pay !== undefined
-    ? payslipData.gross_pay
-    : basic + totalAllowancesAmount + adjustmentEarnings.reduce((acc: number, curr: any) => acc + curr.amount, 0);
+  const totalEarnings = roundToTwo(
+    useStoredData && payslipData.gross_pay !== undefined
+      ? payslipData.gross_pay
+      : basic + totalAllowancesAmount + adjustmentEarnings.reduce((acc: number, curr: any) => acc + curr.amount, 0)
+  );
   
-  const recurringGrossForDeductions = basic + totalAllowancesAmount;
+  const recurringGrossForDeductions = roundToTwo(basic + totalAllowancesAmount);
 
   const deductions = deductionDetails.map((d: any) => ({
     ...d,
-    calculated: d.is_percentage ? (recurringGrossForDeductions * d.amount) / 100 : d.amount
+    calculated: calculateAmount(recurringGrossForDeductions, d.amount, d.is_percentage)
   }));
 
   // Calculate total deductions (regular deductions + adjustment deductions)
   // Note: payslipData.total_deductions only includes regular deductions, not adjustment deductions
-  const regularDeductionsTotal = useStoredData && payslipData.total_deductions !== undefined
-    ? payslipData.total_deductions
-    : deductions.reduce((acc: number, curr: any) => acc + curr.calculated, 0);
+  const regularDeductionsTotal = roundToTwo(
+    useStoredData && payslipData.total_deductions !== undefined
+      ? payslipData.total_deductions
+      : deductions.reduce((acc: number, curr: any) => acc + curr.calculated, 0)
+  );
   
-  const adjustmentDeductionsTotal = adjustmentDeductions.reduce((acc: number, curr: any) => acc + curr.amount, 0);
-  const totalDeductions = regularDeductionsTotal + adjustmentDeductionsTotal;
+  const adjustmentDeductionsTotal = roundToTwo(
+    adjustmentDeductions.reduce((acc: number, curr: any) => acc + curr.amount, 0)
+  );
+  const totalDeductions = roundToTwo(regularDeductionsTotal + adjustmentDeductionsTotal);
 
-  // Net pay - use stored value for accuracy, or calculate
+  // Net pay - use stored value for accuracy, or calculate (rounded to 2 decimal places)
   // The stored net_pay is the final correct value from server
-  const netPay = useStoredData && payslipData.net_pay !== undefined
-    ? payslipData.net_pay
-    : totalEarnings - totalDeductions;
+  const netPay = roundToTwo(
+    useStoredData && payslipData.net_pay !== undefined
+      ? payslipData.net_pay
+      : totalEarnings - totalDeductions
+  );
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200 no-print-backdrop">
-      <div className="bg-white w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col print-full">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200 print:bg-white print:p-0 print:block print:relative">
+      <div className="bg-white w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col print:max-h-none print:shadow-none print:rounded-none print:max-w-none">
         {/* Header */}
         <div className="px-8 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between shrink-0 no-print">
           <div className="flex items-center gap-2">
@@ -191,103 +202,103 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-12 space-y-10 print-area">
+        <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-4 sm:space-y-6 print:overflow-visible print:p-6">
           {/* Company Header */}
           <div className="flex justify-between items-start">
-            <div className="flex items-center gap-3">
-              <div className="bg-blue-600 p-2.5 rounded-xl text-white">
-                <Building2 size={24} />
+            <div className="flex items-center gap-2">
+              <div className="bg-blue-600 p-2 rounded-lg text-white print:bg-blue-600">
+                <Building2 size={20} />
               </div>
               <div>
-                <h2 className="text-xl font-black text-slate-900 tracking-tight">{companyName}</h2>
-                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Payroll Department</p>
+                <h2 className="text-lg font-black text-slate-900 tracking-tight">{companyName}</h2>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Payroll Department</p>
               </div>
             </div>
             <div className="text-right">
-              <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Payslip</h1>
-              <p className="text-slate-500 font-bold">{run.month} {run.year}</p>
+              <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Payslip</h1>
+              <p className="text-sm text-slate-500 font-bold">{run.month} {run.year}</p>
             </div>
           </div>
 
           {/* Employee Info */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 py-8 border-y border-slate-100">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-4 border-y border-slate-200">
             <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Employee Name</p>
-              <p className="font-bold text-slate-900">{employee.name}</p>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Employee Name</p>
+              <p className="font-bold text-slate-900 text-sm">{employee.name}</p>
             </div>
             <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Employee ID</p>
-              <p className="font-bold text-slate-900">{employee.employee_code || employee.id}</p>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Employee ID</p>
+              <p className="font-bold text-slate-900 text-sm">{employee.employee_code || employee.id}</p>
             </div>
             <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Designation</p>
-              <p className="font-bold text-slate-900">{employee.designation}</p>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Designation</p>
+              <p className="font-bold text-slate-900 text-sm">{employee.designation}</p>
             </div>
             <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Joining Date</p>
-              <p className="font-bold text-slate-900">{employee.joining_date}</p>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Joining Date</p>
+              <p className="font-bold text-slate-900 text-sm">{formatDate(employee.joining_date)}</p>
             </div>
           </div>
 
           {/* Earnings & Deductions */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Earnings */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest pb-2 border-b-2 border-slate-900 w-fit">
+            <div className="space-y-2">
+              <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider pb-1 border-b-2 border-slate-900">
                 Earnings
               </h3>
-              <table className="w-full text-sm">
-                <tbody className="divide-y divide-slate-50">
-                  <tr className="group">
-                    <td className="py-3 text-slate-600 font-medium">Basic Pay</td>
-                    <td className="py-3 text-right font-bold text-slate-900">PKR {basic.toLocaleString()}</td>
+              <table className="w-full text-xs">
+                <tbody className="divide-y divide-slate-100">
+                  <tr>
+                    <td className="py-1.5 text-slate-600 font-medium">Basic Pay</td>
+                    <td className="py-1.5 text-right font-bold text-slate-900">{formatCurrency(basic)}</td>
                   </tr>
                   {allowances.map((a, i) => (
                     <tr key={i}>
-                      <td className="py-3 text-slate-600 font-medium">{a.name}</td>
-                      <td className="py-3 text-right font-bold text-slate-900">PKR {a.calculated.toLocaleString()}</td>
+                      <td className="py-1.5 text-slate-600 font-medium">{a.name}</td>
+                      <td className="py-1.5 text-right font-bold text-slate-900">{formatCurrency(a.calculated)}</td>
                     </tr>
                   ))}
                   {adjustmentEarnings.map((a, i) => (
-                    <tr key={`adj-earn-${i}`} className="bg-green-50/30">
-                      <td className="py-3 text-green-700 font-bold flex items-center gap-2 italic">
-                        <Plus size={12}/> {a.name}
+                    <tr key={`adj-earn-${i}`} className="bg-green-50/50">
+                      <td className="py-1.5 text-green-700 font-bold italic text-[11px]">
+                        + {a.name}
                       </td>
-                      <td className="py-3 text-right font-black text-green-700">PKR {a.amount.toLocaleString()}</td>
+                      <td className="py-1.5 text-right font-bold text-green-700">{formatCurrency(a.amount)}</td>
                     </tr>
                   ))}
-                  <tr className="bg-slate-50/50">
-                    <td className="py-4 font-black text-slate-900 uppercase text-[10px]">Total Earnings</td>
-                    <td className="py-4 text-right font-black text-slate-900">PKR {totalEarnings.toLocaleString()}</td>
+                  <tr className="bg-slate-100 border-t-2 border-slate-300">
+                    <td className="py-2 font-black text-slate-900 uppercase text-[10px]">Total Earnings</td>
+                    <td className="py-2 text-right font-black text-slate-900">{formatCurrency(totalEarnings)}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
             {/* Deductions */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest pb-2 border-b-2 border-slate-900 w-fit">
+            <div className="space-y-2">
+              <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider pb-1 border-b-2 border-slate-900">
                 Deductions
               </h3>
-              <table className="w-full text-sm">
-                <tbody className="divide-y divide-slate-50">
+              <table className="w-full text-xs">
+                <tbody className="divide-y divide-slate-100">
                   {deductions.map((d, i) => (
                     <tr key={i}>
-                      <td className="py-3 text-slate-600 font-medium">{d.name}</td>
-                      <td className="py-3 text-right font-bold text-slate-900">PKR {d.calculated.toLocaleString()}</td>
+                      <td className="py-1.5 text-slate-600 font-medium">{d.name}</td>
+                      <td className="py-1.5 text-right font-bold text-slate-900">{formatCurrency(d.calculated)}</td>
                     </tr>
                   ))}
                   {adjustmentDeductions.map((a, i) => (
-                    <tr key={`adj-ded-${i}`} className="bg-red-50/30">
-                      <td className="py-3 text-red-700 font-bold flex items-center gap-2 italic">
-                        <TrendingDown size={12}/> {a.name}
+                    <tr key={`adj-ded-${i}`} className="bg-red-50/50">
+                      <td className="py-1.5 text-red-700 font-bold italic text-[11px]">
+                        - {a.name}
                       </td>
-                      <td className="py-3 text-right font-black text-red-700">-PKR {a.amount.toLocaleString()}</td>
+                      <td className="py-1.5 text-right font-bold text-red-700">{formatCurrency(a.amount)}</td>
                     </tr>
                   ))}
-                  <tr className="bg-slate-50/50">
-                    <td className="py-4 font-black text-slate-900 uppercase text-[10px]">Total Deductions</td>
-                    <td className="py-4 text-right font-black text-slate-900">PKR {totalDeductions.toLocaleString()}</td>
+                  <tr className="bg-slate-100 border-t-2 border-slate-300">
+                    <td className="py-2 font-black text-slate-900 uppercase text-[10px]">Total Deductions</td>
+                    <td className="py-2 text-right font-black text-slate-900">{formatCurrency(totalDeductions)}</td>
                   </tr>
                 </tbody>
               </table>
@@ -295,37 +306,37 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
           </div>
 
           {/* Net Pay */}
-          <div className={`rounded-3xl p-8 flex flex-col md:flex-row items-center justify-between gap-6 ${isPaid ? 'bg-green-900' : 'bg-slate-900'} text-white`}>
+          <div className={`rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 ${isPaid ? 'bg-green-900' : 'bg-slate-900'} text-white print:bg-slate-900 print:rounded-lg`}>
             <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Net Payable Amount</p>
-              <p className="text-4xl font-black">PKR {netPay.toLocaleString()}</p>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Net Payable Amount</p>
+              <p className="text-2xl sm:text-3xl font-black">PKR {formatCurrency(netPay)}</p>
               {isPaid && (
-                <div className="flex items-center gap-2 mt-2 text-green-300">
-                  <CheckCircle2 size={16} />
-                  <span className="text-xs font-bold">PAID</span>
+                <div className="flex items-center gap-2 mt-1 text-green-300">
+                  <CheckCircle2 size={14} />
+                  <span className="text-[10px] font-bold">PAID</span>
                   {payslipData?.paid_at && (
-                    <span className="text-xs text-green-400">
+                    <span className="text-[10px] text-green-400">
                       on {new Date(payslipData.paid_at).toLocaleDateString()}
                     </span>
                   )}
                 </div>
               )}
             </div>
-            <div className="text-right">
+            <div className="text-right no-print">
               {!isPaid && !showPaymentForm && (
                 <button
                   onClick={() => setShowPaymentForm(true)}
-                  className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl flex items-center gap-2 transition-all no-print"
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-lg flex items-center gap-2 transition-all text-sm"
                 >
-                  <Wallet size={18} /> Pay Salary
+                  <Wallet size={16} /> Pay Salary
                 </button>
               )}
               {isPaid && (
-                <div className="flex gap-4 no-print">
-                  <div className="px-4 py-2 bg-white/10 rounded-xl text-xs font-bold border border-white/10">
+                <div className="flex gap-2">
+                  <div className="px-3 py-1.5 bg-white/10 rounded-lg text-[10px] font-bold border border-white/10">
                     Status: Paid
                   </div>
-                  <div className="px-4 py-2 bg-white/10 rounded-xl text-xs font-bold border border-white/10">
+                  <div className="px-3 py-1.5 bg-white/10 rounded-lg text-[10px] font-bold border border-white/10">
                     Txn: {payslipData?.transaction_id?.substring(0, 8) || 'N/A'}
                   </div>
                 </div>
@@ -365,20 +376,20 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                     onChange={(e) => setSelectedAccountId(e.target.value)}
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-medium text-sm"
                   >
-                    <option value="">Select Bank Account</option>
+                    <option value="">Select Payment Account</option>
                     {accounts.length > 0 ? (
                       accounts.map((acc) => (
                         <option key={acc.id} value={acc.id}>
-                          {acc.name} - PKR {acc.balance.toLocaleString()}
+                          {acc.name} ({acc.type}) - PKR {formatCurrency(acc.balance)}
                         </option>
                       ))
                     ) : (
-                      <option value="" disabled>No bank accounts available</option>
+                      <option value="" disabled>No payment accounts available</option>
                     )}
                   </select>
                   {accounts.length === 0 && (
                     <p className="text-[10px] text-amber-600 mt-1 font-medium">
-                      ⚠️ No bank accounts found. Create one in Settings → Chart of Accounts (Type: Bank)
+                      ⚠️ No payment accounts found. Create a Bank or Cash account in Settings → Chart of Accounts
                     </p>
                   )}
                 </div>
@@ -421,7 +432,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
 
               <div className="flex items-center justify-between pt-4 border-t border-blue-200">
                 <div className="text-sm text-slate-600">
-                  Amount to debit: <span className="font-bold text-slate-900">PKR {netPay.toLocaleString()}</span>
+                  Amount to debit: <span className="font-bold text-slate-900">PKR {formatCurrency(netPay)}</span>
                 </div>
                 <div className="flex gap-3">
                   <button
@@ -433,7 +444,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                   <button
                     onClick={async () => {
                       if (!selectedAccountId) {
-                        setPaymentError('Please select a bank account to pay from');
+                        setPaymentError('Please select a payment account');
                         return;
                       }
                       

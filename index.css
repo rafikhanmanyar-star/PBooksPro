@@ -292,15 +292,68 @@ h3 { font-size: 1.25rem; font-weight: 600; }  /* 20px */
 @media print {
   @page {
     size: A4;
-    margin: 12.7mm;
+    margin: 15mm;
+  }
+  
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   
   body {
-    overflow: visible;
+    overflow: visible !important;
+    background: white !important;
   }
   
+  /* Hide all non-print elements */
   .no-print {
     display: none !important;
+  }
+  
+  /* Hide modal backdrop and ensure white background */
+  body > div:not(#root) {
+    display: none !important;
+  }
+  
+  /* Ensure only payslip content is visible */
+  .fixed {
+    position: relative !important;
+  }
+  
+  /* Remove shadows, rounded corners, and modal styling for print */
+  .shadow-2xl,
+  .shadow-xl,
+  .shadow-lg {
+    box-shadow: none !important;
+  }
+  
+  .rounded-3xl,
+  .rounded-2xl,
+  .rounded-xl {
+    border-radius: 0 !important;
+  }
+  
+  /* Ensure proper page breaks */
+  .print-page-break {
+    page-break-after: always;
+  }
+  
+  .print-avoid-break {
+    page-break-inside: avoid;
+  }
+  
+  /* Remove animations and transitions */
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+  
+  /* Ensure backgrounds print correctly */
+  .bg-slate-900,
+  .bg-green-900,
+  .bg-blue-600 {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }
 

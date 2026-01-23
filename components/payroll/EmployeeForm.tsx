@@ -39,6 +39,7 @@ import {
 import { storageService } from './services/storageService';
 import { payrollApi } from '../../services/api/payrollApi';
 import { useAuth } from '../../context/AuthContext';
+import { formatCurrency, calculateAmount } from './utils/formatters';
 
 interface SalaryComponentState {
   name: string;
@@ -297,6 +298,21 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
           }
         } catch (apiError) {
           console.warn('API create failed, falling back to localStorage:', apiError);
+          
+          // Generate employee code in format EID-0001, EID-0002, etc.
+          const existingEmployees = storageService.getEmployees(tenantId);
+          const eidEmployees = existingEmployees.filter(e => e.employee_code?.startsWith('EID-'));
+          let employeeCode = 'EID-0001';
+          
+          if (eidEmployees.length > 0) {
+            const codes = eidEmployees.map(e => {
+              const match = e.employee_code?.match(/EID-(\d+)/);
+              return match ? parseInt(match[1]) : 0;
+            });
+            const maxNumber = Math.max(...codes);
+            employeeCode = `EID-${(maxNumber + 1).toString().padStart(4, '0')}`;
+          }
+          
           // Fallback to localStorage only
           const employeeData: PayrollEmployee = {
             id: `emp-${Date.now()}`,
@@ -310,6 +326,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
             grade: formData.grade,
             status: EmploymentStatus.ACTIVE,
             joining_date: formData.joiningDate,
+            employee_code: employeeCode,
             salary: salaryData,
             adjustments: [],
             projects: assignedProjects,
@@ -511,7 +528,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
               </select>
               {selectedGradeInfo && (
                 <p className="mt-2 text-[10px] font-black uppercase text-blue-600 tracking-widest px-1">
-                  Range: PKR {selectedGradeInfo.min_salary.toLocaleString()} - {selectedGradeInfo.max_salary.toLocaleString()}
+                  Range: PKR {formatCurrency(selectedGradeInfo.min_salary)} - {formatCurrency(selectedGradeInfo.max_salary)}
                 </p>
               )}
             </div>
@@ -724,7 +741,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
                         </div>
                         {a.is_percentage && a.isEnabled && (
                           <div className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                            = PKR {((formData.basicSalary * a.amount) / 100).toLocaleString()}
+                            = PKR {formatCurrency(calculateAmount(formData.basicSalary, a.amount, true))}
                           </div>
                         )}
                       </div>

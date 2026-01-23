@@ -47,6 +47,7 @@ import { payrollApi } from '../../services/api/payrollApi';
 import PayslipModal from './modals/PayslipModal';
 import AdjustmentModal from './modals/AdjustmentModal';
 import { useAuth } from '../../context/AuthContext';
+import { formatDate, formatCurrency, calculateAmount, roundToTwo } from './utils/formatters';
 
 const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmployee, onBack }) => {
   const { user, tenant } = useAuth();
@@ -129,30 +130,30 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
     const allowances = employee.salary.allowances
       .filter(a => a.name.toLowerCase() !== 'basic pay' && a.name.toLowerCase() !== 'basic salary')
       .reduce((acc, curr) => {
-        return acc + (curr.is_percentage ? (employee.salary.basic * curr.amount) / 100 : curr.amount);
+        return acc + calculateAmount(employee.salary.basic, curr.amount, curr.is_percentage);
       }, 0);
     const earningsAdjustments = (employee.adjustments || [])
       .filter(a => a.type === 'EARNING')
       .reduce((acc, curr) => acc + curr.amount, 0);
-    return employee.salary.basic + allowances + earningsAdjustments;
+    return roundToTwo(employee.salary.basic + allowances + earningsAdjustments);
   };
 
   const calculateNet = () => {
-    const grossWithoutAdjs = employee.salary.basic + employee.salary.allowances
+    const grossWithoutAdjs = roundToTwo(employee.salary.basic + employee.salary.allowances
       .filter(a => a.name.toLowerCase() !== 'basic pay' && a.name.toLowerCase() !== 'basic salary')
       .reduce((acc, curr) => {
-        return acc + (curr.is_percentage ? (employee.salary.basic * curr.amount) / 100 : curr.amount);
-      }, 0);
+        return acc + calculateAmount(employee.salary.basic, curr.amount, curr.is_percentage);
+      }, 0));
     
     const gross = calculateGross();
     const deductions = employee.salary.deductions.reduce((acc, curr) => {
-      return acc + (curr.is_percentage ? (grossWithoutAdjs * curr.amount) / 100 : curr.amount);
+      return acc + calculateAmount(grossWithoutAdjs, curr.amount, curr.is_percentage);
     }, 0);
 
     const deductionAdjustments = (employee.adjustments || [])
       .filter(a => a.type === 'DEDUCTION')
       .reduce((acc, curr) => acc + curr.amount, 0);
-    return gross - deductions - deductionAdjustments;
+    return roundToTwo(gross - deductions - deductionAdjustments);
   };
 
   const handleUpdate = async (updated: PayrollEmployee) => {
@@ -304,7 +305,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
         date: adj.date_added.split('T')[0],
         type: 'ADJUSTMENT',
         title: `${adj.type === 'EARNING' ? 'Incentive' : 'Deduction'} Applied`,
-        description: `${adj.name} adjustment for PKR ${adj.amount.toLocaleString()}. Action by: ${adj.created_by}`,
+        description: `${adj.name} adjustment for PKR ${formatCurrency(adj.amount)}. Action by: ${adj.created_by}`,
         icon: adj.type === 'EARNING' ? <TrendingUp size={16} /> : <TrendingDown size={16} />,
         color: adj.type === 'EARNING' ? 'emerald' : 'amber'
       }))
@@ -476,7 +477,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
                         <span className="font-bold text-slate-900 text-sm sm:text-base">Basic Pay</span>
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter hidden sm:block">Guaranteed Fixed</p>
                       </div>
-                      <span className="text-lg sm:text-xl font-black text-slate-900">PKR {employee.salary.basic.toLocaleString()}</span>
+                      <span className="text-lg sm:text-xl font-black text-slate-900">PKR {formatCurrency(employee.salary.basic)}</span>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                       <div className="space-y-2 sm:space-y-3">
@@ -487,7 +488,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
                             <div key={i} className="flex justify-between items-center p-2 sm:p-3 bg-white rounded-xl border border-slate-100 shadow-sm print:shadow-none">
                               <span className="text-xs sm:text-sm font-bold text-slate-700">{a.name}</span>
                               <span className="text-green-600 font-black text-xs sm:text-sm">
-                                +{a.is_percentage ? `${a.amount}%` : `PKR ${a.amount.toLocaleString()}`}
+                                +{a.is_percentage ? `${a.amount}%` : `PKR ${formatCurrency(a.amount)}`}
                               </span>
                             </div>
                           ))}
@@ -498,7 +499,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
                           <div key={i} className="flex justify-between items-center p-2 sm:p-3 bg-white rounded-xl border border-slate-100 shadow-sm print:shadow-none">
                             <span className="text-xs sm:text-sm font-bold text-slate-700">{d.name}</span>
                             <span className="text-red-500 font-black text-xs sm:text-sm">
-                              -{d.is_percentage ? `${d.amount}%` : `PKR ${d.amount.toLocaleString()}`}
+                              -{d.is_percentage ? `${d.amount}%` : `PKR ${formatCurrency(d.amount)}`}
                             </span>
                           </div>
                         ))}
@@ -592,15 +593,15 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
                 <div className="bg-gradient-to-br from-blue-600 to-indigo-800 text-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-2xl shadow-blue-200 relative overflow-hidden print:bg-slate-900 print:shadow-none">
                   <div className="relative z-10">
                     <p className="text-blue-100 text-[10px] sm:text-xs font-black uppercase tracking-widest opacity-80 print:text-slate-300">Net Take Home</p>
-                    <p className="text-3xl sm:text-5xl font-black mt-2 leading-none">PKR {calculateNet().toLocaleString()}</p>
+                    <p className="text-3xl sm:text-5xl font-black mt-2 leading-none">PKR {formatCurrency(calculateNet())}</p>
                     <div className="mt-4 sm:mt-8 pt-4 sm:pt-6 border-t border-white/10 space-y-2 sm:space-y-3">
                       <div className="flex justify-between text-xs sm:text-sm">
                         <span className="text-blue-200 font-medium">Monthly Gross</span>
-                        <span className="font-bold">PKR {calculateGross().toLocaleString()}</span>
+                        <span className="font-bold">PKR {formatCurrency(calculateGross())}</span>
                       </div>
                       <div className="flex justify-between text-xs sm:text-sm">
                         <span className="text-blue-200 font-medium">Annual CTC</span>
-                        <span className="font-bold">PKR {(calculateGross() * 12).toLocaleString()}</span>
+                        <span className="font-bold">PKR {formatCurrency(calculateGross() * 12)}</span>
                       </div>
                     </div>
                   </div>
@@ -832,7 +833,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
                           <ShieldCheck size={14} /> Transferred
                         </span>
                       </td>
-                      <td className="px-8 py-5 font-black text-slate-700">PKR {calculateNet().toLocaleString()}</td>
+                      <td className="px-8 py-5 font-black text-slate-700">PKR {formatCurrency(calculateNet())}</td>
                       <td className="px-8 py-5 text-right">
                         <button 
                           onClick={() => setSelectedPayslip(run)}
@@ -859,7 +860,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
               <p className="text-sm text-slate-500 font-medium">Timeline of roles, departments, and significant record changes.</p>
             </div>
             <div className="bg-white px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-500 flex items-center gap-2">
-              <Calendar size={16} className="text-blue-500" /> Since {employee.joining_date}
+              <Calendar size={16} className="text-blue-500" /> Since {formatDate(employee.joining_date)}
             </div>
           </div>
           <div className="p-12 max-w-2xl mx-auto">

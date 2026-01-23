@@ -12,6 +12,17 @@ import { emitToTenant } from '../../services/websocketHelper.js';
 
 const getDb = () => getDatabaseService();
 
+// Helper function to round numbers to 2 decimal places
+const roundToTwo = (value: number): number => {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+};
+
+// Helper function to calculate allowance/deduction amount with proper rounding
+const calculateAmount = (basic: number, amount: number, isPercentage: boolean): number => {
+  const calculated = isPercentage ? (basic * amount) / 100 : amount;
+  return roundToTwo(calculated);
+};
+
 const router = Router();
 
 // =====================================================
@@ -103,15 +114,38 @@ router.post('/employees', async (req: TenantRequest, res) => {
       }
     }
 
+    // Generate employee code in format EID-0001, EID-0002, etc.
+    let employeeCode = 'EID-0001'; // Default for first employee
+    try {
+      const lastEmployee = await getDb().query(
+        `SELECT employee_code FROM payroll_employees 
+         WHERE tenant_id = $1 AND employee_code LIKE 'EID-%'
+         ORDER BY employee_code DESC LIMIT 1`,
+        [tenantId]
+      );
+      
+      if (lastEmployee.length > 0 && lastEmployee[0].employee_code) {
+        // Extract number from EID-XXXX format
+        const lastCode = lastEmployee[0].employee_code;
+        const match = lastCode.match(/EID-(\d+)/);
+        if (match) {
+          const nextNumber = parseInt(match[1]) + 1;
+          employeeCode = `EID-${nextNumber.toString().padStart(4, '0')}`;
+        }
+      }
+    } catch (error) {
+      console.warn('Error generating employee code, using default:', error);
+    }
+
     const result = await getDb().query(
       `INSERT INTO payroll_employees 
        (tenant_id, name, email, phone, address, designation, department, department_id, grade, 
-        joining_date, salary, projects, status, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'ACTIVE', $13)
+        joining_date, salary, projects, status, employee_code, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'ACTIVE', $13, $14)
        RETURNING *`,
       [tenantId, name, email, phone, address, designation, department, effectiveDepartmentId || null, grade,
        joining_date, JSON.stringify(salary || { basic: 0, allowances: [], deductions: [] }),
-       JSON.stringify(projects || []), userId]
+       JSON.stringify(projects || []), employeeCode, userId]
     );
 
     // Notify via WebSocket
@@ -409,9 +443,10 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
     // Generate payslips only for new employees (those without existing payslips)
     for (const emp of employees) {
       const salary = emp.salary;
-      const basic = salary.basic || 0;
+      const basic = roundToTwo(salary.basic || 0);
       
       // Calculate allowances (filter out "Basic Pay" if it exists in legacy data)
+      // All amounts rounded to 2 decimal places
       let totalAllowances = 0;
       (salary.allowances || [])
         .filter((a: any) => {
@@ -419,25 +454,27 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
           return name !== 'basic pay' && name !== 'basic salary';
         })
         .forEach((a: any) => {
-          totalAllowances += a.is_percentage ? (basic * a.amount) / 100 : a.amount;
+          totalAllowances += calculateAmount(basic, a.amount, a.is_percentage);
         });
+      totalAllowances = roundToTwo(totalAllowances);
 
-      // Calculate deductions
-      const grossForDeductions = basic + totalAllowances;
+      // Calculate deductions (rounded to 2 decimal places)
+      const grossForDeductions = roundToTwo(basic + totalAllowances);
       let totalDeductions = 0;
       (salary.deductions || []).forEach((d: any) => {
-        totalDeductions += d.is_percentage ? (grossForDeductions * d.amount) / 100 : d.amount;
+        totalDeductions += calculateAmount(grossForDeductions, d.amount, d.is_percentage);
       });
+      totalDeductions = roundToTwo(totalDeductions);
 
-      // Calculate adjustments
+      // Calculate adjustments (rounded to 2 decimal places)
       const adjustments = emp.adjustments || [];
-      const earningAdj = adjustments.filter((a: any) => a.type === 'EARNING')
-        .reduce((sum: number, a: any) => sum + a.amount, 0);
-      const deductionAdj = adjustments.filter((a: any) => a.type === 'DEDUCTION')
-        .reduce((sum: number, a: any) => sum + a.amount, 0);
+      const earningAdj = roundToTwo(adjustments.filter((a: any) => a.type === 'EARNING')
+        .reduce((sum: number, a: any) => sum + a.amount, 0));
+      const deductionAdj = roundToTwo(adjustments.filter((a: any) => a.type === 'DEDUCTION')
+        .reduce((sum: number, a: any) => sum + a.amount, 0));
 
-      const grossPay = basic + totalAllowances + earningAdj;
-      const netPay = grossPay - totalDeductions - deductionAdj;
+      const grossPay = roundToTwo(basic + totalAllowances + earningAdj);
+      const netPay = roundToTwo(grossPay - totalDeductions - deductionAdj);
       
       newTotalAmount += netPay;
       newPayslipsCount++;

@@ -24,6 +24,7 @@ import { storageService } from './services/storageService';
 import { payrollApi } from '../../services/api/payrollApi';
 import { PayrollEmployee } from './types';
 import { useAuth } from '../../context/AuthContext';
+import { formatCurrency } from './utils/formatters';
 
 const PayrollReport: React.FC = () => {
   const { tenant } = useAuth();
@@ -171,15 +172,15 @@ const PayrollReport: React.FC = () => {
         <div className="bg-white p-4 sm:p-6 rounded-xl sm:rounded-2xl border border-slate-200 shadow-sm">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Monthly Payroll</p>
           <p className="text-lg sm:text-2xl font-black text-slate-900">
-            <span className="text-xs sm:text-base">PKR</span> {employees.reduce((sum, e) => sum + e.salary.basic, 0).toLocaleString()}
+            <span className="text-xs sm:text-base">PKR</span> {formatCurrency(employees.reduce((sum, e) => sum + e.salary.basic, 0))}
           </p>
         </div>
         <div className="bg-white p-4 sm:p-6 rounded-xl sm:rounded-2xl border border-slate-200 shadow-sm">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Avg. Basic Salary</p>
           <p className="text-lg sm:text-2xl font-black text-slate-900">
             <span className="text-xs sm:text-base">PKR</span> {employees.length > 0 
-              ? Math.round(employees.reduce((sum, e) => sum + e.salary.basic, 0) / employees.length).toLocaleString()
-              : 0
+              ? formatCurrency(employees.reduce((sum, e) => sum + e.salary.basic, 0) / employees.length)
+              : '0.00'
             }
           </p>
         </div>
@@ -201,7 +202,7 @@ const PayrollReport: React.FC = () => {
                     <Tooltip 
                       cursor={{ fill: '#f8fafc' }} 
                       contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', padding: '8px', fontSize: '12px' }}
-                      formatter={(value: number) => [`PKR ${value.toLocaleString()}`, 'Total Basic']}
+                      formatter={(value: number) => [`PKR ${formatCurrency(value)}`, 'Total Basic']}
                     />
                     <Bar dataKey="amount" fill="#4f46e5" radius={[8, 8, 0, 0]} barSize={40} />
                   </BarChart>
@@ -228,7 +229,7 @@ const PayrollReport: React.FC = () => {
                     </div>
                     <div className="text-right">
                       <span className="text-xs font-black text-slate-900">{item.value}%</span>
-                      <span className="text-[10px] text-slate-400 ml-1 sm:ml-2 hidden sm:inline">PKR {item.amount.toLocaleString()}</span>
+                      <span className="text-[10px] text-slate-400 ml-1 sm:ml-2 hidden sm:inline">PKR {formatCurrency(item.amount)}</span>
                     </div>
                   </div>
                 ))}
@@ -281,9 +282,9 @@ const PayrollReport: React.FC = () => {
                     {dept.count}
                   </span>
                 </div>
-                <p className="text-sm sm:text-lg font-black text-indigo-600">PKR {dept.amount.toLocaleString()}</p>
+                <p className="text-sm sm:text-lg font-black text-indigo-600">PKR {formatCurrency(dept.amount)}</p>
                 <p className="text-[10px] text-slate-400 mt-1 hidden sm:block">
-                  Avg: PKR {Math.round(dept.amount / dept.count).toLocaleString()}/emp
+                  Avg: PKR {formatCurrency(dept.amount / dept.count)}/emp
                 </p>
               </div>
             ))}

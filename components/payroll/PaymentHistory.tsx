@@ -19,6 +19,7 @@ import { payrollApi } from '../../services/api/payrollApi';
 import { PayrollRun, PayrollStatus } from './types';
 import { useAuth } from '../../context/AuthContext';
 import { usePayrollContext } from '../../context/PayrollContext';
+import { formatCurrency } from './utils/formatters';
 
 const PaymentHistory: React.FC = () => {
   const { tenant } = useAuth();
@@ -186,7 +187,7 @@ const PaymentHistory: React.FC = () => {
                 </div>
                 <div className="flex items-center justify-between pt-3 border-t border-slate-100">
                   <span className="text-xs text-slate-500">{run.employee_count} Employees</span>
-                  <span className="font-black text-slate-900 text-sm">PKR {run.total_amount.toLocaleString()}</span>
+                  <span className="font-black text-slate-900 text-sm">PKR {formatCurrency(run.total_amount)}</span>
                 </div>
               </div>
             ))
@@ -228,7 +229,7 @@ const PaymentHistory: React.FC = () => {
                       <span className="text-sm font-bold text-slate-700">{run.employee_count} Employees</span>
                     </td>
                     <td className="px-6 lg:px-8 py-5">
-                      <span className="font-black text-slate-900">PKR {run.total_amount.toLocaleString()}</span>
+                      <span className="font-black text-slate-900">PKR {formatCurrency(run.total_amount)}</span>
                     </td>
                     <td className="px-6 lg:px-8 py-5">
                       <span className="inline-flex items-center gap-1.5 text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg uppercase tracking-widest border border-emerald-100">
@@ -280,7 +281,7 @@ const PaymentHistory: React.FC = () => {
                 </div>
                 <div className="flex justify-between items-center pb-4 border-b border-white/10">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total Payout</span>
-                  <span className="text-2xl font-black">PKR {selectedBatch.total_amount.toLocaleString()}</span>
+                  <span className="text-2xl font-black">PKR {formatCurrency(selectedBatch.total_amount)}</span>
                 </div>
                 <div className="flex justify-between items-center pb-4 border-b border-white/10">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Employees Paid</span>
