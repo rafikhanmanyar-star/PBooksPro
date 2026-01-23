@@ -10,7 +10,12 @@ import {
     Contact,
     PlanAmenity,
     InstallmentPlanAmenity,
-    TransactionType
+    TransactionType,
+    ProjectAgreement,
+    ProjectAgreementStatus,
+    Invoice,
+    InvoiceStatus,
+    InvoiceType
 } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -878,6 +883,237 @@ const MarketingPage: React.FC = () => {
                 ? prev.filter(id => id !== amenityId)
                 : [...prev, amenityId]
         );
+    };
+
+    // Convert Installment Plan to Agreement
+    const handleConvertToAgreement = async (plan: InstallmentPlan) => {
+        try {
+            // Show initial confirmation
+            const confirmed = await showConfirm(
+                `This will convert the installment plan to an agreement:\n\n` +
+                `1. Add client as owner\n` +
+                `2. Update unit ownership\n` +
+                `3. Create agreement\n` +
+                `4. Generate invoices\n\n` +
+                `Continue?`
+            );
+            if (!confirmed) return;
+
+            // Progress tracking messages
+            const progressMessages: string[] = [];
+            const logProgress = (message: string) => {
+                progressMessages.push(`✓ ${message}`);
+                showToast(message);
+            };
+
+            // Step 1: Get the lead/client
+            logProgress('Getting client information...');
+            const client = state.contacts.find(c => c.id === plan.leadId);
+            if (!client) {
+                await showAlert('Client not found for this plan.');
+                return;
+            }
+
+            // Step 2: Add client to owner list if not already an owner
+            let ownerId = client.id;
+            if (client.type !== ContactType.OWNER && client.type !== ContactType.CLIENT) {
+                logProgress(`Adding ${client.name} to owner list...`);
+                const updatedClient: Contact = {
+                    ...client,
+                    type: ContactType.CLIENT,
+                    updatedAt: new Date().toISOString()
+                };
+                dispatch({ type: 'UPDATE_CONTACT', payload: updatedClient });
+                ownerId = updatedClient.id;
+                logProgress(`${client.name} added as owner/client`);
+            } else {
+                logProgress(`${client.name} is already an owner/client`);
+            }
+
+            // Step 3: Update unit with owner
+            logProgress('Updating unit ownership...');
+            const unit = state.units.find(u => u.id === plan.unitId);
+            if (!unit) {
+                await showAlert('Unit not found for this plan.');
+                return;
+            }
+
+            const updatedUnit: Unit = {
+                ...unit,
+                contactId: ownerId
+            };
+            dispatch({ type: 'UPDATE_UNIT', payload: updatedUnit });
+            logProgress(`Unit ${unit.name} updated with owner ${client.name}`);
+
+            // Step 4: Generate agreement number
+            logProgress('Generating agreement number...');
+            const agreementSettings = state.settings?.projectInvoiceSettings || {
+                prefix: 'AGR-',
+                nextNumber: 1,
+                padding: 5
+            };
+            
+            let maxNum = agreementSettings.nextNumber || 1;
+            state.projectAgreements.forEach(agr => {
+                if (agr.agreementNumber && agr.agreementNumber.startsWith(agreementSettings.prefix || 'AGR-')) {
+                    const numPart = parseInt(agr.agreementNumber.slice((agreementSettings.prefix || 'AGR-').length), 10);
+                    if (!isNaN(numPart) && numPart >= maxNum) maxNum = numPart + 1;
+                }
+            });
+            const agreementNumber = `${agreementSettings.prefix || 'AGR-'}${String(maxNum).padStart(agreementSettings.padding || 5, '0')}`;
+
+            // Step 5: Create agreement from installment plan (NO DISCOUNTS)
+            logProgress('Creating agreement...');
+            const netValue = plan.netValue + (plan.amenitiesTotal || 0);
+            const agreementId = `project_agreement_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            
+            const agreement: ProjectAgreement = {
+                id: agreementId,
+                agreementNumber,
+                clientId: ownerId,
+                projectId: plan.projectId,
+                unitIds: [plan.unitId],
+                listPrice: plan.listPrice,
+                customerDiscount: 0, // Do not add discounts
+                floorDiscount: 0,
+                lumpSumDiscount: 0,
+                miscDiscount: 0,
+                sellingPrice: netValue,
+                issueDate: new Date().toISOString().split('T')[0],
+                description: plan.description || `Converted from installment plan`,
+                status: ProjectAgreementStatus.ACTIVE,
+                installmentPlan: {
+                    durationYears: plan.durationYears,
+                    downPaymentPercentage: plan.downPaymentPercentage,
+                    frequency: plan.frequency
+                },
+                userId: state.currentUser?.id,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+
+            dispatch({ type: 'ADD_PROJECT_AGREEMENT', payload: agreement });
+            logProgress(`Agreement ${agreementNumber} created`);
+
+            // Step 6: Generate invoices
+            logProgress('Generating invoices...');
+            const invoiceSettings = state.settings?.projectInvoiceSettings || {
+                prefix: 'INV-',
+                nextNumber: 1,
+                padding: 5
+            };
+
+            let nextInvNum = invoiceSettings.nextNumber || 1;
+            state.invoices.forEach(inv => {
+                if (inv.invoiceNumber && inv.invoiceNumber.startsWith(invoiceSettings.prefix || 'INV-')) {
+                    const numPart = parseInt(inv.invoiceNumber.slice((invoiceSettings.prefix || 'INV-').length), 10);
+                    if (!isNaN(numPart) && numPart >= nextInvNum) nextInvNum = numPart + 1;
+                }
+            });
+
+            const invoices: Invoice[] = [];
+            const today = new Date().toISOString().split('T')[0];
+
+            // Calculate installment details
+            const downPaymentAmount = plan.downPaymentAmount;
+            const installmentAmount = plan.installmentAmount;
+            const totalInstallments = plan.totalInstallments;
+            const freqMonths = plan.frequency === 'Monthly' ? 1 : 
+                             plan.frequency === 'Quarterly' ? 3 : 
+                             plan.frequency === 'Half-Yearly' ? 6 : 12;
+
+            // 1. Down Payment Invoice
+            if (downPaymentAmount > 0) {
+                const downPaymentInvoice: Invoice = {
+                    id: `inv-gen-${Date.now()}-dp`,
+                    invoiceNumber: `${invoiceSettings.prefix || 'INV-'}${String(nextInvNum).padStart(invoiceSettings.padding || 5, '0')}`,
+                    contactId: ownerId,
+                    invoiceType: InvoiceType.INSTALLMENT,
+                    amount: downPaymentAmount,
+                    paidAmount: 0,
+                    status: InvoiceStatus.UNPAID,
+                    issueDate: today,
+                    dueDate: today,
+                    description: `Down Payment - ${agreement.description || ''}`,
+                    projectId: plan.projectId,
+                    unitId: plan.unitId,
+                    agreementId: agreementId
+                };
+                invoices.push(downPaymentInvoice);
+                nextInvNum++;
+            }
+
+            // 2. Installment Invoices
+            if (installmentAmount > 0) {
+                const baseDate = new Date();
+                
+                for (let i = 1; i <= totalInstallments; i++) {
+                    const targetDate = new Date(baseDate);
+                    targetDate.setMonth(baseDate.getMonth() + (i * freqMonths));
+                    
+                    const invNum = `${invoiceSettings.prefix || 'INV-'}${String(nextInvNum).padStart(invoiceSettings.padding || 5, '0')}`;
+                    const invDate = targetDate.toISOString().split('T')[0];
+                    
+                    const installmentInvoice: Invoice = {
+                        id: `inv-gen-${Date.now()}-${i}`,
+                        invoiceNumber: invNum,
+                        contactId: ownerId,
+                        invoiceType: InvoiceType.INSTALLMENT,
+                        amount: installmentAmount,
+                        paidAmount: 0,
+                        status: InvoiceStatus.UNPAID,
+                        issueDate: invDate,
+                        dueDate: invDate,
+                        description: `Installment ${i}/${totalInstallments} - ${agreement.description || ''}`,
+                        projectId: plan.projectId,
+                        unitId: plan.unitId,
+                        agreementId: agreementId
+                    };
+                    invoices.push(installmentInvoice);
+                    nextInvNum++;
+                }
+            }
+
+            // Add all invoices to state
+            invoices.forEach(inv => dispatch({ type: 'ADD_INVOICE', payload: inv }));
+            logProgress(`Generated ${invoices.length} invoices`);
+
+            // Step 7: Update installment plan status to 'Locked'
+            logProgress('Locking installment plan...');
+            const updatedPlan: InstallmentPlan = {
+                ...plan,
+                status: 'Locked',
+                updatedAt: new Date().toISOString()
+            };
+            dispatch({ type: 'UPDATE_INSTALLMENT_PLAN', payload: updatedPlan });
+            logProgress('Installment plan locked');
+
+            // Step 8: Update invoice settings
+            if (state.settings) {
+                const updatedSettings = {
+                    ...state.settings,
+                    projectInvoiceSettings: {
+                        ...invoiceSettings,
+                        nextNumber: nextInvNum
+                    }
+                };
+                dispatch({ type: 'UPDATE_SETTINGS', payload: updatedSettings });
+            }
+
+            // Final success message
+            await showAlert(
+                `Conversion completed successfully!\n\n` +
+                progressMessages.join('\n') + '\n\n' +
+                `Agreement: ${agreementNumber}\n` +
+                `Invoices: ${invoices.length} created\n` +
+                `Total Amount: ${netValue.toLocaleString()}`
+            );
+
+            resetForm();
+        } catch (error) {
+            console.error('Error converting plan to agreement:', error);
+            await showAlert(`Failed to convert plan to agreement: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
     };
 
     // Filtered Plans with search - showing only latest version of each plan
@@ -1888,8 +2124,7 @@ const MarketingPage: React.FC = () => {
                                         return (
                                             <Card 
                                                 key={plan.id} 
-                                                className={`p-4 hover:shadow-lg transition-all cursor-pointer border-l-4 ${statusMeta.border}`}
-                                                onClick={() => handleEdit(plan)}
+                                                className={`p-4 hover:shadow-lg transition-all border-l-4 ${statusMeta.border}`}
                                             >
                                                 <div className="flex justify-between items-start">
                                                     <div>
@@ -1905,40 +2140,44 @@ const MarketingPage: React.FC = () => {
                                                             </div>
                                                         )}
                                                         <p className="text-xs text-slate-500">{project?.name} - {unit?.name}</p>
-                                                        <p className="text-[10px] text-slate-500 mt-1 italic">
-                                                            Created by: {(() => {
-                                                                const uid = plan.userId || plan.approvalRequestedById;
-                                                                if (!uid) return 'System';
-                                                                if (uid === state.currentUser?.id) return 'You';
-                                                                const user = usersForApproval.find(u => u.id === uid);
-                                                                return user?.name || user?.username || 'Unknown';
-                                                            })()}
-                                                        </p>
-                                                        {plan.status === 'Pending Approval' && plan.approvalRequestedToId && (
-                                                            <p className="text-[10px] text-blue-600">
-                                                                {(() => {
-                                                                    if (plan.approvalRequestedToId === state.currentUser?.id) return 'Awaiting: You';
-                                                                    const approver = usersForApproval.find(u => u.id === plan.approvalRequestedToId);
-                                                                    return `Awaiting: ${approver?.name || approver?.username || 'Unknown Approver'}`;
+                                                        
+                                                        <div className="mt-2 space-y-1">
+                                                            <p className="text-[10px] text-slate-500 italic">
+                                                                Created by: {(() => {
+                                                                    const uid = plan.userId || plan.approvalRequestedById;
+                                                                    if (!uid) return 'System';
+                                                                    if (uid === state.currentUser?.id) return 'You';
+                                                                    const user = usersForApproval.find(u => u.id === uid);
+                                                                    return user?.name || user?.username || 'Unknown';
                                                                 })()}
                                                             </p>
-                                                        )}
+                                                            {plan.status === 'Pending Approval' && plan.approvalRequestedToId && (
+                                                                <p className="text-[10px] text-blue-600">
+                                                                    {(() => {
+                                                                        if (plan.approvalRequestedToId === state.currentUser?.id) return 'Awaiting: You';
+                                                                        const approver = usersForApproval.find(u => u.id === plan.approvalRequestedToId);
+                                                                        return `Awaiting: ${approver?.name || approver?.username || 'Unknown Approver'}`;
+                                                                    })()}
+                                                                </p>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex items-center gap-1">
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 setHistoryRootId(plan.rootId || plan.id);
                                                                 setShowHistoryDrawer(true);
                                                             }}
-                                                            className="text-slate-400 hover:text-indigo-600 p-1 transition-colors"
+                                                            className="text-slate-400 hover:text-indigo-600 p-1.5 hover:bg-slate-50 rounded-lg transition-all"
                                                             title="View Plan History"
                                                         >
-                                                            <div className="w-4 h-4">{ICONS.repeat}</div>
+                                                            <div className="w-4 h-4">{ICONS.history}</div>
                                                         </button>
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); handleDelete(plan.id); }}
-                                                            className="text-slate-400 hover:text-rose-500 p-1"
+                                                            className="text-slate-400 hover:text-rose-500 p-1.5 hover:bg-slate-50 rounded-lg transition-all"
+                                                            title="Delete Plan"
                                                         >
                                                             <div className="w-4 h-4">{ICONS.trash}</div>
                                                         </button>
@@ -1946,44 +2185,53 @@ const MarketingPage: React.FC = () => {
                                                 </div>
                                                 
                                                 <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
-                                                    <div className="bg-slate-50 p-2 rounded">
+                                                    <div className="bg-slate-50 p-2 rounded border border-slate-100">
                                                         <p className="text-[10px] text-slate-500 uppercase font-bold">Net Value</p>
                                                         <p className="font-bold text-indigo-700">Rs. {plan.netValue?.toLocaleString()}</p>
                                                     </div>
-                                                    <div className="bg-slate-50 p-2 rounded">
+                                                    <div className="bg-slate-50 p-2 rounded border border-slate-100">
                                                         <p className="text-[10px] text-slate-500 uppercase font-bold">Monthly</p>
                                                         <p className="font-bold text-slate-800">Rs. {plan.installmentAmount?.toLocaleString()}</p>
                                                     </div>
                                                 </div>
 
+                                                <div className="mt-3 flex items-center justify-between px-1">
+                                                    <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium">
+                                                        <span className="bg-slate-100 px-1.5 py-0.5 rounded">{plan.durationYears} Years</span>
+                                                        <span className="bg-slate-100 px-1.5 py-0.5 rounded">{plan.frequency}</span>
+                                                    </div>
+                                                </div>
+                                                
                                                 {/* Show amenities if any */}
                                                 {plan.selectedAmenities && plan.selectedAmenities.length > 0 && (
-                                                    <div className="mt-2 flex flex-wrap gap-1">
+                                                    <div className="mt-3 flex flex-wrap gap-1">
                                                         {plan.selectedAmenities.map(a => (
-                                                            <span key={a.amenityId} className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">
+                                                            <span key={a.amenityId} className="text-[9px] bg-purple-50 text-purple-600 border border-purple-100 px-1.5 py-0.5 rounded-md font-medium">
                                                                 {a.amenityName}
                                                             </span>
                                                         ))}
                                                     </div>
                                                 )}
                                                 
-                                                <div className="mt-4 flex justify-between items-center">
-                                                    <div className="text-xs text-slate-500">
-                                                        <span>{plan.durationYears} Years | {plan.frequency}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        {isConvertible && (
-                                                            <Button 
-                                                                variant="primary" 
-                                                                size="sm" 
-                                                                className="py-1 px-2 text-[10px] bg-indigo-600 hover:bg-indigo-700"
-                                                                onClick={(e) => { e.stopPropagation(); showToast('Agreement conversion logic will be developed later'); }}
-                                                            >
-                                                                Convert to Agreement
-                                                            </Button>
-                                                        )}
-                                                        <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium text-[10px]">View Detail</span>
-                                                    </div>
+                                                <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap gap-2 items-center justify-end">
+                                                    {isConvertible && (
+                                                        <Button 
+                                                            variant="primary" 
+                                                            size="sm" 
+                                                            className="py-1.5 px-3 text-[10px] bg-indigo-600 hover:bg-indigo-700 shadow-sm"
+                                                            onClick={(e) => { e.stopPropagation(); handleConvertToAgreement(plan); }}
+                                                        >
+                                                            Convert to Agreement
+                                                        </Button>
+                                                    )}
+                                                    <Button
+                                                        variant="secondary"
+                                                        size="sm"
+                                                        className="py-1.5 px-3 text-[10px] font-bold"
+                                                        onClick={(e) => { e.stopPropagation(); handleEdit(plan); }}
+                                                    >
+                                                        Edit Plan
+                                                    </Button>
                                                 </div>
                                             </Card>
                                         );
