@@ -106,9 +106,9 @@ router.get('/', async (req: TenantRequest, res) => {
                u2.name as assigned_to_name,
                u3.name as created_by_name
         FROM tasks t
-        LEFT JOIN users u1 ON t.assigned_by_id = u1.id
-        LEFT JOIN users u2 ON t.assigned_to_id = u2.id
-        LEFT JOIN users u3 ON t.created_by_id = u3.id
+        LEFT JOIN users u1 ON t.assigned_by_id = u1.id AND u1.tenant_id = $1
+        LEFT JOIN users u2 ON t.assigned_to_id = u2.id AND u2.tenant_id = $1
+        LEFT JOIN users u3 ON t.created_by_id = u3.id AND u3.tenant_id = $1
         WHERE t.tenant_id = $1
         ORDER BY t.created_at DESC
       `;
@@ -120,9 +120,9 @@ router.get('/', async (req: TenantRequest, res) => {
                u2.name as assigned_to_name,
                u3.name as created_by_name
         FROM tasks t
-        LEFT JOIN users u1 ON t.assigned_by_id = u1.id
-        LEFT JOIN users u2 ON t.assigned_to_id = u2.id
-        LEFT JOIN users u3 ON t.created_by_id = u3.id
+        LEFT JOIN users u1 ON t.assigned_by_id = u1.id AND u1.tenant_id = $1
+        LEFT JOIN users u2 ON t.assigned_to_id = u2.id AND u2.tenant_id = $1
+        LEFT JOIN users u3 ON t.created_by_id = u3.id AND u3.tenant_id = $1
         WHERE t.tenant_id = $1 
           AND (t.type = 'Personal' AND t.created_by_id = $2 OR t.type = 'Assigned' AND t.assigned_to_id = $2)
         ORDER BY t.created_at DESC
@@ -155,9 +155,9 @@ router.get('/:id', async (req: TenantRequest, res) => {
               u2.name as assigned_to_name,
               u3.name as created_by_name
        FROM tasks t
-       LEFT JOIN users u1 ON t.assigned_by_id = u1.id
-       LEFT JOIN users u2 ON t.assigned_to_id = u2.id
-       LEFT JOIN users u3 ON t.created_by_id = u3.id
+       LEFT JOIN users u1 ON t.assigned_by_id = u1.id AND u1.tenant_id = $2
+       LEFT JOIN users u2 ON t.assigned_to_id = u2.id AND u2.tenant_id = $2
+       LEFT JOIN users u3 ON t.created_by_id = u3.id AND u3.tenant_id = $2
        WHERE t.id = $1 AND t.tenant_id = $2`,
       [taskId, tenantId]
     );
@@ -182,7 +182,7 @@ router.get('/:id', async (req: TenantRequest, res) => {
     const updates = await db.query(
       `SELECT tu.*, u.name as user_name
        FROM task_updates tu
-       LEFT JOIN users u ON tu.user_id = u.id
+       LEFT JOIN users u ON tu.user_id = u.id AND u.tenant_id = $2
        WHERE tu.task_id = $1 AND tu.tenant_id = $2
        ORDER BY tu.created_at DESC`,
       [taskId, tenantId]
@@ -317,11 +317,11 @@ router.post('/', async (req: TenantRequest, res) => {
               u2.name as assigned_to_name,
               u3.name as created_by_name
        FROM tasks t
-       LEFT JOIN users u1 ON t.assigned_by_id = u1.id
-       LEFT JOIN users u2 ON t.assigned_to_id = u2.id
-       LEFT JOIN users u3 ON t.created_by_id = u3.id
-       WHERE t.id = $1`,
-      [taskId]
+       LEFT JOIN users u1 ON t.assigned_by_id = u1.id AND u1.tenant_id = $2
+       LEFT JOIN users u2 ON t.assigned_to_id = u2.id AND u2.tenant_id = $2
+       LEFT JOIN users u3 ON t.created_by_id = u3.id AND u3.tenant_id = $2
+       WHERE t.id = $1 AND t.tenant_id = $2`,
+      [taskId, tenantId]
     );
 
     res.status(201).json(createdTasks[0]);
@@ -472,11 +472,11 @@ router.put('/:id', async (req: TenantRequest, res) => {
               u2.name as assigned_to_name,
               u3.name as created_by_name
        FROM tasks t
-       LEFT JOIN users u1 ON t.assigned_by_id = u1.id
-       LEFT JOIN users u2 ON t.assigned_to_id = u2.id
-       LEFT JOIN users u3 ON t.created_by_id = u3.id
-       WHERE t.id = $1`,
-      [taskId]
+       LEFT JOIN users u1 ON t.assigned_by_id = u1.id AND u1.tenant_id = $2
+       LEFT JOIN users u2 ON t.assigned_to_id = u2.id AND u2.tenant_id = $2
+       LEFT JOIN users u3 ON t.created_by_id = u3.id AND u3.tenant_id = $2
+       WHERE t.id = $1 AND t.tenant_id = $2`,
+      [taskId, tenantId]
     );
 
     res.json(updatedTasks[0]);
@@ -581,11 +581,11 @@ router.post('/:id/check-in', async (req: TenantRequest, res) => {
               u2.name as assigned_to_name,
               u3.name as created_by_name
        FROM tasks t
-       LEFT JOIN users u1 ON t.assigned_by_id = u1.id
-       LEFT JOIN users u2 ON t.assigned_to_id = u2.id
-       LEFT JOIN users u3 ON t.created_by_id = u3.id
-       WHERE t.id = $1`,
-      [taskId]
+       LEFT JOIN users u1 ON t.assigned_by_id = u1.id AND u1.tenant_id = $2
+       LEFT JOIN users u2 ON t.assigned_to_id = u2.id AND u2.tenant_id = $2
+       LEFT JOIN users u3 ON t.created_by_id = u3.id AND u3.tenant_id = $2
+       WHERE t.id = $1 AND t.tenant_id = $2`,
+      [taskId, tenantId]
     );
 
     res.json(updatedTasks[0]);
@@ -801,7 +801,7 @@ router.get('/performance/leaderboard', adminOnlyMiddleware(), async (req: Tenant
     const scores = await db.query(
       `SELECT tps.*, u.name as user_name, u.username
        FROM task_performance_scores tps
-       JOIN users u ON tps.user_id = u.id
+       JOIN users u ON tps.user_id = u.id AND u.tenant_id = $1
        WHERE tps.tenant_id = $1
          AND tps.period_start = $2::date
          AND tps.period_end = $3::date

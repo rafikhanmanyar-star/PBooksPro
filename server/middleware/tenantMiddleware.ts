@@ -113,6 +113,44 @@ export function tenantMiddleware(pool: Pool) {
         });
       }
 
+      // CRITICAL SECURITY CHECK: Verify user actually belongs to the tenant from token
+      // This prevents users from accessing data from other tenants by manipulating tokens
+      try {
+        const { getDatabaseService } = await import('../services/databaseService.js');
+        const db = getDatabaseService();
+        
+        const userCheck = await db.query(
+          'SELECT id, tenant_id FROM users WHERE id = $1',
+          [decoded.userId]
+        );
+        
+        if (userCheck.length === 0) {
+          console.error(`❌ Security: User ${decoded.userId} not found in database`);
+          return res.status(401).json({ 
+            error: 'Invalid token',
+            message: 'User associated with token does not exist. Please login again.',
+            code: 'USER_NOT_FOUND'
+          });
+        }
+        
+        const userTenantId = userCheck[0].tenant_id;
+        if (userTenantId !== decoded.tenantId) {
+          console.error(`❌ SECURITY VIOLATION: User ${decoded.userId} belongs to tenant ${userTenantId} but token claims tenant ${decoded.tenantId}`);
+          return res.status(403).json({ 
+            error: 'Forbidden',
+            message: 'User does not belong to the organization specified in token. Please login again.',
+            code: 'TENANT_MISMATCH'
+          });
+        }
+      } catch (userCheckError) {
+        console.error('Error verifying user-tenant relationship:', userCheckError);
+        return res.status(500).json({
+          error: 'Authentication failed',
+          message: 'Could not verify user-tenant relationship. Please try again.',
+          code: 'USER_TENANT_CHECK_FAILED'
+        });
+      }
+
       // Verify session is still valid (blocking).
       // We enforce single-session-per-user-per-tenant by requiring the token to exist in user_sessions.
       // When the same user logs in again, the session row is replaced and old tokens stop working.
