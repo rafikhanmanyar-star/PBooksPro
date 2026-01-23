@@ -227,6 +227,19 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
   const totalAllocation = employee.projects.reduce((a, b) => a + b.percentage, 0);
 
   const startEditing = () => {
+    // Format joining_date for date input (YYYY-MM-DD format)
+    let formattedJoiningDate = '';
+    if (employee.joining_date) {
+      try {
+        const date = new Date(employee.joining_date);
+        if (!isNaN(date.getTime())) {
+          formattedJoiningDate = date.toISOString().split('T')[0];
+        }
+      } catch (error) {
+        console.warn('Error formatting joining date:', error);
+      }
+    }
+    
     setEditFormData({
       name: employee.name,
       email: employee.email,
@@ -235,7 +248,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
       designation: employee.designation,
       department: employee.department,
       grade: employee.grade,
-      joining_date: employee.joining_date,
+      joining_date: formattedJoiningDate,
       photo: employee.photo,
       salary: { ...employee.salary }
     });
@@ -377,14 +390,6 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
                   className="hidden sm:block px-5 py-2.5 bg-red-600 text-white rounded-xl shadow-lg shadow-red-200 hover:bg-red-700 transition-colors font-bold text-sm"
                 >
                   Offboard
-                </button>
-              )}
-              {(employee.status === EmploymentStatus.TERMINATED || employee.status === EmploymentStatus.RESIGNED) && (
-                <button 
-                  onClick={() => setShowDeleteConfirm(true)}
-                  className="hidden sm:flex px-5 py-2.5 bg-red-600 text-white rounded-xl shadow-lg shadow-red-200 hover:bg-red-700 transition-colors font-bold text-sm items-center gap-2"
-                >
-                  <Trash2 size={16} /> Delete Profile
                 </button>
               )}
             </>

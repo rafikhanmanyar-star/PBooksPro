@@ -30,10 +30,15 @@ const SalaryConfigModal: React.FC<SalaryConfigModalProps> = ({ isOpen, onClose, 
 
   useEffect(() => {
     if (initialData) {
+      // Convert amount to number if string (handles database DECIMAL types)
+      const numericAmount = typeof initialData.amount === 'string' 
+        ? parseFloat(initialData.amount) 
+        : initialData.amount;
+        
       setFormData({
         name: initialData.name || '',
         is_percentage: initialData.is_percentage || false,
-        amount: initialData.amount || 0,
+        amount: numericAmount || 0,
         type: initialData.is_percentage ? 'Percentage' : 'Fixed'
       });
     } else {

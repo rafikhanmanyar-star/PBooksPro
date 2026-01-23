@@ -67,12 +67,13 @@ const PayrollReport: React.FC = () => {
   const deptData = useMemo(() => {
     return employees.reduce((acc: any[], emp) => {
       const dept = acc.find(d => d.name === emp.department);
-      const amount = emp.salary.basic;
+      // Convert to number if string (handles database DECIMAL types)
+      const amount = typeof emp.salary.basic === 'string' ? parseFloat(emp.salary.basic) : emp.salary.basic;
       if (dept) {
-        dept.amount += amount;
+        dept.amount += amount || 0;
         dept.count += 1;
       } else {
-        acc.push({ name: emp.department, amount, count: 1 });
+        acc.push({ name: emp.department, amount: amount || 0, count: 1 });
       }
       return acc;
     }, []);
@@ -85,12 +86,17 @@ const PayrollReport: React.FC = () => {
     let totalDeductions = 0;
 
     employees.forEach(emp => {
-      totalBasic += emp.salary.basic;
+      // Convert to number if string (handles database DECIMAL types)
+      const basicSalary = typeof emp.salary.basic === 'string' ? parseFloat(emp.salary.basic) : emp.salary.basic;
+      totalBasic += basicSalary || 0;
+      
       emp.salary.allowances.forEach(a => {
-        totalAllowances += a.is_percentage ? (emp.salary.basic * a.amount) / 100 : a.amount;
+        const amount = typeof a.amount === 'string' ? parseFloat(a.amount) : a.amount;
+        totalAllowances += a.is_percentage ? (basicSalary * amount) / 100 : amount;
       });
       emp.salary.deductions.forEach(d => {
-        totalDeductions += d.is_percentage ? (emp.salary.basic * d.amount) / 100 : d.amount;
+        const amount = typeof d.amount === 'string' ? parseFloat(d.amount) : d.amount;
+        totalDeductions += d.is_percentage ? (basicSalary * amount) / 100 : amount;
       });
     });
 

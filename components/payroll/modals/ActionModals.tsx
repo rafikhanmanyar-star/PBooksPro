@@ -29,7 +29,8 @@ export const ActionModal: React.FC<ActionModalProps> = ({ isOpen, onClose, emplo
     designation: employee.designation,
     department: employee.department,
     grade: employee.grade,
-    basicSalary: employee.salary.basic,
+    // Convert to number if string (handles database DECIMAL types)
+    basicSalary: typeof employee.salary.basic === 'string' ? parseFloat(employee.salary.basic) : employee.salary.basic,
     effectiveDate: new Date().toISOString().split('T')[0],
     reason: '',
   });

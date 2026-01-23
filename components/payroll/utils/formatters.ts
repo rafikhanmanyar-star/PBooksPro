@@ -55,8 +55,17 @@ export const formatDateLong = (dateString: string | Date | null | undefined): st
  * @param value - Number to round
  * @returns Rounded number
  */
-export const roundToTwo = (value: number): number => {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+export const roundToTwo = (value: number | string | null | undefined): number => {
+  // Handle null/undefined
+  if (value === null || value === undefined) return 0;
+  
+  // Convert to number if it's a string (handles database DECIMAL types)
+  const numericValue = typeof value === 'string' ? parseFloat(value) : value;
+  
+  // Check if it's a valid number
+  if (isNaN(numericValue)) return 0;
+  
+  return Math.round((numericValue + Number.EPSILON) * 100) / 100;
 };
 
 /**
@@ -65,11 +74,17 @@ export const roundToTwo = (value: number): number => {
  * @param includeSymbol - Whether to include "PKR" symbol (default: false)
  * @returns Formatted amount string
  */
-export const formatCurrency = (amount: number | null | undefined, includeSymbol: boolean = false): string => {
+export const formatCurrency = (amount: number | string | null | undefined, includeSymbol: boolean = false): string => {
   if (amount === null || amount === undefined) return '—';
   
+  // Convert to number if it's a string (handles database DECIMAL types)
+  const numericAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+  
+  // Check if it's a valid number
+  if (isNaN(numericAmount)) return '—';
+  
   // Round to 2 decimal places
-  const rounded = roundToTwo(amount);
+  const rounded = roundToTwo(numericAmount);
   
   // Format with commas and 2 decimal places
   const formatted = rounded.toLocaleString('en-US', {
@@ -105,7 +120,18 @@ export const formatCurrencyCompact = (amount: number | null | undefined): string
  * @param isPercentage - Whether amount is a percentage
  * @returns Calculated and rounded amount
  */
-export const calculateAmount = (basic: number, amount: number, isPercentage: boolean): number => {
-  const calculated = isPercentage ? (basic * amount) / 100 : amount;
+export const calculateAmount = (
+  basic: number | string, 
+  amount: number | string, 
+  isPercentage: boolean
+): number => {
+  // Convert to numbers if strings (handles database DECIMAL types)
+  const numericBasic = typeof basic === 'string' ? parseFloat(basic) : basic;
+  const numericAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+  
+  // Check for valid numbers
+  if (isNaN(numericBasic) || isNaN(numericAmount)) return 0;
+  
+  const calculated = isPercentage ? (numericBasic * numericAmount) / 100 : numericAmount;
   return roundToTwo(calculated);
 };

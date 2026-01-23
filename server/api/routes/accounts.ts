@@ -25,7 +25,21 @@ router.get('/', async (req: TenantRequest, res) => {
       'SELECT * FROM accounts WHERE tenant_id = $1 ORDER BY name',
       [req.tenantId]
     );
-    res.json(accounts);
+    
+    // Transform snake_case column names to camelCase and ensure balance is a number
+    const transformedAccounts = accounts.map((account: any) => ({
+      id: account.id,
+      name: account.name,
+      type: account.type,
+      balance: parseFloat(account.balance) || 0,
+      isPermanent: account.is_permanent || false,
+      description: account.description || null,
+      parentAccountId: account.parent_account_id || null,
+      createdAt: account.created_at,
+      updatedAt: account.updated_at
+    }));
+    
+    res.json(transformedAccounts);
   } catch (error) {
     console.error('Error fetching accounts:', error);
     res.status(500).json({ error: 'Failed to fetch accounts' });
@@ -112,20 +126,34 @@ router.post('/', async (req: TenantRequest, res) => {
       return res.status(500).json({ error: 'Failed to create/update account' });
     }
     
-    console.log('✅ POST /accounts - Account saved successfully:', {
+    // Transform snake_case to camelCase for response
+    const transformedResult = {
       id: result.id,
       name: result.name,
+      type: result.type,
+      balance: parseFloat(result.balance) || 0,
+      isPermanent: result.is_permanent || false,
+      description: result.description || null,
+      parentAccountId: result.parent_account_id || null,
+      createdAt: result.created_at,
+      updatedAt: result.updated_at
+    };
+    
+    console.log('✅ POST /accounts - Account saved successfully:', {
+      id: transformedResult.id,
+      name: transformedResult.name,
+      balance: transformedResult.balance,
       tenantId: req.tenantId
     });
     
     // Emit WebSocket event for real-time sync
     emitToTenant(req.tenantId!, isUpdate ? WS_EVENTS.ACCOUNT_UPDATED : WS_EVENTS.ACCOUNT_CREATED, {
-      account: result,
+      account: transformedResult,
       userId: req.user?.userId,
       username: req.user?.username,
     });
 
-    res.status(201).json(result);
+    res.status(201).json(transformedResult);
   } catch (error: any) {
     console.error('❌ POST /accounts - Error:', {
       error: error,
@@ -175,13 +203,26 @@ router.put('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Account not found' });
     }
     
+    // Transform snake_case to camelCase for response
+    const transformedResult = {
+      id: result[0].id,
+      name: result[0].name,
+      type: result[0].type,
+      balance: parseFloat(result[0].balance) || 0,
+      isPermanent: result[0].is_permanent || false,
+      description: result[0].description || null,
+      parentAccountId: result[0].parent_account_id || null,
+      createdAt: result[0].created_at,
+      updatedAt: result[0].updated_at
+    };
+    
     emitToTenant(req.tenantId!, WS_EVENTS.ACCOUNT_UPDATED, {
-      account: result[0],
+      account: transformedResult,
       userId: req.user?.userId,
       username: req.user?.username,
     });
-
-    res.json(result[0]);
+    
+    res.json(transformedResult);
   } catch (error) {
     console.error('Error updating account:', error);
     res.status(500).json({ error: 'Failed to update account' });
