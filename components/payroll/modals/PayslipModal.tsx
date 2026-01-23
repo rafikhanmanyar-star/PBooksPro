@@ -52,11 +52,20 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
           apiClient.get<Project[]>('/projects')
         ]);
         
+        console.log('🔍 All accounts loaded:', accountsData);
+        
         // Filter to Bank and Cash accounts for salary payments
         // These are the same accounts from Settings > Chart of Accounts
+        // Using case-insensitive comparison and checking both enum value and string
         const paymentAccounts = (accountsData || [])
-          .filter(a => a.type === AccountType.BANK || a.type === AccountType.CASH)
+          .filter(a => {
+            const type = a.type?.toLowerCase();
+            console.log(`Account: ${a.name}, Type: ${a.type}, Matches: ${type === 'bank' || type === 'cash'}`);
+            return type === 'bank' || type === 'cash';
+          })
           .sort((a, b) => b.balance - a.balance); // Sort by balance (highest first)
+        
+        console.log('✅ Filtered payment accounts:', paymentAccounts);
         setAccounts(paymentAccounts);
         // Filter to only expense categories
         const expenseCategories = (categoriesData || []).filter(c => c.type === TransactionType.EXPENSE);
@@ -456,21 +465,39 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                       setIsPaying(true);
                       setPaymentError(null);
                       
-                      const result = await payrollApi.payPayslip(payslipData.id, {
+                      console.log('💰 Processing salary payment:', {
+                        payslipId: payslipData.id,
                         accountId: selectedAccountId,
-                        categoryId: selectedCategoryId || undefined,
-                        projectId: selectedProjectId || undefined,
-                        description: `Salary payment for ${employee.name} - ${run.month} ${run.year}`
+                        categoryId: selectedCategoryId,
+                        projectId: selectedProjectId,
+                        amount: netPay
                       });
                       
-                      setIsPaying(false);
-                      
-                      if (result.success) {
-                        setIsPaid(true);
-                        setShowPaymentForm(false);
-                        if (onPaymentComplete) onPaymentComplete();
-                      } else {
-                        setPaymentError(result.error || 'Failed to process payment');
+                      try {
+                        const result = await payrollApi.payPayslip(payslipData.id, {
+                          accountId: selectedAccountId,
+                          categoryId: selectedCategoryId || undefined,
+                          projectId: selectedProjectId || undefined,
+                          description: `Salary payment for ${employee.name} - ${run.month} ${run.year}`
+                        });
+                        
+                        console.log('✅ Payment result:', result);
+                        
+                        setIsPaying(false);
+                        
+                        if (result.success) {
+                          setIsPaid(true);
+                          setShowPaymentForm(false);
+                          if (onPaymentComplete) onPaymentComplete();
+                        } else {
+                          const errorMsg = result.error || 'Failed to process payment';
+                          console.error('❌ Payment failed:', errorMsg);
+                          setPaymentError(errorMsg);
+                        }
+                      } catch (error: any) {
+                        console.error('❌ Payment exception:', error);
+                        setIsPaying(false);
+                        setPaymentError(error.message || 'An unexpected error occurred');
                       }
                     }}
                     disabled={isPaying || !selectedAccountId}

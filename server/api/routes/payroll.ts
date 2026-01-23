@@ -884,6 +884,8 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     const userId = req.userId;
     const { id } = req.params;
 
+    console.log('💰 Payslip payment request:', { payslipId: id, tenantId, userId, body: req.body });
+
     if (!tenantId || !userId) {
       return res.status(400).json({ error: 'Authentication required' });
     }
@@ -893,6 +895,20 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     if (!accountId) {
       return res.status(400).json({ error: 'Account ID is required' });
     }
+
+    // Verify account exists and belongs to tenant
+    const accountCheck = await getDb().query(
+      'SELECT id, name, type, balance FROM accounts WHERE id = $1 AND tenant_id = $2',
+      [accountId, tenantId]
+    );
+
+    if (accountCheck.length === 0) {
+      console.error('❌ Account not found:', { accountId, tenantId });
+      return res.status(404).json({ error: 'Payment account not found' });
+    }
+
+    const account = accountCheck[0];
+    console.log('✅ Account verified:', { id: account.id, name: account.name, type: account.type, balance: account.balance });
 
     // System category ID for Salary Expenses - used by default for salary payments
     const SALARY_EXPENSES_CATEGORY_ID = 'sys-cat-sal-exp';
@@ -910,10 +926,17 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     );
 
     if (payslipResult.length === 0) {
+      console.error('❌ Payslip not found:', { payslipId: id, tenantId });
       return res.status(404).json({ error: 'Payslip not found' });
     }
 
     const payslip = payslipResult[0];
+    console.log('✅ Payslip found:', { 
+      id: payslip.id, 
+      employee: payslip.employee_name, 
+      netPay: payslip.net_pay,
+      isPaid: payslip.is_paid 
+    });
 
     if (payslip.is_paid) {
       return res.status(400).json({ error: 'Payslip is already paid' });
@@ -934,6 +957,14 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
 
     const txnDescription = description || `Salary payment for ${payslip.employee_name} - ${payslip.month} ${payslip.year}`;
 
+    console.log('💳 Creating transaction:', {
+      type: 'Expense',
+      amount: payslip.net_pay,
+      accountId,
+      categoryId: effectiveCategoryId,
+      projectId: effectiveProjectId
+    });
+
     // Create expense transaction for salary payment
     const transactionResult = await getDb().query(
       `INSERT INTO transactions 
@@ -944,12 +975,14 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     );
 
     const transaction = transactionResult[0];
+    console.log('✅ Transaction created:', transaction.id);
 
     // Update account balance
     await getDb().query(
       `UPDATE accounts SET balance = balance - $1 WHERE id = $2 AND tenant_id = $3`,
       [payslip.net_pay, accountId, tenantId]
     );
+    console.log('✅ Account balance updated');
 
     // Mark payslip as paid
     const updateResult = await getDb().query(
@@ -961,6 +994,7 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
        RETURNING *`,
       [transaction.id, id, tenantId]
     );
+    console.log('✅ Payslip marked as paid');
 
     // Emit WebSocket event
     emitToTenant(tenantId, 'payslip_paid', { 
@@ -969,14 +1003,34 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
       employeeId: payslip.employee_id 
     });
 
+    console.log('✅ Payment completed successfully');
     res.json({
       success: true,
       payslip: updateResult[0],
       transaction: transaction
     });
-  } catch (error) {
-    console.error('Error paying payslip:', error);
-    res.status(500).json({ error: 'Failed to pay payslip' });
+  } catch (error: any) {
+    console.error('❌ Error paying payslip:', error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
+    
+    // Provide more specific error messages
+    let errorMessage = 'Failed to pay payslip';
+    if (error.code === '23503') {
+      errorMessage = 'Invalid account, category, or project selected';
+    } else if (error.code === '23505') {
+      errorMessage = 'Duplicate transaction detected';
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    res.status(500).json({ 
+      error: errorMessage,
+      details: error.message 
+    });
   }
 });
 
