@@ -29,8 +29,19 @@ Plans save to cloud but disappear from screen
 **Tell users to run this command in browser console (F12):**
 
 ```javascript
-localStorage.removeItem('finance_db'); location.reload();
+(async function() {
+    localStorage.removeItem('finance_db');
+    if (navigator.storage && navigator.storage.getDirectory) {
+        try {
+            const root = await navigator.storage.getDirectory();
+            await root.removeEntry('finance_db.sqlite').catch(() => {});
+        } catch (e) {}
+    }
+    setTimeout(() => location.reload(), 1000);
+})();
 ```
+
+**IMPORTANT:** This clears BOTH localStorage AND OPFS storage!
 
 **What this does:**
 - ✅ Clears local database

@@ -13,12 +13,21 @@
 **Quick Fix (30 seconds):**
 
 1. Open browser console (Press F12)
-2. Copy and paste this command:
+2. Copy and paste this ENTIRE command:
    ```javascript
-   localStorage.removeItem('finance_db'); location.reload();
+   (async function() {
+       localStorage.removeItem('finance_db');
+       if (navigator.storage && navigator.storage.getDirectory) {
+           try {
+               const root = await navigator.storage.getDirectory();
+               await root.removeEntry('finance_db.sqlite').catch(() => {});
+           } catch (e) {}
+       }
+       setTimeout(() => location.reload(), 1000);
+   })();
    ```
 3. Press Enter
-4. Wait for page to reload
+4. Wait for page to reload (happens automatically after 1 second)
 5. Log in again
 
 **What this does:**

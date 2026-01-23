@@ -34,7 +34,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     } | null>(null);
     
     // Get user name - prefer AuthContext user (cloud auth) over AppContext currentUser (local)
-    const userName = user?.name || currentUser?.name || 'User';
+    // Fallback order: name -> username -> 'User'
+    const userName = user?.name || currentUser?.name || user?.username || currentUser?.username || 'User';
     const userRole = user?.role || currentUser?.role || '';
     const organizationName = tenant?.companyName || tenant?.name || '';
     const currentUserId = user?.id || currentUser?.id || '';

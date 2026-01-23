@@ -13,11 +13,25 @@ If you create a plan and it disappears from your screen (but reappears when you 
 - **Mac:** Press `Cmd + Option + J`
 
 ### Step 2: Run This Command
-Copy and paste this into the console:
+Copy and paste this ENTIRE code block into the console:
 
 ```javascript
-localStorage.removeItem('finance_db'); location.reload();
+(async function() {
+    console.log('🔧 Clearing database...');
+    localStorage.removeItem('finance_db');
+    if (navigator.storage && navigator.storage.getDirectory) {
+        try {
+            const root = await navigator.storage.getDirectory();
+            await root.removeEntry('finance_db.sqlite').catch(() => {});
+            console.log('✅ OPFS cleared');
+        } catch (e) {}
+    }
+    console.log('🔄 Reloading...');
+    setTimeout(() => location.reload(), 1000);
+})();
 ```
+
+**Important:** Make sure you copy the ENTIRE block above, including the parentheses!
 
 ### Step 3: Press Enter
 The page will reload automatically.

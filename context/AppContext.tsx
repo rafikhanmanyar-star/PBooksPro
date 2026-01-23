@@ -3153,7 +3153,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const errorMsg = error instanceof Error ? error.message : String(error);
                     if (errorMsg.includes('no such table')) {
                         console.error('❌ CRITICAL: Missing database table!', errorMsg);
-                        console.log('💡 To fix this issue, run in console: localStorage.removeItem("finance_db"); location.reload();');
+                        console.log('💡 To fix this issue, clear both localStorage AND OPFS storage');
                         
                         // Show user-friendly error
                         const errorDiv = document.createElement('div');
@@ -3161,7 +3161,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         errorDiv.innerHTML = `
                             <strong>⚠️ Database Error Detected</strong><br/>
                             <small>Missing table: ${errorMsg.match(/no such table: (\w+)/)?.[1]}</small><br/>
-                            <button onclick="localStorage.removeItem('finance_db');location.reload();" 
+                            <button id="fixDbButton" 
                                 style="margin-top:8px;background:white;color:#dc2626;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:bold;">
                                 Click to Fix Now
                             </button>
@@ -3171,6 +3171,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             </button>
                         `;
                         document.body.appendChild(errorDiv);
+                        
+                        // Add proper async handler for Fix button
+                        const fixButton = document.getElementById('fixDbButton');
+                        if (fixButton) {
+                            fixButton.onclick = async () => {
+                                fixButton.textContent = 'Fixing...';
+                                fixButton.style.opacity = '0.5';
+                                fixButton.style.cursor = 'wait';
+                                
+                                try {
+                                    // Clear localStorage
+                                    localStorage.removeItem('finance_db');
+                                    console.log('✅ localStorage cleared');
+                                    
+                                    // Clear OPFS if supported
+                                    if (navigator.storage && navigator.storage.getDirectory) {
+                                        try {
+                                            const root = await navigator.storage.getDirectory();
+                                            const handle = await root.getFileHandle('finance_db.sqlite', { create: false });
+                                            await handle.remove();
+                                            console.log('✅ OPFS database cleared');
+                                        } catch (opfsError) {
+                                            console.log('ℹ️ OPFS file not found or already cleared');
+                                        }
+                                    }
+                                    
+                                    console.log('🔄 Reloading to recreate database...');
+                                    setTimeout(() => location.reload(), 500);
+                                } catch (error) {
+                                    console.error('Error during fix:', error);
+                                    fixButton.textContent = 'Error - Try again';
+                                    fixButton.style.opacity = '1';
+                                    fixButton.style.cursor = 'pointer';
+                                }
+                            };
+                        }
+                        
                         setTimeout(() => errorDiv.remove(), 30000); // Auto-remove after 30s
                     }
                 }

@@ -952,27 +952,31 @@ const MarketingPage: React.FC = () => {
             const entries: { title: string; detail: string; time: string; planId: string }[] = [];
 
             if (plan.createdAt) {
+                const creatorName = creatorUser?.name || creatorUser?.username || 'Unknown User';
                 entries.push({
                     title: 'Plan created',
-                    detail: `${label} • Created by ${creatorUser?.name || creatorUser?.username || 'User'}`,
+                    detail: `${label} • Created by ${creatorName}`,
                     time: plan.createdAt,
                     planId: plan.id
                 });
             }
 
             if (plan.approvalRequestedAt) {
+                const requestedByName = requestedBy?.name || requestedBy?.username || 'Unknown User';
+                const requestedToName = requestedTo?.name || requestedTo?.username || 'Unknown Approver';
                 entries.push({
                     title: 'Approval requested',
-                    detail: `${label} • ${requestedBy?.name || requestedBy?.username || 'User'} → ${requestedTo?.name || requestedTo?.username || 'Approver'}`,
+                    detail: `${label} • ${requestedByName} → ${requestedToName}`,
                     time: plan.approvalRequestedAt,
                     planId: plan.id
                 });
             }
 
             if (plan.approvalReviewedAt && (plan.status === 'Approved' || plan.status === 'Rejected')) {
+                const reviewedByName = reviewedBy?.name || reviewedBy?.username || 'Unknown Admin';
                 entries.push({
                     title: `Plan ${plan.status.toLowerCase()}`,
-                    detail: `${label} • Reviewed by ${reviewedBy?.name || reviewedBy?.username || 'Admin'}`,
+                    detail: `${label} • Reviewed by ${reviewedByName}`,
                     time: plan.approvalReviewedAt,
                     planId: plan.id
                 });
@@ -1426,57 +1430,6 @@ const MarketingPage: React.FC = () => {
                                             </p>
                                         </div>
                                     )}
-                                    {/* Temporary debug badges for approval visibility */}
-                                    <div className="p-3 bg-slate-50 border border-dashed border-slate-300 rounded-lg">
-                                        <p className="text-[10px] text-slate-600 font-bold uppercase mb-1">Debug Approval</p>
-                                        <div className="text-[10px] text-slate-600 space-y-1">
-                                            <div>Selected Plan ID: {String(selectedPlanId || '')}</div>
-                                            <div>Status: {String(effectiveStatus || '')}</div>
-                                            <div>Normalized: {normalizedStatus}</div>
-                                            <div>isPendingApproval: {String(isPendingApproval)}</div>
-                                            <div className="mt-2 pt-2 border-t border-slate-300">
-                                                <div className="font-bold mb-2 text-indigo-600">🎯 APPROVER MATCHING:</div>
-                                                <div className="bg-yellow-50 border border-yellow-200 p-2 rounded mb-2">
-                                                    <div className="font-bold text-[11px] mb-1">Values to Compare:</div>
-                                                    <div className="pl-2 space-y-1">
-                                                        <div className="font-mono">
-                                                            <span className="font-bold">Stored Approver:</span><br/>
-                                                            <span className="text-blue-600 break-all">{String(effectiveApprovalRequestedToId || 'NOT SET')}</span>
-                                                        </div>
-                                                        <div className="font-mono">
-                                                            <span className="font-bold">Current User ID:</span><br/>
-                                                            <span className="text-rose-600 break-all">{String(state.currentUser?.id || 'NOT LOGGED IN')}</span>
-                                                        </div>
-                                                        <div className={`font-bold text-[11px] mt-2 ${effectiveApprovalRequestedToId === state.currentUser?.id ? 'text-green-600' : 'text-rose-600'}`}>
-                                                            {effectiveApprovalRequestedToId === state.currentUser?.id ? '✅ IDs MATCH!' : '❌ IDs DO NOT MATCH!'}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div>Requested By: {String(effectiveApprovalRequestedById || 'NOT SET')}</div>
-                                                <div>Current Username: {String(state.currentUser?.username || '')}</div>
-                                                <div>Current Name: {String(state.currentUser?.name || '')}</div>
-                                                <div>Current Role: {String(state.currentUser?.role || '')}</div>
-                                            </div>
-                                            <div className="mt-2 pt-2 border-t border-slate-300">
-                                                <div className="font-bold">Matching Result:</div>
-                                                <div className={`text-lg ${isApproverForSelectedPlan ? 'text-green-600 font-bold' : 'text-rose-600 font-bold'}`}>
-                                                    isApproverForSelectedPlan: {String(isApproverForSelectedPlan)}
-                                                </div>
-                                                <div className="text-[9px] mt-1 bg-slate-100 p-1 rounded">
-                                                    Checks if "{effectiveApprovalRequestedToId || 'EMPTY'}" matches any of: [{state.currentUser?.id}, {state.currentUser?.username}, {state.currentUser?.name}]
-                                                </div>
-                                            </div>
-                                            {activePlan && (
-                                                <div className="mt-2 pt-2 border-t border-slate-300">
-                                                    <div className="font-bold">Active Plan Data:</div>
-                                                    <div>Plan ID: {activePlan.id}</div>
-                                                    <div>Plan Status: {activePlan.status}</div>
-                                                    <div>Plan approval_requested_to: {activePlan.approvalRequestedToId || 'NOT SET'}</div>
-                                                    <div>Plan approval_requested_by: {activePlan.approvalRequestedById || 'NOT SET'}</div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1956,16 +1909,18 @@ const MarketingPage: React.FC = () => {
                                                             Created by: {(() => {
                                                                 const uid = plan.userId || plan.approvalRequestedById;
                                                                 if (!uid) return 'System';
-                                                                if (uid === state.currentUser?.id) return state.currentUser.name || state.currentUser.username || 'You';
+                                                                if (uid === state.currentUser?.id) return 'You';
                                                                 const user = usersForApproval.find(u => u.id === uid);
-                                                                return user?.name || user?.username || uid;
+                                                                return user?.name || user?.username || 'Unknown';
                                                             })()}
                                                         </p>
                                                         {plan.status === 'Pending Approval' && plan.approvalRequestedToId && (
                                                             <p className="text-[10px] text-blue-600">
-                                                                Awaiting: {usersForApproval.find(u => u.id === plan.approvalRequestedToId)?.name ||
-                                                                    usersForApproval.find(u => u.id === plan.approvalRequestedToId)?.username ||
-                                                                    'Approver'}
+                                                                {(() => {
+                                                                    if (plan.approvalRequestedToId === state.currentUser?.id) return 'Awaiting: You';
+                                                                    const approver = usersForApproval.find(u => u.id === plan.approvalRequestedToId);
+                                                                    return `Awaiting: ${approver?.name || approver?.username || 'Unknown Approver'}`;
+                                                                })()}
                                                             </p>
                                                         )}
                                                     </div>

@@ -40,36 +40,63 @@
             console.log('✅ Backup downloaded');
         }
         
-        // Step 2: Clear local database
-        console.log('🗑️ Removing old database...');
+        // Step 2: Clear local database from localStorage
+        console.log('🗑️ Removing old database from localStorage...');
         localStorage.removeItem('finance_db');
+        console.log('✅ localStorage cleared');
         
-        // Also clear OPFS if supported
+        // Step 3: Clear OPFS if supported (THIS IS CRITICAL!)
         if (navigator.storage && navigator.storage.getDirectory) {
             try {
+                console.log('🗑️ Removing old database from OPFS...');
                 const root = await navigator.storage.getDirectory();
-                const handle = await root.getFileHandle('finance_db.sqlite', { create: false });
-                await handle.remove();
-                console.log('✅ OPFS database removed');
-            } catch (e) {
-                // File might not exist, that's okay
+                
+                // Try to remove the file
+                try {
+                    await root.removeEntry('finance_db.sqlite');
+                    console.log('✅ OPFS database file removed');
+                } catch (removeError) {
+                    // Try alternative method - get handle and remove
+                    try {
+                        const handle = await root.getFileHandle('finance_db.sqlite', { create: false });
+                        await root.removeEntry('finance_db.sqlite');
+                        console.log('✅ OPFS database removed (alternative method)');
+                    } catch (e) {
+                        console.log('ℹ️ OPFS file not found (might not exist, that\'s okay)');
+                    }
+                }
+            } catch (opfsError) {
+                console.warn('⚠️ Could not access OPFS:', opfsError);
+                console.log('ℹ️ Continuing anyway - database should recreate on reload');
             }
+        } else {
+            console.log('ℹ️ OPFS not supported in this browser');
         }
         
-        console.log('✅ Old database cleared');
+        console.log('✅ All old database storage cleared');
         
-        // Step 3: Reload page to recreate database
+        // Step 4: Reload page to recreate database
         console.log('🔄 Reloading page to recreate database with all tables...');
         console.log('📥 After reload, all data will be re-fetched from cloud');
         
         setTimeout(() => {
             location.reload();
-        }, 2000);
+        }, 1000);
         
     } catch (error) {
         console.error('❌ Error during database fix:', error);
-        console.log('💡 Manual fix: Run these commands one by one:');
-        console.log('   localStorage.removeItem("finance_db");');
-        console.log('   location.reload();');
+        console.log('💡 Manual fix: Copy and paste this entire code block:');
+        console.log(`
+(async function() {
+    localStorage.removeItem('finance_db');
+    if (navigator.storage && navigator.storage.getDirectory) {
+        try {
+            const root = await navigator.storage.getDirectory();
+            await root.removeEntry('finance_db.sqlite').catch(() => {});
+        } catch (e) {}
+    }
+    setTimeout(() => location.reload(), 1000);
+})();
+        `);
     }
 })();
