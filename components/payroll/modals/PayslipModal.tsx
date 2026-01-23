@@ -46,11 +46,38 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
   useEffect(() => {
     const loadData = async () => {
       try {
+        console.log('🔄 Starting to fetch accounts, categories, and projects...');
+        
         const [accountsData, categoriesData, projectsData] = await Promise.all([
           apiClient.get<Account[]>('/accounts'),
           apiClient.get<Category[]>('/categories'),
           apiClient.get<Project[]>('/projects')
         ]);
+        
+        console.log('📦 API Response - Accounts:', {
+          isArray: Array.isArray(accountsData),
+          length: accountsData?.length || 0,
+          data: accountsData
+        });
+        console.log('📦 API Response - Categories:', categoriesData?.length || 0);
+        console.log('📦 API Response - Projects:', projectsData?.length || 0);
+        
+        // Check if accountsData is null or undefined
+        if (!accountsData) {
+          console.error('❌ Accounts data is null or undefined!');
+          setPaymentError('Failed to load payment accounts. Please refresh the page.');
+          return;
+        }
+        
+        // Check if it's an empty array
+        if (Array.isArray(accountsData) && accountsData.length === 0) {
+          console.error('❌ Accounts array is empty! No accounts found in the system.');
+          console.log('🔍 This could mean:');
+          console.log('   1. No accounts exist in the database');
+          console.log('   2. Authentication/tenant issue - fetching from wrong tenant');
+          console.log('   3. API endpoint is not returning data properly');
+          console.log('💡 Check Settings > Chart of Accounts to see if accounts exist there');
+        }
         
         console.log('🔍 All accounts loaded:', accountsData);
         
@@ -60,12 +87,20 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
         const paymentAccounts = (accountsData || [])
           .filter(a => {
             const type = a.type?.toLowerCase();
-            console.log(`Account: ${a.name}, Type: ${a.type}, Matches: ${type === 'bank' || type === 'cash'}`);
+            if (accountsData.length > 0) {
+              console.log(`Account: ${a.name}, Type: ${a.type}, Matches: ${type === 'bank' || type === 'cash'}`);
+            }
             return type === 'bank' || type === 'cash';
           })
           .sort((a, b) => b.balance - a.balance); // Sort by balance (highest first)
         
         console.log('✅ Filtered payment accounts:', paymentAccounts);
+        
+        if (paymentAccounts.length === 0 && accountsData.length > 0) {
+          console.warn('⚠️ Accounts exist but none are Bank or Cash type!');
+          console.log('📋 Available account types:', [...new Set(accountsData.map(a => a.type))]);
+        }
+        
         setAccounts(paymentAccounts);
         // Filter to only expense categories
         const expenseCategories = (categoriesData || []).filter(c => c.type === TransactionType.EXPENSE);
@@ -85,8 +120,23 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
             setSelectedProjectId(sortedProjects[0].project_id);
           }
         }
-      } catch (error) {
-        console.error('Error loading payment data:', error);
+      } catch (error: any) {
+        console.error('❌ Error loading payment data:', error);
+        console.error('Error details:', {
+          message: error.message,
+          error: error.error,
+          status: error.status,
+          stack: error.stack
+        });
+        
+        // Show error to user
+        if (error.status === 401) {
+          setPaymentError('Session expired. Please refresh the page and login again.');
+        } else if (error.status === 0) {
+          setPaymentError('No internet connection. Please check your network.');
+        } else {
+          setPaymentError(`Failed to load accounts: ${error.message || error.error || 'Unknown error'}`);
+        }
       }
     };
     
