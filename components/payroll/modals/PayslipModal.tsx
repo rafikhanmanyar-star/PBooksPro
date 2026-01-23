@@ -45,9 +45,49 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
   // These are the same accounts from Settings > Financial > Chart of Accounts
   // Exclude "Internal Clearing" system account
   const paymentAccounts = React.useMemo(() => {
-    return state.accounts
-      .filter(a => (a.type === AccountType.BANK || a.type === AccountType.CASH) && a.name !== 'Internal Clearing')
-      .sort((a, b) => b.balance - a.balance); // Sort by balance (highest first)
+    if (!state.accounts || state.accounts.length === 0) {
+      console.warn('⚠️ PayslipModal - No accounts found in state.accounts');
+      return [];
+    }
+    
+    console.log('🔍 PayslipModal - Total accounts in state:', state.accounts.length);
+    console.log('🔍 PayslipModal - AccountType.BANK value:', AccountType.BANK);
+    console.log('🔍 PayslipModal - AccountType.CASH value:', AccountType.CASH);
+    
+    // More flexible filtering - check multiple possible type values
+    const filtered = state.accounts.filter(a => {
+      if (!a || !a.type) {
+        console.warn('⚠️ Account missing type:', a);
+        return false;
+      }
+      
+      // Check for Bank type (case-insensitive)
+      const typeLower = a.type.toLowerCase().trim();
+      const isBank = typeLower === 'bank' || a.type === AccountType.BANK || a.type === 'Bank';
+      
+      // Check for Cash type (case-insensitive)
+      const isCash = typeLower === 'cash' || a.type === AccountType.CASH || a.type === 'Cash';
+      
+      // Exclude Internal Clearing
+      const isNotInternalClearing = a.name !== 'Internal Clearing';
+      
+      const matches = (isBank || isCash) && isNotInternalClearing;
+      
+      console.log(`Account: "${a.name}", Type: "${a.type}" (${typeLower}), IsBank: ${isBank}, IsCash: ${isCash}, NotClearing: ${isNotInternalClearing}, Matches: ${matches}`);
+      
+      return matches;
+    });
+    
+    console.log('✅ PayslipModal - Filtered payment accounts count:', filtered.length);
+    console.log('✅ PayslipModal - Filtered accounts:', filtered.map(a => ({ name: a.name, type: a.type, balance: a.balance })));
+    
+    if (filtered.length === 0 && state.accounts.length > 0) {
+      console.error('❌ PayslipModal - No payment accounts found after filtering!');
+      console.error('Available account types:', [...new Set(state.accounts.map(a => a.type))]);
+      console.error('All accounts:', state.accounts.map(a => ({ name: a.name, type: a.type })));
+    }
+    
+    return filtered.sort((a, b) => b.balance - a.balance); // Sort by balance (highest first)
   }, [state.accounts]);
 
   // Get expense categories
@@ -68,10 +108,26 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
       setIsPaid(payslipData?.is_paid || false);
       setPaymentError(null);
       
+      console.log('🔍 PayslipModal opened - State check:', {
+        totalAccounts: state.accounts.length,
+        paymentAccountsCount: paymentAccounts.length,
+        accountTypes: [...new Set(state.accounts.map(a => a.type))],
+        allAccountNames: state.accounts.map(a => ({ name: a.name, type: a.type }))
+      });
+      
       // Auto-select first account if available
       if (paymentAccounts.length > 0) {
         const cashAccount = paymentAccounts.find(a => a.name === 'Cash');
-        setSelectedAccountId(cashAccount?.id || paymentAccounts[0].id);
+        const accountToSelect = cashAccount?.id || paymentAccounts[0].id;
+        setSelectedAccountId(accountToSelect);
+        console.log('✅ Auto-selected account:', accountToSelect);
+      } else {
+        console.warn('⚠️ No payment accounts available to auto-select');
+        if (state.accounts.length === 0) {
+          setPaymentError('No accounts found in system. Please ensure accounts are loaded.');
+        } else {
+          setPaymentError(`Found ${state.accounts.length} account(s) but none are Bank or Cash type. Please create a Bank or Cash account in Settings → Chart of Accounts.`);
+        }
       }
       
       // Auto-select "Salary Expenses" system category as default
@@ -93,7 +149,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
       setSelectedCategoryId('');
       setSelectedProjectId('');
     }
-  }, [isOpen, payslipData, paymentAccounts, expenseCategories, employee.projects]);
+  }, [isOpen, payslipData, paymentAccounts, expenseCategories, employee.projects, state.accounts]);
 
   if (!isOpen) return null;
 
@@ -376,22 +432,41 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <ComboBox
-                    label="Pay From Account"
-                    items={paymentAccounts.map(acc => ({
-                      id: acc.id,
-                      name: `${acc.name} (${acc.type}) - PKR ${formatCurrency(acc.balance)}`
-                    }))}
-                    selectedId={selectedAccountId}
-                    onSelect={(item) => setSelectedAccountId(item?.id || '')}
-                    placeholder="Select Payment Account"
-                    required
-                    entityType="account"
-                  />
-                  {paymentAccounts.length === 0 && (
-                    <p className="text-[10px] text-amber-600 mt-1 font-medium">
-                      ⚠️ No payment accounts found. Create a Bank or Cash account in Settings → Chart of Accounts
-                    </p>
+                  {paymentAccounts.length > 0 ? (
+                    <ComboBox
+                      label="Pay From Account"
+                      items={paymentAccounts.map(acc => ({
+                        id: acc.id,
+                        name: `${acc.name} (${acc.type}) - PKR ${formatCurrency(acc.balance)}`
+                      }))}
+                      selectedId={selectedAccountId}
+                      onSelect={(item) => {
+                        console.log('Selected account:', item);
+                        setSelectedAccountId(item?.id || '');
+                      }}
+                      placeholder="Select Payment Account"
+                      required
+                      entityType="account"
+                    />
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
+                        Pay From Account <span className="text-red-500">*</span>
+                      </label>
+                      <div className="w-full px-3 py-2.5 rounded-xl border-2 border-amber-300 bg-amber-50">
+                        <p className="text-sm text-amber-700 font-medium">
+                          No payment accounts available
+                        </p>
+                      </div>
+                      <p className="text-[10px] text-amber-600 mt-1 font-medium">
+                        ⚠️ No Bank or Cash accounts found. Please create a Bank or Cash account in Settings → Financial → Chart of Accounts
+                      </p>
+                      {state.accounts.length > 0 && (
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          Found {state.accounts.length} account(s) but none are Bank or Cash type. Available types: {[...new Set(state.accounts.map(a => a.type))].join(', ')}
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div>
