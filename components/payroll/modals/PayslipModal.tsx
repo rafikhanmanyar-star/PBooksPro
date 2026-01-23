@@ -7,6 +7,7 @@ import { X, Download, Printer, ShieldCheck, Building2, Plus, TrendingDown, Walle
 import { PayrollEmployee, PayrollRun, Payslip } from '../types';
 import { payrollApi } from '../../../services/api/payrollApi';
 import { useAuth } from '../../../context/AuthContext';
+import { useAppContext } from '../../../context/AppContext';
 import { Account, Category, Project, TransactionType, AccountType } from '../../../types';
 import { apiClient } from '../../../services/api/client';
 import { formatDate, formatCurrency, calculateAmount, roundToTwo } from '../utils/formatters';
@@ -23,6 +24,7 @@ interface PayslipModalProps {
 
 const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, run, payslipData, onPaymentComplete }) => {
   const { tenant } = useAuth();
+  const { state } = useAppContext();
   const companyName = tenant?.companyName || tenant?.name || 'Organization';
 
   // Payment state
@@ -32,9 +34,6 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
   const [isPaid, setIsPaid] = useState(payslipData?.is_paid || false);
   
   // Payment form data
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
@@ -42,110 +41,59 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
   // System category ID for Salary Expenses
   const SALARY_EXPENSES_CATEGORY_ID = 'sys-cat-sal-exp';
 
-  // Load accounts, categories, projects on mount
-  // NOTE: This fetches bank accounts from Chart of Accounts (Settings > Financial > Chart of Accounts)
+  // Get bank and cash accounts from AppContext (Chart of Accounts)
+  // These are the same accounts from Settings > Financial > Chart of Accounts
+  // Exclude "Internal Clearing" system account
+  const paymentAccounts = React.useMemo(() => {
+    return state.accounts
+      .filter(a => (a.type === AccountType.BANK || a.type === AccountType.CASH) && a.name !== 'Internal Clearing')
+      .sort((a, b) => b.balance - a.balance); // Sort by balance (highest first)
+  }, [state.accounts]);
+
+  // Get expense categories
+  const expenseCategories = React.useMemo(() => {
+    return state.categories
+      .filter(c => c.type === TransactionType.EXPENSE)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [state.categories]);
+
+  // Get projects
+  const projects = React.useMemo(() => {
+    return state.projects;
+  }, [state.projects]);
+
+  // Initialize form data when modal opens
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        console.log('🔄 Starting to fetch accounts, categories, and projects...');
-        
-        const [accountsData, categoriesData, projectsData] = await Promise.all([
-          apiClient.get<Account[]>('/accounts'),
-          apiClient.get<Category[]>('/categories'),
-          apiClient.get<Project[]>('/projects')
-        ]);
-        
-        console.log('📦 API Response - Accounts:', {
-          isArray: Array.isArray(accountsData),
-          length: accountsData?.length || 0,
-          data: accountsData
-        });
-        console.log('📦 API Response - Categories:', categoriesData?.length || 0);
-        console.log('📦 API Response - Projects:', projectsData?.length || 0);
-        
-        // Check if accountsData is null or undefined
-        if (!accountsData) {
-          console.error('❌ Accounts data is null or undefined!');
-          setPaymentError('Failed to load payment accounts. Please refresh the page.');
-          return;
-        }
-        
-        // Check if it's an empty array
-        if (Array.isArray(accountsData) && accountsData.length === 0) {
-          console.error('❌ Accounts array is empty! No accounts found in the system.');
-          console.log('🔍 This could mean:');
-          console.log('   1. No accounts exist in the database');
-          console.log('   2. Authentication/tenant issue - fetching from wrong tenant');
-          console.log('   3. API endpoint is not returning data properly');
-          console.log('💡 Check Settings > Chart of Accounts to see if accounts exist there');
-        }
-        
-        console.log('🔍 All accounts loaded:', accountsData);
-        
-        // Filter to Bank and Cash accounts for salary payments
-        // These are the same accounts from Settings > Chart of Accounts
-        // Using case-insensitive comparison and checking both enum value and string
-        const paymentAccounts = (accountsData || [])
-          .filter(a => {
-            const type = a.type?.toLowerCase();
-            if (accountsData.length > 0) {
-              console.log(`Account: ${a.name}, Type: ${a.type}, Matches: ${type === 'bank' || type === 'cash'}`);
-            }
-            return type === 'bank' || type === 'cash';
-          })
-          .sort((a, b) => b.balance - a.balance); // Sort by balance (highest first)
-        
-        console.log('✅ Filtered payment accounts:', paymentAccounts);
-        
-        if (paymentAccounts.length === 0 && accountsData.length > 0) {
-          console.warn('⚠️ Accounts exist but none are Bank or Cash type!');
-          console.log('📋 Available account types:', [...new Set(accountsData.map(a => a.type))]);
-        }
-        
-        setAccounts(paymentAccounts);
-        // Filter to only expense categories
-        const expenseCategories = (categoriesData || []).filter(c => c.type === TransactionType.EXPENSE);
-        setCategories(expenseCategories);
-        setProjects(projectsData || []);
-        
-        // Auto-select "Salary Expenses" system category as default
-        const salaryExpensesCat = expenseCategories.find(c => c.id === SALARY_EXPENSES_CATEGORY_ID);
-        if (salaryExpensesCat) {
-          setSelectedCategoryId(salaryExpensesCat.id);
-        }
-        
-        // If employee has project allocation, use that as default project
-        if (employee.projects && employee.projects.length > 0) {
-          const sortedProjects = [...employee.projects].sort((a, b) => (b.percentage || 0) - (a.percentage || 0));
-          if (sortedProjects[0].project_id) {
-            setSelectedProjectId(sortedProjects[0].project_id);
-          }
-        }
-      } catch (error: any) {
-        console.error('❌ Error loading payment data:', error);
-        console.error('Error details:', {
-          message: error.message,
-          error: error.error,
-          status: error.status,
-          stack: error.stack
-        });
-        
-        // Show error to user
-        if (error.status === 401) {
-          setPaymentError('Session expired. Please refresh the page and login again.');
-        } else if (error.status === 0) {
-          setPaymentError('No internet connection. Please check your network.');
-        } else {
-          setPaymentError(`Failed to load accounts: ${error.message || error.error || 'Unknown error'}`);
+    if (isOpen) {
+      setIsPaid(payslipData?.is_paid || false);
+      setPaymentError(null);
+      
+      // Auto-select first account if available
+      if (paymentAccounts.length > 0) {
+        const cashAccount = paymentAccounts.find(a => a.name === 'Cash');
+        setSelectedAccountId(cashAccount?.id || paymentAccounts[0].id);
+      }
+      
+      // Auto-select "Salary Expenses" system category as default
+      const salaryExpensesCat = expenseCategories.find(c => c.id === SALARY_EXPENSES_CATEGORY_ID);
+      if (salaryExpensesCat) {
+        setSelectedCategoryId(salaryExpensesCat.id);
+      }
+      
+      // If employee has project allocation, use that as default project
+      if (employee.projects && employee.projects.length > 0) {
+        const sortedProjects = [...employee.projects].sort((a, b) => (b.percentage || 0) - (a.percentage || 0));
+        if (sortedProjects[0].project_id) {
+          setSelectedProjectId(sortedProjects[0].project_id);
         }
       }
-    };
-    
-    if (isOpen) {
-      loadData();
-      setIsPaid(payslipData?.is_paid || false);
+    } else {
+      // Reset selections when modal closes
+      setSelectedAccountId('');
+      setSelectedCategoryId('');
+      setSelectedProjectId('');
     }
-  }, [isOpen, payslipData, employee.projects]);
+  }, [isOpen, payslipData, paymentAccounts, expenseCategories, employee.projects]);
 
   if (!isOpen) return null;
 
@@ -430,7 +378,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                 <div>
                   <ComboBox
                     label="Pay From Account"
-                    items={accounts.map(acc => ({
+                    items={paymentAccounts.map(acc => ({
                       id: acc.id,
                       name: `${acc.name} (${acc.type}) - PKR ${formatCurrency(acc.balance)}`
                     }))}
@@ -440,7 +388,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                     required
                     entityType="account"
                   />
-                  {accounts.length === 0 && (
+                  {paymentAccounts.length === 0 && (
                     <p className="text-[10px] text-amber-600 mt-1 font-medium">
                       ⚠️ No payment accounts found. Create a Bank or Cash account in Settings → Chart of Accounts
                     </p>
@@ -449,7 +397,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                 <div>
                   <ComboBox
                     label="Expense Category"
-                    items={categories.map(cat => ({
+                    items={expenseCategories.map(cat => ({
                       id: cat.id,
                       name: cat.name
                     }))}
