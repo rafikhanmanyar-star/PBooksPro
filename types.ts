@@ -249,7 +249,7 @@ export interface InstallmentPlan {
   introText?: string; // Custom editable text after "Exclusively for You"
   version: number;
   rootId?: string; // ID of the first version of this plan
-  status: 'Draft' | 'Pending Approval' | 'Approved' | 'Rejected' | 'Locked';
+  status: 'Draft' | 'Pending Approval' | 'Approved' | 'Rejected' | 'Locked' | 'Sale Recognized';
   approvalRequestedById?: string;
   approvalRequestedToId?: string;
   approvalRequestedAt?: string;

@@ -888,13 +888,34 @@ const MarketingPage: React.FC = () => {
     // Convert Installment Plan to Agreement
     const handleConvertToAgreement = async (plan: InstallmentPlan) => {
         try {
+            // CRITICAL: Prevent duplicate conversions
+            if (plan.status === 'Sale Recognized' || plan.status === 'Locked') {
+                await showAlert(
+                    `This plan has already been converted to an agreement.\n\n` +
+                    `Status: ${plan.status}\n\n` +
+                    `Cannot convert the same plan multiple times.`
+                );
+                return;
+            }
+
+            // Only approved plans can be converted
+            if (plan.status !== 'Approved') {
+                await showAlert(
+                    `Only approved plans can be converted to agreements.\n\n` +
+                    `Current status: ${plan.status}\n\n` +
+                    `Please get the plan approved first.`
+                );
+                return;
+            }
+
             // Show initial confirmation
             const confirmed = await showConfirm(
                 `This will convert the installment plan to an agreement:\n\n` +
                 `1. Add client as owner\n` +
                 `2. Update unit ownership\n` +
                 `3. Create agreement\n` +
-                `4. Generate invoices\n\n` +
+                `4. Generate invoices\n` +
+                `5. Lock the plan (status: Sale Recognized)\n\n` +
                 `Continue?`
             );
             if (!confirmed) return;
@@ -1078,15 +1099,25 @@ const MarketingPage: React.FC = () => {
             invoices.forEach(inv => dispatch({ type: 'ADD_INVOICE', payload: inv }));
             logProgress(`Generated ${invoices.length} invoices`);
 
-            // Step 7: Update installment plan status to 'Locked'
-            logProgress('Locking installment plan...');
+            // Step 7: Update installment plan status to 'Sale Recognized' and lock it
+            logProgress('Updating plan status to Sale Recognized...');
+            const now = new Date().toISOString();
             const updatedPlan: InstallmentPlan = {
                 ...plan,
-                status: 'Locked',
-                updatedAt: new Date().toISOString()
+                status: 'Sale Recognized',
+                updatedAt: now
             };
+            
+            // Dispatch the update - this will sync to cloud and local DB
+            console.log('🔄 Dispatching plan status update:', {
+                planId: plan.id,
+                oldStatus: plan.status,
+                newStatus: 'Sale Recognized',
+                timestamp: now
+            });
+            
             dispatch({ type: 'UPDATE_INSTALLMENT_PLAN', payload: updatedPlan });
-            logProgress('Installment plan locked');
+            logProgress('Plan status updated to Sale Recognized and locked');
 
             // Step 8: Update invoice settings
             if (state.settings) {
@@ -1100,13 +1131,25 @@ const MarketingPage: React.FC = () => {
                 dispatch({ type: 'UPDATE_SETTINGS', payload: updatedSettings });
             }
 
+            // Log conversion to console for debugging
+            console.log('✅ Conversion completed:', {
+                planId: plan.id,
+                agreementId: agreementId,
+                agreementNumber: agreementNumber,
+                invoiceCount: invoices.length,
+                newStatus: 'Sale Recognized',
+                timestamp: now
+            });
+
             // Final success message
             await showAlert(
-                `Conversion completed successfully!\n\n` +
+                `✅ Conversion completed successfully!\n\n` +
                 progressMessages.join('\n') + '\n\n' +
-                `Agreement: ${agreementNumber}\n` +
-                `Invoices: ${invoices.length} created\n` +
-                `Total Amount: ${netValue.toLocaleString()}`
+                `📄 Agreement: ${agreementNumber}\n` +
+                `📋 Invoices: ${invoices.length} created\n` +
+                `💰 Total Amount: Rs. ${netValue.toLocaleString()}\n\n` +
+                `🔒 Plan Status: Sale Recognized (Locked)\n` +
+                `This plan cannot be converted again.`
             );
 
             resetForm();
@@ -1218,6 +1261,17 @@ const MarketingPage: React.FC = () => {
                 });
             }
 
+            // Add entry for Sale Recognized status
+            if (plan.status === 'Sale Recognized' && plan.updatedAt) {
+                const currentUserName = state.currentUser?.name || state.currentUser?.username || 'System';
+                entries.push({
+                    title: '✅ Converted to Agreement',
+                    detail: `${label} • Sale recognized by ${currentUserName}`,
+                    time: plan.updatedAt,
+                    planId: plan.id
+                });
+            }
+
             return entries;
         });
 
@@ -1256,6 +1310,12 @@ const MarketingPage: React.FC = () => {
                     label: 'Locked',
                     badge: 'bg-amber-100 text-amber-700',
                     border: 'border-amber-500 bg-amber-50/30'
+                };
+            case 'Sale Recognized':
+                return {
+                    label: 'Sale Recognized',
+                    badge: 'bg-purple-100 text-purple-700',
+                    border: 'border-purple-500 bg-purple-50/30'
                 };
             case 'Draft':
             default:
@@ -2119,7 +2179,8 @@ const MarketingPage: React.FC = () => {
                                         const project = state.projects.find(p => p.id === plan.projectId);
                                         const unit = state.units.find(u => u.id === plan.unitId);
                                         const statusMeta = getStatusMeta(plan.status);
-                                        const isConvertible = plan.status === 'Approved' || plan.status === 'Locked';
+                                        const isConvertible = plan.status === 'Approved';
+                                        const isLocked = plan.status === 'Locked' || plan.status === 'Sale Recognized';
                                         
                                         return (
                                             <Card 
@@ -2162,26 +2223,6 @@ const MarketingPage: React.FC = () => {
                                                             )}
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center gap-1">
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setHistoryRootId(plan.rootId || plan.id);
-                                                                setShowHistoryDrawer(true);
-                                                            }}
-                                                            className="text-slate-400 hover:text-indigo-600 p-1.5 hover:bg-slate-50 rounded-lg transition-all"
-                                                            title="View Plan History"
-                                                        >
-                                                            <div className="w-4 h-4">{ICONS.history}</div>
-                                                        </button>
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); handleDelete(plan.id); }}
-                                                            className="text-slate-400 hover:text-rose-500 p-1.5 hover:bg-slate-50 rounded-lg transition-all"
-                                                            title="Delete Plan"
-                                                        >
-                                                            <div className="w-4 h-4">{ICONS.trash}</div>
-                                                        </button>
-                                                    </div>
                                                 </div>
                                                 
                                                 <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
@@ -2214,6 +2255,34 @@ const MarketingPage: React.FC = () => {
                                                 )}
                                                 
                                                 <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap gap-2 items-center justify-end">
+                                                    <Button
+                                                        variant="secondary"
+                                                        size="sm"
+                                                        className="py-1.5 px-3 text-[10px] font-bold"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setHistoryRootId(plan.rootId || plan.id);
+                                                            setShowHistoryDrawer(true);
+                                                        }}
+                                                        title="View Plan History"
+                                                    >
+                                                        <div className="w-3.5 h-3.5">{ICONS.history}</div>
+                                                        History
+                                                    </Button>
+                                                    
+                                                    {!isLocked && (
+                                                        <Button 
+                                                            variant="secondary"
+                                                            size="sm"
+                                                            className="py-1.5 px-3 text-[10px] font-bold text-rose-600 hover:bg-rose-50"
+                                                            onClick={(e) => { e.stopPropagation(); handleDelete(plan.id); }}
+                                                            title="Delete Plan"
+                                                        >
+                                                            <div className="w-3.5 h-3.5">{ICONS.trash}</div>
+                                                            Delete
+                                                        </Button>
+                                                    )}
+
                                                     {isConvertible && (
                                                         <Button 
                                                             variant="primary" 
@@ -2224,14 +2293,28 @@ const MarketingPage: React.FC = () => {
                                                             Convert to Agreement
                                                         </Button>
                                                     )}
-                                                    <Button
-                                                        variant="secondary"
-                                                        size="sm"
-                                                        className="py-1.5 px-3 text-[10px] font-bold"
-                                                        onClick={(e) => { e.stopPropagation(); handleEdit(plan); }}
-                                                    >
-                                                        Edit Plan
-                                                    </Button>
+                                                    
+                                                    {!isLocked && (
+                                                        <Button
+                                                            variant="secondary"
+                                                            size="sm"
+                                                            className="py-1.5 px-3 text-[10px] font-bold"
+                                                            onClick={(e) => { e.stopPropagation(); handleEdit(plan); }}
+                                                        >
+                                                            Edit Plan
+                                                        </Button>
+                                                    )}
+                                                    {isLocked && (
+                                                        <Button
+                                                            variant="secondary"
+                                                            size="sm"
+                                                            className="py-1.5 px-3 text-[10px] font-bold"
+                                                            onClick={(e) => { e.stopPropagation(); handleEdit(plan); }}
+                                                            disabled
+                                                        >
+                                                            View Only
+                                                        </Button>
+                                                    )}
                                                 </div>
                                             </Card>
                                         );

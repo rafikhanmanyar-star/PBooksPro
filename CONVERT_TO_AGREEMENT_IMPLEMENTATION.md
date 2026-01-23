@@ -12,7 +12,9 @@ This document describes the implementation of the "Convert to Agreement" feature
 6. ✅ Save agreement and invoices to both cloud and local DB
 7. ✅ Monitor the progress and show actions taken on screen
 8. ✅ Display completion message when process is finished
-9. ✅ Lock the installment plan after conversion to prevent reuse
+9. ✅ Update plan status to 'Sale Recognized' and lock it after conversion to prevent reuse
+10. ✅ Update database schema to support 'Sale Recognized' status
+11. ✅ Ensure cloud DB synchronization works with new status
 
 ## Implementation Details
 
@@ -119,10 +121,11 @@ import {
 
 ### Business Rules
 1. **No Discounts in Agreement**: The agreement stores the final selling price without breaking down individual discounts (as per requirement)
-2. **Plan Locking**: Once converted, the plan is locked and cannot be converted again
-3. **Unique Agreement Numbers**: Uses settings-based numbering with auto-increment
-4. **Unique Invoice Numbers**: Uses settings-based numbering with auto-increment
-5. **Invoice Timing**: Down payment is immediate, installments are future-dated based on frequency
+2. **Plan Status After Conversion**: Once converted, the plan status is changed to 'Sale Recognized' and becomes locked (non-editable, non-convertible)
+3. **Plan Locking**: Plans with 'Sale Recognized' or 'Locked' status cannot be edited or converted again
+4. **Unique Agreement Numbers**: Uses settings-based numbering with auto-increment
+5. **Unique Invoice Numbers**: Uses settings-based numbering with auto-increment
+6. **Invoice Timing**: Down payment is immediate, installments are future-dated based on frequency
 
 ### User Experience
 1. User sees clear confirmation dialog explaining what will happen
@@ -156,15 +159,43 @@ import {
 - Add ability to preview agreement before conversion
 - Add batch conversion for multiple plans
 
+## Database Migration
+
+### New Status Value
+A new status value `'Sale Recognized'` has been added to the installment plans:
+
+**Migration File**: `server/migrations/add-sale-recognized-status.sql`
+
+This migration:
+- Drops the existing CHECK constraint on the `status` column
+- Adds a new CHECK constraint that includes 'Sale Recognized'
+- Updates the column comment for documentation
+
+**To apply the migration**, run it against your PostgreSQL database:
+```sql
+psql -U your_user -d your_database -f server/migrations/add-sale-recognized-status.sql
+```
+
+### Status Values
+The `status` column in `installment_plans` table now accepts:
+- `'Draft'` - Initial plan creation
+- `'Pending Approval'` - Submitted for approval
+- `'Approved'` - Approved and ready for conversion
+- `'Rejected'` - Rejected by approver
+- `'Locked'` - Manually locked (deprecated, use Sale Recognized)
+- `'Sale Recognized'` - Converted to agreement (locked)
+
 ## Related Files
 - `components/marketing/MarketingPage.tsx` - Main implementation
+- `types.ts` - Type definitions (updated with 'Sale Recognized' status)
 - `context/AppContext.tsx` - State management and API sync
 - `server/api/routes/projectAgreements.ts` - API endpoint for agreements
 - `server/api/routes/invoices.ts` - API endpoint for invoices
 - `server/api/routes/contacts.ts` - API endpoint for contacts
 - `server/api/routes/units.ts` - API endpoint for units
 - `server/api/routes/installmentPlans.ts` - API endpoint for plans
-- `types.ts` - Type definitions
+- `server/migrations/add-sale-recognized-status.sql` - Database migration for new status
+- `server/migrations/postgresql-schema.sql` - Updated schema with new status
 
 ## Conclusion
 The "Convert to Agreement" feature is now fully implemented and ready for testing. It provides a seamless workflow for converting approved installment plans into formal agreements with automatic invoice generation, while maintaining data integrity across both cloud and local databases.

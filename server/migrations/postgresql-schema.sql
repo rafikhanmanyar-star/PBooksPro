@@ -474,7 +474,7 @@ CREATE TABLE IF NOT EXISTS installment_plans (
     intro_text TEXT,
     version INTEGER NOT NULL DEFAULT 1,
     root_id TEXT,
-    status TEXT NOT NULL DEFAULT 'Draft' CHECK (status IN ('Draft', 'Pending Approval', 'Approved', 'Rejected', 'Locked')),
+    status TEXT NOT NULL DEFAULT 'Draft' CHECK (status IN ('Draft', 'Pending Approval', 'Approved', 'Rejected', 'Locked', 'Sale Recognized')),
     approval_requested_by TEXT,
     approval_requested_to TEXT,
     approval_requested_at TEXT,
