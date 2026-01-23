@@ -790,13 +790,17 @@ const MarketingPage: React.FC = () => {
 
     useEffect(() => {
         if (state.editingEntity?.type === 'INSTALLMENT_PLAN' && state.editingEntity.id) {
+            console.log('[MARKETING PAGE] Editing entity received:', state.editingEntity.id);
             const plan = (state.installmentPlans || []).find(p => p.id === state.editingEntity?.id);
             if (plan) {
+                console.log('[MARKETING PAGE] Plan found, opening for edit:', plan.id);
                 handleEdit(plan);
+            } else {
+                console.warn('[MARKETING PAGE] Plan not found:', state.editingEntity.id);
             }
             dispatch({ type: 'CLEAR_EDITING_ENTITY' });
         }
-    }, [state.editingEntity, state.installmentPlans, dispatch]);
+    }, [state.editingEntity, state.installmentPlans]);
 
     const handleApprovalDecision = async (decision: 'Approved' | 'Rejected') => {
         if (!selectedPlanId) return;

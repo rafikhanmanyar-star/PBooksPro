@@ -2768,7 +2768,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     'building:created', 'building:updated', 'building:deleted',
                     'property:created', 'property:updated', 'property:deleted',
                     'unit:created', 'unit:updated', 'unit:deleted',
-                    'loan_advance_record:created', 'loan_advance_record:updated', 'loan_advance_record:deleted'
+                    'loan_advance_record:created', 'loan_advance_record:updated', 'loan_advance_record:deleted',
+                    'installment_plan:created', 'installment_plan:updated', 'installment_plan:deleted',
+                    'plan_amenity:created', 'plan_amenity:updated', 'plan_amenity:deleted'
                 ];
 
                 // Generic fallback subscription → schedule a full refresh

@@ -137,9 +137,19 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   }, [state.currentUser, state.installmentPlans, state.contacts, state.projects, state.units, usersForNotifications]);
 
   const handleNotificationClick = useCallback((planId: string) => {
-    dispatch({ type: 'SET_PAGE', payload: 'marketing' });
-    dispatch({ type: 'SET_EDITING_ENTITY', payload: { type: 'INSTALLMENT_PLAN', id: planId } });
+    console.log('[NOTIFICATION CLICK] Opening plan:', planId);
+    
+    // Close notification dropdown first
     setIsNotificationsOpen(false);
+    
+    // Navigate to marketing page
+    dispatch({ type: 'SET_PAGE', payload: 'marketing' });
+    
+    // Set editing entity after a small delay to ensure page is loaded
+    setTimeout(() => {
+      console.log('[NOTIFICATION CLICK] Setting editing entity for plan:', planId);
+      dispatch({ type: 'SET_EDITING_ENTITY', payload: { type: 'INSTALLMENT_PLAN', id: planId } });
+    }, 100);
   }, [dispatch]);
 
   useEffect(() => {
