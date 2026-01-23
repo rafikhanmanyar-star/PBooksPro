@@ -43,10 +43,10 @@ router.get('/', async (req: TenantRequest, res) => {
     const db = getDb();
     const tenantId = req.tenantId!;
     
-    // Non-admins only get limited info
+    // Non-admins get limited info but need 'role' for approval workflows
     const selectFields = req.userRole === 'Admin' 
       ? 'id, username, name, role, email, is_active, last_login, created_at'
-      : 'id, username, name';
+      : 'id, username, name, role'; // Include 'role' for approval dropdowns
 
     const users = await db.query(
       `SELECT ${selectFields} FROM users WHERE tenant_id = $1 AND is_active = true ORDER BY name ASC`,

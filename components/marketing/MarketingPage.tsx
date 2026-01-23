@@ -334,10 +334,15 @@ const MarketingPage: React.FC = () => {
     useEffect(() => {
         const loadOrgUsers = async () => {
             try {
+                console.log('[ORG USERS] Loading organization users from API...');
                 const data = await apiClient.get<{ id: string; name: string; username: string; role: string }[]>('/users');
+                console.log('[ORG USERS] Loaded users:', {
+                    count: data?.length || 0,
+                    users: data?.map(u => ({ id: u.id, username: u.username, name: u.name, role: u.role }))
+                });
                 setOrgUsers(data || []);
             } catch (error) {
-                console.error('Failed to load organization users', error);
+                console.error('[ORG USERS] Failed to load organization users', error);
                 setOrgUsers([]);
             }
         };
@@ -347,10 +352,31 @@ const MarketingPage: React.FC = () => {
     const usersForApproval = orgUsers.length > 0 ? orgUsers : state.users;
     const approvers = useMemo(
         () => {
+            console.log('[APPROVERS] Building approvers list...', {
+                currentUserId: state.currentUser?.id,
+                currentUsername: state.currentUser?.username,
+                usersForApprovalCount: usersForApproval.length,
+                usingOrgUsers: orgUsers.length > 0
+            });
+            
             const filtered = usersForApproval
-                .filter(user => user.role && user.role.toLowerCase() === 'admin')
+                .filter(user => {
+                    const hasRole = user.role && user.role.toLowerCase() === 'admin';
+                    const isNotCurrentUser = user.id !== state.currentUser?.id; // Don't include yourself
+                    console.log('[APPROVERS] Checking user:', {
+                        id: user.id,
+                        username: user.username,
+                        name: user.name,
+                        role: user.role,
+                        hasAdminRole: hasRole,
+                        isNotCurrentUser,
+                        willInclude: hasRole && isNotCurrentUser
+                    });
+                    return hasRole && isNotCurrentUser;
+                })
                 .map(user => ({ id: user.id, name: user.name || user.username }));
-            console.log('[APPROVAL DEBUG] Approvers list:', {
+            
+            console.log('[APPROVAL DEBUG] Final approvers list:', {
                 totalUsers: usersForApproval.length,
                 approversCount: filtered.length,
                 approvers: filtered,
@@ -358,7 +384,7 @@ const MarketingPage: React.FC = () => {
             });
             return filtered;
         },
-        [usersForApproval]
+        [usersForApproval, state.currentUser]
     );
     
     // Units for selected project

@@ -24,9 +24,47 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const [whatsappUnreadCount, setWhatsappUnreadCount] = useState(0);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [orgUsers, setOrgUsers] = useState<{ id: string; name: string; username: string; role: string }[]>([]);
+  const [dismissedNotifications, setDismissedNotifications] = useState<Set<string>>(new Set());
   const { openChat } = useWhatsApp();
   const notificationsRef = useRef<HTMLDivElement>(null);
   const usersForNotifications = orgUsers.length > 0 ? orgUsers : state.users;
+
+  // Load dismissed notifications from localStorage on mount
+  useEffect(() => {
+    if (!state.currentUser) return;
+    
+    try {
+      const storageKey = `dismissed_notifications_${state.currentUser.id}`;
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        const dismissed = JSON.parse(stored) as string[];
+        setDismissedNotifications(new Set(dismissed));
+        console.log('[NOTIFICATIONS] Loaded dismissed notifications:', dismissed.length);
+      }
+    } catch (error) {
+      console.error('[NOTIFICATIONS] Failed to load dismissed notifications:', error);
+    }
+  }, [state.currentUser]);
+
+  const dismissNotification = useCallback((notificationId: string) => {
+    if (!state.currentUser) return;
+    
+    setDismissedNotifications(prev => {
+      const updated = new Set(prev);
+      updated.add(notificationId);
+      
+      // Save to localStorage
+      try {
+        const storageKey = `dismissed_notifications_${state.currentUser.id}`;
+        localStorage.setItem(storageKey, JSON.stringify(Array.from(updated)));
+        console.log('[NOTIFICATIONS] Dismissed notification:', notificationId);
+      } catch (error) {
+        console.error('[NOTIFICATIONS] Failed to save dismissed notifications:', error);
+      }
+      
+      return updated;
+    });
+  }, [state.currentUser]);
 
   const notifications = useMemo(() => {
     if (!state.currentUser) return [];
@@ -119,27 +157,28 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       return results;
     });
 
-    console.log('[NOTIFICATION DEBUG] Total notifications:', {
-      count: items.length,
+    // Filter out dismissed notifications
+    const activeNotifications = items.filter(item => !dismissedNotifications.has(item.id));
+
+    console.log('[NOTIFICATION DEBUG] Notifications:', {
+      total: items.length,
+      dismissed: dismissedNotifications.size,
+      active: activeNotifications.length,
       currentUserId,
       currentUsername: state.currentUser.username,
-      currentName: state.currentUser.name,
-      pendingApprovalPlans: state.installmentPlans.filter(p => 
-        (p.status || '').toString().toLowerCase().replace(/\s+/g, ' ').trim() === 'pending approval'
-      ).map(p => ({
-        id: p.id,
-        approvalRequestedToId: p.approvalRequestedToId,
-        status: p.status
-      }))
+      currentName: state.currentUser.name
     });
 
-    return items.sort((a, b) => b.time.localeCompare(a.time));
-  }, [state.currentUser, state.installmentPlans, state.contacts, state.projects, state.units, usersForNotifications]);
+    return activeNotifications.sort((a, b) => b.time.localeCompare(a.time));
+  }, [state.currentUser, state.installmentPlans, state.contacts, state.projects, state.units, usersForNotifications, dismissedNotifications]);
 
-  const handleNotificationClick = useCallback((planId: string) => {
-    console.log('[NOTIFICATION CLICK] Opening plan:', planId);
+  const handleNotificationClick = useCallback((notificationId: string, planId: string) => {
+    console.log('[NOTIFICATION CLICK] Opening plan:', planId, 'notification:', notificationId);
     
-    // Close notification dropdown first
+    // Dismiss the notification
+    dismissNotification(notificationId);
+    
+    // Close notification dropdown
     setIsNotificationsOpen(false);
     
     // Navigate to marketing page
@@ -150,7 +189,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       console.log('[NOTIFICATION CLICK] Setting editing entity for plan:', planId);
       dispatch({ type: 'SET_EDITING_ENTITY', payload: { type: 'INSTALLMENT_PLAN', id: planId } });
     }, 100);
-  }, [dispatch]);
+  }, [dispatch, dismissNotification]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -286,35 +325,62 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
               {isNotificationsOpen && (
                 <div className="absolute right-0 mt-2 w-96 max-w-[90vw] bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden z-40">
                   <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-                    <h3 className="text-sm font-bold text-slate-800">Notifications</h3>
-                    <span className="text-xs text-slate-500">{notifications.length} total</span>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-slate-800">Notifications</h3>
+                      <span className="text-xs text-slate-500">({notifications.length})</span>
+                    </div>
+                    {notifications.length > 0 && (
+                      <button
+                        onClick={() => {
+                          notifications.forEach(item => dismissNotification(item.id));
+                        }}
+                        className="text-xs text-indigo-600 hover:text-indigo-700 font-medium hover:underline"
+                      >
+                        Clear All
+                      </button>
+                    )}
                   </div>
                   <div className="max-h-80 overflow-y-auto">
                     {notifications.length === 0 ? (
                       <div className="px-4 py-6 text-sm text-slate-500 text-center">No new notifications</div>
                     ) : (
                       notifications.map(item => (
-                        <button
+                        <div
                           key={item.id}
-                          onClick={() => handleNotificationClick(item.planId)}
-                          className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
+                          className="group relative hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
                         >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-semibold text-slate-800">{item.title}</p>
-                              <p className="text-xs text-slate-500 mt-0.5">{item.message}</p>
+                          <button
+                            onClick={() => handleNotificationClick(item.id, item.planId)}
+                            className="w-full text-left px-4 py-3"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1">
+                                <p className="text-sm font-semibold text-slate-800">{item.title}</p>
+                                <p className="text-xs text-slate-500 mt-0.5">{item.message}</p>
+                              </div>
+                              <span className={`flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                                item.status === 'Pending Approval'
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : item.status === 'Approved'
+                                    ? 'bg-green-100 text-green-700'
+                                    : 'bg-rose-100 text-rose-700'
+                              }`}>
+                                {item.status}
+                              </span>
                             </div>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                              item.status === 'Pending Approval'
-                                ? 'bg-blue-100 text-blue-700'
-                                : item.status === 'Approved'
-                                  ? 'bg-green-100 text-green-700'
-                                  : 'bg-rose-100 text-rose-700'
-                            }`}>
-                              {item.status}
-                            </span>
-                          </div>
-                        </button>
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              dismissNotification(item.id);
+                            }}
+                            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                            title="Dismiss notification"
+                            aria-label="Dismiss notification"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                          </button>
+                        </div>
                       ))
                     )}
                   </div>
