@@ -41,6 +41,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
   const SALARY_EXPENSES_CATEGORY_ID = 'sys-cat-sal-exp';
 
   // Load accounts, categories, projects on mount
+  // NOTE: This fetches bank accounts from Chart of Accounts (Settings > Financial > Chart of Accounts)
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -51,7 +52,10 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
         ]);
         
         // Filter to only Bank accounts for salary payments
-        const bankAccounts = (accountsData || []).filter(a => a.type === AccountType.BANK);
+        // These are the same accounts from Settings > Chart of Accounts
+        const bankAccounts = (accountsData || [])
+          .filter(a => a.type === AccountType.BANK)
+          .sort((a, b) => b.balance - a.balance); // Sort by balance (highest first)
         setAccounts(bankAccounts);
         // Filter to only expense categories
         const expenseCategories = (categoriesData || []).filter(c => c.type === TransactionType.EXPENSE);
@@ -373,8 +377,8 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                     )}
                   </select>
                   {accounts.length === 0 && (
-                    <p className="text-[10px] text-red-500 mt-1">
-                      No bank accounts found. Please create a bank account first.
+                    <p className="text-[10px] text-amber-600 mt-1 font-medium">
+                      ⚠️ No bank accounts found. Create one in Settings → Chart of Accounts (Type: Bank)
                     </p>
                   )}
                 </div>
