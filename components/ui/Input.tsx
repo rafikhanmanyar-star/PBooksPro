@@ -6,9 +6,11 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   helperText?: string;
   enableSpellCheck?: boolean;
   icon?: React.ReactNode;
+  horizontal?: boolean;
+  compact?: boolean;
 }
 
-const Input: React.FC<InputProps> = ({ label, id, helperText, onKeyDown, name, enableSpellCheck = true, icon, ...props }) => {
+const Input: React.FC<InputProps> = ({ label, id, helperText, onKeyDown, name, enableSpellCheck = true, icon, horizontal = false, compact = false, ...props }) => {
   // Mobile: py-3 and text-base to prevent zoom and increase touch area
   // Desktop: py-2 and text-sm for compactness
   // Added tabular-nums for consistent number width
@@ -16,7 +18,9 @@ const Input: React.FC<InputProps> = ({ label, id, helperText, onKeyDown, name, e
   const spinnerRemovalClasses = `[appearance:textfield] [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`;
 
   const isNumberInput = props.type === 'number';
-  const baseClassName = `block w-full px-3 py-3 sm:py-2 border rounded-lg shadow-sm placeholder-gray-400 focus:outline-none text-base sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed focus:ring-2 focus:ring-green-500/50 focus:border-green-500 border-gray-300 transition-colors tabular-nums`;
+  const baseClassName = `block w-full border rounded-lg shadow-sm placeholder-gray-400 focus:outline-none disabled:bg-gray-100 disabled:cursor-not-allowed focus:ring-2 focus:ring-green-500/50 focus:border-green-500 border-gray-300 transition-colors tabular-nums ${
+    compact ? 'py-1 px-2 text-xs' : 'px-3 py-3 sm:py-2 text-base sm:text-sm'
+  }`;
 
   // If custom className is provided, append spinner removal classes for number inputs
   // Otherwise use the default className with spinner removal classes
@@ -70,6 +74,20 @@ const Input: React.FC<InputProps> = ({ label, id, helperText, onKeyDown, name, e
       <div>
         {inputElement}
         {helperTextElement}
+      </div>
+    );
+  }
+
+  if (horizontal) {
+    return (
+      <div className="flex items-center gap-2">
+        <label htmlFor={inputId} className="block text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0 w-24">
+          {label}
+        </label>
+        <div className="flex-1">
+          {inputElement}
+          {helperTextElement}
+        </div>
       </div>
     );
   }

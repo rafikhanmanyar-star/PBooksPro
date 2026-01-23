@@ -1035,27 +1035,27 @@ const MarketingPage: React.FC = () => {
                     <div className="flex h-full animate-fade-in bg-slate-100">
                         {/* Left Sidebar - Form Controls */}
                         <div className="w-80 flex flex-col bg-white border-r border-slate-200 overflow-y-auto shrink-0 no-print">
-                            <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                                <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Project Info</h2>
+                            <div className="p-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                                <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Project Info</h2>
                                 <Button variant="ghost" onClick={() => setShowForm(false)} size="sm">
                                     <div className="w-4 h-4">{ICONS.x}</div>
                                 </Button>
                             </div>
                             
-                            <div className="p-4 space-y-6">
+                            <div className="p-3 space-y-4">
                                 {/* Template Selection */}
-                                <div className="space-y-3">
-                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Plan Template</h3>
+                                <div className="space-y-2">
+                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Plan Template</h3>
                                     <div className="grid grid-cols-2 gap-2">
                                         <button 
                                             onClick={() => setSelectedTemplate('formal')}
-                                            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all border-2 ${selectedTemplate === 'formal' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}
+                                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border-2 ${selectedTemplate === 'formal' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}
                                         >
                                             Template 1 (Formal)
                                         </button>
                                         <button 
                                             onClick={() => setSelectedTemplate('modern')}
-                                            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all border-2 ${selectedTemplate === 'modern' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}
+                                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border-2 ${selectedTemplate === 'modern' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}
                                         >
                                             Template 2 (Modern)
                                         </button>
@@ -1063,13 +1063,15 @@ const MarketingPage: React.FC = () => {
                                 </div>
 
                                 {/* Basic Selection */}
-                                <div className="space-y-4">
+                                <div className="space-y-2 pt-2 border-t border-slate-50">
                                     <ComboBox 
-                                        label="Project Name" 
+                                        label="Project" 
                                         items={state.projects} 
                                         selectedId={projectId} 
                                         onSelect={item => { setProjectId(item?.id || ''); setUnitId(''); }} 
                                         placeholder="Select Project"
+                                        horizontal
+                                        compact
                                     />
                                     <ComboBox 
                                         label="Unit #" 
@@ -1078,41 +1080,50 @@ const MarketingPage: React.FC = () => {
                                         onSelect={item => setUnitId(item?.id || '')} 
                                         placeholder="Select Unit"
                                         disabled={!projectId}
+                                        horizontal
+                                        compact
                                     />
                                 </div>
 
                                 {/* Client Info */}
-                                <div className="space-y-4 pt-4 border-t border-slate-100">
-                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Client Info</h3>
+                                <div className="space-y-2 pt-2 border-t border-slate-50">
                                     <ComboBox 
-                                        label="Client Name" 
+                                        label="Client" 
                                         items={leads} 
                                         selectedId={leadId} 
                                         onSelect={item => setLeadId(item?.id || '')} 
                                         placeholder="Select Lead"
+                                        horizontal
+                                        compact
                                     />
                                 </div>
 
                                 {/* Pricing & Discount */}
-                                <div className="space-y-4 pt-4 border-t border-slate-100">
-                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pricing</h3>
-                                    <Input label="Base Price (PKR)" type="number" value={listPrice} onChange={e => setListPrice(e.target.value)} />
+                                <div className="space-y-2 pt-2 border-t border-slate-50">
+                                    <Input 
+                                        label="Base Price" 
+                                        type="number" 
+                                        value={listPrice} 
+                                        onChange={e => setListPrice(e.target.value)} 
+                                        horizontal
+                                        compact
+                                    />
                                     
                                     <div className="flex justify-between items-center px-1">
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase">Amenities Total</span>
-                                        <span className="text-xs font-bold text-indigo-600">Rs. {amenitiesTotal.toLocaleString()}</span>
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase">Amenities</span>
+                                        <span className="text-[11px] font-bold text-indigo-600">Rs. {amenitiesTotal.toLocaleString()}</span>
                                     </div>
                                 </div>
 
                                 {/* Amenities Selection */}
-                                <div className="space-y-3 pt-4 border-t border-slate-100">
-                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">Add Amenities</h3>
+                                <div className="space-y-2 pt-2 border-t border-slate-50">
+                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Add Amenities</h3>
                                     
-                                    <div className="space-y-2 p-2 rounded bg-slate-50 border border-slate-100">
+                                    <div className="flex gap-1.5 p-1.5 rounded bg-slate-50 border border-slate-100">
                                         <select 
                                             value={selectedAmenityIdToAdd}
                                             onChange={e => setSelectedAmenityIdToAdd(e.target.value)}
-                                            className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-500 outline-none"
+                                            className="flex-1 px-2 py-1 bg-white border border-slate-200 rounded text-[10px] focus:ring-1 focus:ring-indigo-500 outline-none"
                                         >
                                             <option value="">Select Amenity...</option>
                                             {activeAmenities
@@ -1127,34 +1138,34 @@ const MarketingPage: React.FC = () => {
                                         <Button 
                                             variant="secondary" 
                                             size="sm" 
-                                            className="w-full justify-center py-1.5 text-[10px]"
+                                            className="px-2 py-1 h-auto text-[9px] font-bold"
                                             onClick={addAmenity}
                                             disabled={!selectedAmenityIdToAdd}
                                         >
-                                            Add Amenity
+                                            Add
                                         </Button>
                                     </div>
 
-                                    <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
+                                    <div className="space-y-1 max-h-32 overflow-y-auto pr-1 custom-scrollbar">
                                         {selectedAmenityIds.map(amenityId => {
                                             const amenity = activeAmenities.find(a => a.id === amenityId);
                                             if (!amenity) return null;
                                             return (
                                                 <div 
                                                     key={amenity.id} 
-                                                    className="flex items-center justify-between p-2 rounded bg-indigo-50 border border-indigo-200 shadow-sm animate-fade-in"
+                                                    className="flex items-center justify-between p-1.5 rounded bg-indigo-50/50 border border-indigo-100 animate-fade-in"
                                                 >
-                                                    <div className="flex-1">
-                                                        <p className="text-[11px] font-medium text-slate-700">{amenity.name}</p>
-                                                        <p className="text-[10px] font-bold text-indigo-600">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-[10px] font-medium text-slate-700 truncate">{amenity.name}</p>
+                                                        <p className="text-[9px] font-bold text-indigo-600">
                                                             {amenity.isPercentage ? `${amenity.price}%` : `Rs. ${amenity.price.toLocaleString()}`}
                                                         </p>
                                                     </div>
                                                     <button 
                                                         onClick={() => setSelectedAmenityIds(prev => prev.filter(id => id !== amenityId))}
-                                                        className="text-slate-400 hover:text-rose-600 p-1"
+                                                        className="text-slate-400 hover:text-rose-600 p-0.5"
                                                     >
-                                                        <div className="w-3.5 h-3.5">{ICONS.trash}</div>
+                                                        <div className="w-3 h-3">{ICONS.trash}</div>
                                                     </button>
                                                 </div>
                                             );
@@ -1166,40 +1177,43 @@ const MarketingPage: React.FC = () => {
                                 </div>
 
                                 {/* Discount Selection */}
-                                <div className="space-y-4 pt-4 border-t border-slate-100">
-                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Discounts</h3>
+                                <div className="space-y-2 pt-2 border-t border-slate-50">
+                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Discounts</h3>
                                     
-                                    <div className="space-y-2 p-2 rounded bg-slate-50 border border-slate-100">
+                                    <div className="space-y-1.5 p-1.5 rounded bg-slate-50 border border-slate-100">
                                         <Input 
-                                            label="Discount Name" 
+                                            label="Name" 
                                             value={newDiscountName}
                                             onChange={e => setNewDiscountName(e.target.value)}
-                                            placeholder="e.g. Special Offer"
-                                            className="text-xs"
+                                            placeholder="Discount Name"
+                                            horizontal
+                                            compact
                                         />
-                                        <div className="flex gap-2">
+                                        <div className="flex gap-1.5">
                                             <div className="flex-1">
                                                 <Input 
-                                                    label="Amount (PKR)" 
+                                                    label="Amt" 
                                                     type="number"
                                                     value={newDiscountAmount}
                                                     onChange={e => setNewDiscountAmount(e.target.value)}
-                                                    className="text-xs"
+                                                    horizontal
+                                                    compact
                                                 />
                                             </div>
                                             <div className="flex-1">
                                                 <ComboBox
-                                                    label="Category"
+                                                    label="Cat"
                                                     items={expenseCategories}
                                                     selectedId={newDiscountCategoryId}
                                                     onSelect={item => setNewDiscountCategoryId(item?.id || '')}
-                                                    placeholder="Search or add category..."
+                                                    placeholder="Category"
                                                     entityType="category"
                                                     onAddNew={(entityType, name) => {
                                                         entityFormModal.openForm('category', name, undefined, TransactionType.EXPENSE, (newId) => {
                                                             setNewDiscountCategoryId(newId);
                                                         });
                                                     }}
+                                                    horizontal
                                                     compact
                                                 />
                                             </div>
@@ -1207,7 +1221,7 @@ const MarketingPage: React.FC = () => {
                                         <Button 
                                             variant="secondary" 
                                             size="sm" 
-                                            className="w-full justify-center py-1.5 text-[10px]"
+                                            className="w-full justify-center py-1 text-[9px] font-bold"
                                             onClick={addDiscount}
                                             disabled={!newDiscountName.trim() || parseFloat(newDiscountAmount) <= 0}
                                         >
@@ -1215,18 +1229,18 @@ const MarketingPage: React.FC = () => {
                                         </Button>
                                     </div>
 
-                                    <div className="space-y-2">
+                                    <div className="space-y-1 max-h-32 overflow-y-auto pr-1 custom-scrollbar">
                                         {discounts.map(d => (
-                                            <div key={d.id} className="flex items-center justify-between p-2 rounded bg-rose-50 border border-rose-100 animate-fade-in">
-                                                <div className="flex-1">
-                                                    <p className="text-[11px] font-bold text-slate-700">{d.name}</p>
-                                                    <p className="text-[10px] font-bold text-rose-600">Rs. {d.amount.toLocaleString()}</p>
+                                            <div key={d.id} className="flex items-center justify-between p-1.5 rounded bg-rose-50/50 border border-rose-100 animate-fade-in">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-[10px] font-bold text-slate-700 truncate">{d.name}</p>
+                                                    <p className="text-[9px] font-bold text-rose-600">Rs. {d.amount.toLocaleString()}</p>
                                                 </div>
                                                 <button 
                                                     onClick={() => removeDiscount(d.id)}
-                                                    className="text-slate-400 hover:text-rose-600 p-1"
+                                                    className="text-slate-400 hover:text-rose-600 p-0.5"
                                                 >
-                                                    <div className="w-3.5 h-3.5">{ICONS.trash}</div>
+                                                    <div className="w-3 h-3">{ICONS.trash}</div>
                                                 </button>
                                             </div>
                                         ))}
@@ -1237,79 +1251,79 @@ const MarketingPage: React.FC = () => {
                                 </div>
 
                                 {/* Installment Plan */}
-                                <div className="space-y-4 pt-4 border-t border-slate-100">
-                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Installment Plan</h3>
-                                    <div className="space-y-2">
-                                        <div className="flex justify-between text-xs font-medium text-slate-600">
-                                            <span>Down Payment (%)</span>
+                                <div className="space-y-2 pt-2 border-t border-slate-50">
+                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Installment Plan</h3>
+                                    <div className="space-y-1 px-1">
+                                        <div className="flex justify-between text-[10px] font-medium text-slate-600">
+                                            <span>Down Payment</span>
                                             <span className="text-indigo-600 font-bold">{downPaymentPercentage}%</span>
                                         </div>
                                         <input 
                                             type="range" 
                                             min="5" max="50" 
                                             value={downPaymentPercentage} 
-                                            onChange={e => setDownPaymentPercentage(e.target.value)}
-                                            className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                                            onChange={e => setDownPaymentPercentage(e.target.value)} 
+                                            className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                                         />
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-500 uppercase">Years</label>
+                                    <div className="grid grid-cols-2 gap-2 pt-1">
+                                        <div className="flex items-center gap-1.5">
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Years</label>
                                             <select 
                                                 value={durationYears}
                                                 onChange={e => setDurationYears(e.target.value)}
-                                                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
+                                                className="flex-1 px-2 py-1 bg-white border border-slate-300 rounded text-[10px] focus:ring-1 focus:ring-indigo-500 outline-none"
                                             >
-                                                {[1, 2, 3, 4, 5, 10].map(y => <option key={y} value={y}>{y} Years</option>)}
+                                                {[1, 2, 3, 4, 5, 10].map(y => <option key={y} value={y}>{y}y</option>)}
                                             </select>
                                         </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-500 uppercase">Frequency</label>
+                                        <div className="flex items-center gap-1.5">
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Freq</label>
                                             <select 
                                                 value={frequency}
                                                 onChange={e => setFrequency(e.target.value as InstallmentFrequency)}
-                                                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
+                                                className="flex-1 px-2 py-1 bg-white border border-slate-300 rounded text-[10px] focus:ring-1 focus:ring-indigo-500 outline-none"
                                             >
-                                                <option value="Monthly">Monthly</option>
-                                                <option value="Quarterly">Quarterly</option>
-                                                <option value="Yearly">Yearly</option>
+                                                <option value="Monthly">Mon</option>
+                                                <option value="Quarterly">Quar</option>
+                                                <option value="Yearly">Year</option>
                                             </select>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="space-y-4 pt-4 border-t border-slate-100">
-                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Proposal Text</h3>
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold text-slate-500 uppercase">Intro Message</label>
+                                <div className="space-y-2 pt-2 border-t border-slate-50">
+                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Proposal Text</h3>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase px-1">Intro Message</label>
                                         <textarea 
                                             value={introText}
                                             onChange={e => setIntroText(e.target.value)}
-                                            className="w-full h-32 px-2 py-1.5 bg-white border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-500 outline-none resize-none"
-                                            placeholder="Custom intro text... (Leave empty for default)"
+                                            className="w-full h-20 px-2 py-1 bg-white border border-slate-200 rounded text-[10px] focus:ring-1 focus:ring-indigo-500 outline-none resize-none"
+                                            placeholder="Custom intro text..."
                                         />
-                                        <p className="text-[10px] text-slate-400 italic">This text appears after "Exclusively for You"</p>
+                                        <p className="text-[9px] text-slate-400 italic px-1 leading-tight">This text appears after "Exclusively for You"</p>
                                     </div>
                                 </div>
 
-                                <div className="pt-6 flex flex-col gap-2">
+                                <div className="pt-4 flex flex-col gap-1.5">
                                     <Button 
-                                        className="w-full justify-center py-3" 
+                                        className="w-full justify-center py-2 text-xs" 
                                         onClick={() => handleSave('draft')}
                                         disabled={isReadOnly}
                                     >
                                         {selectedPlanId ? 'Save New Version' : 'Save Plan'}
                                     </Button>
 
-                                    <div className="pt-2 space-y-2">
+                                    <div className="pt-1 space-y-1.5">
                                         {selectedPlanId && (
                                             <>
                                                 {/* Creator Actions: Submit */}
                                                 {(normalizedStatus === 'draft' || isRejectedStatus) && (
                                                     <Button 
                                                         variant="secondary" 
-                                                        className="w-full justify-center py-3 border-green-200 text-green-700 hover:bg-green-50" 
+                                                        className="w-full justify-center py-2 text-xs border-green-200 text-green-700 hover:bg-green-50" 
                                                         onClick={() => {
                                                             setApprovalModalApproverId('');
                                                             setShowApprovalModal(true);
@@ -1324,14 +1338,14 @@ const MarketingPage: React.FC = () => {
                                                     <div className="grid grid-cols-2 gap-2">
                                                         <Button 
                                                             variant="primary" 
-                                                            className="justify-center py-3 bg-green-600 hover:bg-green-700 text-white font-bold"
+                                                            className="justify-center py-2 text-xs bg-green-600 hover:bg-green-700 text-white font-bold"
                                                             onClick={() => handleApprovalDecision('Approved')}
                                                         >
                                                             Approve
                                                         </Button>
                                                         <Button 
                                                             variant="ghost" 
-                                                            className="justify-center py-3 text-rose-600 border border-rose-200 hover:bg-rose-50 font-bold"
+                                                            className="justify-center py-2 text-xs text-rose-600 border border-rose-200 hover:bg-rose-50 font-bold"
                                                             onClick={() => handleApprovalDecision('Rejected')}
                                                         >
                                                             Reject
@@ -1343,24 +1357,23 @@ const MarketingPage: React.FC = () => {
                                     </div>
 
                                     {isPendingApproval && (
-                                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                            <p className="text-[11px] text-blue-800 font-medium text-center">
+                                        <div className="p-2 bg-blue-50/50 border border-blue-100 rounded-lg">
+                                            <p className="text-[10px] text-blue-800 font-medium text-center">
                                                 Awaiting approval from {approvalRequestedToName || 'approver'}
-                                                {approvalRequestedByName ? `. Requested by ${approvalRequestedByName}.` : '.'}
                                             </p>
                                         </div>
                                     )}
                                     {isApprovedStatus && (
-                                        <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                                            <p className="text-[11px] text-green-800 font-medium text-center">
-                                                Approved{approvalReviewedByName ? ` by ${approvalReviewedByName}` : ''}. You can convert this plan to a sales agreement.
+                                        <div className="p-2 bg-green-50/50 border border-green-100 rounded-lg">
+                                            <p className="text-[10px] text-green-800 font-medium text-center">
+                                                Approved. Ready for sales agreement.
                                             </p>
                                         </div>
                                     )}
                                     {isRejectedStatus && (
-                                        <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
-                                            <p className="text-[11px] text-rose-800 font-medium text-center">
-                                                Rejected{approvalReviewedByName ? ` by ${approvalReviewedByName}` : ''}. Please update and submit for approval again.
+                                        <div className="p-2 bg-rose-50/50 border border-rose-100 rounded-lg">
+                                            <p className="text-[10px] text-rose-800 font-medium text-center">
+                                                Rejected. Please update and resubmit.
                                             </p>
                                         </div>
                                     )}

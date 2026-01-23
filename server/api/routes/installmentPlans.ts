@@ -215,6 +215,9 @@ router.post('/', async (req: TenantRequest, res) => {
     }
     
     const planId = plan.id || `plan_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const approvalRequestedById =
+      plan.approvalRequestedById ||
+      (plan.approvalRequestedToId ? req.user?.userId : undefined);
     let normalizedApprovalRequestedToId = plan.approvalRequestedToId;
 
     if (normalizedApprovalRequestedToId && req.tenantId) {
@@ -337,7 +340,7 @@ router.post('/', async (req: TenantRequest, res) => {
       { name: 'version', value: plan.version || 1, update: true },
       { name: 'root_id', value: plan.rootId || null, update: true },
       { name: 'status', value: plan.status || 'Draft', update: true },
-      { name: 'approval_requested_by', value: plan.approvalRequestedById || null, update: true },
+      { name: 'approval_requested_by', value: approvalRequestedById || null, update: true },
       { name: 'approval_requested_to', value: normalizedApprovalRequestedToId || null, update: true },
       { name: 'approval_requested_at', value: plan.approvalRequestedAt || null, update: true },
       { name: 'approval_reviewed_by', value: plan.approvalReviewedById || null, update: true },
@@ -420,7 +423,7 @@ router.post('/', async (req: TenantRequest, res) => {
       version: saved.version || plan.version || 1,
       rootId: saved.root_id || plan.rootId,
       status: saved.status || plan.status || 'Draft',
-      approvalRequestedById: saved.approval_requested_by || plan.approvalRequestedById,
+      approvalRequestedById: saved.approval_requested_by || approvalRequestedById,
       approvalRequestedToId: saved.approval_requested_to || plan.approvalRequestedToId,
       approvalRequestedAt: saved.approval_requested_at || plan.approvalRequestedAt,
       approvalReviewedById: saved.approval_reviewed_by || plan.approvalReviewedById,

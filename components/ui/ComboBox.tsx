@@ -23,9 +23,10 @@ interface ComboBoxProps {
   onAddNew?: (entityType: string, name: string) => void; // Callback to open form modal
   className?: string;
   compact?: boolean;
+  horizontal?: boolean;
 }
 
-const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect, onQueryChange, placeholder, disabled = false, allowAddNew = true, required = false, id, name, entityType, onAddNew, className = '', compact = false }) => {
+const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect, onQueryChange, placeholder, disabled = false, allowAddNew = true, required = false, id, name, entityType, onAddNew, className = '', compact = false, horizontal = false }) => {
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -294,29 +295,49 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
 
   const focusClasses = 'focus:ring-2 focus:ring-green-500/50 focus:border-green-500';
 
+  const inputElement = (
+    <input
+      ref={inputRef}
+      id={inputId}
+      name={name || inputId}
+      type="text"
+      className={`block w-full border rounded-lg shadow-sm placeholder-gray-400 focus:outline-none disabled:bg-gray-100 disabled:cursor-not-allowed border-gray-300 ${focusClasses} ${compact ? 'py-1 px-2 text-xs' : 'px-3 py-3 sm:py-2 text-base sm:text-sm'
+        } ${!label && !compact ? 'h-8' : ''}`}
+      value={query}
+      onMouseDown={handleInputMouseDown}
+      onClick={handleInputClick}
+      onFocus={handleInputFocus}
+      onBlur={handleInputBlur}
+      onKeyDown={handleInputKeyDown}
+      onChange={handleChange}
+      placeholder={placeholder}
+      disabled={disabled}
+      required={required && !selectedId}
+      autoComplete="off"
+      spellCheck={true}
+    />
+  );
+
   return (
     <div ref={wrapperRef} className={`relative ${className}`}>
-      {label && <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>}
-      <input
-        ref={inputRef}
-        id={inputId}
-        name={name || inputId}
-        type="text"
-        className={`block w-full border rounded-lg shadow-sm placeholder-gray-400 focus:outline-none disabled:bg-gray-100 disabled:cursor-not-allowed border-gray-300 ${focusClasses} ${compact ? 'py-1 px-2 text-xs' : 'px-3 py-3 sm:py-2 text-base sm:text-sm'
-          } ${!label && !compact ? 'h-8' : ''}`}
-        value={query}
-        onMouseDown={handleInputMouseDown}
-        onClick={handleInputClick}
-        onFocus={handleInputFocus}
-        onBlur={handleInputBlur}
-        onKeyDown={handleInputKeyDown}
-        onChange={handleChange}
-        placeholder={placeholder}
-        disabled={disabled}
-        required={required && !selectedId}
-        autoComplete="off"
-        spellCheck={true}
-      />
+      {label && (
+        horizontal ? (
+          <div className="flex items-center gap-2">
+            <label htmlFor={inputId} className="block text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0 w-24">
+              {label}
+            </label>
+            <div className="flex-1">
+              {inputElement}
+            </div>
+          </div>
+        ) : (
+          <>
+            <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
+            {inputElement}
+          </>
+        )
+      )}
+      {!label && inputElement}
       {isOpen && !disabled && mounted && dropdownPosition && createPortal(
         <ul
           ref={dropdownRef}
