@@ -874,6 +874,17 @@ class DatabaseService {
                 // Ensure contract and bill columns exist (for expense_category_items)
                 this.ensureContractColumnsExist();
                 
+                // Run version-specific migrations
+                if (currentVersion < 3) {
+                    // Migration from v2 to v3: Add document_path to bills table
+                    try {
+                        const { migrateAddDocumentPathToBills } = await import('./migrations/add-document-path-to-bills');
+                        await migrateAddDocumentPathToBills();
+                    } catch (migrationError) {
+                        console.warn('⚠️ document_path migration failed, continuing anyway:', migrationError);
+                    }
+                }
+                
                 // Update schema version
                 this.setMetadata('schema_version', latestVersion.toString());
                 

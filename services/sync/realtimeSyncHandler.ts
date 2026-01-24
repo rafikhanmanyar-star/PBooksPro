@@ -360,6 +360,7 @@ function normalizeBill(data: any): any {
     staffId: data.staff_id ?? data.staffId ?? undefined,
     expenseCategoryItems: data.expense_category_items ?? data.expenseCategoryItems ?? undefined,
     documentPath: data.document_path ?? data.documentPath ?? undefined,
+    version: data.version ?? 1,
   };
 }
 
