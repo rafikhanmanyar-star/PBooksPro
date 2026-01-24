@@ -11,6 +11,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { CURRENCY } from '../../constants';
 import { WhatsAppService } from '../../services/whatsappService';
 import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
+import { getAppStateApiService } from '../../services/api/appStateApi';
 
 interface TransactionFormProps {
     onClose: () => void;
@@ -91,14 +92,15 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
         ).map(c => ({ id: c.id, name: `${c.contractNumber} - ${c.name}` }));
     }, [state.contracts, type, costCenterType, projectId, contactId, contractId]);
 
-    // Initialize default account
+    // Initialize default account (including when paying a bill — new transaction)
     useEffect(() => {
-        if (!transactionToEdit && !accountId) {
+        const isNew = !transactionToEdit || !transactionToEdit.id;
+        if (isNew && !accountId && bankAccounts.length > 0) {
             const cash = bankAccounts.find(a => a.name === 'Cash');
             if (cash) setAccountId(cash.id);
-            else if (bankAccounts.length > 0) setAccountId(bankAccounts[0].id);
+            else setAccountId(bankAccounts[0].id);
         }
-    }, [transactionToEdit, accountId, bankAccounts]);
+    }, [transactionToEdit, transactionToEdit?.id, accountId, bankAccounts]);
 
     // Reset fields when switching types
     useEffect(() => {
@@ -223,53 +225,81 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
 
         if (transactionToEdit && transactionToEdit.id) {
             dispatch({ type: 'UPDATE_TRANSACTION', payload: { ...transactionToEdit, ...baseTx } });
-        } else {
-            dispatch({ type: 'ADD_TRANSACTION', payload: { ...baseTx, id: Date.now().toString() } });
-            
-            // --- WhatsApp Receipt Logic for New Invoice Payments ---
-            if (type === TransactionType.INCOME && baseTx.invoiceId) {
-                const invoice = state.invoices.find(i => i.id === baseTx.invoiceId);
-                const contact = state.contacts.find(c => c.id === baseTx.contactId);
-                
-                if (invoice && contact && contact.contactNo) {
-                    const confirmReceipt = await showConfirm(
-                        "Payment recorded successfully. Do you want to send the receipt on WhatsApp?", 
-                        { title: "Send Receipt", confirmLabel: "Send WhatsApp", cancelLabel: "No, Later" }
-                    );
-                    
-                    if (confirmReceipt) {
-                        // Resolve Context Name (Project/Unit)
-                        let subject = 'Invoice';
-                        let unitName = '';
-                        if (invoice.projectId) {
-                            const project = state.projects.find(p => p.id === invoice.projectId);
-                            const unit = state.units.find(u => u.id === invoice.unitId);
-                            subject = project ? project.name : 'Project';
-                            if (unit) {
-                                subject += ` - Unit ${unit.name}`;
-                                unitName = unit.name;
-                            }
-                        }
+            onClose();
+            return;
+        }
 
-                        // Balance Calculation (Invoice Amount - (Already Paid + Current Payment))
-                        const totalPaid = (invoice.paidAmount || 0) + numAmount;
-                        const remainingBalance = Math.max(0, invoice.amount - totalPaid);
+        // --- API-first for bill payment: save to cloud before updating local state ---
+        const isPayingBillFlow = !!linkedBillId && type === TransactionType.EXPENSE;
+        if (isPayingBillFlow) {
+            const txId = `txn-bill-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+            const payload = { ...baseTx, id: txId };
+            try {
+                const saved = await getAppStateApiService().saveTransaction(payload) as Transaction;
+                dispatch({ type: 'ADD_TRANSACTION', payload: saved });
+                const bill = state.bills.find(b => b.id === linkedBillId);
+                if (bill) {
+                    const newPaidAmount = (bill.paidAmount || 0) + numAmount;
+                    const newStatus = newPaidAmount >= bill.amount - 0.01
+                        ? InvoiceStatus.PAID
+                        : newPaidAmount > 0.01
+                            ? InvoiceStatus.PARTIALLY_PAID
+                            : InvoiceStatus.UNPAID;
+                    dispatch({ type: 'UPDATE_BILL', payload: { ...bill, paidAmount: newPaidAmount, status: newStatus } });
+                }
+                onClose();
+                return;
+            } catch (err: any) {
+                const msg = err?.message || err?.error || 'Payment could not be saved to cloud. Please check your account exists in cloud and try again.';
+                await showAlert(`Payment failed: ${msg}`);
+                return;
+            }
+        }
 
-                        try {
-                            const { whatsAppTemplates } = state;
-                            const message = WhatsAppService.generateInvoiceReceipt(
-                                whatsAppTemplates.invoiceReceipt,
-                                contact,
-                                invoice.invoiceNumber,
-                                numAmount,
-                                remainingBalance,
-                                subject,
-                                unitName
-                            );
-                            WhatsAppService.sendMessage({ contact, message });
-                        } catch (error) {
-                            await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
+        // --- Non–bill-payment: local-first, then sync ---
+        dispatch({ type: 'ADD_TRANSACTION', payload: { ...baseTx, id: Date.now().toString() } });
+
+        // --- WhatsApp Receipt Logic for New Invoice Payments ---
+        if (type === TransactionType.INCOME && baseTx.invoiceId) {
+            const invoice = state.invoices.find(i => i.id === baseTx.invoiceId);
+            const contact = state.contacts.find(c => c.id === baseTx.contactId);
+
+            if (invoice && contact && contact.contactNo) {
+                const confirmReceipt = await showConfirm(
+                    "Payment recorded successfully. Do you want to send the receipt on WhatsApp?",
+                    { title: "Send Receipt", confirmLabel: "Send WhatsApp", cancelLabel: "No, Later" }
+                );
+
+                if (confirmReceipt) {
+                    let subject = 'Invoice';
+                    let unitName = '';
+                    if (invoice.projectId) {
+                        const project = state.projects.find(p => p.id === invoice.projectId);
+                        const unit = state.units.find(u => u.id === invoice.unitId);
+                        subject = project ? project.name : 'Project';
+                        if (unit) {
+                            subject += ` - Unit ${unit.name}`;
+                            unitName = unit.name;
                         }
+                    }
+
+                    const totalPaid = (invoice.paidAmount || 0) + numAmount;
+                    const remainingBalance = Math.max(0, invoice.amount - totalPaid);
+
+                    try {
+                        const { whatsAppTemplates } = state;
+                        const message = WhatsAppService.generateInvoiceReceipt(
+                            whatsAppTemplates.invoiceReceipt,
+                            contact,
+                            invoice.invoiceNumber,
+                            numAmount,
+                            remainingBalance,
+                            subject,
+                            unitName
+                        );
+                        WhatsAppService.sendMessage({ contact, message });
+                    } catch (error) {
+                        await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
                     }
                 }
             }

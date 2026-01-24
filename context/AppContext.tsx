@@ -2160,6 +2160,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 }
                             }
                         }
+
+                        // Notify when transaction sync fails (e.g. 400 validation / account not in cloud)
+                        const isTransactionAction = action.type === 'ADD_TRANSACTION' || action.type === 'BATCH_ADD_TRANSACTIONS' || action.type === 'UPDATE_TRANSACTION';
+                        if (error?.status === 400 && isTransactionAction && typeof window !== 'undefined') {
+                            const msg = error?.message || error?.error || 'Payment could not sync to cloud.';
+                            window.dispatchEvent(new CustomEvent('show-sync-warning', {
+                                detail: {
+                                    message: `${msg} Please ensure the payment account exists in cloud and try again.`,
+                                    type: 'warning'
+                                }
+                            }));
+                        }
                     }
                 };
 
@@ -2178,6 +2190,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     }
 
                     await prunePendingSyncItems(user, action);
+
+                    // BATCH_ADD_TRANSACTIONS: enqueue each transaction separately so all are synced when back online
+                    if (action.type === 'BATCH_ADD_TRANSACTIONS') {
+                        const transactions = action.payload as Transaction[];
+                        for (const tx of transactions) {
+                            await syncQueue.enqueue(
+                                tenantId,
+                                userId,
+                                'transaction',
+                                'create',
+                                tx
+                            );
+                        }
+                        logger.logCategory('sync', `✅ Queued ${transactions.length} transaction(s) for sync when online`);
+                        return;
+                    }
 
                     // Map action type to sync operation type and extract data
                     const mapping = mapActionToSyncOperation(action);
