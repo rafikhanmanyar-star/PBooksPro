@@ -291,7 +291,7 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
     email: tenant.email,
     phone: tenant.phone || '',
     address: tenant.address || '',
-    maxUsers: tenant.max_users || 5,
+    maxUsers: tenant.max_users ?? 20,
     subscriptionTier: tenant.subscription_tier || 'free',
     licenseType: tenant.license_type,
     licenseStatus: tenant.license_status
@@ -313,7 +313,7 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
         email: data.email,
         phone: data.phone || '',
         address: data.address || '',
-        maxUsers: data.max_users || 5,
+        maxUsers: data.max_users ?? 20,
         subscriptionTier: data.subscription_tier || 'free',
         licenseType: data.license_type,
         licenseStatus: data.license_status
@@ -454,7 +454,7 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
       email: tenantDetails.email,
       phone: tenantDetails.phone || '',
       address: tenantDetails.address || '',
-      maxUsers: tenantDetails.max_users || 5,
+      maxUsers: tenantDetails.max_users ?? 20,
       subscriptionTier: tenantDetails.subscription_tier || 'free',
       licenseType: tenantDetails.license_type,
       licenseStatus: tenantDetails.license_status
@@ -655,11 +655,11 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                   </div>
                 ) : (
                   <div>
-                    <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>{tenantDetails.max_users || 5}</div>
+                    <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>{tenantDetails.max_users ?? 20}</div>
                     {stats && (
                       <div style={{ marginTop: '0.25rem', fontSize: '0.6875rem', color: '#6b7280' }}>
-                        {stats.userCount} / {tenantDetails.max_users || 5}
-                        {stats.userCount >= (tenantDetails.max_users || 5) && (
+                        {stats.userCount} / {tenantDetails.max_users ?? 20}
+                        {stats.userCount >= (tenantDetails.max_users ?? 20) && (
                           <span style={{ marginLeft: '0.375rem', color: '#dc2626', fontWeight: 600 }}>• Limit</span>
                         )}
                       </div>
@@ -701,7 +701,7 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                 <div>
                   <div style={{ fontSize: '0.6875rem', color: '#6b7280', marginBottom: '0.125rem' }}>Users</div>
                   <div style={{ fontSize: '0.9375rem', fontWeight: 600 }}>
-                    {stats.userCount} / {tenantDetails.max_users || 5}
+                    {stats.userCount} / {tenantDetails.max_users ?? 20}
                   </div>
                 </div>
                 <div>

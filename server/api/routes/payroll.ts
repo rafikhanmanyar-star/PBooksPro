@@ -355,6 +355,133 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
 
     const { status, total_amount } = req.body;
 
+    // Get current payroll run
+    const currentRun = await getDb().query(
+      `SELECT * FROM payroll_runs WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId]
+    );
+
+    if (currentRun.length === 0) {
+      return res.status(404).json({ error: 'Payroll run not found' });
+    }
+
+    const currentStatus = currentRun[0].status;
+
+    // Define valid status transitions
+    const validTransitions: { [key: string]: string[] } = {
+      'DRAFT': ['APPROVED', 'CANCELLED', 'PROCESSING'],
+      'PROCESSING': ['DRAFT', 'CANCELLED'],
+      'APPROVED': ['PAID', 'DRAFT'], // Allow going back to DRAFT if needed (with proper authorization)
+      'PAID': [], // Final state - no transitions allowed
+      'CANCELLED': [] // Final state - no transitions allowed
+    };
+
+    // Validate status transition
+    if (!validTransitions[currentStatus]?.includes(status)) {
+      return res.status(400).json({ 
+        error: `Invalid status transition from ${currentStatus} to ${status}`,
+        validTransitions: validTransitions[currentStatus] || []
+      });
+    }
+
+    // Validation before approval
+    if (status === 'APPROVED') {
+      // Get all active employees
+      const activeEmployees = await getDb().query(
+        `SELECT COUNT(*) as count FROM payroll_employees 
+         WHERE tenant_id = $1 AND status = 'ACTIVE'`,
+        [tenantId]
+      );
+      const activeCount = parseInt(activeEmployees[0].count);
+
+      // Get all payslips for this run
+      const payslips = await getDb().query(
+        `SELECT * FROM payslips WHERE payroll_run_id = $1 AND tenant_id = $2`,
+        [id, tenantId]
+      );
+
+      // Check if all active employees have payslips
+      if (payslips.length < activeCount) {
+        return res.status(400).json({ 
+          error: `Cannot approve: ${activeCount - payslips.length} active employees are missing payslips. Please process payroll first.`,
+          missingPayslips: activeCount - payslips.length,
+          totalActive: activeCount,
+          payslipsGenerated: payslips.length
+        });
+      }
+
+      // Validate total amount matches sum of payslips
+      const payslipTotal = payslips.reduce((sum: number, p: any) => {
+        return sum + parseFloat(p.net_pay || 0);
+      }, 0);
+      const runTotal = parseFloat(currentRun[0].total_amount || 0);
+      const difference = Math.abs(payslipTotal - runTotal);
+
+      // Allow small rounding differences (up to 0.01)
+      if (difference > 0.01) {
+        return res.status(400).json({ 
+          error: `Cannot approve: Total amount mismatch. Run total: ${runTotal}, Payslips sum: ${payslipTotal}, Difference: ${difference}`,
+          runTotal,
+          payslipTotal,
+          difference
+        });
+      }
+
+      // Validate employee count matches
+      if (payslips.length !== parseInt(currentRun[0].employee_count || 0)) {
+        return res.status(400).json({ 
+          error: `Cannot approve: Employee count mismatch. Run count: ${currentRun[0].employee_count}, Payslips count: ${payslips.length}`,
+          runEmployeeCount: currentRun[0].employee_count,
+          payslipCount: payslips.length
+        });
+      }
+    }
+
+    // Validation before marking as PAID
+    if (status === 'PAID') {
+      // Require APPROVED status first
+      if (currentStatus !== 'APPROVED') {
+        return res.status(400).json({ 
+          error: 'Payroll run must be APPROVED before it can be marked as PAID',
+          currentStatus
+        });
+      }
+
+      // Check if all payslips are paid
+      const payslips = await getDb().query(
+        `SELECT COUNT(*) as total, 
+                COUNT(*) FILTER (WHERE is_paid = true) as paid
+         FROM payslips 
+         WHERE payroll_run_id = $1 AND tenant_id = $2`,
+        [id, tenantId]
+      );
+
+      const totalPayslips = parseInt(payslips[0].total);
+      const paidPayslips = parseInt(payslips[0].paid);
+
+      if (totalPayslips === 0) {
+        return res.status(400).json({ 
+          error: 'Cannot mark as PAID: No payslips found for this run'
+        });
+      }
+
+      if (paidPayslips < totalPayslips) {
+        return res.status(400).json({ 
+          error: `Cannot mark as PAID: ${totalPayslips - paidPayslips} payslips are still unpaid`,
+          totalPayslips,
+          paidPayslips,
+          unpaidPayslips: totalPayslips - paidPayslips
+        });
+      }
+    }
+
+    // Prevent modifications to approved/paid runs
+    if ((currentStatus === 'APPROVED' || currentStatus === 'PAID') && status === 'DRAFT') {
+      // Only allow going back to DRAFT if explicitly requested and user has permission
+      // For now, we'll allow it but log a warning
+      console.warn(`⚠️ Payroll run ${id} being reverted from ${currentStatus} to DRAFT by user ${userId}`);
+    }
+
     let additionalFields = '';
     const params: any[] = [status, userId, id, tenantId];
 
@@ -416,7 +543,25 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Payroll run not found' });
     }
 
-    // Get employees who already have payslips for this run
+    // Prevent reprocessing approved or paid runs
+    const currentStatus = runCheck[0].status;
+    if (currentStatus === 'APPROVED' || currentStatus === 'PAID') {
+      return res.status(400).json({ 
+        error: `Cannot process payroll run with status ${currentStatus}. Please revert to DRAFT first if modifications are needed.`,
+        currentStatus
+      });
+    }
+
+    // Set status to PROCESSING while processing
+    if (currentStatus !== 'PROCESSING') {
+      await getDb().query(
+        `UPDATE payroll_runs SET status = 'PROCESSING', updated_by = $1 WHERE id = $2 AND tenant_id = $3`,
+        [userId, id, tenantId]
+      );
+    }
+
+    try {
+      // Get employees who already have payslips for this run
     const existingPayslips = await getDb().query(
       `SELECT employee_id, net_pay FROM payslips 
        WHERE payroll_run_id = $1 AND tenant_id = $2`,
@@ -498,33 +643,41 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
     const combinedTotalAmount = existingTotalAmount + newTotalAmount;
     const totalEmployeeCount = existingEmployeeIds.size + newPayslipsCount;
 
-    // Update payroll run with combined totals
-    // Set status to DRAFT so it can be reviewed and approved
-    const result = await getDb().query(
-      `UPDATE payroll_runs SET
-        status = 'DRAFT',
-        total_amount = $1,
-        employee_count = $2,
-        updated_by = $3
-       WHERE id = $4 AND tenant_id = $5
-       RETURNING *`,
-      [combinedTotalAmount, totalEmployeeCount, userId, id, tenantId]
-    );
+      // Update payroll run with combined totals
+      // Set status to DRAFT so it can be reviewed and approved
+      const result = await getDb().query(
+        `UPDATE payroll_runs SET
+          status = 'DRAFT',
+          total_amount = $1,
+          employee_count = $2,
+          updated_by = $3
+         WHERE id = $4 AND tenant_id = $5
+         RETURNING *`,
+        [combinedTotalAmount, totalEmployeeCount, userId, id, tenantId]
+      );
 
-    emitToTenant(tenantId, 'payroll_run_updated', { id });
+      emitToTenant(tenantId, 'payroll_run_updated', { id });
 
-    // Return detailed response with info about new vs existing payslips
-    res.json({
-      ...result[0],
-      processing_summary: {
-        new_payslips_generated: newPayslipsCount,
-        existing_payslips_skipped: existingEmployeeIds.size,
-        total_payslips: totalEmployeeCount,
-        new_amount_added: newTotalAmount,
-        previous_amount: existingTotalAmount,
-        total_amount: combinedTotalAmount
-      }
-    });
+      // Return detailed response with info about new vs existing payslips
+      res.json({
+        ...result[0],
+        processing_summary: {
+          new_payslips_generated: newPayslipsCount,
+          existing_payslips_skipped: existingEmployeeIds.size,
+          total_payslips: totalEmployeeCount,
+          new_amount_added: newTotalAmount,
+          previous_amount: existingTotalAmount,
+          total_amount: combinedTotalAmount
+        }
+      });
+    } catch (processingError) {
+      // On error, revert status back to previous state (or DRAFT)
+      await getDb().query(
+        `UPDATE payroll_runs SET status = $1, updated_by = $2 WHERE id = $3 AND tenant_id = $4`,
+        [currentStatus === 'PROCESSING' ? 'DRAFT' : currentStatus, userId, id, tenantId]
+      );
+      throw processingError;
+    }
   } catch (error) {
     console.error('Error processing payroll:', error);
     res.status(500).json({ error: 'Failed to process payroll' });
@@ -884,19 +1037,66 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     const userId = req.userId;
     const { id } = req.params;
 
-    console.log('💰 Payslip payment request:', { payslipId: id, tenantId, userId, body: req.body });
+    console.log('💰 Payslip payment request:', { 
+      payslipId: id, 
+      tenantId, 
+      tenantIdType: typeof tenantId,
+      tenantIdLength: tenantId?.length,
+      userId, 
+      body: req.body 
+    });
 
     if (!tenantId || !userId) {
       return res.status(400).json({ error: 'Authentication required' });
     }
+    
+    // Debug: Check what tenant_id values exist in accounts table
+    const allTenantsCheck = await getDb().query(
+      'SELECT DISTINCT tenant_id, COUNT(*) as account_count FROM accounts GROUP BY tenant_id ORDER BY tenant_id'
+    );
+    console.log('🔍 All tenant_ids in accounts table:', allTenantsCheck);
+    
+    // Debug: Check accounts for this specific tenant
+    const tenantAccountsCheck = await getDb().query(
+      'SELECT id, name, type, tenant_id FROM accounts WHERE tenant_id = $1',
+      [tenantId]
+    );
+    console.log('🔍 Accounts for tenant_id:', {
+      tenantId,
+      tenantIdType: typeof tenantId,
+      tenantIdStringified: JSON.stringify(tenantId),
+      accountCount: tenantAccountsCheck.length,
+      accounts: tenantAccountsCheck.map((a: any) => ({
+        id: a.id,
+        name: a.name,
+        type: a.type,
+        tenant_id: a.tenant_id,
+        tenant_idType: typeof a.tenant_id
+      }))
+    });
 
-    const { accountId, categoryId, projectId, description } = req.body;
+    let { accountId, categoryId, projectId, description } = req.body;
 
-    if (!accountId) {
+    // Normalize accountId - ensure it's a string and trim whitespace
+    if (accountId) {
+      accountId = String(accountId).trim();
+    }
+
+    if (!accountId || accountId === '') {
       return res.status(400).json({ error: 'Account ID is required' });
     }
 
-    console.log('🔍 Verifying account:', { accountId, tenantId, accountIdType: typeof accountId });
+    console.log('🔍 Verifying account:', { 
+      accountId, 
+      accountIdType: typeof accountId,
+      accountIdLength: accountId?.length,
+      accountIdStringified: JSON.stringify(accountId),
+      tenantId, 
+      tenantIdType: typeof tenantId,
+      requestBody: req.body,
+      requestBodyAccountId: req.body.accountId,
+      requestBodyAccountIdType: typeof req.body.accountId
+    });
 
     // First, check if account exists at all (for debugging)
     const allAccountsCheck = await getDb().query(
@@ -918,28 +1118,159 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     }
 
     // Verify account exists and belongs to tenant
-    const accountCheck = await getDb().query(
-      'SELECT id, name, type, balance FROM accounts WHERE id = $1 AND tenant_id = $2',
+    // First, try exact match
+    let accountCheck = await getDb().query(
+      `SELECT id, name, type, balance, tenant_id 
+       FROM accounts 
+       WHERE id = $1 AND tenant_id = $2`,
       [accountId, tenantId]
     );
+    
+    // If not found, try with trimmed tenant_id (in case of whitespace issues)
+    if (accountCheck.length === 0) {
+      console.log('⚠️ Account not found with exact tenant_id match, trying trimmed comparison...');
+      accountCheck = await getDb().query(
+        `SELECT id, name, type, balance, tenant_id 
+         FROM accounts 
+         WHERE id = $1 AND TRIM(tenant_id) = $2`,
+        [accountId, String(tenantId).trim()]
+      );
+    }
+    
+    // If still not found, check if account exists at all (for debugging)
+    if (accountCheck.length === 0) {
+      const accountExistsAnywhere = await getDb().query(
+        'SELECT id, name, type, tenant_id FROM accounts WHERE id = $1',
+        [accountId]
+      );
+      
+      if (accountExistsAnywhere.length > 0) {
+        const foundAccount = accountExistsAnywhere[0];
+        console.error('❌ Account exists but tenant_id mismatch:', {
+          accountId,
+          accountTenantId: foundAccount.tenant_id,
+          accountTenantIdType: typeof foundAccount.tenant_id,
+          requestTenantId: tenantId,
+          requestTenantIdType: typeof tenantId,
+          tenantIdsMatch: String(foundAccount.tenant_id).trim() === String(tenantId).trim(),
+          accountName: foundAccount.name
+        });
+      }
+    }
+    
+    console.log('🔍 Account check query result:', {
+      accountId,
+      tenantId,
+      accountCheckLength: accountCheck.length,
+      accountCheckResult: accountCheck.length > 0 ? accountCheck[0] : null
+    });
 
     if (accountCheck.length === 0) {
       // Get list of available accounts for this tenant for debugging
+      // Try multiple query variations to catch any tenant_id format issues
       const availableAccounts = await getDb().query(
-        'SELECT id, name, type FROM accounts WHERE tenant_id = $1 ORDER BY name LIMIT 10',
+        'SELECT id, name, type, tenant_id FROM accounts WHERE tenant_id = $1 ORDER BY name LIMIT 20',
         [tenantId]
+      );
+      
+      // Also try with trimmed tenant_id (in case of whitespace)
+      const availableAccountsTrimmed = await getDb().query(
+        'SELECT id, name, type, tenant_id FROM accounts WHERE TRIM(tenant_id) = $1 ORDER BY name LIMIT 20',
+        [String(tenantId).trim()]
+      );
+      
+      console.log('🔍 Available accounts queries:', {
+        tenantId,
+        tenantIdTrimmed: String(tenantId).trim(),
+        standardQueryCount: availableAccounts.length,
+        trimmedQueryCount: availableAccountsTrimmed.length,
+        standardQueryResults: availableAccounts.map((a: any) => ({
+          id: a.id,
+          name: a.name,
+          tenant_id: a.tenant_id,
+          tenant_idType: typeof a.tenant_id
+        })),
+        trimmedQueryResults: availableAccountsTrimmed.map((a: any) => ({
+          id: a.id,
+          name: a.name,
+          tenant_id: a.tenant_id,
+          tenant_idType: typeof a.tenant_id
+        }))
+      });
+      
+      // Use the query that found accounts (if any)
+      const accountsToReturn = availableAccountsTrimmed.length > 0 ? availableAccountsTrimmed : availableAccounts;
+      
+      // Also check if account exists with different tenant (for debugging)
+      const accountExists = await getDb().query(
+        'SELECT id, name, type, tenant_id FROM accounts WHERE id = $1',
+        [accountId]
       );
       
       console.error('❌ Account not found for tenant:', { 
         accountId, 
+        accountIdLength: accountId?.length,
+        accountIdType: typeof accountId,
         tenantId,
-        availableAccountCount: availableAccounts.length,
-        availableAccounts: availableAccounts.map((a: any) => ({ id: a.id, name: a.name, type: a.type }))
+        tenantIdType: typeof tenantId,
+        tenantIdLength: tenantId?.length,
+        tenantIdStringified: JSON.stringify(tenantId),
+        availableAccountCount: accountsToReturn.length,
+        availableAccounts: accountsToReturn.map((a: any) => ({ 
+          id: a.id, 
+          name: a.name, 
+          type: a.type,
+          tenant_id: a.tenant_id,
+          tenant_idType: typeof a.tenant_id
+        })),
+        accountExists: accountExists.length > 0 ? {
+          found: true,
+          accountTenantId: accountExists[0].tenant_id,
+          accountTenantIdType: typeof accountExists[0].tenant_id,
+          accountName: accountExists[0].name,
+          tenantIdsMatch: String(accountExists[0].tenant_id).trim() === String(tenantId).trim()
+        } : { found: false }
+      });
+      
+      // Provide more helpful error message
+      let errorDetails = `Account ID "${accountId}" does not exist or does not belong to this tenant.`;
+      if (accountExists.length > 0) {
+        const accountTenantId = accountExists[0].tenant_id;
+        const requestTenantId = tenantId;
+        errorDetails += ` The account exists but belongs to a different tenant. `;
+        errorDetails += `Account tenant_id: "${accountTenantId}" (type: ${typeof accountTenantId}), `;
+        errorDetails += `Request tenant_id: "${requestTenantId}" (type: ${typeof requestTenantId}).`;
+        errorDetails += ` They ${String(accountTenantId).trim() === String(requestTenantId).trim() ? 'MATCH' : 'DO NOT MATCH'} when compared.`;
+      } else if (accountsToReturn.length === 0) {
+        errorDetails += ` No accounts found for this tenant (tenant_id: "${tenantId}"). Please create a Bank or Cash account first.`;
+      } else {
+        errorDetails += ` Available accounts for this tenant: ${accountsToReturn.map((a: any) => `${a.name} (ID: ${a.id})`).join(', ')}`;
+      }
+      
+      // Log detailed comparison for debugging
+      console.error('🔍 Account ID Comparison:', {
+        requestedAccountId: accountId,
+        requestedAccountIdLength: accountId?.length,
+        requestedAccountIdType: typeof accountId,
+        requestTenantId: tenantId,
+        requestTenantIdType: typeof tenantId,
+        availableAccountIds: accountsToReturn.map((a: any) => ({
+          id: a.id,
+          idLength: a.id?.length,
+          idType: typeof a.id,
+          name: a.name,
+          tenant_id: a.tenant_id,
+          tenant_idType: typeof a.tenant_id,
+          matches: String(a.id).trim() === String(accountId).trim()
+        }))
       });
       
       return res.status(404).json({ 
         error: 'Payment account not found',
-        details: `Account ID ${accountId} does not exist or does not belong to this tenant. Please select a valid account.`
+        details: errorDetails,
+        requestedAccountId: accountId,
+        requestTenantId: tenantId,
+        availableAccounts: accountsToReturn.map((a: any) => ({ id: a.id, name: a.name, type: a.type, tenant_id: a.tenant_id }))
       });
     }
 
@@ -950,10 +1281,10 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     const SALARY_EXPENSES_CATEGORY_ID = 'sys-cat-sal-exp';
     const effectiveCategoryId = categoryId || SALARY_EXPENSES_CATEGORY_ID;
 
-    // Get payslip details with employee info
+    // Get payslip details with employee info and payroll run status
     const payslipResult = await getDb().query(
       `SELECT p.*, e.name as employee_name, e.projects as employee_projects, 
-              r.month, r.year
+              r.month, r.year, r.status as run_status, r.id as run_id
        FROM payslips p
        JOIN payroll_employees e ON p.employee_id = e.id
        JOIN payroll_runs r ON p.payroll_run_id = r.id
@@ -971,11 +1302,21 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
       id: payslip.id, 
       employee: payslip.employee_name, 
       netPay: payslip.net_pay,
-      isPaid: payslip.is_paid 
+      isPaid: payslip.is_paid,
+      runStatus: payslip.run_status
     });
 
     if (payslip.is_paid) {
       return res.status(400).json({ error: 'Payslip is already paid' });
+    }
+
+    // Require APPROVED status before paying payslips
+    if (payslip.run_status !== 'APPROVED' && payslip.run_status !== 'PAID') {
+      return res.status(400).json({ 
+        error: `Cannot pay payslip: Payroll run must be APPROVED first. Current status: ${payslip.run_status}`,
+        runStatus: payslip.run_status,
+        runId: payslip.run_id
+      });
     }
 
     // Determine project from employee's project allocation (first one with highest allocation)
@@ -1036,18 +1377,39 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     );
     console.log('✅ Payslip marked as paid');
 
+    // NOTE: Auto-paid feature removed - users must manually mark run as PAID after all payslips are paid
+    // Check payslip status for information only (not for auto-update)
+    const payslipStatus = await getDb().query(
+      `SELECT COUNT(*) as total, 
+              COUNT(*) FILTER (WHERE is_paid = true) as paid
+       FROM payslips 
+       WHERE payroll_run_id = $1 AND tenant_id = $2`,
+      [payslip.run_id, tenantId]
+    );
+
+    const totalPayslips = parseInt(payslipStatus[0].total);
+    const paidPayslips = parseInt(payslipStatus[0].paid);
+
     // Emit WebSocket event
     emitToTenant(tenantId, 'payslip_paid', { 
       payslipId: id, 
       transactionId: transaction.id,
-      employeeId: payslip.employee_id 
+      employeeId: payslip.employee_id,
+      runId: payslip.run_id,
+      paidCount: paidPayslips,
+      totalCount: totalPayslips
     });
 
     console.log('✅ Payment completed successfully');
     res.json({
       success: true,
       payslip: updateResult[0],
-      transaction: transaction
+      transaction: transaction,
+      paymentSummary: {
+        paidPayslips,
+        totalPayslips,
+        remainingPayslips: totalPayslips - paidPayslips
+      }
     });
   } catch (error: any) {
     console.error('❌ Error paying payslip:', error);

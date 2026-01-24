@@ -13,7 +13,7 @@ async function checkUserLimit(tenantId: string, db: any): Promise<{ allowed: boo
     'SELECT max_users FROM tenants WHERE id = $1',
     [tenantId]
   );
-  const maxUsers = tenantInfo[0]?.max_users || 5;
+  const maxUsers = tenantInfo[0]?.max_users ?? 20;
   
   const userCountResult = await db.query(
     'SELECT COUNT(*) as count FROM users WHERE tenant_id = $1 AND is_active = true',

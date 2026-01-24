@@ -85,7 +85,13 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
     });
     
     console.log('✅ PayslipModal - Filtered payment accounts count:', filtered.length);
-    console.log('✅ PayslipModal - Filtered accounts:', filtered.map(a => ({ name: a.name, type: a.type, balance: a.balance })));
+    console.log('✅ PayslipModal - Filtered accounts with IDs:', filtered.map(a => ({ 
+      id: a.id, 
+      idType: typeof a.id,
+      name: a.name, 
+      type: a.type, 
+      balance: a.balance 
+    })));
     
     if (filtered.length === 0 && accountsToUse.length > 0) {
       console.error('❌ PayslipModal - No payment accounts found after filtering!');
@@ -133,6 +139,12 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
               setPaymentError('No accounts found. Please create a Bank or Cash account in Settings → Financial → Chart of Accounts.');
             } else {
               console.log('✅ PayslipModal - Successfully loaded accounts from API:', accountsData.length);
+              console.log('✅ PayslipModal - Account IDs from API:', accountsData.map((a: any) => ({
+                id: a.id,
+                idType: typeof a.id,
+                name: a.name,
+                type: a.type
+              })));
               setFetchedAccounts(accountsData);
             }
           } else {
@@ -501,14 +513,61 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                   {paymentAccounts.length > 0 ? (
                     <ComboBox
                       label="Pay From Account"
-                      items={paymentAccounts.map(acc => ({
-                        id: acc.id,
-                        name: `${acc.name} (${acc.type}) - PKR ${formatCurrency(acc.balance)}`
-                      }))}
+                      items={paymentAccounts.map(acc => {
+                        // Ensure we're using the correct account ID
+                        const accountId = acc.id || (acc as any)._id || '';
+                        console.log('Mapping account to ComboBox item:', {
+                          accountName: acc.name,
+                          accountId: accountId,
+                          accountIdType: typeof accountId,
+                          fullAccount: acc
+                        });
+                        return {
+                          id: accountId,
+                          name: `${acc.name} (${acc.type}) - PKR ${formatCurrency(acc.balance)}`
+                        };
+                      })}
                       selectedId={selectedAccountId}
                       onSelect={(item) => {
-                        console.log('Selected account:', item);
-                        setSelectedAccountId(item?.id || '');
+                        console.log('🔵 ComboBox onSelect called with item:', item);
+                        console.log('🔵 Item details:', {
+                          item,
+                          itemId: item?.id,
+                          itemIdType: typeof item?.id,
+                          itemName: item?.name
+                        });
+                        
+                        // Find the original account object to ensure we have the correct ID
+                        const originalAccount = paymentAccounts.find(acc => {
+                          const accId = acc.id || (acc as any)._id || '';
+                          return accId === item?.id;
+                        });
+                        
+                        console.log('🔵 Original account found:', originalAccount);
+                        
+                        if (!originalAccount) {
+                          console.error('❌ Could not find original account for selected item:', item);
+                          setPaymentError('Selected account not found in available accounts. Please refresh and try again.');
+                          return;
+                        }
+                        
+                        const accountId = originalAccount.id || (originalAccount as any)._id || '';
+                        const cleanAccountId = String(accountId).trim();
+                        
+                        console.log('🔵 Setting selectedAccountId to:', cleanAccountId);
+                        console.log('🔵 Account details:', {
+                          name: originalAccount.name,
+                          type: originalAccount.type,
+                          id: cleanAccountId,
+                          idType: typeof cleanAccountId
+                        });
+                        
+                        setSelectedAccountId(cleanAccountId);
+                        
+                        // Clear any previous errors when selecting a new account
+                        if (cleanAccountId && paymentError) {
+                          setPaymentError(null);
+                        }
                       }}
                       placeholder="Select Payment Account"
                       required
@@ -617,22 +676,50 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                       }
                       
                       // Verify the selected account exists in our available accounts
-                      const selectedAccount = paymentAccounts.find(acc => acc.id === selectedAccountId);
+                      // Use flexible matching to handle ID format differences
+                      const selectedAccount = paymentAccounts.find(acc => {
+                        const accId = String(acc.id || '').trim();
+                        const selectedId = String(selectedAccountId || '').trim();
+                        return accId === selectedId || accId.toLowerCase() === selectedId.toLowerCase();
+                      });
+                      
                       if (!selectedAccount) {
                         console.error('❌ Selected account not found in paymentAccounts:', {
                           selectedAccountId,
-                          availableAccountIds: paymentAccounts.map(a => a.id),
-                          allAccounts: paymentAccounts
+                          selectedAccountIdType: typeof selectedAccountId,
+                          selectedAccountIdLength: selectedAccountId?.length,
+                          availableAccountIds: paymentAccounts.map(a => ({ 
+                            id: a.id, 
+                            idType: typeof a.id,
+                            name: a.name 
+                          })),
+                          allAccounts: paymentAccounts.map(a => ({ 
+                            id: a.id, 
+                            name: a.name, 
+                            type: a.type 
+                          }))
                         });
-                        setPaymentError(`Selected account (${selectedAccountId}) not found. Please select a different account.`);
+                        setPaymentError(`Selected account not found in available accounts. Please refresh the page and select again.`);
+                        setIsPaying(false);
+                        return;
+                      }
+                      
+                      // Use the account ID from the found account object (ensures correct format)
+                      const verifiedAccountId = String(selectedAccount.id || '').trim();
+                      if (!verifiedAccountId) {
+                        console.error('❌ Account found but has no valid ID:', selectedAccount);
+                        setPaymentError('Selected account has invalid ID. Please select a different account.');
+                        setIsPaying(false);
                         return;
                       }
                       
                       console.log('✅ Account validation passed:', {
-                        accountId: selectedAccountId,
+                        originalSelectedId: selectedAccountId,
+                        verifiedAccountId: verifiedAccountId,
                         accountName: selectedAccount.name,
                         accountType: selectedAccount.type,
-                        accountBalance: selectedAccount.balance
+                        accountBalance: selectedAccount.balance,
+                        accountIdMatch: selectedAccountId === verifiedAccountId
                       });
                       
                       setIsPaying(true);
@@ -640,7 +727,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                       
                       console.log('💰 Processing salary payment:', {
                         payslipId: payslipData.id,
-                        accountId: selectedAccountId,
+                        accountId: verifiedAccountId,
                         accountName: selectedAccount.name,
                         categoryId: selectedCategoryId,
                         projectId: selectedProjectId,
@@ -648,8 +735,27 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                       });
                       
                       try {
+                        // Use the verified account ID from the found account object
+                        const cleanAccountId = verifiedAccountId;
+                        
+                        console.log('📤 Sending payment request:', {
+                          payslipId: payslipData.id,
+                          accountId: cleanAccountId,
+                          accountIdType: typeof cleanAccountId,
+                          accountIdLength: cleanAccountId.length,
+                          accountName: selectedAccount.name,
+                          accountType: selectedAccount.type,
+                          categoryId: selectedCategoryId,
+                          projectId: selectedProjectId,
+                          selectedAccount: {
+                            id: selectedAccount.id,
+                            name: selectedAccount.name,
+                            type: selectedAccount.type
+                          }
+                        });
+
                         const result = await payrollApi.payPayslip(payslipData.id, {
-                          accountId: selectedAccountId,
+                          accountId: cleanAccountId,
                           categoryId: selectedCategoryId,
                           projectId: selectedProjectId || undefined,
                           description: `Salary payment for ${employee.name} - ${run.month} ${run.year}`
@@ -671,17 +777,30 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                       } catch (error: any) {
                         console.error('❌ Payment exception:', error);
                         setIsPaying(false);
-                        const errorMessage = error.message || error.error || 'An unexpected error occurred';
+                        const errorMessage = error.message || error.error || error.response?.data?.error || 'An unexpected error occurred';
                         setPaymentError(errorMessage);
                         
-                        // If account not found error, provide helpful message
+                        // Provide helpful messages for common errors
                         if (errorMessage.includes('account not found') || errorMessage.includes('Payment account not found')) {
-                          setPaymentError(`Account not found in database. The account may have been deleted. Please refresh the page and select a different account.`);
+                          // Check if error response has available accounts
+                          const errorDetails = error.response?.data?.details || errorMessage;
+                          const availableAccounts = error.response?.data?.availableAccounts;
+                          
+                          let errorMsg = `Payment account not found. `;
+                          if (availableAccounts && availableAccounts.length > 0) {
+                            errorMsg += `Please select one of the available accounts: ${availableAccounts.map((a: any) => a.name).join(', ')}.`;
+                          } else {
+                            errorMsg += `The account may have been deleted or does not belong to this tenant. Please refresh the page and select a different account.`;
+                          }
+                          setPaymentError(errorMsg);
+                        } else if (errorMessage.includes('must be APPROVED') || errorMessage.includes('Cannot pay payslip')) {
+                          setPaymentError(`Cannot pay payslip: The payroll run must be APPROVED before individual payslips can be paid. Please approve the payroll run first.`);
                         }
                       }
                     }}
-                    disabled={isPaying || !selectedAccountId || !selectedCategoryId}
+                    disabled={isPaying || !selectedAccountId || !selectedCategoryId || run.status !== 'APPROVED' && run.status !== 'PAID'}
                     className="px-6 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
+                    title={run.status !== 'APPROVED' && run.status !== 'PAID' ? 'Payroll run must be APPROVED before paying payslips' : ''}
                   >
                     {isPaying ? (
                       <><Loader2 size={16} className="animate-spin" /> Processing...</>
@@ -689,6 +808,11 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                       <><CheckCircle2 size={16} /> Confirm Payment</>
                     )}
                   </button>
+                  {run.status !== 'APPROVED' && run.status !== 'PAID' && (
+                    <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
+                      <AlertCircle size={12} /> Payroll run must be APPROVED before paying payslips
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

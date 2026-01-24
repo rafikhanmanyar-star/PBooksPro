@@ -29,13 +29,30 @@ router.get('/', async (req: Request, res: Response) => {
     // Note: This is a simplified approach - in production, you might want to
     // include tenant ID in the webhook URL path or use a different method
     const db = getDb();
-    const configs = await db.query<{ tenant_id: string }>(
-      'SELECT tenant_id FROM whatsapp_configs WHERE verify_token = $1 AND is_active = TRUE',
+    
+    // Log the token Meta sent (first 10 chars for security)
+    console.log(`[Webhook Verification] Meta sent token: ${token ? token.substring(0, 10) + '...' : 'MISSING'}`);
+    
+    const configs = await db.query<{ tenant_id: string; verify_token: string }>(
+      'SELECT tenant_id, verify_token FROM whatsapp_configs WHERE verify_token = $1 AND is_active = TRUE',
       [token]
     );
 
     if (configs.length === 0) {
-      console.log('Webhook verification failed: Invalid verify token');
+      // Check if any configs exist at all
+      const allConfigs = await db.query<{ tenant_id: string; verify_token: string }>(
+        'SELECT tenant_id, verify_token FROM whatsapp_configs WHERE is_active = TRUE'
+      );
+      
+      if (allConfigs.length === 0) {
+        console.log('[Webhook Verification] No active WhatsApp configurations found in database');
+      } else {
+        console.log(`[Webhook Verification] Token mismatch. Database has ${allConfigs.length} active config(s) with different token(s)`);
+        // Log first 10 chars of stored tokens for debugging (without exposing full tokens)
+        allConfigs.forEach((config, idx) => {
+          console.log(`[Webhook Verification] Config ${idx + 1} token: ${config.verify_token.substring(0, 10)}... (tenant: ${config.tenant_id})`);
+        });
+      }
       return res.status(403).send('Forbidden');
     }
 
@@ -54,6 +71,17 @@ router.get('/', async (req: Request, res: Response) => {
  */
 router.post('/', async (req: Request, res: Response) => {
   try {
+    // Log every incoming webhook (helps debug "test sent but no logs")
+    const payload = req.body;
+    const payloadKeys = payload && typeof payload === 'object' ? Object.keys(payload) : [];
+    console.log('[WhatsApp Webhook] POST received', {
+      at: new Date().toISOString(),
+      hasPayload: !!payload,
+      payloadKeys,
+      hasEntry: !!(payload && payload.entry),
+      entryLength: payload?.entry?.length ?? 0,
+    });
+
     // Verify webhook signature (if provided)
     const signature = req.headers['x-hub-signature-256'] as string;
     if (signature) {
@@ -62,14 +90,12 @@ router.post('/', async (req: Request, res: Response) => {
       // which may not be available in all configurations
     }
 
-    const payload = req.body;
-
     // Extract tenant ID from payload or webhook URL
     // Meta sends webhook events with phone number ID
     // We need to map phone number ID to tenant ID
     let tenantId: string | null = null;
 
-    if (payload.entry && Array.isArray(payload.entry)) {
+    if (payload && payload.entry && Array.isArray(payload.entry)) {
       for (const entry of payload.entry) {
         if (entry.changes && Array.isArray(entry.changes)) {
           for (const change of entry.changes) {
@@ -96,15 +122,18 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     if (!tenantId) {
-      console.warn('Webhook received but tenant ID not found');
+      console.warn('[WhatsApp Webhook] Received but tenant ID not found. Payload may be a non-WhatsApp test (e.g. "about" field). Subscribe to "messages" and "message_status" under WhatsApp → Configuration.');
       // Return 200 to prevent Meta from retrying
       return res.status(200).json({ received: true });
     }
+
+    console.log('[WhatsApp Webhook] Processing for tenant:', tenantId);
 
     // Process webhook
     const whatsappService = getWhatsAppApiService();
     await whatsappService.processWebhook(tenantId, payload);
 
+    console.log('[WhatsApp Webhook] Processed successfully for tenant:', tenantId);
     // Return 200 OK to acknowledge receipt
     res.status(200).json({ received: true });
   } catch (error: any) {

@@ -6,7 +6,7 @@
  * data model.
  */
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const CREATE_SCHEMA_SQL = `
 -- Enable foreign keys
@@ -231,8 +231,10 @@ CREATE TABLE IF NOT EXISTS bills (
     contract_id TEXT,
     staff_id TEXT,
     expense_category_items TEXT,
+    document_path TEXT,
     tenant_id TEXT,
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE RESTRICT,
@@ -436,6 +438,7 @@ CREATE TABLE IF NOT EXISTS contracts (
     payment_terms TEXT,
     expense_category_items TEXT,
     description TEXT,
+    document_path TEXT,
     tenant_id TEXT,
     user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),

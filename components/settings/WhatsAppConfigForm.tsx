@@ -21,7 +21,7 @@ interface WhatsAppConfigFormProps {
 }
 
 const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
-  const { showToast, showAlert } = useNotification();
+  const { showToast, showAlert, showConfirm } = useNotification();
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
   const [config, setConfig] = useState<WhatsAppConfig | null>(null);

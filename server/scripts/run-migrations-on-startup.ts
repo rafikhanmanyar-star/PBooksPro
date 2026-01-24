@@ -77,6 +77,52 @@ async function runMigrations() {
     // Run additional migrations
     console.log('🔄 Running additional migrations...');
 
+    // Migration: Payment tables (payments, payment_webhooks, subscriptions)
+    const paymentTablesPaths = [
+      join(__dirname, '../migrations/add-payment-tables.sql'),
+      join(__dirname, '../../migrations/add-payment-tables.sql'),
+      join(process.cwd(), 'server/migrations/add-payment-tables.sql'),
+      join(process.cwd(), 'migrations/add-payment-tables.sql'),
+    ];
+    let paymentTablesPath: string | null = null;
+    for (const p of paymentTablesPaths) {
+      try { readFileSync(p, 'utf8'); paymentTablesPath = p; break; } catch { /* next */ }
+    }
+    if (paymentTablesPath) {
+      try {
+        console.log('📋 Running payment tables migration from:', paymentTablesPath);
+        await pool.query(readFileSync(paymentTablesPath, 'utf8'));
+        console.log('✅ Payment tables migration completed');
+      } catch (err: any) {
+        if (err.code === '42P07' || err.message?.includes('already exists')) {
+          console.log('   ℹ️  Payment tables already exist (skipping)');
+        } else { console.warn('   ⚠️  Payment tables migration warning:', err.message); }
+      }
+    }
+
+    // Migration: Bill version column (optimistic locking)
+    const billVersionPaths = [
+      join(__dirname, '../migrations/add-bill-version-column.sql'),
+      join(__dirname, '../../migrations/add-bill-version-column.sql'),
+      join(process.cwd(), 'server/migrations/add-bill-version-column.sql'),
+      join(process.cwd(), 'migrations/add-bill-version-column.sql'),
+    ];
+    let billVersionPath: string | null = null;
+    for (const p of billVersionPaths) {
+      try { readFileSync(p, 'utf8'); billVersionPath = p; break; } catch { /* next */ }
+    }
+    if (billVersionPath) {
+      try {
+        console.log('📋 Running bill version migration from:', billVersionPath);
+        await pool.query(readFileSync(billVersionPath, 'utf8'));
+        console.log('✅ Bill version migration completed');
+      } catch (err: any) {
+        if (err.code === '42701' && err.message?.includes('version')) {
+          console.log('   ℹ️  bills.version already exists (skipping)');
+        } else { console.warn('   ⚠️  Bill version migration warning:', err.message); }
+      }
+    }
+
     // Migration: P2P system tables and tenant supplier metadata
     const p2pMigrationPaths = [
       join(__dirname, '../migrations/add-p2p-tables.sql'),
@@ -108,6 +154,29 @@ async function runMigrations() {
       }
     } else {
       console.warn('   ⚠️  Could not find add-p2p-tables.sql migration file');
+    }
+
+    // Migration: target_delivery_date on purchase_orders (requires P2P)
+    const targetDeliveryPaths = [
+      join(__dirname, '../migrations/add-target-delivery-date.sql'),
+      join(__dirname, '../../migrations/add-target-delivery-date.sql'),
+      join(process.cwd(), 'server/migrations/add-target-delivery-date.sql'),
+      join(process.cwd(), 'migrations/add-target-delivery-date.sql'),
+    ];
+    let targetDeliveryPath: string | null = null;
+    for (const p of targetDeliveryPaths) {
+      try { readFileSync(p, 'utf8'); targetDeliveryPath = p; break; } catch { /* next */ }
+    }
+    if (targetDeliveryPath) {
+      try {
+        console.log('📋 Running target_delivery_date migration from:', targetDeliveryPath);
+        await pool.query(readFileSync(targetDeliveryPath, 'utf8'));
+        console.log('✅ target_delivery_date migration completed');
+      } catch (err: any) {
+        if (err.code === '42701' && err.message?.includes('target_delivery_date')) {
+          console.log('   ℹ️  target_delivery_date already exists (skipping)');
+        } else { console.warn('   ⚠️  target_delivery_date migration warning:', err.message); }
+      }
     }
     
     // Migration: Add user_id to transactions table
@@ -391,6 +460,164 @@ async function runMigrations() {
       }
     } else {
       console.warn('   ⚠️  Could not find add-is-supplier-to-tenants.sql migration file');
+    }
+    
+    // Migration: Add WhatsApp Business API Integration tables
+    const whatsappMigrationPaths = [
+      join(__dirname, '../migrations/add-whatsapp-integration.sql'),
+      join(__dirname, '../../migrations/add-whatsapp-integration.sql'),
+      join(process.cwd(), 'server/migrations/add-whatsapp-integration.sql'),
+      join(process.cwd(), 'migrations/add-whatsapp-integration.sql'),
+    ];
+    
+    let whatsappMigrationPath: string | null = null;
+    for (const path of whatsappMigrationPaths) {
+      try {
+        readFileSync(path, 'utf8');
+        whatsappMigrationPath = path;
+        break;
+      } catch (e) {
+        // Try next path
+      }
+    }
+    
+    if (whatsappMigrationPath) {
+      try {
+        console.log('📋 Running WhatsApp integration migration from:', whatsappMigrationPath);
+        const whatsappMigrationSQL = readFileSync(whatsappMigrationPath, 'utf8');
+        await pool.query(whatsappMigrationSQL);
+        console.log('✅ WhatsApp integration migration completed');
+      } catch (error: any) {
+        // If tables already exist, that's okay
+        if (error.code === '42P07' || error.message.includes('already exists')) {
+          console.log('   ℹ️  WhatsApp tables already exist (skipping)');
+        } else {
+          console.warn('   ⚠️  WhatsApp integration migration warning:', error.message);
+          // Don't throw - migration might already be applied
+        }
+      }
+    } else {
+      console.warn('   ⚠️  Could not find add-whatsapp-integration.sql migration file');
+    }
+    
+    // Migration: Increase user restriction from 5 to 20 per organization
+    const maxUsersMigrationPaths = [
+      join(__dirname, '../migrations/increase-max-users-to-20.sql'),
+      join(__dirname, '../../migrations/increase-max-users-to-20.sql'),
+      join(process.cwd(), 'server/migrations/increase-max-users-to-20.sql'),
+      join(process.cwd(), 'migrations/increase-max-users-to-20.sql'),
+    ];
+    let maxUsersMigrationPath: string | null = null;
+    for (const path of maxUsersMigrationPaths) {
+      try {
+        readFileSync(path, 'utf8');
+        maxUsersMigrationPath = path;
+        break;
+      } catch {
+        // try next
+      }
+    }
+    if (maxUsersMigrationPath) {
+      try {
+        console.log('📋 Running increase-max-users-to-20 migration from:', maxUsersMigrationPath);
+        const maxUsersMigrationSQL = readFileSync(maxUsersMigrationPath, 'utf8');
+        await pool.query(maxUsersMigrationSQL);
+        console.log('✅ increase-max-users-to-20 migration completed');
+      } catch (error: any) {
+        console.warn('   ⚠️  increase-max-users-to-20 migration warning:', error.message);
+      }
+    }
+
+    // Migration: Installment plan fields and status (installment_plans)
+    const installmentFieldsPaths = [
+      join(__dirname, '../migrations/add-installment-plan-fields.sql'),
+      join(__dirname, '../../migrations/add-installment-plan-fields.sql'),
+      join(process.cwd(), 'server/migrations/add-installment-plan-fields.sql'),
+      join(process.cwd(), 'migrations/add-installment-plan-fields.sql'),
+    ];
+    let installmentFieldsPath: string | null = null;
+    for (const p of installmentFieldsPaths) {
+      try { readFileSync(p, 'utf8'); installmentFieldsPath = p; break; } catch { /* next */ }
+    }
+    if (installmentFieldsPath) {
+      try {
+        console.log('📋 Running installment-plan-fields migration from:', installmentFieldsPath);
+        await pool.query(readFileSync(installmentFieldsPath, 'utf8'));
+        console.log('✅ installment-plan-fields migration completed');
+      } catch (err: any) {
+        if (err.code === '42701' || err.message?.includes('already exists')) {
+          console.log('   ℹ️  installment-plan-fields already applied (skipping)');
+        } else { console.warn('   ⚠️  installment-plan-fields migration warning:', err.message); }
+      }
+    }
+
+    // Migration: Sale Recognized status (installment_plans) — run after installment-plan-fields
+    const saleRecognizedPaths = [
+      join(__dirname, '../migrations/add-sale-recognized-status.sql'),
+      join(__dirname, '../../migrations/add-sale-recognized-status.sql'),
+      join(process.cwd(), 'server/migrations/add-sale-recognized-status.sql'),
+      join(process.cwd(), 'migrations/add-sale-recognized-status.sql'),
+    ];
+    let saleRecognizedPath: string | null = null;
+    for (const p of saleRecognizedPaths) {
+      try { readFileSync(p, 'utf8'); saleRecognizedPath = p; break; } catch { /* next */ }
+    }
+    if (saleRecognizedPath) {
+      try {
+        console.log('📋 Running sale-recognized-status migration from:', saleRecognizedPath);
+        await pool.query(readFileSync(saleRecognizedPath, 'utf8'));
+        console.log('✅ sale-recognized-status migration completed');
+      } catch (err: any) {
+        if (err.code === '42710' || err.message?.includes('already exists')) {
+          console.log('   ℹ️  sale-recognized-status already applied (skipping)');
+        } else { console.warn('   ⚠️  sale-recognized-status migration warning:', err.message); }
+      }
+    }
+
+    // Migration: installment_plan column on project_agreements
+    const installmentProjectPaths = [
+      join(__dirname, '../migrations/add-installment-plan-to-project-agreements.sql'),
+      join(__dirname, '../../migrations/add-installment-plan-to-project-agreements.sql'),
+      join(process.cwd(), 'server/migrations/add-installment-plan-to-project-agreements.sql'),
+      join(process.cwd(), 'migrations/add-installment-plan-to-project-agreements.sql'),
+    ];
+    let installmentProjectPath: string | null = null;
+    for (const p of installmentProjectPaths) {
+      try { readFileSync(p, 'utf8'); installmentProjectPath = p; break; } catch { /* next */ }
+    }
+    if (installmentProjectPath) {
+      try {
+        console.log('📋 Running installment-plan-to-project-agreements migration from:', installmentProjectPath);
+        await pool.query(readFileSync(installmentProjectPath, 'utf8'));
+        console.log('✅ installment-plan-to-project-agreements migration completed');
+      } catch (err: any) {
+        if (err.code === '42701' && err.message?.includes('installment_plan')) {
+          console.log('   ℹ️  project_agreements.installment_plan already exists (skipping)');
+        } else { console.warn('   ⚠️  installment-plan-to-project-agreements migration warning:', err.message); }
+      }
+    }
+
+    // Migration: unit fields (type, area, floor)
+    const unitFieldsPaths = [
+      join(__dirname, '../migrations/add-unit-fields.sql'),
+      join(__dirname, '../../migrations/add-unit-fields.sql'),
+      join(process.cwd(), 'server/migrations/add-unit-fields.sql'),
+      join(process.cwd(), 'migrations/add-unit-fields.sql'),
+    ];
+    let unitFieldsPath: string | null = null;
+    for (const p of unitFieldsPaths) {
+      try { readFileSync(p, 'utf8'); unitFieldsPath = p; break; } catch { /* next */ }
+    }
+    if (unitFieldsPath) {
+      try {
+        console.log('📋 Running unit-fields migration from:', unitFieldsPath);
+        await pool.query(readFileSync(unitFieldsPath, 'utf8'));
+        console.log('✅ unit-fields migration completed');
+      } catch (err: any) {
+        if (err.code === '42701' || err.message?.includes('already exists')) {
+          console.log('   ℹ️  units type/area/floor already exist (skipping)');
+        } else { console.warn('   ⚠️  unit-fields migration warning:', err.message); }
+      }
     }
     
     // Create default admin user if it doesn't exist

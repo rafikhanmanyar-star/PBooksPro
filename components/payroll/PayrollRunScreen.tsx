@@ -269,25 +269,20 @@ const PayrollRunScreen: React.FC = () => {
         if (selectedRunDetail?.id === run.id) {
           setSelectedRunDetail(updatedRun);
         }
+        await refreshRuns();
       } else {
-        // Fallback
-        const localUpdatedRun = { ...run, status: nextStatus };
-        storageService.updatePayrollRun(tenantId, localUpdatedRun, userId);
-        if (selectedRunDetail?.id === run.id) {
-          setSelectedRunDetail(localUpdatedRun);
-        }
+        throw new Error('Failed to update payroll run status');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to update payroll run status via API:', error);
-      // Fallback to localStorage only
-      const localUpdatedRun = { ...run, status: nextStatus };
-      storageService.updatePayrollRun(tenantId, localUpdatedRun, userId);
-      if (selectedRunDetail?.id === run.id) {
-        setSelectedRunDetail(localUpdatedRun);
-      }
+      
+      // Show user-friendly error message
+      const errorMessage = error?.error || error?.message || 'Failed to update payroll run status';
+      alert(`Error: ${errorMessage}\n\n${error?.details || ''}`);
+      
+      // Don't update local state if API call failed - keep current state
+      await refreshRuns();
     }
-    
-    await refreshRuns();
   };
 
   const getStatusBadge = (status: PayrollStatus) => {
@@ -403,6 +398,12 @@ const PayrollRunScreen: React.FC = () => {
           <div className="text-right">
             <h1 className="text-2xl font-black text-slate-900 tracking-tight">{selectedRunDetail.month} {selectedRunDetail.year} Details</h1>
             <div className="mt-2">{getStatusBadge(selectedRunDetail.status)}</div>
+            {/* Approval Info */}
+            {selectedRunDetail.approved_by && selectedRunDetail.approved_at && (
+              <div className="mt-2 text-xs text-slate-500">
+                Approved by {selectedRunDetail.approved_by} on {new Date(selectedRunDetail.approved_at).toLocaleDateString()}
+              </div>
+            )}
           </div>
         </div>
 
@@ -472,9 +473,16 @@ const PayrollRunScreen: React.FC = () => {
               <button 
                 onClick={() => handleUpdateStatus(selectedRunDetail, PayrollStatus.PAID)}
                 className="px-6 py-2.5 bg-green-600 text-white rounded-xl font-bold text-sm hover:bg-green-700 transition-all"
+                title="Mark as paid after all individual payslips have been paid"
               >
                 Mark as Paid
               </button>
+            )}
+            {/* Info message for approved runs */}
+            {selectedRunDetail.status === PayrollStatus.APPROVED && (
+              <div className="text-xs text-slate-500 italic">
+                Note: Individual payslips can now be paid. After all payslips are paid, manually mark the run as PAID.
+              </div>
             )}
           </div>
         )}
@@ -542,11 +550,19 @@ const PayrollRunScreen: React.FC = () => {
                           {emp && (
                             <button 
                               onClick={() => setSelectedEmployeeForPayslip(emp)} 
+                              disabled={!isPaid && selectedRunDetail.status !== PayrollStatus.APPROVED && selectedRunDetail.status !== PayrollStatus.PAID}
                               className={`font-black text-xs uppercase tracking-widest flex items-center gap-2 ml-auto px-3 py-1.5 rounded-lg transition-all ${
                                 isPaid 
                                   ? 'text-slate-600 hover:bg-slate-100' 
+                                  : (!isPaid && selectedRunDetail.status !== PayrollStatus.APPROVED && selectedRunDetail.status !== PayrollStatus.PAID)
+                                  ? 'text-slate-400 cursor-not-allowed opacity-50'
                                   : 'text-blue-600 hover:bg-blue-50'
                               }`}
+                              title={!isPaid && selectedRunDetail.status !== PayrollStatus.APPROVED && selectedRunDetail.status !== PayrollStatus.PAID 
+                                ? 'Payroll run must be APPROVED before paying payslips' 
+                                : isPaid 
+                                ? 'View payslip' 
+                                : 'View / Pay payslip'}
                             >
                               <Eye size={14} /> {isPaid ? 'View' : 'View / Pay'}
                             </button>

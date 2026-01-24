@@ -95,12 +95,14 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({ employee: initialEmpl
         setAvailableRuns(runs);
       }
       
-      // Fetch projects from main application API
+      // Fetch projects from main application API (always fetch fresh)
       try {
         const projects = await payrollApi.getMainAppProjects();
         if (projects.length > 0) {
+          // Show all active projects
           const activeProjects = projects.filter(p => p.status === 'ACTIVE');
           setGlobalProjects(activeProjects);
+          // Cache all projects for reference
           storageService.setProjectsCache(projects);
         } else {
           // Fallback to localStorage

@@ -84,11 +84,14 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
       if (!tenantId) return;
       setIsLoadingProjects(true);
       try {
-        // Fetch from main app projects API
+        // Always fetch fresh from API to get latest projects
         const projects = await payrollApi.getMainAppProjects();
         if (projects.length > 0) {
+          // Show all projects (ACTIVE, COMPLETED, ON_HOLD) - user can choose
+          // Filter to ACTIVE only for assignment
           const activeProjects = projects.filter(p => p.status === 'ACTIVE');
           setGlobalProjects(activeProjects);
+          // Cache all projects for reference
           storageService.setProjectsCache(projects);
         } else {
           // Fallback to localStorage
@@ -103,6 +106,18 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
       }
     };
     fetchProjects();
+    
+    // Refresh projects when component becomes visible (handles new project creation)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchProjects();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [tenantId]);
 
   const [isPersonalInfoOpen, setIsPersonalInfoOpen] = useState(false);

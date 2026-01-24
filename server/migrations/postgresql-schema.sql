@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     next_renewal_date TIMESTAMP,
     
     -- Subscription limits
-    max_users INTEGER DEFAULT 5,
+    max_users INTEGER DEFAULT 20,
     max_projects INTEGER DEFAULT 10,
     subscription_tier TEXT DEFAULT 'free',
     

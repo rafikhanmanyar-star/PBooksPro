@@ -399,6 +399,7 @@ export interface Bill {
   staffId?: string;
   expenseCategoryItems?: ContractExpenseCategoryItem[]; // New: expense category tracking with units and prices
   documentPath?: string; // Path to uploaded document file
+  version?: number; // Version for optimistic locking (default: 1)
 }
 
 export interface QuotationItem {
