@@ -39,30 +39,19 @@ DRAFT → PROCESSING → DRAFT → APPROVED → [Individual Payslip Payments] �
      - **Transaction** (Expense type)
      - Updates **Account Balance** (decreases by net pay amount)
      - Marks **Payslip** as paid (`is_paid = true`, `paid_at = timestamp`, `transaction_id` linked)
-4. **Auto-Check**: After each payslip payment, system checks if all payslips are paid
+4. **Payment Tracking**: System tracks which payslips are paid (for manual run status update)
 
 ### Step 3: Run Status Update to PAID 🎯
 
-**Two ways to reach PAID status:**
-
-#### Option A: Automatic Update (Recommended)
-- **Trigger**: When the last unpaid payslip is paid
-- **Condition**: All payslips in the run are paid AND run status is `APPROVED`
-- **Action**: 
-  - Run status automatically changes to `PAID`
-  - `paid_at` timestamp is set
-  - WebSocket event is emitted for real-time updates
-- **No user action required** ✅
-
-#### Option B: Manual Update
-- **Trigger**: User clicks "Mark as Paid" button
+**Manual Update Required:**
+- **Trigger**: User clicks "Mark as Paid" button after all payslips are paid
 - **Validation**:
   - Run must be in `APPROVED` status
   - All payslips must be paid (validated before allowing)
 - **Action**:
   - Run status changes to `PAID`
   - `paid_at` timestamp is set
-- **Use case**: If automatic update didn't trigger (edge case)
+- **Note**: Auto-paid feature has been removed. Users must manually mark the run as PAID after paying all employees individually.
 
 ### Step 4: Final State - PAID ✅
 
@@ -94,11 +83,11 @@ POST /payroll/payslips/:id/pay
   ↓
 1. Validate run status (APPROVED or PAID)
 2. Validate payslip not already paid
-3. Create transaction
-4. Update account balance
-5. Mark payslip as paid
-6. Check if all payslips paid
-7. If all paid AND run is APPROVED → Auto-update run to PAID
+3. Validate account exists and belongs to tenant
+4. Create transaction
+5. Update account balance
+6. Mark payslip as paid
+7. Return payment summary (paid count, total count)
 ```
 
 ### Manual Run Status Update
@@ -145,11 +134,15 @@ PUT /payroll/runs/:id (status: PAID)
 4. **Pay Employee 10** 💰 (Last one)
    - Payslip 10 marked as paid
    - Transaction created
-   - **Auto-trigger**: All 10 payslips paid
-   - **Run status automatically changes to `PAID`** ✅
+   - Run status: Still `APPROVED` (all 10 paid, but status not auto-updated)
+
+5. **Mark Run as PAID** ✅
+   - User clicks "Mark as Paid" button
+   - System validates all 10 payslips are paid
+   - Run status changes to `PAID`
    - `paid_at` timestamp set
 
-5. **Final State** 🎯
+6. **Final State** 🎯
    - Run status: `PAID`
    - All 10 payslips paid
    - 10 transactions created
@@ -169,19 +162,20 @@ PUT /payroll/runs/:id (status: PAID)
 
 ## Best Practices
 
-1. **Recommended Approach**: Let the system auto-update to PAID
-   - Pay all individual payslips
-   - System automatically updates run status when last payslip is paid
-   - No manual intervention needed
+1. **Payment Process**: Pay all employees individually
+   - Pay each payslip one by one
+   - Select appropriate payment account for each payment
+   - System tracks which payslips are paid
 
-2. **Manual Update**: Only if needed
-   - Use "Mark as Paid" button if automatic update didn't trigger
+2. **Manual Status Update**: After all payslips are paid
+   - Click "Mark as Paid" button on the payroll run
    - System validates all payslips are paid before allowing
+   - Run status changes to PAID
 
 3. **Payment Order**: No specific order required
    - Pay payslips in any order
    - System tracks which are paid/unpaid
-   - Auto-updates when all are complete
+   - Manually mark run as PAID when all are complete
 
 ## Database Changes
 
@@ -194,27 +188,30 @@ UPDATE payslips SET
 WHERE id = '[payslip_id]';
 ```
 
-### When Run Auto-Updates to PAID:
+### When Run is Manually Marked as PAID:
 ```sql
 UPDATE payroll_runs SET 
   status = 'PAID',
   paid_at = CURRENT_TIMESTAMP,
   updated_by = '[user_id]'
-WHERE id = '[run_id]';
+WHERE id = '[run_id]'
+  AND status = 'APPROVED'
+  AND (SELECT COUNT(*) FROM payslips WHERE payroll_run_id = '[run_id]' AND is_paid = false) = 0;
 ```
 
 ## Summary
 
 **After Approval Flow:**
 1. ✅ Payroll run is APPROVED
-2. 💰 Pay individual payslips (one by one)
-3. 🔄 System checks after each payment
-4. ✅ When all paid → Run auto-updates to PAID
-5. 🎯 Final state: All payslips paid, all transactions created
+2. 💰 Pay individual payslips (one by one, selecting account for each)
+3. 🔄 System tracks payment status
+4. ✅ After all paid → Manually click "Mark as Paid"
+5. 🎯 Final state: All payslips paid, all transactions created, run marked as PAID
 
 **Key Features:**
-- ✅ Automatic status update (no manual step needed)
+- ✅ Manual control over payment process
+- ✅ Individual account selection for each payment
 - ✅ Real-time validation
 - ✅ Transaction tracking
 - ✅ Account balance updates
-- ✅ Audit trail (who paid, when)
+- ✅ Audit trail (who paid, when, which account)

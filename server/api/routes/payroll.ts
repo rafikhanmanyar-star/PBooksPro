@@ -1037,11 +1037,43 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     const userId = req.userId;
     const { id } = req.params;
 
-    console.log('💰 Payslip payment request:', { payslipId: id, tenantId, userId, body: req.body });
+    console.log('💰 Payslip payment request:', { 
+      payslipId: id, 
+      tenantId, 
+      tenantIdType: typeof tenantId,
+      tenantIdLength: tenantId?.length,
+      userId, 
+      body: req.body 
+    });
 
     if (!tenantId || !userId) {
       return res.status(400).json({ error: 'Authentication required' });
     }
+    
+    // Debug: Check what tenant_id values exist in accounts table
+    const allTenantsCheck = await getDb().query(
+      'SELECT DISTINCT tenant_id, COUNT(*) as account_count FROM accounts GROUP BY tenant_id ORDER BY tenant_id'
+    );
+    console.log('🔍 All tenant_ids in accounts table:', allTenantsCheck);
+    
+    // Debug: Check accounts for this specific tenant
+    const tenantAccountsCheck = await getDb().query(
+      'SELECT id, name, type, tenant_id FROM accounts WHERE tenant_id = $1',
+      [tenantId]
+    );
+    console.log('🔍 Accounts for tenant_id:', {
+      tenantId,
+      tenantIdType: typeof tenantId,
+      tenantIdStringified: JSON.stringify(tenantId),
+      accountCount: tenantAccountsCheck.length,
+      accounts: tenantAccountsCheck.map((a: any) => ({
+        id: a.id,
+        name: a.name,
+        type: a.type,
+        tenant_id: a.tenant_id,
+        tenant_idType: typeof a.tenant_id
+      }))
+    });
 
     let { accountId, categoryId, projectId, description } = req.body;
 
@@ -1057,9 +1089,13 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     console.log('🔍 Verifying account:', { 
       accountId, 
       accountIdType: typeof accountId,
-      accountIdLength: accountId.length,
+      accountIdLength: accountId?.length,
+      accountIdStringified: JSON.stringify(accountId),
       tenantId, 
-      requestBody: { accountId: req.body.accountId, categoryId, projectId }
+      tenantIdType: typeof tenantId,
+      requestBody: req.body,
+      requestBodyAccountId: req.body.accountId,
+      requestBodyAccountIdType: typeof req.body.accountId
     });
 
     // First, check if account exists at all (for debugging)
@@ -1082,17 +1118,56 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     }
 
     // Verify account exists and belongs to tenant
+    // Use explicit comparison to handle any type/format mismatches
     const accountCheck = await getDb().query(
-      'SELECT id, name, type, balance FROM accounts WHERE id = $1 AND tenant_id = $2',
+      `SELECT id, name, type, balance, tenant_id 
+       FROM accounts 
+       WHERE id = $1 AND tenant_id = $2`,
       [accountId, tenantId]
     );
+    
+    console.log('🔍 Account check query result:', {
+      accountId,
+      tenantId,
+      accountCheckLength: accountCheck.length,
+      accountCheckResult: accountCheck.length > 0 ? accountCheck[0] : null
+    });
 
     if (accountCheck.length === 0) {
       // Get list of available accounts for this tenant for debugging
+      // Try multiple query variations to catch any tenant_id format issues
       const availableAccounts = await getDb().query(
-        'SELECT id, name, type FROM accounts WHERE tenant_id = $1 ORDER BY name LIMIT 20',
+        'SELECT id, name, type, tenant_id FROM accounts WHERE tenant_id = $1 ORDER BY name LIMIT 20',
         [tenantId]
       );
+      
+      // Also try with trimmed tenant_id (in case of whitespace)
+      const availableAccountsTrimmed = await getDb().query(
+        'SELECT id, name, type, tenant_id FROM accounts WHERE TRIM(tenant_id) = $1 ORDER BY name LIMIT 20',
+        [String(tenantId).trim()]
+      );
+      
+      console.log('🔍 Available accounts queries:', {
+        tenantId,
+        tenantIdTrimmed: String(tenantId).trim(),
+        standardQueryCount: availableAccounts.length,
+        trimmedQueryCount: availableAccountsTrimmed.length,
+        standardQueryResults: availableAccounts.map((a: any) => ({
+          id: a.id,
+          name: a.name,
+          tenant_id: a.tenant_id,
+          tenant_idType: typeof a.tenant_id
+        })),
+        trimmedQueryResults: availableAccountsTrimmed.map((a: any) => ({
+          id: a.id,
+          name: a.name,
+          tenant_id: a.tenant_id,
+          tenant_idType: typeof a.tenant_id
+        }))
+      });
+      
+      // Use the query that found accounts (if any)
+      const accountsToReturn = availableAccountsTrimmed.length > 0 ? availableAccountsTrimmed : availableAccounts;
       
       // Also check if account exists with different tenant (for debugging)
       const accountExists = await getDb().query(
@@ -1105,30 +1180,65 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
         accountIdLength: accountId?.length,
         accountIdType: typeof accountId,
         tenantId,
+        tenantIdType: typeof tenantId,
         tenantIdLength: tenantId?.length,
-        availableAccountCount: availableAccounts.length,
-        availableAccounts: availableAccounts.map((a: any) => ({ id: a.id, name: a.name, type: a.type })),
-        accountExistsInOtherTenant: accountExists.length > 0 ? {
+        tenantIdStringified: JSON.stringify(tenantId),
+        availableAccountCount: accountsToReturn.length,
+        availableAccounts: accountsToReturn.map((a: any) => ({ 
+          id: a.id, 
+          name: a.name, 
+          type: a.type,
+          tenant_id: a.tenant_id,
+          tenant_idType: typeof a.tenant_id
+        })),
+        accountExists: accountExists.length > 0 ? {
           found: true,
           accountTenantId: accountExists[0].tenant_id,
-          accountName: accountExists[0].name
+          accountTenantIdType: typeof accountExists[0].tenant_id,
+          accountName: accountExists[0].name,
+          tenantIdsMatch: String(accountExists[0].tenant_id).trim() === String(tenantId).trim()
         } : { found: false }
       });
       
       // Provide more helpful error message
       let errorDetails = `Account ID "${accountId}" does not exist or does not belong to this tenant.`;
       if (accountExists.length > 0) {
-        errorDetails += ` The account exists but belongs to a different tenant.`;
-      } else if (availableAccounts.length === 0) {
-        errorDetails += ` No accounts found for this tenant. Please create a Bank or Cash account first.`;
+        const accountTenantId = accountExists[0].tenant_id;
+        const requestTenantId = tenantId;
+        errorDetails += ` The account exists but belongs to a different tenant. `;
+        errorDetails += `Account tenant_id: "${accountTenantId}" (type: ${typeof accountTenantId}), `;
+        errorDetails += `Request tenant_id: "${requestTenantId}" (type: ${typeof requestTenantId}).`;
+        errorDetails += ` They ${String(accountTenantId).trim() === String(requestTenantId).trim() ? 'MATCH' : 'DO NOT MATCH'} when compared.`;
+      } else if (accountsToReturn.length === 0) {
+        errorDetails += ` No accounts found for this tenant (tenant_id: "${tenantId}"). Please create a Bank or Cash account first.`;
       } else {
-        errorDetails += ` Available accounts: ${availableAccounts.map((a: any) => a.name).join(', ')}`;
+        errorDetails += ` Available accounts for this tenant: ${accountsToReturn.map((a: any) => `${a.name} (ID: ${a.id})`).join(', ')}`;
       }
+      
+      // Log detailed comparison for debugging
+      console.error('🔍 Account ID Comparison:', {
+        requestedAccountId: accountId,
+        requestedAccountIdLength: accountId?.length,
+        requestedAccountIdType: typeof accountId,
+        requestTenantId: tenantId,
+        requestTenantIdType: typeof tenantId,
+        availableAccountIds: accountsToReturn.map((a: any) => ({
+          id: a.id,
+          idLength: a.id?.length,
+          idType: typeof a.id,
+          name: a.name,
+          tenant_id: a.tenant_id,
+          tenant_idType: typeof a.tenant_id,
+          matches: String(a.id).trim() === String(accountId).trim()
+        }))
+      });
       
       return res.status(404).json({ 
         error: 'Payment account not found',
         details: errorDetails,
-        availableAccounts: availableAccounts.map((a: any) => ({ id: a.id, name: a.name, type: a.type }))
+        requestedAccountId: accountId,
+        requestTenantId: tenantId,
+        availableAccounts: accountsToReturn.map((a: any) => ({ id: a.id, name: a.name, type: a.type, tenant_id: a.tenant_id }))
       });
     }
 
