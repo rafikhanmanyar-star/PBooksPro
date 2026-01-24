@@ -671,17 +671,20 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                       } catch (error: any) {
                         console.error('❌ Payment exception:', error);
                         setIsPaying(false);
-                        const errorMessage = error.message || error.error || 'An unexpected error occurred';
+                        const errorMessage = error.message || error.error || error.response?.data?.error || 'An unexpected error occurred';
                         setPaymentError(errorMessage);
                         
-                        // If account not found error, provide helpful message
+                        // Provide helpful messages for common errors
                         if (errorMessage.includes('account not found') || errorMessage.includes('Payment account not found')) {
                           setPaymentError(`Account not found in database. The account may have been deleted. Please refresh the page and select a different account.`);
+                        } else if (errorMessage.includes('must be APPROVED') || errorMessage.includes('Cannot pay payslip')) {
+                          setPaymentError(`Cannot pay payslip: The payroll run must be APPROVED before individual payslips can be paid. Please approve the payroll run first.`);
                         }
                       }
                     }}
-                    disabled={isPaying || !selectedAccountId || !selectedCategoryId}
+                    disabled={isPaying || !selectedAccountId || !selectedCategoryId || run.status !== 'APPROVED' && run.status !== 'PAID'}
                     className="px-6 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
+                    title={run.status !== 'APPROVED' && run.status !== 'PAID' ? 'Payroll run must be APPROVED before paying payslips' : ''}
                   >
                     {isPaying ? (
                       <><Loader2 size={16} className="animate-spin" /> Processing...</>
@@ -689,6 +692,11 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                       <><CheckCircle2 size={16} /> Confirm Payment</>
                     )}
                   </button>
+                  {run.status !== 'APPROVED' && run.status !== 'PAID' && (
+                    <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
+                      <AlertCircle size={12} /> Payroll run must be APPROVED before paying payslips
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
