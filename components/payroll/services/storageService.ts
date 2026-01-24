@@ -173,18 +173,9 @@ export const storageService = {
    * Initialize storage with default data if empty
    */
   init(tenantId: string): void {
-    // Seed default data if not present
-    const empKey = getKey(tenantId, STORAGE_KEYS.EMPLOYEES);
-    if (!localStorage.getItem(empKey)) {
-      const seededEmployees = DEMO_EMPLOYEES.map(e => ({ ...e, tenant_id: tenantId }));
-      localStorage.setItem(empKey, JSON.stringify(seededEmployees));
-    }
-
-    const runsKey = getKey(tenantId, STORAGE_KEYS.PAYROLL_RUNS);
-    if (!localStorage.getItem(runsKey)) {
-      const seededRuns = DEMO_PAYROLL_RUNS.map(r => ({ ...r, tenant_id: tenantId }));
-      localStorage.setItem(runsKey, JSON.stringify(seededRuns));
-    }
+    // NOTE: Demo data seeding has been removed - system now starts empty
+    // Users should create their own employees and payroll runs
+    // No longer seeding DEMO_EMPLOYEES or DEMO_PAYROLL_RUNS
 
     const earningsKey = getKey(tenantId, STORAGE_KEYS.EARNING_TYPES);
     if (!localStorage.getItem(earningsKey)) {

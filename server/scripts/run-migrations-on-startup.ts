@@ -431,6 +431,34 @@ async function runMigrations() {
       console.warn('   ⚠️  Could not find add-whatsapp-integration.sql migration file');
     }
     
+    // Migration: Increase user restriction from 5 to 20 per organization
+    const maxUsersMigrationPaths = [
+      join(__dirname, '../migrations/increase-max-users-to-20.sql'),
+      join(__dirname, '../../migrations/increase-max-users-to-20.sql'),
+      join(process.cwd(), 'server/migrations/increase-max-users-to-20.sql'),
+      join(process.cwd(), 'migrations/increase-max-users-to-20.sql'),
+    ];
+    let maxUsersMigrationPath: string | null = null;
+    for (const path of maxUsersMigrationPaths) {
+      try {
+        readFileSync(path, 'utf8');
+        maxUsersMigrationPath = path;
+        break;
+      } catch {
+        // try next
+      }
+    }
+    if (maxUsersMigrationPath) {
+      try {
+        console.log('📋 Running increase-max-users-to-20 migration from:', maxUsersMigrationPath);
+        const maxUsersMigrationSQL = readFileSync(maxUsersMigrationPath, 'utf8');
+        await pool.query(maxUsersMigrationSQL);
+        console.log('✅ increase-max-users-to-20 migration completed');
+      } catch (error: any) {
+        console.warn('   ⚠️  increase-max-users-to-20 migration warning:', error.message);
+      }
+    }
+    
     // Create default admin user if it doesn't exist
     console.log('👤 Ensuring admin user exists...');
     const bcrypt = await import('bcryptjs');

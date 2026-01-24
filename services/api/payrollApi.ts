@@ -277,14 +277,30 @@ export const payrollApi = {
     try {
       const response = await apiClient.get<any[]>('/projects');
       // Map main app project structure to payroll project structure
-      return (response || []).map(p => ({
-        id: p.id,
-        tenant_id: p.tenant_id || '',
-        name: p.name,
-        code: p.id.substring(0, 8).toUpperCase(), // Use first 8 chars of ID as code
-        description: p.description || '',
-        status: p.status === 'Completed' ? 'COMPLETED' : p.status === 'On Hold' ? 'ON_HOLD' : 'ACTIVE'
-      }));
+      // Projects table status can be NULL or various values
+      // Default to ACTIVE if status is null/undefined or doesn't match known values
+      return (response || []).map(p => {
+        let status: 'ACTIVE' | 'COMPLETED' | 'ON_HOLD' = 'ACTIVE';
+        const projectStatus = (p.status || '').toLowerCase();
+        
+        if (projectStatus === 'completed' || projectStatus === 'done' || projectStatus === 'finished') {
+          status = 'COMPLETED';
+        } else if (projectStatus === 'on hold' || projectStatus === 'hold' || projectStatus === 'paused') {
+          status = 'ON_HOLD';
+        } else {
+          // Default to ACTIVE for null, undefined, or any other status
+          status = 'ACTIVE';
+        }
+        
+        return {
+          id: p.id,
+          tenant_id: p.tenant_id || '',
+          name: p.name,
+          code: p.id.substring(0, 8).toUpperCase(), // Use first 8 chars of ID as code
+          description: p.description || '',
+          status: status
+        };
+      });
     } catch (error) {
       console.error('Error fetching main app projects:', error);
       return [];

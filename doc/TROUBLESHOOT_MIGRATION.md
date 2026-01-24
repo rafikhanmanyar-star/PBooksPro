@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     license_expiry_date TIMESTAMP,
     last_renewal_date TIMESTAMP,
     next_renewal_date TIMESTAMP,
-    max_users INTEGER DEFAULT 5,
+    max_users INTEGER DEFAULT 20,
     max_projects INTEGER DEFAULT 10,
     subscription_tier TEXT DEFAULT 'free',
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),

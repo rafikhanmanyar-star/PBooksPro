@@ -74,7 +74,7 @@ router.get('/:id/stats', async (req: AdminRequest, res) => {
       db.query('SELECT COUNT(*) as count FROM contacts WHERE tenant_id = $1', [tenantId])
     ]);
 
-    const maxUsers = tenantInfo[0]?.max_users || 5;
+    const maxUsers = tenantInfo[0]?.max_users ?? 20;
     const currentUserCount = parseInt(userCount[0].count);
 
     res.json({
