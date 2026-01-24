@@ -325,9 +325,17 @@ router.post('/', async (req: TenantRequest, res) => {
     );
 
     res.status(201).json(createdTasks[0]);
-  } catch (error) {
-    console.error('Error creating task:', error);
-    res.status(500).json({ error: 'Failed to create task' });
+  } catch (error: any) {
+    const msg = error?.message || String(error);
+    const code = error?.code;
+    const detail = error?.detail;
+    console.error('Error creating task:', { message: msg, code, detail, stack: error?.stack });
+    const payload: { error: string; message?: string; code?: string } = { error: 'Failed to create task' };
+    if (msg && (process.env.NODE_ENV !== 'production' || process.env.DEBUG_TASKS === '1')) {
+      payload.message = msg;
+      if (code) payload.code = code;
+    }
+    res.status(500).json(payload);
   }
 });
 

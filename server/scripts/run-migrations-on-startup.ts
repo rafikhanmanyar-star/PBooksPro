@@ -424,6 +424,27 @@ async function runMigrations() {
       console.warn('   ⚠️  Could not find add-tasks-schema.sql migration file');
     }
 
+    // Migration: Add title, description, etc. to tasks when missing (production legacy schema fix)
+    const fixTasksTitlePaths = [
+      join(__dirname, '../migrations/fix-tasks-missing-title-description.sql'),
+      join(__dirname, '../../migrations/fix-tasks-missing-title-description.sql'),
+      join(process.cwd(), 'server/migrations/fix-tasks-missing-title-description.sql'),
+      join(process.cwd(), 'migrations/fix-tasks-missing-title-description.sql'),
+    ];
+    let fixTasksTitlePath: string | null = null;
+    for (const p of fixTasksTitlePaths) {
+      try { readFileSync(p, 'utf8'); fixTasksTitlePath = p; break; } catch { /* next */ }
+    }
+    if (fixTasksTitlePath) {
+      try {
+        console.log('📋 Running fix-tasks-missing-title-description from:', fixTasksTitlePath);
+        await pool.query(readFileSync(fixTasksTitlePath, 'utf8'));
+        console.log('✅ fix-tasks-missing-title-description completed');
+      } catch (err: any) {
+        console.warn('   ⚠️  fix-tasks-missing-title-description warning:', err.message);
+      }
+    }
+
     // Migration: Add is_supplier column to tenants table
     const isSupplierMigrationPaths = [
       join(__dirname, '../migrations/add-is-supplier-to-tenants.sql'),

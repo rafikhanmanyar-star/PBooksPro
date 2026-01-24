@@ -152,7 +152,19 @@ npm run verify-schema-parity
 
 Requires `DATABASE_URL` (staging) and `PRODUCTION_DATABASE_URL` in `.env`. See §7.
 
-### 6.4 Smoke tests
+### 6.4 Generate and run production upgrade SQL (when production is behind)
+
+If production is **not fully upgraded** and missing tables/columns that staging has:
+
+```bash
+cd server
+npm run generate-production-upgrade        # generate SQL only
+npm run generate-production-upgrade -- --run   # generate + run on production (prompt)
+```
+
+This compares staging vs production, writes `migrations/production-upgrade-from-staging.sql` (additive only), and optionally runs it on production. **Backup production first.** See `doc/PRODUCTION_UPGRADE_SCRIPT.md`.
+
+### 6.5 Smoke tests
 
 - [ ] `GET /health` → `{"status":"ok","database":"connected"}`
 - [ ] Login (admin and tenant users)

@@ -16,7 +16,8 @@
     "test-admin": "tsx scripts/test-admin-login.ts",
     "test-whatsapp": "tsx scripts/test-whatsapp-api.ts",
     "verify-rental-migration": "tsx scripts/verify-rental-agreements-migration.ts",
-    "verify-schema-parity": "tsx scripts/verify-schema-parity.ts"
+    "verify-schema-parity": "tsx scripts/verify-schema-parity.ts",
+    "generate-production-upgrade": "tsx scripts/generate-production-upgrade-from-staging.ts"
   },
   "dependencies": {
     "axios": "^1.13.2",
