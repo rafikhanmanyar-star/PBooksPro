@@ -1278,6 +1278,103 @@ const MarketingPage: React.FC = () => {
         return feed.sort((a, b) => b.time.localeCompare(a.time));
     }, [state.installmentPlans, state.contacts, state.projects, state.units, state.currentUser, usersForApproval]);
 
+    const planHistoryItems = useMemo(() => {
+        if (!historyRootId) return [];
+        
+        const versions = (state.installmentPlans || [])
+            .filter(p => (p.rootId || p.id) === historyRootId)
+            .sort((a, b) => (a.version || 1) - (b.version || 1)); // Sort ascending for building the chronological story
+
+        const items: { 
+            id: string; 
+            type: 'version' | 'status_change';
+            date: string; 
+            title: string; 
+            detail: string; 
+            userName: string;
+            userInitials: string;
+            status?: InstallmentPlan['status'];
+            version?: number;
+            plan?: InstallmentPlan;
+            isApproved?: boolean;
+            isGenesis?: boolean;
+        }[] = [];
+
+        versions.forEach((plan, idx) => {
+            const isGenesis = idx === 0;
+            const creatorUser = usersForApproval.find(u => u.id === (plan.userId || plan.approvalRequestedById));
+            const creatorName = creatorUser?.name || creatorUser?.username || (isGenesis ? 'SYSTEM ADMIN' : 'USER');
+            
+            // Add Version Entry
+            items.push({
+                id: `${plan.id}-version`,
+                type: 'version',
+                date: plan.createdAt || plan.updatedAt || '',
+                title: isGenesis ? 'GENESIS PLAN' : `PLAN UPDATED (v${plan.version})`,
+                detail: plan.description || (isGenesis ? 'Initial project plan scaffolded.' : `Plan updated to version ${plan.version}.`),
+                userName: creatorName,
+                userInitials: creatorName.charAt(0),
+                version: plan.version,
+                plan: plan,
+                isGenesis
+            });
+
+            // Add Approval Request Entry
+            if (plan.approvalRequestedAt) {
+                const requestedBy = usersForApproval.find(u => u.id === plan.approvalRequestedById);
+                const requestedTo = usersForApproval.find(u => u.id === plan.approvalRequestedToId);
+                const rbName = requestedBy?.name || requestedBy?.username || 'User';
+                const rtName = requestedTo?.name || requestedTo?.username || 'Approver';
+                
+                items.push({
+                    id: `${plan.id}-request`,
+                    type: 'status_change',
+                    date: plan.approvalRequestedAt,
+                    title: 'APPROVAL REQUESTED',
+                    detail: `Sent for approval: ${rbName} → ${rtName}`,
+                    userName: rbName,
+                    userInitials: rbName.charAt(0),
+                    status: 'Pending Approval'
+                });
+            }
+
+            // Add Review Entry
+            if (plan.approvalReviewedAt && (plan.status === 'Approved' || plan.status === 'Rejected')) {
+                const reviewedBy = usersForApproval.find(u => u.id === plan.approvalReviewedById);
+                const revName = reviewedBy?.name || reviewedBy?.username || 'Admin';
+                
+                items.push({
+                    id: `${plan.id}-review`,
+                    type: 'status_change',
+                    date: plan.approvalReviewedAt,
+                    title: `PLAN ${plan.status.toUpperCase()}`,
+                    detail: `Reviewed and ${plan.status.toLowerCase()} by ${revName}`,
+                    userName: revName,
+                    userInitials: revName.charAt(0),
+                    status: plan.status,
+                    isApproved: plan.status === 'Approved'
+                });
+            }
+
+            // Add Sale Recognized Entry
+            if (plan.status === 'Sale Recognized' && plan.updatedAt) {
+                items.push({
+                    id: `${plan.id}-recognized`,
+                    type: 'status_change',
+                    date: plan.updatedAt,
+                    title: 'SALE RECOGNIZED',
+                    detail: 'Converted to agreement and sale recognized.',
+                    userName: 'SYSTEM',
+                    userInitials: 'S',
+                    status: 'Sale Recognized'
+                });
+            }
+        });
+
+        // Sort all items descending (newest first) for display
+        return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [historyRootId, state.installmentPlans, usersForApproval]);
+
     const formatActivityTime = (time: string) => {
         if (!time) return '';
         const date = new Date(time);
@@ -2108,9 +2205,9 @@ const MarketingPage: React.FC = () => {
                         </div>
                     </div>
                 ) : (
-                    <div className="max-w-6xl mx-auto no-print">
-                        <div className="flex flex-col lg:flex-row gap-4">
-                            <div className="flex-1 space-y-4">
+                    <div className="max-w-[1400px] mx-auto no-print px-4 lg:px-8">
+                        <div className="flex flex-col lg:flex-row gap-6">
+                            <div className="flex-1 space-y-6">
                                 {state.currentUser?.role === 'Admin' && approvalTasks.length > 0 && (
                                     <Card className="p-4 bg-white border border-slate-200">
                                         <div className="flex items-center justify-between mb-3">
@@ -2338,8 +2435,8 @@ const MarketingPage: React.FC = () => {
                                     </div>
                                 )}
                             </div>
-                            <div className="w-full lg:w-80 shrink-0">
-                                <Card className="p-4 bg-white border border-slate-200">
+                            <div className="w-full lg:w-96 shrink-0 lg:sticky lg:top-6 h-fit">
+                                <Card className="p-4 bg-white border border-slate-200 shadow-sm">
                                     <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Activity</h3>
                                     {activityFeed.length === 0 ? (
                                         <p className="text-xs text-slate-400">No activity yet.</p>
@@ -2434,88 +2531,82 @@ const MarketingPage: React.FC = () => {
                             {/* Vertical Timeline Line */}
                             <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-slate-100 -z-10" />
 
-                            {(() => {
-                                const history = (state.installmentPlans || [])
-                                    .filter(p => (p.rootId || p.id) === historyRootId)
-                                    .sort((a, b) => (b.version || 1) - (a.version || 1));
-
-                                if (history.length === 0) {
-                                    return (
-                                        <div className="text-center py-10">
-                                            <p className="text-slate-500">No history found for this plan.</p>
-                                        </div>
-                                    );
-                                }
-
-                                return history.map((planVersion, idx) => {
-                                    const statusMeta = getStatusMeta(planVersion.status);
-                                    const isApproved = planVersion.status === 'Approved';
-                                    const isGenesis = idx === history.length - 1;
+                            {planHistoryItems.length === 0 ? (
+                                <div className="text-center py-10">
+                                    <p className="text-slate-500">No history found for this plan.</p>
+                                </div>
+                            ) : (
+                                planHistoryItems.map((item, idx) => {
+                                    const statusMeta = item.status ? getStatusMeta(item.status) : null;
                                     
-                                    const user = usersForApproval.find(u => u.id === (isApproved ? planVersion.approvalReviewedById : planVersion.approvalRequestedById));
-                                    const userName = user?.name || user?.username || (isGenesis ? 'SYSTEM ADMIN' : 'USER');
-
                                     return (
                                         <div 
-                                            key={planVersion.id}
+                                            key={item.id}
                                             className="relative pl-10"
                                         >
                                             {/* Timeline Node */}
                                             <div className={`absolute left-[-5px] top-1 w-6 h-6 rounded-full flex items-center justify-center ring-4 ring-white shadow-sm z-10 ${
-                                                isApproved ? 'bg-indigo-600 text-white' : 'bg-white text-slate-400 border border-slate-200'
+                                                item.isApproved ? 'bg-indigo-600 text-white' : 
+                                                item.type === 'version' ? 'bg-slate-800 text-white' : 'bg-white text-slate-400 border border-slate-200'
                                             }`}>
                                                 <div className="w-3.5 h-3.5">
-                                                    {isApproved ? ICONS.checkCircle : (isGenesis ? ICONS.send : ICONS.history)}
+                                                    {item.isApproved ? ICONS.checkCircle : 
+                                                     item.isGenesis ? ICONS.send : 
+                                                     item.type === 'version' ? ICONS.history : ICONS.trendingUp}
                                                 </div>
                                             </div>
 
                                             <div 
                                                 onClick={() => {
-                                                    handleEdit(planVersion);
-                                                    setShowHistoryDrawer(false);
+                                                    if (item.plan) {
+                                                        handleEdit(item.plan);
+                                                        setShowHistoryDrawer(false);
+                                                    }
                                                 }}
-                                                className="group bg-white border border-slate-100 rounded-xl p-4 hover:border-indigo-200 hover:shadow-lg transition-all cursor-pointer"
+                                                className={`group bg-white border border-slate-100 rounded-xl p-4 transition-all ${item.plan ? 'hover:border-indigo-200 hover:shadow-lg cursor-pointer' : ''}`}
                                             >
                                                 <div className="flex justify-between items-start mb-1">
                                                     <div>
-                                                        <h3 className={`text-[10px] font-extrabold uppercase tracking-widest ${isApproved ? 'text-indigo-600' : 'text-slate-500'}`}>
-                                                            {isGenesis ? 'GENESIS PLAN' : (isApproved ? 'APPROVED PLAN' : `${planVersion.status.toUpperCase()} PLAN`)}
+                                                        <h3 className={`text-[10px] font-extrabold uppercase tracking-widest ${item.isApproved ? 'text-indigo-600' : (item.type === 'version' ? 'text-slate-800' : 'text-slate-500')}`}>
+                                                            {item.title}
                                                         </h3>
                                                         <div className="text-[10px] text-slate-400 mt-1">
-                                                            {new Date(planVersion.updatedAt || planVersion.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                            {new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                                         </div>
                                                     </div>
                                                     <div className="text-[10px] font-bold text-slate-400">
-                                                        {new Date(planVersion.updatedAt || planVersion.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                        {new Date(item.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                                     </div>
                                                 </div>
                                                 
                                                 <div className="mt-3 bg-slate-50/50 rounded-lg p-3 border border-slate-100">
                                                     <p className="text-xs text-slate-600 leading-relaxed italic">
-                                                        {planVersion.description || (isGenesis ? 'Initial project plan scaffolded.' : `Plan moved to ${planVersion.status.toLowerCase()} status.`)}
+                                                        {item.detail}
                                                     </p>
                                                     
                                                     <div className="mt-3 flex items-center gap-2 bg-white rounded-md p-2 border border-slate-100/50 shadow-sm">
                                                         <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500 uppercase">
-                                                            {userName.charAt(0)}
+                                                            {item.userInitials}
                                                         </div>
                                                         <span className="text-[10px] font-bold text-slate-600 uppercase tracking-tight">
-                                                            {userName}
+                                                            {item.userName}
                                                         </span>
                                                     </div>
                                                 </div>
 
-                                                <div className="mt-4 flex items-center justify-between text-[9px] font-bold uppercase tracking-widest text-slate-400">
-                                                    <span>VERSION v{planVersion.version}</span>
-                                                    <span className="text-indigo-500 group-hover:translate-x-1 transition-transform flex items-center gap-1">
-                                                        RESTORE VERSION <div className="w-3 h-3">{ICONS.chevronRight}</div>
-                                                    </span>
-                                                </div>
+                                                {item.plan && (
+                                                    <div className="mt-4 flex items-center justify-between text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                                                        <span>VERSION v{item.version}</span>
+                                                        <span className="text-indigo-500 group-hover:translate-x-1 transition-transform flex items-center gap-1">
+                                                            RESTORE VERSION <div className="w-3 h-3">{ICONS.chevronRight}</div>
+                                                        </span>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     );
-                                });
-                            })()}
+                                })
+                            )}
                         </div>
                         
                         <div className="p-4 border-t border-slate-100 bg-slate-50">
