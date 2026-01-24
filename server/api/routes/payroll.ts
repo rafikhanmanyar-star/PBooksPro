@@ -1118,13 +1118,45 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     }
 
     // Verify account exists and belongs to tenant
-    // Use explicit comparison to handle any type/format mismatches
-    const accountCheck = await getDb().query(
+    // First, try exact match
+    let accountCheck = await getDb().query(
       `SELECT id, name, type, balance, tenant_id 
        FROM accounts 
        WHERE id = $1 AND tenant_id = $2`,
       [accountId, tenantId]
     );
+    
+    // If not found, try with trimmed tenant_id (in case of whitespace issues)
+    if (accountCheck.length === 0) {
+      console.log('⚠️ Account not found with exact tenant_id match, trying trimmed comparison...');
+      accountCheck = await getDb().query(
+        `SELECT id, name, type, balance, tenant_id 
+         FROM accounts 
+         WHERE id = $1 AND TRIM(tenant_id) = $2`,
+        [accountId, String(tenantId).trim()]
+      );
+    }
+    
+    // If still not found, check if account exists at all (for debugging)
+    if (accountCheck.length === 0) {
+      const accountExistsAnywhere = await getDb().query(
+        'SELECT id, name, type, tenant_id FROM accounts WHERE id = $1',
+        [accountId]
+      );
+      
+      if (accountExistsAnywhere.length > 0) {
+        const foundAccount = accountExistsAnywhere[0];
+        console.error('❌ Account exists but tenant_id mismatch:', {
+          accountId,
+          accountTenantId: foundAccount.tenant_id,
+          accountTenantIdType: typeof foundAccount.tenant_id,
+          requestTenantId: tenantId,
+          requestTenantIdType: typeof tenantId,
+          tenantIdsMatch: String(foundAccount.tenant_id).trim() === String(tenantId).trim(),
+          accountName: foundAccount.name
+        });
+      }
+    }
     
     console.log('🔍 Account check query result:', {
       accountId,
