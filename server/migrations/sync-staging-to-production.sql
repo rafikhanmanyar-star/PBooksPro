@@ -1,7 +1,6 @@
 -- Migration Script: Sync Staging Database to Match Production
 -- Generated automatically - Review before running!
--- Date: 2026-01-19T00:00:00.000Z
--- Updated: Full schema sync including P2P, Tasks, WhatsApp, Audit Trail, and more
+-- Updated: Full schema sync including P2P, Tasks, WhatsApp, Payroll (new), Audit Trail, and more
 
 BEGIN;
 
@@ -1190,6 +1189,194 @@ CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_message_id ON whatsapp_messages
 CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_timestamp ON whatsapp_messages(tenant_id, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_unread ON whatsapp_messages(tenant_id, phone_number, read_at) WHERE direction = 'incoming' AND read_at IS NULL;
 
+-- ============================================================================
+-- PAYROLL (NEW SCHEMA)
+-- payroll_departments, payroll_*, payslips columns. Additive only. Idempotent.
+-- ============================================================================
+
+-- Table: payroll_departments
+CREATE TABLE IF NOT EXISTS payroll_departments (
+    id TEXT NOT NULL DEFAULT (gen_random_uuid())::text,
+    tenant_id TEXT NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    code VARCHAR(20),
+    description VARCHAR(500),
+    parent_department_id TEXT,
+    head_employee_id TEXT,
+    cost_center_code VARCHAR(50),
+    budget_allocation NUMERIC DEFAULT 0,
+    is_active BOOLEAN DEFAULT true,
+    created_by TEXT,
+    updated_by TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id)
+);
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payroll_departments_created_by_fkey') THEN
+  ALTER TABLE payroll_departments ADD CONSTRAINT payroll_departments_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id); END IF; END $$;
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payroll_departments_parent_department_id_fkey') THEN
+  ALTER TABLE payroll_departments ADD CONSTRAINT payroll_departments_parent_department_id_fkey FOREIGN KEY (parent_department_id) REFERENCES payroll_departments(id) ON DELETE SET NULL; END IF; END $$;
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payroll_departments_tenant_id_fkey') THEN
+  ALTER TABLE payroll_departments ADD CONSTRAINT payroll_departments_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE; END IF; END $$;
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payroll_departments_updated_by_fkey') THEN
+  ALTER TABLE payroll_departments ADD CONSTRAINT payroll_departments_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id); END IF; END $$;
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payroll_departments_tenant_id_code_key') THEN
+  ALTER TABLE payroll_departments ADD CONSTRAINT payroll_departments_tenant_id_code_key UNIQUE (tenant_id, code); END IF; END $$;
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payroll_departments_tenant_id_name_key') THEN
+  ALTER TABLE payroll_departments ADD CONSTRAINT payroll_departments_tenant_id_name_key UNIQUE (tenant_id, name); END IF; END $$;
+CREATE INDEX IF NOT EXISTS idx_payroll_departments_tenant ON payroll_departments(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_departments_parent ON payroll_departments(parent_department_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_departments_active ON payroll_departments(tenant_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_payroll_departments_code ON payroll_departments(tenant_id, code);
+
+-- Table: payroll_grades
+CREATE TABLE IF NOT EXISTS payroll_grades (
+    id TEXT PRIMARY KEY DEFAULT (gen_random_uuid())::text,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name VARCHAR(50) NOT NULL,
+    description VARCHAR(255),
+    min_salary NUMERIC NOT NULL DEFAULT 0,
+    max_salary NUMERIC NOT NULL DEFAULT 0,
+    created_by TEXT REFERENCES users(id),
+    updated_by TEXT REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(tenant_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_payroll_grades_tenant ON payroll_grades(tenant_id);
+
+-- Table: payroll_projects
+CREATE TABLE IF NOT EXISTS payroll_projects (
+    id TEXT PRIMARY KEY DEFAULT (gen_random_uuid())::text,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    code VARCHAR(50),
+    description TEXT,
+    status VARCHAR(20) DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'COMPLETED', 'ON_HOLD')),
+    created_by TEXT REFERENCES users(id),
+    updated_by TEXT REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_payroll_projects_tenant ON payroll_projects(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_projects_status ON payroll_projects(tenant_id, status);
+
+-- Table: payroll_employees
+CREATE TABLE IF NOT EXISTS payroll_employees (
+    id TEXT PRIMARY KEY DEFAULT (gen_random_uuid())::text,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id TEXT REFERENCES users(id),
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255),
+    phone VARCHAR(50),
+    address TEXT,
+    photo TEXT,
+    employee_code VARCHAR(50),
+    designation VARCHAR(255) NOT NULL,
+    department VARCHAR(100) NOT NULL,
+    grade VARCHAR(50),
+    status VARCHAR(20) DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'RESIGNED', 'TERMINATED', 'ON_LEAVE')),
+    joining_date DATE NOT NULL,
+    termination_date DATE,
+    salary JSONB NOT NULL DEFAULT '{"basic": 0, "allowances": [], "deductions": []}'::jsonb,
+    adjustments JSONB DEFAULT '[]'::jsonb,
+    projects JSONB DEFAULT '[]'::jsonb,
+    created_by TEXT NOT NULL REFERENCES users(id),
+    updated_by TEXT REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    department_id TEXT REFERENCES payroll_departments(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_payroll_employees_tenant ON payroll_employees(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_employees_status ON payroll_employees(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_payroll_employees_department ON payroll_employees(tenant_id, department);
+CREATE INDEX IF NOT EXISTS idx_payroll_employees_code ON payroll_employees(tenant_id, employee_code);
+CREATE INDEX IF NOT EXISTS idx_payroll_employees_department_id ON payroll_employees(department_id);
+
+-- Table: payroll_runs
+CREATE TABLE IF NOT EXISTS payroll_runs (
+    id TEXT PRIMARY KEY DEFAULT (gen_random_uuid())::text,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    month VARCHAR(20) NOT NULL,
+    year INTEGER NOT NULL,
+    period_start DATE,
+    period_end DATE,
+    status VARCHAR(20) DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PROCESSING', 'APPROVED', 'PAID', 'CANCELLED')),
+    total_amount NUMERIC DEFAULT 0,
+    employee_count INTEGER DEFAULT 0,
+    created_by TEXT NOT NULL REFERENCES users(id),
+    updated_by TEXT REFERENCES users(id),
+    approved_by TEXT REFERENCES users(id),
+    approved_at TIMESTAMP WITH TIME ZONE,
+    paid_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(tenant_id, month, year)
+);
+CREATE INDEX IF NOT EXISTS idx_payroll_runs_tenant ON payroll_runs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_runs_status ON payroll_runs(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_payroll_runs_period ON payroll_runs(tenant_id, year, month);
+
+-- Table: payroll_salary_components
+CREATE TABLE IF NOT EXISTS payroll_salary_components (
+    id TEXT PRIMARY KEY DEFAULT (gen_random_uuid())::text,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    type VARCHAR(20) NOT NULL CHECK (type IN ('ALLOWANCE', 'DEDUCTION')),
+    is_percentage BOOLEAN DEFAULT false,
+    default_value NUMERIC DEFAULT 0,
+    is_taxable BOOLEAN DEFAULT true,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(tenant_id, name, type)
+);
+CREATE INDEX IF NOT EXISTS idx_payroll_components_tenant ON payroll_salary_components(tenant_id);
+
+-- Table: payslips (new schema; skip if legacy payslips exists and use add-payslips-columns-legacy instead)
+CREATE TABLE IF NOT EXISTS payslips (
+    id TEXT PRIMARY KEY DEFAULT (gen_random_uuid())::text,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    payroll_run_id TEXT NOT NULL REFERENCES payroll_runs(id) ON DELETE CASCADE,
+    employee_id TEXT NOT NULL REFERENCES payroll_employees(id) ON DELETE CASCADE,
+    basic_pay NUMERIC NOT NULL DEFAULT 0,
+    total_allowances NUMERIC NOT NULL DEFAULT 0,
+    total_deductions NUMERIC NOT NULL DEFAULT 0,
+    total_adjustments NUMERIC NOT NULL DEFAULT 0,
+    gross_pay NUMERIC NOT NULL DEFAULT 0,
+    net_pay NUMERIC NOT NULL DEFAULT 0,
+    allowance_details JSONB DEFAULT '[]'::jsonb,
+    deduction_details JSONB DEFAULT '[]'::jsonb,
+    adjustment_details JSONB DEFAULT '[]'::jsonb,
+    is_paid BOOLEAN DEFAULT false,
+    paid_at TIMESTAMP WITH TIME ZONE,
+    transaction_id VARCHAR(100),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(payroll_run_id, employee_id)
+);
+CREATE INDEX IF NOT EXISTS idx_payslips_tenant ON payslips(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_payslips_run ON payslips(payroll_run_id);
+CREATE INDEX IF NOT EXISTS idx_payslips_employee ON payslips(employee_id);
+
+-- Payslips: add new columns when table exists (legacy payslips)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'payslips') THEN
+        ALTER TABLE payslips ADD COLUMN IF NOT EXISTS payroll_run_id TEXT DEFAULT '' NOT NULL;
+        ALTER TABLE payslips ADD COLUMN IF NOT EXISTS basic_pay NUMERIC DEFAULT 0 NOT NULL;
+        ALTER TABLE payslips ADD COLUMN IF NOT EXISTS total_adjustments NUMERIC DEFAULT 0 NOT NULL;
+        ALTER TABLE payslips ADD COLUMN IF NOT EXISTS gross_pay NUMERIC DEFAULT 0 NOT NULL;
+        ALTER TABLE payslips ADD COLUMN IF NOT EXISTS net_pay NUMERIC DEFAULT 0 NOT NULL;
+        ALTER TABLE payslips ADD COLUMN IF NOT EXISTS allowance_details JSONB DEFAULT '[]'::jsonb;
+        ALTER TABLE payslips ADD COLUMN IF NOT EXISTS deduction_details JSONB DEFAULT '[]'::jsonb;
+        ALTER TABLE payslips ADD COLUMN IF NOT EXISTS adjustment_details JSONB DEFAULT '[]'::jsonb;
+        ALTER TABLE payslips ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT false;
+        ALTER TABLE payslips ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP WITH TIME ZONE;
+    END IF;
+END $$;
+
 COMMIT;
 
 -- ============================================================================
@@ -1223,6 +1410,12 @@ COMMIT;
 -- WHATSAPP INTEGRATION TABLES:
 --   - whatsapp_configs
 --   - whatsapp_messages
+--
+-- PAYROLL (NEW SCHEMA):
+--   - payroll_departments, payroll_grades, payroll_projects, payroll_employees,
+--     payroll_runs, payroll_salary_components, payslips
+--   - payslips: payroll_run_id, basic_pay, total_adjustments, gross_pay, net_pay,
+--     allowance_details, deduction_details, adjustment_details, is_paid, paid_at
 --
 -- COLUMN ADDITIONS:
 --   - bills.version (optimistic locking)

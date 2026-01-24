@@ -1,6 +1,37 @@
 -- Migration: Add Tasks Management Schema
 -- This migration adds the tasks tables if they don't exist, or adds missing columns if the table exists
 
+-- Create tasks table if missing (production may have been created before tasks existed)
+CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    description TEXT,
+    type TEXT NOT NULL DEFAULT 'Personal',
+    category TEXT NOT NULL DEFAULT 'General',
+    status TEXT NOT NULL DEFAULT 'Not Started',
+    start_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    hard_deadline DATE NOT NULL DEFAULT CURRENT_DATE,
+    kpi_goal TEXT,
+    kpi_target_value REAL,
+    kpi_current_value REAL DEFAULT 0,
+    kpi_unit TEXT,
+    kpi_progress_percentage REAL DEFAULT 0,
+    assigned_by_id TEXT,
+    assigned_to_id TEXT,
+    created_by_id TEXT,
+    user_id TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (assigned_by_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (assigned_to_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_tenant_id ON tasks(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+
 -- Add missing columns to tasks table if it exists but is missing columns
 DO $$
 BEGIN

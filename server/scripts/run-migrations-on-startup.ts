@@ -445,6 +445,27 @@ async function runMigrations() {
       }
     }
 
+    // Migration: Add payslips columns when legacy payslips table exists
+    const payslipsLegacyPaths = [
+      join(__dirname, '../migrations/add-payslips-columns-legacy.sql'),
+      join(__dirname, '../../migrations/add-payslips-columns-legacy.sql'),
+      join(process.cwd(), 'server/migrations/add-payslips-columns-legacy.sql'),
+      join(process.cwd(), 'migrations/add-payslips-columns-legacy.sql'),
+    ];
+    let payslipsLegacyPath: string | null = null;
+    for (const p of payslipsLegacyPaths) {
+      try { readFileSync(p, 'utf8'); payslipsLegacyPath = p; break; } catch { /* next */ }
+    }
+    if (payslipsLegacyPath) {
+      try {
+        console.log('📋 Running add-payslips-columns-legacy from:', payslipsLegacyPath);
+        await pool.query(readFileSync(payslipsLegacyPath, 'utf8'));
+        console.log('✅ add-payslips-columns-legacy completed');
+      } catch (err: any) {
+        console.warn('   ⚠️  add-payslips-columns-legacy warning:', err.message);
+      }
+    }
+
     // Migration: Add is_supplier column to tenants table
     const isSupplierMigrationPaths = [
       join(__dirname, '../migrations/add-is-supplier-to-tenants.sql'),
@@ -572,7 +593,30 @@ async function runMigrations() {
       }
     }
 
-    // Migration: Sale Recognized status (installment_plans) — run after installment-plan-fields
+    // Migration: Installment plan approval workflow (approval_requested_by, etc.) — fixes production GET filter
+    const installmentApprovalPaths = [
+      join(__dirname, '../migrations/add-installment-plan-approval-fields.sql'),
+      join(__dirname, '../../migrations/add-installment-plan-approval-fields.sql'),
+      join(process.cwd(), 'server/migrations/add-installment-plan-approval-fields.sql'),
+      join(process.cwd(), 'migrations/add-installment-plan-approval-fields.sql'),
+    ];
+    let installmentApprovalPath: string | null = null;
+    for (const p of installmentApprovalPaths) {
+      try { readFileSync(p, 'utf8'); installmentApprovalPath = p; break; } catch { /* next */ }
+    }
+    if (installmentApprovalPath) {
+      try {
+        console.log('📋 Running installment-plan-approval-fields from:', installmentApprovalPath);
+        await pool.query(readFileSync(installmentApprovalPath, 'utf8'));
+        console.log('✅ installment-plan-approval-fields completed');
+      } catch (err: any) {
+        if (err.code === '42701' || err.message?.includes('already exists')) {
+          console.log('   ℹ️  installment-plan-approval-fields already applied (skipping)');
+        } else { console.warn('   ⚠️  installment-plan-approval-fields warning:', err.message); }
+      }
+    }
+
+    // Migration: Sale Recognized status (installment_plans) — run after approval-fields
     const saleRecognizedPaths = [
       join(__dirname, '../migrations/add-sale-recognized-status.sql'),
       join(__dirname, '../../migrations/add-sale-recognized-status.sql'),
@@ -592,6 +636,29 @@ async function runMigrations() {
         if (err.code === '42710' || err.message?.includes('already exists')) {
           console.log('   ℹ️  sale-recognized-status already applied (skipping)');
         } else { console.warn('   ⚠️  sale-recognized-status migration warning:', err.message); }
+      }
+    }
+
+    // Migration: plan_amenities table + installment_plans discount/amenity columns (production parity)
+    const planAmenitiesPaths = [
+      join(__dirname, '../migrations/add-plan-amenities-table.sql'),
+      join(__dirname, '../../migrations/add-plan-amenities-table.sql'),
+      join(process.cwd(), 'server/migrations/add-plan-amenities-table.sql'),
+      join(process.cwd(), 'migrations/add-plan-amenities-table.sql'),
+    ];
+    let planAmenitiesPath: string | null = null;
+    for (const p of planAmenitiesPaths) {
+      try { readFileSync(p, 'utf8'); planAmenitiesPath = p; break; } catch { /* next */ }
+    }
+    if (planAmenitiesPath) {
+      try {
+        console.log('📋 Running add-plan-amenities-table from:', planAmenitiesPath);
+        await pool.query(readFileSync(planAmenitiesPath, 'utf8'));
+        console.log('✅ add-plan-amenities-table completed');
+      } catch (err: any) {
+        if (err.code === '42P07' || err.code === '42701' || err.message?.includes('already exists')) {
+          console.log('   ℹ️  plan_amenities / installment_plans columns already exist (skipping)');
+        } else { console.warn('   ⚠️  add-plan-amenities-table warning:', err.message); }
       }
     }
 

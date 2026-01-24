@@ -27,14 +27,18 @@ These run in `run-migrations-on-startup.ts` when the API starts (e.g. after depl
 | 7 | (inline) | license_history.payment_id, audit_log user_id nullable, tenant supplier columns |
 | 8 | `add-org-id-to-rental-agreements.sql` | rental_agreements.org_id |
 | 9 | `add-contact-id-to-rental-agreements.sql` | rental_agreements.contact_id |
-| 10 | `add-tasks-schema.sql` | tasks, task_updates, task_performance_* |
-| 11 | `add-is-supplier-to-tenants.sql` | tenants.is_supplier |
-| 12 | `add-whatsapp-integration.sql` | whatsapp_configs, whatsapp_messages |
-| 13 | `increase-max-users-to-20.sql` | max_users 5 → 20 |
-| 14 | `add-installment-plan-fields.sql` | installment_plans fields + status |
-| 15 | `add-sale-recognized-status.sql` | installment_plans status 'Sale Recognized' |
-| 16 | `add-installment-plan-to-project-agreements.sql` | project_agreements.installment_plan |
-| 17 | `add-unit-fields.sql` | units.type, units.area, units.floor |
+| 10 | `add-tasks-schema.sql` | tasks (CREATE IF NOT EXISTS), task_updates, task_performance_*; adds missing columns |
+| 11 | `fix-tasks-missing-title-description.sql` | tasks: title, description, user_id, etc. when legacy schema |
+| 12 | `add-payslips-columns-legacy.sql` | payslips: payroll_run_id, basic_pay, etc. when legacy |
+| 13 | `add-is-supplier-to-tenants.sql` | tenants.is_supplier |
+| 14 | `add-whatsapp-integration.sql` | whatsapp_configs, whatsapp_messages |
+| 15 | `increase-max-users-to-20.sql` | max_users 5 → 20 |
+| 16 | `add-installment-plan-fields.sql` | installment_plans fields + status |
+| 17 | `add-installment-plan-approval-fields.sql` | approval_requested_by, approval_requested_to, etc. (fixes GET filter) |
+| 18 | `add-sale-recognized-status.sql` | installment_plans status 'Sale Recognized' |
+| 19 | `add-plan-amenities-table.sql` | plan_amenities; discount/amenity columns on installment_plans |
+| 20 | `add-installment-plan-to-project-agreements.sql` | project_agreements.installment_plan |
+| 21 | `add-unit-fields.sql` | units.type, units.area, units.floor |
 
 All of these use `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` or equivalent, so they are **idempotent** and safe to run multiple times.
 
@@ -109,6 +113,15 @@ git push origin --tags
 ---
 
 ## 6. Post-Upgrade Verification
+
+### 6.0 Tasks & Installment Plan (production fixes)
+
+If **tasks** or **installment plans** fail in production (e.g. 500 on create/list):
+
+- **Tasks:** `add-tasks-schema` now creates `tasks` (and `task_updates`, `task_performance_*`) if missing. `fix-tasks-missing-title-description` adds `title`, `description`, `user_id`, etc. when the table has a legacy schema. Both run on startup.
+- **Installment plans:** `add-installment-plan-approval-fields` adds `approval_requested_by`, `approval_requested_to`, etc. (required for non-admin GET filter). `add-plan-amenities-table` adds `plan_amenities` and discount/amenity columns on `installment_plans`. Both run on startup.
+
+Redeploy so these migrations run; then re-check tasks and installment plans.
 
 ### 6.1 Server logs
 

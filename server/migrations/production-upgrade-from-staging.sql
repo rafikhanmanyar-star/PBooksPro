@@ -1,5 +1,5 @@
 -- Production upgrade: add missing tables/columns from STAGING
--- Generated: 2026-01-24T12:35:01.852Z
+-- Generated: 2026-01-24T12:41:12.121Z
 -- Additive only. Idempotent. Safe to re-run.
 
 BEGIN;

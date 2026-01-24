@@ -93,4 +93,9 @@ BEGIN
         ALTER TABLE tasks ADD COLUMN kpi_progress_percentage REAL DEFAULT 0;
         RAISE NOTICE 'Column kpi_progress_percentage added to tasks table';
     END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tasks' AND column_name = 'user_id') THEN
+        ALTER TABLE tasks ADD COLUMN user_id TEXT;
+        RAISE NOTICE 'Column user_id added to tasks table';
+    END IF;
 END $$;
