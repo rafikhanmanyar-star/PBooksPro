@@ -1,8 +1,8 @@
 /**
  * Sync Status Indicator Component
  * 
- * Displays sync queue status for desktop offline operations
- * Uses the new useSyncStatus hook
+ * Displays sync queue status for offline operations.
+ * Uses the useSyncStatus hook.
  */
 
 import React from 'react';
@@ -19,12 +19,6 @@ const SyncStatusIndicator: React.FC<SyncStatusIndicatorProps> = ({
   className = '' 
 }) => {
   const { pending, syncing, failed, isSyncing, hasPending } = useSyncStatus();
-  const isMobile = isMobileDevice();
-
-  // Mobile doesn't have sync queue
-  if (isMobile) {
-    return null;
-  }
 
   // Don't show if nothing to sync
   if (!hasPending && !isSyncing) {

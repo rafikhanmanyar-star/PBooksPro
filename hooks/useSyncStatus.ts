@@ -27,11 +27,6 @@ export function useSyncStatus(): UseSyncStatusResult {
   });
 
   useEffect(() => {
-    // Mobile: No sync queue
-    if (isMobileDevice()) {
-      return;
-    }
-
     const syncManager = getSyncManager();
     
     // Get initial status

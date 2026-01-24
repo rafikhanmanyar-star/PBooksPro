@@ -59,12 +59,6 @@ class SyncManager {
     entityId: string,
     data: any
   ): Promise<void> {
-    // Mobile: Don't queue, operations go directly to cloud
-    if (isMobileDevice()) {
-      console.warn('[SyncManager] Queue operation called on mobile - this should not happen');
-      return;
-    }
-
     const operation: SyncOperation = {
       id: `${entity}_${entityId}_${Date.now()}`,
       type,
@@ -92,10 +86,6 @@ class SyncManager {
    * Start automatic syncing
    */
   startAutoSync(): void {
-    if (isMobileDevice()) {
-      return; // No sync needed on mobile
-    }
-
     if (this.syncInterval !== null) {
       return; // Already running
     }
@@ -125,10 +115,6 @@ class SyncManager {
    * Sync all pending operations
    */
   async syncQueue(): Promise<void> {
-    if (isMobileDevice()) {
-      return; // No sync needed on mobile
-    }
-
     if (this.isSyncing) {
       return; // Already syncing
     }

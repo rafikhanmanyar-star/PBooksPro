@@ -61,8 +61,6 @@ export function isElectron(): boolean {
  * Get the database mode for the current platform
  */
 export function getDatabaseMode(): 'local' | 'cloud' | 'hybrid' {
-  if (isMobileDevice()) {
-    return 'cloud'; // Mobile: cloud only
-  }
-  return 'hybrid'; // Desktop: local + cloud
+  // Mobile now supports local database via SQLite (sql.js)
+  return 'hybrid'; 
 }

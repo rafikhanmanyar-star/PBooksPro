@@ -11,15 +11,9 @@ import { isMobileDevice } from '../../utils/platformDetection';
 
 const SyncNotification: React.FC = () => {
   const { pending, syncing, failed, isSyncing } = useSyncStatus();
-  const isMobile = isMobileDevice();
   const [showSuccess, setShowSuccess] = useState(false);
   const [lastCompletedCount, setLastCompletedCount] = useState(0);
   const [previousSyncing, setPreviousSyncing] = useState(false);
-
-  // Mobile doesn't have sync queue, so don't show anything
-  if (isMobile) {
-    return null;
-  }
 
   /**
    * Show success notification when sync completes

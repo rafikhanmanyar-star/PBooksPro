@@ -53,13 +53,9 @@ class UnifiedDatabaseServiceImpl implements UnifiedDatabaseService {
     try {
       console.log(`[UnifiedDatabaseService] Initializing for platform: ${this.platform}`);
 
-      if (this.platform === 'mobile') {
-        // Mobile: Cloud PostgreSQL only (via API)
-        await this.initializeMobile();
-      } else {
-        // Desktop: Hybrid (local SQLite + cloud PostgreSQL via API)
-        await this.initializeDesktop();
-      }
+      // Always use hybrid mode (local SQLite + cloud PostgreSQL via API)
+      // This enables offline support and local caching on all devices including mobile
+      await this.initializeHybrid();
 
       this.isInitialized = true;
       console.log(`[UnifiedDatabaseService] Initialized successfully in ${this.mode} mode`);
@@ -71,27 +67,9 @@ class UnifiedDatabaseServiceImpl implements UnifiedDatabaseService {
   }
 
   /**
-   * Initialize for mobile platform
+   * Initialize hybrid database mode (local + cloud)
    */
-  private async initializeMobile(): Promise<void> {
-    this.mode = 'api';
-    
-    // Initialize cloud service (for health checks)
-    try {
-      this.cloudService = getCloudPostgreSQLService();
-      await this.cloudService.initialize();
-    } catch (error) {
-      console.warn('[UnifiedDatabaseService] Cloud service initialization failed (non-critical):', error);
-      // Continue anyway - API calls will handle errors
-    }
-
-    console.log('[UnifiedDatabaseService] Mobile mode: Using API repositories (cloud PostgreSQL)');
-  }
-
-  /**
-   * Initialize for desktop platform
-   */
-  private async initializeDesktop(): Promise<void> {
+  private async initializeHybrid(): Promise<void> {
     this.mode = 'hybrid';
     
     // Initialize local SQLite (for offline support)
@@ -113,7 +91,7 @@ class UnifiedDatabaseServiceImpl implements UnifiedDatabaseService {
       console.warn('[UnifiedDatabaseService] Cloud service initialization failed (non-critical):', error);
     }
 
-    console.log(`[UnifiedDatabaseService] Desktop mode: ${this.mode} (local + cloud via API)`);
+    console.log(`[UnifiedDatabaseService] Database mode: ${this.mode} (local + cloud via API)`);
   }
 
   /**

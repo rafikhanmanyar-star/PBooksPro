@@ -801,19 +801,17 @@ class RealtimeSyncHandler {
         console.log(`[RealtimeSyncHandler] ✅ Dispatched ${actionType} for ${entity}:${entityId}`);
       }
 
-      // Also update local database (desktop only)
-      if (!isMobileDevice()) {
-        try {
-          if (action === 'create' || action === 'update') {
-            await this.updateLocalDatabase(entity, entityId, entityData, action);
-          } else if (action === 'delete') {
-            await this.deleteFromLocalDatabase(entity, entityId);
-          }
-          console.log(`[RealtimeSyncHandler] ✅ Updated local database for ${entity}:${entityId}`);
-        } catch (error) {
-          console.error(`[RealtimeSyncHandler] ❌ Failed to update local database for ${entity}:${entityId}`, error);
-          // Don't throw - state update is more important than local DB update
+      // Also update local database (enabled for all devices)
+      try {
+        if (action === 'create' || action === 'update') {
+          await this.updateLocalDatabase(entity, entityId, entityData, action);
+        } else if (action === 'delete') {
+          await this.deleteFromLocalDatabase(entity, entityId);
         }
+        console.log(`[RealtimeSyncHandler] ✅ Updated local database for ${entity}:${entityId}`);
+      } catch (error) {
+        console.error(`[RealtimeSyncHandler] ❌ Failed to update local database for ${entity}:${entityId}`, error);
+        // Don't throw - state update is more important than local DB update
       }
     } catch (error) {
       console.error(`[RealtimeSyncHandler] ❌ Failed to handle event ${eventName}:`, error);

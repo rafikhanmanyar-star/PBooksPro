@@ -22,14 +22,6 @@ export abstract class BaseRepository<T> {
     }
 
     protected get db() {
-        // BaseRepository is for local SQLite operations (desktop only)
-        // Mobile devices should use API repositories instead
-        if (isMobileDevice()) {
-            throw new Error(
-                `BaseRepository (local SQLite) is not available on mobile devices. ` +
-                `Use API repositories (e.g., ${this.tableName}ApiRepository) instead.`
-            );
-        }
         return getDatabaseService();
     }
 
@@ -422,14 +414,9 @@ export abstract class BaseRepository<T> {
     }
 
     /**
-     * Queue operation for sync to cloud (desktop only)
+     * Queue operation for sync to cloud
      */
     private queueForSync(type: 'create' | 'update' | 'delete', entityId: string, data: any): void {
-        // Only queue on desktop (mobile uses cloud directly)
-        if (isMobileDevice()) {
-            return;
-        }
-
         try {
             const syncManager = getSyncManager();
             syncManager.queueOperation(type, this.tableName, entityId, data || {});

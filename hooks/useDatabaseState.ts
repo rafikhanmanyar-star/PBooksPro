@@ -58,15 +58,11 @@ async function ensureDatabaseInitialized(): Promise<void> {
             const unifiedService = getUnifiedDatabaseService();
             await unifiedService.initialize();
             
-            // For desktop, also initialize local SQLite
-            if (!isMobileDevice()) {
-                const dbService = getDatabaseService();
-                console.log('[useDatabaseState] Database service obtained, initializing...');
-                await dbService.initialize();
-                console.log('[useDatabaseState] Database initialized successfully');
-            } else {
-                console.log('[useDatabaseState] Mobile platform: Using API repositories only');
-            }
+            // Initialize local SQLite (enabled for all devices)
+            const dbService = getDatabaseService();
+            console.log('[useDatabaseState] Database service obtained, initializing...');
+            await dbService.initialize();
+            console.log('[useDatabaseState] Database initialized successfully');
             
             dbInitialized = true;
         } catch (error) {

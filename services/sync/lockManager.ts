@@ -89,13 +89,11 @@ class LockManager {
     this.saveLocks();
 
     // Sync lock to cloud (if online)
-    if (!isMobileDevice()) {
-      try {
-        await this.syncLockToCloud(lock);
-      } catch (error) {
-        console.warn('[LockManager] Failed to sync lock to cloud:', error);
-        // Continue anyway - lock is still valid locally
-      }
+    try {
+      await this.syncLockToCloud(lock);
+    } catch (error) {
+      console.warn('[LockManager] Failed to sync lock to cloud:', error);
+      // Continue anyway - lock is still valid locally
     }
 
     // Broadcast lock via WebSocket
@@ -125,12 +123,10 @@ class LockManager {
     this.saveLocks();
 
     // Remove lock from cloud (if online)
-    if (!isMobileDevice()) {
-      try {
-        await this.removeLockFromCloud(lock);
-      } catch (error) {
-        console.warn('[LockManager] Failed to remove lock from cloud:', error);
-      }
+    try {
+      await this.removeLockFromCloud(lock);
+    } catch (error) {
+      console.warn('[LockManager] Failed to remove lock from cloud:', error);
     }
 
     // Broadcast lock release via WebSocket
