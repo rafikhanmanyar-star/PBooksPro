@@ -507,8 +507,15 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                       }))}
                       selectedId={selectedAccountId}
                       onSelect={(item) => {
-                        console.log('Selected account:', item);
-                        setSelectedAccountId(item?.id || '');
+                        console.log('Selected account item:', item);
+                        const accountId = item?.id ? String(item.id).trim() : '';
+                        console.log('Setting selectedAccountId to:', accountId);
+                        setSelectedAccountId(accountId);
+                        
+                        // Clear any previous errors when selecting a new account
+                        if (accountId && paymentError) {
+                          setPaymentError(null);
+                        }
                       }}
                       placeholder="Select Payment Account"
                       required
@@ -648,8 +655,25 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                       });
                       
                       try {
+                        // Ensure accountId is a clean string
+                        const cleanAccountId = String(selectedAccountId).trim();
+                        if (!cleanAccountId) {
+                          setPaymentError('Invalid account selected. Please select a payment account.');
+                          setIsPaying(false);
+                          return;
+                        }
+
+                        console.log('📤 Sending payment request:', {
+                          payslipId: payslipData.id,
+                          accountId: cleanAccountId,
+                          accountIdType: typeof cleanAccountId,
+                          categoryId: selectedCategoryId,
+                          projectId: selectedProjectId,
+                          selectedAccount: selectedAccount
+                        });
+
                         const result = await payrollApi.payPayslip(payslipData.id, {
-                          accountId: selectedAccountId,
+                          accountId: cleanAccountId,
                           categoryId: selectedCategoryId,
                           projectId: selectedProjectId || undefined,
                           description: `Salary payment for ${employee.name} - ${run.month} ${run.year}`
@@ -676,7 +700,17 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                         
                         // Provide helpful messages for common errors
                         if (errorMessage.includes('account not found') || errorMessage.includes('Payment account not found')) {
-                          setPaymentError(`Account not found in database. The account may have been deleted. Please refresh the page and select a different account.`);
+                          // Check if error response has available accounts
+                          const errorDetails = error.response?.data?.details || errorMessage;
+                          const availableAccounts = error.response?.data?.availableAccounts;
+                          
+                          let errorMsg = `Payment account not found. `;
+                          if (availableAccounts && availableAccounts.length > 0) {
+                            errorMsg += `Please select one of the available accounts: ${availableAccounts.map((a: any) => a.name).join(', ')}.`;
+                          } else {
+                            errorMsg += `The account may have been deleted or does not belong to this tenant. Please refresh the page and select a different account.`;
+                          }
+                          setPaymentError(errorMsg);
                         } else if (errorMessage.includes('must be APPROVED') || errorMessage.includes('Cannot pay payslip')) {
                           setPaymentError(`Cannot pay payslip: The payroll run must be APPROVED before individual payslips can be paid. Please approve the payroll run first.`);
                         }

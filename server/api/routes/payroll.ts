@@ -1043,13 +1043,24 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Authentication required' });
     }
 
-    const { accountId, categoryId, projectId, description } = req.body;
+    let { accountId, categoryId, projectId, description } = req.body;
 
-    if (!accountId) {
+    // Normalize accountId - ensure it's a string and trim whitespace
+    if (accountId) {
+      accountId = String(accountId).trim();
+    }
+
+    if (!accountId || accountId === '') {
       return res.status(400).json({ error: 'Account ID is required' });
     }
 
-    console.log('🔍 Verifying account:', { accountId, tenantId, accountIdType: typeof accountId });
+    console.log('🔍 Verifying account:', { 
+      accountId, 
+      accountIdType: typeof accountId,
+      accountIdLength: accountId.length,
+      tenantId, 
+      requestBody: { accountId: req.body.accountId, categoryId, projectId }
+    });
 
     // First, check if account exists at all (for debugging)
     const allAccountsCheck = await getDb().query(
@@ -1079,20 +1090,45 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     if (accountCheck.length === 0) {
       // Get list of available accounts for this tenant for debugging
       const availableAccounts = await getDb().query(
-        'SELECT id, name, type FROM accounts WHERE tenant_id = $1 ORDER BY name LIMIT 10',
+        'SELECT id, name, type FROM accounts WHERE tenant_id = $1 ORDER BY name LIMIT 20',
         [tenantId]
+      );
+      
+      // Also check if account exists with different tenant (for debugging)
+      const accountExists = await getDb().query(
+        'SELECT id, name, type, tenant_id FROM accounts WHERE id = $1',
+        [accountId]
       );
       
       console.error('❌ Account not found for tenant:', { 
         accountId, 
+        accountIdLength: accountId?.length,
+        accountIdType: typeof accountId,
         tenantId,
+        tenantIdLength: tenantId?.length,
         availableAccountCount: availableAccounts.length,
-        availableAccounts: availableAccounts.map((a: any) => ({ id: a.id, name: a.name, type: a.type }))
+        availableAccounts: availableAccounts.map((a: any) => ({ id: a.id, name: a.name, type: a.type })),
+        accountExistsInOtherTenant: accountExists.length > 0 ? {
+          found: true,
+          accountTenantId: accountExists[0].tenant_id,
+          accountName: accountExists[0].name
+        } : { found: false }
       });
+      
+      // Provide more helpful error message
+      let errorDetails = `Account ID "${accountId}" does not exist or does not belong to this tenant.`;
+      if (accountExists.length > 0) {
+        errorDetails += ` The account exists but belongs to a different tenant.`;
+      } else if (availableAccounts.length === 0) {
+        errorDetails += ` No accounts found for this tenant. Please create a Bank or Cash account first.`;
+      } else {
+        errorDetails += ` Available accounts: ${availableAccounts.map((a: any) => a.name).join(', ')}`;
+      }
       
       return res.status(404).json({ 
         error: 'Payment account not found',
-        details: `Account ID ${accountId} does not exist or does not belong to this tenant. Please select a valid account.`
+        details: errorDetails,
+        availableAccounts: availableAccounts.map((a: any) => ({ id: a.id, name: a.name, type: a.type }))
       });
     }
 
@@ -1199,7 +1235,8 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     );
     console.log('✅ Payslip marked as paid');
 
-    // Check if all payslips in the run are now paid, and auto-update run status
+    // NOTE: Auto-paid feature removed - users must manually mark run as PAID after all payslips are paid
+    // Check payslip status for information only (not for auto-update)
     const payslipStatus = await getDb().query(
       `SELECT COUNT(*) as total, 
               COUNT(*) FILTER (WHERE is_paid = true) as paid
@@ -1211,27 +1248,14 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     const totalPayslips = parseInt(payslipStatus[0].total);
     const paidPayslips = parseInt(payslipStatus[0].paid);
 
-    // Auto-update run status to PAID if all payslips are paid and run is APPROVED
-    if (paidPayslips === totalPayslips && totalPayslips > 0 && payslip.run_status === 'APPROVED') {
-      await getDb().query(
-        `UPDATE payroll_runs SET 
-          status = 'PAID',
-          paid_at = CURRENT_TIMESTAMP,
-          updated_by = $1
-         WHERE id = $2 AND tenant_id = $3`,
-        [userId, payslip.run_id, tenantId]
-      );
-      console.log('✅ All payslips paid - Run status auto-updated to PAID');
-      emitToTenant(tenantId, 'payroll_run_updated', { id: payslip.run_id });
-    }
-
     // Emit WebSocket event
     emitToTenant(tenantId, 'payslip_paid', { 
       payslipId: id, 
       transactionId: transaction.id,
       employeeId: payslip.employee_id,
       runId: payslip.run_id,
-      allPaid: paidPayslips === totalPayslips
+      paidCount: paidPayslips,
+      totalCount: totalPayslips
     });
 
     console.log('✅ Payment completed successfully');
@@ -1239,7 +1263,11 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
       success: true,
       payslip: updateResult[0],
       transaction: transaction,
-      runAutoUpdated: paidPayslips === totalPayslips && payslip.run_status === 'APPROVED'
+      paymentSummary: {
+        paidPayslips,
+        totalPayslips,
+        remainingPayslips: totalPayslips - paidPayslips
+      }
     });
   } catch (error: any) {
     console.error('❌ Error paying payslip:', error);

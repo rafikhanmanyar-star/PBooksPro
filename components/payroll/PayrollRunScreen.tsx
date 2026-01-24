@@ -481,7 +481,7 @@ const PayrollRunScreen: React.FC = () => {
             {/* Info message for approved runs */}
             {selectedRunDetail.status === PayrollStatus.APPROVED && (
               <div className="text-xs text-slate-500 italic">
-                Note: Individual payslips can now be paid. Run will auto-update to PAID when all payslips are paid.
+                Note: Individual payslips can now be paid. After all payslips are paid, manually mark the run as PAID.
               </div>
             )}
           </div>
