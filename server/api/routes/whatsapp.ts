@@ -12,10 +12,23 @@ const getDb = () => getDatabaseService();
  */
 router.get('/config', async (req: TenantRequest, res) => {
   try {
+    console.log('[WhatsApp Config] GET /config request received', {
+      tenantId: req.tenantId,
+    });
+
+    if (!req.tenantId) {
+      console.error('[WhatsApp Config] Missing tenantId in request');
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Tenant ID is required',
+      });
+    }
+
     const whatsappService = getWhatsAppApiService();
-    const config = await whatsappService.getConfig(req.tenantId!);
+    const config = await whatsappService.getConfig(req.tenantId);
 
     if (!config) {
+      console.log('[WhatsApp Config] No configuration found for tenant:', req.tenantId);
       return res.status(404).json({ error: 'WhatsApp API not configured' });
     }
 
@@ -42,10 +55,30 @@ router.get('/config', async (req: TenantRequest, res) => {
  */
 router.post('/config', async (req: TenantRequest, res) => {
   try {
+    // Log request for debugging
+    console.log('[WhatsApp Config] POST /config request received', {
+      tenantId: req.tenantId,
+      hasBody: !!req.body,
+      bodyKeys: req.body ? Object.keys(req.body) : [],
+    });
+
+    if (!req.tenantId) {
+      console.error('[WhatsApp Config] Missing tenantId in request');
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Tenant ID is required',
+      });
+    }
+
     const { apiKey, apiSecret, phoneNumberId, businessAccountId, verifyToken, webhookUrl } = req.body;
 
     // Validate required fields
     if (!apiKey || !phoneNumberId || !verifyToken) {
+      console.error('[WhatsApp Config] Missing required fields', {
+        hasApiKey: !!apiKey,
+        hasPhoneNumberId: !!phoneNumberId,
+        hasVerifyToken: !!verifyToken,
+      });
       return res.status(400).json({
         error: 'Missing required fields',
         message: 'apiKey, phoneNumberId, and verifyToken are required',
@@ -65,6 +98,11 @@ router.post('/config', async (req: TenantRequest, res) => {
     });
 
     // Return config without sensitive data
+    console.log('[WhatsApp Config] Configuration saved successfully', {
+      tenantId: config.tenantId,
+      phoneNumberId: config.phoneNumberId,
+    });
+    
     res.json({
       id: config.id,
       tenantId: config.tenantId,
@@ -76,7 +114,8 @@ router.post('/config', async (req: TenantRequest, res) => {
       updatedAt: config.updatedAt,
     });
   } catch (error: any) {
-    console.error('Error saving WhatsApp config:', error);
+    console.error('[WhatsApp Config] Error saving configuration:', error);
+    console.error('[WhatsApp Config] Error stack:', error.stack);
     res.status(500).json({
       error: 'Failed to save WhatsApp configuration',
       message: error.message,

@@ -393,6 +393,44 @@ async function runMigrations() {
       console.warn('   ⚠️  Could not find add-is-supplier-to-tenants.sql migration file');
     }
     
+    // Migration: Add WhatsApp Business API Integration tables
+    const whatsappMigrationPaths = [
+      join(__dirname, '../migrations/add-whatsapp-integration.sql'),
+      join(__dirname, '../../migrations/add-whatsapp-integration.sql'),
+      join(process.cwd(), 'server/migrations/add-whatsapp-integration.sql'),
+      join(process.cwd(), 'migrations/add-whatsapp-integration.sql'),
+    ];
+    
+    let whatsappMigrationPath: string | null = null;
+    for (const path of whatsappMigrationPaths) {
+      try {
+        readFileSync(path, 'utf8');
+        whatsappMigrationPath = path;
+        break;
+      } catch (e) {
+        // Try next path
+      }
+    }
+    
+    if (whatsappMigrationPath) {
+      try {
+        console.log('📋 Running WhatsApp integration migration from:', whatsappMigrationPath);
+        const whatsappMigrationSQL = readFileSync(whatsappMigrationPath, 'utf8');
+        await pool.query(whatsappMigrationSQL);
+        console.log('✅ WhatsApp integration migration completed');
+      } catch (error: any) {
+        // If tables already exist, that's okay
+        if (error.code === '42P07' || error.message.includes('already exists')) {
+          console.log('   ℹ️  WhatsApp tables already exist (skipping)');
+        } else {
+          console.warn('   ⚠️  WhatsApp integration migration warning:', error.message);
+          // Don't throw - migration might already be applied
+        }
+      }
+    } else {
+      console.warn('   ⚠️  Could not find add-whatsapp-integration.sql migration file');
+    }
+    
     // Create default admin user if it doesn't exist
     console.log('👤 Ensuring admin user exists...');
     const bcrypt = await import('bcryptjs');

@@ -6,6 +6,32 @@ This error occurs when Meta cannot verify your webhook endpoint. Here's how to f
 
 ---
 
+## Problem: "Test message sent to server but no logs"
+
+**Cause 1: You're testing the wrong webhook**
+
+Meta has different webhook **objects**. The "about", "birthday", "books", "email" fields are **User** profile webhooks—**not** WhatsApp. Your server only processes **WhatsApp** payloads (messages, message_status).
+
+**What to do:**
+1. Go to **Meta App Dashboard** → **WhatsApp** (left sidebar) → **Configuration**
+2. Scroll to **Webhook** / **Webhook fields**
+3. You must be under **WhatsApp**, not "User" or another product
+4. Subscribe to **`messages`** and **`message_status`**
+5. Use **Test** on those WhatsApp fields, not on "about" or other User fields
+
+**Cause 2: Requests never reach your server**
+
+- Confirm the **Callback URL** in Meta is exactly your webhook URL (e.g. `https://your-api.com/api/whatsapp/webhook`)
+- If you use Render/Railway/etc., check you're viewing logs for the **same** service and **deployed** version
+- Restart the server, redeploy if needed, then test again
+
+**Cause 3: Logging**
+
+- The app logs every POST to the webhook: `[WhatsApp Webhook] POST received`
+- If you see that log but not "Processing for tenant" or "Processed successfully", the payload is likely **not** a WhatsApp message (e.g. you tested "about"). Use WhatsApp fields only.
+
+---
+
 ## Step-by-Step Troubleshooting
 
 ### Step 1: Verify Your Configuration is Saved
