@@ -9,6 +9,7 @@ import { SyncQueueItem, SyncProgress, SyncEngineStatus } from '../types/sync';
 import { getSyncQueue } from './syncQueue';
 import { getAppStateApiService } from './api/appStateApi';
 import { logger } from './logger';
+import { apiClient } from './api/client';
 
 type SyncProgressListener = (progress: SyncProgress) => void;
 type SyncCompleteListener = (success: boolean, progress: SyncProgress) => void;
@@ -301,7 +302,6 @@ class SyncEngine {
         // Users are handled by the validation check above
         // If we reach here, it means it's a valid user (not system user, has required fields)
         // Use generic API client to sync user
-        const { apiClient } = await import('../api/client');
         switch (item.action) {
           case 'create':
           case 'update':
