@@ -139,7 +139,42 @@ router.post('/', async (req: TenantRequest, res) => {
     
     res.status(201).json(newUser[0]);
   } catch (error: any) {
-    console.error('Error creating user:', error);
+    // Enhanced error logging with full details
+    console.error('❌ POST /users - Error Details:', {
+      errorMessage: error.message,
+      errorCode: error.code,
+      errorName: error.name,
+      errorStack: error.stack?.substring(0, 500),
+      constraint: error.constraint,
+      detail: error.detail,
+      table: error.table,
+      column: error.column,
+      tenantId: req.tenantId,
+      requestBody: JSON.stringify(req.body).substring(0, 300)
+    });
+    
+    // Handle specific database errors
+    if (error.code === '23505') { // Unique violation
+      return res.status(409).json({ 
+        error: 'Duplicate user',
+        message: 'A user with this username already exists'
+      });
+    }
+    
+    if (error.code === '23502') { // NOT NULL violation
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: `Required field '${error.column}' is missing`
+      });
+    }
+    
+    if (error.code === '23503') { // Foreign key violation
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Invalid reference to related entity'
+      });
+    }
+    
     res.status(500).json({ error: error.message || 'Failed to create user' });
   }
 });

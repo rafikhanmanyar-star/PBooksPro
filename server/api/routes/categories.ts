@@ -63,12 +63,23 @@ router.post('/', async (req: TenantRequest, res) => {
         type: req.body.type
       }
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/b7c6f470-f7bd-4c58-8eaf-6c9a916f0a38',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'categories.ts:56',message:'POST /categories request entry',data:{tenantId:req.tenantId,hasName:!!req.body.name,hasType:!!req.body.type,hasId:!!req.body.id,name:req.body.name?.substring(0,20),type:req.body.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     
     const db = getDb();
     const category = req.body;
+    
+    // Validate required fields
+    if (!category.name || !category.type) {
+      console.error('❌ POST /categories - Validation failed: missing required fields', {
+        hasName: !!category.name,
+        hasType: !!category.type,
+        categoryData: JSON.stringify(category).substring(0, 200),
+        tenantId: req.tenantId
+      });
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Category name and type are required fields'
+      });
+    }
     
     // Generate ID if not provided
     const categoryId = category.id || `category_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -79,9 +90,6 @@ router.post('/', async (req: TenantRequest, res) => {
     
     // Use transaction for data integrity (upsert behavior)
     const result = await db.transaction(async (client) => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/b7c6f470-f7bd-4c58-8eaf-6c9a916f0a38',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'categories.ts:78',message:'Starting category transaction',data:{categoryId,tenantId:req.tenantId,hasName:!!category.name,hasType:!!category.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       // Check if category with this ID already exists
       const existing = await client.query(
         'SELECT * FROM categories WHERE id = $1 AND tenant_id = $2',
@@ -123,9 +131,6 @@ router.post('/', async (req: TenantRequest, res) => {
       } else {
         // Create new category
         console.log('➕ POST /categories - Creating new category:', categoryId);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/b7c6f470-f7bd-4c58-8eaf-6c9a916f0a38',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'categories.ts:119',message:'Before INSERT category',data:{categoryId,tenantId:req.tenantId,name:category.name,type:category.type,hasDescription:!!category.description,hasUserId:!!req.user?.userId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
         const insertResult = await client.query(
           `INSERT INTO categories (
             id, tenant_id, name, type, description, is_permanent, is_rental, parent_category_id, user_id, created_at, updated_at
@@ -143,9 +148,6 @@ router.post('/', async (req: TenantRequest, res) => {
             req.user?.userId || null
           ]
         );
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/b7c6f470-f7bd-4c58-8eaf-6c9a916f0a38',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'categories.ts:137',message:'After INSERT category - success',data:{categoryId,rowsReturned:insertResult.rows.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-        // #endregion
         return insertResult.rows[0];
       }
     });
@@ -169,24 +171,56 @@ router.post('/', async (req: TenantRequest, res) => {
 
     res.status(201).json(result);
   } catch (error: any) {
-    console.error('❌ POST /categories - Error:', {
-      error: error,
+    // Enhanced error logging with full details
+    console.error('❌ POST /categories - Error Details:', {
       errorMessage: error.message,
       errorCode: error.code,
+      errorName: error.name,
+      errorStack: error.stack?.substring(0, 500),
+      constraint: error.constraint,
+      detail: error.detail,
+      table: error.table,
+      column: error.column,
       tenantId: req.tenantId,
-      categoryId: req.body?.id
+      categoryId: req.body?.id,
+      categoryName: req.body?.name,
+      categoryType: req.body?.type,
+      requestBody: JSON.stringify(req.body).substring(0, 300)
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/b7c6f470-f7bd-4c58-8eaf-6c9a916f0a38',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'categories.ts:159',message:'POST /categories error caught',data:{errorMessage:error.message,errorCode:error.code,errorName:error.name,tenantId:req.tenantId,categoryId:req.body?.id,constraint:error.constraint,detail:error.detail},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     
+    // Handle specific database errors
     if (error.code === '23505') { // Unique violation
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/b7c6f470-f7bd-4c58-8eaf-6c9a916f0a38',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'categories.ts:168',message:'Unique violation error',data:{errorCode:error.code,constraint:error.constraint,detail:error.detail},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
+      console.error('❌ POST /categories - Unique constraint violation:', {
+        constraint: error.constraint,
+        detail: error.detail,
+        categoryId: req.body?.id
+      });
       return res.status(409).json({ 
         error: 'Duplicate category',
         message: 'A category with this ID already exists'
+      });
+    }
+    
+    if (error.code === '23502') { // NOT NULL violation
+      console.error('❌ POST /categories - NOT NULL constraint violation:', {
+        column: error.column,
+        detail: error.detail,
+        categoryData: JSON.stringify(req.body).substring(0, 200)
+      });
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: `Required field '${error.column}' is missing`
+      });
+    }
+    
+    if (error.code === '23503') { // Foreign key violation
+      console.error('❌ POST /categories - Foreign key constraint violation:', {
+        constraint: error.constraint,
+        detail: error.detail
+      });
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Invalid reference to related entity'
       });
     }
     

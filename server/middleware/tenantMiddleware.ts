@@ -106,9 +106,12 @@ export function tenantMiddleware(pool: Pool) {
 
       if (!req.tenantId) {
         // No tenantId in token - this is an authentication issue
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/b7c6f470-f7bd-4c58-8eaf-6c9a916f0a38',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'tenantMiddleware.ts:107',message:'No tenantId in token',data:{userId:decoded?.userId,decodedKeys:Object.keys(decoded||{}),path:req.path},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-        // #endregion
+        console.error('❌ No tenantId in token:', {
+          userId: decoded?.userId,
+          decodedKeys: Object.keys(decoded || {}),
+          path: req.path,
+          method: req.method
+        });
         return res.status(401).json({ 
           error: 'Invalid token',
           message: 'Token does not contain tenant information. Please login again.',
@@ -167,9 +170,13 @@ export function tenantMiddleware(pool: Pool) {
         );
 
         if (sessions.length === 0) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/b7c6f470-f7bd-4c58-8eaf-6c9a916f0a38',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'tenantMiddleware.ts:166',message:'Session not found in database',data:{tokenPreview,userId:decoded?.userId,tenantId:decoded?.tenantId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-          // #endregion
+          console.error('❌ Session not found in database:', {
+            tokenPreview,
+            userId: decoded?.userId,
+            tenantId: decoded?.tenantId,
+            path: req.path,
+            method: req.method
+          });
           return res.status(401).json({
             error: 'Invalid session',
             message: 'Your session is no longer valid. Please login again.',
@@ -207,10 +214,16 @@ export function tenantMiddleware(pool: Pool) {
 
         if (lastActivity < thresholdDate) {
           // Session is inactive - user likely disconnected
-          console.log(`🔌 Inactive session detected (last activity: ${lastActivity.toISOString()}), cleaning up...`);
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/b7c6f470-f7bd-4c58-8eaf-6c9a916f0a38',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'tenantMiddleware.ts:202',message:'Session inactive - threshold exceeded',data:{lastActivity:lastActivity.toISOString(),thresholdDate:thresholdDate.toISOString(),minutesSinceActivity:Math.round((now.getTime()-lastActivity.getTime())/60000),userId:decoded?.userId,tenantId:decoded?.tenantId,path:req.path},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-          // #endregion
+          const minutesSinceActivity = Math.round((now.getTime() - lastActivity.getTime()) / 60000);
+          console.error('❌ Session inactive - threshold exceeded:', {
+            lastActivity: lastActivity.toISOString(),
+            thresholdDate: thresholdDate.toISOString(),
+            minutesSinceActivity,
+            userId: decoded?.userId,
+            tenantId: decoded?.tenantId,
+            path: req.path,
+            method: req.method
+          });
           try {
             await db.query('DELETE FROM user_sessions WHERE token = $1', [token]);
             // Set login_status = false since session is inactive
