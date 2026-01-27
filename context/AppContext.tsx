@@ -1837,16 +1837,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         // Handle category changes
                         if (action.type === 'ADD_CATEGORY') {
                             const category = action.payload;
-                            await apiService.saveCategory(category);
-                            logger.logCategory('sync', '✅ Synced category to API:', category.name);
+                            // Skip system categories (they're permanent and managed by server)
+                            if (!category.isPermanent && !category.id?.startsWith('sys-cat-')) {
+                                await apiService.saveCategory(category);
+                                logger.logCategory('sync', '✅ Synced category to API:', category.name);
+                            } else {
+                                logger.logCategory('sync', '⏭️ Skipped syncing system category:', category.name);
+                            }
                         } else if (action.type === 'UPDATE_CATEGORY') {
                             const category = action.payload;
-                            await apiService.saveCategory(category);
-                            logger.logCategory('sync', '✅ Synced category update to API:', category.name);
+                            // Skip system categories (they're permanent and read-only)
+                            if (!category.isPermanent && !category.id?.startsWith('sys-cat-')) {
+                                await apiService.saveCategory(category);
+                                logger.logCategory('sync', '✅ Synced category update to API:', category.name);
+                            } else {
+                                logger.logCategory('sync', '⏭️ Skipped syncing system category update:', category.name);
+                            }
                         } else if (action.type === 'DELETE_CATEGORY') {
                             const categoryId = action.payload as string;
-                            await apiService.deleteCategory(categoryId);
-                            logger.logCategory('sync', '✅ Synced category deletion to API:', categoryId);
+                            // Check if it's a system category before deleting
+                            const category = state.categories.find(c => c.id === categoryId);
+                            if (category && !category.isPermanent && !categoryId.startsWith('sys-cat-')) {
+                                await apiService.deleteCategory(categoryId);
+                                logger.logCategory('sync', '✅ Synced category deletion to API:', categoryId);
+                            } else {
+                                logger.logCategory('sync', '⏭️ Skipped deleting system category:', categoryId);
+                            }
                         }
 
                         // Handle project changes

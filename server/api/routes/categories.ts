@@ -99,7 +99,10 @@ router.post('/', async (req: TenantRequest, res) => {
       if (existing.rows.length > 0) {
         // Check if this is a system category (is_permanent = true)
         if (existing.rows[0].is_permanent === true) {
-          throw new Error('Cannot update system category');
+          // System categories are read-only - return the existing category instead of error
+          // This allows sync to succeed without trying to update system categories
+          console.log('ℹ️ POST /categories - Skipping update of system category:', categoryId);
+          return existing.rows[0];
         }
         
         // Update existing category
@@ -124,7 +127,9 @@ router.post('/', async (req: TenantRequest, res) => {
         );
         
         if (updateResult.rows.length === 0) {
-          throw new Error('Cannot update system category');
+          // This shouldn't happen, but if it does, return existing category
+          console.warn('⚠️ POST /categories - Update returned 0 rows, returning existing category:', categoryId);
+          return existing.rows[0];
         }
         
         return updateResult.rows[0];
