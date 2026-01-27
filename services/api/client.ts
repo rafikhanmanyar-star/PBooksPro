@@ -5,8 +5,11 @@
  * Handles authentication, error handling, and request/response transformation.
  */
 
-// Use environment variable with fallback to production for backwards compatibility
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://pbookspro-api.onrender.com/api';
+// Use environment variable with fallback to staging for development/testing
+// Set VITE_API_URL environment variable to override:
+// - Staging: https://pbookspro-api-staging.onrender.com/api
+// - Production: https://pbookspro-api.onrender.com/api
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://pbookspro-api-staging.onrender.com/api';
 
 import { logger } from '../logger';
 
