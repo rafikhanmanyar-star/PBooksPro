@@ -202,24 +202,17 @@ const App: React.FC = () => {
             console.log(`[App] Connection status changed: ${status}`);
           },
           onOnline: () => {
-            console.log('[App] ✅ Online - starting auto-sync');
-            const syncManager = getSyncManager();
-            syncManager.startAutoSync();
+            console.log('[App] ✅ Online - will sync on reconnection');
+            // Sync is handled by SyncManager's onOnline callback
           },
           onOffline: () => {
-            console.log('[App] ⚠️ Offline - pausing sync');
-            const syncManager = getSyncManager();
-            syncManager.stopAutoSync();
+            console.log('[App] ⚠️ Offline - sync paused');
+            // Sync is paused automatically
           },
         });
 
-        // Check initial connection status and start sync if online
-        const initialStatus = await connectionMonitor.checkStatus();
-        if (initialStatus === 'online') {
-          const syncManager = getSyncManager();
-          syncManager.startAutoSync();
-          console.log('[App] ✅ Started auto-sync (already online)');
-        }
+        // Don't auto-sync on app startup - only sync on login/reconnection
+        console.log('[App] ✅ Connection monitoring started (sync will occur on login/reconnection only)');
 
         // Initialize lock manager
         const lockManager = getLockManager();

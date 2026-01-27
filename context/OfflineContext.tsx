@@ -162,14 +162,13 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [syncEngine, loadQueueCounts]);
 
   /**
-   * Auto-sync on queue changes while online
+   * Monitor queue changes (but don't auto-sync - sync only on login/reconnection)
    */
   useEffect(() => {
     const handleQueueChange = () => {
       loadQueueCounts();
-      if (monitor.getStatus() === 'online') {
-        startSync();
-      }
+      // Don't auto-sync - just update the UI with queue counts
+      // Sync will happen on login/reconnection only
     };
 
     if (typeof window !== 'undefined') {
@@ -181,49 +180,35 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
         window.removeEventListener('sync-queue:change', handleQueueChange);
       }
     };
-  }, [loadQueueCounts, monitor, startSync]);
+  }, [loadQueueCounts]);
 
   /**
-   * Trigger sync when already online (e.g., after login)
-   * Only sync if there are pending operations - don't sync if queue is empty
+   * Sync is now handled by SyncManager on login/reconnection only
+   * This effect is kept for UI updates only
    */
   useEffect(() => {
     if (connectionStatus === 'online' && isAuthenticated && user?.tenant?.id) {
-      // Check if there are pending operations before syncing
-      syncQueue.getPendingCount(user.tenant.id).then(pendingCount => {
-        if (pendingCount > 0) {
-          console.log(`[OfflineContext] Online with ${pendingCount} pending operations, starting sync...`);
-          startSync();
-        } else {
-          console.log('[OfflineContext] Online but no pending operations to sync');
-        }
-      }).catch(err => {
-        console.warn('[OfflineContext] Could not check pending count:', err);
-      });
+      // Just update queue counts - sync is handled by SyncManager
+      loadQueueCounts();
     }
-  }, [connectionStatus, isAuthenticated, user?.tenant?.id, startSync, syncQueue]);
+  }, [connectionStatus, isAuthenticated, user?.tenant?.id, loadQueueCounts]);
 
   /**
-   * Heartbeat: check for pending items while online (reduced frequency to prevent server overload)
+   * Heartbeat: Update queue counts periodically (but don't sync)
+   * Sync only happens on login/reconnection
    */
   useEffect(() => {
     if (connectionStatus !== 'online' || !isAuthenticated || !user?.tenant?.id) {
       return;
     }
 
-    // Reduced frequency: Check every 2 minutes instead of 15 seconds
-    // This prevents constant syncing and reduces server load
-    const interval = window.setInterval(async () => {
-      // Only sync if there are actually pending items
-      const pendingCount = await syncQueue.getPendingCount(user.tenant.id);
-      if (pendingCount > 0) {
-        console.log(`[OfflineContext] Heartbeat: ${pendingCount} pending items, starting sync...`);
-        startSync();
-      }
-    }, 120000); // Every 2 minutes (reduced from 15 seconds)
+    // Just update queue counts for UI - don't trigger sync
+    const interval = window.setInterval(() => {
+      loadQueueCounts();
+    }, 60000); // Update counts every minute for UI
 
     return () => clearInterval(interval);
-  }, [connectionStatus, isAuthenticated, user?.tenant?.id, startSync, syncQueue]);
+  }, [connectionStatus, isAuthenticated, user?.tenant?.id, loadQueueCounts]);
 
   /**
    * Pause sync

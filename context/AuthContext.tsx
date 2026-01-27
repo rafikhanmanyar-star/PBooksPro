@@ -529,6 +529,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         logger.logCategory('auth', '✅ Login completed successfully');
 
+        // Sync pending operations after successful login
+        try {
+          const { isMobileDevice } = await import('../utils/platformDetection');
+          if (!isMobileDevice()) {
+            logger.logCategory('auth', '🔄 Syncing pending operations after login...');
+            const { getSyncManager } = await import('../services/sync/syncManager');
+            const syncManager = getSyncManager();
+            await syncManager.syncOnLogin();
+          }
+        } catch (syncError) {
+          logger.warnCategory('auth', '⚠️ Failed to sync on login:', syncError);
+        }
+
         // Load settings from cloud database after successful login
         try {
           logger.logCategory('auth', '📥 Loading settings from cloud database...');
@@ -636,6 +649,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         logger.logCategory('auth', '✅ Unified login completed successfully');
+
+        // Sync pending operations after successful login
+        try {
+          const { isMobileDevice } = await import('../utils/platformDetection');
+          if (!isMobileDevice()) {
+            logger.logCategory('auth', '🔄 Syncing pending operations after login...');
+            const { getSyncManager } = await import('../services/sync/syncManager');
+            const syncManager = getSyncManager();
+            await syncManager.syncOnLogin();
+          }
+        } catch (syncError) {
+          logger.warnCategory('auth', '⚠️ Failed to sync on login:', syncError);
+        }
 
         // Load settings from cloud database after successful login
         try {

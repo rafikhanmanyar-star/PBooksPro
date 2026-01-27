@@ -4,8 +4,10 @@
  * Manages synchronization between local SQLite (desktop) and cloud PostgreSQL.
  * Handles sync queue, conflict resolution, and bidirectional sync.
  * 
- * OPTIMIZED: Only syncs new/unsynced operations with debouncing and batching
- * to prevent server overload.
+ * SYNC POLICY: Only syncs on login and reconnection - NOT on each entry.
+ * Operations are queued locally and synced only when:
+ * 1. User logs in
+ * 2. Connection is restored (reconnection)
  * 
  * Note: This is primarily for desktop platforms. Mobile uses cloud PostgreSQL directly.
  */
@@ -36,28 +38,23 @@ class SyncManager {
   private maxRetries = 3;
   private retryDelay = 5000; // 5 seconds
   
-  // Optimization: Debouncing and batching
-  private debounceTimer: number | null = null;
-  private readonly DEBOUNCE_DELAY = 5000; // Wait 5 seconds before syncing after last operation
+  // Batching configuration
   private readonly BATCH_SIZE = 10; // Process max 10 operations per batch
-  private readonly SYNC_INTERVAL = 120000; // Sync every 2 minutes (instead of 30 seconds)
-  private lastSyncTime: number = 0;
-  private readonly MIN_SYNC_INTERVAL = 10000; // Minimum 10 seconds between syncs
 
   constructor() {
     // Load sync queue from local storage on initialization
     this.loadSyncQueue();
     
     // Start monitoring connection
+    // Only sync on reconnection, not continuously
     this.connectionMonitor.startMonitoring({
       onOnline: () => {
-        console.log('[SyncManager] Connection restored, starting sync...');
-        this.startAutoSync();
+        console.log('[SyncManager] Connection restored, syncing pending operations...');
+        this.syncOnReconnection();
       },
       onOffline: () => {
-        console.log('[SyncManager] Connection lost, pausing sync...');
-        this.stopAutoSync();
-        this.clearDebounceTimer();
+        console.log('[SyncManager] Connection lost, sync paused');
+        // Don't stop anything - just log that we're offline
       },
     });
   }
@@ -99,101 +96,80 @@ class SyncManager {
     this.queue.push(operation);
     this.saveSyncQueue();
 
-    console.log(`[SyncManager] Queued ${type} operation for ${entity}:${entityId} (${this.queue.filter(op => op.status === 'pending').length} pending total)`);
-
-    // Debounced sync: Wait for DEBOUNCE_DELAY before syncing
-    // This batches multiple rapid operations together
-    if (this.connectionMonitor.isOnline()) {
-      this.scheduleDebouncedSync();
-    }
+    const pendingCount = this.queue.filter(op => op.status === 'pending').length;
+    console.log(`[SyncManager] Queued ${type} operation for ${entity}:${entityId} (${pendingCount} pending total - will sync on login/reconnection)`);
+    
+    // DO NOT sync automatically - operations are queued and will sync only on:
+    // 1. User login
+    // 2. Connection restore (reconnection)
   }
 
   /**
-   * Schedule a debounced sync (waits for DEBOUNCE_DELAY before syncing)
-   * This prevents syncing on every single operation
+   * Sync on login - called explicitly when user logs in
    */
-  private scheduleDebouncedSync(): void {
-    // Clear existing timer
-    if (this.debounceTimer !== null) {
-      clearTimeout(this.debounceTimer);
-    }
-
-    // Set new timer
-    this.debounceTimer = window.setTimeout(() => {
-      this.debounceTimer = null;
-      // Only sync if not already syncing and enough time has passed since last sync
-      const timeSinceLastSync = Date.now() - this.lastSyncTime;
-      if (!this.isSyncing && timeSinceLastSync >= this.MIN_SYNC_INTERVAL) {
-        this.syncQueueBatch();
-      }
-    }, this.DEBOUNCE_DELAY);
-  }
-
-  /**
-   * Clear debounce timer
-   */
-  private clearDebounceTimer(): void {
-    if (this.debounceTimer !== null) {
-      clearTimeout(this.debounceTimer);
-      this.debounceTimer = null;
-    }
-  }
-
-  /**
-   * Start automatic syncing (only on connection restore, not continuously)
-   */
-  async startAutoSync(): Promise<void> {
+  async syncOnLogin(): Promise<void> {
     if (isMobileDevice()) {
       return; // No sync needed on mobile
     }
 
-    if (this.syncInterval !== null) {
-      return; // Already running
-    }
-
-    // Check authentication before starting
+    // Check authentication
     const authenticated = await this.isAuthenticated();
     if (!authenticated) {
-      console.log('[SyncManager] Cannot start auto-sync: User not authenticated');
+      console.log('[SyncManager] Cannot sync on login: User not authenticated');
       return;
     }
 
-    // Sync pending operations once on connection restore
-    // Only sync if there are actually pending operations
+    // Sync pending operations
     const pendingCount = this.queue.filter(op => op.status === 'pending' || op.status === 'failed').length;
     if (pendingCount > 0) {
-      console.log(`[SyncManager] Connection restored, syncing ${pendingCount} pending operations...`);
-      this.syncQueueBatch();
+      console.log(`[SyncManager] User logged in, syncing ${pendingCount} pending operations...`);
+      await this.syncQueueBatch();
     } else {
-      console.log('[SyncManager] Connection restored, no pending operations to sync');
+      console.log('[SyncManager] User logged in, no pending operations to sync');
     }
-
-    // Then sync periodically (but with longer interval to reduce server load)
-    // Only sync if there are pending operations
-    this.syncInterval = window.setInterval(async () => {
-      const isAuth = await this.isAuthenticated();
-      const pendingCount = this.queue.filter(op => op.status === 'pending' || op.status === 'failed').length;
-      
-      if (this.connectionMonitor.isOnline() && pendingCount > 0 && isAuth && !this.isSyncing) {
-        const timeSinceLastSync = Date.now() - this.lastSyncTime;
-        // Only sync if enough time has passed since last sync
-        if (timeSinceLastSync >= this.MIN_SYNC_INTERVAL) {
-          console.log(`[SyncManager] Periodic sync: ${pendingCount} pending operations`);
-          this.syncQueueBatch();
-        }
-      }
-    }, this.SYNC_INTERVAL); // Every 2 minutes (reduced from 30 seconds)
   }
 
   /**
-   * Stop automatic syncing
+   * Sync on reconnection - called when connection is restored
+   */
+  async syncOnReconnection(): Promise<void> {
+    if (isMobileDevice()) {
+      return; // No sync needed on mobile
+    }
+
+    // Check authentication
+    const authenticated = await this.isAuthenticated();
+    if (!authenticated) {
+      console.log('[SyncManager] Cannot sync on reconnection: User not authenticated');
+      return;
+    }
+
+    // Sync pending operations
+    const pendingCount = this.queue.filter(op => op.status === 'pending' || op.status === 'failed').length;
+    if (pendingCount > 0) {
+      console.log(`[SyncManager] Connection restored, syncing ${pendingCount} pending operations...`);
+      await this.syncQueueBatch();
+    } else {
+      console.log('[SyncManager] Connection restored, no pending operations to sync');
+    }
+  }
+
+  /**
+   * Start automatic syncing (DEPRECATED - kept for backward compatibility)
+   * @deprecated Use syncOnLogin() or syncOnReconnection() instead
+   */
+  async startAutoSync(): Promise<void> {
+    console.warn('[SyncManager] startAutoSync() is deprecated. Use syncOnLogin() or syncOnReconnection() instead.');
+    await this.syncOnReconnection();
+  }
+
+  /**
+   * Stop automatic syncing (DEPRECATED - no longer needed)
+   * @deprecated Sync is now manual only
    */
   stopAutoSync(): void {
-    if (this.syncInterval !== null) {
-      clearInterval(this.syncInterval);
-      this.syncInterval = null;
-    }
-    this.clearDebounceTimer();
+    // No-op - sync is now manual only
+    console.warn('[SyncManager] stopAutoSync() is deprecated. Sync is now manual only.');
   }
 
   /**
@@ -211,8 +187,9 @@ class SyncManager {
   /**
    * Sync a batch of pending operations (limited to BATCH_SIZE)
    * This prevents overloading the server with too many simultaneous requests
+   * Public method - can be called explicitly on login/reconnection
    */
-  private async syncQueueBatch(): Promise<void> {
+  async syncQueueBatch(): Promise<void> {
     if (isMobileDevice()) {
       return; // No sync needed on mobile
     }
@@ -246,7 +223,6 @@ class SyncManager {
     const remainingCount = pendingOps.length - batchToSync.length;
 
     this.isSyncing = true;
-    this.lastSyncTime = Date.now();
     
     console.log(`[SyncManager] Starting sync batch: ${batchToSync.length} operations (${remainingCount} remaining in queue)`);
 
@@ -271,11 +247,8 @@ class SyncManager {
           if (operation.retries >= this.maxRetries) {
             console.error(`[SyncManager] ❌ Failed to sync ${operation.entity}:${operation.entityId} after ${this.maxRetries} retries`);
           } else {
-            console.warn(`[SyncManager] ⚠️ Sync failed, will retry (${operation.retries}/${this.maxRetries}):`, error);
-            // Retry after delay (debounced)
-            setTimeout(() => {
-              this.scheduleDebouncedSync();
-            }, this.retryDelay * operation.retries);
+            console.warn(`[SyncManager] ⚠️ Sync failed, will retry on next login/reconnection (${operation.retries}/${this.maxRetries}):`, error);
+            // Don't auto-retry - will retry on next login/reconnection
           }
         }
       }
@@ -287,12 +260,16 @@ class SyncManager {
       const remainingPending = this.queue.filter(op => op.status === 'pending' || op.status === 'failed').length;
       console.log(`[SyncManager] Batch sync completed. ${remainingPending} operations remaining`);
 
-      // If there are more pending operations, schedule another batch sync
+      // If there are more pending operations, continue syncing batches
+      // This ensures all pending operations are synced on login/reconnection
       if (remainingPending > 0) {
-        // Schedule next batch after a short delay
-        setTimeout(() => {
+        // Continue with next batch after a short delay
+        setTimeout(async () => {
           if (!this.isSyncing && this.connectionMonitor.isOnline()) {
-            this.syncQueueBatch();
+            const isAuth = await this.isAuthenticated();
+            if (isAuth) {
+              await this.syncQueueBatch();
+            }
           }
         }, 2000); // 2 second delay between batches
       }
@@ -442,7 +419,6 @@ class SyncManager {
     const count = this.queue.length;
     this.queue = [];
     this.saveSyncQueue();
-    this.clearDebounceTimer();
     if (count > 0) {
       console.log(`[SyncManager] Cleared all ${count} operations from queue (data loaded from cloud)`);
     }
@@ -489,8 +465,7 @@ class SyncManager {
    * Cleanup
    */
   destroy(): void {
-    this.stopAutoSync();
-    this.clearDebounceTimer();
+    // No cleanup needed - sync is now manual only
   }
 }
 
