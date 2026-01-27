@@ -212,6 +212,31 @@ class SyncEngine {
     // Update status to syncing
     await this.syncQueue.updateStatus(item.id, 'syncing');
 
+    // Skip system users (sys-admin) - they shouldn't be synced
+    if (item.type === 'user' || item.type === 'users') {
+      const userId = item.data?.id || item.id;
+      if (userId === 'sys-admin' || userId?.startsWith('sys-')) {
+        console.log(`[SyncEngine] ⏭️ Skipping sync of system user: ${userId}`);
+        await this.syncQueue.updateStatus(item.id, 'completed');
+        return; // Skip system users
+      }
+      
+      // Validate required fields for user sync
+      if (item.action === 'create' || item.action === 'update') {
+        const user = item.data;
+        if (!user || !user.username || !user.name || !user.password) {
+          console.warn(`[SyncEngine] ⚠️ Skipping user sync - missing required fields:`, {
+            hasUsername: !!user?.username,
+            hasName: !!user?.name,
+            hasPassword: !!user?.password,
+            userId: user?.id
+          });
+          await this.syncQueue.updateStatus(item.id, 'completed'); // Mark as completed to avoid retries
+          return; // Skip users with missing required fields
+        }
+      }
+    }
+    
     // Route to appropriate API based on type and action
     switch (item.type) {
       case 'transaction':
@@ -270,6 +295,22 @@ class SyncEngine {
         break;
       case 'document':
         await this.syncDocument(item);
+        break;
+      case 'user':
+      case 'users':
+        // Users are handled by the validation check above
+        // If we reach here, it means it's a valid user (not system user, has required fields)
+        // Use generic API client to sync user
+        const { apiClient } = await import('../api/client');
+        switch (item.action) {
+          case 'create':
+          case 'update':
+            await apiClient.post('/users', item.data);
+            break;
+          case 'delete':
+            await apiClient.delete(`/users/${item.data?.id || item.id}`);
+            break;
+        }
         break;
       default:
         throw new Error(`Unknown sync type: ${item.type}`);

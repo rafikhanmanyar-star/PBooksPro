@@ -248,6 +248,29 @@ class SyncManager {
     
     const endpoint = endpointMap[operation.entity] || `/${operation.entity}`;
     
+    // Skip system users (sys-admin) - they shouldn't be synced
+    if (operation.entity === 'users' || operation.entity === 'user') {
+      const userId = operation.entityId || operation.data?.id;
+      if (userId === 'sys-admin' || userId?.startsWith('sys-')) {
+        console.log(`[SyncManager] ⏭️ Skipping sync of system user: ${userId}`);
+        return; // Skip system users
+      }
+      
+      // Validate required fields for user sync
+      if (operation.type === 'create' || operation.type === 'update') {
+        const user = operation.data;
+        if (!user || !user.username || !user.name || !user.password) {
+          console.warn(`[SyncManager] ⚠️ Skipping user sync - missing required fields:`, {
+            hasUsername: !!user?.username,
+            hasName: !!user?.name,
+            hasPassword: !!user?.password,
+            userId: user?.id
+          });
+          return; // Skip users with missing required fields
+        }
+      }
+    }
+    
     try {
       switch (operation.type) {
         case 'create':
