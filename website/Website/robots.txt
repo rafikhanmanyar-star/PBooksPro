@@ -1,0 +1,42 @@
+# robots.txt for PBooksPro Website
+# This file tells search engines which pages to crawl
+
+User-agent: *
+Allow: /
+
+# Disallow admin or private areas (if any)
+# Disallow: /admin/
+# Disallow: /private/
+
+# Allow specific important pages
+Allow: /index.html
+Allow: /features.html
+Allow: /about.html
+Allow: /contact.html
+Allow: /download.html
+Allow: /demo.html
+Allow: /blog.html
+Allow: /help.html
+
+# Sitemap location
+Sitemap: https://www.pbookspro.com/sitemap.xml
+
+# Crawl-delay (optional - helps prevent overloading server)
+# Crawl-delay: 1
+
+# Specific rules for major search engines
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Slurp
+Allow: /
+
+# Block bad bots (optional)
+# User-agent: AhrefsBot
+# Disallow: /
+# 
+# User-agent: SemrushBot
+# Disallow: /

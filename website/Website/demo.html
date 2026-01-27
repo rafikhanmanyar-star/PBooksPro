@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Request a personalized demo of PBooksPro. See how it can transform your real estate business.">
+    <title>Request Demo - PBooksPro</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-wrapper">
+                <div class="logo">
+                    <i class="fas fa-building"></i>
+                    <span>PBooksPro</span>
+                </div>
+                <ul class="nav-menu" id="navMenu">
+                    <li><a href="index.html">Home</a></li>
+                    <li><a href="features.html">Features</a></li>
+                    <li><a href="pricing.html">Pricing</a></li>
+                    <li><a href="about.html">About</a></li>
+                    <li><a href="blog.html">Blog</a></li>
+                    <li><a href="help.html">Help</a></li>
+                    <li><a href="contact.html">Contact</a></li>
+                    <li><a href="download.html" class="btn-primary">Free Trial</a></li>
+                </ul>
+                <div class="hamburger" id="hamburger">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Page Header -->
+    <section class="page-header">
+        <div class="container">
+            <h1>Request a Personalized Demo</h1>
+            <p>See PBooksPro in action. Our team will show you how it can transform your real estate business.</p>
+        </div>
+    </section>
+
+    <!-- Demo Section -->
+    <section class="demo-section">
+        <div class="container">
+            <div class="demo-grid">
+                <!-- Demo Form -->
+                <div class="demo-form-wrapper">
+                    <h2>Schedule Your Demo</h2>
+                    <p>Fill out the form below and we'll contact you to schedule a personalized demo at your convenience.</p>
+                    <form class="demo-form" id="demoForm" name="demo-request" method="POST" netlify>
+                        <input type="hidden" name="form-name" value="demo-request">
+                        <div class="form-group">
+                            <label for="name">Full Name *</label>
+                            <input type="text" id="name" name="name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="email">Email Address *</label>
+                            <input type="email" id="email" name="email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="phone">Phone Number *</label>
+                            <input type="tel" id="phone" name="phone" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="company">Company Name</label>
+                            <input type="text" id="company" name="company">
+                        </div>
+                        <div class="form-group">
+                            <label for="role">Your Role *</label>
+                            <select id="role" name="role" required>
+                                <option value="">Select your role</option>
+                                <option value="property-manager">Property Manager</option>
+                                <option value="developer">Construction Developer</option>
+                                <option value="business-owner">Business Owner</option>
+                                <option value="accountant">Accountant</option>
+                                <option value="broker">Real Estate Broker</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="properties">Number of Properties/Projects</label>
+                            <select id="properties" name="properties">
+                                <option value="">Select range</option>
+                                <option value="1-5">1-5</option>
+                                <option value="6-20">6-20</option>
+                                <option value="21-50">21-50</option>
+                                <option value="51-100">51-100</option>
+                                <option value="100+">100+</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="preferred-date">Preferred Date</label>
+                            <input type="date" id="preferred-date" name="preferred-date">
+                        </div>
+                        <div class="form-group">
+                            <label for="preferred-time">Preferred Time</label>
+                            <select id="preferred-time" name="preferred-time">
+                                <option value="">Select time</option>
+                                <option value="morning">Morning (9 AM - 12 PM)</option>
+                                <option value="afternoon">Afternoon (12 PM - 3 PM)</option>
+                                <option value="evening">Evening (3 PM - 6 PM)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="message">Any Specific Features You'd Like to See?</label>
+                            <textarea id="message" name="message" rows="4" placeholder="Tell us what you're most interested in..."></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">Request Demo</button>
+                        <p class="form-note">We'll contact you within 24 hours to confirm your demo time.</p>
+                    </form>
+                </div>
+
+                <!-- Demo Benefits -->
+                <div class="demo-benefits">
+                    <h2>What to Expect</h2>
+                    <div class="benefit-item">
+                        <div class="benefit-icon">
+                            <i class="fas fa-user-tie"></i>
+                        </div>
+                        <div>
+                            <h3>Personalized Walkthrough</h3>
+                            <p>Our team will tailor the demo to your specific business needs and use cases.</p>
+                        </div>
+                    </div>
+                    <div class="benefit-item">
+                        <div class="benefit-icon">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div>
+                            <h3>30-45 Minutes</h3>
+                            <p>A focused session covering the features most relevant to your business.</p>
+                        </div>
+                    </div>
+                    <div class="benefit-item">
+                        <div class="benefit-icon">
+                            <i class="fas fa-question-circle"></i>
+                        </div>
+                        <div>
+                            <h3>Q&A Session</h3>
+                            <p>Ask questions and get expert answers about how PBooksPro can work for you.</p>
+                        </div>
+                    </div>
+                    <div class="benefit-item">
+                        <div class="benefit-icon">
+                            <i class="fas fa-gift"></i>
+                        </div>
+                        <div>
+                            <h3>No Pressure</h3>
+                            <p>Learn about the software without any sales pressure. We're here to help you make the right decision.</p>
+                        </div>
+                    </div>
+
+                    <div class="demo-alternative">
+                        <h3>Prefer to Try It Yourself?</h3>
+                        <p>Download our free 30-day trial and explore all features at your own pace.</p>
+                        <a href="download.html" class="btn btn-outline btn-block">Start Free Trial</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-col">
+                    <div class="footer-logo">
+                        <i class="fas fa-building"></i>
+                        <span>PBooksPro</span>
+                    </div>
+                    <p>All-in-One Financial Management for Real Estate Professionals</p>
+                </div>
+                <div class="footer-col">
+                    <h4>Product</h4>
+                    <ul>
+                        <li><a href="features.html">Features</a></li>
+                        <li><a href="download.html">Download</a></li>
+                        <li><a href="pricing.html">Pricing</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h4>Company</h4>
+                    <ul>
+                        <li><a href="about.html">About Us</a></li>
+                        <li><a href="blog.html">Blog</a></li>
+                        <li><a href="contact.html">Contact</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h4>Support</h4>
+                    <ul>
+                        <li><a href="help.html">Help & Guide</a></li>
+                        <li><a href="help.html">User Documentation</a></li>
+                        <li><a href="contact.html">Contact Support</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2024 PBooksPro. All rights reserved.</p>
+                <div class="footer-links">
+                    <a href="privacy-policy.html">Privacy Policy</a>
+                    <a href="terms-of-service.html">Terms of Service</a>
+                    <a href="refund-policy.html">Refund Policy</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,403 @@
+/* QuickBooks-style Global Styles */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* Tailwind CSS */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Responsive spacing variables */
+  --viewport-padding-mobile: 1rem;
+  --viewport-padding-tablet: 1.5rem;
+  --viewport-padding-desktop: 2rem;
+  --viewport-padding-large: 2.5rem;
+  
+  /* Safe area insets for mobile devices (notched phones) */
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  
+  /* Touch target minimum size */
+  --touch-target-min: 44px;
+  
+  /* Modal spacing */
+  --modal-padding-mobile: 1rem;
+  --modal-padding-tablet: 1.5rem;
+  --modal-padding-desktop: 2rem;
+  
+  /* Form spacing */
+  --form-gap-mobile: 0.75rem;
+  --form-gap-tablet: 1rem;
+  --form-gap-desktop: 1.25rem;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  /* Premium SaaS typography base */
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  background-color: #f8fafc; /* Slate-50 */
+  color: #0f172a; /* Slate-900 */
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+}
+
+/* Premium Typography */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  line-height: 1.25;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+h1 { font-size: 1.875rem; font-weight: 700; } /* 30px */
+h2 { font-size: 1.5rem; font-weight: 600; }   /* 24px */
+h3 { font-size: 1.25rem; font-weight: 600; }  /* 20px */
+
+
+/* Barcode font utility class */
+.barcode {
+  font-family: 'IDAutomationHC39M', 'Courier New', 'Courier', monospace;
+  font-weight: normal;
+  letter-spacing: 0.15em;
+  font-size: 1.1em;
+}
+
+/* QuickBooks-style Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f9fafb;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Animation utilities */
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.3s ease-out;
+}
+
+@keyframes slide-in-up {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in-up {
+  animation: slide-in-up 0.3s ease-out forwards;
+}
+
+@keyframes fade-in-fast {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in-fast {
+  animation: fade-in-fast 0.15s ease-out forwards;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-in-out;
+}
+
+/* Shimmer animation for skeleton loading */
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Page transition animations */
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes page-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.99);
+  }
+}
+
+.animate-page-enter {
+  animation: page-enter 0.15s ease-out forwards;
+}
+
+.animate-page-exit {
+  animation: page-exit 0.1s ease-in forwards;
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .animate-shimmer,
+  .animate-page-enter,
+  .animate-page-exit,
+  .animate-slide-up,
+  .animate-slide-in-up,
+  .animate-fade-in-fast {
+    animation: none;
+  }
+}
+
+/* Touch optimization for mobile */
+.touch-manipulation {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Ensure minimum touch target size on mobile */
+@media (max-width: 640px) {
+  button, a, [role="button"], [tabindex="0"] {
+    min-height: var(--touch-target-min);
+    min-width: var(--touch-target-min);
+  }
+}
+
+/* Responsive form utilities */
+.form-grid-responsive {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--form-gap-mobile);
+}
+
+@media (min-width: 640px) {
+  .form-grid-responsive {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--form-gap-tablet);
+  }
+}
+
+@media (min-width: 1024px) {
+  .form-grid-responsive {
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--form-gap-desktop);
+  }
+}
+
+@media (min-width: 1280px) {
+  .form-grid-responsive {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* Responsive container utilities */
+.container-responsive {
+  padding: var(--viewport-padding-mobile);
+}
+
+@media (min-width: 640px) {
+  .container-responsive {
+    padding: var(--viewport-padding-tablet);
+  }
+}
+
+@media (min-width: 1024px) {
+  .container-responsive {
+    padding: var(--viewport-padding-desktop);
+  }
+}
+
+@media (min-width: 1536px) {
+  .container-responsive {
+    padding: var(--viewport-padding-large);
+  }
+}
+
+/* Print styles */
+@media print {
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+  
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  body {
+    overflow: visible !important;
+    background: white !important;
+  }
+  
+  /* Hide all non-print elements */
+  .no-print {
+    display: none !important;
+  }
+  
+  /* Hide modal backdrop and ensure white background */
+  body > div:not(#root) {
+    display: none !important;
+  }
+  
+  /* Ensure only payslip content is visible */
+  .fixed {
+    position: relative !important;
+  }
+  
+  /* Remove shadows, rounded corners, and modal styling for print */
+  .shadow-2xl,
+  .shadow-xl,
+  .shadow-lg {
+    box-shadow: none !important;
+  }
+  
+  .rounded-3xl,
+  .rounded-2xl,
+  .rounded-xl {
+    border-radius: 0 !important;
+  }
+  
+  /* Ensure proper page breaks */
+  .print-page-break {
+    page-break-after: always;
+  }
+  
+  .print-avoid-break {
+    page-break-inside: avoid;
+  }
+  
+  /* Remove animations and transitions */
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+  
+  /* Ensure backgrounds print correctly */
+  .bg-slate-900,
+  .bg-green-900,
+  .bg-blue-600 {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/* Mobile-specific utility classes */
+@media (max-width: 640px) {
+  .mobile-full-width {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  
+  .mobile-text-xs {
+    font-size: 0.75rem !important;
+  }
+  
+  .mobile-p-2 {
+    padding: 0.5rem !important;
+  }
+  
+  .mobile-gap-2 {
+    gap: 0.5rem !important;
+  }
+}
+
+/* Horizontal scroll container with subtle indicators */
+.scroll-container-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.scroll-container-x::-webkit-scrollbar {
+  height: 4px;
+}
+
+.scroll-container-x::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.scroll-container-x::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 2px;
+}
+
+.scroll-container-x::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+

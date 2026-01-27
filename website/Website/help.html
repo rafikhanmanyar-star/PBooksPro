@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Complete user guide and help documentation for PBooksPro - Learn how to use all features of the application.">
+    <title>Help & User Guide - PBooksPro</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .help-search {
+            max-width: 600px;
+            margin: 0 auto 3rem;
+        }
+        .help-search input {
+            width: 100%;
+            padding: 1rem;
+            border: 2px solid var(--border-color);
+            border-radius: 0.5rem;
+            font-size: 1rem;
+        }
+        .help-categories {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 3rem;
+        }
+        .category-btn {
+            padding: 0.75rem 1.5rem;
+            border: 2px solid var(--border-color);
+            background: white;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+        .category-btn:hover,
+        .category-btn.active {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+        .help-topic {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            transition: all 0.3s;
+        }
+        .help-topic:hover {
+            box-shadow: var(--shadow-lg);
+        }
+        .help-topic.hidden {
+            display: none;
+        }
+        .topic-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .topic-title {
+            font-size: 1.5rem;
+            color: var(--text-dark);
+            margin: 0;
+        }
+        .topic-category {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            background: var(--bg-light);
+            border-radius: 0.25rem;
+            font-size: 0.875rem;
+            color: var(--text-light);
+        }
+        .topic-content {
+            color: var(--text-light);
+            line-height: 1.8;
+        }
+        .topic-content ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        .topic-content li {
+            padding: 0.5rem 0;
+            padding-left: 1.5rem;
+            position: relative;
+        }
+        .topic-content li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: var(--success-color);
+            font-weight: bold;
+        }
+        .topic-content strong {
+            color: var(--text-dark);
+        }
+        .help-section {
+            margin-bottom: 4rem;
+        }
+        .section-title {
+            font-size: 2rem;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid var(--border-color);
+        }
+        .quick-links {
+            background: var(--bg-light);
+            padding: 2rem;
+            border-radius: 0.5rem;
+            margin-bottom: 3rem;
+        }
+        .quick-links-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+        .quick-link {
+            padding: 1rem;
+            background: white;
+            border-radius: 0.5rem;
+            text-decoration: none;
+            color: var(--text-dark);
+            display: block;
+            transition: all 0.3s;
+            border: 1px solid var(--border-color);
+        }
+        .quick-link:hover {
+            border-color: var(--primary-color);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow);
+        }
+        .quick-link i {
+            color: var(--primary-color);
+            margin-right: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-wrapper">
+                <div class="logo">
+                    <i class="fas fa-building"></i>
+                    <span>PBooksPro</span>
+                </div>
+                <ul class="nav-menu" id="navMenu">
+                    <li><a href="index.html">Home</a></li>
+                    <li><a href="features.html">Features</a></li>
+                    <li><a href="pricing.html">Pricing</a></li>
+                    <li><a href="about.html">About</a></li>
+                    <li><a href="blog.html">Blog</a></li>
+                    <li><a href="help.html" class="active">Help</a></li>
+                    <li><a href="contact.html">Contact</a></li>
+                    <li><a href="download.html" class="btn-primary">Free Trial</a></li>
+                </ul>
+                <div class="hamburger" id="hamburger">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Page Header -->
+    <section class="page-header">
+        <div class="container">
+            <h1>Help & User Guide</h1>
+            <p>Complete documentation and tutorials for PBooksPro</p>
+        </div>
+    </section>
+
+    <!-- Help Section -->
+    <section class="help-section">
+        <div class="container">
+            <!-- Search -->
+            <div class="help-search">
+                <input type="text" id="helpSearch" placeholder="Search for help topics... (e.g., 'invoice', 'transaction', 'rental')" autocomplete="off">
+            </div>
+
+            <!-- Category Filters -->
+            <div class="help-categories">
+                <button class="category-btn active" data-category="all">All Topics</button>
+                <button class="category-btn" data-category="getting-started">Getting Started</button>
+                <button class="category-btn" data-category="general-finance">General Finance</button>
+                <button class="category-btn" data-category="rental-management">Rental Management</button>
+                <button class="category-btn" data-category="project-management">Project Management</button>
+                <button class="category-btn" data-category="advanced-tools">Advanced Tools</button>
+            </div>
+
+            <!-- Quick Links -->
+            <div class="quick-links">
+                <h2>Quick Links</h2>
+                <div class="quick-links-grid">
+                    <a href="#getting-started" class="quick-link">
+                        <i class="fas fa-rocket"></i> Getting Started
+                    </a>
+                    <a href="#general-ledger" class="quick-link">
+                        <i class="fas fa-book"></i> General Ledger
+                    </a>
+                    <a href="#rental-agreements" class="quick-link">
+                        <i class="fas fa-key"></i> Rental Agreements
+                    </a>
+                    <a href="#project-setup" class="quick-link">
+                        <i class="fas fa-hard-hat"></i> Project Setup
+                    </a>
+                    <a href="#reports" class="quick-link">
+                        <i class="fas fa-chart-bar"></i> Reports & Analytics
+                    </a>
+                </div>
+            </div>
+
+            <!-- Getting Started Section -->
+            <div class="help-section" id="getting-started">
+                <h2 class="section-title">Getting Started</h2>
+
+                <div class="help-topic" data-category="getting-started">
+                    <div class="topic-header">
+                        <h3 class="topic-title">About PBooksPro</h3>
+                        <span class="topic-category">Getting Started</span>
+                    </div>
+                    <div class="topic-content">
+                        <p><strong>PBooksPro</strong> is a comprehensive financial management system tailored for real estate professionals, project developers, and small business owners. It unifies multiple financial domains into a single, intuitive interface.</p>
+                        <p><strong>Key capabilities include:</strong></p>
+                        <ul>
+                            <li><strong>General Ledger:</strong> Robust tracking of income, expenses, assets, and liabilities with double-entry principles.</li>
+                            <li><strong>Rental Management:</strong> End-to-end workflow from tenant agreements to automated invoicing and owner payouts.</li>
+                            <li><strong>Project Management:</strong> Advanced costing for construction projects, including installment plans and investor equity tracking.</li>
+                            <li><strong>Reports & Analytics:</strong> Comprehensive reporting and KPI dashboard for real-time insights.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="help-topic" data-category="getting-started">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Navigation & Interface</h3>
+                        <span class="topic-category">Getting Started</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Learn how to navigate the application efficiently.</p>
+                        <ul>
+                            <li><strong>Sidebar:</strong> Desktop navigation is on the left. Click any module to switch pages.</li>
+                            <li><strong>Mobile Footer:</strong> On mobile devices, use the bottom navigation bar for quick access.</li>
+                            <li><strong>Header:</strong> Shows current page title and search functionality. User info displayed in sidebar.</li>
+                            <li><strong>KPI Panel:</strong> Click the chart icon to open the right panel for KPIs, Reports, and Shortcuts.</li>
+                            <li><strong>Multi-tab Modules:</strong> Rental and Project Management use tabs for Invoices, Agreements, Reports, etc.</li>
+                            <li><strong>Search:</strong> Most pages have search/filter capabilities to quickly find records.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="help-topic" data-category="getting-started">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Initial Setup Guide</h3>
+                        <span class="topic-category">Getting Started</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Follow these steps to get started:</p>
+                        <ol style="list-style: decimal; padding-left: 2rem;">
+                            <li><strong>Login:</strong> Use your credentials. Contact admin if you need an account.</li>
+                            <li><strong>Create Accounts:</strong> Go to Settings → Accounts. Add your Bank, Cash, and Credit Card accounts.</li>
+                            <li><strong>Setup Categories:</strong> Settings → Categories. Create Income and Expense categories (e.g., "Rental Income", "Salaries", "Office Supplies").</li>
+                            <li><strong>Add Contacts:</strong> Contacts page. Add Tenants, Vendors, Staff, and other parties.</li>
+                            <li><strong>Configure Print Settings:</strong> Settings → Print Settings. Add your company name, logo, and address for invoices.</li>
+                            <li><strong>Setup Properties/Projects:</strong> In Rental Management, add Buildings and Properties. In Project Management, create Projects and Units.</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+
+            <!-- General Finance Section -->
+            <div class="help-section" id="general-finance">
+                <h2 class="section-title">General Finance</h2>
+
+                <div class="help-topic" data-category="general-finance" id="general-ledger">
+                    <div class="topic-header">
+                        <h3 class="topic-title">General Ledger & Transactions</h3>
+                        <span class="topic-category">General Finance</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>The General Ledger is the core of your financial tracking. It records all income and expense transactions.</p>
+                        <ul>
+                            <li><strong>Recording Transactions:</strong> Click "New Transaction" and select Income or Expense. Choose account, category, date, amount, and description.</li>
+                            <li><strong>Linking to Entities:</strong> Transactions can be linked to Projects, Properties, Contacts (vendors/tenants), Bills, Invoices, or Payslips for detailed tracking.</li>
+                            <li><strong>Account Impact:</strong> Income increases account balance; Expense decreases it. The system automatically updates account balances.</li>
+                            <li><strong>Transfer Transactions:</strong> Use Transfer type to move money between accounts (e.g., Bank to Cash).</li>
+                            <li><strong>System Transactions:</strong> Some transactions are auto-generated (like invoice payments). Toggle "Show System Transactions" to view/hide them.</li>
+                            <li><strong>Filtering:</strong> Filter by date range, account, category, project, or contact. Export to Excel for analysis.</li>
+                            <li><strong>Search:</strong> Real-time search across descriptions, accounts, contacts, amounts, and references.</li>
+                            <li><strong>Sorting:</strong> Sort by Date, Type, Amount, Account, Category, or Contact. Click column headers to sort.</li>
+                            <li><strong>Batch Transactions:</strong> View bundled transactions by expanding batch rows.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="help-topic" data-category="general-finance">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Accounts Management</h3>
+                        <span class="topic-category">General Finance</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Accounts represent your financial institutions and cash sources.</p>
+                        <ul>
+                            <li><strong>Account Types:</strong> Bank (checking/savings), Cash, Credit Card, Equity, Liability, Asset. Only Bank accounts affect Total Balance KPI.</li>
+                            <li><strong>Creating Accounts:</strong> Settings → Accounts → Add Account. Enter name, type, and initial balance.</li>
+                            <li><strong>Balance Tracking:</strong> Balances update automatically when transactions are recorded. Manually adjust if needed via "Adjust Balance".</li>
+                            <li><strong>Internal Clearing:</strong> Special system account used for internal transfers. Not included in Total Balance calculations.</li>
+                            <li><strong>Account Reports:</strong> View account statements and transaction history from the General Ledger page.</li>
+                            <li><strong>Multiple Accounts:</strong> Track multiple banks, cash registers, or credit cards separately for better organization.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="help-topic" data-category="general-finance">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Categories & Budget Planning</h3>
+                        <span class="topic-category">General Finance</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Categories organize transactions, and budgets help plan and track spending.</p>
+                        <ul>
+                            <li><strong>Creating Categories:</strong> Settings → Categories. Categories must be Income or Expense type. Common examples: "Rental Income", "Salaries", "Office Rent".</li>
+                            <li><strong>Special Categories:</strong> System uses categories like "Rental Income" for auto-categorization. Keep these for proper reporting.</li>
+                            <li><strong>Budget Planning:</strong> Budget Planner page lets you set monthly/annual budgets per category. Track actual vs. budgeted amounts.</li>
+                            <li><strong>Budget Reports:</strong> Dashboard shows budget status. Reports show variance (over/under budget).</li>
+                            <li><strong>Category KPIs:</strong> Each category appears as a KPI in the dashboard panel for quick insights.</li>
+                            <li><strong>Editing Categories:</strong> Rename or change category types, but be careful - existing transactions keep old category references.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="help-topic" data-category="general-finance">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Loan Management</h3>
+                        <span class="topic-category">General Finance</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Track loans you've given or received with detailed repayment tracking.</p>
+                        <ul>
+                            <li><strong>Creating Loans:</strong> Loan Manager page. Click "New Loan" and select "Given" (you lent) or "Received" (you borrowed).</li>
+                            <li><strong>Loan Details:</strong> Enter principal amount, interest rate, start date, term, and frequency (Monthly, Quarterly, etc.).</li>
+                            <li><strong>Repayment Tracking:</strong> Record repayments as transactions linked to the loan. System calculates outstanding balance automatically.</li>
+                            <li><strong>Loan Status:</strong> View active, completed, and overdue loans. Filter by lender/borrower contact.</li>
+                            <li><strong>Auto-categorization:</strong> Loan repayments can auto-link to appropriate categories (e.g., "Loan Interest Expense").</li>
+                            <li><strong>Reports:</strong> View loan summaries, repayment schedules, and outstanding amounts in the Loan Manager.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Rental Management Section -->
+            <div class="help-section" id="rental-management">
+                <h2 class="section-title">Rental Management</h2>
+
+                <div class="help-topic" data-category="rental-management" id="rental-agreements">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Rental Agreements</h3>
+                        <span class="topic-category">Rental Management</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Manage tenant leases with automated invoicing and payment tracking.</p>
+                        <ul>
+                            <li><strong>Creating Agreements:</strong> Rental Management → Agreements tab → New Agreement. Select tenant, property/unit, set rent amount, start/end dates, and security deposit.</li>
+                            <li><strong>Auto-Invoice Generation:</strong> System automatically creates initial rent invoice and security deposit invoice. Also creates a recurring invoice template for monthly rent.</li>
+                            <li><strong>Broker Fees:</strong> If property has a broker, enter broker fee. Track and pay via Broker Payouts.</li>
+                            <li><strong>Agreement Status:</strong> Active, Terminated, or Expired. Terminate agreements when tenants leave.</li>
+                            <li><strong>Recurring Invoices:</strong> Monthly rent invoices are auto-generated from templates. Manually generate from Recurring Invoices tab if needed.</li>
+                            <li><strong>Security Deposits:</strong> Tracked separately. Can be charged/refunded via invoices or transactions.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="help-topic" data-category="rental-management">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Rental Invoices & Payments</h3>
+                        <span class="topic-category">Rental Management</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Track rent collection and tenant payments efficiently.</p>
+                        <ul>
+                            <li><strong>Invoice Types:</strong> Rental invoices include monthly rent, security deposits, and one-time charges.</li>
+                            <li><strong>Recurring Invoices:</strong> System generates monthly rent invoices automatically. View in Recurring Invoices tab. Generate manually if needed.</li>
+                            <li><strong>Recording Payments:</strong> Click "Pay" on an invoice, select payment account and date. System creates transaction and updates invoice status.</li>
+                            <li><strong>Partial Payments:</strong> Record partial payments. Invoice status shows "Partially Paid" until fully paid.</li>
+                            <li><strong>Bulk Payments:</strong> Select multiple invoices and pay together for batch processing.</li>
+                            <li><strong>Invoice Status:</strong> Unpaid, Partially Paid, Paid. Filter by status to see outstanding amounts.</li>
+                            <li><strong>Service Charges:</strong> Add service charges to invoices. Tracked separately for owner payout calculations.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="help-topic" data-category="rental-management">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Owner Payouts & Income Distribution</h3>
+                        <span class="topic-category">Rental Management</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Calculate and distribute rental income to property owners.</p>
+                        <ul>
+                            <li><strong>Owner Setup:</strong> Properties must have an owner assigned (Contact type: Owner). Set owner percentage if co-owned.</li>
+                            <li><strong>Payout Calculation:</strong> System calculates: Collected Rent + Service Charges - Deductions (maintenance, broker fees, etc.) = Owner Income.</li>
+                            <li><strong>Creating Payouts:</strong> Owner Payouts tab → Select owner → Review calculated income → Create payout transaction.</li>
+                            <li><strong>Deductions:</strong> Expenses linked to property are automatically deducted. Service charges are added back to owner income.</li>
+                            <li><strong>Payout Reports:</strong> View Owner Income Report to see detailed breakdown by property, period, and owner.</li>
+                            <li><strong>Security Deposit Tracking:</strong> Security deposits held for owners are tracked separately. Use Owner Security Deposit Report.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="help-topic" data-category="rental-management">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Properties & Buildings Setup</h3>
+                        <span class="topic-category">Rental Management</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Organize your rental portfolio hierarchically.</p>
+                        <ul>
+                            <li><strong>Structure:</strong> Buildings contain Properties, Properties contain Units. Units are rented to tenants.</li>
+                            <li><strong>Creating Buildings:</strong> Rental Management → Properties tab → Add Building. Enter name and address.</li>
+                            <li><strong>Adding Properties:</strong> Select a building, then add properties (floors/apartments). Assign owner contact.</li>
+                            <li><strong>Creating Units:</strong> Within properties, add units (rooms/spaces). Units are linked to rental agreements.</li>
+                            <li><strong>Owner Assignment:</strong> Each property must have an owner for payout calculations. Set in property details.</li>
+                            <li><strong>Visual Layout:</strong> Use Visual Layout report to see building structure and unit occupancy at a glance.</li>
+                            <li><strong>Property Status:</strong> Track occupied/vacant units. Status updates automatically based on active agreements.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="help-topic" data-category="rental-management">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Broker Fee Management</h3>
+                        <span class="topic-category">Rental Management</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Track and pay broker commissions for rental agreements.</p>
+                        <ul>
+                            <li><strong>Broker Assignment:</strong> Assign broker to rental agreements when creating them. Enter broker fee amount.</li>
+                            <li><strong>Fee Tracking:</strong> System tracks broker fees per agreement. View outstanding fees in Broker Payouts tab.</li>
+                            <li><strong>Paying Brokers:</strong> Broker Payouts → Select broker → Review agreements → Select fees to pay → Record payment.</li>
+                            <li><strong>Partial Payments:</strong> Pay broker fees in installments. System tracks remaining balance per agreement.</li>
+                            <li><strong>Reports:</strong> Broker Fee Report shows all fees, paid amounts, and outstanding balances by broker.</li>
+                            <li><strong>Expense Category:</strong> Broker fee payments are recorded as expenses in your ledger, linked to the agreement.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Project Management Section -->
+            <div class="help-section" id="project-management">
+                <h2 class="section-title">Project Management</h2>
+
+                <div class="help-topic" data-category="project-management" id="project-setup">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Projects & Units Setup</h3>
+                        <span class="topic-category">Project Management</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Organize construction or development projects with unit tracking.</p>
+                        <ul>
+                            <li><strong>Creating Projects:</strong> Project Management → Projects tab → New Project. Enter name, description, status, and color code.</li>
+                            <li><strong>Adding Units:</strong> Within projects, add units (apartments, plots, shops). Units are sold via Project Agreements.</li>
+                            <li><strong>Project Status:</strong> Active, Completed, On Hold. Status affects filtering and reporting.</li>
+                            <li><strong>Installment Configuration:</strong> Set default installment plan (duration, down payment %, frequency) at project level.</li>
+                            <li><strong>PM Cost Configuration:</strong> Set Project Management fee percentage and excluded categories per project.</li>
+                            <li><strong>Visual Layout:</strong> Visual Layout report shows project structure and unit sale status.</li>
+                            <li><strong>Project Reports:</strong> Access comprehensive reports: Summary, Revenue Analysis, PM Cost, Category Breakdown, etc.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="help-topic" data-category="project-management">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Project Agreements & Installments</h3>
+                        <span class="topic-category">Project Management</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Track unit sales with flexible installment payment plans.</p>
+                        <ul>
+                            <li><strong>Creating Agreements:</strong> Project Management → Agreements tab → New Agreement. Select client, project, unit(s), and selling price.</li>
+                            <li><strong>Installment Generation:</strong> System auto-generates invoices: Down Payment (if configured) + Installment invoices based on duration and frequency.</li>
+                            <li><strong>Payment Plans:</strong> Configure duration (years), down payment percentage, and frequency (Monthly, Quarterly, Yearly).</li>
+                            <li><strong>Discounts:</strong> Apply Customer Discount, Floor Discount, Lump Sum Discount, or Misc Discount. Tracked in reports.</li>
+                            <li><strong>Multiple Units:</strong> One agreement can include multiple units. Total selling price is sum of all units.</li>
+                            <li><strong>Invoice Tracking:</strong> All generated invoices appear in Project Invoices. Track payment status per installment.</li>
+                            <li><strong>Client Ledger:</strong> View complete payment history for each client in Owner Ledger report.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="help-topic" data-category="project-management">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Bills & Vendor Payments</h3>
+                        <span class="topic-category">Project Management</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Manage project-related bills and vendor payments efficiently.</p>
+                        <ul>
+                            <li><strong>Creating Bills:</strong> Bills tab → New Bill. Enter vendor, amount, date, description, category, and link to project.</li>
+                            <li><strong>Bill Tracking:</strong> Bills show as Unpaid, Partially Paid, or Paid. Outstanding balance tracked automatically.</li>
+                            <li><strong>Recording Payments:</strong> Pay individual bills or use bulk payment to pay multiple bills at once.</li>
+                            <li><strong>Project Linking:</strong> Link bills to projects for cost tracking. Bills appear in project expense reports.</li>
+                            <li><strong>Vendor Management:</strong> View all bills per vendor in Vendor Directory. Access vendor ledger for payment history.</li>
+                            <li><strong>Categories:</strong> Categorize bills (Materials, Labor, etc.) for expense analysis and PM cost calculations.</li>
+                            <li><strong>Contract Linking:</strong> Link bills to vendor contracts for contract-based expense tracking.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="help-topic" data-category="project-management">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Project Management Cost Tracking</h3>
+                        <span class="topic-category">Project Management</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Automatically calculate and track Project Management fees based on project expenses.</p>
+                        <ul>
+                            <li><strong>PM Configuration:</strong> Set PM fee percentage per project (e.g., 5% of expenses). Configure in project settings.</li>
+                            <li><strong>Excluded Categories:</strong> Exclude certain expense categories from PM cost calculation (e.g., PM fees themselves, taxes).</li>
+                            <li><strong>Automatic Calculation:</strong> PM cost = (Total Project Expenses - Excluded Expenses) × PM Percentage. Updates automatically.</li>
+                            <li><strong>PM Cost Report:</strong> View accrued PM costs, paid amounts, and outstanding balance per project.</li>
+                            <li><strong>Paying PM Fees:</strong> Record PM fee payments as transactions. System tracks paid vs. accrued amounts.</li>
+                            <li><strong>Cost Allocation:</strong> PM costs are allocated to project financials and appear in project profit/loss reports.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="help-topic" data-category="project-management">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Investor Equity & Profit Distribution</h3>
+                        <span class="topic-category">Project Management</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Track investor capital and distribute profits to equity holders.</p>
+                        <ul>
+                            <li><strong>Equity Accounts:</strong> Create Equity accounts (Account Type: Equity) for each investor. These represent capital contributed.</li>
+                            <li><strong>Recording Capital:</strong> Use Transfer transactions from bank accounts to equity accounts to record investor contributions.</li>
+                            <li><strong>Profit Calculation:</strong> System calculates project profit: Income - Operating Expenses (excluding equity transactions).</li>
+                            <li><strong>Profit Distribution:</strong> Use Project Cycle Manager to distribute profits. Select project, enter distribution amount, system allocates proportionally based on equity.</li>
+                            <li><strong>Distribution Reports:</strong> Investor Distribution report shows capital invested, profits received, and current equity balance per investor.</li>
+                            <li><strong>Equity Tracking:</strong> View investor balances in project reports. Equity accounts show invested capital minus distributions.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Reports Section -->
+            <div class="help-section" id="reports">
+                <h2 class="section-title">Reports & Analytics</h2>
+
+                <div class="help-topic" data-category="advanced-tools">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Comprehensive Reporting</h3>
+                        <span class="topic-category">Advanced Tools</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Access 30+ comprehensive reports for complete business insights.</p>
+                        <ul>
+                            <li><strong>Project Reports:</strong> Project Summary, Revenue Analysis, Profit & Loss, Balance Sheet, Budget vs. Actual, PM Cost Report, Investor Distribution.</li>
+                            <li><strong>Rental Reports:</strong> Owner Income Report, Owner Security Deposit Report, Broker Fee Report, Rental Summary.</li>
+                            <li><strong>Financial Reports:</strong> Income by Category, Expense by Category, Account Statements, Transaction Reports.</li>
+                            <li><strong>Ledger Reports:</strong> Owner Ledger, Vendor Ledger, Client Ledger, Broker Report.</li>
+                            <li><strong>Visual Reports:</strong> Visual Project Layout, Visual Rental Layout, Tabular Unit Reports.</li>
+                            <li><strong>Export Options:</strong> All reports can be exported to Excel for further analysis or sharing.</li>
+                            <li><strong>Date Filtering:</strong> All reports support custom date ranges for period-based analysis.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="help-topic" data-category="advanced-tools">
+                    <div class="topic-header">
+                        <h3 class="topic-title">KPI Dashboard</h3>
+                        <span class="topic-category">Advanced Tools</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Monitor key performance indicators in real-time.</p>
+                        <ul>
+                            <li><strong>Default KPIs:</strong> Total Balance, Accounts Receivable, Accounts Payable, Outstanding Loans.</li>
+                            <li><strong>Category KPIs:</strong> Add any income or expense category as a KPI for quick monitoring.</li>
+                            <li><strong>KPI Panel:</strong> Click chart icon to open KPI panel. Customize visible KPIs, add new ones, or remove.</li>
+                            <li><strong>Real-time Updates:</strong> KPIs update automatically as transactions are recorded.</li>
+                            <li><strong>Quick Reports:</strong> Click on any KPI to view detailed report for that metric.</li>
+                            <li><strong>Shortcuts:</strong> KPI panel also provides quick shortcuts to frequently used pages and reports.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Advanced Tools Section -->
+            <div class="help-section" id="advanced-tools">
+                <h2 class="section-title">Advanced Tools</h2>
+
+                <div class="help-topic" data-category="advanced-tools">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Data Import & Export</h3>
+                        <span class="topic-category">Advanced Tools</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Import data from Excel and export reports for external analysis.</p>
+                        <ul>
+                            <li><strong>Excel Import:</strong> Import transactions, contacts, accounts, categories, and other data from Excel spreadsheets.</li>
+                            <li><strong>Import Templates:</strong> Download sample Excel templates to ensure correct format for import.</li>
+                            <li><strong>Import Validation:</strong> System validates data before import. Shows errors and warnings for review.</li>
+                            <li><strong>Export to Excel:</strong> Export any report, transaction list, or data table to Excel format.</li>
+                            <li><strong>Filtered Export:</strong> Export only filtered/visible data. Useful for exporting specific date ranges or categories.</li>
+                            <li><strong>Backup & Restore:</strong> Create full data backups. Restore from backup if needed. Backups include all application data.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="help-topic" data-category="advanced-tools">
+                    <div class="topic-header">
+                        <h3 class="topic-title">WhatsApp Integration</h3>
+                        <span class="topic-category">Advanced Tools</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Send invoices and payment reminders via WhatsApp Business API.</p>
+                        <ul>
+                            <li><strong>Setup:</strong> Configure WhatsApp Business API credentials in Settings → WhatsApp Settings.</li>
+                            <li><strong>Sending Invoices:</strong> Click "Send via WhatsApp" on any invoice. System sends formatted invoice message.</li>
+                            <li><strong>Payment Reminders:</strong> Set up automated payment reminders for overdue invoices.</li>
+                            <li><strong>Message Templates:</strong> Customize WhatsApp message templates for invoices, reminders, and notifications.</li>
+                            <li><strong>QR Code Generation:</strong> Generate QR codes for invoices. Customers can scan to view or pay invoices.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="help-topic" data-category="advanced-tools">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Contacts Management</h3>
+                        <span class="topic-category">Advanced Tools</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Manage all business contacts in one place.</p>
+                        <ul>
+                            <li><strong>Contact Types:</strong> Tenant, Vendor, Owner, Staff, Broker, Client, Other. Each type has specific use cases.</li>
+                            <li><strong>Creating Contacts:</strong> Contacts page → New Contact. Enter name, type, phone, email, and address.</li>
+                            <li><strong>Contact Linking:</strong> Contacts are linked to transactions, invoices, bills, agreements, and employees.</li>
+                            <li><strong>Contact Directory:</strong> View all contacts with filtering by type. Search by name, phone, or email.</li>
+                            <li><strong>Contact Ledgers:</strong> View complete transaction history for any contact (Owner Ledger, Vendor Ledger, etc.).</li>
+                            <li><strong>Bulk Operations:</strong> Import contacts from Excel. Export contact list for external use.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="help-topic" data-category="advanced-tools">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Invoices & Bills Management</h3>
+                        <span class="topic-category">Advanced Tools</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Create and manage invoices and bills efficiently.</p>
+                        <ul>
+                            <li><strong>Invoice Types:</strong> Rental Invoices, Project Invoices (Installments), Service Invoices, Quotations.</li>
+                            <li><strong>Creating Invoices:</strong> Select invoice type → New Invoice. Enter customer, items, amounts, and due date.</li>
+                            <li><strong>Invoice Templates:</strong> Customize invoice HTML templates. Add company logo, address, and branding.</li>
+                            <li><strong>Recurring Invoices:</strong> Set up recurring invoice templates. System generates invoices automatically.</li>
+                            <li><strong>Bill Management:</strong> Create bills from vendors. Track unpaid bills and record payments.</li>
+                            <li><strong>Bulk Operations:</strong> Pay multiple invoices or bills at once using bulk payment feature.</li>
+                            <li><strong>Print & Email:</strong> Print invoices/bills or send via email/WhatsApp directly from the application.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FAQ Section -->
+            <div class="help-section">
+                <h2 class="section-title">Frequently Asked Questions</h2>
+
+                <div class="help-topic">
+                    <div class="topic-header">
+                        <h3 class="topic-title">How do I backup my data?</h3>
+                        <span class="topic-category">FAQ</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Your data is automatically backed up in the cloud. However, you can also export your data at any time by going to Settings → Export Data. This allows you to download your data for your own records.</p>
+                    </div>
+                </div>
+
+                <div class="help-topic">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Can I access PBooksPro from multiple devices?</h3>
+                        <span class="topic-category">FAQ</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Yes! PBooksPro is a cloud-based application. You can access your account from any device with an internet connection - desktop, tablet, or mobile. Your data is automatically synced across all devices.</p>
+                    </div>
+                </div>
+
+                <div class="help-topic">
+                    <div class="topic-header">
+                        <h3 class="topic-title">How many transactions can the system handle?</h3>
+                        <span class="topic-category">FAQ</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>The system is optimized to handle 10,000+ transactions with instant search and filtering. For best performance, use date range filters when working with large datasets.</p>
+                    </div>
+                </div>
+
+                <div class="help-topic">
+                    <div class="topic-header">
+                        <h3 class="topic-title">Can I customize invoice templates?</h3>
+                        <span class="topic-category">FAQ</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Yes! Go to Settings → Invoice Template. You can edit the HTML template to add your company logo, customize layout, colors, and branding. Changes apply to all new invoices.</p>
+                    </div>
+                </div>
+
+                <div class="help-topic">
+                    <div class="topic-header">
+                        <h3 class="topic-title">What happens if I delete a transaction by mistake?</h3>
+                        <span class="topic-category">FAQ</span>
+                    </div>
+                    <div class="topic-content">
+                        <p>Deleted transactions are permanently removed. Always create regular backups. If you have a recent backup, you can restore it. For critical data, consider exporting important transactions to Excel regularly.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contact Support -->
+            <div class="help-section">
+                <div class="cta-section" style="background: var(--bg-light); padding: 3rem; border-radius: 1rem; text-align: center;">
+                    <h2>Still Need Help?</h2>
+                    <p>Can't find what you're looking for? Our support team is here to help.</p>
+                    <div class="cta-buttons" style="margin-top: 2rem;">
+                        <a href="contact.html" class="btn btn-primary">Contact Support</a>
+                        <a href="demo.html" class="btn btn-outline">Request Training</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-col">
+                    <div class="footer-logo">
+                        <i class="fas fa-building"></i>
+                        <span>PBooksPro</span>
+                    </div>
+                    <p>All-in-One Financial Management for Real Estate Professionals</p>
+                </div>
+                <div class="footer-col">
+                    <h4>Product</h4>
+                    <ul>
+                        <li><a href="features.html">Features</a></li>
+                        <li><a href="download.html">Download</a></li>
+                        <li><a href="help.html">Help & Guide</a></li>
+                        <li><a href="pricing.html">Pricing</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h4>Company</h4>
+                    <ul>
+                        <li><a href="about.html">About Us</a></li>
+                        <li><a href="blog.html">Blog</a></li>
+                        <li><a href="contact.html">Contact</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h4>Support</h4>
+                    <ul>
+                        <li><a href="help.html">Help & Guide</a></li>
+                        <li><a href="contact.html">Contact Support</a></li>
+                        <li><a href="demo.html">Request Demo</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2024 PBooksPro. All rights reserved.</p>
+                <div class="footer-links">
+                    <a href="privacy-policy.html">Privacy Policy</a>
+                    <a href="terms-of-service.html">Terms of Service</a>
+                    <a href="refund-policy.html">Refund Policy</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+    <script>
+        // Help page specific JavaScript
+        const helpSearch = document.getElementById('helpSearch');
+        const categoryButtons = document.querySelectorAll('.category-btn');
+        const helpTopics = document.querySelectorAll('.help-topic');
+
+        // Search functionality
+        if (helpSearch) {
+            helpSearch.addEventListener('input', (e) => {
+                const searchTerm = e.target.value.toLowerCase();
+                filterTopics(searchTerm, getActiveCategory());
+            });
+        }
+
+        // Category filter
+        categoryButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                categoryButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                const category = btn.getAttribute('data-category');
+                filterTopics(helpSearch?.value.toLowerCase() || '', category);
+            });
+        });
+
+        function getActiveCategory() {
+            const activeBtn = document.querySelector('.category-btn.active');
+            return activeBtn ? activeBtn.getAttribute('data-category') : 'all';
+        }
+
+        function filterTopics(searchTerm, category) {
+            helpTopics.forEach(topic => {
+                const topicCategory = topic.getAttribute('data-category');
+                const topicText = topic.textContent.toLowerCase();
+                const topicTitle = topic.querySelector('.topic-title')?.textContent.toLowerCase() || '';
+                
+                const matchesCategory = category === 'all' || topicCategory === category;
+                const matchesSearch = !searchTerm || topicText.includes(searchTerm) || topicTitle.includes(searchTerm);
+                
+                if (matchesCategory && matchesSearch) {
+                    topic.classList.remove('hidden');
+                } else {
+                    topic.classList.add('hidden');
+                }
+            });
+        }
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                    // Update active category if needed
+                    const category = target.closest('.help-section')?.id;
+                    if (category) {
+                        const categoryMap = {
+                            'getting-started': 'getting-started',
+                            'general-finance': 'general-finance',
+                            'rental-management': 'rental-management',
+                            'project-management': 'project-management',
+                            'reports': 'advanced-tools',
+                            'advanced-tools': 'advanced-tools'
+                        };
+                        const mappedCategory = categoryMap[category];
+                        if (mappedCategory) {
+                            categoryButtons.forEach(btn => {
+                                if (btn.getAttribute('data-category') === mappedCategory) {
+                                    btn.click();
+                                }
+                            });
+                        }
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+

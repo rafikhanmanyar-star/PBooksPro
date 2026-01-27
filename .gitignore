@@ -1,0 +1,63 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Electron build outputs
+release
+win-unpacked
+mac-unpacked
+linux-unpacked
+
+# Code signing certificates (NEVER commit these!)
+*.pfx
+*.p12
+*.pem
+build/*.pfx
+build/*.p12
+build/*.pem
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment variables (NEVER commit these!)
+.env
+.env.local
+.env.*.local
+server/.env
+admin/.env
+mcp-server/.env
+*.env
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Server build outputs (built on Render)
+server/api/*.js
+server/api/**/*.js
+server/**/*.js
+!server/scripts/*.js
+*.js.map
+
+# Logs
+logs/
+*.log

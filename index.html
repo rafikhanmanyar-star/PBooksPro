@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>PBooks Pro</title>
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#374151" />
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="PBooks Pro">
+    <link rel="apple-touch-icon" href="/icon.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- QuickBooks-style geometric sans-serif font (Avenir-like) -->
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Barcode font for invoices -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <style>
+      /* QuickBooks-style font stack with system fallbacks */
+      @font-face {
+        font-family: 'IDAutomationHC39M';
+        src: url('https://fonts.gstatic.com/s/robotomono/v22/L0xuDF4xlVMF-BfR8bXMIhJHg45mwgGEFl0_3vq_SeW4Ep0.woff2') format('woff2');
+        /* Fallback: Use monospace if barcode font not available */
+        font-display: swap;
+      }
+      
+      /* Use monospace as fallback for barcode font */
+      .barcode-font {
+        font-family: 'IDAutomationHC39M', 'Courier New', 'Courier', monospace;
+        font-weight: normal;
+        letter-spacing: 0.1em;
+      }
+      
+      body {
+        font-family: 'Nunito', 'Work Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+        overscroll-behavior-y: none;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
+        user-select: none;
+        -webkit-user-select: none;
+        /* QuickBooks-style typography */
+        font-size: 14px;
+        line-height: 1.5;
+        color: #374151;
+      }
+      input, textarea, [contenteditable] {
+        user-select: text;
+        -webkit-user-select: text;
+        cursor: text;
+      }
+      * {
+        -webkit-tap-highlight-color: transparent;
+      }
+      button:focus {
+        outline: none;
+      }
+      button, a, [role="button"] {
+        cursor: pointer;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "recharts": "https://aistudiocdn.com/recharts@^3.3.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.0",
+    "xlsx": "https://aistudiocdn.com/xlsx@^0.18.5/xlsx.mjs",
+    "vite": "https://aistudiocdn.com/vite@^7.2.4",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.1",
+  }
+}
+</script>
+<!-- Note: CSS is imported in index.tsx (line 4) and automatically injected by Vite -->
+<!-- Browser dev tools may show a warning, but this is a false positive -->
+<!-- The CSS file loads correctly via the JavaScript import -->
+</head>
+  <body class="bg-background">
+    <div id="root"></div>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js', { scope: './' })
+            .then(() => {
+              console.log('ServiceWorker registration successful');
+            })
+            .catch(err => {
+              console.log('ServiceWorker registration failed: ', err);
+            });
+        });
+      }
+    </script>
+    <script type="module" src="./index.tsx"></script>
+  </body>
+</html>

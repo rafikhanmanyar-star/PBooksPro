@@ -1,0 +1,5 @@
+{
+  "name": "PBooks Pro",
+  "description": "A comprehensive application to track income, expenses, transfers, and loans. Manage accounts, projects, contacts, and view insightful dashboards of your financial health. Export your transaction data for offline analysis.",
+  "requestFramePermissions": []
+}

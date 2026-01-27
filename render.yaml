@@ -1,0 +1,173 @@
+databases:
+  - name: pbookspro-db-staging
+    databaseName: pbookspro_staging
+    user: pbookspro_staging
+  # Production database (already exists in Render)
+  - name: pbookspro-db
+    databaseName: pbookspro  # Update with your actual production DB name
+    user: pbookspro_user      # Update with your actual production DB user
+
+services:
+  # Backend API Server - PRODUCTION (deploys from main branch only)
+  - type: web
+    name: pbookspro-api
+    env: node
+    plan: starter
+    branch: main  # PRODUCTION: Only deploys when main branch is pushed
+    buildCommand: cd server && npm install && npm run build
+    startCommand: cd server && npm start
+    envVars:
+      # DATABASE_URL should be set manually in Render Dashboard with External Database URL
+      # This prevents it from being reset to internal connection on deployments
+      # - key: DATABASE_URL
+      #   fromDatabase:
+      #     name: pbookspro-db
+      #     property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: LICENSE_SECRET_SALT
+        value: PBOOKSPRO_SECURE_SALT_2024
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: CORS_ORIGIN
+        value: https://www.pbookspro.com,https://www.app.pbookspro.com,https://app.pbookspro.com,https://admin.pbookspro.com,https://pbookspro-client.onrender.com,https://pbookspro-client-8sn6.onrender.com,https://pbookspro-admin.onrender.com,https://pbookspro-admin-8sn6.onrender.com,https://pbookspro-website.onrender.com,http://localhost:5173,http://localhost:5174
+      - key: API_URL
+        value: https://api.pbookspro.com
+      - key: SERVER_URL
+        value: https://api.pbookspro.com
+      - key: CLIENT_URL
+        value: https://www.app.pbookspro.com
+      # Payment Gateway Configuration (Paddle)
+      # Add these in Render Dashboard → Environment tab
+      # - key: PAYMENT_GATEWAY
+      #   value: paddle
+      # - key: PAYMENT_SANDBOX
+      #   value: "false"
+      # - key: PADDLE_VENDOR_ID
+      #   value: your_live_vendor_id
+      # - key: PADDLE_API_KEY
+      #   value: your_live_api_key
+      # - key: PADDLE_PUBLIC_KEY
+      #   value: your_live_public_key
+      # - key: PADDLE_WEBHOOK_SECRET
+      #   value: your_webhook_secret
+      # - key: PADDLE_ENVIRONMENT
+      #   value: live
+
+  # Client Application (Static Site)
+  - type: web
+    name: pbookspro-client
+    runtime: static
+    branch: main
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        value: https://api.pbookspro.com/api
+
+  # Admin Application (Static Site)
+  - type: web
+    name: pbookspro-admin
+    runtime: static
+    branch: main
+    buildCommand: cd admin && npm install && npm run build
+    staticPublishPath: ./admin/dist
+    envVars:
+      - key: VITE_ADMIN_API_URL
+        value: https://api.pbookspro.com/api/admin
+
+  # Website (Marketing/Landing Page)
+  - type: web
+    name: pbookspro-website
+    runtime: static
+    branch: main
+    buildCommand: echo "No build needed for static site"
+    staticPublishPath: ./website/Website
+
+  # Staging API Server - STAGING (deploys from staging branch only)
+  - type: web
+    name: pbookspro-api-staging
+    env: node
+    plan: starter
+    branch: staging  # STAGING: Only deploys when staging branch is pushed
+    buildCommand: cd server && npm install && npm run build
+    startCommand: cd server && npm start
+    envVars:
+      # DATABASE_URL should be set manually in Render Dashboard with External Database URL
+      # This prevents it from being reset to internal connection on deployments
+      # - key: DATABASE_URL
+      #   fromDatabase:
+      #     name: pbookspro-db-staging
+      #     property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: LICENSE_SECRET_SALT
+        value: PBOOKSPRO_SECURE_SALT_2024_STAGING
+      - key: NODE_ENV
+        value: staging
+      - key: PORT
+        value: 3000
+      - key: CORS_ORIGIN
+        value: https://pbookspro-client-staging.onrender.com,https://pbookspro-admin-staging.onrender.com,http://localhost:5173,http://localhost:5174
+      - key: API_URL
+        value: https://pbookspro-api-staging.onrender.com
+      - key: SERVER_URL
+        value: https://pbookspro-api-staging.onrender.com
+      - key: CLIENT_URL
+        value: https://pbookspro-client-staging.onrender.com
+      # Payment Gateway Configuration (Paddle - Sandbox for testing)
+      # Add these in Render Dashboard → Environment tab
+      # - key: PAYMENT_GATEWAY
+      #   value: paddle
+      # - key: PAYMENT_SANDBOX
+      #   value: "true"
+      # - key: PADDLE_VENDOR_ID
+      #   value: your_vendor_id
+      # - key: PADDLE_API_KEY
+      #   value: your_sandbox_api_key
+      # - key: PADDLE_PUBLIC_KEY
+      #   value: your_sandbox_public_key
+      # - key: PADDLE_WEBHOOK_SECRET
+      #   value: your_webhook_secret
+      # - key: PADDLE_ENVIRONMENT
+      #   value: sandbox
+
+  # Staging Client Application
+  - type: web
+    name: pbookspro-client-staging
+    runtime: static
+    branch: staging
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        value: https://pbookspro-api-staging.onrender.com/api
+
+  # Staging Admin Application
+  - type: web
+    name: pbookspro-admin-staging
+    runtime: static
+    branch: staging
+    buildCommand: cd admin && npm install && npm run build
+    staticPublishPath: ./admin/dist
+    envVars:
+      - key: VITE_ADMIN_API_URL
+        value: https://pbookspro-api-staging.onrender.com/api/admin
+
+  # Staging Website (Marketing/Landing Page)
+  - type: web
+    name: pbookspro-website-staging
+    runtime: static
+    branch: staging
+    buildCommand: echo "No build needed for static site"
+    staticPublishPath: ./website/Website
