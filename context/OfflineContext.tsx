@@ -185,27 +185,45 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   /**
    * Trigger sync when already online (e.g., after login)
+   * Only sync if there are pending operations - don't sync if queue is empty
    */
   useEffect(() => {
     if (connectionStatus === 'online' && isAuthenticated && user?.tenant?.id) {
-      startSync();
+      // Check if there are pending operations before syncing
+      syncQueue.getPendingCount(user.tenant.id).then(pendingCount => {
+        if (pendingCount > 0) {
+          console.log(`[OfflineContext] Online with ${pendingCount} pending operations, starting sync...`);
+          startSync();
+        } else {
+          console.log('[OfflineContext] Online but no pending operations to sync');
+        }
+      }).catch(err => {
+        console.warn('[OfflineContext] Could not check pending count:', err);
+      });
     }
-  }, [connectionStatus, isAuthenticated, user?.tenant?.id, startSync]);
+  }, [connectionStatus, isAuthenticated, user?.tenant?.id, startSync, syncQueue]);
 
   /**
-   * Heartbeat: check for pending items while online
+   * Heartbeat: check for pending items while online (reduced frequency to prevent server overload)
    */
   useEffect(() => {
     if (connectionStatus !== 'online' || !isAuthenticated || !user?.tenant?.id) {
       return;
     }
 
-    const interval = window.setInterval(() => {
-      startSync();
-    }, 15000);
+    // Reduced frequency: Check every 2 minutes instead of 15 seconds
+    // This prevents constant syncing and reduces server load
+    const interval = window.setInterval(async () => {
+      // Only sync if there are actually pending items
+      const pendingCount = await syncQueue.getPendingCount(user.tenant.id);
+      if (pendingCount > 0) {
+        console.log(`[OfflineContext] Heartbeat: ${pendingCount} pending items, starting sync...`);
+        startSync();
+      }
+    }, 120000); // Every 2 minutes (reduced from 15 seconds)
 
     return () => clearInterval(interval);
-  }, [connectionStatus, isAuthenticated, user?.tenant?.id, startSync]);
+  }, [connectionStatus, isAuthenticated, user?.tenant?.id, startSync, syncQueue]);
 
   /**
    * Pause sync
