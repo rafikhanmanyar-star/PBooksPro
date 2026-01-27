@@ -638,13 +638,20 @@ export class AppStateRepository {
                     // Post-commit callback to queue sync operations
                     const onCommit = () => {
                         try {
+                            // Check if sync queueing is disabled (check actual flag state, not just parameter)
+                            const isSyncQueueingDisabled = BaseRepository.isSyncQueueingDisabled();
+                            
+                            // Flush pending operations (this clears the tracker)
+                            const pendingOps = BaseRepository.flushPendingSyncOperations();
+                            
                             // Only queue sync operations if sync queueing is enabled
-                            if (disableSyncQueueing) {
-                                console.log('[AppStateRepository] Skipping sync queue (syncing from cloud)');
+                            if (isSyncQueueingDisabled || disableSyncQueueing) {
+                                if (pendingOps.length > 0) {
+                                    console.log(`[AppStateRepository] Skipping sync queue for ${pendingOps.length} operations (syncing from cloud/migration)`);
+                                }
+                                // Clear the operations without queueing them
                                 return;
                             }
-                            
-                            const pendingOps = BaseRepository.flushPendingSyncOperations();
                             
                             if (pendingOps.length > 0) {
                                 console.log(`📦 Queueing ${pendingOps.length} sync operations after transaction commit...`);
@@ -666,7 +673,7 @@ export class AppStateRepository {
                             // Don't fail the transaction if sync queueing fails
                         } finally {
                             // Re-enable sync queueing if it was disabled
-                            if (disableSyncQueueing) {
+                            if (disableSyncQueueing && BaseRepository.isSyncQueueingDisabled()) {
                                 BaseRepository.enableSyncQueueing();
                                 console.log('[AppStateRepository] Sync queueing re-enabled');
                             }

@@ -99,9 +99,10 @@ export async function migrateFromLocalStorage(
         }
 
         // Migrate data to database
+        // IMPORTANT: Disable sync queueing during migration - this is local data being migrated, not cloud data
         onProgress?.(40, 'Migrating data to database...');
         const appStateRepo = new AppStateRepository();
-        await appStateRepo.saveState(oldState);
+        await appStateRepo.saveState(oldState, true); // Disable sync queueing for migration
         onProgress?.(80, 'Data migration complete');
 
         // Count records

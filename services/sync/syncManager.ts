@@ -341,6 +341,19 @@ class SyncManager {
   }
 
   /**
+   * Clear all operations from queue
+   * Used when loading data from cloud to remove stale sync operations
+   */
+  clearAll(): void {
+    const count = this.queue.length;
+    this.queue = [];
+    this.saveSyncQueue();
+    if (count > 0) {
+      console.log(`[SyncManager] Cleared all ${count} operations from queue (data loaded from cloud)`);
+    }
+  }
+
+  /**
    * Save sync queue to localStorage
    */
   private saveSyncQueue(): void {

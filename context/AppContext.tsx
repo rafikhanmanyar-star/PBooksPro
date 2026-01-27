@@ -1391,8 +1391,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     // Save API data to local database with proper tenant_id (async, don't await)
                                     // This ensures offline access and proper tenant isolation
                                     // IMPORTANT: Disable sync queueing since this data is FROM cloud, not TO cloud
+                                    // Also clear existing sync queue since data is already in cloud
                                     const dbService = getDatabaseService();
                                     if (dbService.isReady()) {
+                                        // Clear sync queue since we're loading fresh data from cloud
+                                        // Any pending sync operations are now stale
+                                        try {
+                                            const { getSyncManager } = await import('../services/sync/syncManager');
+                                            const syncManager = getSyncManager();
+                                            syncManager.clearAll();
+                                            console.log('[AppContext] Cleared sync queue - data loaded from cloud');
+                                        } catch (syncError) {
+                                            console.warn('⚠️ Could not clear sync queue:', syncError);
+                                        }
+                                        
                                         getAppStateRepository().then(appStateRepo => {
                                             appStateRepo.saveState(fullState, true).catch(saveError => {
                                                 console.warn('⚠️ Could not save API data to local database:', saveError);
@@ -3523,6 +3535,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 
                                 // Save API data to local database with proper tenant_id (async, don't await)
                                 // IMPORTANT: Disable sync queueing since this data is FROM cloud, not TO cloud
+                                // Also clear existing sync queue since data is already in cloud
+                                try {
+                                    const { getSyncManager } = await import('../services/sync/syncManager');
+                                    const syncManager = getSyncManager();
+                                    syncManager.clearAll();
+                                    logger.logCategory('sync', 'Cleared sync queue - data loaded from cloud');
+                                } catch (syncError) {
+                                    logger.warnCategory('sync', 'Could not clear sync queue:', syncError);
+                                }
+                                
                                 getAppStateRepository().then(appStateRepo => {
                                     appStateRepo.saveState(fullState, true).catch(err => {
                                         logger.errorCategory('database', '⚠️ Failed to save API data to local database:', err);
