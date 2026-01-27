@@ -586,8 +586,10 @@ export class AppStateRepository {
 
     /**
      * Save complete application state to database (serialized to avoid overlapping transactions)
+     * @param state - The application state to save
+     * @param disableSyncQueueing - If true, disables sync queueing (used when syncing FROM cloud TO local)
      */
-    async saveState(state: AppState): Promise<void> {
+    async saveState(state: AppState, disableSyncQueueing: boolean = false): Promise<void> {
         AppStateRepository.saveQueue = AppStateRepository.saveQueue.then(async () => {
             try {
                 // Ensure database is initialized
@@ -625,11 +627,23 @@ export class AppStateRepository {
                     quotations: state.quotations.length
                 });
 
+                // Disable sync queueing if requested (when syncing FROM cloud TO local)
+                if (disableSyncQueueing) {
+                    BaseRepository.disableSyncQueueing();
+                    console.log('[AppStateRepository] Sync queueing disabled - syncing from cloud to local');
+                }
+                
                 console.log('🔄 Starting database transaction...');
                 try {
                     // Post-commit callback to queue sync operations
                     const onCommit = () => {
                         try {
+                            // Only queue sync operations if sync queueing is enabled
+                            if (disableSyncQueueing) {
+                                console.log('[AppStateRepository] Skipping sync queue (syncing from cloud)');
+                                return;
+                            }
+                            
                             const pendingOps = BaseRepository.flushPendingSyncOperations();
                             
                             if (pendingOps.length > 0) {
@@ -650,6 +664,12 @@ export class AppStateRepository {
                         } catch (error) {
                             console.error('❌ Error queueing sync operations after commit:', error);
                             // Don't fail the transaction if sync queueing fails
+                        } finally {
+                            // Re-enable sync queueing if it was disabled
+                            if (disableSyncQueueing) {
+                                BaseRepository.enableSyncQueueing();
+                                console.log('[AppStateRepository] Sync queueing re-enabled');
+                            }
                         }
                     };
                     
@@ -888,6 +908,12 @@ export class AppStateRepository {
         } catch (error) {
             console.error('❌ Error saving state to database:', error);
             throw error; // Re-throw so caller knows save failed
+        } finally {
+            // Always re-enable sync queueing if it was disabled, even on error
+            if (disableSyncQueueing && BaseRepository.isSyncQueueingDisabled()) {
+                BaseRepository.enableSyncQueueing();
+                console.log('[AppStateRepository] Sync queueing re-enabled (after error)');
+            }
         }
         });
 

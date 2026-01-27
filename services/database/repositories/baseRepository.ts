@@ -25,6 +25,10 @@ export abstract class BaseRepository<T> {
     
     // Static tracker for pending sync operations during transactions
     private static pendingSyncOperations: PendingSyncOperation[] = [];
+    
+    // Flag to disable sync queueing when syncing FROM cloud TO local
+    // This prevents creating sync operations for data that's already in the cloud
+    private static syncQueueingDisabled = false;
 
     constructor(tableName: string, primaryKey: string = 'id') {
         this.tableName = tableName;
@@ -46,6 +50,30 @@ export abstract class BaseRepository<T> {
      */
     static clearPendingSyncOperations(): void {
         BaseRepository.pendingSyncOperations = [];
+    }
+    
+    /**
+     * Disable sync queueing (used when syncing FROM cloud TO local)
+     * This prevents creating unnecessary sync operations for data already in cloud
+     */
+    static disableSyncQueueing(): void {
+        BaseRepository.syncQueueingDisabled = true;
+        console.log('[BaseRepository] Sync queueing disabled (syncing from cloud)');
+    }
+    
+    /**
+     * Enable sync queueing (normal operation)
+     */
+    static enableSyncQueueing(): void {
+        BaseRepository.syncQueueingDisabled = false;
+        console.log('[BaseRepository] Sync queueing enabled (normal operation)');
+    }
+    
+    /**
+     * Check if sync queueing is currently disabled
+     */
+    static isSyncQueueingDisabled(): boolean {
+        return BaseRepository.syncQueueingDisabled;
     }
 
     protected get db() {
@@ -473,10 +501,17 @@ export abstract class BaseRepository<T> {
 
     /**
      * Queue operation for sync to cloud (desktop only)
+     * Skips queueing if sync queueing is disabled (e.g., when syncing from cloud)
      */
     private queueForSync(type: 'create' | 'update' | 'delete', entityId: string, data: any): void {
         // Only queue on desktop (mobile uses cloud directly)
         if (isMobileDevice()) {
+            return;
+        }
+        
+        // Skip queueing if disabled (e.g., when syncing FROM cloud TO local)
+        if (BaseRepository.syncQueueingDisabled) {
+            console.debug(`[BaseRepository] Skipping sync queue for ${this.tableName}:${entityId} (sync queueing disabled - syncing from cloud)`);
             return;
         }
 

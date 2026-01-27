@@ -1390,10 +1390,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     
                                     // Save API data to local database with proper tenant_id (async, don't await)
                                     // This ensures offline access and proper tenant isolation
+                                    // IMPORTANT: Disable sync queueing since this data is FROM cloud, not TO cloud
                                     const dbService = getDatabaseService();
                                     if (dbService.isReady()) {
                                         getAppStateRepository().then(appStateRepo => {
-                                            appStateRepo.saveState(fullState).catch(saveError => {
+                                            appStateRepo.saveState(fullState, true).catch(saveError => {
                                                 console.warn('⚠️ Could not save API data to local database:', saveError);
                                             });
                                         }).catch(err => {
@@ -3521,8 +3522,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 };
                                 
                                 // Save API data to local database with proper tenant_id (async, don't await)
+                                // IMPORTANT: Disable sync queueing since this data is FROM cloud, not TO cloud
                                 getAppStateRepository().then(appStateRepo => {
-                                    appStateRepo.saveState(fullState).catch(err => {
+                                    appStateRepo.saveState(fullState, true).catch(err => {
                                         logger.errorCategory('database', '⚠️ Failed to save API data to local database:', err);
                                     });
                                 }).catch(err => {
