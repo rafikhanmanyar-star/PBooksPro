@@ -663,11 +663,17 @@ export interface AppState {
 
   // Inventory Items (Settings/Master Data)
   inventoryItems: InventoryItem[];
+  warehouses: Warehouse[];
   
   // Purchase Bills (My Shop - Purchases)
   purchaseBills: PurchaseBill[];
   purchaseBillItems: PurchaseBillItem[];
   purchaseBillPayments: PurchaseBillPayment[];
+  
+  // Shop/Retail Sales
+  shopConfig: ShopConfig | null;
+  shopSales: ShopSale[];
+  shopSaleItems: ShopSaleItem[];
   inventoryStock: InventoryStock[];
 
   // Task Management
@@ -795,6 +801,10 @@ export type AppAction =
   | { type: 'ADD_INVENTORY_ITEM'; payload: InventoryItem }
   | { type: 'UPDATE_INVENTORY_ITEM'; payload: InventoryItem }
   | { type: 'DELETE_INVENTORY_ITEM'; payload: string }
+  | { type: 'ADD_WAREHOUSE'; payload: Warehouse }
+  | { type: 'UPDATE_WAREHOUSE'; payload: Warehouse }
+  | { type: 'DELETE_WAREHOUSE'; payload: string }
+  | { type: 'SET_WAREHOUSES'; payload: Warehouse[] }
   | { type: 'SET_INVENTORY_ITEMS'; payload: InventoryItem[] }
   | { type: 'UPDATE_PM_COST_PERCENTAGE'; payload: number }
   | { type: 'UPDATE_DEFAULT_PROJECT'; payload: string | undefined }
@@ -836,7 +846,14 @@ export type AppAction =
   | { type: 'SET_PURCHASE_BILL_ITEMS'; payload: PurchaseBillItem[] }
   | { type: 'ADD_PURCHASE_BILL_PAYMENT'; payload: PurchaseBillPayment }
   | { type: 'SET_INVENTORY_STOCK'; payload: InventoryStock[] }
-  | { type: 'UPDATE_INVENTORY_STOCK'; payload: InventoryStock };
+  | { type: 'UPDATE_INVENTORY_STOCK'; payload: InventoryStock }
+  // Shop Sales Actions
+  | { type: 'SET_SHOP_CONFIG'; payload: ShopConfig }
+  | { type: 'ADD_SHOP_SALE'; payload: ShopSale }
+  | { type: 'UPDATE_SHOP_SALE'; payload: ShopSale }
+  | { type: 'DELETE_SHOP_SALE'; payload: string }
+  | { type: 'SET_SHOP_SALES'; payload: ShopSale[] }
+  | { type: 'SET_SHOP_SALE_ITEMS'; payload: ShopSaleItem[] };
 
 // ==================== TASK MANAGEMENT TYPES ====================
 
@@ -945,11 +962,28 @@ export interface InventoryItem {
   categoryName?: string;       // Populated from category lookup
 }
 
-// Purchase Bill Status Enum
+// Warehouse
+export interface Warehouse {
+  id: string;
+  name: string;
+  address?: string;
+  userId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// Purchase Bill Payment Status Enum
 export enum PurchaseBillStatus {
   UNPAID = 'Unpaid',
   PARTIALLY_PAID = 'Partially Paid',
   PAID = 'Paid',
+}
+
+// Purchase Bill Delivery Status Enum
+export enum PurchaseBillDeliveryStatus {
+  PENDING = 'Pending',
+  PARTIALLY_RECEIVED = 'Partially Received',
+  RECEIVED = 'Received',
 }
 
 // Purchase Bill (Shop Purchase Invoice from Vendor)
@@ -968,11 +1002,13 @@ export interface PurchaseBill {
   paidAmount: number;       // Total paid so far
   status: PurchaseBillStatus;
   
-  // Inventory tracking
-  itemsReceived: boolean;   // Whether items have been physically received
-  itemsReceivedDate?: string; // Date items were received
+  // Delivery/Inventory tracking
+  deliveryStatus: PurchaseBillDeliveryStatus; // Delivery status
+  itemsReceived: boolean;   // Whether ALL items have been physically received (legacy, use deliveryStatus)
+  itemsReceivedDate?: string; // Date when all items were received
   
   // References
+  warehouseId?: string;     // Optional warehouse reference
   projectId?: string;       // Optional project reference
   
   // Metadata
@@ -1008,6 +1044,113 @@ export interface PurchaseBillItem {
   inventoryItemName?: string; // Populated from inventory_items lookup
   expenseCategoryId?: string; // Populated from inventory_items
   expenseCategoryName?: string; // Populated from categories lookup
+}
+
+// Shop Configuration
+export interface ShopConfig {
+  id: string;
+  tenantId?: string;
+  
+  // Shop Details
+  shopName?: string;
+  shopAddress?: string;
+  shopPhone?: string;
+  shopEmail?: string;
+  
+  // Pricing Configuration
+  defaultProfitMarginPercent: number;
+  taxEnabled: boolean;
+  taxPercent: number;
+  taxName: string;
+  
+  // Invoice Configuration
+  invoicePrefix: string;
+  invoiceFooterText?: string;
+  
+  // Display Settings
+  showStockQuantity: boolean;
+  lowStockThreshold: number;
+  
+  // Metadata
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// Shop Sale Status
+export enum ShopSaleStatus {
+  COMPLETED = 'Completed',
+  CANCELLED = 'Cancelled',
+  RETURNED = 'Returned',
+}
+
+// Shop Sale (Retail Sales Invoice)
+export interface ShopSale {
+  id: string;
+  tenantId?: string;
+  userId?: string;
+  
+  // Invoice Details
+  invoiceNumber: string;
+  saleDate: string; // ISO date string
+  
+  // Customer (Optional)
+  customerId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  
+  // Financial Details
+  subtotal: number;
+  taxAmount: number;
+  discountAmount: number;
+  totalAmount: number;
+  
+  // Payment Details
+  paidAmount: number;
+  paymentMethod: string;
+  paymentAccountId?: string;
+  
+  // Status
+  status: ShopSaleStatus;
+  
+  // Notes
+  notes?: string;
+  
+  // Metadata
+  createdAt?: string;
+  updatedAt?: string;
+  
+  // Virtual fields (populated from joins - not in DB)
+  items?: ShopSaleItem[];
+  customerContact?: Contact;
+}
+
+// Shop Sale Item (Line Item)
+export interface ShopSaleItem {
+  id: string;
+  tenantId?: string;
+  saleId: string;
+  
+  // Item Details
+  inventoryItemId: string;
+  itemName: string;
+  
+  // Quantity & Pricing
+  quantity: number;
+  costPrice: number; // Purchase cost from inventory
+  sellingPrice: number; // Selling price per unit
+  profitMarginPercent?: number;
+  
+  // Line Total
+  lineTotal: number;
+  lineProfit: number; // (selling_price - cost_price) * quantity
+  
+  // Metadata
+  createdAt?: string;
+  updatedAt?: string;
+  
+  // Virtual fields (populated from joins - not in DB)
+  inventoryItem?: InventoryItem;
+  availableStock?: number;
 }
 
 // Purchase Bill Payment
@@ -1217,6 +1360,8 @@ export interface SupplierRegistrationRequest {
   supplierCompanyName?: string;
   buyerName?: string;
   buyerCompanyName?: string;
+  /** True when there is an active row in registered_suppliers; false after unregister */
+  isRegistrationActive?: boolean;
 }
 
 export interface KpiDefinition {

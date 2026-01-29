@@ -36,9 +36,9 @@ import { useProgress } from './context/ProgressContext';
 import { usePagePreloader } from './hooks/usePagePreloader';
 import Loading from './components/ui/Loading';
 import { OfflineProvider } from './context/OfflineContext';
-import SyncNotification from './components/ui/SyncNotification';
+// import SyncNotification from './components/ui/SyncNotification'; // Removed per user request
 import MobileOfflineWarning from './components/ui/MobileOfflineWarning';
-import WebSocketDebugPanel from './components/ui/WebSocketDebugPanel';
+// import WebSocketDebugPanel from './components/ui/WebSocketDebugPanel'; // Removed per user request
 import { lazyWithRetry } from './utils/lazyWithRetry';
 
 
@@ -607,9 +607,9 @@ const App: React.FC = () => {
         <KPIDrilldown />
         <ProgressDisplay />
 
-        {/* Sync Notification */}
-        <SyncNotification />
-        <WebSocketDebugPanel />
+        {/* Sync Notification - Removed per user request */}
+        {/* <SyncNotification /> */}
+        {/* <WebSocketDebugPanel /> - Removed per user request */}
 
         <UpdateNotification />
         <VersionUpdateNotification onUpdateRequested={() => {

@@ -15,7 +15,7 @@ import {
     TransactionsRepository, InvoicesRepository, BillsRepository, BudgetsRepository,
     RentalAgreementsRepository, ProjectAgreementsRepository, ContractsRepository,
     InstallmentPlansRepository, PlanAmenitiesRepository, RecurringTemplatesRepository, TransactionLogRepository, ErrorLogRepository, 
-    AppSettingsRepository, QuotationsRepository, DocumentsRepository, PMCycleAllocationsRepository, InventoryItemsRepository
+    AppSettingsRepository, QuotationsRepository, DocumentsRepository, PMCycleAllocationsRepository, InventoryItemsRepository, WarehousesRepository
 } from './index';
 import { migrateTenantColumns } from '../tenantMigration';
 import { BaseRepository } from './baseRepository';
@@ -51,6 +51,7 @@ export class AppStateRepository {
     private pmCycleAllocationsRepo = new PMCycleAllocationsRepository();
     private appSettingsRepo = new AppSettingsRepository();
     private inventoryItemsRepo = new InventoryItemsRepository();
+    private warehousesRepo = new WarehousesRepository();
 
     /**
      * Load complete application state from database
@@ -122,6 +123,7 @@ export class AppStateRepository {
         const installmentPlans = this.installmentPlansRepo.findAll();
         const planAmenities = this.planAmenitiesRepo.findAll();
         const inventoryItems = this.inventoryItemsRepo.findAll();
+        const warehouses = this.warehousesRepo.findAll();
 
         // Load settings - try cloud first, then fallback to local
         let settings: any = {};
@@ -327,6 +329,14 @@ export class AppStateRepository {
                 userId: item.userId ?? item.user_id ?? undefined,
                 createdAt: item.createdAt ?? item.created_at ?? undefined,
                 updatedAt: item.updatedAt ?? item.updated_at ?? undefined
+            })),
+            warehouses: (warehouses || []).map(warehouse => ({
+                id: warehouse.id || '',
+                name: warehouse.name || '',
+                address: warehouse.address ?? undefined,
+                userId: warehouse.userId ?? warehouse.user_id ?? undefined,
+                createdAt: warehouse.createdAt ?? warehouse.created_at ?? undefined,
+                updatedAt: warehouse.updatedAt ?? warehouse.updated_at ?? undefined
             })),
             rentalAgreements: rentalAgreements.map(ra => {
                 // Normalize rental agreement to ensure all fields are properly mapped
@@ -792,6 +802,7 @@ export class AppStateRepository {
                             this.budgetsRepo.saveAll(state.budgets);
                             this.planAmenitiesRepo.saveAll(state.planAmenities || []);
                             this.inventoryItemsRepo.saveAll(state.inventoryItems || []);
+                            this.warehousesRepo.saveAll(state.warehouses || []);
                             this.installmentPlansRepo.saveAll((state.installmentPlans || []).map(p => ({
                                 ...p,
                                 discounts: typeof p.discounts === 'string' ? p.discounts : JSON.stringify(p.discounts || []),
@@ -925,5 +936,64 @@ export class AppStateRepository {
         });
 
         return AppStateRepository.saveQueue;
+    }
+
+    /**
+     * Get a single entity by type and id (for conflict resolution in bi-directional sync).
+     */
+    getEntityById(entityKey: string, id: string): Record<string, unknown> | null {
+        const repo = this.getRepoByEntityKey(entityKey);
+        if (!repo) return null;
+        try {
+            const found = (repo as any).findById(id);
+            return found ? (found as Record<string, unknown>) : null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Upsert a single entity (create or update) for bi-directional sync.
+     */
+    upsertEntity(entityKey: string, data: Record<string, unknown>): void {
+        const repo = this.getRepoByEntityKey(entityKey);
+        if (!repo) return;
+        const id = (data.id as string) ?? '';
+        const r = repo as any;
+        const existing = r.findById ? r.findById(id) : null;
+        if (existing) {
+            r.update(id, data);
+        } else {
+            r.create(data);
+        }
+    }
+
+    private getRepoByEntityKey(entityKey: string): BaseRepository<unknown> | null {
+        const map: Record<string, BaseRepository<unknown>> = {
+            accounts: this.accountsRepo,
+            contacts: this.contactsRepo,
+            categories: this.categoriesRepo,
+            projects: this.projectsRepo,
+            buildings: this.buildingsRepo,
+            properties: this.propertiesRepo,
+            units: this.unitsRepo,
+            transactions: this.transactionsRepo,
+            invoices: this.invoicesRepo,
+            bills: this.billsRepo,
+            budgets: this.budgetsRepo,
+            plan_amenities: this.planAmenitiesRepo,
+            inventory_items: this.inventoryItemsRepo,
+            warehouses: this.warehousesRepo,
+            contracts: this.contractsRepo,
+            sales_returns: this.salesReturnsRepo,
+            quotations: this.quotationsRepo,
+            documents: this.documentsRepo,
+            recurring_invoice_templates: this.recurringTemplatesRepo,
+            pm_cycle_allocations: this.pmCycleAllocationsRepo,
+            rental_agreements: this.rentalAgreementsRepo,
+            project_agreements: this.projectAgreementsRepo,
+            installment_plans: this.installmentPlansRepo,
+        };
+        return map[entityKey] ?? null;
     }
 }

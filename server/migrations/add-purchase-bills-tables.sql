@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS purchase_bills (
     paid_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'Unpaid' CHECK (status IN ('Unpaid', 'Partially Paid', 'Paid')),
     
+    -- Warehouse tracking
+    warehouse_id TEXT,
+    
     -- Inventory tracking
     items_received BOOLEAN NOT NULL DEFAULT FALSE,
     items_received_date DATE,
@@ -35,6 +38,7 @@ CREATE TABLE IF NOT EXISTS purchase_bills (
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (vendor_id) REFERENCES contacts(id) ON DELETE RESTRICT,
+    FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
     UNIQUE(tenant_id, bill_number)
 );

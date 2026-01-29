@@ -18,6 +18,7 @@ export { BillsApiRepository } from './billsApi';
 export { BudgetsApiRepository } from './budgetsApi';
 export { PlanAmenitiesApiRepository } from './planAmenitiesApi';
 export { InventoryItemsApiRepository } from './inventoryItemsApi';
+export { WarehousesApiRepository } from './warehousesApi';
 export { RentalAgreementsApiRepository } from './rentalAgreementsApi';
 export { ProjectAgreementsApiRepository } from './projectAgreementsApi';
 export { ContractsApiRepository } from './contractsApi';

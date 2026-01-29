@@ -31,7 +31,8 @@ const SupplierPortal: React.FC = () => {
     const [myRegistrationRequests, setMyRegistrationRequests] = useState<SupplierRegistrationRequest[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
-    
+    const [selectedApprovedRegistration, setSelectedApprovedRegistration] = useState<SupplierRegistrationRequest | null>(null);
+
     const [notifications, setNotifications] = useState<ActivityNotification[]>([]);
     const [pendingFocus, setPendingFocus] = useState<{ type: 'registration' | 'po' | 'invoice'; id?: string } | null>(null);
     
@@ -229,15 +230,14 @@ const SupplierPortal: React.FC = () => {
         const wsClient = getWebSocketClient();
         
         const handleDataUpdate = (data: any) => {
-            if (data.type === 'SUPPLIER_REGISTRATION_APPROVED' || data.type === 'SUPPLIER_REGISTRATION_REJECTED') {
-                // Reload registration requests when status changes
+            if (data.type === 'SUPPLIER_REGISTRATION_APPROVED' || data.type === 'SUPPLIER_REGISTRATION_REJECTED' || data.type === 'SUPPLIER_REGISTRATION_REVOKED') {
                 loadMyRegistrationRequests();
-                
-                // Show success notification for approval
                 if (data.type === 'SUPPLIER_REGISTRATION_APPROVED') {
                     showToast('Registration approved! You are now registered with the buyer organization.', 'success');
                 } else if (data.type === 'SUPPLIER_REGISTRATION_REJECTED') {
                     showToast('Registration request was rejected by the buyer organization.', 'info');
+                } else if (data.type === 'SUPPLIER_REGISTRATION_REVOKED') {
+                    showToast('Registration with this buyer has been removed.', 'info');
                 }
             } else if (data.type === 'PURCHASE_ORDER_RECEIVED') {
                 // Reload purchase orders when new PO is received
@@ -306,6 +306,18 @@ const SupplierPortal: React.FC = () => {
             setMyRegistrationRequests(requests);
         } catch (error) {
             console.error('Error loading registration requests:', error);
+        }
+    };
+
+    const handleUnregisterFromBuyer = async (buyerTenantId: string) => {
+        try {
+            await apiClient.put(`/supplier-registrations/my-registrations/${buyerTenantId}/unregister`);
+            showToast('Unregistered from buyer');
+            setSelectedApprovedRegistration(null);
+            await loadMyRegistrationRequests();
+        } catch (error: any) {
+            const errorMessage = error?.response?.data?.error || error?.message || 'Failed to unregister';
+            showAlert(errorMessage);
         }
     };
 
@@ -442,7 +454,9 @@ const SupplierPortal: React.FC = () => {
     };
 
     // Get approved registrations for the right panel
-    const approvedRegistrations = Array.isArray(myRegistrationRequests) ? myRegistrationRequests.filter(r => r.status === SupplierRegistrationStatus.APPROVED) : [];
+    const approvedRegistrations = Array.isArray(myRegistrationRequests)
+        ? myRegistrationRequests.filter(r => r.status === SupplierRegistrationStatus.APPROVED && r.isRegistrationActive !== false)
+        : [];
 
     if (loading) {
         return (
@@ -855,9 +869,9 @@ const SupplierPortal: React.FC = () => {
                             ) : (
                                 <div className="divide-y divide-slate-100">
                                     {approvedRegistrations.map(reg => (
-                                        <div 
-                                            key={reg.id} 
-                                            data-registration-id={reg.id}
+                                        <div
+                                            key={reg.id}
+                                            onClick={() => setSelectedApprovedRegistration(reg)}
                                             className="px-2 sm:px-3 py-2 sm:py-2.5 hover:bg-slate-50 transition-all cursor-pointer"
                                         >
                                             <div className="flex items-start gap-2">
@@ -1023,6 +1037,48 @@ const SupplierPortal: React.FC = () => {
                                 Create Invoice
                             </Button>
                             <Button variant="secondary" onClick={() => setSelectedPO(null)}>Close</Button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
+
+            {/* Approved Registration Detail Modal - open on click, Unregister */}
+            {selectedApprovedRegistration && (
+                <Modal
+                    isOpen={!!selectedApprovedRegistration}
+                    onClose={() => setSelectedApprovedRegistration(null)}
+                    title="Registered Organization"
+                >
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-1 gap-3">
+                            <div>
+                                <p className="text-xs text-slate-500 mb-1">Company</p>
+                                <p className="font-semibold text-slate-900 text-sm">{selectedApprovedRegistration.buyerCompanyName || selectedApprovedRegistration.buyerName || 'Organization'}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-slate-500 mb-1">Email</p>
+                                <p className="text-sm text-slate-900">{selectedApprovedRegistration.buyerOrganizationEmail || '-'}</p>
+                            </div>
+                            {selectedApprovedRegistration.reviewedAt && (
+                                <div>
+                                    <p className="text-xs text-slate-500 mb-1">Approved</p>
+                                    <p className="text-sm text-slate-900">{new Date(selectedApprovedRegistration.reviewedAt).toLocaleDateString()}</p>
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex justify-between pt-3 border-t border-slate-200">
+                            <Button variant="secondary" onClick={() => setSelectedApprovedRegistration(null)}>Close</Button>
+                            <Button
+                                variant="primary"
+                                className="bg-amber-600 hover:bg-amber-700"
+                                onClick={() => {
+                                    if (window.confirm('Unregister from this buyer? You will be removed from their registered suppliers list.')) {
+                                        handleUnregisterFromBuyer(selectedApprovedRegistration.buyerTenantId);
+                                    }
+                                }}
+                            >
+                                Unregister
+                            </Button>
                         </div>
                     </div>
                 </Modal>

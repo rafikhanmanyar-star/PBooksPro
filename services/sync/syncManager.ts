@@ -28,6 +28,7 @@ export interface SyncOperation {
   status: 'pending' | 'syncing' | 'completed' | 'failed';
   retries: number;
   errorMessage?: string;
+  syncStartedAt?: number; // Timestamp when sync started (to detect stuck operations)
 }
 
 class SyncManager {
@@ -38,8 +39,9 @@ class SyncManager {
   private maxRetries = 3;
   private retryDelay = 5000; // 5 seconds
   
-  // Batching configuration
-  private readonly BATCH_SIZE = 10; // Process max 10 operations per batch
+  // Batching configuration - larger batches and parallel execution for faster sync
+  private readonly BATCH_SIZE = 20; // Process up to 20 operations per batch in parallel
+  private readonly BATCH_DELAY_MS = 300; // Short delay between batches (was 2000ms)
 
   constructor() {
     // Load sync queue from local storage on initialization
@@ -190,23 +192,27 @@ class SyncManager {
    * Public method - can be called explicitly on login/reconnection
    */
   async syncQueueBatch(): Promise<void> {
+    console.log('[SyncManager] 🔄 syncQueueBatch() called');
+    
     if (isMobileDevice()) {
+      console.log('[SyncManager] Mobile device - skipping sync');
       return; // No sync needed on mobile
     }
 
     if (this.isSyncing) {
+      console.warn('[SyncManager] ⚠️ Already syncing (isSyncing=true) - skipping. This might indicate the flag is stuck!');
       return; // Already syncing
     }
 
     if (!this.connectionMonitor.isOnline()) {
-      console.log('[SyncManager] Offline, skipping sync');
+      console.log('[SyncManager] ⚠️ Offline - skipping sync');
       return;
     }
 
     // Check if user is authenticated before attempting sync
     const authenticated = await this.isAuthenticated();
     if (!authenticated) {
-      console.log('[SyncManager] User not authenticated, skipping sync');
+      console.log('[SyncManager] ⚠️ User not authenticated - skipping sync');
       return;
     }
 
@@ -214,68 +220,83 @@ class SyncManager {
     const pendingOps = this.queue.filter(op => op.status === 'pending' || op.status === 'failed');
     
     if (pendingOps.length === 0) {
+      console.log('[SyncManager] ℹ️ No pending operations to sync');
       return; // Nothing to sync
     }
 
-    // BATCH: Only sync a limited number of operations at a time
-    // This prevents server overload when there are many pending operations
+    // BATCH: Process operations in parallel within each batch for much faster sync
     const batchToSync = pendingOps.slice(0, this.BATCH_SIZE);
     const remainingCount = pendingOps.length - batchToSync.length;
 
     this.isSyncing = true;
     
-    console.log(`[SyncManager] Starting sync batch: ${batchToSync.length} operations (${remainingCount} remaining in queue)`);
+    console.log(`[SyncManager] 🚀 Starting sync batch: ${batchToSync.length} operations in parallel (${remainingCount} remaining in queue)`);
 
     try {
-      for (const operation of batchToSync) {
-        try {
-          await this.syncOperation(operation);
-          operation.status = 'completed';
-          console.log(`[SyncManager] ✅ Synced ${operation.type} for ${operation.entity}:${operation.entityId}`);
-        } catch (error: any) {
-          // Don't retry if authentication is required
-          if (error?.message === 'Authentication required' || error?.status === 401) {
-            console.log(`[SyncManager] ⚠️ Authentication required, marking operation as pending (will sync after login)`);
-            operation.status = 'pending'; // Keep as pending, will sync after login
-            continue; // Skip to next operation
+      // Mark operations as syncing with timestamp
+      batchToSync.forEach(op => {
+        op.status = 'syncing';
+        op.syncStartedAt = Date.now();
+      });
+      this.saveSyncQueue(); // Save immediately so status is visible
+      
+      // Process batch in parallel (like SyncEngine) instead of one-by-one
+      await Promise.allSettled(
+        batchToSync.map(async (operation) => {
+          try {
+            await this.syncOperation(operation);
+            operation.status = 'completed';
+            operation.syncStartedAt = undefined;
+            console.log(`[SyncManager] ✅ Synced ${operation.type} for ${operation.entity}:${operation.entityId}`);
+          } catch (error: any) {
+            // Don't retry if authentication is required
+            if (error?.message === 'Authentication required' || error?.status === 401) {
+              console.log(`[SyncManager] ⚠️ Authentication required, marking operation as pending (will sync after login)`);
+              operation.status = 'pending'; // Keep as pending, will sync after login
+              return;
+            }
+            
+            operation.retries++;
+            operation.status = 'failed';
+            operation.syncStartedAt = undefined;
+            operation.errorMessage = error instanceof Error ? error.message : String(error);
+            
+            if (operation.retries >= this.maxRetries) {
+              console.error(`[SyncManager] ❌ Failed to sync ${operation.entity}:${operation.entityId} after ${this.maxRetries} retries:`, error);
+            } else {
+              console.warn(`[SyncManager] ⚠️ Sync failed (${operation.retries}/${this.maxRetries}), will retry: ${operation.entity}:${operation.entityId}`, error);
+            }
           }
-          
-          operation.retries++;
-          operation.status = 'failed';
-          operation.errorMessage = error instanceof Error ? error.message : String(error);
-          
-          if (operation.retries >= this.maxRetries) {
-            console.error(`[SyncManager] ❌ Failed to sync ${operation.entity}:${operation.entityId} after ${this.maxRetries} retries`);
-          } else {
-            console.warn(`[SyncManager] ⚠️ Sync failed, will retry on next login/reconnection (${operation.retries}/${this.maxRetries}):`, error);
-            // Don't auto-retry - will retry on next login/reconnection
-          }
-        }
-      }
+        })
+      );
 
       // Remove completed operations
       this.queue = this.queue.filter(op => op.status !== 'completed');
       this.saveSyncQueue();
 
-      const remainingPending = this.queue.filter(op => op.status === 'pending' || op.status === 'failed').length;
-      console.log(`[SyncManager] Batch sync completed. ${remainingPending} operations remaining`);
+      const remainingPending = this.queue.filter(op => op.status === 'pending').length;
+      const totalFailed = this.queue.filter(op => op.status === 'failed').length;
+      console.log(`[SyncManager] ✅ Batch sync completed. ${remainingPending} pending, ${totalFailed} failed (will retry on reconnect)`);
 
       // If there are more pending operations, continue syncing batches
-      // This ensures all pending operations are synced on login/reconnection
       if (remainingPending > 0) {
-        // Continue with next batch after a short delay
+        console.log(`[SyncManager] ⏱️ Scheduling next batch in ${this.BATCH_DELAY_MS}ms...`);
         setTimeout(async () => {
           if (!this.isSyncing && this.connectionMonitor.isOnline()) {
             const isAuth = await this.isAuthenticated();
             if (isAuth) {
+              console.log('[SyncManager] 🔄 Starting next batch...');
               await this.syncQueueBatch();
             }
           }
-        }, 2000); // 2 second delay between batches
+        }, this.BATCH_DELAY_MS);
+      } else {
+        console.log(`[SyncManager] 🎉 All pending operations synced! (${totalFailed} failed operations will retry on reconnect)`);
       }
     } catch (error) {
-      console.error('[SyncManager] Sync error:', error);
+      console.error('[SyncManager] ❌ Batch sync error:', error);
     } finally {
+      console.log('[SyncManager] 🔓 Resetting isSyncing flag to false');
       this.isSyncing = false;
     }
   }
@@ -315,6 +336,8 @@ class SyncManager {
       'bills': '/bills',
       'installment_plans': '/installment-plans',
       'plan_amenities': '/plan-amenities',
+      'warehouse': '/warehouses',
+      'warehouses': '/warehouses',
     };
     
     const endpoint = endpointMap[operation.entity] || `/${operation.entity}`;
@@ -389,12 +412,36 @@ class SyncManager {
     syncing: number;
     failed: number;
   } {
-    return {
+    const status = {
       total: this.queue.length,
       pending: this.queue.filter(op => op.status === 'pending').length,
       syncing: this.queue.filter(op => op.status === 'syncing').length,
       failed: this.queue.filter(op => op.status === 'failed').length,
     };
+    // Reduced logging - only log when status changes or every 10 calls
+    if (!this._lastLoggedStatus || 
+        JSON.stringify(status) !== JSON.stringify(this._lastLoggedStatus) ||
+        (this._statusCallCount++ % 10 === 0)) {
+      console.log(`[SyncManager] 📊 Queue: ${status.pending} pending, ${status.syncing} syncing, ${status.failed} failed (${status.total} total)`);
+      this._lastLoggedStatus = status;
+    }
+    return status;
+  }
+  
+  private _lastLoggedStatus?: { total: number; pending: number; syncing: number; failed: number };
+  private _statusCallCount = 0;
+
+  /**
+   * Remove a pending/completed operation by entity and entityId (e.g. after synced from outbox)
+   */
+  removeByEntity(entity: string, entityId: string): void {
+    const before = this.queue.length;
+    this.queue = this.queue.filter(
+      op => !(op.entity === entity && op.entityId === entityId)
+    );
+    if (this.queue.length !== before) {
+      this.saveSyncQueue();
+    }
   }
 
   /**
@@ -413,14 +460,17 @@ class SyncManager {
 
   /**
    * Clear all operations from queue
-   * Used when loading data from cloud to remove stale sync operations
+   * ⚠️ WARNING: Should NOT be called during bi-directional sync!
+   * Local changes need to be pushed upstream before clearing.
+   * @deprecated Use bi-directional sync instead of clearing queue
    */
   clearAll(): void {
     const count = this.queue.length;
+    console.warn(`[SyncManager] ⚠️ clearAll() called - clearing ${count} operations! Stack:`, new Error().stack?.split('\n').slice(2, 5).join('\n'));
     this.queue = [];
     this.saveSyncQueue();
     if (count > 0) {
-      console.log(`[SyncManager] Cleared all ${count} operations from queue (data loaded from cloud)`);
+      console.warn(`[SyncManager] ⚠️ Cleared all ${count} operations from queue`);
     }
   }
 

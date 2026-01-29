@@ -50,6 +50,10 @@ export class InventoryItemsRepository extends BaseRepository<any> {
     constructor() { super('inventory_items'); }
 }
 
+export class WarehousesRepository extends BaseRepository<any> {
+    constructor() { super('warehouses'); }
+}
+
 export class TransactionsRepository extends BaseRepository<any> {
     private useNativeBackend: boolean = false;
     private nativeService: any = null;

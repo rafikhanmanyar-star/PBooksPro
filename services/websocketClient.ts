@@ -6,12 +6,9 @@
  */
 
 import { io, Socket } from 'socket.io-client';
+import { getApiBaseUrl, getWsServerUrl } from '../config/apiUrl';
 import { logger } from './logger';
 import { apiClient } from './api/client';
-
-// WebSocket server URL (same base as API)
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://pbookspro-api.onrender.com/api';
-const WS_SERVER_URL = import.meta.env.VITE_WS_URL || API_BASE_URL.replace(/\/api\/?$/, '');
 
 export interface WebSocketEvent {
   type: string;
@@ -51,7 +48,7 @@ export class WebSocketClient {
   private isRefreshingAuth: boolean = false;
   private debugState: WebSocketDebugState = {
     status: 'disconnected',
-    serverUrl: WS_SERVER_URL,
+    serverUrl: getWsServerUrl(),
     tenantId: null,
   };
 
@@ -92,7 +89,7 @@ export class WebSocketClient {
     logger.logCategory('websocket', '🔌 Connecting to WebSocket server...');
 
     try {
-      this.socket = io(WS_SERVER_URL, {
+      this.socket = io(getWsServerUrl(), {
         auth: {
           token: resolvedToken,
         },
@@ -408,6 +405,19 @@ export class WebSocketClient {
 
     this.socket.on('plan_amenity:deleted', (data: any) => {
       this.handleEvent('plan_amenity:deleted', data);
+    });
+
+    // WhatsApp events
+    this.socket.on('whatsapp:message:received', (data: any) => {
+      this.handleEvent('whatsapp:message:received', data);
+    });
+
+    this.socket.on('whatsapp:message:sent', (data: any) => {
+      this.handleEvent('whatsapp:message:sent', data);
+    });
+
+    this.socket.on('whatsapp:message:status', (data: any) => {
+      this.handleEvent('whatsapp:message:status', data);
     });
   }
 

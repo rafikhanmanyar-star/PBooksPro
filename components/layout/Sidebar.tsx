@@ -212,7 +212,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
             {
                 title: 'People',
                 items: [
-                    { page: 'contacts', label: 'Contacts', icon: ICONS.addressBook },
                     { page: 'payroll', label: 'Payroll', icon: ICONS.users },
                 ]
             },
@@ -220,7 +219,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 title: 'B2B',
                 items: [
             { page: 'bizPlanet', label: 'Biz Planet', icon: ICONS.globe },
-            { page: 'marketing', label: 'Marketing', icon: ICONS.trendingUp },
         ]
     }
 ];

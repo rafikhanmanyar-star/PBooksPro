@@ -19,6 +19,7 @@ import { BillsApiRepository } from './repositories/billsApi';
 import { BudgetsApiRepository } from './repositories/budgetsApi';
 import { PlanAmenitiesApiRepository } from './repositories/planAmenitiesApi';
 import { InventoryItemsApiRepository } from './repositories/inventoryItemsApi';
+import { WarehousesApiRepository } from './repositories/warehousesApi';
 import { InstallmentPlansApiRepository } from './repositories/installmentPlansApi';
 import { RentalAgreementsApiRepository } from './repositories/rentalAgreementsApi';
 import { ProjectAgreementsApiRepository } from './repositories/projectAgreementsApi';
@@ -30,7 +31,15 @@ import { RecurringInvoiceTemplatesApiRepository } from './repositories/recurring
 import { AppSettingsApiRepository } from './repositories/appSettingsApi';
 import { PMCycleAllocationsApiRepository } from './repositories/pmCycleAllocationsApi';
 import { TransactionLogApiRepository } from './repositories/transactionLogApi';
+import { apiClient } from './client';
 import { logger } from '../logger';
+
+/** Response from GET /api/state/changes?since=ISO8601 (incremental sync) */
+export interface StateChangesResponse {
+  since: string;
+  updatedAt: string;
+  entities: Record<string, unknown[]>;
+}
 
 export class AppStateApiService {
   private accountsRepo: AccountsApiRepository;
@@ -46,6 +55,7 @@ export class AppStateApiService {
   private budgetsRepo: BudgetsApiRepository;
   private planAmenitiesRepo: PlanAmenitiesApiRepository;
   private inventoryItemsRepo: InventoryItemsApiRepository;
+  private warehousesRepo: WarehousesApiRepository;
   private installmentPlansRepo: InstallmentPlansApiRepository;
   private rentalAgreementsRepo: RentalAgreementsApiRepository;
   private projectAgreementsRepo: ProjectAgreementsApiRepository;
@@ -72,6 +82,7 @@ export class AppStateApiService {
     this.budgetsRepo = new BudgetsApiRepository();
     this.planAmenitiesRepo = new PlanAmenitiesApiRepository();
     this.inventoryItemsRepo = new InventoryItemsApiRepository();
+    this.warehousesRepo = new WarehousesApiRepository();
     this.installmentPlansRepo = new InstallmentPlansApiRepository();
     this.rentalAgreementsRepo = new RentalAgreementsApiRepository();
     this.projectAgreementsRepo = new ProjectAgreementsApiRepository();
@@ -83,6 +94,16 @@ export class AppStateApiService {
     this.appSettingsRepo = new AppSettingsApiRepository();
     this.pmCycleAllocationsRepo = new PMCycleAllocationsApiRepository();
     this.transactionLogRepo = new TransactionLogApiRepository();
+  }
+
+  /**
+   * Load incremental state changes from API (for bi-directional sync).
+   * Returns only entities updated after the given timestamp.
+   */
+  async loadStateChanges(since: string): Promise<StateChangesResponse> {
+    const endpoint = `/state/changes?since=${encodeURIComponent(since)}`;
+    const data = await apiClient.get<StateChangesResponse>(endpoint);
+    return data;
   }
 
   /**
@@ -116,7 +137,9 @@ export class AppStateApiService {
         documents,
         recurringInvoiceTemplates,
         pmCycleAllocations,
-        transactionLog
+        transactionLog,
+        inventoryItems,
+        warehouses
       ] = await Promise.all([
         this.accountsRepo.findAll().catch(err => {
           logger.errorCategory('sync', 'Error loading accounts from API:', err);
@@ -206,6 +229,14 @@ export class AppStateApiService {
           console.error('Error loading transaction logs from API:', err);
           return [];
         }),
+        this.inventoryItemsRepo.findAll().catch(err => {
+          console.error('Error loading inventory items from API:', err);
+          return [];
+        }),
+        this.warehousesRepo.findAll().catch(err => {
+          console.error('Error loading warehouses from API:', err);
+          return [];
+        }),
       ]);
 
       logger.logCategory('sync', '✅ Loaded from API:', {
@@ -230,6 +261,8 @@ export class AppStateApiService {
         documents: documents.length,
         recurringInvoiceTemplates: recurringInvoiceTemplates.length,
         pmCycleAllocations: pmCycleAllocations.length,
+        inventoryItems: inventoryItems.length,
+        warehouses: warehouses.length,
       });
 
       const parseJsonSafe = <T,>(value: any, fallback: T): T => {
@@ -678,6 +711,30 @@ export class AppStateApiService {
       // Normalize rental agreements from API (transform snake_case to camelCase)
       const normalizedRentalAgreements = rentalAgreements.map((ra: any) => this.normalizeRentalAgreement(ra));
 
+      // Normalize inventory items from API (transform snake_case to camelCase)
+      const normalizedInventoryItems = (inventoryItems || []).map((item: any) => ({
+        id: item.id || '',
+        name: item.name || '',
+        parentId: item.parentId ?? item.parent_id ?? undefined,
+        expenseCategoryId: item.expenseCategoryId ?? item.expense_category_id ?? undefined,
+        unitType: item.unitType ?? item.unit_type ?? 'QUANTITY',
+        pricePerUnit: typeof item.pricePerUnit === 'number' ? item.pricePerUnit : (typeof item.price_per_unit === 'number' ? item.price_per_unit : parseFloat(String(item.price_per_unit || item.pricePerUnit || '0'))),
+        description: item.description ?? undefined,
+        userId: item.userId ?? item.user_id ?? undefined,
+        createdAt: item.createdAt ?? item.created_at ?? undefined,
+        updatedAt: item.updatedAt ?? item.updated_at ?? undefined
+      }));
+
+      // Normalize warehouses from API (transform snake_case to camelCase)
+      const normalizedWarehouses = (warehouses || []).map((w: any) => ({
+        id: w.id || '',
+        name: w.name || '',
+        address: w.address ?? undefined,
+        userId: w.userId ?? w.user_id ?? undefined,
+        createdAt: w.createdAt ?? w.created_at ?? undefined,
+        updatedAt: w.updatedAt ?? w.updated_at ?? undefined
+      }));
+
       // Return partial state with API-loaded data
       // Other entities will remain from initial state or be loaded separately
       return {
@@ -703,6 +760,8 @@ export class AppStateApiService {
         recurringInvoiceTemplates: recurringInvoiceTemplates || [],
         pmCycleAllocations: pmCycleAllocations || [],
         transactionLog: transactionLog || [],
+        inventoryItems: normalizedInventoryItems,
+        warehouses: normalizedWarehouses,
       };
     } catch (error) {
       logger.errorCategory('sync', '❌ Error loading state from API:', error);

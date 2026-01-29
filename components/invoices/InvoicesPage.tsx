@@ -783,16 +783,33 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                         className="flex-shrink-0 flex flex-col h-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden hidden md:flex"
                         style={{ width: sidebarWidth }}
                     >
-                        <div className="p-3 bg-slate-50/50 border-b border-slate-100 flex justify-between items-center">
-                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Hierarchy</span>
-                            {treeFilter && (
-                                <button
-                                    onClick={() => setTreeFilter(null)}
-                                    className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full hover:bg-indigo-100 font-medium transition-colors"
-                                >
-                                    Clear Filter
-                                </button>
-                            )}
+                        {/* Group By: visible in sidebar when tree is shown (e.g. rental management with hideTitleAndGoBack) */}
+                        <div className="p-3 bg-slate-50/50 border-b border-slate-100 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Group by</span>
+                                {treeFilter && (
+                                    <button
+                                        onClick={() => setTreeFilter(null)}
+                                        className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full hover:bg-indigo-100 font-medium transition-colors"
+                                    >
+                                        Clear Filter
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex bg-slate-100 p-1 rounded-lg">
+                                {(isRental ? ['tenant', 'owner', 'property'] : ['owner', 'property']).map((opt) => (
+                                    <button
+                                        key={opt}
+                                        onClick={() => setGroupBy(opt as 'tenant' | 'owner' | 'property')}
+                                        className={`flex-1 px-2 py-1.5 text-xs font-medium rounded-md transition-all capitalize ${groupBy === opt
+                                            ? 'bg-white text-indigo-600 shadow-sm font-bold ring-1 ring-black/5'
+                                            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                                        }`}
+                                    >
+                                        {opt === 'property' && isRental ? 'Property' : opt === 'property' ? 'Unit' : opt}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                         {/* Tree View Component */}
                         <div className="flex-grow overflow-y-auto p-2">

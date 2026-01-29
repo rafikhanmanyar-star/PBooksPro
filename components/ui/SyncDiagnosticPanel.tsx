@@ -7,6 +7,7 @@
 import React, { useState, useEffect } from 'react';
 import { getSyncQueue } from '../../services/syncQueue';
 import { getSyncEngine } from '../../services/syncEngine';
+import { getSyncManager } from '../../services/sync/syncManager';
 import { SyncQueueItem } from '../../types/sync';
 import { useAuth } from '../../context/AuthContext';
 import { isMobileDevice } from '../../utils/platformDetection';
@@ -25,6 +26,8 @@ const SyncDiagnosticPanel: React.FC<SyncDiagnosticPanelProps> = ({ isOpen, onClo
     completed: 0,
     failed: 0,
   });
+  // Local queue (SyncManager) - same source as the status indicator "1 in progress, 65 waiting"
+  const [localQueueStats, setLocalQueueStats] = useState({ total: 0, pending: 0, syncing: 0, failed: 0 });
   const [failedItems, setFailedItems] = useState<SyncQueueItem[]>([]);
   const [syncingItems, setSyncingItems] = useState<SyncQueueItem[]>([]);
   const [pendingItems, setPendingItems] = useState<SyncQueueItem[]>([]);
@@ -33,16 +36,32 @@ const SyncDiagnosticPanel: React.FC<SyncDiagnosticPanelProps> = ({ isOpen, onClo
 
   const syncQueue = getSyncQueue();
   const syncEngine = getSyncEngine();
+  const syncManager = getSyncManager();
 
   // Mobile doesn't have sync queue
   if (isMobileDevice()) {
     return null;
   }
 
+  // Refresh SyncManager stats immediately when modal opens and every 1s (same source as status indicator)
+  const refreshLocalQueueStats = React.useCallback(() => {
+    const status = getSyncManager().getQueueStatus();
+    console.log('[SyncDiagnosticPanel] Refreshing local queue stats:', status);
+    setLocalQueueStats(status);
+  }, []);
+
+  useEffect(() => {
+    if (isOpen && isAuthenticated && user?.tenant?.id) {
+      refreshLocalQueueStats();
+      const fastInterval = setInterval(refreshLocalQueueStats, 1000);
+      return () => clearInterval(fastInterval);
+    }
+  }, [isOpen, isAuthenticated, user?.tenant?.id, refreshLocalQueueStats]);
+
   useEffect(() => {
     if (isOpen && isAuthenticated && user?.tenant?.id) {
       loadDiagnostics();
-      // Refresh every 3 seconds while open
+      // Full refresh (IndexedDB + SyncManager) every 3 seconds while open
       const interval = setInterval(loadDiagnostics, 3000);
       return () => clearInterval(interval);
     }
@@ -53,6 +72,10 @@ const SyncDiagnosticPanel: React.FC<SyncDiagnosticPanelProps> = ({ isOpen, onClo
 
     try {
       setLoading(true);
+      // Local queue (SyncManager) - keep in sync with status indicator
+      const mgrStatus = syncManager.getQueueStatus();
+      console.log('[SyncDiagnosticPanel] loadDiagnostics - SyncManager status:', mgrStatus);
+      setLocalQueueStats(mgrStatus);
       const [statsData, failed, syncing, pending] = await Promise.all([
         syncQueue.getSyncStats(user.tenant.id),
         syncQueue.getFailedItems(user.tenant.id),
@@ -162,6 +185,31 @@ const SyncDiagnosticPanel: React.FC<SyncDiagnosticPanelProps> = ({ isOpen, onClo
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-4">
+          {/* Local queue (SyncManager) - always visible, updates every 1s; same source as status indicator */}
+          <div className="mb-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">
+              Local sync queue (SyncManager) — matches status indicator
+            </h3>
+            <div className="grid grid-cols-4 gap-4">
+              <div className="bg-white p-3 rounded border border-slate-100">
+                <div className="text-xs text-gray-600">Total</div>
+                <div className="text-xl font-bold text-slate-700">{localQueueStats.total}</div>
+              </div>
+              <div className="bg-white p-3 rounded border border-slate-100">
+                <div className="text-xs text-gray-600">Pending</div>
+                <div className="text-xl font-bold text-amber-600">{localQueueStats.pending}</div>
+              </div>
+              <div className="bg-white p-3 rounded border border-slate-100">
+                <div className="text-xs text-gray-600">Syncing</div>
+                <div className="text-xl font-bold text-blue-600">{localQueueStats.syncing}</div>
+              </div>
+              <div className="bg-white p-3 rounded border border-slate-100">
+                <div className="text-xs text-gray-600">Failed</div>
+                <div className="text-xl font-bold text-red-600">{localQueueStats.failed}</div>
+              </div>
+            </div>
+          </div>
+
           {loading && (
             <div className="flex items-center justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -170,7 +218,7 @@ const SyncDiagnosticPanel: React.FC<SyncDiagnosticPanelProps> = ({ isOpen, onClo
 
           {!loading && (
             <>
-              {/* Statistics */}
+              {/* IndexedDB queue (transactions, contacts, etc.) */}
               <div className="grid grid-cols-5 gap-4 mb-6">
                 <div className="bg-blue-50 p-4 rounded-lg">
                   <div className="text-sm text-gray-600">Total</div>
@@ -326,8 +374,8 @@ const SyncDiagnosticPanel: React.FC<SyncDiagnosticPanelProps> = ({ isOpen, onClo
                 </div>
               )}
 
-              {/* Empty State */}
-              {stats.total === 0 && (
+              {/* Empty State - both queues empty */}
+              {stats.total === 0 && localQueueStats.total === 0 && (
                 <div className="text-center py-8 text-gray-500">
                   <p>No items in sync queue</p>
                 </div>

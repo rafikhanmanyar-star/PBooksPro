@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
+import { getApiBaseUrl } from '../../config/apiUrl';
 import { useAppContext } from '../../context/AppContext';
 import { ICONS } from '../../constants';
 import Button from '../ui/Button';
@@ -142,8 +143,8 @@ const ImportExportWizard: React.FC = () => {
   const handleDownloadTemplate = async (sheetName?: string) => {
     try {
       setIsLoading(true);
-      // Get base URL from environment or use default
-      const baseUrl = import.meta.env.VITE_API_URL || 'https://pbookspro-api.onrender.com/api';
+      // Use same host as app so works when opened from another PC
+      const baseUrl = getApiBaseUrl();
       const token = localStorage.getItem('auth_token') || '';
       const tenantId = localStorage.getItem('tenant_id') || '';
       
@@ -206,8 +207,8 @@ const ImportExportWizard: React.FC = () => {
   const handleExportData = async () => {
     try {
       setIsLoading(true);
-      // Get base URL from environment or use default
-      const baseUrl = import.meta.env.VITE_API_URL || 'https://pbookspro-api.onrender.com/api';
+      // Use same host as app so works when opened from another PC
+      const baseUrl = getApiBaseUrl();
       const token = localStorage.getItem('auth_token') || '';
       const tenantId = localStorage.getItem('tenant_id') || '';
       

@@ -6,6 +6,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { getApiBaseUrl } from '../config/apiUrl';
 import { apiClient } from '../services/api/client';
 import { logger } from '../services/logger';
 
@@ -106,6 +107,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Clear user_id from localStorage on logout
       localStorage.removeItem('user_id');
       
+      try {
+        const { getBidirectionalSyncService } = await import('../services/sync/bidirectionalSyncService');
+        getBidirectionalSyncService().stop();
+      } catch (_) {}
       setState({
         isAuthenticated: false,
         user: null,
@@ -162,6 +167,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [state.isAuthenticated]);
 
   /**
+   * Start bi-directional sync when authenticated (connectivity-driven + run once)
+   */
+  useEffect(() => {
+    if (!state.isAuthenticated || !state.tenant?.id) return;
+    (async () => {
+      try {
+        const { isMobileDevice } = await import('../utils/platformDetection');
+        if (isMobileDevice()) return;
+        const { getBidirectionalSyncService } = await import('../services/sync/bidirectionalSyncService');
+        const bidir = getBidirectionalSyncService();
+        bidir.start(state.tenant!.id);
+        await bidir.runSync(state.tenant!.id);
+      } catch (_) {}
+    })();
+  }, [state.isAuthenticated, state.tenant?.id]);
+
+  /**
    * Handle app close/refresh - attempt to logout gracefully
    */
   useEffect(() => {
@@ -174,8 +196,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Use sendBeacon for more reliable delivery during page unload
         const token = apiClient.getToken();
         if (token && typeof navigator !== 'undefined' && navigator.sendBeacon) {
-          // Construct logout URL (API base URL is hardcoded in client)
-          const API_BASE_URL = 'https://pbookspro-api.onrender.com/api';
+          // Construct logout URL (same host as app so works when opened from another PC)
+          const API_BASE_URL = getApiBaseUrl();
           const logoutUrl = `${API_BASE_URL}/auth/logout`;
           
           // Create headers with token

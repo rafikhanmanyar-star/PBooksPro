@@ -121,6 +121,7 @@ export default defineConfig({
     },
   ],
   server: {
+    host: true, // Listen on 0.0.0.0 so other devices on the network can connect
     fs: {
       // Allow serving files from node_modules
       allow: ['..']

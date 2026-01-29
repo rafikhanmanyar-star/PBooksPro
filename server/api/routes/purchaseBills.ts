@@ -23,8 +23,10 @@ function normalizePurchaseBill(row: any): any {
     totalAmount: typeof row.total_amount === 'number' ? row.total_amount : parseFloat(String(row.total_amount ?? '0')),
     paidAmount: typeof row.paid_amount === 'number' ? row.paid_amount : parseFloat(String(row.paid_amount ?? '0')),
     status: row.status ?? 'Unpaid',
+    deliveryStatus: row.delivery_status ?? 'Pending',
     itemsReceived: Boolean(row.items_received),
     itemsReceivedDate: row.items_received_date != null ? String(row.items_received_date).split('T')[0] : undefined,
+    warehouseId: row.warehouse_id ?? undefined,
     projectId: row.project_id ?? undefined,
     createdAt: row.created_at ?? undefined,
     updatedAt: row.updated_at ?? undefined,
@@ -143,8 +145,8 @@ router.post('/', async (req: TenantRequest, res) => {
       `INSERT INTO purchase_bills (
         id, tenant_id, user_id, bill_number, vendor_id, bill_date, due_date,
         description, total_amount, paid_amount, status, items_received,
-        items_received_date, project_id, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+        items_received_date, warehouse_id, project_id, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
                 COALESCE((SELECT created_at FROM purchase_bills WHERE id = $1), NOW()), NOW())
       ON CONFLICT (id) 
       DO UPDATE SET
@@ -158,6 +160,7 @@ router.post('/', async (req: TenantRequest, res) => {
         status = EXCLUDED.status,
         items_received = EXCLUDED.items_received,
         items_received_date = EXCLUDED.items_received_date,
+        warehouse_id = EXCLUDED.warehouse_id,
         project_id = EXCLUDED.project_id,
         user_id = EXCLUDED.user_id,
         updated_at = NOW()
@@ -176,6 +179,7 @@ router.post('/', async (req: TenantRequest, res) => {
         bill.status || 'Unpaid',
         bill.itemsReceived || false,
         bill.itemsReceivedDate || null,
+        bill.warehouseId || null,
         bill.projectId || null
       ]
     );
@@ -774,34 +778,50 @@ router.post('/:id/receive', async (req: TenantRequest, res) => {
         }
       }
       
-      // Check if all items are fully received
+      // Check delivery status - calculate if all, some, or no items are received
       const allItemsResult = await client.query(
         'SELECT quantity, received_quantity FROM purchase_bill_items WHERE purchase_bill_id = $1 AND tenant_id = $2',
         [billId, req.tenantId]
       );
       const allItems = allItemsResult.rows;
       
+      // Check if all items are fully received
       const allReceived = allItems.every((item: any) => 
-        parseFloat(item.received_quantity) >= parseFloat(item.quantity) - 0.01
+        parseFloat(item.received_quantity || '0') >= parseFloat(item.quantity) - 0.01
       );
       
-      // Update bill items_received status
+      // Check if any items are partially or fully received
+      const anyReceived = allItems.some((item: any) => 
+        parseFloat(item.received_quantity || '0') > 0
+      );
+      
+      // Determine delivery status
+      let deliveryStatus = 'Pending';
+      if (allReceived) {
+        deliveryStatus = 'Received';
+      } else if (anyReceived) {
+        deliveryStatus = 'Partially Received';
+      }
+      
+      // Update bill with delivery status
       await client.query(
         `UPDATE purchase_bills 
          SET items_received = $1, 
+             delivery_status = $2,
              items_received_date = CASE WHEN $1 THEN NOW() ELSE items_received_date END,
              updated_at = NOW()
-         WHERE id = $2 AND tenant_id = $3`,
-        [allReceived, billId, req.tenantId]
+         WHERE id = $3 AND tenant_id = $4`,
+        [allReceived, deliveryStatus, billId, req.tenantId]
       );
       
-      return { items: updatedItems, allReceived };
+      return { items: updatedItems, allReceived, deliveryStatus };
     });
     
     // Emit WebSocket event
     emitToTenant(req.tenantId!, WS_EVENTS.PURCHASE_BILL_UPDATED, {
       billId,
       itemsReceived: result.allReceived,
+      deliveryStatus: result.deliveryStatus,
       userId: req.user?.userId,
     });
     

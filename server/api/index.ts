@@ -41,8 +41,12 @@ if (process.env.LOG_ONLY_PAYMENT === 'true') {
 }
 
 // Run migrations on startup (non-blocking - don't await)
-// Server starts immediately, migrations complete in background
+// Set DISABLE_MIGRATIONS=true to skip (e.g. staging DB already updated)
 (async () => {
+  if (process.env.DISABLE_MIGRATIONS === 'true') {
+    console.log('⏭️  Migrations disabled (DISABLE_MIGRATIONS=true)');
+    return;
+  }
   try {
     const { runMigrations } = await import('../scripts/run-migrations-on-startup.js');
     runMigrations().catch((err: any) => {
@@ -101,9 +105,13 @@ import purchaseOrdersRouter from './routes/purchaseOrders.js';
 import p2pInvoicesRouter from './routes/p2pInvoices.js';
 import p2pBillsRouter from './routes/p2pBills.js';
 import supplierRegistrationsRouter from './routes/supplierRegistrations.js';
+import marketplaceRouter from './routes/marketplace.js';
 import payrollRouter from './routes/payroll.js';
 import inventoryItemsRouter from './routes/inventoryItems.js';
+import warehousesRouter from './routes/warehouses.js';
 import purchaseBillsRouter from './routes/purchaseBills.js';
+import stateChangesRouter from './routes/stateChanges.js';
+import shopSalesRouter from './routes/shopSales.js';
 import { tenantMiddleware } from '../middleware/tenantMiddleware.js';
 import { licenseMiddleware } from '../middleware/licenseMiddleware.js';
 
@@ -689,9 +697,13 @@ app.use('/api/purchase-orders', purchaseOrdersRouter); // Purchase Orders (requi
 app.use('/api/p2p-invoices', p2pInvoicesRouter); // P2P Invoices (requires authentication)
 app.use('/api/p2p-bills', p2pBillsRouter); // P2P Bills (requires authentication)
 app.use('/api/supplier-registrations', supplierRegistrationsRouter); // Supplier Registration Requests (requires authentication)
+app.use('/api/marketplace', marketplaceRouter); // Biz Planet Marketplace (browse ads, post ads – 2/day per supplier)
 app.use('/api/payroll', payrollRouter); // Payroll Management (requires authentication)
 app.use('/api/inventory-items', inventoryItemsRouter); // Inventory Items Master Data (requires authentication)
-app.use('/api/purchase-bills', purchaseBillsRouter); // Purchase Bills (My Shop - requires authentication)
+app.use('/api/warehouses', warehousesRouter); // Warehouses (requires authentication)
+app.use('/api/purchase-bills', purchaseBillsRouter);
+app.use('/api/shop', shopSalesRouter); // Shop/Retail Sales (requires authentication)
+app.use('/api/state', stateChangesRouter); // Incremental sync: GET /api/state/changes?since=ISO8601 // Purchase Bills (My Shop - requires authentication)
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -720,9 +732,10 @@ export { wsService };
   }
 })();
 
-// Start server
-httpServer.listen(port, () => {
-  console.log(`🚀 API server running on port ${port}`);
+// Start server - listen on 0.0.0.0 so other PCs on the network can reach the API
+const host = process.env.SERVER_HOST || '0.0.0.0';
+httpServer.listen(port, host, () => {
+  console.log(`🚀 API server running on http://${host}:${port}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔌 WebSocket server initialized`);
 });

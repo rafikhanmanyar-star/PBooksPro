@@ -17,6 +17,19 @@ const LicenseContext = createContext<LicenseContextType | undefined>(undefined);
 
 const TRIAL_DURATION_DAYS = 30;
 
+/** Generate a short unique ID; works in HTTP and older browsers where crypto.randomUUID may be missing. */
+function generateDeviceId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID().toUpperCase().slice(0, 8);
+  }
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const bytes = new Uint8Array(4);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('').toUpperCase().slice(0, 8);
+  }
+  return Math.random().toString(36).slice(2, 10).toUpperCase();
+}
+
 export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const { installDate, licenseKey, deviceId, setInstallDate, setLicenseKey, setDeviceId } = useDatabaseLicense();
     const { isAuthenticated, checkLicenseStatus } = useAuth();
@@ -55,7 +68,7 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
         // 1. Initialize Device ID if missing
         let currentDeviceId = deviceId;
         if (!currentDeviceId) {
-            currentDeviceId = crypto.randomUUID().toUpperCase().slice(0, 8); // Short unique ID
+            currentDeviceId = generateDeviceId();
             setDeviceId(currentDeviceId);
         }
 

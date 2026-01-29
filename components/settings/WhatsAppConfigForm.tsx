@@ -104,8 +104,10 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
       
       const messages = await apiClient.get<Array<{
         id: string;
-        phone_number: string;
-        message_text: string;
+        phone_number?: string;
+        phoneNumber?: string;
+        message_text?: string;
+        messageText?: string;
         timestamp: string | Date;
         direction: 'incoming' | 'outgoing';
         status: string;
@@ -114,8 +116,8 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
       // Transform to match UI format
       const transformed = messages.map(m => ({
         id: m.id,
-        phoneNumber: m.phone_number || '',
-        messageText: m.message_text || '',
+        phoneNumber: m.phoneNumber || m.phone_number || '',
+        messageText: m.messageText || m.message_text || '',
         timestamp: typeof m.timestamp === 'string' ? m.timestamp : m.timestamp.toISOString(),
         direction: m.direction,
         status: m.status,
@@ -680,17 +682,48 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
             value={webhookUrl}
             onChange={(e) => setWebhookUrl(e.target.value)}
             placeholder="https://your-api-server.com/api/whatsapp/webhook"
-            helperText="Your public API server URL (staging or production) + /api/whatsapp/webhook. Example: https://pbookspro-api-staging.onrender.com/api/whatsapp/webhook"
+            helperText="Your public API server URL (staging or production) + /api/whatsapp/webhook. For localhost development, use ngrok (see instructions below). Example: https://pbookspro-api-staging.onrender.com/api/whatsapp/webhook"
           />
         </div>
       </div>
+
+      {/* Localhost Development Notice */}
+      {(webhookUrl.includes('localhost') || webhookUrl.includes('127.0.0.1') || webhookUrl === '') && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <h4 className="font-semibold text-amber-900 mb-2 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            Localhost Development Setup Required
+          </h4>
+          <p className="text-sm text-amber-800 mb-3">
+            Meta requires a publicly accessible HTTPS URL for webhooks. For localhost development, you need to use <strong>ngrok</strong> to create a secure tunnel.
+          </p>
+          <div className="bg-white rounded p-3 border border-amber-200">
+            <p className="text-sm font-semibold text-amber-900 mb-2">Quick Setup:</p>
+            <ol className="list-decimal list-inside space-y-1 text-sm text-amber-800">
+              <li>Install ngrok: <code className="bg-amber-100 px-1 rounded">npm install -g ngrok</code> or download from <a href="https://ngrok.com/download" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">ngrok.com</a></li>
+              <li>Start your API server on localhost (e.g., port 3000)</li>
+              <li>Run: <code className="bg-amber-100 px-1 rounded">ngrok http 3000</code></li>
+              <li>Copy the HTTPS URL from ngrok (e.g., <code className="bg-amber-100 px-1 rounded">https://abc123.ngrok-free.app</code>)</li>
+              <li>Enter webhook URL: <code className="bg-amber-100 px-1 rounded">https://abc123.ngrok-free.app/api/whatsapp/webhook</code></li>
+            </ol>
+            <p className="text-xs text-amber-700 mt-2">
+              📖 <strong>Note:</strong> Free ngrok URLs change every restart. For production, deploy to a hosting service (Render, Heroku, etc.) and use the production URL.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <h4 className="font-semibold text-blue-900 mb-2">Setup Instructions</h4>
         <ol className="list-decimal list-inside space-y-1 text-sm text-blue-800">
           <li>Get your API credentials from Meta App Dashboard</li>
           <li>Enter your Access Token and Phone Number ID above</li>
-          <li>Enter your Webhook URL (your API server URL + /api/whatsapp/webhook, e.g., https://pbookspro-api-staging.onrender.com/api/whatsapp/webhook)</li>
+          <li>Enter your Webhook URL:
+            <ul className="list-disc list-inside ml-4 mt-1 space-y-0.5">
+              <li><strong>Production/Staging:</strong> Your API server URL + /api/whatsapp/webhook (e.g., https://pbookspro-api-staging.onrender.com/api/whatsapp/webhook)</li>
+              <li><strong>Localhost:</strong> Use ngrok URL + /api/whatsapp/webhook (e.g., https://abc123.ngrok-free.app/api/whatsapp/webhook)</li>
+            </ul>
+          </li>
           <li>Copy the Webhook Verify Token and use it in Meta Dashboard</li>
           <li>In Meta App Dashboard, set the Webhook URL and Verify Token from above</li>
           <li>Click "Test Connection" to verify your credentials</li>

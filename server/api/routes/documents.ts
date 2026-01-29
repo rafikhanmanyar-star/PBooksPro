@@ -55,18 +55,14 @@ router.get('/:id', async (req: TenantRequest, res) => {
 });
 
 // GET document file by ID (returns file data as base64 or blob)
-// This endpoint allows public access (needed for WhatsApp to fetch documents)
-// but still validates tenant_id from the document itself for security
-router.get('/:id/file', async (req: any, res) => {
+// SECURITY: Use only JWT-derived tenantId so Organization B cannot access Organization A's documents.
+router.get('/:id/file', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
-    // Get tenant_id from query param or header (for public access)
-    const tenantId = req.query.tenantId || req.headers['x-tenant-id'] || (req as TenantRequest).tenantId;
-    
+    const tenantId = req.tenantId;
     if (!tenantId) {
-      return res.status(400).json({ error: 'Tenant ID is required' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
-    
     const documents = await db.query(
       'SELECT file_data, file_name, mime_type FROM documents WHERE id = $1 AND tenant_id = $2',
       [req.params.id, tenantId]

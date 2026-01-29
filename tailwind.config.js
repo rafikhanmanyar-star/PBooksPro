@@ -9,6 +9,7 @@ export default {
     "./hooks/**/*.{ts,tsx}",
     "./services/**/*.{ts,tsx}",
     "./utils/**/*.{ts,tsx}",
+    // Use a more specific pattern that won't match node_modules
     "./admin/**/*.{ts,tsx}",
   ],
   theme: {

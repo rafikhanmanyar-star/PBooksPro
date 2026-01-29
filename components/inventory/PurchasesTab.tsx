@@ -3,7 +3,8 @@ import { useAppContext } from '../../context/AppContext';
 import { 
     PurchaseBill, 
     PurchaseBillItem, 
-    PurchaseBillStatus, 
+    PurchaseBillStatus,
+    PurchaseBillDeliveryStatus, 
     ContactType, 
     InventoryItem,
     InventoryUnitType 
@@ -38,6 +39,7 @@ const PurchasesTab: React.FC = () => {
     const [billDate, setBillDate] = useState(new Date().toISOString().split('T')[0]);
     const [dueDate, setDueDate] = useState('');
     const [billDescription, setBillDescription] = useState('');
+    const [selectedWarehouseId, setSelectedWarehouseId] = useState('');
     const [billItems, setBillItems] = useState<PurchaseBillItem[]>([]);
 
     // Vendor quick-add modal
@@ -218,9 +220,11 @@ const PurchasesTab: React.FC = () => {
                 billDate,
                 dueDate: dueDate || undefined,
                 description: billDescription,
+                warehouseId: selectedWarehouseId || undefined,
                 totalAmount: billTotal,
                 paidAmount: editingBill?.paidAmount || 0,
                 status: editingBill?.status || PurchaseBillStatus.UNPAID,
+                deliveryStatus: editingBill?.deliveryStatus || PurchaseBillDeliveryStatus.PENDING,
                 itemsReceived: false, // Always false on creation - items will be received after payment
             };
 
@@ -267,6 +271,7 @@ const PurchasesTab: React.FC = () => {
         setIsCreatingBill(false);
         setEditingBill(null);
         setSelectedVendorId('');
+        setSelectedWarehouseId('');
         setBillDate(new Date().toISOString().split('T')[0]);
         setDueDate('');
         setBillDescription('');
@@ -277,6 +282,7 @@ const PurchasesTab: React.FC = () => {
     const startEditBill = async (bill: PurchaseBill) => {
         setEditingBill(bill);
         setSelectedVendorId(bill.vendorId);
+        setSelectedWarehouseId(bill.warehouseId || '');
         setBillDate(bill.billDate);
         setDueDate(bill.dueDate || '');
         setBillDescription(bill.description || '');
@@ -395,7 +401,7 @@ const PurchasesTab: React.FC = () => {
         return vendor?.name || 'Unknown Vendor';
     };
 
-    // Status badge colors
+    // Payment Status badge colors
     const getStatusBadge = (status: PurchaseBillStatus) => {
         switch (status) {
             case PurchaseBillStatus.PAID:
@@ -404,6 +410,20 @@ const PurchasesTab: React.FC = () => {
                 return 'bg-amber-100 text-amber-700 border-amber-200';
             case PurchaseBillStatus.UNPAID:
                 return 'bg-rose-100 text-rose-700 border-rose-200';
+            default:
+                return 'bg-slate-100 text-slate-700 border-slate-200';
+        }
+    };
+
+    // Delivery Status badge colors
+    const getDeliveryStatusBadge = (deliveryStatus: PurchaseBillDeliveryStatus) => {
+        switch (deliveryStatus) {
+            case PurchaseBillDeliveryStatus.RECEIVED:
+                return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+            case PurchaseBillDeliveryStatus.PARTIALLY_RECEIVED:
+                return 'bg-amber-100 text-amber-700 border-amber-200';
+            case PurchaseBillDeliveryStatus.PENDING:
+                return 'bg-blue-100 text-blue-700 border-blue-200';
             default:
                 return 'bg-slate-100 text-slate-700 border-slate-200';
         }
@@ -468,6 +488,19 @@ const PurchasesTab: React.FC = () => {
                             </select>
                         </div>
                         <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Warehouse</label>
+                            <select
+                                value={selectedWarehouseId}
+                                onChange={(e) => setSelectedWarehouseId(e.target.value)}
+                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            >
+                                <option value="">Select Warehouse (Optional)</option>
+                                {(state.warehouses || []).map(w => (
+                                    <option key={w.id} value={w.id}>{w.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">Bill Date *</label>
                             <Input
                                 type="date"
@@ -475,6 +508,8 @@ const PurchasesTab: React.FC = () => {
                                 onChange={(e) => setBillDate(e.target.value)}
                             />
                         </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
                             <Input
@@ -678,7 +713,10 @@ const PurchasesTab: React.FC = () => {
                                         onClick={() => handleSort('status')}
                                         className="px-4 py-3 text-center text-xs font-semibold text-slate-600 uppercase cursor-pointer hover:bg-slate-100"
                                     >
-                                        Status {sortConfig.key === 'status' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                                        Payment {sortConfig.key === 'status' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                                    </th>
+                                    <th className="px-4 py-3 text-center text-xs font-semibold text-slate-600 uppercase">
+                                        Delivery
                                     </th>
                                     <th className="px-4 py-3 text-center text-xs font-semibold text-slate-600 uppercase">
                                         Actions
@@ -688,7 +726,7 @@ const PurchasesTab: React.FC = () => {
                             <tbody className="divide-y divide-slate-100">
                                 {filteredBills.length === 0 ? (
                                     <tr>
-                                        <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                                        <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
                                             {searchQuery || statusFilter !== 'All' 
                                                 ? 'No purchase bills match your search criteria.'
                                                 : 'No purchase bills yet. Create your first bill to get started.'
@@ -713,6 +751,11 @@ const PurchasesTab: React.FC = () => {
                                             <td className="px-4 py-3 text-center">
                                                 <span className={`inline-flex px-2.5 py-1 text-xs font-medium rounded-full border ${getStatusBadge(bill.status)}`}>
                                                     {bill.status}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-center">
+                                                <span className={`inline-flex px-2.5 py-1 text-xs font-medium rounded-full border ${getDeliveryStatusBadge(bill.deliveryStatus || PurchaseBillDeliveryStatus.PENDING)}`}>
+                                                    {bill.deliveryStatus || 'Pending'}
                                                 </span>
                                             </td>
                                             <td className="px-4 py-3 text-center">

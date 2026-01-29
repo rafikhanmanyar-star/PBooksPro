@@ -3,11 +3,12 @@ import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import SearchModal from './SearchModal';
 import HelpModal from './HelpModal';
-import { WhatsAppChatService } from '../../services/whatsappChatService';
+import { WhatsAppChatService, WhatsAppMessage, normalizePhoneForMatch } from '../../services/whatsappChatService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import ConnectionStatusIndicator from '../ui/ConnectionStatusIndicator';
 import SyncStatusIndicator from '../ui/SyncStatusIndicator';
 import { apiClient } from '../../services/api/client';
+import { getWebSocketClient } from '../../services/websocketClient';
 import {
   BizPlanetNotification,
   BIZ_PLANET_NOTIFICATIONS_EVENT,
@@ -33,6 +34,15 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const [orgUsers, setOrgUsers] = useState<{ id: string; name: string; username: string; role: string }[]>([]);
   const [dismissedNotifications, setDismissedNotifications] = useState<Set<string>>(new Set());
   const [bizPlanetNotifications, setBizPlanetNotifications] = useState<BizPlanetNotification[]>([]);
+  const [whatsappNotifications, setWhatsappNotifications] = useState<{
+    id: string;
+    messageId?: string;
+    phoneNumber: string;
+    contactId?: string;
+    contactName?: string;
+    messageText: string;
+    timestamp: string;
+  }[]>([]);
   const { openChat } = useWhatsApp();
   const notificationsRef = useRef<HTMLDivElement>(null);
   const usersForNotifications = orgUsers.length > 0 ? orgUsers : state.users;
@@ -48,7 +58,10 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       label: string;
       tone: NotificationBadgeTone;
     };
-    action: { type: 'installment_plan'; planId: string } | { type: 'bizPlanet'; target: BizPlanetNotification['target']; focus: BizPlanetNotification['focus'] };
+    action:
+      | { type: 'installment_plan'; planId: string }
+      | { type: 'bizPlanet'; target: BizPlanetNotification['target']; focus: BizPlanetNotification['focus'] }
+      | { type: 'whatsapp'; phoneNumber: string; contactId?: string; contactName?: string };
   };
 
   // Load dismissed notifications from localStorage on mount
@@ -75,6 +88,10 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     }
     
     console.log('[NOTIFICATIONS] Dismissing notification:', notificationId);
+
+    if (notificationId.startsWith('whatsapp:')) {
+      setWhatsappNotifications(prev => prev.filter(item => item.id !== notificationId));
+    }
     
     setDismissedNotifications(prev => {
       // Check if already dismissed
@@ -99,6 +116,90 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       return updated;
     });
   }, [state.currentUser]);
+
+  const resolveWhatsAppTimestamp = useCallback((value?: string | Date) => {
+    if (!value) return new Date().toISOString();
+    if (value instanceof Date) return value.toISOString();
+    if (typeof value === 'number') {
+      const ms = value < 100000000000 ? value * 1000 : value;
+      return new Date(ms).toISOString();
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      const numeric = Number(trimmed);
+      if (!Number.isNaN(numeric)) {
+        const ms = trimmed.length <= 10 ? numeric * 1000 : numeric;
+        return new Date(ms).toISOString();
+      }
+      const parsed = new Date(trimmed);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toISOString();
+      }
+    }
+    return new Date().toISOString();
+  }, []);
+
+  const findContactByPhone = useCallback((phoneNumber: string) => {
+    if (!phoneNumber) return undefined;
+    const normalized = normalizePhoneForMatch(phoneNumber);
+    const digitsOnly = phoneNumber.replace(/\D/g, '');
+    const lastTen = digitsOnly.length >= 10 ? digitsOnly.slice(-10) : '';
+    if (!normalized && !lastTen) return undefined;
+    return state.contacts.find(contact => {
+      const contactNumber = contact.contactNo || '';
+      if (!contactNumber) return false;
+      const contactNormalized = normalizePhoneForMatch(contactNumber);
+      if (normalized && contactNormalized && normalized === contactNormalized) return true;
+      const contactDigits = contactNumber.replace(/\D/g, '');
+      if (lastTen && contactDigits.length >= 10) {
+        return contactDigits.slice(-10) === lastTen;
+      }
+      return false;
+    });
+  }, [state.contacts]);
+
+  const formatNotificationTime = useCallback((value: string) => {
+    if (!value) return '';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return '';
+    const now = new Date();
+    const isToday = parsed.toDateString() === now.toDateString();
+    if (isToday) {
+      return parsed.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+    return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }, []);
+
+  const addWhatsAppNotification = useCallback((message?: WhatsAppMessage) => {
+    if (!message || message.direction !== 'incoming') return;
+
+    const messageKey = message.messageId || message.wamId || message.id || `${message.phoneNumber}-${message.timestamp}`;
+    const notificationId = `whatsapp:${messageKey}`;
+    if (dismissedNotifications.has(notificationId)) return;
+
+    const contactFromId = message.contactId ? state.contacts.find(contact => contact.id === message.contactId) : undefined;
+    const contactFromPhone = contactFromId || findContactByPhone(message.phoneNumber);
+    const resolvedContactId = contactFromId?.id || contactFromPhone?.id || message.contactId;
+    const resolvedContactName = contactFromId?.name || contactFromPhone?.name;
+    const messageText = message.messageText?.trim()
+      || (message.mediaType ? `Media message (${message.mediaType})` : 'New message');
+
+    setWhatsappNotifications(prev => {
+      if (prev.some(item => item.id === notificationId)) {
+        return prev;
+      }
+      const nextItem = {
+        id: notificationId,
+        messageId: message.messageId || message.wamId || message.id,
+        phoneNumber: message.phoneNumber,
+        contactId: resolvedContactId,
+        contactName: resolvedContactName,
+        messageText,
+        timestamp: resolveWhatsAppTimestamp(message.timestamp),
+      };
+      return [nextItem, ...prev].slice(0, 50);
+    });
+  }, [dismissedNotifications, findContactByPhone, resolveWhatsAppTimestamp, state.contacts]);
 
   const notifications = useMemo(() => {
     if (!state.currentUser) return [];
@@ -214,8 +315,25 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       }
     }));
 
+    const whatsappItems: NotificationItem[] = (whatsappNotifications || []).map(item => ({
+      id: item.id,
+      title: item.contactName ? `WhatsApp from ${item.contactName}` : `WhatsApp from ${item.phoneNumber}`,
+      message: item.messageText,
+      time: item.timestamp,
+      badge: {
+        label: 'WhatsApp',
+        tone: 'green'
+      },
+      action: {
+        type: 'whatsapp',
+        phoneNumber: item.phoneNumber,
+        contactId: item.contactId,
+        contactName: item.contactName
+      }
+    }));
+
     // Filter out dismissed notifications - ensure they never reappear
-    const activeNotifications = [...items, ...bizPlanetItems].filter(item => {
+    const activeNotifications = [...items, ...bizPlanetItems, ...whatsappItems].filter(item => {
       const isDismissed = dismissedNotifications.has(item.id);
       if (isDismissed) {
         console.log('[NOTIFICATIONS] Filtering out dismissed notification:', item.id);
@@ -233,7 +351,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     });
 
     return activeNotifications.sort((a, b) => b.time.localeCompare(a.time));
-  }, [state.currentUser, state.installmentPlans, state.contacts, state.projects, state.units, usersForNotifications, dismissedNotifications, bizPlanetNotifications]);
+  }, [state.currentUser, state.installmentPlans, state.contacts, state.projects, state.units, usersForNotifications, dismissedNotifications, bizPlanetNotifications, whatsappNotifications]);
 
   const handleNotificationClick = useCallback((notification: NotificationItem) => {
     console.log('[NOTIFICATION CLICK] Opening notification:', notification.id);
@@ -257,6 +375,17 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       return;
     }
 
+    if (notification.action.type === 'whatsapp') {
+      const contact =
+        state.contacts.find(item => item.id === notification.action.contactId)
+        || findContactByPhone(notification.action.phoneNumber)
+        || null;
+      setTimeout(() => {
+        openChat(contact, notification.action.phoneNumber);
+      }, 0);
+      return;
+    }
+
     const action = { target: notification.action.target, focus: notification.action.focus };
     if (state.currentPage !== 'bizPlanet') {
       setPendingBizPlanetAction(action);
@@ -265,7 +394,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     setTimeout(() => {
       dispatchBizPlanetNotificationAction(action);
     }, 150);
-  }, [dispatch, dismissNotification, state.currentPage]);
+  }, [dispatch, dismissNotification, state.currentPage, openChat, state.contacts, findContactByPhone]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -329,8 +458,22 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     loadUnreadCount();
     // Refresh every 30 seconds
     const interval = setInterval(loadUnreadCount, 30000);
-    return () => clearInterval(interval);
-  }, [isAuthenticated]);
+
+    // Listen for real-time WhatsApp message events to update unread count immediately
+    const wsClient = getWebSocketClient();
+    const handleWhatsAppMessageReceived = (data?: WhatsAppMessage) => {
+      // Refresh unread count when a new message is received
+      loadUnreadCount();
+      addWhatsAppNotification(data);
+    };
+
+    wsClient.on('whatsapp:message:received', handleWhatsAppMessageReceived);
+
+    return () => {
+      clearInterval(interval);
+      wsClient.off('whatsapp:message:received', handleWhatsAppMessageReceived);
+    };
+  }, [isAuthenticated, addWhatsAppNotification]);
 
   const handleWhatsAppNotificationClick = useCallback(() => {
     // Open chat window - if there are unread messages, we could show a list
@@ -449,6 +592,9 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
                               <div className="flex-1">
                                 <p className="text-sm font-semibold text-slate-800">{item.title}</p>
                                 <p className="text-xs text-slate-500 mt-0.5">{item.message}</p>
+                                {formatNotificationTime(item.time) && (
+                                  <p className="text-[11px] text-slate-400 mt-1">{formatNotificationTime(item.time)}</p>
+                                )}
                               </div>
                               <span className={`flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
                                 item.badge.tone === 'blue'

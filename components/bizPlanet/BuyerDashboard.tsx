@@ -16,9 +16,14 @@ import { BIZ_PLANET_NOTIFICATION_ACTION_EVENT, updateBizPlanetNotifications } fr
 
 interface Supplier {
     id: string;
+    supplierTenantId?: string;
     name: string;
     company_name?: string;
+    companyName?: string;
     email?: string;
+    contactNo?: string;
+    address?: string;
+    registeredAt?: string;
 }
 
 const BuyerDashboard: React.FC = () => {
@@ -30,6 +35,7 @@ const BuyerDashboard: React.FC = () => {
     const [registrationRequests, setRegistrationRequests] = useState<SupplierRegistrationRequest[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+    const [selectedRegisteredSupplier, setSelectedRegisteredSupplier] = useState<Supplier | null>(null);
     const [pendingFocus, setPendingFocus] = useState<{ type: 'registration_request' | 'invoice_awaiting'; id?: string } | null>(null);
     
     // Mobile responsive state
@@ -167,6 +173,9 @@ const BuyerDashboard: React.FC = () => {
                 // Reload registration requests when new request arrives
                 loadRegistrationRequests();
                 showToast('New supplier registration request received', 'info');
+            } else if (data.type === 'REGISTERED_SUPPLIERS_UPDATED') {
+                // Reload registered suppliers when one is approved (status + DB updated)
+                loadRegisteredSuppliers();
             }
         };
 
@@ -296,6 +305,19 @@ const BuyerDashboard: React.FC = () => {
         } catch (error: any) {
             console.error('Error rejecting registration:', error);
             const errorMessage = error?.response?.data?.error || error?.message || error?.error || 'Failed to reject registration request';
+            showAlert(errorMessage);
+        }
+    };
+
+    const handleUnregisterSupplier = async (supplierId: string) => {
+        const tenantId = (registeredSuppliers.find(s => s.id === supplierId || s.supplierTenantId === supplierId) as Supplier)?.supplierTenantId || supplierId;
+        try {
+            await apiClient.put(`/supplier-registrations/registered/${tenantId}/unregister`);
+            showToast('Supplier unregistered');
+            setSelectedRegisteredSupplier(null);
+            await loadRegisteredSuppliers();
+        } catch (error: any) {
+            const errorMessage = error?.response?.data?.error || error?.message || 'Failed to unregister supplier';
             showAlert(errorMessage);
         }
     };
@@ -488,7 +510,7 @@ const BuyerDashboard: React.FC = () => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mb-3">
                             <ComboBox
                                 label="Supplier *"
-                                items={(Array.isArray(registeredSuppliers) ? registeredSuppliers : []).map(s => ({ id: s.id, name: s.company_name || s.name }))}
+                                items={(Array.isArray(registeredSuppliers) ? registeredSuppliers : []).map(s => ({ id: s.supplierTenantId || s.id, name: s.companyName || s.company_name || s.name }))}
                                 selectedId={supplierTenantId}
                                 onSelect={(selected) => setSupplierTenantId(selected?.id || '')}
                                 placeholder={!registeredSuppliers || registeredSuppliers.length === 0 ? "No suppliers" : "Select supplier"}
@@ -828,14 +850,18 @@ const BuyerDashboard: React.FC = () => {
                             ) : (
                                 <div className="divide-y divide-slate-100">
                                     {registeredSuppliers.map(supplier => (
-                                        <div key={supplier.id} className="px-2 sm:px-3 py-2 sm:py-2.5 hover:bg-slate-50 transition-all cursor-pointer">
+                                        <div
+                                            key={supplier.id}
+                                            onClick={() => setSelectedRegisteredSupplier(supplier)}
+                                            className="px-2 sm:px-3 py-2 sm:py-2.5 hover:bg-slate-50 transition-all cursor-pointer"
+                                        >
                                             <div className="flex items-start gap-2">
                                                 <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-[10px] sm:text-xs font-bold flex-shrink-0">
-                                                    {(supplier.company_name || supplier.name || 'S').charAt(0).toUpperCase()}
+                                                    {(supplier.companyName || supplier.company_name || supplier.name || 'S').charAt(0).toUpperCase()}
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <p className="text-[10px] sm:text-xs font-medium text-slate-900 truncate">
-                                                        {supplier.company_name || supplier.name || 'Supplier'}
+                                                        {supplier.companyName || supplier.company_name || supplier.name || 'Supplier'}
                                                     </p>
                                                     {supplier.email && <p className="text-[9px] sm:text-[10px] text-slate-500 truncate">{supplier.email}</p>}
                                                     <div className="flex items-center gap-1 mt-0.5 sm:mt-1">
@@ -849,24 +875,6 @@ const BuyerDashboard: React.FC = () => {
                                     ))}
                                 </div>
                             )}
-                        </div>
-                    </Card>
-
-                    {/* Market Place */}
-                    <Card className="flex-shrink-0 p-2 sm:p-3">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <h3 className="text-[10px] sm:text-xs font-semibold text-slate-700">Market Place</h3>
-                                <p className="text-[9px] sm:text-[10px] text-slate-500 mt-0.5">Explore suppliers and offers</p>
-                            </div>
-                            <Button
-                                type="button"
-                                variant="secondary"
-                                onClick={() => showToast('Market Place coming soon', 'info')}
-                                className="text-[9px] sm:text-[10px] px-2 py-1"
-                            >
-                                Open
-                            </Button>
                         </div>
                     </Card>
 
@@ -973,6 +981,66 @@ const BuyerDashboard: React.FC = () => {
 
                         <div className="flex justify-end pt-3 border-t border-slate-200">
                             <Button variant="secondary" onClick={() => setSelectedPO(null)}>Close</Button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
+
+            {/* Registered Supplier Detail Modal - open on click, Unregister */}
+            {selectedRegisteredSupplier && (
+                <Modal
+                    isOpen={!!selectedRegisteredSupplier}
+                    onClose={() => setSelectedRegisteredSupplier(null)}
+                    title="Registered Supplier"
+                >
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-1 gap-3">
+                            <div>
+                                <p className="text-xs text-slate-500 mb-1">Company</p>
+                                <p className="font-semibold text-slate-900 text-sm">{selectedRegisteredSupplier.companyName || selectedRegisteredSupplier.company_name || selectedRegisteredSupplier.name || 'Supplier'}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-slate-500 mb-1">Contact name</p>
+                                <p className="text-sm text-slate-900">{selectedRegisteredSupplier.name || '-'}</p>
+                            </div>
+                            {selectedRegisteredSupplier.email && (
+                                <div>
+                                    <p className="text-xs text-slate-500 mb-1">Email</p>
+                                    <p className="text-sm text-slate-900">{selectedRegisteredSupplier.email}</p>
+                                </div>
+                            )}
+                            {(selectedRegisteredSupplier.contactNo || selectedRegisteredSupplier.phone) && (
+                                <div>
+                                    <p className="text-xs text-slate-500 mb-1">Phone</p>
+                                    <p className="text-sm text-slate-900">{selectedRegisteredSupplier.contactNo || selectedRegisteredSupplier.phone || '-'}</p>
+                                </div>
+                            )}
+                            {selectedRegisteredSupplier.address && (
+                                <div>
+                                    <p className="text-xs text-slate-500 mb-1">Address</p>
+                                    <p className="text-sm text-slate-900">{selectedRegisteredSupplier.address}</p>
+                                </div>
+                            )}
+                            {selectedRegisteredSupplier.registeredAt && (
+                                <div>
+                                    <p className="text-xs text-slate-500 mb-1">Registered</p>
+                                    <p className="text-sm text-slate-900">{formatDate(selectedRegisteredSupplier.registeredAt)}</p>
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex justify-between pt-3 border-t border-slate-200">
+                            <Button variant="secondary" onClick={() => setSelectedRegisteredSupplier(null)}>Close</Button>
+                            <Button
+                                variant="primary"
+                                className="bg-amber-600 hover:bg-amber-700"
+                                onClick={() => {
+                                    if (window.confirm('Unregister this supplier? They will be removed from your registered suppliers list.')) {
+                                        handleUnregisterSupplier(selectedRegisteredSupplier.supplierTenantId || selectedRegisteredSupplier.id);
+                                    }
+                                }}
+                            >
+                                Unregister
+                            </Button>
                         </div>
                     </div>
                 </Modal>

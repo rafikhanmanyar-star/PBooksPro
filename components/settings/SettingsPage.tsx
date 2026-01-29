@@ -33,6 +33,9 @@ import ClearTransactionsModal from './ClearTransactionsModal';
 import { dataManagementApi } from '../../services/api/repositories/dataManagementApi';
 import { getDatabaseService } from '../../services/database/databaseService';
 import { apiClient } from '../../services/api/client';
+import ContactsManagement from './ContactsManagement';
+import AssetsManagement from './AssetsManagement';
+import InventoryManagement from './InventoryManagement';
 
 interface TableRowData {
     id: string;
@@ -145,26 +148,19 @@ const SettingsPage: React.FC = () => {
         {
             title: 'Inventory',
             items: [
-                { id: 'inventory_items', label: 'Inventory Items', icon: ICONS.package },
+                { id: 'inventory', label: 'Inventory', icon: ICONS.package },
             ]
         },
         {
-            title: 'Entities',
+            title: 'Assets',
             items: [
-                { id: 'projects', label: 'Projects', icon: ICONS.archive },
-                { id: 'buildings', label: 'Buildings', icon: ICONS.building },
-                { id: 'properties', label: 'Properties', icon: ICONS.home },
-                { id: 'units', label: 'Units', icon: ICONS.layers },
+                { id: 'assets', label: 'Assets', icon: ICONS.archive },
             ]
         },
         {
             title: 'Contacts',
             items: [
-                { id: 'owners', label: 'Owners', icon: ICONS.briefcase },
-                { id: 'tenants', label: 'Tenants', icon: ICONS.users },
-                { id: 'brokers', label: 'Brokers', icon: ICONS.users },
-                { id: 'friends', label: 'Friends & Family', icon: ICONS.users },
-                { id: 'leads', label: 'Leads', icon: ICONS.target || ICONS.users },
+                { id: 'contacts', label: 'Contacts', icon: ICONS.addressBook },
             ]
         }
     ];
@@ -190,11 +186,6 @@ const SettingsPage: React.FC = () => {
             { key: 'isSystem', label: 'System', render: (val) => val ? 'Yes' : 'No' },
             { key: 'balance', label: 'Balance', isNumeric: true }
         ],
-        owners: [{ key: 'name', label: 'Name' }, { key: 'type', label: 'Type' }, { key: 'contactNo', label: 'Phone' }, { key: 'balance', label: 'Balance', isNumeric: true }],
-        tenants: [{ key: 'name', label: 'Name' }, { key: 'type', label: 'Type' }, { key: 'contactNo', label: 'Phone' }, { key: 'balance', label: 'Balance', isNumeric: true }],
-        brokers: [{ key: 'name', label: 'Name' }, { key: 'type', label: 'Type' }, { key: 'contactNo', label: 'Phone' }, { key: 'balance', label: 'Balance', isNumeric: true }],
-        friends: [{ key: 'name', label: 'Name' }, { key: 'contactNo', label: 'Phone' }, { key: 'balance', label: 'Balance', isNumeric: true }],
-        leads: [{ key: 'name', label: 'Name' }, { key: 'contactNo', label: 'Phone' }, { key: 'address', label: 'Address' }, { key: 'description', label: 'Description' }        ],
         inventory_items: [
             {
                 key: 'name', label: 'Name', render: (val, row) => (
@@ -400,19 +391,7 @@ const SettingsPage: React.FC = () => {
         // Other entities
         else {
             let data: TableRowData[] = [];
-            if (['owners', 'tenants', 'brokers', 'friends', 'leads'].includes(activeCategory)) {
-                let contacts = state.contacts;
-                if (activeCategory === 'owners') contacts = contacts.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
-                else if (activeCategory === 'tenants') contacts = contacts.filter(c => c.type === ContactType.TENANT);
-                else if (activeCategory === 'brokers') contacts = contacts.filter(c => c.type === ContactType.BROKER || c.type === ContactType.DEALER);
-                else if (activeCategory === 'friends') contacts = contacts.filter(c => c.type === ContactType.FRIEND_FAMILY);
-                else if (activeCategory === 'leads') contacts = contacts.filter(c => c.type === ContactType.LEAD);
-                data = contacts.map(contact => ({
-                    id: contact.id, name: contact.name, type: contact.type, contactNo: contact.contactNo || '-',
-                    address: contact.address || '-', description: contact.description || '-',
-                    balance: balances.get(contact.id) || 0, originalItem: contact
-                }));
-            } else if (activeCategory === 'projects') {
+            if (activeCategory === 'projects') {
                 data = state.projects.map(p => ({
                     id: p.id, name: p.name, description: p.description || '-', installmentPlan: p.installmentConfig ? 'Yes' : 'No',
                     balance: balances.get(p.id) || 0, originalItem: p
@@ -459,11 +438,6 @@ const SettingsPage: React.FC = () => {
         if (!type) {
             switch (activeCategory) {
                 case 'accounts': type = 'ACCOUNT'; break;
-                case 'owners': type = 'CONTACT_OWNER'; break;
-                case 'tenants': type = 'CONTACT_TENANT'; break;
-                case 'brokers': type = 'CONTACT_BROKER'; break;
-                case 'friends': type = 'CONTACT_FRIEND'; break;
-                case 'leads': type = 'CONTACT_LEAD'; break;
                 case 'projects': type = 'PROJECT'; break;
                 case 'buildings': type = 'BUILDING'; break;
                 case 'properties': type = 'PROPERTY'; break;
@@ -482,11 +456,6 @@ const SettingsPage: React.FC = () => {
         let type = '';
         switch (activeCategory) {
             case 'accounts': type = item.entityKind === 'CATEGORY' ? 'CATEGORY' : 'ACCOUNT'; break;
-            case 'owners': type = 'CONTACT_OWNER'; break;
-            case 'tenants': type = 'CONTACT_TENANT'; break;
-            case 'brokers': type = 'CONTACT_BROKER'; break;
-            case 'friends': type = 'CONTACT_FRIEND'; break;
-            case 'leads': type = 'CONTACT_LEAD'; break;
             case 'projects': type = 'PROJECT'; break;
             case 'buildings': type = 'BUILDING'; break;
             case 'properties': type = 'PROPERTY'; break;
@@ -504,7 +473,6 @@ const SettingsPage: React.FC = () => {
     const handleRowClick = (item: TableRowData) => {
         let entityType: any = null;
         if (activeCategory === 'accounts') entityType = item.entityKind === 'CATEGORY' ? 'category' : 'account';
-        else if (['owners', 'tenants', 'brokers', 'friends', 'leads'].includes(activeCategory)) entityType = 'contact';
         else if (activeCategory === 'projects') entityType = 'project';
         else if (activeCategory === 'buildings') entityType = 'building';
         else if (activeCategory === 'properties') entityType = 'property';
@@ -587,7 +555,7 @@ const SettingsPage: React.FC = () => {
         }
     };
 
-    const isTableViewCategory = !!columnConfig[activeCategory];
+    const isTableViewCategory = !!columnConfig[activeCategory] && activeCategory !== 'inventory';
     const SortHeader: React.FC<{ label: string; sortKey: string; align?: string }> = ({ label, sortKey, align = 'left' }) => (
         <th className={`px-4 py-3 text-${align} text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors select-none sticky top-0 bg-white z-10 border-b border-slate-200`} onClick={() => handleSort(sortKey)}>
             <div className={`flex items-center gap-2 ${align === 'right' ? 'justify-end' : 'justify-start'}`}>
@@ -956,13 +924,16 @@ const SettingsPage: React.FC = () => {
                 
                 {/* Header */}
                 <div className="px-8 py-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-0 bg-slate-50/95 backdrop-blur z-30">
-                    <div>
-                        <h2 className="text-3xl font-bold text-slate-800 tracking-tight">{flatCategories.find(c => c.id === activeCategory)?.label}</h2>
-                        <p className="text-slate-500 text-sm mt-1">Manage your {flatCategories.find(c => c.id === activeCategory)?.label.toLowerCase()} preferences and data.</p>
-                    </div>
+                    {activeCategory !== 'contacts' && activeCategory !== 'assets' && (
+                        <div>
+                            <h2 className="text-3xl font-bold text-slate-800 tracking-tight">{flatCategories.find(c => c.id === activeCategory)?.label}</h2>
+                            <p className="text-slate-500 text-sm mt-1">Manage your {flatCategories.find(c => c.id === activeCategory)?.label.toLowerCase()} preferences and data.</p>
+                        </div>
+                    )}
+                    {(activeCategory === 'contacts' || activeCategory === 'assets') && <div></div>}
 
                     <div className="flex items-center gap-3">
-                        {isTableViewCategory && (
+                        {isTableViewCategory && activeCategory !== 'contacts' && (
                             <>
                                 <div className="relative group">
                                     <Input
@@ -1031,8 +1002,8 @@ const SettingsPage: React.FC = () => {
                 </div>
 
                 {/* Content Body */}
-                <div className="flex-1 overflow-y-auto px-8 pb-10">
-                    <div className="w-full max-w-7xl mx-auto animate-in fade-in duration-500">
+                <div className={`flex-1 ${activeCategory === 'contacts' || activeCategory === 'assets' || activeCategory === 'inventory' ? 'overflow-hidden' : 'overflow-y-auto'} px-8 ${activeCategory === 'contacts' || activeCategory === 'assets' || activeCategory === 'inventory' ? 'pb-0' : 'pb-10'}`}>
+                    <div className={`w-full ${activeCategory === 'contacts' || activeCategory === 'assets' || activeCategory === 'inventory' ? 'h-full' : 'max-w-7xl'} mx-auto animate-in fade-in duration-500`}>
                         {isTableViewCategory ? renderTable() : null}
                         {activeCategory === 'users' && <UserManagement />}
                         {activeCategory === 'preferences' && renderPreferences()}
@@ -1048,6 +1019,9 @@ const SettingsPage: React.FC = () => {
                                 <HelpSection />
                             </div>
                         )}
+                        {activeCategory === 'contacts' && <ContactsManagement />}
+                        {activeCategory === 'assets' && <AssetsManagement />}
+                        {activeCategory === 'inventory' && <InventoryManagement />}
                     </div>
                 </div>
             </div>

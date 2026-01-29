@@ -156,9 +156,10 @@ const DashboardPage: React.FC = () => {
                     </div>
 
                     {isAdmin ? (
-                        <div className="h-48 md:h-72 w-full">
-                            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                                <AreaChart data={cashFlowData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                        <div className="h-48 md:h-72 w-full min-h-[192px] relative">
+                            {cashFlowData.length > 0 ? (
+                                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                                    <AreaChart data={cashFlowData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                     <defs>
                                         <linearGradient id="gIncome" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
@@ -180,6 +181,11 @@ const DashboardPage: React.FC = () => {
                                     <Area type="monotone" dataKey="expense" stroke="#f43f5e" strokeWidth={3} fillUrl="url(#gExpense)" />
                                 </AreaChart>
                             </ResponsiveContainer>
+                            ) : (
+                                <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-sm">
+                                    No data available
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <div className="h-72 flex items-center justify-center text-slate-400">Access Restricted</div>

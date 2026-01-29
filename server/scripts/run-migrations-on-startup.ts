@@ -485,6 +485,32 @@ async function runMigrations() {
       ],
       'Received quantity column to purchase bill items'
     );
+
+    // Migration: Biz Planet Marketplace (marketplace_ads, marketplace_categories)
+    await runMigrationIfNeeded(
+      pool,
+      'add-marketplace-tables',
+      [
+        join(__dirname, '../migrations/add-marketplace-tables.sql'),
+        join(__dirname, '../../migrations/add-marketplace-tables.sql'),
+        join(process.cwd(), 'server/migrations/add-marketplace-tables.sql'),
+        join(process.cwd(), 'migrations/add-marketplace-tables.sql'),
+      ],
+      'Marketplace tables for Biz Planet'
+    );
+
+    // Migration: Marketplace ad images (pictures in DB)
+    await runMigrationIfNeeded(
+      pool,
+      'add-marketplace-ad-images',
+      [
+        join(__dirname, '../migrations/add-marketplace-ad-images.sql'),
+        join(__dirname, '../../migrations/add-marketplace-ad-images.sql'),
+        join(process.cwd(), 'server/migrations/add-marketplace-ad-images.sql'),
+        join(process.cwd(), 'migrations/add-marketplace-ad-images.sql'),
+      ],
+      'Marketplace ad images table'
+    );
     
     // Create default admin user if it doesn't exist
     console.log('👤 Ensuring admin user exists...');

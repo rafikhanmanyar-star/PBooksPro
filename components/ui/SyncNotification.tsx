@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSyncStatus } from '../../hooks/useSyncStatus';
 import { isMobileDevice } from '../../utils/platformDetection';
-import SyncDiagnosticPanel from './SyncDiagnosticPanel';
+// import SyncDiagnosticPanel from './SyncDiagnosticPanel'; // Disabled per user request
 
 const SyncNotification: React.FC = () => {
   const { pending, syncing, failed, isSyncing } = useSyncStatus();
@@ -97,14 +97,7 @@ const SyncNotification: React.FC = () => {
                 )}
               </div>
 
-              {/* View Details Button */}
-              <button
-                onClick={() => setShowDiagnostics(true)}
-                className="flex-shrink-0 text-xs text-blue-600 hover:text-blue-700 underline"
-                title="View sync details"
-              >
-                Details
-              </button>
+              {/* Details button removed per user request */}
             </div>
           </div>
         )}
@@ -182,12 +175,9 @@ const SyncNotification: React.FC = () => {
               <p className="text-xs text-gray-600 mt-1">
                 {failed} operation{failed !== 1 ? 's' : ''} failed after multiple retries
               </p>
-              <button
-                onClick={() => setShowDiagnostics(true)}
-                className="text-xs text-blue-600 hover:text-blue-700 underline mt-2"
-              >
-                View details and retry
-              </button>
+              <p className="text-xs text-gray-500 mt-2">
+                Will retry on reconnect
+              </p>
             </div>
           </div>
         </div>
@@ -231,11 +221,7 @@ const SyncNotification: React.FC = () => {
       )}
       </div>
 
-      {/* Diagnostic Panel */}
-      <SyncDiagnosticPanel
-        isOpen={showDiagnostics}
-        onClose={() => setShowDiagnostics(false)}
-      />
+      {/* Diagnostic Panel - removed per user request */}
     </>
   );
 };

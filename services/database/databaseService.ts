@@ -1039,11 +1039,54 @@ class DatabaseService {
     }
 
     /**
+     * Ensure sync_outbox and sync_metadata exist (run first so no "no such table" during schema split)
+     */
+    private ensureSyncTablesExist(): void {
+        if (!this.db) return;
+        try {
+            this.db.exec(`
+                CREATE TABLE IF NOT EXISTS sync_outbox (
+                    id TEXT PRIMARY KEY,
+                    tenant_id TEXT NOT NULL,
+                    user_id TEXT,
+                    entity_type TEXT NOT NULL,
+                    action TEXT NOT NULL CHECK (action IN ('create', 'update', 'delete')),
+                    entity_id TEXT NOT NULL,
+                    payload_json TEXT,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    synced_at TEXT,
+                    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'syncing', 'synced', 'failed')),
+                    retry_count INTEGER NOT NULL DEFAULT 0,
+                    error_message TEXT
+                );
+            `);
+            this.db.exec(`CREATE INDEX IF NOT EXISTS idx_sync_outbox_tenant_status ON sync_outbox(tenant_id, status);`);
+            this.db.exec(`CREATE INDEX IF NOT EXISTS idx_sync_outbox_created ON sync_outbox(created_at);`);
+            this.db.exec(`
+                CREATE TABLE IF NOT EXISTS sync_metadata (
+                    tenant_id TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    last_synced_at TEXT NOT NULL,
+                    last_pull_at TEXT,
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    PRIMARY KEY (tenant_id, entity_type)
+                );
+            `);
+        } catch (err) {
+            logger.warnCategory('database', 'ensureSyncTablesExist:', err);
+        }
+    }
+
+    /**
      * Ensure all required tables exist (for existing databases that might be missing newer tables)
      */
     ensureAllTablesExist(): void {
         if (!this.db || !this.isInitialized) return;
         
+        // Create sync tables first so they exist before executeSchemaStatements runs (avoids "no such table: sync_outbox")
+        this.ensureSyncTablesExist();
+
         try {
             // Get list of existing tables
             const existingTables = this.query<{ name: string }>(
@@ -1060,7 +1103,9 @@ class DatabaseService {
                 'transaction_log', 'error_log', 'app_settings', 'license_settings',
                 'chat_messages',
                 // Marketing / installment plans
-                'plan_amenities', 'installment_plans'
+                'plan_amenities', 'installment_plans',
+                // Bi-directional sync
+                'sync_outbox', 'sync_metadata'
             ];
             
             // Check for missing tables

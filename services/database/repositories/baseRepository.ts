@@ -10,6 +10,7 @@ import { getCurrentTenantId, shouldFilterByTenant } from '../tenantUtils';
 import { getCurrentUserId, shouldTrackUserId } from '../userUtils';
 import { isMobileDevice } from '../../../utils/platformDetection';
 import { getSyncManager } from '../../sync/syncManager';
+import { getSyncOutboxService } from '../../sync/syncOutboxService';
 
 interface PendingSyncOperation {
     type: 'create' | 'update' | 'delete';
@@ -90,6 +91,7 @@ export abstract class BaseRepository<T> {
 
     /**
      * Find all records with options
+     * Tenant isolation: if table is tenant-scoped but no tenant in context, return empty (never return other tenants' data).
      */
     findAll(options: {
         limit?: number;
@@ -100,6 +102,13 @@ export abstract class BaseRepository<T> {
         params?: any[];
     } = {}): T[] {
         const { limit, offset, orderBy, orderDir = 'DESC', condition, params = [] } = options;
+
+        if (this.shouldFilterByTenant()) {
+            const tenantId = getCurrentTenantId();
+            if (!tenantId) {
+                return [];
+            }
+        }
 
         let sql = `SELECT * FROM ${this.tableName}`;
         const whereConditions: string[] = [];
@@ -152,8 +161,12 @@ export abstract class BaseRepository<T> {
 
     /**
      * Find by primary key
+     * Tenant isolation: if table is tenant-scoped but no tenant in context, return null.
      */
     findById(id: string): T | null {
+        if (this.shouldFilterByTenant() && !getCurrentTenantId()) {
+            return null;
+        }
         let sql = `SELECT * FROM ${this.tableName} WHERE ${camelToSnake(this.primaryKey)} = ?`;
         const params: any[] = [id];
         
@@ -173,8 +186,12 @@ export abstract class BaseRepository<T> {
 
     /**
      * Find by condition
+     * Tenant isolation: if table is tenant-scoped but no tenant in context, return empty.
      */
     findBy(condition: string, params: any[] = []): T[] {
+        if (this.shouldFilterByTenant() && !getCurrentTenantId()) {
+            return [];
+        }
         let sql = `SELECT * FROM ${this.tableName} WHERE ${condition}`;
         const queryParams = [...params];
         
@@ -474,6 +491,7 @@ export abstract class BaseRepository<T> {
 
     /**
      * Count records
+     * Tenant isolation: if table is tenant-scoped but no tenant in context, return 0.
      */
     count(): number {
         // Check if database is ready before querying
@@ -481,7 +499,9 @@ export abstract class BaseRepository<T> {
             // Return 0 silently if database not ready (avoids console warnings during initialization)
             return 0;
         }
-        
+        if (this.shouldFilterByTenant() && !getCurrentTenantId()) {
+            return 0;
+        }
         let sql = `SELECT COUNT(*) as count FROM ${this.tableName}`;
         const params: any[] = [];
         
@@ -518,6 +538,20 @@ export abstract class BaseRepository<T> {
         try {
             const syncManager = getSyncManager();
             syncManager.queueOperation(type, this.tableName, entityId, data || {});
+            
+            // Also persist to sync_outbox for bi-directional sync (if DB is ready)
+            const tenantId = getCurrentTenantId();
+            const userId = getCurrentUserId();
+            if (tenantId && this.db.isReady()) {
+                try {
+                    const outbox = getSyncOutboxService();
+                    outbox.enqueue(tenantId, this.tableName, type, entityId, data || {}, userId ?? undefined);
+                    console.log(`[BaseRepository] ✅ Queued to outbox: ${type} ${this.tableName}:${entityId}`);
+                } catch (outboxError) {
+                    console.warn(`[BaseRepository] ⚠️ Failed to queue to outbox (${this.tableName}:${entityId}):`, outboxError);
+                    // Continue - SyncManager queue is still there
+                }
+            }
         } catch (error) {
             // Sync manager might not be initialized yet, that's okay
             console.debug(`[BaseRepository] Failed to queue sync for ${this.tableName}:${entityId}:`, error);
@@ -563,7 +597,9 @@ export abstract class BaseRepository<T> {
                 || this.tableName === 'properties'
                 || this.tableName === 'units'
                 || this.tableName === 'contacts'
-                || this.tableName === 'inventory_items';
+                || this.tableName === 'inventory_items'
+                || this.tableName === 'warehouses'
+                || this.tableName === 'transactions';
 
             if (useInsertOrReplace) {
                 // For users, use INSERT OR REPLACE instead of DELETE + INSERT

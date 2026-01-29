@@ -888,6 +888,26 @@ CREATE INDEX IF NOT EXISTS idx_inventory_items_name ON inventory_items(name);
 CREATE INDEX IF NOT EXISTS idx_inventory_items_expense_category ON inventory_items(expense_category_id);
 
 -- =====================================================
+-- WAREHOUSES
+-- =====================================================
+
+-- Warehouses table
+CREATE TABLE IF NOT EXISTS warehouses (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT,
+    user_id TEXT,
+    name TEXT NOT NULL,
+    address TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_warehouses_tenant ON warehouses(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_warehouses_user ON warehouses(user_id);
+CREATE INDEX IF NOT EXISTS idx_warehouses_name ON warehouses(name);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_warehouses_tenant_name ON warehouses(tenant_id, name);
+
+-- =====================================================
 -- PURCHASE BILLS (SHOP PURCHASE INVOICES FROM VENDORS)
 -- =====================================================
 
@@ -907,6 +927,9 @@ CREATE TABLE IF NOT EXISTS purchase_bills (
     paid_amount REAL NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'Unpaid' CHECK (status IN ('Unpaid', 'Partially Paid', 'Paid')),
     
+    -- Warehouse tracking
+    warehouse_id TEXT,
+    
     -- Inventory tracking
     items_received INTEGER NOT NULL DEFAULT 0,
     items_received_date TEXT,
@@ -919,6 +942,7 @@ CREATE TABLE IF NOT EXISTS purchase_bills (
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     
     FOREIGN KEY (vendor_id) REFERENCES contacts(id) ON DELETE RESTRICT,
+    FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
 );
 
@@ -997,6 +1021,7 @@ CREATE INDEX IF NOT EXISTS idx_purchase_bills_user ON purchase_bills(user_id);
 CREATE INDEX IF NOT EXISTS idx_purchase_bills_bill_date ON purchase_bills(bill_date);
 CREATE INDEX IF NOT EXISTS idx_purchase_bills_status ON purchase_bills(status);
 CREATE INDEX IF NOT EXISTS idx_purchase_bills_project ON purchase_bills(project_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_bills_warehouse ON purchase_bills(warehouse_id);
 
 -- Purchase Bill Items indexes
 CREATE INDEX IF NOT EXISTS idx_purchase_bill_items_tenant ON purchase_bill_items(tenant_id);
@@ -1163,4 +1188,33 @@ CREATE TABLE IF NOT EXISTS payroll_salary_components (
 
 CREATE INDEX IF NOT EXISTS idx_payroll_components_tenant ON payroll_salary_components(tenant_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_payroll_components_unique ON payroll_salary_components(tenant_id, name, type);
+
+-- Sync outbox: persistent change log for offline writes (source of truth for upstream sync)
+CREATE TABLE IF NOT EXISTS sync_outbox (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    entity_type TEXT NOT NULL,
+    action TEXT NOT NULL CHECK (action IN ('create', 'update', 'delete')),
+    entity_id TEXT NOT NULL,
+    payload_json TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    synced_at TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'syncing', 'synced', 'failed')),
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    error_message TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sync_outbox_tenant_status ON sync_outbox(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_sync_outbox_created ON sync_outbox(created_at);
+
+-- Sync metadata: last_synced_at per tenant for incremental downstream sync
+CREATE TABLE IF NOT EXISTS sync_metadata (
+    tenant_id TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    last_synced_at TEXT NOT NULL,
+    last_pull_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (tenant_id, entity_type)
+);
 `;

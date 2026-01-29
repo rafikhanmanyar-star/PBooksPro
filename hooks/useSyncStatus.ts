@@ -36,7 +36,10 @@ export function useSyncStatus(): UseSyncStatusResult {
     
     // Get initial status
     const updateStatus = () => {
-      setStatus(syncManager.getQueueStatus());
+      const newStatus = syncManager.getQueueStatus();
+      // Reduced logging per user request
+      // console.log('[useSyncStatus] Updating status:', newStatus);
+      setStatus(newStatus);
     };
     
     updateStatus();

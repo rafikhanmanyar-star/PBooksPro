@@ -248,6 +248,7 @@ const initialState: AppState = {
     installmentPlans: [],
     planAmenities: [],
     inventoryItems: [],
+    warehouses: [],
     // Purchase Bills (My Shop)
     purchaseBills: [],
     purchaseBillItems: [],
@@ -912,6 +913,14 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, inventoryItems: (state.inventoryItems || []).filter(i => i.id !== action.payload) };
         case 'SET_INVENTORY_ITEMS':
             return { ...state, inventoryItems: action.payload };
+        case 'ADD_WAREHOUSE':
+            return { ...state, warehouses: [...(state.warehouses || []), action.payload] };
+        case 'UPDATE_WAREHOUSE':
+            return { ...state, warehouses: (state.warehouses || []).map(w => w.id === action.payload.id ? action.payload : w) };
+        case 'DELETE_WAREHOUSE':
+            return { ...state, warehouses: (state.warehouses || []).filter(w => w.id !== action.payload) };
+        case 'SET_WAREHOUSES':
+            return { ...state, warehouses: action.payload };
         
         // Purchase Bills Actions
         case 'ADD_PURCHASE_BILL':
@@ -1386,6 +1395,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                         contracts: apiState.contracts || [],
                                         pmCycleAllocations: apiState.pmCycleAllocations || [],
                                         transactionLog: apiState.transactionLog || [],
+                                        inventoryItems: apiState.inventoryItems || [],
+                                        warehouses: apiState.warehouses || [],
                                     };
                                     
                                     // Save API data to local database with proper tenant_id (async, don't await)
@@ -1394,21 +1405,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     // Also clear existing sync queue since data is already in cloud
                                     const dbService = getDatabaseService();
                                     if (dbService.isReady()) {
-                                        // Clear sync queue since we're loading fresh data from cloud
-                                        // Any pending sync operations are now stale
+                                        // DON'T clear sync queue - local changes need to be pushed upstream!
+                                        // Bi-directional sync will handle merging local and remote changes
                                         // Use IIFE to handle async operations
                                         (async () => {
                                             try {
-                                                const { getSyncManager } = await import('../services/sync/syncManager');
-                                                const syncManager = getSyncManager();
-                                                syncManager.clearAll();
-                                                console.log('[AppContext] Cleared sync queue - data loaded from cloud');
-                                            } catch (syncError) {
-                                                console.warn('⚠️ Could not clear sync queue:', syncError);
-                                            }
-                                            
-                                            try {
                                                 const appStateRepo = await getAppStateRepository();
+                                                // disableSyncQueueing=true prevents re-queueing cloud data
                                                 await appStateRepo.saveState(fullState, true);
                                             } catch (saveError) {
                                                 console.warn('⚠️ Could not save API data to local database:', saveError);
@@ -2434,6 +2437,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         return { type: 'inventory_item', action: 'update', data: action.payload };
                     case 'DELETE_INVENTORY_ITEM':
                         return { type: 'inventory_item', action: 'delete', data: { id: action.payload } };
+                    case 'ADD_WAREHOUSE':
+                        return { type: 'warehouse', action: 'create', data: action.payload };
+                    case 'UPDATE_WAREHOUSE':
+                        return { type: 'warehouse', action: 'update', data: action.payload };
+                    case 'DELETE_WAREHOUSE':
+                        return { type: 'warehouse', action: 'delete', data: { id: action.payload } };
                     case 'ADD_RENTAL_AGREEMENT':
                         return { type: 'rental_agreement', action: 'create', data: action.payload };
                     case 'UPDATE_RENTAL_AGREEMENT':
@@ -3430,11 +3439,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (isAuthenticated && !prevAuthRef.current && !isInitializing) {
             const reloadDataFromApi = async () => {
                 try {
-                    logger.logCategory('sync', '🔄 User authenticated, reloading data from API for synchronization...');
+                    logger.logCategory('sync', '🔄 User authenticated, reloading data from API for current tenant...');
                     const apiService = getAppStateApiService();
                     const apiState = await apiService.loadState();
                     
-                    // Replace state with fresh API data to ensure all users see the same data
+                    // Replace state with API data for this tenant only (server filters by JWT tenant_id)
                     setStoredState(prev => ({
                         ...prev,
                         accounts: apiState.accounts || [],
@@ -3537,20 +3546,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 
                                 // Save API data to local database with proper tenant_id (async, don't await)
                                 // IMPORTANT: Disable sync queueing since this data is FROM cloud, not TO cloud
-                                // Also clear existing sync queue since data is already in cloud
-                                // Use IIFE to handle async operations
+                                // DON'T clear sync queue - local changes need to be pushed upstream!
+                                // Bi-directional sync will handle merging local and remote changes
                                 (async () => {
                                     try {
-                                        const { getSyncManager } = await import('../services/sync/syncManager');
-                                        const syncManager = getSyncManager();
-                                        syncManager.clearAll();
-                                        logger.logCategory('sync', 'Cleared sync queue - data loaded from cloud');
-                                    } catch (syncError) {
-                                        logger.warnCategory('sync', 'Could not clear sync queue:', syncError);
-                                    }
-                                    
-                                    try {
                                         const appStateRepo = await getAppStateRepository();
+                                        // disableSyncQueueing=true prevents re-queueing cloud data
                                         await appStateRepo.saveState(fullState, true);
                                     } catch (err) {
                                         logger.errorCategory('database', '⚠️ Failed to save API data to local database:', err);

@@ -4,6 +4,7 @@ import { PurchaseBillItem, InventoryItem, InventoryStock } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import Select from '../ui/Select';
 import { apiClient } from '../../services/api/client';
 import { useNotification } from '../../context/NotificationContext';
 
@@ -25,6 +26,7 @@ const InventoryItemsReport: React.FC = () => {
     const { showToast, showAlert } = useNotification();
 
     const [searchQuery, setSearchQuery] = useState('');
+    const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>('');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({
         key: 'itemName',
         direction: 'asc'
@@ -76,6 +78,14 @@ const InventoryItemsReport: React.FC = () => {
 
         // Process all purchase bill items
         (state.purchaseBillItems || []).forEach((item) => {
+            // Get bill to check warehouse filter
+            const bill = state.purchaseBills?.find(b => b.id === item.purchaseBillId);
+            
+            // Filter by warehouse if selected
+            if (selectedWarehouseId && (bill as any)?.warehouseId !== selectedWarehouseId) {
+                return; // Skip this item if it doesn't match the selected warehouse
+            }
+
             const key = item.inventoryItemId;
             const existing = itemsMap.get(key);
 
@@ -84,7 +94,6 @@ const InventoryItemsReport: React.FC = () => {
             const remainingQty = orderedQty - receivedQty;
 
             // Get bill number
-            const bill = state.purchaseBills?.find(b => b.id === item.purchaseBillId);
             const billNumber = bill?.billNumber || 'Unknown';
 
             if (existing) {
@@ -170,7 +179,7 @@ const InventoryItemsReport: React.FC = () => {
         });
 
         return result;
-    }, [state.purchaseBillItems, state.purchaseBills, state.inventoryItems, searchQuery, sortConfig]);
+    }, [state.purchaseBillItems, state.purchaseBills, state.inventoryItems, searchQuery, sortConfig, selectedWarehouseId]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -223,14 +232,31 @@ const InventoryItemsReport: React.FC = () => {
                 </Button>
             </div>
 
-            {/* Search */}
+            {/* Filters */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-                <Input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search by item name or bill number..."
-                />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Search</label>
+                        <Input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search by item name or bill number..."
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Warehouse</label>
+                        <Select
+                            value={selectedWarehouseId}
+                            onChange={(e) => setSelectedWarehouseId(e.target.value)}
+                        >
+                            <option value="">All Warehouses</option>
+                            {(state.warehouses || []).map(w => (
+                                <option key={w.id} value={w.id}>{w.name}</option>
+                            ))}
+                        </Select>
+                    </div>
+                </div>
             </div>
 
             {/* Report Table */}
@@ -273,7 +299,7 @@ const InventoryItemsReport: React.FC = () => {
                                     onClick={() => handleSort('lastReceivedDate')}
                                     className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase cursor-pointer hover:bg-slate-100"
                                 >
-                                    Last Received {sortConfig.key === 'lastReceivedDate' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                                    Date Received {sortConfig.key === 'lastReceivedDate' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                                 </th>
                                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">
                                     Bill Numbers
@@ -303,10 +329,14 @@ const InventoryItemsReport: React.FC = () => {
                                                     {row.status}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-3 text-slate-600 text-sm">
+                                            <td className="px-4 py-3 text-slate-700 text-sm font-medium">
                                                 {row.lastReceivedDate 
-                                                    ? new Date(row.lastReceivedDate).toLocaleDateString()
-                                                    : '-'
+                                                    ? new Date(row.lastReceivedDate).toLocaleDateString('en-US', { 
+                                                        year: 'numeric', 
+                                                        month: 'short', 
+                                                        day: 'numeric' 
+                                                    })
+                                                    : <span className="text-slate-400">-</span>
                                                 }
                                             </td>
                                             <td className="px-4 py-3 text-slate-600 text-sm">

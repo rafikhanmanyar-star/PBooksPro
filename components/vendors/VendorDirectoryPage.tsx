@@ -12,9 +12,7 @@ import VendorBillPaymentModal from './VendorBillPaymentModal';
 import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarningModal';
 import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
-import Input from '../ui/Input';
 import { WhatsAppService } from '../../services/whatsappService';
-import { useWhatsApp } from '../../context/WhatsAppContext';
 import VendorBills from './VendorBills';
 import VendorQuotationsTable from './VendorQuotationsTable';
 import QuotationForm from './QuotationForm';
@@ -154,7 +152,19 @@ const VendorDirectoryPage: React.FC = () => {
         }
     }, []);
 
-    const vendors = state.contacts
+    // Safety check: ensure state is initialized
+    if (!state || !state.contacts) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mb-2"></div>
+                    <p className="text-sm text-gray-600">Loading vendors...</p>
+                </div>
+            </div>
+        );
+    }
+
+    const vendors = (state.contacts || [])
         .filter(c => c.type === ContactType.VENDOR)
         .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -167,7 +177,7 @@ const VendorDirectoryPage: React.FC = () => {
     // Calculate payable amounts for each vendor
     const vendorsWithPayable = useMemo(() => {
         const vendors = filteredVendors.map(vendor => {
-            const vendorBills = state.bills.filter(b => b.contactId === vendor.id);
+            const vendorBills = (state.bills || []).filter(b => b.contactId === vendor.id);
 
             // Calculate total payable as sum of unpaid balances for all bills
             const payableAmount = vendorBills.reduce((sum, bill) => {
@@ -236,8 +246,8 @@ const VendorDirectoryPage: React.FC = () => {
 
     const selectedVendor = vendors.find(v => v.id === selectedVendorId) || null;
 
-    const billToEdit = editingItem?.type === 'bill' ? state.bills.find(b => b.id === editingItem.id) : undefined;
-    const transactionToEdit = editingItem?.type === 'transaction' ? state.transactions.find(t => t.id === editingItem.id) : undefined;
+    const billToEdit = editingItem?.type === 'bill' ? (state.bills || []).find(b => b.id === editingItem.id) : undefined;
+    const transactionToEdit = editingItem?.type === 'transaction' ? (state.transactions || []).find(t => t.id === editingItem.id) : undefined;
 
 
     const handleUpdateVendor = (contactData: Omit<Contact, 'id'>) => {
@@ -295,7 +305,7 @@ const VendorDirectoryPage: React.FC = () => {
     const getLinkedItemName = (tx: Transaction | null): string => {
         if (!tx) return '';
         if (tx.billId) {
-            const bill = state.bills.find(b => b.id === tx.billId);
+            const bill = (state.bills || []).find(b => b.id === tx.billId);
             return `Bill #${bill?.billNumber || 'N/A'}`;
         }
         return 'a linked item';
@@ -312,7 +322,7 @@ const VendorDirectoryPage: React.FC = () => {
     };
 
     const getVendorPayable = (vendorId: string) => {
-        const vendorBills = state.bills.filter(b => b.contactId === vendorId);
+        const vendorBills = (state.bills || []).filter(b => b.contactId === vendorId);
         return vendorBills.reduce((sum, bill) => {
             const balance = bill.amount - (bill.paidAmount || 0);
             return sum + Math.max(0, balance);
@@ -644,7 +654,7 @@ const VendorDirectoryPage: React.FC = () => {
                                 {optionsView === 'Quotation' ? (
                                     <AllQuotationsTable
                                         onEditQuotation={(quotation) => {
-                                            const vendor = state.contacts.find(c => c.id === quotation.vendorId);
+                                            const vendor = (state.contacts || []).find(c => c.id === quotation.vendorId);
                                             if (vendor) {
                                                 setSelectedVendorId(vendor.id);
                                                 setActiveTab('Quotations');
@@ -656,7 +666,7 @@ const VendorDirectoryPage: React.FC = () => {
                                 ) : optionsView === 'Bills' ? (
                                     <AllBillsTable
                                         onEditBill={(bill) => {
-                                            const vendor = state.contacts.find(c => c.id === bill.contactId);
+                                            const vendor = (state.contacts || []).find(c => c.id === bill.contactId);
                                             if (vendor) {
                                                 setSelectedVendorId(vendor.id);
                                                 setActiveTab('Bills');
