@@ -170,7 +170,7 @@ npm install -g ngrok
 4. The window stays open because you opened it; you’ll see any error.
 
 **Fix 2 – Use the project script:**
-1. In File Explorer go to: `f:\PbookPro cursor\PBooksPro\scripts\`
+1. In File Explorer go to: `f:\AntiGravity projects\PBooksPro\scripts\`
 2. Double-click **start-ngrok.bat**
 3. A window opens, runs ngrok, and then shows "Window kept open - see output above" and waits. You can read any error.
 

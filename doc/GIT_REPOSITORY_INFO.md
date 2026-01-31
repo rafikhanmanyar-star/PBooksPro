@@ -2,7 +2,7 @@
 
 ## Current Repository Configuration
 
-- **Repository Path**: `F:\PbookPro cursor\PBooksPro`
+- **Repository Path**: `f:\AntiGravity projects\PBooksPro`
 - **Remote URL**: `https://github.com/rafikhanmanyar-star/PBooksPro.git`
 - **Current Branch**: `staging`
 - **Repository Type**: Staging Branch Repository

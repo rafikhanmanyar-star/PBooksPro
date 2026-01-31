@@ -2,7 +2,7 @@
 # Run this script to push your changes to GitHub
 
 $ErrorActionPreference = "Continue"
-$projectPath = "F:\PbookPro cursor\PBooksPro"
+$projectPath = "f:\AntiGravity projects\PBooksPro"
 Set-Location $projectPath
 
 Write-Host "🚀 Push to GitHub Script" -ForegroundColor Cyan

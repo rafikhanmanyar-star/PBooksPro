@@ -60,7 +60,7 @@ Vite automatically serves files from the `public` folder at the root URL.
 ## 📁 File Structure
 
 ```
-MyProjectBooks/
+PBooksPro/
 ├── public/
 │   ├── icon.svg          ✅ Main icon (served at /icon.svg)
 │   ├── manifest.json     ✅ PWA manifest (served at /manifest.json)

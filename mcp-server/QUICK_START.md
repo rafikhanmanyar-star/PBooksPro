@@ -27,7 +27,7 @@ Open Cursor Settings (Ctrl+,) and add this to your settings.json:
   "mcpServers": {
     "pbookspro": {
       "command": "node",
-      "args": ["f:/PBookPro Cursor/MyProjectBooks/mcp-server/dist/index.js"]
+      "args": ["f:/AntiGravity projects/PBooksPro/mcp-server/dist/index.js"]
     }
   }
 }

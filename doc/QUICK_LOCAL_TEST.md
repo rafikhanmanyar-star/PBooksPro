@@ -21,7 +21,7 @@
 
 ```powershell
 # Navigate to project
-cd "H:\AntiGravity projects\V1.1.3\MyProjectBooks"
+cd "f:\AntiGravity projects\PBooksPro"
 
 # Create client .env
 @"

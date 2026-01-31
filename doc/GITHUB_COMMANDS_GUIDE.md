@@ -144,7 +144,7 @@ git reset --soft HEAD~1
 git init
 
 # Add remote repository
-git remote add origin https://github.com/yourusername/your-repo.git
+git remote add origin https://github.com/rafikhanmanyar-star/PBooksPro.git
 
 # Verify remote
 git remote -v
@@ -324,7 +324,7 @@ git remote -v
 
 ### Change Remote URL
 ```bash
-git remote set-url origin https://github.com/username/new-repo.git
+git remote set-url origin https://github.com/rafikhanmanyar-star/PBooksPro.git
 ```
 
 ## Quick Reference Card

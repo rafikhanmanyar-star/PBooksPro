@@ -22,7 +22,7 @@ The error "Failed to load module script: Expected a JavaScript-or-Wasm module sc
 1. **Stop the admin portal** (Ctrl+C in terminal)
 2. **Restart it**:
    ```powershell
-   cd "H:\AntiGravity projects\V1.1.3\MyProjectBooks\admin"
+   cd "H:\AntiGravity projects\V1.1.3\PBooksPro\admin"
    npm run dev
    ```
 

@@ -1,8 +1,8 @@
-# Git Repair and Setup Script for MyProjectBooks
+# Git Repair and Setup Script for PBooksPro
 # This script repairs git configuration and prepares for pushing to GitHub
 
 $ErrorActionPreference = "Stop"
-$projectPath = "H:\AntiGravity projects\V1.1.3\MyProjectBooks"
+$projectPath = "f:\AntiGravity projects\PBooksPro"
 Set-Location $projectPath
 
 Write-Host "🔧 Git Repair and Setup Script" -ForegroundColor Cyan
@@ -14,7 +14,8 @@ Write-Host "📋 Step 1: Checking Git installation..." -ForegroundColor Yellow
 try {
     $gitVersion = git --version
     Write-Host "✅ Git is installed: $gitVersion" -ForegroundColor Green
-} catch {
+}
+catch {
     Write-Host "❌ Git is not installed or not in PATH" -ForegroundColor Red
     Write-Host "   Please install Git from https://git-scm.com/download/win" -ForegroundColor Yellow
     exit 1
@@ -28,7 +29,8 @@ if (-not (Test-Path ".git")) {
     Write-Host "🔄 Initializing Git repository..." -ForegroundColor Green
     git init
     Write-Host "✅ Repository initialized" -ForegroundColor Green
-} else {
+}
+else {
     Write-Host "✅ Git repository is initialized" -ForegroundColor Green
 }
 
@@ -38,7 +40,8 @@ Write-Host "📋 Step 3: Checking remote configuration..." -ForegroundColor Yell
 $remoteUrl = git config --get remote.origin.url
 if ($remoteUrl) {
     Write-Host "✅ Remote 'origin' is configured: $remoteUrl" -ForegroundColor Green
-} else {
+}
+else {
     Write-Host "⚠️  No remote 'origin' configured" -ForegroundColor Yellow
     $addRemote = Read-Host "Enter GitHub repository URL (or press Enter to skip)"
     if ($addRemote) {
@@ -83,12 +86,14 @@ if ($LASTEXITCODE -ne 0 -or $submoduleStatus -match "fatal|error") {
             # Add as regular directories
             git add update-server website/Website 2>&1 | Out-Null
             Write-Host "   ✅ Added as regular directories" -ForegroundColor Green
-        } else {
+        }
+        else {
             Write-Host "⚠️  Submodule setup requires manual configuration" -ForegroundColor Yellow
             Write-Host "   Please configure .gitmodules file manually" -ForegroundColor Yellow
         }
     }
-} else {
+}
+else {
     Write-Host "✅ Submodules are properly configured" -ForegroundColor Green
 }
 
@@ -103,7 +108,8 @@ Write-Host "📋 Step 6: Checking branch configuration..." -ForegroundColor Yell
 $currentBranch = git branch --show-current
 if ($currentBranch) {
     Write-Host "✅ Current branch: $currentBranch" -ForegroundColor Green
-} else {
+}
+else {
     Write-Host "⚠️  No branch checked out" -ForegroundColor Yellow
     git checkout -b main
     Write-Host "✅ Created and switched to 'main' branch" -ForegroundColor Green
@@ -117,11 +123,13 @@ if ($remoteUrl) {
         git ls-remote --heads origin 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
             Write-Host "✅ Successfully connected to remote repository" -ForegroundColor Green
-        } else {
+        }
+        else {
             Write-Host "⚠️  Could not connect to remote (authentication may be required)" -ForegroundColor Yellow
             Write-Host "   This is normal if you haven't set up credentials yet" -ForegroundColor Yellow
         }
-    } catch {
+    }
+    catch {
         Write-Host "⚠️  Could not test remote connectivity" -ForegroundColor Yellow
     }
 }
@@ -146,7 +154,8 @@ if ($status) {
         git commit -m $message
         Write-Host "✅ Changes committed" -ForegroundColor Green
     }
-} else {
+}
+else {
     Write-Host "✅ No uncommitted changes" -ForegroundColor Green
 }
 
@@ -154,7 +163,7 @@ if ($status) {
 Write-Host ""
 Write-Host "📋 Step 9: Checking if there are commits to push..." -ForegroundColor Yellow
 if ($remoteUrl) {
-    $ahead = git rev-list --count @{u}..HEAD 2>&1
+    $ahead = git rev-list --count "@{u}..HEAD" 2>&1
     if ($LASTEXITCODE -eq 0 -and $ahead -gt 0) {
         Write-Host "📤 Found $ahead commit(s) to push" -ForegroundColor Cyan
         Write-Host ""
@@ -164,7 +173,8 @@ if ($remoteUrl) {
             git push origin $currentBranch
             if ($LASTEXITCODE -eq 0) {
                 Write-Host "✅ Successfully pushed to GitHub!" -ForegroundColor Green
-            } else {
+            }
+            else {
                 Write-Host "❌ Push failed. This might be due to:" -ForegroundColor Red
                 Write-Host "   - Authentication issues (need GitHub credentials)" -ForegroundColor Yellow
                 Write-Host "   - Network connectivity" -ForegroundColor Yellow
@@ -177,10 +187,12 @@ if ($remoteUrl) {
                 Write-Host "   3. Or use SSH: git remote set-url origin git@github.com:rafikhanmanyar-star/PBooksPro.git" -ForegroundColor Yellow
             }
         }
-    } else {
+    }
+    else {
         Write-Host "✅ Everything is up to date (no commits to push)" -ForegroundColor Green
     }
-} else {
+}
+else {
     Write-Host "⚠️  No remote configured - skipping push check" -ForegroundColor Yellow
 }
 

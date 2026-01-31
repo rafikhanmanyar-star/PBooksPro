@@ -9,7 +9,7 @@ Create these `.env` files for local testing with Render.
 Create `.env` in project root:
 
 ```env
-# .env (in MyProjectBooks root)
+# .env (in PBooksPro root)
 # For testing with Render API:
 VITE_API_URL=https://pbookspro-api.onrender.com/api
 

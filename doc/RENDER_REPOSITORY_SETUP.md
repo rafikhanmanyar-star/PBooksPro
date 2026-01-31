@@ -8,7 +8,7 @@ You have two options for organizing your repositories:
 
 **Single Repository Structure:**
 ```
-MyProjectBooks/
+PBooksPro/
 ├── server/          # API server code
 ├── admin/           # Admin portal code
 ├── components/      # Client app code

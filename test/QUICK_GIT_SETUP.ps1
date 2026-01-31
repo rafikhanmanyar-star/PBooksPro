@@ -1,8 +1,8 @@
-# Quick Git Setup Script for MyProjectBooks
+# Quick Git Setup Script for PBooksPro
 # Run this in PowerShell from your project root
 
 # Navigate to project folder (adjust path if needed)
-$projectPath = "H:\AntiGravity projects\V1.1.3\MyProjectBooks"
+$projectPath = "f:\AntiGravity projects\PBooksPro"
 Set-Location $projectPath
 
 Write-Host "📁 Current directory: $(Get-Location)" -ForegroundColor Cyan
@@ -17,7 +17,8 @@ if (Test-Path ".git") {
     if ($continue -ne "y") {
         exit
     }
-} else {
+}
+else {
     # Initialize Git
     Write-Host "🔄 Initializing Git repository..." -ForegroundColor Green
     git init
@@ -28,7 +29,8 @@ if (Test-Path ".git") {
 # Check .gitignore exists
 if (Test-Path ".gitignore") {
     Write-Host "✅ .gitignore found" -ForegroundColor Green
-} else {
+}
+else {
     Write-Host "⚠️  .gitignore not found - creating one..." -ForegroundColor Yellow
     # Create basic .gitignore
     @"
@@ -84,8 +86,8 @@ Write-Host "   2. DO NOT initialize with README, .gitignore, or license" -Foregr
 Write-Host "   3. Copy the repository URL" -ForegroundColor White
 Write-Host "   4. Run these commands:" -ForegroundColor White
 Write-Host ""
-Write-Host "      git remote add origin https://github.com/YOUR_USERNAME/MyProjectBooks.git" -ForegroundColor Yellow
-Write-Host "      git branch -M main" -ForegroundColor Yellow
-Write-Host "      git push -u origin main" -ForegroundColor Yellow
+Write-Host "      git remote add origin https://github.com/rafikhanmanyar-star/PBooksPro.git" -ForegroundColor Yellow
+Write-Host "      git branch -M staging" -ForegroundColor Yellow
+Write-Host "      git push -u origin staging" -ForegroundColor Yellow
 Write-Host ""
 
