@@ -12,7 +12,7 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import { formatDate } from '../../utils/dateUtils';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from 'recharts';
 
@@ -184,7 +184,7 @@ const AgreementExpiryReport: React.FC = () => {
         exportJsonToExcel(data, 'agreement-expiry-report.xlsx', 'Agreement Expiry');
     };
 
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
     
     const SortIcon = ({ column }: { column: SortKey }) => (
         <span className="ml-1 text-[10px] text-slate-400">
@@ -245,7 +245,7 @@ const AgreementExpiryReport: React.FC = () => {
                         <PrintButton
                             variant="secondary"
                             size="sm"
-                            onPrint={handlePrint}
+                            onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                             className="whitespace-nowrap"
                         />
                     </div>

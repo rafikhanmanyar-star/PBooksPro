@@ -265,7 +265,6 @@ const initialState: AppState = {
     lastPreservedDate: undefined,
     pmCostPercentage: 0,
     defaultProjectId: undefined,
-    documentStoragePath: undefined,
     errorLog: [],
     transactionLog: [],
     currentPage: 'dashboard',
@@ -955,8 +954,6 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, pmCostPercentage: action.payload };
         case 'UPDATE_DEFAULT_PROJECT':
             return { ...state, defaultProjectId: action.payload };
-        case 'UPDATE_DOCUMENT_STORAGE_PATH':
-            return { ...state, documentStoragePath: action.payload };
         case 'SET_LAST_SERVICE_CHARGE_RUN':
             return { ...state, lastServiceChargeRun: action.payload };
 
@@ -1650,7 +1647,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 'TOGGLE_BEEP_ON_SAVE',
                 'TOGGLE_DATE_PRESERVATION',
                 'UPDATE_DEFAULT_PROJECT',
-                'UPDATE_DOCUMENT_STORAGE_PATH',
                 'UPDATE_DASHBOARD_CONFIG',
                 // PM Cycle Allocations
                 'ADD_PM_CYCLE_ALLOCATION',
@@ -2224,9 +2220,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         } else if (action.type === 'UPDATE_DEFAULT_PROJECT') {
                             await settingsSyncService.saveSetting('defaultProjectId', action.payload);
                             logger.logCategory('sync', '✅ Synced defaultProjectId to cloud');
-                        } else if (action.type === 'UPDATE_DOCUMENT_STORAGE_PATH') {
-                            await settingsSyncService.saveSetting('documentStoragePath', action.payload);
-                            logger.logCategory('sync', '✅ Synced documentStoragePath to cloud');
                         } else if (action.type === 'UPDATE_DASHBOARD_CONFIG') {
                             await settingsSyncService.saveSetting('dashboardConfig', action.payload);
                             logger.logCategory('sync', '✅ Synced dashboardConfig to cloud');
@@ -2495,8 +2488,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         return { type: 'setting', action: 'update', data: { key: 'enableDatePreservation', value: action.payload } };
                     case 'UPDATE_DEFAULT_PROJECT':
                         return { type: 'setting', action: 'update', data: { key: 'defaultProjectId', value: action.payload } };
-                    case 'UPDATE_DOCUMENT_STORAGE_PATH':
-                        return { type: 'setting', action: 'update', data: { key: 'documentStoragePath', value: action.payload } };
                     default:
                         return null;
                 }
@@ -2712,9 +2703,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
             if (cloudSettings.defaultProjectId !== undefined) {
                 dispatch({ type: 'UPDATE_DEFAULT_PROJECT', payload: cloudSettings.defaultProjectId });
-            }
-            if (cloudSettings.documentStoragePath !== undefined) {
-                dispatch({ type: 'UPDATE_DOCUMENT_STORAGE_PATH', payload: cloudSettings.documentStoragePath });
             }
             if (cloudSettings.dashboardConfig) {
                 dispatch({ type: 'UPDATE_DASHBOARD_CONFIG', payload: cloudSettings.dashboardConfig });

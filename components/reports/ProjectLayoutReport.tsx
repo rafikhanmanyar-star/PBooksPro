@@ -7,7 +7,7 @@ import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import Button from '../ui/Button';
 import PrintButton from '../ui/PrintButton';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface UnitBoxData {
@@ -37,7 +37,7 @@ interface ProjectLayoutData {
 
 const ProjectLayoutReport: React.FC = () => {
     const { state } = useAppContext();
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
 
     // --- Helper: Parse Unit Name (Project Context) ---
     const parseUnit = (name: string): { floorIndex: number, floorLabel: string, unitIndex: number, isUnconventional: boolean, type: string } => {
@@ -226,7 +226,7 @@ const ProjectLayoutReport: React.FC = () => {
 
             <div className="flex flex-col sm:flex-row justify-end items-center gap-4 mb-2 no-print flex-shrink-0">
                 <div className="ml-auto">
-                    <PrintButton onPrint={handlePrint} label="Print Layout" />
+                    <PrintButton onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })} label="Print Layout" />
                 </div>
             </div>
 

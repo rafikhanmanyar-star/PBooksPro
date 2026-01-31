@@ -24,7 +24,7 @@ import Card from '../ui/Card';
 import { ICONS } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
 import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import PrintButton from '../ui/PrintButton';
 import ReportHeader from '../reports/ReportHeader';
@@ -256,7 +256,7 @@ const MarketingPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { showToast, showAlert, showConfirm } = useNotification();
     const entityFormModal = useEntityFormModal();
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
     
     const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
     const [showForm, setShowForm] = useState(false);
@@ -1606,7 +1606,7 @@ const MarketingPage: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2">
                     <PrintButton
-                        onPrint={handlePrint}
+                        onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                         disabled={!showForm}
                         label="Print Plan"
                         className="print:hidden"

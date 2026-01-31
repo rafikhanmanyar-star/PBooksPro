@@ -355,7 +355,7 @@ const LedgerTable: React.FC<LedgerTableProps> = ({
                                                     <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded uppercase tracking-widest">{group.title}</span>
                                                     <span className="text-[9px] font-bold text-slate-400">{group.transactions.length} RECORDS</span>
                                                 </div>
-                                                <div className="flex items-center gap-2 text-[10px] font-mono font-bold tabular-nums">
+                                                <div className="flex items-center gap-2 text-xs font-bold tabular-nums">
                                                     {(() => {
                                                         const summary = calculateGroupSummary(group.transactions);
                                                         return (

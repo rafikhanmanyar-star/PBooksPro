@@ -876,11 +876,16 @@ const ProjectEquityManagement: React.FC = () => {
     };
 
     return (
-        <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-4 h-full flex flex-col">
-            <div className="mb-4">
-                <Tabs tabs={['Ledger', 'Profit Distribution', 'Equity Transfer', 'Investor Distribution']} activeTab={activeTab} onTabClick={setActiveTab} />
+        <div className="flex flex-col h-full">
+            <div className="flex-shrink-0">
+                <Tabs
+                    variant="browser"
+                    tabs={['Ledger', 'Profit Distribution', 'Equity Transfer', 'Investor Distribution']}
+                    activeTab={activeTab}
+                    onTabClick={setActiveTab}
+                />
             </div>
-
+            <div className="flex-grow overflow-hidden bg-white rounded-b-lg -mt-px p-4">
             {activeTab === 'Ledger' && (
                 <>
                     <style>{STANDARD_PRINT_STYLES}</style>
@@ -1258,6 +1263,7 @@ const ProjectEquityManagement: React.FC = () => {
                     <ProjectInvestorReport />
                 </div>
             )}
+            </div>
 
             <Modal isOpen={isActionModalOpen} onClose={() => setIsActionModalOpen(false)} title="Record New Investment">
                 <div className="space-y-4">

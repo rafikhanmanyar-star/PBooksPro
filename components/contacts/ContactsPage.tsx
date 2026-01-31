@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { Contact, ContactType, TransactionType, LoanSubtype } from '../../types';
 import ContactForm from '../settings/ContactForm';
@@ -13,8 +13,97 @@ import Tabs from '../ui/Tabs';
 import { ImportType } from '../../services/importService';
 import { WhatsAppService } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
+import useLocalStorage from '../../hooks/useLocalStorage';
 
 type SortKey = 'name' | 'type' | 'companyName' | 'contactNo' | 'address' | 'balance';
+
+interface ContactTreeNode {
+    id: string;
+    label: string;
+    type: 'type' | 'contact';
+    children: ContactTreeNode[];
+    value?: number;
+}
+
+/** Premium tree sidebar: same style as Project Agreements (Directories, avatars, orange active, chevron) */
+const ContactTreeSidebar: React.FC<{
+    nodes: ContactTreeNode[];
+    selectedId: string | null;
+    selectedType: 'type' | 'contact' | null;
+    onSelect: (id: string, type: 'type' | 'contact') => void;
+}> = ({ nodes, selectedId, selectedType, onSelect }) => {
+    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(nodes.map(n => n.id)));
+
+    useEffect(() => {
+        setExpandedIds(prev => {
+            const next = new Set(prev);
+            nodes.forEach(n => next.add(n.id));
+            return next;
+        });
+    }, [nodes]);
+
+    const toggleExpanded = (id: string) => {
+        setExpandedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const renderNode = (node: ContactTreeNode, level: number) => {
+        const hasChildren = node.children && node.children.length > 0;
+        const isExpanded = expandedIds.has(node.id);
+        const isSelected = selectedId === node.id && selectedType === node.type;
+        const initials = node.label.slice(0, 2).toUpperCase();
+
+        return (
+            <div key={node.id} className={level > 0 ? 'ml-4 border-l border-slate-200/80 pl-3' : ''}>
+                <div
+                    className={`group flex items-center gap-2 py-1.5 px-2 rounded-lg -mx-0.5 transition-all cursor-pointer ${
+                        isSelected ? 'bg-orange-500/10 text-orange-700' : 'hover:bg-slate-100/80 text-slate-700 hover:text-slate-900'
+                    }`}
+                    onClick={() => onSelect(node.id, node.type)}
+                >
+                    {hasChildren ? (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); toggleExpanded(node.id); }}
+                            className={`flex-shrink-0 w-5 h-5 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+                        >
+                            <div className="w-3.5 h-3.5">{ICONS.chevronRight}</div>
+                        </button>
+                    ) : (
+                        <span className="w-5 flex-shrink-0" />
+                    )}
+                    <span className="flex-shrink-0 w-6 h-6 rounded-md bg-slate-800 text-slate-200 text-[10px] font-bold flex items-center justify-center">
+                        {initials}
+                    </span>
+                    <span className="flex-1 text-xs font-medium truncate">{node.label}</span>
+                    {node.value !== undefined && node.value > 0 && (
+                        <span className={`text-[10px] font-semibold tabular-nums ${isSelected ? 'text-orange-600' : 'text-slate-500'}`}>
+                            {node.value}
+                        </span>
+                    )}
+                </div>
+                {hasChildren && isExpanded && (
+                    <div className="mt-0.5">
+                        {node.children.map(child => renderNode(child, level + 1))}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    if (!nodes || nodes.length === 0) {
+        return <div className="text-xs text-slate-400 italic p-2">No directories match your search</div>;
+    }
+
+    return (
+        <div className="space-y-0.5">
+            {nodes.map(node => renderNode(node, 0))}
+        </div>
+    );
+};
 
 const ContactsPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -24,6 +113,14 @@ const ContactsPage: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<string>('All');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
+
+    // Tree sidebar (same style as Project Agreements)
+    const [treeSearchQuery, setTreeSearchQuery] = useState('');
+    const [selectedTreeId, setSelectedTreeId] = useState<string | null>(null);
+    const [selectedTreeType, setSelectedTreeType] = useState<'type' | 'contact' | null>(null);
+    const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('contacts_sidebarWidth', 280);
+    const [isResizing, setIsResizing] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
     
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [contactToEdit, setContactToEdit] = useState<Contact | null>(null);
@@ -31,6 +128,13 @@ const ContactsPage: React.FC = () => {
     const isSubmittingRef = useRef(false);
 
     const TABS = ['All', 'Owners', 'Tenants', 'Brokers', 'Friends & Family'];
+
+    // Sync activeTab when tree type is selected
+    useEffect(() => {
+        if (selectedTreeType === 'type' && selectedTreeId && TABS.includes(selectedTreeId)) {
+            setActiveTab(selectedTreeId);
+        }
+    }, [selectedTreeType, selectedTreeId]);
 
     // Compute balances for all contacts
     const contactBalances = useMemo(() => {
@@ -53,10 +157,86 @@ const ContactsPage: React.FC = () => {
         return balances;
     }, [state.transactions]);
 
+    // Tree data: two levels — Type (Owners, Tenants, Brokers, Friends & Family) -> Contacts
+    const treeData = useMemo<ContactTreeNode[]>(() => {
+        const baseContacts = state.contacts.filter(c => c.type !== ContactType.VENDOR && c.type !== ContactType.STAFF);
+        const typeConfig: { id: string; label: string; filter: (c: Contact) => boolean }[] = [
+            { id: 'Owners', label: 'Owners', filter: c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT },
+            { id: 'Tenants', label: 'Tenants', filter: c => c.type === ContactType.TENANT },
+            { id: 'Brokers', label: 'Brokers', filter: c => c.type === ContactType.BROKER || c.type === ContactType.DEALER },
+            { id: 'Friends & Family', label: 'Friends & Family', filter: c => c.type === ContactType.FRIEND_FAMILY },
+        ];
+        return typeConfig.map(({ id, label, filter }) => {
+            const childrenContacts = baseContacts.filter(filter);
+            return {
+                id,
+                label,
+                type: 'type' as const,
+                value: childrenContacts.length,
+                children: childrenContacts
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map(c => ({ id: c.id, label: c.name, type: 'contact' as const, children: [], value: undefined })),
+            };
+        }).filter(node => node.value! > 0);
+    }, [state.contacts]);
+
+    const filterContactTree = useCallback((nodes: ContactTreeNode[], q: string): ContactTreeNode[] => {
+        if (!q.trim()) return nodes;
+        const lower = q.toLowerCase();
+        return nodes
+            .map(node => {
+                const labelMatch = node.label.toLowerCase().includes(lower);
+                const filteredChildren = node.children?.length ? filterContactTree(node.children, q) : [];
+                const childMatch = filteredChildren.length > 0;
+                if (labelMatch && !filteredChildren.length) return node;
+                if (childMatch) return { ...node, children: filteredChildren };
+                if (labelMatch) return node;
+                return null;
+            })
+            .filter((n): n is ContactTreeNode => n != null);
+    }, []);
+
+    const filteredTreeData = useMemo(() => filterContactTree(treeData, treeSearchQuery), [treeData, treeSearchQuery, filterContactTree]);
+
+    // Sidebar resize: container-relative (150–600px)
+    const handleMouseMoveSidebar = useCallback((e: MouseEvent) => {
+        if (!containerRef.current) return;
+        const containerLeft = containerRef.current.getBoundingClientRect().left;
+        const newWidth = e.clientX - containerLeft;
+        if (newWidth > 150 && newWidth < 600) setSidebarWidth(newWidth);
+    }, [setSidebarWidth]);
+
+    useEffect(() => {
+        if (!isResizing) return;
+        const handleUp = () => {
+            setIsResizing(false);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        };
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        window.addEventListener('mousemove', handleMouseMoveSidebar);
+        window.addEventListener('mouseup', handleUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMoveSidebar);
+            window.removeEventListener('mouseup', handleUp);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        };
+    }, [isResizing, handleMouseMoveSidebar]);
+
+    const startResizingSidebar = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsResizing(true);
+    }, []);
+
     const contacts = useMemo(() => {
         let filtered = state.contacts.filter(c => c.type !== ContactType.VENDOR && c.type !== ContactType.STAFF);
-        
-        if (activeTab !== 'All') {
+
+        if (selectedTreeType === 'contact' && selectedTreeId) {
+            filtered = filtered.filter(c => c.id === selectedTreeId);
+        } else if (activeTab !== 'All') {
             if (activeTab === 'Owners') filtered = filtered.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
             else if (activeTab === 'Tenants') filtered = filtered.filter(c => c.type === ContactType.TENANT);
             else if (activeTab === 'Brokers') filtered = filtered.filter(c => c.type === ContactType.BROKER || c.type === ContactType.DEALER);
@@ -89,7 +269,7 @@ const ContactsPage: React.FC = () => {
             if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [state.contacts, activeTab, searchQuery, sortConfig, contactBalances]);
+    }, [state.contacts, activeTab, searchQuery, sortConfig, contactBalances, selectedTreeType, selectedTreeId]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -231,21 +411,83 @@ const ContactsPage: React.FC = () => {
                         </Button>
                     </div>
                 </div>
-                
-                <Tabs tabs={TABS} activeTab={activeTab} onTabClick={setActiveTab} />
-                
-                <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                        <span className="h-4 w-4">{ICONS.search}</span>
-                    </div>
-                    <Input 
-                        placeholder="Search contacts..." 
-                        value={searchQuery} 
-                        onChange={(e) => setSearchQuery(e.target.value)} 
-                        className="pl-9"
-                    />
-                </div>
             </div>
+
+            {/* Main: same layout as Project Agreements — sidebar + resize + content */}
+            <div ref={containerRef} className="flex-grow flex flex-col md:flex-row overflow-hidden min-h-0">
+                {/* Left: Resizable Tree Sidebar (Directories style) */}
+                <aside
+                    className="hidden md:flex flex-col flex-shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
+                    style={{ width: `${sidebarWidth}px` }}
+                >
+                    <div className="flex-shrink-0 p-3 border-b border-slate-100 bg-slate-50/50">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Directories</span>
+                    </div>
+                    <div className="flex-shrink-0 px-2 pt-2 pb-1 border-b border-slate-100">
+                        <div className="relative">
+                            <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-slate-400">
+                                <div className="w-3.5 h-3.5">{ICONS.search}</div>
+                            </div>
+                            <input
+                                type="text"
+                                placeholder="Search types, contacts..."
+                                value={treeSearchQuery}
+                                onChange={(e) => setTreeSearchQuery(e.target.value)}
+                                className="w-full pl-8 pr-6 py-1.5 text-xs border border-slate-200 rounded-lg bg-slate-50/80 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 placeholder:text-slate-400 transition-all"
+                            />
+                            {treeSearchQuery && (
+                                <button
+                                    type="button"
+                                    onClick={() => setTreeSearchQuery('')}
+                                    className="absolute inset-y-0 right-2 flex items-center text-slate-400 hover:text-rose-500"
+                                >
+                                    <div className="w-3.5 h-3.5">{ICONS.x}</div>
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                    <div className="flex-grow overflow-y-auto overflow-x-hidden p-2 min-h-0">
+                        <ContactTreeSidebar
+                            nodes={filteredTreeData}
+                            selectedId={selectedTreeId}
+                            selectedType={selectedTreeType}
+                            onSelect={(id, type) => {
+                                if (selectedTreeId === id && selectedTreeType === type) {
+                                    setSelectedTreeId(null);
+                                    setSelectedTreeType(null);
+                                } else {
+                                    setSelectedTreeId(id);
+                                    setSelectedTreeType(type);
+                                }
+                            }}
+                        />
+                    </div>
+                </aside>
+
+                <div
+                    className="hidden md:flex items-center justify-center flex-shrink-0 w-2 cursor-col-resize select-none touch-none group hover:bg-blue-500/10 transition-colors"
+                    onMouseDown={startResizingSidebar}
+                    title="Drag to resize sidebar"
+                >
+                    <div className="w-0.5 h-12 rounded-full bg-slate-200 group-hover:bg-blue-500 group-hover:w-1 transition-all" />
+                </div>
+
+                {/* Right: Tabs, search, table */}
+                <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
+                    <div className="flex flex-col gap-3 flex-shrink-0 bg-white p-3 rounded-lg shadow-sm border border-slate-200 mb-3 md:mb-0">
+                        <Tabs tabs={TABS} activeTab={activeTab} onTabClick={(tab) => { setActiveTab(tab); setSelectedTreeId(null); setSelectedTreeType(null); }} />
+                        <div className="relative">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                <span className="h-4 w-4">{ICONS.search}</span>
+                            </div>
+                            <Input 
+                                placeholder="Search contacts..." 
+                                value={searchQuery} 
+                                onChange={(e) => setSearchQuery(e.target.value)} 
+                                className="pl-9"
+                            />
+                        </div>
+                    </div>
 
             <div className="flex-grow overflow-hidden bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col">
                 {/* Mobile: Horizontal scroll wrapper with subtle scroll indicator */}
@@ -276,14 +518,14 @@ const ContactsPage: React.FC = () => {
                                 </th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-200 bg-white">
+                        <tbody className="divide-y divide-slate-100">
                             {contacts.length > 0 ? (
-                                contacts.map(contact => {
+                                contacts.map((contact, index) => {
                                     const balance = contactBalances.get(contact.id) || 0;
                                     return (
                                         <tr 
                                             key={contact.id} 
-                                            className="hover:bg-gray-50 active:bg-gray-100 cursor-pointer transition-colors group touch-manipulation"
+                                            className={`cursor-pointer transition-colors group touch-manipulation ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-slate-100`}
                                             onClick={() => openLedger(contact)}
                                         >
                                             <td className="px-2 md:px-4 py-2 md:py-3 font-medium text-gray-800 whitespace-nowrap text-xs md:text-sm">
@@ -347,6 +589,8 @@ const ContactsPage: React.FC = () => {
                 </div>
                 <div className="p-2 md:p-3 border-t border-slate-200 bg-slate-50 text-[10px] md:text-xs text-slate-500 font-medium">
                     Total Contacts: {contacts.length}
+                </div>
+            </div>
                 </div>
             </div>
 

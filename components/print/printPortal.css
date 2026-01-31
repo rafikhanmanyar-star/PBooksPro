@@ -1,0 +1,66 @@
+/**
+ * Print Portal - Visibility toggle and portal-specific print styles.
+ * Only when body has .print-portal-active (context-based print): hide #root, show #print-portal.
+ * When printing via usePrintForm (Biz Planet PO, Project Invoices), content is inside #root
+ * so we must NOT hide #root — otherwise print preview would be blank.
+ */
+
+/* Screen: hide portal content from view (only visible when printing) */
+.print-portal-root {
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
+}
+
+@media print {
+  /* Only hide #root when we're printing via the portal (PrintContext flow) */
+  body.print-portal-active #root {
+    display: none !important;
+  }
+
+  /* Show only the print portal content when that flow is active */
+  body.print-portal-active #print-portal,
+  body.print-portal-active .print-portal-root {
+    display: block !important;
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    z-index: auto !important;
+  }
+
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+
+/* Agreement-specific: keep clauses from breaking across pages */
+.agreement-print-body .clause {
+  page-break-inside: avoid;
+}
+
+@media print {
+  .agreement-print-body .clause {
+    page-break-inside: avoid;
+  }
+}

@@ -267,6 +267,7 @@ export class AppStateRepository {
                     contractId: (b.contractId ?? b.contract_id) || undefined,
                     staffId: (b.staffId ?? b.staff_id) || undefined,
                     documentPath: (b.documentPath ?? b.document_path) || undefined,
+                    documentId: (b.documentId ?? b.document_id) || undefined,
                     expenseCategoryItems: (() => {
                         // Handle expenseCategoryItems - check both camelCase and snake_case
                         const items = b.expenseCategoryItems ?? b.expense_category_items;
@@ -484,6 +485,7 @@ export class AppStateRepository {
             }),
             contracts: contracts.map(c => ({
                 ...c,
+                documentId: (c as any).documentId ?? (c as any).document_id ?? undefined,
                 expenseCategoryItems: c.expenseCategoryItems 
                     ? (typeof c.expenseCategoryItems === 'string' ? JSON.parse(c.expenseCategoryItems) : c.expenseCategoryItems)
                     : undefined
@@ -580,7 +582,6 @@ export class AppStateRepository {
             enableBeepOnSave: settings.enableBeepOnSave ?? false,
             pmCostPercentage: settings.pmCostPercentage ?? 0,
             defaultProjectId: settings.defaultProjectId || undefined,
-            documentStoragePath: settings.documentStoragePath || undefined,
             lastServiceChargeRun: settings.lastServiceChargeRun,
             transactionLog,
             errorLog,
@@ -768,6 +769,7 @@ export class AppStateRepository {
                                 if (b.contractId) billToSave.contractId = b.contractId;
                                 if (b.staffId) billToSave.staffId = b.staffId;
                                 if (b.documentPath) billToSave.documentPath = b.documentPath;
+                                if (b.documentId) billToSave.documentId = b.documentId;
                                 if (b.expenseCategoryItems) {
                                     billToSave.expenseCategoryItems = typeof b.expenseCategoryItems === 'string' 
                                         ? b.expenseCategoryItems 
@@ -860,7 +862,6 @@ export class AppStateRepository {
                                 enableBeepOnSave: state.enableBeepOnSave,
                                 pmCostPercentage: state.pmCostPercentage,
                                 defaultProjectId: state.defaultProjectId,
-                                documentStoragePath: state.documentStoragePath,
                                 lastServiceChargeRun: state.lastServiceChargeRun,
                                 currentPage: state.currentPage
                             });

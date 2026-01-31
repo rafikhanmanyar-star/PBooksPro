@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import PurchasesTab from './PurchasesTab';
 import InventoryItemsReport from './InventoryItemsReport';
+import Tabs from '../ui/Tabs';
 
 type ShopTab = 'purchases' | 'sales' | 'inventory' | 'dashboard';
 
@@ -13,6 +14,9 @@ const InventoryPage: React.FC = () => {
         { id: 'sales', label: 'Sales' },
         { id: 'inventory', label: 'Inventory' },
     ];
+    const tabLabels = tabs.map((t) => t.label);
+    const labelToId = Object.fromEntries(tabs.map((t) => [t.label, t.id])) as Record<string, ShopTab>;
+    const activeTabLabel = tabs.find((t) => t.id === activeTab)?.label ?? tabLabels[0];
 
     const renderTabContent = () => {
         switch (activeTab) {
@@ -40,8 +44,8 @@ const InventoryPage: React.FC = () => {
     return (
         <div className="h-full flex flex-col">
             {/* Header */}
-            <div className="px-6 py-4 border-b border-slate-200 bg-white">
-                <div className="flex items-center gap-3 mb-4">
+            <div className="flex-shrink-0 px-6 py-4 border-b border-slate-200 bg-white">
+                <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-200">
                         <svg 
                             xmlns="http://www.w3.org/2000/svg" 
@@ -62,27 +66,23 @@ const InventoryPage: React.FC = () => {
                     </div>
                     <h1 className="text-2xl font-bold text-slate-800">My Shop</h1>
                 </div>
-
-                {/* Tabs */}
-                <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit">
-                    {tabs.map((tab) => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
-                            className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                                activeTab === tab.id
-                                    ? 'bg-white text-indigo-600 shadow-sm'
-                                    : 'text-slate-600 hover:text-slate-800 hover:bg-slate-50'
-                            }`}
-                        >
-                            {tab.label}
-                        </button>
-                    ))}
-                </div>
             </div>
 
-            {/* Tab Content */}
-            <div className="flex-1 p-6 overflow-auto">
+            {/* Browser-style tabs (same as payroll, rental-payout, etc.) */}
+            <div className="flex-shrink-0">
+                <Tabs
+                    variant="browser"
+                    tabs={tabLabels}
+                    activeTab={activeTabLabel}
+                    onTabClick={(label) => {
+                        const id = labelToId[label];
+                        if (id) setActiveTab(id);
+                    }}
+                />
+            </div>
+
+            {/* Tab content - seamless with active tab */}
+            <div className="flex-1 overflow-auto bg-white rounded-b-lg -mt-px p-6">
                 {renderTabContent()}
             </div>
         </div>

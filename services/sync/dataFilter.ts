@@ -21,7 +21,6 @@ export const USER_SPECIFIC_FIELDS = [
     
     // User-specific settings
     'defaultProjectId',
-    'documentStoragePath',
     'dashboardConfig', // User's visible KPIs configuration
     
     // UI State (should never be synced)

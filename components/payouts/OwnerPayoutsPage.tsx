@@ -490,11 +490,11 @@ const OwnerPayoutsPage: React.FC = () => {
     );
 
     return (
-        <div className="flex flex-col h-full space-y-4">
+        <div className="flex flex-col h-full">
             <div className="flex-shrink-0">
-                <Tabs tabs={['Property Owners', 'Brokers']} activeTab={activeTab} onTabClick={setActiveTab} />
+                <Tabs variant="browser" tabs={['Property Owners', 'Brokers']} activeTab={activeTab} onTabClick={setActiveTab} />
             </div>
-            <div className="flex-grow overflow-hidden">
+            <div className="flex-grow overflow-hidden bg-white rounded-b-lg -mt-px">
                 {activeTab === 'Property Owners' ? renderOwnersView() : (
                     <div className="h-full overflow-y-auto">
                         <BrokerPayouts context="Rental" />

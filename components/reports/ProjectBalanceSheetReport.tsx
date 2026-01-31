@@ -10,7 +10,7 @@ import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import ComboBox from '../ui/ComboBox';
 import { formatDate } from '../../utils/dateUtils';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface AccountBalance {
@@ -47,7 +47,7 @@ interface BalanceSheetData {
 
 const ProjectBalanceSheetReport: React.FC = () => {
     const { state } = useAppContext();
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('all');
     const [asOfDate, setAsOfDate] = useState(new Date().toISOString().split('T')[0]);
     const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
@@ -501,7 +501,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
                     endDate={asOfDate}
                     onDateChange={(start, end) => handleDateChange(start)}
                     onExport={handleExport}
-                    onPrint={handlePrint}
+                    onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                     hideGroup={true}
                     showDateFilterPills={true}
                     activeDateRange={dateRange}

@@ -31,6 +31,8 @@ const SupplierPortal: React.FC = () => {
     const [myRegistrationRequests, setMyRegistrationRequests] = useState<SupplierRegistrationRequest[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+    const [poDetailLoading, setPoDetailLoading] = useState(false);
+    const [poReadOnly, setPoReadOnly] = useState(false);
     const [selectedApprovedRegistration, setSelectedApprovedRegistration] = useState<SupplierRegistrationRequest | null>(null);
 
     const [notifications, setNotifications] = useState<ActivityNotification[]>([]);
@@ -210,7 +212,7 @@ const SupplierPortal: React.FC = () => {
                 if (pendingFocus.id) {
                     const po = receivedPOs.find(item => item.id === pendingFocus.id);
                     if (po) {
-                        setSelectedPO(po);
+                        openPODetail(po);
                     }
                     highlightRow(`[data-po-id="${pendingFocus.id}"]`);
                 }
@@ -338,6 +340,35 @@ const SupplierPortal: React.FC = () => {
             console.error('Error checking registration status:', error);
             return { approved: false, pending: false };
         }
+    };
+
+    const openPODetail = async (po: PurchaseOrder) => {
+        setPoDetailLoading(true);
+        setPoReadOnly(false);
+        try {
+            const res = await apiClient.post<PurchaseOrder>(`/purchase-orders/${po.id}/lock`);
+            setSelectedPO(res);
+        } catch (err: any) {
+            if (err.response?.status === 423) {
+                setSelectedPO(po);
+                setPoReadOnly(true);
+            } else {
+                setSelectedPO(po);
+                if (err.response?.data?.error) showAlert(err.response.data.error);
+            }
+        } finally {
+            setPoDetailLoading(false);
+        }
+    };
+
+    const closePODetail = async () => {
+        if (selectedPO && tenant?.id && selectedPO.lockedByTenantId === tenant.id) {
+            try {
+                await apiClient.post(`/purchase-orders/${selectedPO.id}/unlock`);
+            } catch (_) { /* ignore */ }
+        }
+        setSelectedPO(null);
+        setPoReadOnly(false);
     };
 
     const handleFlipToInvoice = async (poId: string) => {
@@ -685,7 +716,7 @@ const SupplierPortal: React.FC = () => {
                                                 <div className="flex gap-1">
                                                     <button
                                                         type="button"
-                                                        onClick={() => setSelectedPO(po)}
+                                                        onClick={() => openPODetail(po)}
                                                         className="p-1.5 rounded text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
                                                         title="View PO Details"
                                                     >
@@ -747,7 +778,7 @@ const SupplierPortal: React.FC = () => {
                                                     <div className="flex gap-1">
                                                         <button
                                                             type="button"
-                                                            onClick={() => setSelectedPO(po)}
+                                                            onClick={() => openPODetail(po)}
                                                             className="p-1 rounded text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
                                                             title="View PO Details"
                                                         >
@@ -950,11 +981,23 @@ const SupplierPortal: React.FC = () => {
             {selectedPO && (
                 <Modal
                     isOpen={!!selectedPO}
-                    onClose={() => setSelectedPO(null)}
+                    onClose={closePODetail}
                     title={`PO: ${selectedPO.poNumber}`}
                     size="lg"
                 >
                     <div className="space-y-4">
+                        {poDetailLoading && (
+                            <div className="flex items-center justify-center py-4">
+                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-slate-600" />
+                            </div>
+                        )}
+                        {!poDetailLoading && poReadOnly && (
+                            <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-amber-800 text-xs sm:text-sm">
+                                This PO is locked by the buyer. You can view it in read-only mode.
+                            </div>
+                        )}
+                        {!poDetailLoading && (
+                        <>
                         <div className="grid grid-cols-2 gap-3">
                             <div>
                                 <p className="text-xs text-slate-500 mb-1">PO Number</p>
@@ -1029,15 +1072,17 @@ const SupplierPortal: React.FC = () => {
                                 variant="primary"
                                 onClick={() => {
                                     handleFlipToInvoice(selectedPO.id);
-                                    setSelectedPO(null);
+                                    closePODetail();
                                 }}
                                 className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
-                                disabled={selectedPO.status !== POStatus.SENT && selectedPO.status !== POStatus.RECEIVED}
+                                disabled={(selectedPO.status !== POStatus.SENT && selectedPO.status !== POStatus.RECEIVED) || poReadOnly}
                             >
                                 Create Invoice
                             </Button>
-                            <Button variant="secondary" onClick={() => setSelectedPO(null)}>Close</Button>
+                            <Button variant="secondary" onClick={closePODetail}>Close</Button>
                         </div>
+                        </>
+                        )}
                     </div>
                 </Modal>
             )}

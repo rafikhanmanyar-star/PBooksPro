@@ -398,7 +398,8 @@ export interface Bill {
   contractId?: string;
   staffId?: string;
   expenseCategoryItems?: ContractExpenseCategoryItem[]; // New: expense category tracking with units and prices
-  documentPath?: string; // Path to uploaded document file
+  documentPath?: string; // Path to uploaded document file (legacy/local)
+  documentId?: string; // Reference to documents table (local + cloud)
   version?: number; // Version for optimistic locking (default: 1)
 }
 
@@ -537,7 +538,8 @@ export interface Contract {
   termsAndConditions?: string;
   paymentTerms?: string; // New: payment terms field
   description?: string;
-  documentPath?: string; // Path to uploaded document file
+  documentPath?: string; // Path to uploaded document file (legacy/local)
+  documentId?: string; // Reference to documents table (local + cloud)
 }
 
 export interface Budget {
@@ -580,6 +582,7 @@ export interface InvoiceSettings {
   padding: number;
 }
 
+/** Print template configuration from Settings - used by PrintLayout and form templates */
 export interface PrintSettings {
   companyName: string;
   companyAddress: string;
@@ -589,6 +592,31 @@ export interface PrintSettings {
   headerText?: string;
   footerText?: string;
   showDatePrinted: boolean;
+  /** Optional: tax ID or registration number shown in header */
+  taxId?: string;
+  /** Font family for printed documents (print-safe, e.g. Georgia, 'Times New Roman') */
+  fontFamily?: string;
+  /** Font sizes in px */
+  headerFontSize?: number;
+  bodyFontSize?: number;
+  footerFontSize?: number;
+  /** Hex or CSS color for body text */
+  textColor?: string;
+  /** Table border color */
+  tableBorderColor?: string;
+  /** Highlight color for headers/totals */
+  highlightColor?: string;
+  /** Page background color */
+  backgroundColor?: string;
+  /** Optional watermark text (e.g. 'DRAFT', 'COPY') */
+  watermark?: string;
+  /** Page size - A4 default */
+  pageSize?: 'A4' | 'Letter';
+  /** Margins in mm */
+  marginTop?: number;
+  marginBottom?: number;
+  marginLeft?: number;
+  marginRight?: number;
 }
 
 export interface WhatsAppTemplates {
@@ -700,7 +728,6 @@ export interface AppState {
   lastPreservedDate?: string; // Last date entered in any form (ISO date string)
   pmCostPercentage: number;
   defaultProjectId?: string; // Default project to use in all forms and reports
-  documentStoragePath?: string; // Path to folder where documents are stored
 
   lastServiceChargeRun?: string;
 
@@ -1287,6 +1314,10 @@ export interface PurchaseOrder {
   userId?: string;
   createdAt: string;
   updatedAt: string;
+  /** Lock: only one party (buyer or supplier) can edit at a time */
+  lockedByTenantId?: string;
+  lockedByUserId?: string;
+  lockedAt?: string;
 }
 
 // P2P Invoice

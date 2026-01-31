@@ -104,8 +104,8 @@ router.post('/', async (req: TenantRequest, res) => {
         id, tenant_id, contract_number, name, project_id, vendor_id, total_amount,
         area, rate, start_date, end_date, status, category_ids,
         expense_category_items, terms_and_conditions, payment_terms,
-        description, document_path, user_id, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
+        description, document_path, document_id, user_id, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
                 COALESCE((SELECT created_at FROM contracts WHERE id = $1), NOW()), NOW())
       ON CONFLICT (id) 
       DO UPDATE SET
@@ -125,6 +125,7 @@ router.post('/', async (req: TenantRequest, res) => {
         payment_terms = EXCLUDED.payment_terms,
         description = EXCLUDED.description,
         document_path = EXCLUDED.document_path,
+        document_id = EXCLUDED.document_id,
         user_id = EXCLUDED.user_id,
         updated_at = NOW()
       RETURNING *`,
@@ -147,6 +148,7 @@ router.post('/', async (req: TenantRequest, res) => {
         contract.paymentTerms || null,
         contract.description || null,
         contract.documentPath || null,
+        contract.documentId || null,
         req.user?.userId || null
       ]
     );
@@ -188,8 +190,8 @@ router.put('/:id', async (req: TenantRequest, res) => {
            total_amount = $5, area = $6, rate = $7, start_date = $8, end_date = $9,
            status = $10, category_ids = $11, expense_category_items = $12,
            terms_and_conditions = $13, payment_terms = $14, description = $15,
-           document_path = $16, user_id = $17, updated_at = NOW()
-       WHERE id = $18 AND tenant_id = $19
+           document_path = $16, document_id = $17, user_id = $18, updated_at = NOW()
+       WHERE id = $19 AND tenant_id = $20
        RETURNING *`,
       [
         contract.contractNumber,
@@ -208,6 +210,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
         contract.paymentTerms || null,
         contract.description || null,
         contract.documentPath || null,
+        contract.documentId || null,
         req.user?.userId || null,
         req.params.id,
         req.tenantId

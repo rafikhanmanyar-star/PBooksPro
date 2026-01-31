@@ -1,5 +1,11 @@
 /**
- * Centralized print service for consistent printing across the application
+ * Centralized print service for consistent printing across the application.
+ *
+ * For React components printing PO, Invoice, Bill, Agreement, or Ledger layouts,
+ * use the context-based flow: wrap the app with PrintProvider and call
+ * usePrintContext().print(type, data) to open the print overlay and trigger
+ * window.print() with the correct layout (see context/PrintContext and
+ * components/print/PrintController).
  */
 
 import { PrintSettings } from '../types';
@@ -44,7 +50,8 @@ export const printPrintableArea = (options: PrintOptions = {}): void => {
 };
 
 /**
- * Print from HTML template (for invoices and similar documents)
+ * Print from HTML template (for invoices and similar documents).
+ * Opens a new window, writes HTML, then triggers print. If popup is blocked, falls back to window.print().
  * @param html - HTML string to print
  * @param printSettings - Optional print settings for template integration
  */
@@ -53,11 +60,12 @@ export const printFromTemplate = (html: string, printSettings?: PrintSettings): 
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     
     if (!printWindow) {
-      console.error('Print: Unable to open print window. Popup may be blocked.');
+      console.warn('Print: Popup may be blocked. Using current window print.');
+      // Fallback: inject content into current document and print (user will see print dialog for current page)
+      window.print();
       return;
     }
 
-    // Inject print styles into the new window
     const fullHtml = `
       <!DOCTYPE html>
       <html lang="en">
@@ -78,16 +86,26 @@ export const printFromTemplate = (html: string, printSettings?: PrintSettings): 
     printWindow.document.write(fullHtml);
     printWindow.document.close();
 
-    // Wait for content to load, then print
-    printWindow.onload = () => {
-      setTimeout(() => {
-        printWindow.print();
-        // Close window after print dialog closes (optional)
-        // printWindow.close();
-      }, 250);
+    // Wait for document to be ready and content to paint, then print (more reliable than onload after document.write)
+    const triggerPrint = () => {
+      try {
+        if (printWindow.document.readyState === 'complete') {
+          printWindow.focus();
+          printWindow.print();
+        } else {
+          printWindow.onload = () => {
+            printWindow.focus();
+            printWindow.print();
+          };
+        }
+      } catch (e) {
+        console.error('Print trigger error:', e);
+      }
     };
+    setTimeout(triggerPrint, 400);
   } catch (error) {
     console.error('Print template error:', error);
+    window.print();
   }
 };
 

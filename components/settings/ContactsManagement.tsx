@@ -72,6 +72,13 @@ const ContactsManagement: React.FC = () => {
             icon: ICONS.briefcase,
             color: 'purple',
             description: 'Real estate brokers'
+        },
+        {
+            id: ContactType.FRIEND_FAMILY,
+            label: 'Friend & Family',
+            icon: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>,
+            color: 'rose',
+            description: 'Friends and family contacts'
         }
     ];
 
@@ -295,11 +302,13 @@ const ContactsManagement: React.FC = () => {
                 config.color === 'emerald' ? 'bg-emerald-100' :
                 config.color === 'orange' ? 'bg-orange-100' :
                 config.color === 'amber' ? 'bg-amber-100' :
+                config.color === 'rose' ? 'bg-rose-100' :
                 'bg-purple-100',
             text: config.color === 'blue' ? 'text-blue-700' :
                   config.color === 'emerald' ? 'text-emerald-700' :
                   config.color === 'orange' ? 'text-orange-700' :
                   config.color === 'amber' ? 'text-amber-700' :
+                  config.color === 'rose' ? 'text-rose-700' :
                   'text-purple-700'
         };
     };
@@ -307,11 +316,11 @@ const ContactsManagement: React.FC = () => {
     const activeTypeConfig = getTypeConfig(selectedType);
 
     return (
-        <div className="flex flex-col h-full space-y-4 overflow-hidden px-0 py-6">
+        <div className="flex flex-col h-full space-y-4 overflow-hidden px-0 pt-2 pb-2">
             {/* Contact Type Filter Tabs - Top Level (for both form and grid) */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex-shrink-0">
-                <div className="flex items-center justify-between p-4 border-b border-slate-200">
-                    <div className="flex overflow-x-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent flex-1">
+                <div className="flex items-center justify-between p-4 border-b border-slate-200 gap-2">
+                    <div className="flex overflow-x-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent flex-1 min-w-0">
                         <button
                             onClick={() => {
                                 setSelectedContactTypeFilter(null);
@@ -329,20 +338,9 @@ const ContactsManagement: React.FC = () => {
                                 {ICONS.users}
                             </div>
                             <span>All Contacts</span>
-                            <span className={`
-                                ml-1 px-2 py-0.5 rounded-full text-xs font-medium
-                                ${selectedContactTypeFilter === null
-                                    ? 'bg-indigo-100 text-indigo-700'
-                                    : 'bg-slate-100 text-slate-500'
-                                }
-                            `}>
-                                {appState.contacts.length}
-                            </span>
                         </button>
                         {contactTypes.map((type) => {
                             const isSelected = selectedContactTypeFilter === type.id;
-                            const typeContacts = appState.contacts.filter(c => c.type === type.id);
-                            
                             return (
                                 <button
                                     key={type.id}
@@ -372,19 +370,6 @@ const ContactsManagement: React.FC = () => {
                                         {type.icon}
                                     </div>
                                     <span>{type.label}</span>
-                                    <span className={`
-                                        ml-1 px-2 py-0.5 rounded-full text-xs font-medium
-                                        ${isSelected
-                                            ? (type.color === 'blue' ? 'bg-blue-100 text-blue-700' :
-                                               type.color === 'emerald' ? 'bg-emerald-100 text-emerald-700' :
-                                               type.color === 'orange' ? 'bg-orange-100 text-orange-700' :
-                                               type.color === 'amber' ? 'bg-amber-100 text-amber-700' :
-                                               'bg-purple-100 text-purple-700')
-                                            : 'bg-slate-100 text-slate-500'
-                                        }
-                                    `}>
-                                        {typeContacts.length}
-                                    </span>
                                 </button>
                             );
                         })}
@@ -395,15 +380,13 @@ const ContactsManagement: React.FC = () => {
                             e.preventDefault();
                             e.stopPropagation();
                             if (isFormOpen) {
-                                // Closing form
                                 setIsFormOpen(false);
                             } else {
-                                // Opening form
                                 handleOpenForm();
                             }
                         }}
                         className={`
-                            ml-4 flex items-center justify-center w-10 h-10 rounded-lg transition-all flex-shrink-0
+                            flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-lg transition-all
                             ${isFormOpen
                                 ? 'bg-indigo-600 text-white hover:bg-indigo-700'
                                 : 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200'
@@ -424,64 +407,15 @@ const ContactsManagement: React.FC = () => {
                     <div className="flex items-center gap-2 mb-3">
                         <div>
                             <h2 className="text-lg font-bold text-slate-900">Add New Contact</h2>
-                            <p className="text-xs text-slate-500">Select a contact type below, then fill in the details.</p>
+                            <p className="text-xs text-slate-500">
+                                {selectedContactTypeFilter
+                                    ? `Fill in the details for the new ${getTypeConfig(selectedType).label}.`
+                                    : 'Fill in the details. Select a contact type from the tabs above if needed.'}
+                            </p>
                         </div>
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-4">
-                            {/* Contact Type Selection - Pre-selected from filter */}
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-700 mb-2">
-                                    Contact Type <span className="text-red-500">*</span>
-                                </label>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-                                    {contactTypes.map((type) => {
-                                        const isSelected = selectedType === type.id;
-                                        return (
-                                            <button
-                                                key={type.id}
-                                                type="button"
-                                                onClick={() => setSelectedType(type.id)}
-                                                className={`
-                                                    p-2 rounded-lg border-2 transition-all text-left
-                                                    ${isSelected
-                                                        ? (type.color === 'blue' ? 'border-blue-500 bg-blue-50' :
-                                                           type.color === 'emerald' ? 'border-emerald-500 bg-emerald-50' :
-                                                           type.color === 'orange' ? 'border-orange-500 bg-orange-50' :
-                                                           type.color === 'amber' ? 'border-amber-500 bg-amber-50' :
-                                                           'border-purple-500 bg-purple-50')
-                                                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                                                    }
-                                                `}
-                                            >
-                                                <div className={`w-5 h-5 mb-1 ${
-                                                    isSelected
-                                                        ? (type.color === 'blue' ? 'text-blue-600' :
-                                                           type.color === 'emerald' ? 'text-emerald-600' :
-                                                           type.color === 'orange' ? 'text-orange-600' :
-                                                           type.color === 'amber' ? 'text-amber-600' :
-                                                           'text-purple-600')
-                                                        : 'text-slate-400'
-                                                }`}>
-                                                    {type.icon}
-                                                </div>
-                                                <div className={`font-semibold text-xs ${
-                                                    isSelected
-                                                        ? (type.color === 'blue' ? 'text-blue-700' :
-                                                           type.color === 'emerald' ? 'text-emerald-700' :
-                                                           type.color === 'orange' ? 'text-orange-700' :
-                                                           type.color === 'amber' ? 'text-amber-700' :
-                                                           'text-purple-700')
-                                                        : 'text-slate-700'
-                                                }`}>
-                                                    {type.label}
-                                                </div>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
                             {/* Form Fields - Compact Grid */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                                 <div className="sm:col-span-2 lg:col-span-1">
@@ -529,14 +463,16 @@ const ContactsManagement: React.FC = () => {
                                     placeholder="Street address, City, State"
                                     className="text-sm border-slate-300 border-2 focus:border-indigo-500"
                                 />
-                                <Textarea
-                                    label="Notes"
-                                    value={notes}
-                                    onChange={(e) => setNotes(e.target.value)}
-                                    placeholder="Additional notes about this contact..."
-                                    rows={2}
-                                    className="text-sm !border-slate-300 !border-2 focus:!border-indigo-500"
-                                />
+                                <div className="max-w-md">
+                                    <Textarea
+                                        label="Notes"
+                                        value={notes}
+                                        onChange={(e) => setNotes(e.target.value)}
+                                        placeholder="Additional notes about this contact..."
+                                        rows={1}
+                                        className="text-sm !border-slate-300 !border-2 focus:!border-indigo-500"
+                                    />
+                                </div>
                             </div>
                             <div className="flex items-end gap-2">
                                 {editingContact && (

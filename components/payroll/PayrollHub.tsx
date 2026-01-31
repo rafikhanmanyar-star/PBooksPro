@@ -33,7 +33,8 @@ import { PayrollEmployee, GradeLevel, Department, EarningType, DeductionType } f
 import { storageService } from './services/storageService';
 import { payrollApi } from '../../services/api/payrollApi';
 import { useAuth } from '../../context/AuthContext';
-import { usePayrollContext, PayrollSubTab } from '../../context/PayrollContext';
+import { usePayrollContext } from '../../context/PayrollContext';
+import Tabs from '../ui/Tabs';
 import { formatCurrency } from './utils/formatters';
 
 const PayrollHub: React.FC = () => {
@@ -125,7 +126,7 @@ const PayrollHub: React.FC = () => {
     }
   };
 
-  // Navigation tabs
+  // Navigation tabs (labels for browser-style Tabs; id for content routing)
   const hrTabs = [
     { id: 'workforce' as const, label: 'Workforce', icon: Users },
     { id: 'cycles' as const, label: 'Payroll Cycles', icon: CreditCard },
@@ -133,6 +134,9 @@ const PayrollHub: React.FC = () => {
     { id: 'structure' as const, label: 'Salary Structure', icon: Settings2 },
     { id: 'history' as const, label: 'Payment History', icon: History },
   ];
+  const payrollTabLabels = hrTabs.map((t) => t.label);
+  const labelToId = Object.fromEntries(hrTabs.map((t) => [t.label, t.id])) as Record<string, typeof hrTabs[0]['id']>;
+  const activeTabLabel = hrTabs.find((t) => t.id === activeSubTab)?.label ?? payrollTabLabels[0];
 
   // If no tenant, show loading or error
   if (!tenantId) {
@@ -165,33 +169,22 @@ const PayrollHub: React.FC = () => {
   }
 
   return (
-    <div className="absolute inset-0 flex flex-col -m-2 sm:-m-3 md:-m-4 lg:-m-6 xl:-m-8">
-      {/* Sub-navigation tabs - Fixed at top of payroll section */}
-      <div className="flex-shrink-0 bg-white/95 backdrop-blur-md border-b border-slate-200 px-2 sm:px-4 lg:px-8 z-30 shadow-sm no-print">
-        <div className="flex overflow-x-auto no-scrollbar gap-1 sm:gap-8">
-          {hrTabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                // Only switch tab - don't reset employee state to preserve view when returning
-                setActiveSubTab(tab.id);
-              }}
-              className={`flex items-center gap-1.5 sm:gap-2 py-3 sm:pt-[39px] sm:pb-[39px] px-2 sm:px-0 sm:my-[15px] sm:mx-[3px] border-b-2 font-black text-[10px] sm:text-[11px] uppercase tracking-wider sm:tracking-[0.15em] transition-all relative whitespace-nowrap ${
-                activeSubTab === tab.id 
-                  ? 'border-blue-600 text-blue-600' 
-                  : 'border-transparent text-slate-400 hover:text-slate-700'
-              }`}
-            >
-              <tab.icon size={14} className="sm:w-4 sm:h-4" />
-              <span className="hidden sm:inline">{tab.label}</span>
-              <span className="sm:hidden">{tab.label.split(' ')[0]}</span>
-            </button>
-          ))}
-        </div>
+    <div className="absolute inset-0 flex flex-col -mx-2 -mb-2 sm:-mx-3 sm:-mb-3 md:-mx-4 md:-mb-4 lg:-mx-6 lg:-mb-6 xl:-mx-8 xl:-mb-8">
+      {/* Sub-navigation tabs - browser style (same as rental-payout, settings, etc.) */}
+      <div className="flex-shrink-0 no-print">
+        <Tabs
+          variant="browser"
+          tabs={payrollTabLabels}
+          activeTab={activeTabLabel}
+          onTabClick={(label) => {
+            const id = labelToId[label];
+            if (id) setActiveSubTab(id);
+          }}
+        />
       </div>
 
-      {/* Tab content - scrollable area below fixed navigation */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-3 md:p-4 lg:p-6 xl:p-8 pb-20 sm:pb-24 md:pb-6 animate-in fade-in duration-500">
+      {/* Tab content - scrollable area below tabs, seamless with active tab */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden bg-white rounded-b-lg -mt-px p-2 sm:p-3 md:p-4 lg:p-6 xl:p-8 pb-20 sm:pb-24 md:pb-6 animate-in fade-in duration-500">
         {activeSubTab === 'workforce' && (
           selectedEmployee ? (
             <EmployeeProfile 

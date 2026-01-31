@@ -14,7 +14,6 @@ export interface SettingsToSync {
   enableBeepOnSave?: boolean;
   enableDatePreservation?: boolean;
   defaultProjectId?: string | undefined;
-  documentStoragePath?: string | undefined;
   dashboardConfig?: any;
   
   // Communication settings (organization-based)
@@ -76,7 +75,6 @@ class SettingsSyncService {
                 case 'enableBeepOnSave':
                 case 'enableDatePreservation':
                 case 'defaultProjectId':
-                case 'documentStoragePath':
                 case 'dashboardConfig':
                 case 'printSettings':
                 case 'whatsAppTemplates':
@@ -120,7 +118,6 @@ class SettingsSyncService {
         case 'enableBeepOnSave':
         case 'enableDatePreservation':
         case 'defaultProjectId':
-        case 'documentStoragePath':
         case 'dashboardConfig':
         case 'printSettings':
         case 'whatsAppTemplates':

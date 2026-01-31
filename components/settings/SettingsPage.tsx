@@ -669,30 +669,6 @@ const SettingsPage: React.FC = () => {
                 />
             </div>
 
-            <div className="p-5 bg-white rounded-xl border border-slate-200 shadow-sm">
-                <h4 className="font-semibold text-slate-800 mb-2">Document Storage</h4>
-                <p className="text-sm text-slate-500 mb-4">Folder where uploaded contract and bill documents will be stored.</p>
-                <div className="flex gap-3">
-                    <Input label="" value={state.documentStoragePath || ''} onChange={() => { }} placeholder="No folder selected" readOnly className="flex-1" />
-                    <Button variant="secondary" onClick={async () => {
-                        try {
-                            const electronAPI = (window as any).electronAPI;
-                            if (!electronAPI?.selectDocumentFolder) {
-                                await showAlert('Feature unavailable in web version.');
-                                return;
-                            }
-                            const result = await electronAPI.selectDocumentFolder();
-                            if (result?.success && result.folderPath) {
-                                dispatch({ type: 'UPDATE_DOCUMENT_STORAGE_PATH', payload: result.folderPath });
-                                showToast('Document storage folder updated', 'success');
-                            }
-                        } catch (e) {
-                            console.error(e);
-                        }
-                    }}>Browse...</Button>
-                </div>
-            </div>
-
             {!isSupplier && (
                 <div className="p-5 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border-2 border-indigo-200 shadow-sm">
                     <div className="flex items-start justify-between gap-4">
@@ -768,21 +744,11 @@ const SettingsPage: React.FC = () => {
     );
 
     const renderPreferences = () => (
-        <div className="space-y-6">
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-1">
-                <div className="flex p-1 gap-1 overflow-x-auto">
-                    {preferenceTabs.map(tab => (
-                        <button
-                            key={tab}
-                            onClick={() => setActivePreferenceTab(tab)}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activePreferenceTab === tab ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
-                        >
-                            {tab}
-                        </button>
-                    ))}
-                </div>
+        <div className="flex flex-col">
+            <div className="flex-shrink-0">
+                <Tabs variant="browser" tabs={preferenceTabs} activeTab={activePreferenceTab} onTabClick={setActivePreferenceTab} />
             </div>
-            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="bg-white rounded-b-lg -mt-px animate-in fade-in slide-in-from-bottom-2 duration-300 p-6">
                 {activePreferenceTab === 'General' && renderGeneralSettings()}
                 {activePreferenceTab === 'ID Sequences' && renderIDSequences()}
                 {activePreferenceTab === 'Communication' && renderCommunicationBranding()}
@@ -923,7 +889,7 @@ const SettingsPage: React.FC = () => {
                 )}
                 
                 {/* Header */}
-                <div className="px-8 py-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-0 bg-slate-50/95 backdrop-blur z-30">
+                <div className={`px-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-0 bg-slate-50/95 backdrop-blur z-30 ${activeCategory === 'contacts' || activeCategory === 'assets' ? 'py-2' : 'py-6'}`}>
                     {activeCategory !== 'contacts' && activeCategory !== 'assets' && (
                         <div>
                             <h2 className="text-3xl font-bold text-slate-800 tracking-tight">{flatCategories.find(c => c.id === activeCategory)?.label}</h2>

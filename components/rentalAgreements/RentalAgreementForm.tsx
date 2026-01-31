@@ -650,154 +650,111 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     }, [buildingId, state]);
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-4" style={formBackgroundStyle}>
-            <div className="flex justify-between items-center mb-2">
-                <h3 className="font-bold text-lg text-slate-700">
-                    {renewMode ? 'Renew Agreement' : agreementToEdit ? 'Edit Agreement' : 'New Agreement'}
-                </h3>
+        <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0" style={formBackgroundStyle}>
+            {/* Compact two-column layout - matches Project Agreement form */}
+            <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[5fr_3fr] gap-3 lg:gap-4 overflow-y-auto overflow-x-hidden">
+                {/* Left Column: Tenant, Building, Property, Dates */}
+                <div className="flex flex-col gap-3 min-h-0">
+                    <div className="grid grid-cols-2 gap-2 lg:gap-3">
+                        <div className="col-span-2">
+                            <ComboBox label="Tenant" items={tenants} selectedId={contactId} onSelect={(item) => setContactId(item?.id || '')} placeholder="Select tenant" required disabled={!!agreementToEdit && !renewMode} />
+                        </div>
+                        <div className="col-span-2">
+                            <ComboBox label="Building" items={buildings} selectedId={buildingId} onSelect={(item) => { setBuildingId(item?.id || ''); setPropertyId(''); }} placeholder="Select building" allowAddNew={false} disabled={!!agreementToEdit && !renewMode} />
+                        </div>
+                        <div className="col-span-2">
+                            <ComboBox label="Property" items={properties} selectedId={propertyId} onSelect={(item) => setPropertyId(item?.id || '')} placeholder="Select property" required disabled={!buildingId || (!!agreementToEdit && !renewMode)} />
+                        </div>
+                        <DatePicker label="Start Date" value={startDate} onChange={handleStartDateChange} required className="text-sm" />
+                        <DatePicker label="End Date" value={endDate} onChange={d => setEndDate(d.toISOString().split('T')[0])} required className="text-sm" />
+                    </div>
+
+                    <div className="flex-shrink-0 p-2 rounded-lg bg-slate-50/80 border border-slate-200">
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Description / Notes</label>
+                        <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500/50 resize-none" placeholder="Optional notes..." />
+                    </div>
+
+                    {/* Open Invoices Warning */}
+                    {agreementToEdit && hasOpenInvoices && !renewMode && (
+                        <div className="flex-shrink-0 p-2 rounded-lg bg-amber-50 border border-amber-200">
+                            <h4 className="text-xs font-bold text-amber-800 flex items-center gap-1.5">
+                                <div className="w-3.5 h-3.5">{ICONS.alertTriangle}</div> Open Invoices ({openInvoices.length})
+                            </h4>
+                            <p className="text-[10px] text-amber-600 mt-1">Renewal blocked until paid.</p>
+                        </div>
+                    )}
+
+                    {/* Initial Invoices Missing */}
+                    {agreementToEdit && existingInvoices.length === 0 && !renewMode && (
+                        <div className="flex-shrink-0 p-2 rounded-lg bg-emerald-50/80 border border-emerald-200/60 flex flex-col sm:flex-row justify-between items-start gap-2">
+                            <div>
+                                <h4 className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+                                    <div className="w-3.5 h-3.5">{ICONS.alertTriangle}</div> Initial Invoices Missing
+                                </h4>
+                                <p className="text-[10px] text-emerald-600 mt-0.5">No linked invoices.</p>
+                            </div>
+                            <Button type="button" size="sm" onClick={handleGenerateInitialInvoices} className="!text-xs !py-1.5 !px-3 bg-emerald-600 hover:bg-emerald-700 text-white border-none">
+                                Generate
+                            </Button>
+                        </div>
+                    )}
+                </div>
+
+                {/* Right Column: Rent, Broker, Actions */}
+                <div className="flex flex-col gap-3 min-h-0">
+                    <div className="p-2 rounded-lg bg-slate-50/80 border border-slate-200 flex-shrink-0">
+                        <h3 className="text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">Rent Details</h3>
+                        <div className="grid grid-cols-3 gap-2">
+                            <Input label="Monthly Rent" type="number" value={monthlyRent} onChange={e => setMonthlyRent(e.target.value)} required className="text-sm !py-1 !text-xs" />
+                            <Input label="Due Day" type="number" min="1" max="31" value={rentDueDate} onChange={e => setRentDueDate(e.target.value)} required className="text-sm !py-1 !text-xs" />
+                            <Input label="Security" type="number" value={securityDeposit} onChange={e => setSecurityDeposit(e.target.value)} className="text-sm !py-1 !text-xs" />
+                        </div>
+                    </div>
+
+                    <div className="flex gap-2 p-2 rounded-lg bg-slate-50/80 border border-slate-200 flex-shrink-0">
+                        <div className="flex-1 min-w-0">
+                            <ComboBox label="Broker" items={brokers} selectedId={brokerId} onSelect={(item) => setBrokerId(item?.id || '')} placeholder="Select broker" allowAddNew={false} />
+                        </div>
+                        <div className="w-28 flex-shrink-0">
+                            <Input label="Fee" type="number" value={brokerFee} onChange={e => setBrokerFee(e.target.value)} disabled={!brokerId} className="text-sm !py-1 !text-xs" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Sticky Actions Bar */}
+            <div className="flex-shrink-0 pt-3 mt-2 border-t border-slate-200 flex flex-wrap justify-between items-center gap-2">
                 <div className="flex gap-2">
-                    {agreementToEdit && !renewMode && agreementToEdit.status === RentalAgreementStatus.ACTIVE && (
-                         <>
-                            <Button type="button" size="sm" onClick={onTerminateRequest} className="bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200">
-                                End Agreement
-                            </Button>
-                            <Button 
-                                type="button" 
-                                size="sm" 
-                                onClick={async () => {
-                                    if (hasOpenInvoices) {
-                                        await showAlert(
-                                            `Cannot renew this agreement.\n\nThere are ${openInvoices.length} open invoice(s) against this agreement. Please ensure all invoices are fully paid before renewing.`,
-                                            { title: 'Open Invoices Found' }
-                                        );
-                                        return;
-                                    }
-                                    setRenewMode(true);
-                                }} 
-                                className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200"
-                            >
-                                Renew
-                            </Button>
+                    {agreementToEdit && !renewMode && (
+                        <>
+                            <Button type="button" variant="danger" onClick={handleDelete} className="!text-xs !py-1.5 !px-3">Delete</Button>
+                            {agreementToEdit.status === RentalAgreementStatus.ACTIVE && onTerminateRequest && (
+                                <Button type="button" variant="danger" onClick={onTerminateRequest} className="!text-xs !py-1.5 !px-3 bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100">
+                                    End Agreement
+                                </Button>
+                            )}
+                            {agreementToEdit.status === RentalAgreementStatus.ACTIVE && (
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    onClick={async () => {
+                                        if (hasOpenInvoices) {
+                                            await showAlert(`Cannot renew. ${openInvoices.length} open invoice(s). Please pay all invoices first.`, { title: 'Open Invoices' });
+                                            return;
+                                        }
+                                        setRenewMode(true);
+                                    }}
+                                    className="!text-xs !py-1.5 !px-3 bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                >
+                                    Renew
+                                </Button>
+                            )}
                         </>
                     )}
                 </div>
-            </div>
-
-            {/* Open Invoices Warning - Show when there are unpaid invoices */}
-            {agreementToEdit && hasOpenInvoices && !renewMode && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                        <div>
-                            <h4 className="text-sm font-bold text-amber-800 flex items-center gap-2">
-                                <div className="w-4 h-4">{ICONS.alertTriangle}</div> Open Invoices
-                            </h4>
-                            <p className="text-xs text-amber-600 mt-1">
-                                This agreement has <span className="font-bold">{openInvoices.length}</span> unpaid invoice(s). 
-                                Termination and renewal are blocked until all invoices are paid.
-                            </p>
-                            <div className="mt-2 space-y-1">
-                                {openInvoices.slice(0, 3).map(inv => (
-                                    <div key={inv.id} className="text-xs text-amber-700 flex justify-between gap-4">
-                                        <span>{inv.invoiceNumber}</span>
-                                        <span className="font-medium">{CURRENCY} {(inv.amount - inv.paidAmount).toLocaleString()} due</span>
-                                    </div>
-                                ))}
-                                {openInvoices.length > 3 && (
-                                    <div className="text-xs text-amber-500 italic">...and {openInvoices.length - 3} more</div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {agreementToEdit && existingInvoices.length === 0 && !renewMode && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                        <div>
-                            <h4 className="text-sm font-bold text-blue-800 flex items-center gap-2">
-                                <div className="w-4 h-4">{ICONS.alertTriangle}</div> Initial Invoices Missing
-                            </h4>
-                            <p className="text-xs text-blue-600 mt-1">
-                                This agreement (likely imported) has no linked invoices.
-                            </p>
-                        </div>
-                        <Button type="button" size="sm" onClick={handleGenerateInitialInvoices} className="bg-blue-600 hover:bg-blue-700 text-white border-none shadow-sm">
-                            Generate Invoices Now
-                        </Button>
-                    </div>
-                </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <ComboBox 
-                    label="Tenant" 
-                    items={tenants} 
-                    selectedId={contactId} 
-                    onSelect={(item) => setContactId(item?.id || '')} 
-                    placeholder="Select Tenant"
-                    required
-                    disabled={!!agreementToEdit && !renewMode}
-                />
-
-                <ComboBox 
-                    label="Building" 
-                    items={buildings} 
-                    selectedId={buildingId} 
-                    onSelect={(item) => {
-                        setBuildingId(item?.id || '');
-                        setPropertyId(''); // Reset property when building changes
-                    }} 
-                    placeholder="Select Building"
-                    allowAddNew={false}
-                    disabled={!!agreementToEdit && !renewMode}
-                />
-                
-                <ComboBox 
-                    label="Property" 
-                    items={properties} 
-                    selectedId={propertyId} 
-                    onSelect={(item) => setPropertyId(item?.id || '')} 
-                    placeholder="Select Property"
-                    required
-                    disabled={!buildingId || (!!agreementToEdit && !renewMode)}
-                />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-                <DatePicker label="Start Date" value={startDate} onChange={handleStartDateChange} required />
-                <DatePicker label="End Date" value={endDate} onChange={d => setEndDate(d.toISOString().split('T')[0])} required />
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
-                <Input label="Monthly Rent" type="number" value={monthlyRent} onChange={e => setMonthlyRent(e.target.value)} required />
-                <Input label="Rent Due Day" type="number" min="1" max="31" value={rentDueDate} onChange={e => setRentDueDate(e.target.value)} required />
-                <Input label="Security Deposit" type="number" value={securityDeposit} onChange={e => setSecurityDeposit(e.target.value)} />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-                <ComboBox 
-                    label="Broker (Optional)" 
-                    items={brokers} 
-                    selectedId={brokerId} 
-                    onSelect={(item) => setBrokerId(item?.id || '')} 
-                    placeholder="Select Broker"
-                    allowAddNew={false}
-                />
-                <Input label="Broker Fee" type="number" value={brokerFee} onChange={e => setBrokerFee(e.target.value)} disabled={!brokerId} />
-            </div>
-
-            <Input label="Description / Notes" value={description} onChange={e => setDescription(e.target.value)} />
-
-            <div className="flex justify-between items-center pt-4">
-                <div>
-                    {agreementToEdit && !renewMode && (
-                        <Button type="button" variant="danger" onClick={handleDelete}>Delete</Button>
-                    )}
-                </div>
-                <div className="flex gap-2">
-                    <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button type="submit">{renewMode ? 'Renew Agreement' : agreementToEdit ? 'Update' : 'Create'}</Button>
+                <div className="flex flex-wrap gap-2 justify-end">
+                    <Button type="button" variant="secondary" onClick={onClose} className="!text-xs !py-1.5 !px-3">Cancel</Button>
+                    <Button type="submit" className="!text-xs !py-1.5 !px-4">{renewMode ? 'Renew Agreement' : agreementToEdit ? 'Update' : 'Create'}</Button>
                 </div>
             </div>
         </form>

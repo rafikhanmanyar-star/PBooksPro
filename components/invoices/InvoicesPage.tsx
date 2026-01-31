@@ -18,7 +18,6 @@ import { useNotification } from '../../context/NotificationContext';
 import RentalFinancialGrid, { FinancialRecord } from './RentalFinancialGrid';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import InvoiceDetailView from './InvoiceDetailView';
-import ResizeHandle from '../ui/ResizeHandle';
 import { ImportType } from '../../services/importService';
 
 interface InvoicesPageProps {
@@ -26,6 +25,95 @@ interface InvoicesPageProps {
     hideTitleAndGoBack?: boolean;
     showCreateButton?: boolean;
 }
+
+type InvoiceTreeSelectionType = 'group' | 'subgroup' | 'invoice' | null;
+
+/** Premium tree sidebar: Directories label, avatars, active state, chevron expand (same style as Project Agreements) */
+const InvoiceTreeSidebar: React.FC<{
+    nodes: TreeNode[];
+    selectedId: string | null;
+    selectedType: InvoiceTreeSelectionType;
+    selectedParentId: string | null;
+    onSelect: (id: string, type: 'group' | 'subgroup' | 'invoice', parentId?: string | null) => void;
+    onContextMenu?: (node: TreeNode, event: React.MouseEvent) => void;
+}> = ({ nodes, selectedId, selectedType, selectedParentId, onSelect, onContextMenu }) => {
+    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(nodes.map(n => n.id)));
+
+    useEffect(() => {
+        setExpandedIds(prev => {
+            const next = new Set(prev);
+            nodes.forEach(n => next.add(n.id));
+            return next;
+        });
+    }, [nodes]);
+
+    const toggleExpanded = (id: string) => {
+        setExpandedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const renderNode = (node: TreeNode, level: number, parentId?: string | null) => {
+        const hasChildren = node.children && node.children.length > 0;
+        const isExpanded = expandedIds.has(node.id);
+        const isSelected = selectedId === node.id && selectedType === node.type && (node.type === 'group' || selectedParentId === parentId);
+        const initials = node.name.slice(0, 2).toUpperCase();
+
+        return (
+            <div key={node.id} className={level > 0 ? 'ml-4 border-l border-slate-200/80 pl-3' : ''}>
+                <div
+                    className={`group flex items-center gap-2 py-1.5 px-2 rounded-lg -mx-0.5 transition-all cursor-pointer ${
+                        isSelected
+                            ? 'bg-orange-500/10 text-orange-700'
+                            : 'hover:bg-slate-100/80 text-slate-700 hover:text-slate-900'
+                    }`}
+                    onClick={() => onSelect(node.id, node.type, level > 0 ? parentId : undefined)}
+                    onContextMenu={node.type === 'subgroup' && onContextMenu ? (e) => { e.preventDefault(); e.stopPropagation(); onContextMenu(node, e); } : undefined}
+                >
+                    {hasChildren ? (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); toggleExpanded(node.id); }}
+                            className={`flex-shrink-0 w-5 h-5 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+                        >
+                            <div className="w-3.5 h-3.5">{ICONS.chevronRight}</div>
+                        </button>
+                    ) : (
+                        <span className="w-5 flex-shrink-0" />
+                    )}
+                    <span className="flex-shrink-0 w-6 h-6 rounded-md bg-slate-800 text-slate-200 text-[10px] font-bold flex items-center justify-center">
+                        {initials}
+                    </span>
+                    <span className="flex-1 text-xs font-medium truncate">{node.name}</span>
+                    {node.count !== undefined && node.count > 0 && (
+                        <span className={`text-[10px] font-semibold tabular-nums ${isSelected ? 'text-orange-600' : 'text-slate-500'}`}>
+                            {node.count}
+                        </span>
+                    )}
+                </div>
+                {hasChildren && isExpanded && (
+                    <div className="mt-0.5">
+                        {node.children.map(child => renderNode(child, level + 1, node.id))}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    if (!nodes || nodes.length === 0) {
+        return (
+            <div className="text-xs text-slate-400 italic p-2">No directories match your search</div>
+        );
+    }
+
+    return (
+        <div className="space-y-0.5">
+            {nodes.map(node => renderNode(node, 0))}
+        </div>
+    );
+};
 
 const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitleAndGoBack, showCreateButton = true }) => {
     const { state, dispatch } = useAppContext();
@@ -40,11 +128,13 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
     const [projectFilter, setProjectFilter] = useState<string>(state.defaultProjectId || 'all');
     const [searchQuery, setSearchQuery] = useState('');
 
-    // Sidebar Resizing State
-    const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>(`${storageKeyPrefix}_sidebarWidth`, 300);
-    const isResizingSidebar = useRef(false);
-    const startX = useRef(0);
-    const startWidth = useRef(0);
+    // Sidebar: search filter for tree
+    const [treeSearchQuery, setTreeSearchQuery] = useState('');
+
+    // Sidebar Resizing: container-relative width (150–600px), same as Project Agreements
+    const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>(`${storageKeyPrefix}_sidebarWidth`, 280);
+    const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isBulkPayModalOpen, setIsBulkPayModalOpen] = useState(false);
@@ -62,7 +152,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
 
     // Selection for Bulk Actions
     const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(new Set());
-    const [treeFilter, setTreeFilter] = useState<{ id: string; type: 'group' | 'subgroup' | 'invoice' } | null>(null);
+    const [treeFilter, setTreeFilter] = useState<{ id: string; type: 'group' | 'subgroup' | 'invoice'; parentId?: string | null } | null>(null);
 
     // Context Menu State
     const [contextMenu, setContextMenu] = useState<{ node: TreeNode; x: number; y: number } | null>(null);
@@ -95,34 +185,39 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
         }
     }, [contextMenu]);
 
-    // --- Sidebar Resize Handlers ---
-    const startResizingSidebar = useCallback((e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        isResizingSidebar.current = true;
-        startX.current = e.clientX;
-        startWidth.current = sidebarWidth;
-
-        document.addEventListener('mousemove', handleResizeSidebar);
-        document.addEventListener('mouseup', stopResizeSidebar);
-        document.body.style.cursor = 'col-resize';
-        document.body.style.userSelect = 'none';
-    }, [sidebarWidth]);
-
-    const handleResizeSidebar = useCallback((e: MouseEvent) => {
-        if (isResizingSidebar.current) {
-            const delta = e.clientX - startX.current;
-            const newWidth = Math.max(200, Math.min(800, startWidth.current + delta));
+    // --- Sidebar Resize: container-relative width to prevent jumping in nested layouts ---
+    const handleMouseMoveSidebar = useCallback((e: MouseEvent) => {
+        if (!containerRef.current) return;
+        const containerLeft = containerRef.current.getBoundingClientRect().left;
+        const newWidth = e.clientX - containerLeft;
+        if (newWidth > 150 && newWidth < 600) {
             setSidebarWidth(newWidth);
         }
     }, [setSidebarWidth]);
 
-    const stopResizeSidebar = useCallback(() => {
-        isResizingSidebar.current = false;
-        document.removeEventListener('mousemove', handleResizeSidebar);
-        document.removeEventListener('mouseup', stopResizeSidebar);
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
+    useEffect(() => {
+        if (!isResizingSidebar) return;
+        const handleUp = () => {
+            setIsResizingSidebar(false);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        };
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        window.addEventListener('mousemove', handleMouseMoveSidebar);
+        window.addEventListener('mouseup', handleUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMoveSidebar);
+            window.removeEventListener('mouseup', handleUp);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        };
+    }, [isResizingSidebar, handleMouseMoveSidebar]);
+
+    const startResizingSidebar = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsResizingSidebar(true);
     }, []);
 
     const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
@@ -196,23 +291,28 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                     return false;
                 });
             } else if (treeFilter.type === 'subgroup') {
+                const parentId = treeFilter.parentId ?? null;
                 if (invoiceTypeFilter === InvoiceType.RENTAL) {
-                    if (groupBy === 'tenant') {
-                        invoices = invoices.filter(inv => inv.contactId === treeFilter.id);
-                    } else if (groupBy === 'owner') {
-                        invoices = invoices.filter(inv => {
+                    invoices = invoices.filter(inv => {
+                        const invBuildingId = inv.buildingId || (inv.propertyId ? state.properties.find(p => p.id === inv.propertyId)?.buildingId : undefined) || 'Unassigned';
+                        const matchParent = parentId === null || invBuildingId === parentId;
+                        if (!matchParent) return false;
+                        if (groupBy === 'tenant') return inv.contactId === treeFilter.id;
+                        if (groupBy === 'owner') {
                             const prop = state.properties.find(p => p.id === inv.propertyId);
                             return prop && prop.ownerId === treeFilter.id;
-                        });
-                    } else if (groupBy === 'property') {
-                        invoices = invoices.filter(inv => inv.propertyId === treeFilter.id);
-                    }
+                        }
+                        if (groupBy === 'property') return inv.propertyId === treeFilter.id;
+                        return false;
+                    });
                 } else if (invoiceTypeFilter === InvoiceType.INSTALLMENT) {
-                    if (groupBy === 'owner') {
-                        invoices = invoices.filter(inv => inv.contactId === treeFilter.id);
-                    } else if (groupBy === 'property') {
-                        invoices = invoices.filter(inv => inv.unitId === treeFilter.id);
-                    }
+                    invoices = invoices.filter(inv => {
+                        const matchParent = parentId === null || inv.projectId === parentId;
+                        if (!matchParent) return false;
+                        if (groupBy === 'owner') return inv.contactId === treeFilter.id;
+                        if (groupBy === 'property') return inv.unitId === treeFilter.id;
+                        return false;
+                    });
                 }
             } else if (treeFilter.type === 'invoice') {
                 invoices = invoices.filter(inv => inv.id === treeFilter.id);
@@ -366,6 +466,25 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
         }
 
     }, [baseInvoices, invoiceTypeFilter, state.projects, state.buildings, state.properties, state.units, state.contacts, groupBy]);
+
+    // Filter tree by sidebar search (keeps node if name or any descendant matches)
+    const filterInvoiceTree = useCallback((nodes: TreeNode[], q: string): TreeNode[] => {
+        if (!q.trim()) return nodes;
+        const lower = q.toLowerCase();
+        return nodes
+            .map(node => {
+                const labelMatch = node.name.toLowerCase().includes(lower);
+                const filteredChildren = node.children?.length ? filterInvoiceTree(node.children, q) : [];
+                const childMatch = filteredChildren.length > 0;
+                if (labelMatch && !filteredChildren.length) return node;
+                if (childMatch) return { ...node, children: filteredChildren };
+                if (labelMatch) return node;
+                return null;
+            })
+            .filter((n): n is TreeNode => n != null);
+    }, []);
+
+    const filteredTreeData = useMemo(() => filterInvoiceTree(treeData, treeSearchQuery), [treeData, treeSearchQuery, filterInvoiceTree]);
 
     // --- Invoices without status filter (for payment visibility) ---
     // Build a set of invoice IDs that match all filters EXCEPT status filter
@@ -776,62 +895,88 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                 </div>
             )}
 
-            <div className={`flex-grow flex flex-col md:flex-row gap-4 sm:gap-6 overflow-hidden min-h-0 ${hideTitleAndGoBack ? 'pt-2' : ''}`}>
-                {/* Sidebar Control Panel */}
+            <div ref={containerRef} className={`flex-grow flex flex-col md:flex-row overflow-hidden min-h-0 ${hideTitleAndGoBack ? 'pt-2' : ''}`}>
+                {/* Left: Resizable Tree Sidebar (same layout as Project Agreements) */}
                 {supportsTreeView && (
-                    <div
-                        className="flex-shrink-0 flex flex-col h-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden hidden md:flex"
-                        style={{ width: sidebarWidth }}
-                    >
-                        {/* Group By: visible in sidebar when tree is shown (e.g. rental management with hideTitleAndGoBack) */}
-                        <div className="p-3 bg-slate-50/50 border-b border-slate-100 space-y-2">
-                            <div className="flex items-center justify-between gap-2">
-                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Group by</span>
-                                {treeFilter && (
-                                    <button
-                                        onClick={() => setTreeFilter(null)}
-                                        className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full hover:bg-indigo-100 font-medium transition-colors"
-                                    >
-                                        Clear Filter
-                                    </button>
-                                )}
+                    <>
+                        <aside
+                            className="hidden md:flex flex-col flex-shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
+                            style={{ width: `${sidebarWidth}px` }}
+                        >
+                            <div className="flex-shrink-0 p-3 border-b border-slate-100 bg-slate-50/50">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Directories</span>
                             </div>
-                            <div className="flex bg-slate-100 p-1 rounded-lg">
-                                {(isRental ? ['tenant', 'owner', 'property'] : ['owner', 'property']).map((opt) => (
-                                    <button
-                                        key={opt}
-                                        onClick={() => setGroupBy(opt as 'tenant' | 'owner' | 'property')}
-                                        className={`flex-1 px-2 py-1.5 text-xs font-medium rounded-md transition-all capitalize ${groupBy === opt
-                                            ? 'bg-white text-indigo-600 shadow-sm font-bold ring-1 ring-black/5'
-                                            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
-                                        }`}
-                                    >
-                                        {opt === 'property' && isRental ? 'Property' : opt === 'property' ? 'Unit' : opt}
-                                    </button>
-                                ))}
+                            <div className="flex-shrink-0 px-2 pt-2 pb-1 border-b border-slate-100">
+                                <div className="relative">
+                                    <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-slate-400">
+                                        <div className="w-3.5 h-3.5">{ICONS.search}</div>
+                                    </div>
+                                    <input
+                                        type="text"
+                                        placeholder="Search projects, owners, units..."
+                                        value={treeSearchQuery}
+                                        onChange={(e) => setTreeSearchQuery(e.target.value)}
+                                        className="w-full pl-8 pr-6 py-1.5 text-xs border border-slate-200 rounded-lg bg-slate-50/80 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 placeholder:text-slate-400 transition-all"
+                                    />
+                                    {treeSearchQuery && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setTreeSearchQuery('')}
+                                            className="absolute inset-y-0 right-2 flex items-center text-slate-400 hover:text-rose-500"
+                                        >
+                                            <div className="w-3.5 h-3.5">{ICONS.x}</div>
+                                        </button>
+                                    )}
+                                </div>
                             </div>
+                            <div className="flex-shrink-0 px-3 py-2 border-b border-slate-100 bg-slate-50/30">
+                                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Group by</span>
+                                <div className="flex bg-slate-100 p-1 rounded-lg mt-1.5">
+                                    {(isRental ? ['tenant', 'owner', 'property'] : ['owner', 'property']).map((opt) => (
+                                        <button
+                                            key={opt}
+                                            onClick={() => setGroupBy(opt as 'tenant' | 'owner' | 'property')}
+                                            className={`flex-1 px-2 py-1.5 text-xs font-medium rounded-md transition-all capitalize ${groupBy === opt
+                                                ? 'bg-white text-orange-600 shadow-sm font-bold ring-1 ring-black/5'
+                                                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                                            }`}
+                                        >
+                                            {opt === 'property' && isRental ? 'Property' : opt === 'property' ? 'Unit' : opt}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="flex-grow overflow-y-auto overflow-x-hidden p-2 min-h-0">
+                                <InvoiceTreeSidebar
+                                    nodes={filteredTreeData}
+                                    selectedId={treeFilter?.id ?? null}
+                                    selectedType={treeFilter?.type ?? null}
+                                    selectedParentId={treeFilter?.parentId ?? null}
+                                    onSelect={(id, type, parentId) => {
+                                        if (treeFilter?.id === id && treeFilter.type === type && (treeFilter.parentId ?? null) === (parentId ?? null)) {
+                                            setTreeFilter(null);
+                                        } else {
+                                            setTreeFilter({ id, type, parentId: parentId ?? null });
+                                        }
+                                    }}
+                                    onContextMenu={handleContextMenu}
+                                />
+                            </div>
+                        </aside>
+
+                        {/* Resize Handle: larger hit area, col-resize, hover highlight (same as Project Agreements) */}
+                        <div
+                            className="hidden md:flex items-center justify-center flex-shrink-0 w-2 cursor-col-resize select-none touch-none group hover:bg-blue-500/10 transition-colors"
+                            onMouseDown={startResizingSidebar}
+                            title="Drag to resize sidebar"
+                        >
+                            <div className="w-0.5 h-12 rounded-full bg-slate-200 group-hover:bg-blue-500 group-hover:w-1 transition-all" />
                         </div>
-                        {/* Tree View Component */}
-                        <div className="flex-grow overflow-y-auto p-2">
-                            <InvoiceTreeView
-                                treeData={treeData}
-                                selectedNodeId={treeFilter?.id || null}
-                                onNodeSelect={(id, type) => setTreeFilter(treeFilter?.id === id && treeFilter.type === type ? null : { id, type })}
-                                onContextMenu={handleContextMenu}
-                            />
-                        </div>
-                    </div>
+                    </>
                 )}
 
-                {/* Drag Handle */}
-                {supportsTreeView && (
-                    <div className="hidden md:flex items-center justify-center w-2 hover:w-3 -ml-3 -mr-3 z-10 cursor-col-resize group transition-all" onMouseDown={startResizingSidebar}>
-                        <div className="w-1 h-8 rounded-full bg-slate-200 group-hover:bg-indigo-400 transition-colors"></div>
-                    </div>
-                )}
-
-                {/* List Area */}
-                <div className="flex-grow overflow-hidden min-h-0 flex-1 flex flex-col">
+                {/* List Area: flex-1 min-w-0 to avoid horizontal scroll */}
+                <div className="flex-1 min-w-0 overflow-hidden min-h-0 flex flex-col">
                     <RentalFinancialGrid
                         records={financialRecords}
                         onInvoiceClick={handleInvoiceClick}

@@ -7,6 +7,8 @@ import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { useNotification } from '../../context/NotificationContext';
+import { usePrintContext } from '../../context/PrintContext';
+import type { AgreementPrintData } from '../print/AgreementLayout';
 import InstallmentConfigForm from '../settings/InstallmentConfigForm';
 import Modal from '../ui/Modal';
 import { ICONS } from '../../constants';
@@ -21,6 +23,7 @@ interface ProjectAgreementFormProps {
 const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, agreementToEdit, onCancelRequest }) => {
     const { state, dispatch } = useAppContext();
     const { showConfirm, showToast, showAlert } = useNotification();
+    const { print: triggerPrint } = usePrintContext();
     const { projectAgreementSettings, projectInvoiceSettings } = state;
 
     // Config Mode State
@@ -530,8 +533,32 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                 onClose();
             }
         }
-    }
+    };
 
+    /** Data for print: build from current form / agreement */
+    const agreementPrintData = useMemo((): AgreementPrintData | null => {
+        const client = state.contacts.find(c => c.id === clientId);
+        const project = state.projects.find(p => p.id === projectId);
+        const unitNames = unitIds.map(uid => state.units.find(u => u.id === uid)?.name).filter(Boolean).join(', ');
+        const parties = [
+            client ? `Buyer: ${client.name}${client.address ? `\n${client.address}` : ''}` : '',
+            project ? `Project: ${project.name}` : '',
+            unitNames ? `Unit(s): ${unitNames}` : '',
+        ].filter(Boolean).join('\n\n');
+        const listPriceNum = parseFloat(listPrice) || 0;
+        const sellingPriceNum = parseFloat(sellingPrice) || 0;
+        return {
+            title: 'Project Agreement',
+            agreementNumber: agreementNumber.trim() || undefined,
+            parties: parties || undefined,
+            effectiveDate: agreementToEdit?.issueDate ? new Date(agreementToEdit.issueDate).toLocaleDateString() : undefined,
+            clauses: [
+                { id: '1', title: 'Summary', body: `List Price: ${listPriceNum.toLocaleString()}\nSelling Price: ${sellingPriceNum.toLocaleString()}\nIssue Date: ${agreementToEdit?.issueDate ? new Date(agreementToEdit.issueDate).toLocaleDateString() : '—'}\nStatus: ${status}` },
+                ...(description?.trim() ? [{ id: '2', title: 'Terms & Description', body: description.trim() }] : []),
+            ],
+            footerNote: 'This is a printed copy of the project agreement.',
+        };
+    }, [agreementNumber, clientId, projectId, unitIds, listPrice, sellingPrice, description, status, agreementToEdit?.issueDate, state.contacts, state.projects, state.units]);
 
     const formBackgroundStyle = useMemo(() => {
         return getFormBackgroundColorStyle(projectId, undefined, state);
@@ -539,183 +566,132 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
 
     return (
         <>
-            <form onSubmit={handleSubmit} className="space-y-4" style={formBackgroundStyle}>
-                {/* Top Row: Agreement ID, Date, Owner, Project - 4 cols on lg */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div>
-                        <Input label="Agreement ID" value={agreementNumber} onChange={e => setAgreementNumber(e.target.value)} required autoFocus/>
-                        {agreementNumberError && <p className="text-red-500 text-xs mt-1">{agreementNumberError}</p>}
-                    </div>
-                    <DatePicker label="Date" value={issueDate} onChange={handleIssueDateChange} required />
-                    <ComboBox label="Owner" items={clients} selectedId={clientId} onSelect={item => setClientId(item?.id || '')} placeholder="Select an owner" required allowAddNew={false} />
-                    <ComboBox label="Project" items={state.projects} selectedId={projectId} onSelect={item => { setProjectId(item?.id || ''); setUnitIds([]); }} placeholder="Select a project" required allowAddNew={false}/>
-                </div>
-                
-                {/* Units Selection - Replaced Grid with ComboBox + Tag List */}
-                <div>
-                    <label className="block text-sm font-medium text-slate-600 mb-1">Units</label>
-                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 min-h-[4rem]">
-                        {/* Selected Units List (Tags) */}
-                        <div className="flex flex-wrap gap-2 mb-2">
-                            {unitIds.map(id => {
-                                const unit = state.units.find(u => u.id === id);
-                                if (!unit) return null;
-                                return (
-                                    <div key={id} className="flex items-center gap-1 bg-white border border-slate-300 text-slate-700 px-2 py-1 rounded-md text-sm shadow-sm animate-fade-in">
-                                        <span className="font-medium">{unit.name}</span>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleRemoveUnit(id)}
-                                            className="text-slate-400 hover:text-rose-500 ml-1 p-0.5 rounded-full transition-colors"
-                                        >
-                                            <div className="w-3 h-3">{ICONS.x}</div>
-                                        </button>
-                                    </div>
-                                );
-                            })}
-                            {unitIds.length === 0 && <span className="text-xs text-slate-400 italic py-1.5">No units selected</span>}
-                        </div>
-                        
-                        {/* Unit Search Dropdown */}
-                        <ComboBox 
-                            items={unitsForSelection} 
-                            selectedId="" // Always reset to allow multiple selections
-                            onSelect={handleAddUnit} 
-                            placeholder={projectId ? "Search and add unit..." : "Select a project first"}
-                            disabled={!projectId}
-                            allowAddNew={false}
-                        />
-                    </div>
-                </div>
-
-                {/* Pricing Breakdown - Compact Grid */}
-                <div className="p-3 border rounded-lg bg-slate-50">
-                    <h3 className="font-semibold text-sm text-slate-800 mb-3">Pricing Breakdown</h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                        <Input label="List Price" type="text" inputMode="decimal" value={listPrice} onChange={handleAmountChange(setListPrice)} className="text-sm py-1" />
-                        <Input label="Cust Disc" type="text" inputMode="decimal" value={customerDiscount} onChange={handleAmountChange(setCustomerDiscount)} className="text-sm py-1" />
-                        <Input label="Floor Disc" type="text" inputMode="decimal" value={floorDiscount} onChange={handleAmountChange(setFloorDiscount)} className="text-sm py-1" />
-                        <Input label="LumpSum Disc" type="text" inputMode="decimal" value={lumpSumDiscount} onChange={handleAmountChange(setLumpSumDiscount)} className="text-sm py-1" />
-                        <Input label="Misc Disc" type="text" inputMode="decimal" value={miscDiscount} onChange={handleAmountChange(setMiscDiscount)} className="text-sm py-1" />
-                        <div className="col-span-1 sm:col-span-2 md:col-span-1">
-                            <Input
-                                label="Selling Price"
-                                type="text"
-                                inputMode="decimal"
-                                value={sellingPrice}
-                                required
-                                readOnly
-                                className="bg-indigo-50 font-bold text-indigo-700 text-sm py-1 border-indigo-200"
-                            />
-                        </div>
-                    </div>
-                </div>
-
-                {/* Broker / Rebate - Inline */}
-                <div className="flex flex-col md:flex-row gap-4 p-3 border rounded-lg bg-slate-50 items-end">
-                     <div className="flex-grow">
-                        <ComboBox label="Broker (Rebate)" items={brokers} selectedId={rebateBrokerId} onSelect={item => setRebateBrokerId(item?.id || '')} placeholder="Select broker" allowAddNew={false}/>
-                     </div>
-                     <div className="w-full md:w-1/3">
-                        <Input label="Rebate Amount" type="text" inputMode="decimal" value={rebateAmount} onChange={handleAmountChange(setRebateAmount)} className="text-sm py-1" />
-                     </div>
-                </div>
-
-                {/* Installment Configuration Section */}
-                {projectId && clientId && (
-                    <div className="p-3 border rounded-lg bg-indigo-50/30 border-indigo-200">
-                        <div className="flex items-center justify-between mb-3">
+            <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0" style={formBackgroundStyle}>
+                {/* Compact two-column layout: fits viewport, scroll only when needed */}
+                <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[5fr_3fr] gap-3 lg:gap-4 overflow-y-auto overflow-x-hidden">
+                    {/* Left Column: Agreement Basics + Units + Status */}
+                    <div className="flex flex-col gap-3 min-h-0">
+                        <div className="grid grid-cols-2 lg:grid-cols-2 gap-2 lg:gap-3">
                             <div>
-                                <h3 className="font-semibold text-sm text-slate-800">Installment Plan Configuration</h3>
-                                <p className="text-xs text-slate-600 mt-1">Configure installment plan for this owner and project</p>
+                                <Input label="Agreement ID" value={agreementNumber} onChange={e => setAgreementNumber(e.target.value)} required autoFocus className="text-sm" />
+                                {agreementNumberError && <p className="text-red-500 text-xs mt-0.5">{agreementNumberError}</p>}
                             </div>
-                            <Button 
-                                type="button" 
-                                variant="secondary" 
-                                onClick={() => setShowInstallmentConfig(!showInstallmentConfig)}
-                                className="text-xs px-3 py-1.5"
-                            >
-                                {showInstallmentConfig ? 'Hide' : installmentPlan ? 'Edit' : 'Configure'}
-                            </Button>
-                        </div>
-                        
-                    {installmentPlan && !showInstallmentConfig && (
-                        <div className="text-sm text-slate-700 bg-white p-2 rounded border border-slate-200">
-                            <div className="grid grid-cols-3 gap-2">
-                                <div>
-                                    <span className="text-xs text-slate-500">Duration:</span>
-                                    <span className="ml-1 font-medium">{installmentPlan.durationYears} Years</span>
-                                </div>
-                                <div>
-                                    <span className="text-xs text-slate-500">Down Payment:</span>
-                                    <span className="ml-1 font-medium">{installmentPlan.downPaymentPercentage}%</span>
-                                </div>
-                                <div>
-                                    <span className="text-xs text-slate-500">Frequency:</span>
-                                    <span className="ml-1 font-medium">{installmentPlan.frequency}</span>
-                                </div>
+                            <DatePicker label="Date" value={issueDate} onChange={handleIssueDateChange} required className="text-sm" />
+                            <div className="col-span-2">
+                                <ComboBox label="Owner" items={clients} selectedId={clientId} onSelect={item => setClientId(item?.id || '')} placeholder="Select owner" required allowAddNew={false} />
+                            </div>
+                            <div className="col-span-2">
+                                <ComboBox label="Project" items={state.projects} selectedId={projectId} onSelect={item => { setProjectId(item?.id || ''); setUnitIds([]); }} placeholder="Select project" required allowAddNew={false}/>
                             </div>
                         </div>
-                    )}
-                    
-                    {showInstallmentConfig && (
-                        <div className="mt-3 bg-white p-4 rounded-lg border border-slate-200">
-                            <InstallmentConfigForm
-                                config={installmentPlan}
-                                onSave={handleConfigSave}
-                                onCancel={() => setShowInstallmentConfig(false)}
-                            />
-                        </div>
-                    )}
-                    </div>
-                )}
 
-                {/* Status Field - Only for editing existing agreements */}
-                {agreementToEdit && (
-                    <div className="p-3 border rounded-lg bg-slate-50">
-                        <label className="block text-sm font-medium text-slate-600 mb-2">Agreement Status</label>
-                        <select
-                            value={status}
-                            onChange={(e) => setStatus(e.target.value as ProjectAgreementStatus)}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                        >
-                            <option value={ProjectAgreementStatus.ACTIVE}>Active</option>
-                            <option value={ProjectAgreementStatus.CANCELLED}>Cancelled</option>
-                            <option value={ProjectAgreementStatus.COMPLETED}>Completed</option>
-                        </select>
-                        {status === ProjectAgreementStatus.CANCELLED && agreementToEdit.status !== ProjectAgreementStatus.CANCELLED && (
-                            <p className="text-xs text-amber-600 mt-2">
-                                ⚠️ Changing status to Cancelled will require cancellation details. Use the "Cancel Agreement" button below for proper cancellation processing.
-                            </p>
+                        {/* Units - compact */}
+                        <div className="flex-shrink-0">
+                            <label className="block text-xs font-medium text-slate-600 mb-1">Units</label>
+                            <div className="p-2 bg-slate-50/80 rounded-lg border border-slate-200 min-h-[2.5rem]">
+                                <div className="flex flex-wrap gap-1.5 mb-1.5">
+                                    {unitIds.map(id => {
+                                        const unit = state.units.find(u => u.id === id);
+                                        if (!unit) return null;
+                                        return (
+                                            <span key={id} className="inline-flex items-center gap-1 bg-white border border-slate-200 text-slate-700 px-2 py-0.5 rounded text-xs font-medium">
+                                                {unit.name}
+                                                <button type="button" onClick={() => handleRemoveUnit(id)} className="text-slate-400 hover:text-rose-500 p-0.5 rounded transition-colors" aria-label="Remove">
+                                                    <div className="w-2.5 h-2.5">{ICONS.x}</div>
+                                                </button>
+                                            </span>
+                                        );
+                                    })}
+                                    {unitIds.length === 0 && <span className="text-xs text-slate-400 italic">No units</span>}
+                                </div>
+                                <ComboBox items={unitsForSelection} selectedId="" onSelect={handleAddUnit} placeholder={projectId ? "Add unit..." : "Select project first"} disabled={!projectId} allowAddNew={false} />
+                            </div>
+                        </div>
+
+                        {/* Status - only when editing */}
+                        {agreementToEdit && (
+                            <div className="flex-shrink-0 p-2 rounded-lg bg-slate-50/80 border border-slate-200">
+                                <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
+                                <select value={status} onChange={(e) => setStatus(e.target.value as ProjectAgreementStatus)} className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500/50">
+                                    <option value={ProjectAgreementStatus.ACTIVE}>Active</option>
+                                    <option value={ProjectAgreementStatus.CANCELLED}>Cancelled</option>
+                                    <option value={ProjectAgreementStatus.COMPLETED}>Completed</option>
+                                </select>
+                                {status === ProjectAgreementStatus.CANCELLED && agreementToEdit.status !== ProjectAgreementStatus.CANCELLED && (
+                                    <p className="text-[10px] text-amber-600 mt-1">Use "Cancel Agreement" below for proper processing.</p>
+                                )}
+                            </div>
                         )}
                     </div>
-                )}
 
-                {/* Actions */}
-                <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-2">
-                    <div className="flex-shrink-0">
-                        {agreementToEdit && <Button type="button" variant="danger" onClick={handleDelete} className="w-full sm:w-auto">Delete</Button>}
+                    {/* Right Column: Pricing + Broker + Installment */}
+                    <div className="flex flex-col gap-3 min-h-0">
+                        {/* Pricing - dense grid */}
+                        <div className="p-2 rounded-lg bg-slate-50/80 border border-slate-200 flex-shrink-0">
+                            <h3 className="text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">Pricing</h3>
+                            <div className="grid grid-cols-3 gap-2">
+                                <Input label="List" type="text" inputMode="decimal" value={listPrice} onChange={handleAmountChange(setListPrice)} className="text-sm !py-1 !text-xs" />
+                                <Input label="Cust Disc" type="text" inputMode="decimal" value={customerDiscount} onChange={handleAmountChange(setCustomerDiscount)} className="text-sm !py-1 !text-xs" />
+                                <Input label="Floor Disc" type="text" inputMode="decimal" value={floorDiscount} onChange={handleAmountChange(setFloorDiscount)} className="text-sm !py-1 !text-xs" />
+                                <Input label="LumpSum" type="text" inputMode="decimal" value={lumpSumDiscount} onChange={handleAmountChange(setLumpSumDiscount)} className="text-sm !py-1 !text-xs" />
+                                <Input label="Misc" type="text" inputMode="decimal" value={miscDiscount} onChange={handleAmountChange(setMiscDiscount)} className="text-sm !py-1 !text-xs" />
+                                <Input label="Selling" type="text" inputMode="decimal" value={sellingPrice} required readOnly className="!py-1 !text-xs bg-emerald-50 font-bold text-emerald-700 border-emerald-200" />
+                            </div>
+                        </div>
+
+                        {/* Broker */}
+                        <div className="flex gap-2 p-2 rounded-lg bg-slate-50/80 border border-slate-200 flex-shrink-0">
+                            <div className="flex-1 min-w-0">
+                                <ComboBox label="Broker" items={brokers} selectedId={rebateBrokerId} onSelect={item => setRebateBrokerId(item?.id || '')} placeholder="Broker" allowAddNew={false}/>
+                            </div>
+                            <div className="w-28 flex-shrink-0">
+                                <Input label="Rebate" type="text" inputMode="decimal" value={rebateAmount} onChange={handleAmountChange(setRebateAmount)} className="text-sm !py-1 !text-xs" />
+                            </div>
+                        </div>
+
+                        {/* Installment - compact collapsible */}
+                        {projectId && clientId && (
+                            <div className="flex-1 min-h-0 flex flex-col p-2 rounded-lg bg-emerald-50/30 border border-emerald-200/60 flex-shrink-0">
+                                <div className="flex items-center justify-between gap-2">
+                                    <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wide">Installment Plan</h3>
+                                    <Button type="button" variant="secondary" onClick={() => setShowInstallmentConfig(!showInstallmentConfig)} className="!text-xs !px-2 !py-1">
+                                        {showInstallmentConfig ? 'Hide' : installmentPlan ? 'Edit' : 'Configure'}
+                                    </Button>
+                                </div>
+                                {installmentPlan && !showInstallmentConfig && (
+                                    <div className="text-xs text-slate-600 bg-white/80 p-2 rounded mt-1 flex gap-4">
+                                        <span><strong>{installmentPlan.durationYears}y</strong></span>
+                                        <span><strong>{installmentPlan.downPaymentPercentage}%</strong> down</span>
+                                        <span><strong>{installmentPlan.frequency}</strong></span>
+                                    </div>
+                                )}
+                                {showInstallmentConfig && (
+                                    <div className="mt-2 bg-white p-2 rounded border border-slate-200 overflow-auto max-h-32">
+                                        <InstallmentConfigForm config={installmentPlan} onSave={handleConfigSave} onCancel={() => setShowInstallmentConfig(false)} />
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
-                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                </div>
+
+                {/* Sticky Actions Bar */}
+                <div className="flex-shrink-0 pt-3 mt-2 border-t border-slate-200 flex flex-wrap justify-between items-center gap-2">
+                    <div>{agreementToEdit && <Button type="button" variant="danger" onClick={handleDelete} className="!text-xs !py-1.5 !px-3">Delete</Button>}</div>
+                    <div className="flex flex-wrap gap-2 justify-end">
                         {agreementToEdit && agreementToEdit.status === ProjectAgreementStatus.ACTIVE && onCancelRequest && (
-                            <Button 
-                                type="button" 
-                                variant="danger" 
-                                onClick={() => {
-                                    onCancelRequest(agreementToEdit);
-                                }}
-                                className="bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 w-full sm:w-auto"
-                            >
+                            <Button type="button" variant="danger" onClick={() => onCancelRequest(agreementToEdit)} className="!text-xs !py-1.5 !px-3 bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100">
                                 Cancel Agreement
                             </Button>
                         )}
-                        {agreementToEdit && (
-                            <Button type="button" variant="secondary" onClick={handleManualGenerate} className="bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 w-full sm:w-auto">
-                                Create Installments
+                        {agreementToEdit && <Button type="button" variant="secondary" onClick={handleManualGenerate} className="!text-xs !py-1.5 !px-3 bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100">Create Installments</Button>}
+                        {agreementToEdit && agreementPrintData && (
+                            <Button type="button" variant="secondary" onClick={() => triggerPrint('AGREEMENT', agreementPrintData)} className="!text-xs !py-1.5 !px-3 flex items-center gap-1 bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200">
+                                {ICONS.print && <span className="w-3.5 h-3.5 [&>svg]:w-full [&>svg]:h-full">{ICONS.print}</span>} Print
                             </Button>
                         )}
-                        <Button type="button" variant="secondary" onClick={onClose} className="w-full sm:w-auto">Cancel</Button>
-                        <Button type="submit" disabled={!!agreementNumberError} className="w-full sm:w-auto">{agreementToEdit ? 'Update' : 'Save'}</Button>
+                        <Button type="button" variant="secondary" onClick={onClose} className="!text-xs !py-1.5 !px-3">Cancel</Button>
+                        <Button type="submit" disabled={!!agreementNumberError} className="!text-xs !py-1.5 !px-4">{agreementToEdit ? 'Update' : 'Save'}</Button>
                     </div>
                 </div>
             </form>

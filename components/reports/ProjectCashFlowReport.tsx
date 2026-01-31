@@ -10,7 +10,7 @@ import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import ComboBox from '../ui/ComboBox';
 import { formatDate } from '../../utils/dateUtils';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface CashFlowItem {
@@ -36,7 +36,7 @@ interface CashFlowData {
 
 const ProjectCashFlowReport: React.FC = () => {
     const { state } = useAppContext();
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
     
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
     const [startDate, setStartDate] = useState(() => {
@@ -556,7 +556,7 @@ const ProjectCashFlowReport: React.FC = () => {
                         endDate={endDate}
                         onDateChange={handleDateChange}
                         onExport={handleExport}
-                        onPrint={handlePrint}
+                        onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                         hideGroup={true}
                         showDateFilterPills={true}
                         activeDateRange={dateRange}

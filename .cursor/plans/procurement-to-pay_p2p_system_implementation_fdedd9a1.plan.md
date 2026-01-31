@@ -2,6 +2,7 @@
 name: Procurement-to-Pay P2P System Implementation
 overview: Design and implement a modular Procurement-to-Pay (P2P) system with database schema updates, state management, and dual UI dashboards (Buyer and Supplier) integrated into the Biz Planet section.
 todos: []
+isProject: false
 ---
 
 # Procurement-to-Pay (P2P) System Implementation Plan
@@ -35,6 +36,12 @@ This plan implements a complete P2P system that enables organizations (tenants) 
          │  - State Transitions     │
          └──────────────────────────┘
 ```
+
+## User Flow: Buyer → Registered Supplier
+
+When a buyer initiates a PO to a **registered supplier**, the flow is: Create PO → Submit (PO Sent) → Supplier sees PO and can open (locks record) → Buyer can open when not locked, submit revisions (then unlock) → Supplier converts PO to invoice (income category) → Buyer records as bill (expense category) → Delivery (supplier: in progress; buyer: confirm receive) → Payment (buyer pays; status Paid; expense recorded) → Supplier sees Paid, income updated, process closed.
+
+**Full flowchart (Mermaid) and phase summary:** see [doc/BIZ_PLANET_PO_FLOW.md](../../doc/BIZ_PLANET_PO_FLOW.md). Key behaviors: **PO locking** (one party edits at a time), **revisions** (buyer submits; supplier sees updated PO), **invoice from PO** (supplier), **bill in project** (buyer), then delivery and payment to close.
 
 ## 1. Database Schema Updates
 
@@ -557,42 +564,31 @@ export async function notifyInvoiceApproved(invoiceId: string, supplierId: strin
 ## 9. Implementation Sequence
 
 1. **Database Schema** (Priority 1)
-
-   - Add supplier metadata columns to `tenants`
-   - Create `purchase_orders`, `p2p_invoices`, `p2p_bills` tables
-   - Create indexes
-   - Add migration scripts
-
+  - Add supplier metadata columns to `tenants`
+  - Create `purchase_orders`, `p2p_invoices`, `p2p_bills` tables
+  - Create indexes
+  - Add migration scripts
 2. **Types & State Management** (Priority 1)
-
-   - Add TypeScript interfaces
-   - Implement state machine logic
-   - Create audit trail service
-
+  - Add TypeScript interfaces
+  - Implement state machine logic
+  - Create audit trail service
 3. **API Routes** (Priority 2)
-
-   - Supplier promotion route
-   - PO CRUD routes
-   - Invoice flip route
-   - Bill auto-generation logic
-
+  - Supplier promotion route
+  - PO CRUD routes
+  - Invoice flip route
+  - Bill auto-generation logic
 4. **Buyer Dashboard** (Priority 2)
-
-   - Create BuyerDashboard component
-   - PO management components
-   - Invoice approval workflow
-
+  - Create BuyerDashboard component
+  - PO management components
+  - Invoice approval workflow
 5. **Supplier Portal** (Priority 2)
-
-   - Create SupplierPortal component
-   - Flip to invoice functionality
-   - Status tracking
-
+  - Create SupplierPortal component
+  - Flip to invoice functionality
+  - Status tracking
 6. **Integration & Testing** (Priority 3)
-
-   - Wire up BizPlanetPage
-   - Test workflows end-to-end
-   - Add notification stubs
+  - Wire up BizPlanetPage
+  - Test workflows end-to-end
+  - Add notification stubs
 
 ## 10. Key Files to Create/Modify
 
@@ -644,3 +640,4 @@ export async function notifyInvoiceApproved(invoiceId: string, supplierId: strin
 - Keyboard navigation
 - ARIA labels for status changes
 - Screen reader support
+

@@ -6,8 +6,19 @@ import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
 const router = Router();
 const getDb = () => getDatabaseService();
 
-// GET all documents
+/** Allowed roles for document access (organization users as defined in settings) */
+const ALLOWED_DOCUMENT_ROLES = ['admin', 'manager', 'accounts'];
+
+function canAccessDocuments(req: TenantRequest): boolean {
+  const role = (req.userRole || req.user?.role || '').trim().toLowerCase();
+  return !!role && ALLOWED_DOCUMENT_ROLES.includes(role);
+}
+
+// GET all documents (organization users only, by role)
 router.get('/', async (req: TenantRequest, res) => {
+  if (!canAccessDocuments(req)) {
+    return res.status(403).json({ error: 'Forbidden', message: 'Your role does not have access to documents.' });
+  }
   try {
     const db = getDb();
     const { entity_type, entity_id } = req.query;
@@ -34,8 +45,11 @@ router.get('/', async (req: TenantRequest, res) => {
   }
 });
 
-// GET document by ID
+// GET document by ID (organization users only, by role)
 router.get('/:id', async (req: TenantRequest, res) => {
+  if (!canAccessDocuments(req)) {
+    return res.status(403).json({ error: 'Forbidden', message: 'Your role does not have access to documents.' });
+  }
   try {
     const db = getDb();
     const documents = await db.query(
@@ -54,9 +68,12 @@ router.get('/:id', async (req: TenantRequest, res) => {
   }
 });
 
-// GET document file by ID (returns file data as base64 or blob)
+// GET document file by ID (returns file data; organization users only, by role)
 // SECURITY: Use only JWT-derived tenantId so Organization B cannot access Organization A's documents.
 router.get('/:id/file', async (req: TenantRequest, res) => {
+  if (!canAccessDocuments(req)) {
+    return res.status(403).json({ error: 'Forbidden', message: 'Your role does not have access to documents.' });
+  }
   try {
     const db = getDb();
     const tenantId = req.tenantId;
@@ -90,8 +107,11 @@ router.get('/:id/file', async (req: TenantRequest, res) => {
   }
 });
 
-// POST create/update document (upsert)
+// POST create/update document (upsert; organization users only, by role)
 router.post('/', async (req: TenantRequest, res) => {
+  if (!canAccessDocuments(req)) {
+    return res.status(403).json({ error: 'Forbidden', message: 'Your role does not have access to upload documents.' });
+  }
   try {
     const db = getDb();
     const document = req.body;
@@ -206,8 +226,11 @@ router.post('/', async (req: TenantRequest, res) => {
   }
 });
 
-// DELETE document
+// DELETE document (organization users only, by role)
 router.delete('/:id', async (req: TenantRequest, res) => {
+  if (!canAccessDocuments(req)) {
+    return res.status(403).json({ error: 'Forbidden', message: 'Your role does not have access to delete documents.' });
+  }
   try {
     const db = getDb();
     const result = await db.query(

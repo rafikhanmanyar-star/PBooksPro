@@ -240,6 +240,58 @@ async function runMigrations() {
       ],
       'Target delivery date column'
     );
+
+    // Migration: project_id on purchase_orders (required for New PO form)
+    await runMigrationIfNeeded(
+      pool,
+      'add-project-id-to-purchase-orders',
+      [
+        join(__dirname, '../migrations/add-project-id-to-purchase-orders.sql'),
+        join(__dirname, '../../migrations/add-project-id-to-purchase-orders.sql'),
+        join(process.cwd(), 'server/migrations/add-project-id-to-purchase-orders.sql'),
+        join(process.cwd(), 'migrations/add-project-id-to-purchase-orders.sql'),
+      ],
+      'Project ID column on purchase_orders'
+    );
+
+    // Migration: PO lock columns (buyer/supplier one-party-edit flow)
+    await runMigrationIfNeeded(
+      pool,
+      'add-po-lock-columns',
+      [
+        join(__dirname, '../migrations/add-po-lock-columns.sql'),
+        join(__dirname, '../../migrations/add-po-lock-columns.sql'),
+        join(process.cwd(), 'server/migrations/add-po-lock-columns.sql'),
+        join(process.cwd(), 'migrations/add-po-lock-columns.sql'),
+      ],
+      'PO lock columns for Biz Planet flow'
+    );
+
+    // Migration: P2P invoice income category (supplier assigns when converting PO to invoice)
+    await runMigrationIfNeeded(
+      pool,
+      'add-p2p-invoice-income-category',
+      [
+        join(__dirname, '../migrations/add-p2p-invoice-income-category.sql'),
+        join(__dirname, '../../migrations/add-p2p-invoice-income-category.sql'),
+        join(process.cwd(), 'server/migrations/add-p2p-invoice-income-category.sql'),
+        join(process.cwd(), 'migrations/add-p2p-invoice-income-category.sql'),
+      ],
+      'Income category on P2P invoices'
+    );
+
+    // Migration: Add document_id to contracts and bills (documents table link for local + cloud)
+    await runMigrationIfNeeded(
+      pool,
+      'add-document-id-to-contracts-bills',
+      [
+        join(__dirname, '../migrations/add-document-id-to-contracts-bills.sql'),
+        join(__dirname, '../../migrations/add-document-id-to-contracts-bills.sql'),
+        join(process.cwd(), 'server/migrations/add-document-id-to-contracts-bills.sql'),
+        join(process.cwd(), 'migrations/add-document-id-to-contracts-bills.sql'),
+      ],
+      'Document ID on contracts and bills'
+    );
     
     // Migration: Add user_id to transactions table
     await runMigrationIfNeeded(

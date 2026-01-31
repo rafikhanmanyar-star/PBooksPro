@@ -170,7 +170,7 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
                             {row.totalInGroup} RECORDS
                         </span>
                     </div>
-                    <div className="flex items-center gap-4 text-[10px] font-mono font-bold tabular-nums">
+                    <div className="flex items-center gap-4 text-xs font-bold tabular-nums">
                         <div className="flex flex-col items-end">
                             <span className="text-[8px] text-slate-400 leading-none mb-0.5 uppercase">IN</span>
                             <span className="text-emerald-600">+{CURRENCY}{summary.in.toLocaleString()}</span>

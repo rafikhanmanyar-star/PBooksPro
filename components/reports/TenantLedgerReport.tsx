@@ -20,7 +20,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { formatDate } from '../../utils/dateUtils';
 import { WhatsAppService } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
@@ -219,7 +219,7 @@ const TenantLedgerReport: React.FC = () => {
         }, { debit: 0, credit: 0 });
     }, [reportData]);
 
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
 
     const getLinkedItemName = (tx: Transaction | null): string => {
         if (!tx) return '';
@@ -413,7 +413,7 @@ const TenantLedgerReport: React.FC = () => {
                             <PrintButton
                                 variant="secondary"
                                 size="sm"
-                                onPrint={handlePrint}
+                                onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                                 className="whitespace-nowrap"
                             />
                         </div>

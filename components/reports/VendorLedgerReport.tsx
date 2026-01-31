@@ -15,7 +15,7 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import { formatDate } from '../../utils/dateUtils';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import PrintButton from '../ui/PrintButton';
 
@@ -43,7 +43,7 @@ type SortKey = 'date' | 'vendorName' | 'particulars' | 'billAmount' | 'paidAmoun
 
 const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
     const { state } = useAppContext();
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
     
     // Filters
     const [dateRange, setDateRange] = useState<DateRangeOption>('all');
@@ -407,7 +407,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                             <PrintButton
                                 variant="secondary"
                                 size="sm"
-                                onPrint={handlePrint}
+                                onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                                 className="whitespace-nowrap"
                             />
                         </div>

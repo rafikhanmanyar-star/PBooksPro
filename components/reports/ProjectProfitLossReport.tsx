@@ -11,7 +11,7 @@ import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import ComboBox from '../ui/ComboBox';
 import { formatDate } from '../../utils/dateUtils';
 import ProjectTransactionModal from '../dashboard/ProjectTransactionModal';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface ReportRow {
@@ -33,7 +33,7 @@ interface PLData {
 
 const ProjectProfitLossReport: React.FC = () => {
     const { state } = useAppContext();
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
     
     // Default to 'This Month' or 'Till Today' as preferred
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
@@ -400,7 +400,7 @@ const ProjectProfitLossReport: React.FC = () => {
                     endDate={endDate}
                     onDateChange={handleDateChange}
                     onExport={handleExport}
-                    onPrint={handlePrint}
+                    onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                     hideGroup={true}
                     showDateFilterPills={true}
                     activeDateRange={dateRange}

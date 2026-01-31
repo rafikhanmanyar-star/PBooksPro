@@ -1,0 +1,85 @@
+/**
+ * Print Form CSS - @media print styles for business form templates.
+ * Used by PrintLayout and form-specific templates (Invoice, PO, Bill).
+ * - A4 layout, page breaks, repeated table headers, typography.
+ * - Do NOT use for screen UI; only applied when printing.
+ */
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12.7mm;
+  }
+
+  /* Override @page margins when PrintSettings provide custom margins */
+  .print-form-custom-margins {
+    /* Applied via inline style or data attributes from PrintLayout */
+  }
+
+  /* When react-to-print prints, only the ref content is in the print view */
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .print-form-root {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  /* Header: repeat on each page via thead or separate header block */
+  .print-form-header {
+    page-break-after: avoid;
+  }
+
+  /* Footer on every page - use table-footer-group or fixed footer block */
+  .print-form-footer {
+    page-break-before: avoid;
+  }
+
+  /* Tables: allow break inside, repeat header on each page */
+  .print-form-root table {
+    page-break-inside: auto;
+    width: 100% !important;
+  }
+
+  .print-form-root thead {
+    display: table-header-group !important;
+  }
+
+  .print-form-root tbody tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  .print-form-root tfoot {
+    display: table-footer-group !important;
+  }
+
+  /* Avoid breaking these sections across pages */
+  .print-form-root .print-no-break {
+    page-break-inside: avoid;
+  }
+
+  /* Optional page break before a section (e.g. new form) */
+  .print-page-break-before {
+    page-break-before: always;
+  }
+
+  .print-page-break-after {
+    page-break-after: always;
+  }
+
+  /* Remove shadows and non-essential decoration */
+  .print-form-root .shadow-sm,
+  .print-form-root .shadow-md,
+  .print-form-root .shadow-lg {
+    box-shadow: none !important;
+  }
+}

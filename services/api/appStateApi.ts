@@ -436,6 +436,7 @@ export class AppStateApiService {
         contractId: b.contract_id || b.contractId || undefined,
         staffId: b.staff_id || b.staffId || undefined,
         documentPath: b.document_path || b.documentPath || undefined,
+        documentId: b.document_id || b.documentId || undefined,
         expenseCategoryItems: (() => {
           const items = b.expense_category_items || b.expenseCategoryItems;
           if (!items) return undefined;
@@ -546,7 +547,8 @@ export class AppStateApiService {
         termsAndConditions: c.terms_and_conditions || c.termsAndConditions || undefined,
         paymentTerms: c.payment_terms || c.paymentTerms || undefined,
         description: c.description || undefined,
-        documentPath: c.document_path || c.documentPath || undefined
+        documentPath: c.document_path || c.documentPath || undefined,
+        documentId: c.document_id || c.documentId || undefined
       }));
 
       // Normalize transactions from API (transform snake_case to camelCase)
@@ -756,7 +758,19 @@ export class AppStateApiService {
         contracts: normalizedContracts,
         salesReturns: normalizedSalesReturns,
         quotations: quotations || [],
-        documents: documents || [],
+        documents: (documents || []).map((d: any) => ({
+          id: d.id,
+          name: d.name,
+          type: d.type,
+          entityId: d.entity_id ?? d.entityId,
+          entityType: d.entity_type ?? d.entityType,
+          fileData: d.file_data ?? d.fileData,
+          fileName: d.file_name ?? d.fileName,
+          fileSize: d.file_size ?? d.fileSize,
+          mimeType: d.mime_type ?? d.mimeType,
+          uploadedAt: d.uploaded_at ?? d.uploadedAt,
+          uploadedBy: d.uploaded_by ?? d.uploadedBy ?? d.user_id ?? d.userId,
+        })),
         recurringInvoiceTemplates: recurringInvoiceTemplates || [],
         pmCycleAllocations: pmCycleAllocations || [],
         transactionLog: transactionLog || [],

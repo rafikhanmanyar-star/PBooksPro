@@ -15,7 +15,7 @@ import ReportFooter from './ReportFooter';
 import { useNotification } from '../../context/NotificationContext';
 import { formatDate } from '../../utils/dateUtils';
 import { WhatsAppService } from '../../services/whatsappService';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
@@ -34,7 +34,7 @@ interface ReportRow {
 const BrokerFeeReport: React.FC = () => {
     const { state } = useAppContext();
     const { showAlert } = useNotification();
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
     const { openChat } = useWhatsApp();
     
     const [dateRangeType, setDateRangeType] = useState<DateRangeOption>('all');
@@ -357,7 +357,7 @@ const BrokerFeeReport: React.FC = () => {
                             <PrintButton
                                 variant="secondary"
                                 size="sm"
-                                onPrint={handlePrint}
+                                onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                                 className="whitespace-nowrap"
                             />
                         </div>

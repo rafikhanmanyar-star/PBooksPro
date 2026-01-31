@@ -8,14 +8,93 @@ import Modal from '../ui/Modal';
 import ProjectAgreementForm from './ProjectAgreementForm';
 import CancelAgreementModal from './CancelAgreementModal';
 import { formatDate } from '../../utils/dateUtils';
-import TreeView, { TreeNode } from '../ui/TreeView';
+import { TreeNode } from '../ui/TreeView';
 import DatePicker from '../ui/DatePicker';
 import useLocalStorage from '../../hooks/useLocalStorage';
-import ResizeHandle from '../ui/ResizeHandle';
 import { ImportType } from '../../services/importService';
 
 type SortKey = 'agreementNumber' | 'owner' | 'project' | 'units' | 'price' | 'paid' | 'balance' | 'date' | 'status';
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
+type TreeGroupBy = 'owner' | 'unit';
+type TreeSelectionType = 'project' | 'owner' | 'unit' | null;
+
+/** Premium tree sidebar: Directories with Owner/Units selectable, avatars, active state, chevron expand */
+const AgreementTreeSidebar: React.FC<{
+    nodes: TreeNode[];
+    selectedId: string | null;
+    selectedType: TreeSelectionType;
+    selectedParentId: string | null;
+    onSelect: (id: string, type: TreeSelectionType, parentId?: string | null) => void;
+}> = ({ nodes, selectedId, selectedType, selectedParentId, onSelect }) => {
+    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(nodes.map(n => n.id)));
+
+    const toggleExpanded = (id: string) => {
+        setExpandedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const renderNode = (node: TreeNode, level: number, parentId?: string | null) => {
+        const hasChildren = node.children && node.children.length > 0;
+        const isExpanded = expandedIds.has(node.id);
+        const nodeType = (node.type || 'project') as TreeSelectionType;
+        const isSelected = selectedId === node.id && selectedType === nodeType && (nodeType === 'project' || selectedParentId === parentId);
+        const initials = node.label.slice(0, 2).toUpperCase();
+
+        return (
+            <div key={node.id} className={level > 0 ? 'ml-4 border-l border-slate-200/80 pl-3' : ''}>
+                <div
+                    className={`group flex items-center gap-2 py-1.5 px-2 rounded-lg -mx-0.5 transition-all cursor-pointer ${
+                        isSelected
+                            ? 'bg-orange-500/10 text-orange-700'
+                            : 'hover:bg-slate-100/80 text-slate-700 hover:text-slate-900'
+                    }`}
+                    onClick={() => onSelect(node.id, nodeType, level > 0 ? parentId : undefined)}
+                >
+                    {hasChildren ? (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); toggleExpanded(node.id); }}
+                            className={`flex-shrink-0 w-5 h-5 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+                        >
+                            <div className="w-3.5 h-3.5">{ICONS.chevronRight}</div>
+                        </button>
+                    ) : (
+                        <span className="w-5 flex-shrink-0" />
+                    )}
+                    <span className="flex-shrink-0 w-6 h-6 rounded-md bg-slate-800 text-slate-200 text-[10px] font-bold flex items-center justify-center">
+                        {initials}
+                    </span>
+                    <span className="flex-1 text-xs font-medium truncate">{node.label}</span>
+                    {node.value !== undefined && typeof node.value === 'number' && node.value > 0 && (
+                        <span className={`text-[10px] font-semibold tabular-nums ${isSelected ? 'text-orange-600' : 'text-slate-500'}`}>
+                            {node.value}
+                        </span>
+                    )}
+                </div>
+                {hasChildren && isExpanded && (
+                    <div className="mt-0.5">
+                        {node.children!.map(child => renderNode(child, level + 1, node.id))}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    if (!nodes || nodes.length === 0) {
+        return (
+            <div className="text-xs text-slate-400 italic p-2">No directories match your search</div>
+        );
+    }
+
+    return (
+        <div className="space-y-0.5">
+            {nodes.map(node => renderNode(node, 0))}
+        </div>
+    );
+};
 
 const ProjectAgreementsPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -30,15 +109,19 @@ const ProjectAgreementsPage: React.FC = () => {
     const [endDate, setEndDate] = useState('');
     const [sortConfig, setSortConfig] = useLocalStorage<{ key: SortKey; direction: 'asc' | 'desc' }>('projectAgreements_sort', { key: 'date', direction: 'desc' });
 
-    // Tree Selection State
+    // Tree Selection State (parentId = project when owner/unit selected, so grid filters by project + owner/unit)
     const [selectedTreeId, setSelectedTreeId] = useState<string | null>(null);
-    const [selectedTreeType, setSelectedTreeType] = useState<'project' | 'staff' | null>(null);
+    const [selectedTreeType, setSelectedTreeType] = useState<'project' | 'owner' | 'unit' | null>(null);
+    const [selectedTreeParentId, setSelectedTreeParentId] = useState<string | null>(null);
 
-    // Sidebar Resizing
-    const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('projectAgreements_sidebarWidth', 300);
-    const isResizing = useRef(false);
-    const startX = useRef(0);
-    const startWidth = useRef(0);
+    // Sidebar: group by (owner = Project -> Owner; unit = Project -> Unit), search filter
+    const [treeGroupBy, setTreeGroupBy] = useLocalStorage<TreeGroupBy>('projectAgreements_treeGroupBy', 'owner');
+    const [treeSearchQuery, setTreeSearchQuery] = useState('');
+
+    // Sidebar Resizing: container-relative width (150–600px)
+    const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('projectAgreements_sidebarWidth', 280);
+    const [isResizing, setIsResizing] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     const handleRangeChange = (option: DateRangeOption) => {
         setDateRange(option);
@@ -65,35 +148,47 @@ const ProjectAgreementsPage: React.FC = () => {
         setDateRange('custom');
     };
 
-    // Sidebar Resize Handlers
-    const startResizing = useCallback((e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        isResizing.current = true;
-        startX.current = e.clientX;
-        startWidth.current = sidebarWidth;
-
-        document.addEventListener('mousemove', handleResize);
-        document.addEventListener('mouseup', stopResize);
-        document.body.style.cursor = 'col-resize';
-        document.body.style.userSelect = 'none';
-    }, [sidebarWidth]);
-
-    const handleResize = useCallback((e: MouseEvent) => {
-        if (isResizing.current) {
-            const delta = e.clientX - startX.current;
-            const newWidth = Math.max(200, Math.min(600, startWidth.current + delta));
+    // Sidebar Resize: container-relative width to prevent jumping in nested layouts
+    const handleMouseMove = useCallback((e: MouseEvent) => {
+        if (!containerRef.current) return;
+        const containerLeft = containerRef.current.getBoundingClientRect().left;
+        const newWidth = e.clientX - containerLeft;
+        if (newWidth > 150 && newWidth < 600) {
             setSidebarWidth(newWidth);
         }
     }, [setSidebarWidth]);
 
-    const stopResize = useCallback(() => {
-        isResizing.current = false;
-        document.removeEventListener('mousemove', handleResize);
-        document.removeEventListener('mouseup', stopResize);
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
+    useEffect(() => {
+        if (!isResizing) return;
+        const handleUp = () => {
+            setIsResizing(false);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        };
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleUp);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        };
+    }, [isResizing, handleMouseMove]);
+
+    const startResizing = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsResizing(true);
     }, []);
+
+    // Clear tree selection when group-by changes so selection stays valid
+    useEffect(() => {
+        setSelectedTreeId(null);
+        setSelectedTreeType(null);
+        setSelectedTreeParentId(null);
+    }, [treeGroupBy]);
 
     // Initialize date range on mount
     useEffect(() => {
@@ -132,12 +227,10 @@ const ProjectAgreementsPage: React.FC = () => {
         return agreements;
     }, [state.projectAgreements, startDate, endDate]);
 
-    // --- Tree Data Construction ---
-    // Hierarchy: Project -> Owner
+    // --- Tree Data Construction (two levels only: Project -> Owner OR Project -> Unit) ---
     const treeData = useMemo<TreeNode[]>(() => {
         const projectMap = new Map<string, TreeNode>();
 
-        // Initialize Projects
         state.projects.forEach(p => {
             projectMap.set(p.id, {
                 id: p.id,
@@ -148,41 +241,83 @@ const ProjectAgreementsPage: React.FC = () => {
             });
         });
 
-        dateFilteredAgreements.forEach(pa => {
-            const projectNode = projectMap.get(pa.projectId);
+        if (treeGroupBy === 'owner') {
+            dateFilteredAgreements.forEach(pa => {
+                const projectNode = projectMap.get(pa.projectId);
+                if (!projectNode) return;
 
-            if (projectNode) {
                 const client = state.contacts.find(c => c.id === pa.clientId);
                 const clientId = pa.clientId;
                 const clientLabel = client?.name || 'Unknown Owner';
 
-                // Find or create Owner Node
-                let clientNode = projectNode.children?.find(c => c.id === clientId);
-                if (!clientNode) {
-                    clientNode = {
+                let ownerNode = projectNode.children?.find(c => c.id === clientId);
+                if (!ownerNode) {
+                    ownerNode = {
                         id: clientId,
                         label: clientLabel,
-                        type: 'staff', // Reusing 'staff' type for sub-item styling
+                        type: 'owner',
                         children: [],
                         value: 0
                     };
-                    projectNode.children?.push(clientNode);
+                    projectNode.children?.push(ownerNode);
                 }
-
-                clientNode.value = (clientNode.value as number || 0) + 1;
+                ownerNode.value = (ownerNode.value as number || 0) + 1;
                 projectNode.value = (projectNode.value as number || 0) + 1;
-            }
-        });
+            });
+        } else {
+            // treeGroupBy === 'unit': Project -> Unit (unique units per project)
+            dateFilteredAgreements.forEach(pa => {
+                const projectNode = projectMap.get(pa.projectId);
+                if (!projectNode) return;
+
+                const unitIds = Array.isArray(pa.unitIds) ? pa.unitIds : [];
+                unitIds.forEach(unitId => {
+                    const unit = state.units.find(u => u.id === unitId);
+                    const unitLabel = unit?.name || unitId;
+                    let unitNode = projectNode.children?.find(c => c.id === unitId);
+                    if (!unitNode) {
+                        unitNode = {
+                            id: unitId,
+                            label: unitLabel,
+                            type: 'unit',
+                            children: [],
+                            value: 0
+                        };
+                        projectNode.children?.push(unitNode);
+                    }
+                    unitNode.value = (unitNode.value as number || 0) + 1;
+                });
+                if (unitIds.length > 0) projectNode.value = (projectNode.value as number || 0) + 1;
+            });
+        }
 
         return Array.from(projectMap.values())
             .filter(node => (node.value as number || 0) > 0)
             .sort((a, b) => a.label.localeCompare(b.label))
             .map(node => ({
                 ...node,
-                children: node.children?.sort((a, b) => a.label.localeCompare(b.label))
+                children: (node.children || []).sort((a, b) => a.label.localeCompare(b.label))
             }));
+    }, [dateFilteredAgreements, state.projects, state.contacts, state.units, treeGroupBy]);
 
-    }, [dateFilteredAgreements, state.projects, state.contacts]);
+    // Filter tree by sidebar search (keeps node if label or any descendant matches)
+    const filterTree = useCallback((nodes: TreeNode[], q: string): TreeNode[] => {
+        if (!q.trim()) return nodes;
+        const lower = q.toLowerCase();
+        return nodes
+            .map(node => {
+                const labelMatch = node.label.toLowerCase().includes(lower);
+                const filteredChildren = node.children?.length ? filterTree(node.children, q) : [];
+                const childMatch = filteredChildren.length > 0;
+                if (labelMatch && !filteredChildren.length) return node;
+                if (childMatch) return { ...node, children: filteredChildren };
+                if (labelMatch) return node;
+                return null;
+            })
+            .filter((n): n is TreeNode => n != null);
+    }, []);
+
+    const filteredTreeData = useMemo(() => filterTree(treeData, treeSearchQuery), [treeData, treeSearchQuery, filterTree]);
 
     // --- Table Data Construction ---
     const filteredAgreements = useMemo(() => {
@@ -211,12 +346,18 @@ const ProjectAgreementsPage: React.FC = () => {
             };
         });
 
-        // 1. Filter by Tree Selection
+        // 1. Filter by Tree Selection (Project / Owner / Unit). Owner/unit are scoped to their project.
         if (selectedTreeId) {
             if (selectedTreeType === 'project') {
                 agreements = agreements.filter(pa => pa.projectId === selectedTreeId);
-            } else if (selectedTreeType === 'staff') {
-                agreements = agreements.filter(pa => pa.clientId === selectedTreeId);
+            } else if (selectedTreeType === 'owner') {
+                agreements = agreements.filter(pa =>
+                    pa.clientId === selectedTreeId && pa.projectId === selectedTreeParentId
+                );
+            } else if (selectedTreeType === 'unit') {
+                agreements = agreements.filter(pa =>
+                    Array.isArray(pa.unitIds) && pa.unitIds.includes(selectedTreeId) && pa.projectId === selectedTreeParentId
+                );
             }
         }
 
@@ -259,7 +400,7 @@ const ProjectAgreementsPage: React.FC = () => {
             return 0;
         });
 
-    }, [dateFilteredAgreements, state.projects, state.contacts, state.units, state.invoices, searchQuery, selectedTreeId, selectedTreeType, sortConfig]);
+    }, [dateFilteredAgreements, state.projects, state.contacts, state.units, state.invoices, searchQuery, selectedTreeId, selectedTreeType, selectedTreeParentId, sortConfig]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -285,35 +426,8 @@ const ProjectAgreementsPage: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full bg-slate-50/50 p-4 sm:p-6 gap-4 sm:gap-6">
-            {/* Header & Controls */}
-            <div className="flex flex-col gap-4 flex-shrink-0">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div>
-                        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Project Agreements</h1>
-                        <p className="text-xs sm:text-sm text-slate-500 mt-1">Manage contracts, timelines, and payment schedules</p>
-                    </div>
-                    <div className="flex items-center gap-3 w-full sm:w-auto">
-                        <Button
-                            variant="secondary"
-                            onClick={() => {
-                                dispatch({ type: 'SET_INITIAL_IMPORT_TYPE', payload: ImportType.PROJECT_AGREEMENTS });
-                                dispatch({ type: 'SET_PAGE', payload: 'import' });
-                            }}
-                            className="flex-1 sm:flex-none justify-center !px-4 !py-2 !rounded-xl border-slate-200 bg-white hover:border-indigo-300 hover:text-indigo-600 shadow-sm text-xs sm:text-sm"
-                        >
-                            <div className="w-4 h-4 mr-2 opacity-70">{ICONS.download}</div>
-                            Import
-                        </Button>
-                        <Button
-                            onClick={() => { setAgreementToEdit(null); setIsCreateModalOpen(true); }}
-                            className="flex-1 sm:flex-none justify-center !px-4 !py-2 !rounded-xl shadow-md shadow-indigo-500/20 text-xs sm:text-sm"
-                        >
-                            <div className="w-4 h-4 mr-2">{ICONS.plus}</div>
-                            Create New
-                        </Button>
-                    </div>
-                </div>
-
+            {/* Search and filter bar (with Import & Create New) */}
+            <div className="flex-shrink-0">
                 <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3 items-center">
                     {/* Date Controls */}
                     <div className="flex bg-slate-100/80 p-1 rounded-lg flex-shrink-0 self-stretch md:self-auto overflow-x-auto">
@@ -342,7 +456,7 @@ const ProjectAgreementsPage: React.FC = () => {
                     <div className="hidden md:block w-px h-6 bg-slate-200 mx-1"></div>
 
                     {/* Search */}
-                    <div className="relative flex-grow w-full md:w-auto">
+                    <div className="relative flex-grow w-full md:w-auto min-w-0">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                             <div className="w-4 h-4">{ICONS.search}</div>
                         </div>
@@ -363,52 +477,122 @@ const ProjectAgreementsPage: React.FC = () => {
                             </button>
                         )}
                     </div>
+
+                    <div className="hidden md:block w-px h-6 bg-slate-200 mx-1"></div>
+
+                    {/* Import & Create New */}
+                    <div className="flex items-center gap-2 flex-shrink-0 w-full md:w-auto justify-end">
+                        <Button
+                            variant="secondary"
+                            onClick={() => {
+                                dispatch({ type: 'SET_INITIAL_IMPORT_TYPE', payload: ImportType.PROJECT_AGREEMENTS });
+                                dispatch({ type: 'SET_PAGE', payload: 'import' });
+                            }}
+                            className="flex-1 md:flex-none justify-center !px-4 !py-2 !rounded-xl border-slate-200 bg-white hover:border-indigo-300 hover:text-indigo-600 shadow-sm text-xs sm:text-sm"
+                        >
+                            <div className="w-4 h-4 mr-2 opacity-70">{ICONS.download}</div>
+                            Import
+                        </Button>
+                        <Button
+                            onClick={() => { setAgreementToEdit(null); setIsCreateModalOpen(true); }}
+                            className="flex-1 md:flex-none justify-center !px-4 !py-2 !rounded-xl shadow-md shadow-indigo-500/20 text-xs sm:text-sm"
+                        >
+                            <div className="w-4 h-4 mr-2">{ICONS.plus}</div>
+                            Create New
+                        </Button>
+                    </div>
                 </div>
             </div>
 
-            {/* Main Split View */}
-            <div className="flex-grow flex flex-col md:flex-row gap-6 overflow-hidden min-h-0">
+            {/* Main Split View: flex container with overflow-hidden */}
+            <div ref={containerRef} className="flex-grow flex flex-col md:flex-row overflow-hidden min-h-0">
 
-                {/* Left Tree View */}
-                <div
-                    className="flex flex-col h-64 md:h-full flex-shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
-                    style={{ width: window.innerWidth < 768 ? '100%' : sidebarWidth }}
+                {/* Left: Resizable Tree Sidebar */}
+                <aside
+                    className="hidden md:flex flex-col flex-shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
+                    style={{ width: `${sidebarWidth}px` }}
                 >
-                    <div className="p-3 bg-slate-50/50 border-b border-slate-100 flex justify-between items-center">
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Project Explorer</span>
-                        {selectedTreeId && (
-                            <button
-                                onClick={() => { setSelectedTreeId(null); setSelectedTreeType(null); }}
-                                className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full hover:bg-indigo-100 font-medium transition-colors"
-                            >
-                                Clear Selection
-                            </button>
-                        )}
+                    <div className="flex-shrink-0 p-3 border-b border-slate-100 bg-slate-50/50">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Directories</span>
                     </div>
-                    <div className="flex-grow overflow-y-auto p-2">
-                        <TreeView
-                            treeData={treeData}
+                    <div className="flex-shrink-0 px-3 py-2 border-b border-slate-100 bg-slate-50/30">
+                        <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Group by</span>
+                        <div className="flex bg-slate-100 p-1 rounded-lg mt-1.5">
+                            <button
+                                onClick={() => setTreeGroupBy('owner')}
+                                className={`flex-1 px-2 py-1.5 text-xs font-medium rounded-md transition-all capitalize ${treeGroupBy === 'owner'
+                                    ? 'bg-white text-orange-600 shadow-sm font-bold ring-1 ring-black/5'
+                                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                                }`}
+                            >
+                                Owner
+                            </button>
+                            <button
+                                onClick={() => setTreeGroupBy('unit')}
+                                className={`flex-1 px-2 py-1.5 text-xs font-medium rounded-md transition-all capitalize ${treeGroupBy === 'unit'
+                                    ? 'bg-white text-orange-600 shadow-sm font-bold ring-1 ring-black/5'
+                                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                                }`}
+                            >
+                                Unit
+                            </button>
+                        </div>
+                    </div>
+                    <div className="flex-shrink-0 px-2 pt-2 pb-1 border-b border-slate-100">
+                        <div className="relative">
+                            <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-slate-400">
+                                <div className="w-3.5 h-3.5">{ICONS.search}</div>
+                            </div>
+                            <input
+                                type="text"
+                                placeholder="Search projects, owners, units..."
+                                value={treeSearchQuery}
+                                onChange={(e) => setTreeSearchQuery(e.target.value)}
+                                className="w-full pl-8 pr-6 py-1.5 text-xs border border-slate-200 rounded-lg bg-slate-50/80 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 placeholder:text-slate-400 transition-all"
+                            />
+                            {treeSearchQuery && (
+                                <button
+                                    type="button"
+                                    onClick={() => setTreeSearchQuery('')}
+                                    className="absolute inset-y-0 right-2 flex items-center text-slate-400 hover:text-rose-500"
+                                >
+                                    <div className="w-3.5 h-3.5">{ICONS.x}</div>
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                    <div className="flex-grow overflow-y-auto overflow-x-hidden p-2 min-h-0">
+                        <AgreementTreeSidebar
+                            nodes={filteredTreeData}
                             selectedId={selectedTreeId}
-                            onSelect={(id, type) => {
-                                if (selectedTreeId === id) {
+                            selectedType={selectedTreeType}
+                            selectedParentId={selectedTreeParentId}
+                            onSelect={(id, type, parentId) => {
+                                if (selectedTreeId === id && selectedTreeType === type && selectedTreeParentId === (parentId ?? null)) {
                                     setSelectedTreeId(null);
                                     setSelectedTreeType(null);
+                                    setSelectedTreeParentId(null);
                                 } else {
                                     setSelectedTreeId(id);
-                                    setSelectedTreeType(type as any);
+                                    setSelectedTreeType(type);
+                                    setSelectedTreeParentId(parentId ?? null);
                                 }
                             }}
                         />
                     </div>
+                </aside>
+
+                {/* Resize Handle: larger hit area, col-resize, hover highlight */}
+                <div
+                    className="hidden md:flex items-center justify-center flex-shrink-0 w-2 cursor-col-resize select-none touch-none group hover:bg-blue-500/10 transition-colors"
+                    onMouseDown={startResizing}
+                    title="Drag to resize sidebar"
+                >
+                    <div className="w-0.5 h-12 rounded-full bg-slate-200 group-hover:bg-blue-500 group-hover:w-1 transition-all" />
                 </div>
 
-                {/* Resizer Handle */}
-                <div className="hidden md:flex items-center justify-center w-2 hover:w-3 -ml-3 -mr-3 z-10 cursor-col-resize group transition-all" onMouseDown={startResizing}>
-                    <div className="w-1 h-8 rounded-full bg-slate-200 group-hover:bg-indigo-400 transition-colors"></div>
-                </div>
-
-                {/* Right Data Grid */}
-                <div className="flex-grow overflow-hidden flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm">
+                {/* Right Data Grid: flex-1 min-w-0 to avoid horizontal scroll */}
+                <div className="flex-1 min-w-0 overflow-hidden flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm">
                     <div className="flex-grow overflow-auto">
                         <table className="min-w-full divide-y divide-slate-100">
                             <thead className="bg-slate-50 sticky top-0 z-10">
@@ -424,12 +608,12 @@ const ProjectAgreementsPage: React.FC = () => {
                                     <th onClick={() => handleSort('date')} className="group px-4 py-2.5 text-right text-xs font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200">Date <SortIcon column="date" /></th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100 bg-white">
-                                {filteredAgreements.length > 0 ? filteredAgreements.map(agreement => (
+                            <tbody className="divide-y divide-slate-100">
+                                {filteredAgreements.length > 0 ? filteredAgreements.map((agreement, index) => (
                                     <tr
                                         key={agreement.id}
                                         onClick={() => handleEdit(agreement)}
-                                        className="hover:bg-slate-50 cursor-pointer transition-colors group"
+                                        className={`cursor-pointer transition-colors group ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-slate-100`}
                                     >
                                         <td className="px-4 py-2 whitespace-nowrap">
                                             <span className="font-mono text-[10px] sm:text-xs font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md border border-slate-200 group-hover:border-indigo-200 group-hover:text-indigo-600 transition-colors">
@@ -489,15 +673,23 @@ const ProjectAgreementsPage: React.FC = () => {
                 </div>
             </div>
 
-            <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title={agreementToEdit ? `Edit Agreement ${agreementToEdit.agreementNumber}` : "New Project Agreement"} size="xl">
-                <ProjectAgreementForm
-                    onClose={() => setIsCreateModalOpen(false)}
-                    agreementToEdit={agreementToEdit}
-                    onCancelRequest={(agreement) => {
-                        setIsCreateModalOpen(false);
-                        setCancelAgreement(agreement);
-                    }}
-                />
+            <Modal 
+                isOpen={isCreateModalOpen} 
+                onClose={() => setIsCreateModalOpen(false)} 
+                title={agreementToEdit ? `Edit Agreement ${agreementToEdit.agreementNumber}` : "New Project Agreement"} 
+                size="xl"
+                disableScroll
+            >
+                <div className="h-full min-h-0 flex flex-col p-4">
+                    <ProjectAgreementForm
+                        onClose={() => setIsCreateModalOpen(false)}
+                        agreementToEdit={agreementToEdit}
+                        onCancelRequest={(agreement) => {
+                            setIsCreateModalOpen(false);
+                            setCancelAgreement(agreement);
+                        }}
+                    />
+                </div>
             </Modal>
 
             <CancelAgreementModal

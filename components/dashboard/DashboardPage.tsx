@@ -27,7 +27,7 @@ const DashboardPage: React.FC = () => {
     const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
     const [isTransferReportOpen, setIsTransferReportOpen] = useState(false);
     const [greeting, setGreeting] = useState('');
-    const [activeReportTab, setActiveReportTab] = useState('Overview');
+    const [activeReportTab, setActiveReportTab] = useState('Overview Reports');
 
     const [detailModalData, setDetailModalData] = useState<{
         isOpen: boolean;
@@ -105,21 +105,20 @@ const DashboardPage: React.FC = () => {
                     <Button variant="secondary" onClick={() => setIsConfigModalOpen(true)} className="text-slate-600 border-slate-200 hover:bg-white text-xs md:text-sm flex-1 md:flex-none">
                         Customize
                     </Button>
-                    <Button onClick={() => navigate('transactions')} className="bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-900/20 text-xs md:text-sm flex-1 md:flex-none">
-                        + New Entry
-                    </Button>
                 </div>
             </div>
 
             {/* Overview Reports & Bank Accounts - Top Section */}
-            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                <Tabs
-                    tabs={['Overview Reports', 'Bank Accounts']}
-                    activeTab={activeReportTab}
-                    onTabClick={setActiveReportTab}
-                    className="border-b border-slate-100 px-4 pt-2"
-                />
-                <div className="p-4">
+            <div className="flex flex-col rounded-2xl overflow-hidden">
+                <div className="flex-shrink-0">
+                    <Tabs
+                        variant="browser"
+                        tabs={['Overview Reports', 'Bank Accounts']}
+                        activeTab={activeReportTab}
+                        onTabClick={setActiveReportTab}
+                    />
+                </div>
+                <div className="flex-grow bg-white rounded-b-2xl -mt-px p-4 border border-slate-200 border-t-0 shadow-sm">
                     {activeReportTab === 'Overview Reports' ? <ProjectBuildingFundsReport /> : <BankAccountsReport />}
                 </div>
             </div>
@@ -194,22 +193,6 @@ const DashboardPage: React.FC = () => {
 
                 {/* Quick Actions / Activity (Sidebar Col) */}
                 <div className="col-span-1 md:col-span-1 lg:col-span-1 space-y-3 md:space-y-6">
-
-                    {/* Actions Card */}
-                    <div className="bg-slate-900 text-white p-4 md:p-6 rounded-2xl shadow-lg relative overflow-hidden group hover:shadow-xl transition-all">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500 rounded-full blur-3xl opacity-20 -mr-10 -mt-10"></div>
-                        <h3 className="text-sm md:text-base font-bold mb-3 md:mb-4 relative z-10">Quick Actions</h3>
-                        <div className="space-y-2 md:space-y-3 relative z-10">
-                            <button onClick={() => { navigate('transactions'); dispatch({ type: 'SET_INITIAL_TRANSACTION_TYPE', payload: TransactionType.INCOME }); }} className="w-full flex items-center gap-2 md:gap-3 p-2.5 md:p-3 rounded-xl bg-white/10 hover:bg-white/20 active:bg-white/25 transition-colors text-xs md:text-sm font-medium border border-white/5 touch-manipulation">
-                                <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400"><div className="w-3.5 h-3.5 md:w-4 md:h-4">{ICONS.plus}</div></div>
-                                Record Income
-                            </button>
-                            <button onClick={() => { navigate('transactions'); dispatch({ type: 'SET_INITIAL_TRANSACTION_TYPE', payload: TransactionType.EXPENSE }); }} className="w-full flex items-center gap-2 md:gap-3 p-2.5 md:p-3 rounded-xl bg-white/10 hover:bg-white/20 active:bg-white/25 transition-colors text-xs md:text-sm font-medium border border-white/5 touch-manipulation">
-                                <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-rose-500/20 flex items-center justify-center text-rose-400"><div className="w-3.5 h-3.5 md:w-4 md:h-4">{ICONS.minus}</div></div>
-                                Record Expense
-                            </button>
-                        </div>
-                    </div>
 
                     {/* Recent Activity Mini List */}
                     <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200/60 shadow-sm">

@@ -9,10 +9,11 @@ import ComboBox from '../ui/ComboBox';
 import Input from '../ui/Input';
 import Modal from '../ui/Modal';
 import { useNotification } from '../../context/NotificationContext';
-import { CURRENCY } from '../../constants';
+import { CURRENCY, ICONS } from '../../constants';
 import { getWebSocketClient } from '../../services/websocketClient';
 import { formatDate } from '../../utils/dateUtils';
 import { BIZ_PLANET_NOTIFICATION_ACTION_EVENT, updateBizPlanetNotifications } from '../../utils/bizPlanetNotifications';
+import { usePrintContext } from '../../context/PrintContext';
 
 interface Supplier {
     id: string;
@@ -35,6 +36,9 @@ const BuyerDashboard: React.FC = () => {
     const [registrationRequests, setRegistrationRequests] = useState<SupplierRegistrationRequest[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+    const [poDetailLoading, setPoDetailLoading] = useState(false);
+    const [poReadOnly, setPoReadOnly] = useState(false);
+    const [submittingRevision, setSubmittingRevision] = useState(false);
     const [selectedRegisteredSupplier, setSelectedRegisteredSupplier] = useState<Supplier | null>(null);
     const [pendingFocus, setPendingFocus] = useState<{ type: 'registration_request' | 'invoice_awaiting'; id?: string } | null>(null);
     
@@ -356,6 +360,29 @@ const BuyerDashboard: React.FC = () => {
         return items.reduce((sum, item) => sum + item.total, 0);
     }, [items]);
 
+    /** Merged PO data for print: current form state overrides selectedPO so print shows what user sees. */
+    const poPrintData = useMemo((): PurchaseOrder | null => {
+        if (!selectedPO) return null;
+        const supplier = (Array.isArray(registeredSuppliers) ? registeredSuppliers : []).find(
+            s => (s.supplierTenantId || s.id) === supplierTenantId
+        );
+        const supplierDisplay = supplier?.companyName || supplier?.company_name || supplier?.name
+            || selectedPO.supplierCompanyName || selectedPO.supplierName || selectedPO.supplierTenantId;
+        const project = (Array.isArray(projects) ? projects : []).find(p => p.id === projectId);
+        const projectDisplay = project?.name || selectedPO.projectName || selectedPO.projectId;
+        return {
+            ...selectedPO,
+            poNumber: poNumber || selectedPO.poNumber,
+            description: poDescription !== undefined && poDescription !== '' ? poDescription : selectedPO.description,
+            targetDeliveryDate: targetDeliveryDate || selectedPO.targetDeliveryDate,
+            projectId: projectId || selectedPO.projectId,
+            projectName: projectDisplay,
+            supplierCompanyName: supplierDisplay,
+            items: items.length > 0 ? items : selectedPO.items || [],
+            totalAmount: items.length > 0 ? totalAmount : (selectedPO.totalAmount ?? 0),
+        };
+    }, [selectedPO, poNumber, poDescription, targetDeliveryDate, projectId, supplierTenantId, items, totalAmount, registeredSuppliers, projects]);
+
     const handleSubmitPO = async () => {
         // Validation
         if (!supplierTenantId) {
@@ -434,6 +461,86 @@ const BuyerDashboard: React.FC = () => {
         setIsFormOpen(false);
     };
 
+    const openPODetail = async (po: PurchaseOrder) => {
+        setPoDetailLoading(true);
+        setPoReadOnly(false);
+        try {
+            const res = await apiClient.post<PurchaseOrder>(`/purchase-orders/${po.id}/lock`);
+            setSelectedPO(res);
+            fillFormFromPO(res);
+        } catch (err: any) {
+            if (err.response?.status === 423) {
+                setSelectedPO(po);
+                setPoReadOnly(true);
+                fillFormFromPO(po);
+            } else {
+                setSelectedPO(po);
+                fillFormFromPO(po);
+                if (err.response?.data?.error) showAlert(err.response.data.error);
+            }
+        } finally {
+            setPoDetailLoading(false);
+        }
+    };
+
+    const fillFormFromPO = (po: PurchaseOrder) => {
+        setSupplierTenantId(po.supplierTenantId || '');
+        setProjectId(po.projectId || '');
+        setPoNumber(po.poNumber || '');
+        setPoDescription(po.description || '');
+        setTargetDeliveryDate(po.targetDeliveryDate ? String(po.targetDeliveryDate).slice(0, 10) : '');
+        setItems(Array.isArray(po.items) ? po.items.map(i => ({
+            ...i,
+            id: i.id || `item_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+            total: (i.quantity || 0) * (i.unitPrice || 0),
+        })) : []);
+    };
+
+    const closePODetail = async () => {
+        if (selectedPO && tenant?.id && selectedPO.lockedByTenantId === tenant.id) {
+            try {
+                await apiClient.post(`/purchase-orders/${selectedPO.id}/unlock`);
+            } catch (_) { /* ignore */ }
+        }
+        setSelectedPO(null);
+        setPoReadOnly(false);
+        setSupplierTenantId('');
+        setProjectId('');
+        setPoNumber('');
+        setPoDescription('');
+        setTargetDeliveryDate('');
+        setItems([]);
+        setIsFormOpen(false);
+    };
+
+    const canSubmitRevision = selectedPO && tenant?.id === selectedPO.tenantId &&
+        (selectedPO.status === POStatus.SENT || selectedPO.status === POStatus.RECEIVED) &&
+        selectedPO.lockedByTenantId === tenant?.id;
+
+    const { print: triggerPrint } = usePrintContext();
+
+    const submitRevision = async () => {
+        if (!selectedPO) return;
+        setSubmittingRevision(true);
+        try {
+            const payload = {
+                items: items.map(i => ({ id: i.id, description: i.description, quantity: i.quantity, unitPrice: i.unitPrice, total: i.total, categoryId: i.categoryId })),
+                description: poDescription || undefined,
+                targetDeliveryDate: targetDeliveryDate || undefined,
+                projectId: projectId || undefined,
+                totalAmount,
+            };
+            await apiClient.put(`/purchase-orders/${selectedPO.id}`, payload);
+            showToast('PO revision submitted');
+            await loadData();
+            closePODetail();
+        } catch (e: any) {
+            showAlert(e.response?.data?.error || 'Failed to submit revision');
+        } finally {
+            setSubmittingRevision(false);
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center h-full">
@@ -456,10 +563,19 @@ const BuyerDashboard: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                         <Button 
-                            onClick={() => setIsFormOpen(!isFormOpen)} 
+                            onClick={() => {
+                                if (isFormOpen || selectedPO) {
+                                    if (selectedPO) closePODetail();
+                                    else { handleCancelPO(); setIsFormOpen(false); }
+                                } else {
+                                    setSelectedPO(null);
+                                    setPoReadOnly(false);
+                                    setIsFormOpen(true);
+                                }
+                            }} 
                             className="bg-slate-900 text-white hover:bg-slate-800 text-[10px] sm:text-sm py-1 sm:py-1.5 px-2 sm:px-3"
                         >
-                            {isFormOpen ? 'Cancel' : '+ New PO'}
+                            {(isFormOpen || selectedPO) ? 'Cancel' : '+ New PO'}
                         </Button>
                     </div>
                 </div>
@@ -493,20 +609,37 @@ const BuyerDashboard: React.FC = () => {
                 </div>
             </div>
 
-            {/* PO Creation Form (Collapsible) */}
-            {isFormOpen && (
+            {/* PO Form: Create new or View/Edit opened PO (same form) */}
+            {(isFormOpen || selectedPO) && (
                 <div className="flex-shrink-0 p-2 sm:p-4 bg-blue-50/50 border-b border-blue-200 overflow-auto max-h-[60vh]">
                     <Card className="p-3 sm:p-4 border border-blue-200">
-                        <div className="flex items-center justify-between mb-2 sm:mb-3">
-                            <h2 className="text-xs sm:text-sm font-semibold text-slate-900">Create New Purchase Order</h2>
-                            {poNumber && (
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] sm:text-xs text-slate-500">PO #:</span>
-                                    <span className="text-xs sm:text-sm font-mono font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{poNumber}</span>
-                                </div>
-                            )}
+                        <div className="flex items-center justify-between mb-2 sm:mb-3 flex-wrap gap-2">
+                            <h2 className="text-xs sm:text-sm font-semibold text-slate-900">
+                                {selectedPO ? `PO: ${poNumber}` : 'Create New Purchase Order'}
+                            </h2>
+                            <div className="flex items-center gap-2">
+                                {selectedPO && (
+                                    <span className={`px-2 py-0.5 text-[10px] sm:text-xs font-medium rounded-full ${getStatusColor(selectedPO.status)}`}>{selectedPO.status}</span>
+                                )}
+                                {poNumber && !selectedPO && (
+                                    <>
+                                        <span className="text-[10px] sm:text-xs text-slate-500">PO #:</span>
+                                        <span className="text-xs sm:text-sm font-mono font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{poNumber}</span>
+                                    </>
+                                )}
+                            </div>
                         </div>
-                        
+                        {selectedPO && poReadOnly && (
+                            <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-amber-800 text-xs sm:text-sm mb-3">
+                                This PO is locked by the supplier. You can view it in read-only mode.
+                            </div>
+                        )}
+                        {poDetailLoading ? (
+                            <div className="flex items-center justify-center py-8">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-600" />
+                            </div>
+                        ) : (
+                        <>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mb-3">
                             <ComboBox
                                 label="Supplier *"
@@ -515,7 +648,7 @@ const BuyerDashboard: React.FC = () => {
                                 onSelect={(selected) => setSupplierTenantId(selected?.id || '')}
                                 placeholder={!registeredSuppliers || registeredSuppliers.length === 0 ? "No suppliers" : "Select supplier"}
                                 required
-                                disabled={!registeredSuppliers || registeredSuppliers.length === 0}
+                                disabled={!!selectedPO || !registeredSuppliers || registeredSuppliers.length === 0}
                             />
                             <ComboBox
                                 label="Project *"
@@ -524,6 +657,7 @@ const BuyerDashboard: React.FC = () => {
                                 onSelect={(selected) => setProjectId(selected?.id || '')}
                                 placeholder="Select project"
                                 required
+                                disabled={poReadOnly}
                             />
                         </div>
 
@@ -533,6 +667,7 @@ const BuyerDashboard: React.FC = () => {
                                 value={poDescription}
                                 onChange={(e) => setPoDescription(e.target.value)}
                                 placeholder="Enter description"
+                                disabled={poReadOnly}
                             />
                             <Input
                                 label="Target Delivery Date *"
@@ -541,6 +676,7 @@ const BuyerDashboard: React.FC = () => {
                                 onChange={(e) => setTargetDeliveryDate(e.target.value)}
                                 min={new Date().toISOString().split('T')[0]}
                                 required
+                                disabled={poReadOnly}
                             />
                         </div>
 
@@ -548,7 +684,7 @@ const BuyerDashboard: React.FC = () => {
                         <div className="mb-3">
                             <div className="flex items-center justify-between mb-2">
                                 <h3 className="text-xs font-semibold text-slate-900">Items</h3>
-                                <Button variant="secondary" onClick={addItem} className="text-xs py-1 px-2">+ Add Item</Button>
+                                {!poReadOnly && <Button variant="secondary" onClick={addItem} className="text-xs py-1 px-2">+ Add Item</Button>}
                             </div>
 
                             {items.length === 0 ? (
@@ -561,15 +697,15 @@ const BuyerDashboard: React.FC = () => {
                                         <div key={item.id} className="bg-white p-2 sm:p-3 rounded-lg border border-slate-200">
                                             <div className="flex items-center justify-between mb-2">
                                                 <span className="text-[10px] sm:text-xs font-semibold text-slate-700">Item {index + 1}</span>
-                                                <button type="button" onClick={() => removeItem(item.id)} className="text-rose-500 hover:text-rose-700 text-[10px] sm:text-xs">Remove</button>
+                                                {!poReadOnly && <button type="button" onClick={() => removeItem(item.id)} className="text-rose-500 hover:text-rose-700 text-[10px] sm:text-xs">Remove</button>}
                                             </div>
                                             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                                                 <div className="col-span-2">
-                                                    <Input label="Description *" value={item.description} onChange={(e) => updateItem(item.id, 'description', e.target.value)} placeholder="Description" required />
+                                                    <Input label="Description *" value={item.description} onChange={(e) => updateItem(item.id, 'description', e.target.value)} placeholder="Description" required disabled={poReadOnly} />
                                                 </div>
-                                                <ComboBox label="Category *" items={expenseCategories} selectedId={item.categoryId || ''} onSelect={(selected) => updateItem(item.id, 'categoryId', selected?.id || '')} placeholder="Category" required />
-                                                <Input label="Qty *" type="number" value={item.quantity.toString()} onChange={(e) => updateItem(item.id, 'quantity', parseFloat(e.target.value) || 0)} required min="0" step="0.01" />
-                                                <Input label="Price *" type="number" value={item.unitPrice.toString()} onChange={(e) => updateItem(item.id, 'unitPrice', parseFloat(e.target.value) || 0)} required min="0" step="0.01" />
+                                                <ComboBox label="Category *" items={expenseCategories} selectedId={item.categoryId || ''} onSelect={(selected) => updateItem(item.id, 'categoryId', selected?.id || '')} placeholder="Category" required disabled={poReadOnly} />
+                                                <Input label="Qty *" type="number" value={item.quantity.toString()} onChange={(e) => updateItem(item.id, 'quantity', parseFloat(e.target.value) || 0)} required min="0" step="0.01" disabled={poReadOnly} />
+                                                <Input label="Price *" type="number" value={item.unitPrice.toString()} onChange={(e) => updateItem(item.id, 'unitPrice', parseFloat(e.target.value) || 0)} required min="0" step="0.01" disabled={poReadOnly} />
                                             </div>
                                             <div className="mt-1 text-right text-[10px] sm:text-xs text-slate-600">
                                                 Subtotal: <span className="font-semibold">{CURRENCY} {(item.total || 0).toFixed(2)}</span>
@@ -588,9 +724,24 @@ const BuyerDashboard: React.FC = () => {
                         </div>
 
                         <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
-                            <Button variant="secondary" onClick={handleCancelPO} className="text-xs">Cancel</Button>
-                            <Button onClick={handleSubmitPO} className="bg-blue-600 hover:bg-blue-700 text-white text-xs">Create PO</Button>
+                            {selectedPO ? (
+                                <>
+                                    <Button variant="secondary" onClick={() => poPrintData && triggerPrint('PO', poPrintData)} className="text-xs flex items-center gap-1" title="Print PO">
+                                        {ICONS.print && <span className="w-3.5 h-3.5 inline-block [&>svg]:w-full [&>svg]:h-full">{ICONS.print}</span>}
+                                        Print
+                                    </Button>
+                                    <Button variant="secondary" onClick={closePODetail} className="text-xs">Close</Button>
+                                    {canSubmitRevision && <Button onClick={submitRevision} disabled={submittingRevision} className="bg-blue-600 hover:bg-blue-700 text-white text-xs">{submittingRevision ? 'Saving…' : 'Save revision'}</Button>}
+                                </>
+                            ) : (
+                                <>
+                                    <Button variant="secondary" onClick={handleCancelPO} className="text-xs">Cancel</Button>
+                                    <Button onClick={handleSubmitPO} className="bg-blue-600 hover:bg-blue-700 text-white text-xs">Create PO</Button>
+                                </>
+                            )}
                         </div>
+                        </>
+                        )}
                     </Card>
                 </div>
             )}
@@ -697,7 +848,7 @@ const BuyerDashboard: React.FC = () => {
                                     <div className="px-3 py-6 text-center text-slate-500 text-xs">No outstanding POs</div>
                                 ) : (
                                     outstandingPOs.map(po => (
-                                        <div key={po.id} className="p-3 hover:bg-slate-50" onClick={() => setSelectedPO(po)}>
+                                        <div key={po.id} className="p-3 hover:bg-slate-50 cursor-pointer" onClick={() => openPODetail(po)}>
                                             <div className="flex items-start justify-between gap-2">
                                                 <div className="min-w-0 flex-1">
                                                     <p className="text-xs font-medium text-slate-900 truncate">{po.poNumber || 'N/A'}</p>
@@ -733,7 +884,7 @@ const BuyerDashboard: React.FC = () => {
                                         <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-500 text-xs">No outstanding POs</td></tr>
                                     ) : (
                                         outstandingPOs.map(po => (
-                                            <tr key={po.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => setSelectedPO(po)}>
+                                            <tr key={po.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => openPODetail(po)}>
                                                 <td className="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-slate-900 font-medium">{po.poNumber || 'N/A'}</td>
                                                 <td className="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-slate-600 truncate max-w-[100px]">
                                                     {po.supplierCompanyName || po.supplierName || po.supplierTenantId}
@@ -746,7 +897,7 @@ const BuyerDashboard: React.FC = () => {
                                                     <span className={`px-1.5 py-0.5 text-[9px] sm:text-[10px] font-medium rounded-full ${getStatusColor(po.status)}`}>{po.status}</span>
                                                 </td>
                                                 <td className="px-2 sm:px-3 py-1.5 sm:py-2">
-                                                    <Button variant="secondary" onClick={(e) => { e.stopPropagation(); setSelectedPO(po); }} className="text-[9px] sm:text-[10px] py-0.5 sm:py-1 px-1.5 sm:px-2">View</Button>
+                                                    <Button variant="secondary" onClick={(e) => { e.stopPropagation(); openPODetail(po); }} className="text-[9px] sm:text-[10px] py-0.5 sm:py-1 px-1.5 sm:px-2">View</Button>
                                                 </td>
                                             </tr>
                                         ))
@@ -902,89 +1053,6 @@ const BuyerDashboard: React.FC = () => {
                     </Card>
                 </div>
             </div>
-
-            {/* Purchase Order Detail Modal */}
-            {selectedPO && (
-                <Modal
-                    isOpen={!!selectedPO}
-                    onClose={() => setSelectedPO(null)}
-                    title={`PO: ${selectedPO.poNumber}`}
-                    size="lg"
-                >
-                    <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <p className="text-xs text-slate-500 mb-1">PO Number</p>
-                                <p className="font-semibold text-slate-900 text-sm">{selectedPO.poNumber}</p>
-                            </div>
-                            <div>
-                                <p className="text-xs text-slate-500 mb-1">Status</p>
-                                <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(selectedPO.status)}`}>{selectedPO.status}</span>
-                            </div>
-                            <div>
-                                <p className="text-xs text-slate-500 mb-1">Supplier</p>
-                                <p className="font-semibold text-slate-900 text-sm">
-                                    {selectedPO.supplierCompanyName || selectedPO.supplierName || selectedPO.supplierTenantId}
-                                </p>
-                            </div>
-                            <div>
-                                <p className="text-xs text-slate-500 mb-1">Total Amount</p>
-                                <p className="font-semibold text-slate-900 text-sm">{CURRENCY} {(selectedPO.totalAmount || 0).toFixed(2)}</p>
-                            </div>
-                            {selectedPO.targetDeliveryDate && (
-                                <div>
-                                    <p className="text-xs text-slate-500 mb-1">Target Delivery</p>
-                                    <p className="font-semibold text-orange-600 text-sm">{formatDate(selectedPO.targetDeliveryDate)}</p>
-                                </div>
-                            )}
-                            {selectedPO.description && (
-                                <div className="col-span-2">
-                                    <p className="text-xs text-slate-500 mb-1">Description</p>
-                                    <p className="text-sm text-slate-900">{selectedPO.description}</p>
-                                </div>
-                            )}
-                        </div>
-
-                        {selectedPO.items && Array.isArray(selectedPO.items) && selectedPO.items.length > 0 && (
-                            <div className="pt-3 border-t border-slate-200">
-                                <h3 className="text-xs font-semibold text-slate-900 mb-2">Line Items</h3>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-xs">
-                                        <thead className="bg-slate-50 border-b border-slate-200">
-                                            <tr>
-                                                <th className="px-2 py-1.5 text-left font-medium text-slate-500">Description</th>
-                                                <th className="px-2 py-1.5 text-right font-medium text-slate-500">Qty</th>
-                                                <th className="px-2 py-1.5 text-right font-medium text-slate-500">Price</th>
-                                                <th className="px-2 py-1.5 text-right font-medium text-slate-500">Total</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-200">
-                                            {(Array.isArray(selectedPO.items) ? selectedPO.items : []).map((item, index) => (
-                                                <tr key={item.id || index}>
-                                                    <td className="px-2 py-1.5 text-slate-900">{item.description || '-'}</td>
-                                                    <td className="px-2 py-1.5 text-right text-slate-700">{item.quantity || 0}</td>
-                                                    <td className="px-2 py-1.5 text-right text-slate-700">{CURRENCY} {(item.unitPrice || 0).toFixed(2)}</td>
-                                                    <td className="px-2 py-1.5 text-right font-medium text-slate-900">{CURRENCY} {(item.total || 0).toFixed(2)}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                        <tfoot className="bg-slate-50 border-t-2 border-slate-300">
-                                            <tr>
-                                                <td colSpan={3} className="px-2 py-1.5 font-semibold text-slate-900 text-right">Total:</td>
-                                                <td className="px-2 py-1.5 font-bold text-slate-900 text-right">{CURRENCY} {(selectedPO.totalAmount || 0).toFixed(2)}</td>
-                                            </tr>
-                                        </tfoot>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="flex justify-end pt-3 border-t border-slate-200">
-                            <Button variant="secondary" onClick={() => setSelectedPO(null)}>Close</Button>
-                        </div>
-                    </div>
-                </Modal>
-            )}
 
             {/* Registered Supplier Detail Modal - open on click, Unregister */}
             {selectedRegisteredSupplier && (

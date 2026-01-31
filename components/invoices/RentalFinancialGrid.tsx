@@ -342,8 +342,8 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onIn
                             </th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white">
-                        {paginatedRecords.map(record => {
+                    <tbody className="divide-y divide-slate-100">
+                        {paginatedRecords.map((record, index) => {
                             const isPayment = record.type.includes('Payment');
                             const isBulk = record.type.includes('Bulk');
                             const isPaid = record.remainingAmount !== undefined && record.remainingAmount <= 0.01;
@@ -395,10 +395,7 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onIn
                                             else if (record.type === 'Invoice') onInvoiceClick(record.raw as Invoice);
                                             else onPaymentClick(record.raw as Transaction);
                                         }}
-                                        className={`cursor-pointer transition-all duration-150 group border-b border-slate-50 last:border-0 ${isExpanded ? 'bg-indigo-50/30' :
-                                                isPayment ? 'bg-emerald-50/10 hover:bg-emerald-50/30' :
-                                                    'hover:bg-slate-50'
-                                            }`}
+                                        className={`cursor-pointer transition-colors group border-b border-slate-50 last:border-0 ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-slate-100 ${isExpanded ? '!bg-indigo-50/30' : ''}`}
                                     >
                                         <td className="px-3 py-2 text-center w-10 overflow-hidden" onClick={(e) => e.stopPropagation()}>
                                             {hasChildren ? (

@@ -134,7 +134,8 @@ try {
     import('./context/PWAContext'),
     import('./context/UpdateContext'),
     import('./components/ErrorBoundary'),
-    import('./context/PayrollContext')
+    import('./context/PayrollContext'),
+    import('./context/PrintContext')
   ]).then(([
     { default: App },
     { AppProvider },
@@ -148,7 +149,8 @@ try {
     { PWAProvider },
     { UpdateProvider },
     { default: ErrorBoundary },
-    { PayrollProvider }
+    { PayrollProvider },
+    { PrintProvider }
   ]) => {
     // Top-level error boundary
     const TopLevelErrorBoundary: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -170,6 +172,7 @@ try {
         <TopLevelErrorBoundary>
           <AuthProvider>
             <AppProvider>
+              <PrintProvider>
               <PWAProvider>
                 <UpdateProvider>
                   <LicenseProvider>
@@ -189,6 +192,7 @@ try {
                   </LicenseProvider>
                 </UpdateProvider>
               </PWAProvider>
+              </PrintProvider>
             </AppProvider>
           </AuthProvider>
         </TopLevelErrorBoundary>

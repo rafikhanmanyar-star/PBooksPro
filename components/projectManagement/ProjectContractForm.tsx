@@ -12,6 +12,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { CURRENCY, ICONS } from '../../constants';
 import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
 import { getFormBackgroundColorStyle } from '../../utils/formColorUtils';
+import { uploadEntityDocument, openDocumentById } from '../../services/documentUploadService';
 
 interface ProjectContractFormProps {
     onClose: () => void;
@@ -68,6 +69,7 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
     const [paymentTerms, setPaymentTerms] = useState(contractToEdit?.paymentTerms || '');
     const [documentFile, setDocumentFile] = useState<File | null>(null);
     const [documentPath, setDocumentPath] = useState(contractToEdit?.documentPath || '');
+    const [documentId, setDocumentId] = useState(contractToEdit?.documentId || '');
     
     // Expense Category Items - new tracking system
     const [expenseCategoryItems, setExpenseCategoryItems] = useState<ContractExpenseCategoryItem[]>(
@@ -162,72 +164,38 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
             return;
         }
 
-        let finalDocumentPath = documentPath;
-
-        // Handle file upload if a new file is selected
-        if (documentFile && state.documentStoragePath) {
+        const contractId = contractToEdit?.id || Date.now().toString();
+        let finalDocumentId = documentId || undefined;
+        if (documentFile) {
             try {
-                // Convert file to base64
-                const reader = new FileReader();
-                const base64Data = await new Promise<string>((resolve, reject) => {
-                    reader.onload = () => {
-                        const result = reader.result as string;
-                        // Remove data URL prefix (e.g., "data:application/pdf;base64,")
-                        const base64 = result.split(',')[1] || result;
-                        resolve(base64);
-                    };
-                    reader.onerror = reject;
-                    reader.readAsDataURL(documentFile);
-                });
-
-                // Generate file path
-                const fileExtension = documentFile.name.split('.').pop() || 'pdf';
-                const fileName = `CONTRACT-${contractNumber}-${Date.now()}.${fileExtension}`;
-                const filePath = `${state.documentStoragePath}/${fileName}`;
-
-                // Save file via IPC
-                if (window.electronAPI && window.electronAPI.saveDocumentFile) {
-                    const saveResult = await window.electronAPI.saveDocumentFile({
-                        filePath,
-                        fileData: base64Data,
-                        fileName: documentFile.name
-                    });
-
-                    if (saveResult.success) {
-                        finalDocumentPath = filePath;
-                    } else {
-                        await showAlert(`Failed to save document: ${saveResult.error}`);
-                        return;
-                    }
-                } else {
-                    await showAlert('File system access not available. Please set document storage folder in settings.');
-                    return;
-                }
-            } catch (error) {
-                await showAlert(`Error uploading document: ${error instanceof Error ? error.message : String(error)}`);
+                finalDocumentId = await uploadEntityDocument(
+                    documentFile,
+                    'contract',
+                    contractId,
+                    dispatch,
+                    state.currentUser?.id
+                );
+            } catch (err) {
+                await showAlert(err instanceof Error ? err.message : 'Failed to upload document.');
                 return;
             }
-        } else if (documentFile && !state.documentStoragePath) {
-            // Document is optional - clear it and continue without blocking submission
-            await showAlert('Document storage folder is not set. The document will not be saved. You can set the storage folder in Settings > My Preferences and upload the document later.', { title: 'Document Not Saved' });
-            setDocumentFile(null);
-            // Continue without document - finalDocumentPath remains as existing documentPath
         }
 
         const payload: Contract = {
-            id: contractToEdit?.id || Date.now().toString(),
+            id: contractId,
             contractNumber,
             name,
             projectId,
             vendorId,
-            totalAmount: totalGrossValue, // Use calculated total gross value
+            totalAmount: totalGrossValue,
             startDate,
             endDate,
             status,
             expenseCategoryItems,
             termsAndConditions,
             paymentTerms,
-            documentPath: finalDocumentPath || undefined
+            documentPath: documentPath || undefined,
+            documentId: finalDocumentId
         };
 
         if (contractToEdit) {
@@ -450,7 +418,7 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                 <label className="block text-sm font-medium text-slate-700 mb-2">Contract Document</label>
                 <p className="text-xs text-slate-500 mb-3">Upload a scanned copy of the contract document.</p>
                 
-                {documentPath && !documentFile && (
+                {(documentId || (documentPath && !documentFile)) && (
                     <div className="mb-3 p-3 bg-white border border-slate-200 rounded-lg flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <div className="w-8 h-8 bg-indigo-100 rounded flex items-center justify-center">
@@ -458,7 +426,11 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                             </div>
                             <div>
                                 <p className="text-sm font-medium text-slate-800">Document attached</p>
-                                <p className="text-xs text-slate-500">{documentPath.split('/').pop()}</p>
+                                <p className="text-xs text-slate-500">
+                                    {documentId
+                                        ? (state.documents?.find(d => d.id === documentId)?.fileName || 'Document')
+                                        : documentPath.split('/').pop()}
+                                </p>
                             </div>
                         </div>
                         <div className="flex gap-2">
@@ -467,14 +439,14 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                                 variant="secondary"
                                 size="sm"
                                 onClick={async () => {
-                                    if (window.electronAPI && window.electronAPI.openDocumentFile) {
+                                    if (documentId) {
+                                        await openDocumentById(documentId, state.documents, url => window.open(url, '_blank'), showAlert);
+                                    } else if (documentPath && (window as any).electronAPI?.openDocumentFile) {
                                         try {
-                                            const result = await window.electronAPI.openDocumentFile({ filePath: documentPath });
-                                            if (!result.success) {
-                                                await showAlert(`Failed to open document: ${result.error}`);
-                                            }
+                                            const result = await (window as any).electronAPI.openDocumentFile({ filePath: documentPath });
+                                            if (!result?.success) await showAlert(`Failed to open: ${result?.error || 'Unknown'}`);
                                         } catch (error) {
-                                            await showAlert(`Error opening document: ${error instanceof Error ? error.message : String(error)}`);
+                                            await showAlert(error instanceof Error ? error.message : 'Error opening document');
                                         }
                                     } else {
                                         await showAlert('File system access not available');
@@ -489,6 +461,7 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                                 size="sm"
                                 onClick={() => {
                                     setDocumentPath('');
+                                    setDocumentId('');
                                     setDocumentFile(null);
                                 }}
                             >
@@ -504,12 +477,13 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                             type="file"
                             accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
                             onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                    setDocumentFile(file);
-                                    setDocumentPath(''); // Clear old path when new file is selected
-                                }
-                            }}
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                        setDocumentFile(file);
+                                        setDocumentPath('');
+                                        setDocumentId('');
+                                    }
+                                }}
                             className="hidden"
                         />
                         <div className="cursor-pointer border-2 border-dashed border-slate-300 rounded-lg p-4 text-center hover:border-indigo-400 hover:bg-indigo-50 transition-colors">
@@ -530,11 +504,6 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                         </Button>
                     )}
                 </div>
-                {!state.documentStoragePath && (
-                    <p className="text-xs text-amber-600 mt-2">
-                        ⚠️ Please set document storage folder in Settings &gt; My Preferences
-                    </p>
-                )}
             </div>
 
             <div className="flex justify-between pt-4 border-t mt-6">

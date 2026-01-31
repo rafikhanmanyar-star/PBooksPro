@@ -36,6 +36,7 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
   const dropdownRef = useRef<HTMLUListElement>(null);
   const shouldSelectOnFocusRef = useRef(true);
   const lastUserTypedValueRef = useRef<string | null>(null);
+  const mouseDownOnInputRef = useRef(false);
 
   // Generate an id if not provided (for accessibility)
   const inputId = id || (label ? `combobox-${name || label.toLowerCase().replace(/\s+/g, '-')}` : undefined);
@@ -149,11 +150,13 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
+      // Close when click is outside the combo: not in wrapper and not in portaled dropdown.
+      // Use (!dropdownRef.current || !dropdownRef.current.contains(target)) so we still
+      // close if the dropdown hasn't mounted yet (e.g. right after opening).
       if (
-        wrapperRef.current && 
+        wrapperRef.current &&
         !wrapperRef.current.contains(target) &&
-        dropdownRef.current &&
-        !dropdownRef.current.contains(target)
+        (!dropdownRef.current || !dropdownRef.current.contains(target))
       ) {
         setIsOpen(false);
         const revertedQuery = selectedItem ? selectedItem.name : '';
@@ -223,31 +226,35 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
     setIsOpen(false);
   };
 
-  const handleInputMouseDown = (e: React.MouseEvent<HTMLInputElement>) => {
-    // Open dropdown on mousedown (fires before click, so dropdown opens immediately)
+  const handleInputMouseDown = () => {
+    // Do NOT open dropdown on mousedown: user may be starting a text selection (e.g. right-to-left drag).
+    // Opening here caused crashes when selecting text. We open on focus (keyboard) or on click (mouse) instead.
     if (!disabled) {
-      setIsOpen(true);
-      // Reset flag for text selection on focus
+      mouseDownOnInputRef.current = true;
       shouldSelectOnFocusRef.current = true;
     }
   };
 
+  const handleInputMouseUp = () => {
+    mouseDownOnInputRef.current = false;
+  };
+
   const handleInputClick = () => {
-    // Ensure dropdown is open on click
     if (!disabled) {
       setIsOpen(true);
     }
   };
 
   const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-    // Select all text when input receives focus so typing immediately replaces it
     if (!disabled) {
-      setIsOpen(true);
-      if (shouldSelectOnFocusRef.current) {
-        const input = e.target;
-        // Select immediately - the browser handles this correctly
-        // When user types with text selected, the browser replaces it naturally
-        input.select();
+      // Only open and select-all when focus came from keyboard (tab). When focus came from mouse (mousedown),
+      // don't open here and don't call select() — that overwrites in-progress selection and can crash.
+      if (!mouseDownOnInputRef.current) {
+        setIsOpen(true);
+        if (shouldSelectOnFocusRef.current) {
+          const input = e.target;
+          input.select();
+        }
       }
     }
   };
@@ -305,6 +312,7 @@ const ComboBox: React.FC<ComboBoxProps> = ({ label, items, selectedId, onSelect,
         } ${!label && !compact ? 'h-8' : ''}`}
       value={query}
       onMouseDown={handleInputMouseDown}
+      onMouseUp={handleInputMouseUp}
       onClick={handleInputClick}
       onFocus={handleInputFocus}
       onBlur={handleInputBlur}

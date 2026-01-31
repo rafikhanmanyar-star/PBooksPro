@@ -8,7 +8,7 @@ import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import Card from '../ui/Card';
 import { formatDate } from '../../utils/dateUtils';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface RevenueRow {
@@ -29,7 +29,7 @@ type SortKey = 'agreementNumber' | 'projectName' | 'ownerName' | 'listPrice' | '
 
 const RevenueAnalysisReport: React.FC = () => {
     const { state } = useAppContext();
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
     
     // Filter State
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
@@ -175,7 +175,7 @@ const RevenueAnalysisReport: React.FC = () => {
                     searchQuery={searchQuery}
                     onSearchChange={setSearchQuery}
                     onExport={handleExport}
-                    onPrint={handlePrint}
+                    onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                     hideGroup={true}
                     showDateFilterPills={true}
                     activeDateRange={dateRange}

@@ -513,99 +513,71 @@ const AssetsManagement: React.FC = () => {
     };
 
     return (
-        <div className="flex flex-col h-full space-y-4 overflow-hidden px-0 py-6">
+        <div className="flex flex-col h-full space-y-4 overflow-hidden px-0 pt-2 pb-2">
             {/* Asset Type Filter Tabs - Top Level */}
             <div className="flex-shrink-0">
-                <div className="flex items-center gap-2 overflow-x-auto pb-2">
-                    <button
-                        type="button"
-                        onClick={() => setSelectedAssetTypeFilter(null)}
-                        className={`
-                            flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap
-                            ${!selectedAssetTypeFilter
-                                ? 'bg-slate-100 text-slate-900 border-2 border-slate-300'
-                                : 'border-2 border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                            }
-                        `}
-                    >
-                        <span>All Assets</span>
-                    </button>
-                    {assetTypes.map((type) => {
-                        const isSelected = selectedAssetTypeFilter === type.id;
-                        let typeEntities: any[] = [];
-                        switch (type.id) {
-                            case 'project':
-                                typeEntities = appState.projects;
-                                break;
-                            case 'building':
-                                typeEntities = appState.buildings;
-                                break;
-                            case 'property':
-                                typeEntities = appState.properties;
-                                break;
-                            case 'unit':
-                                typeEntities = appState.units;
-                                break;
-                        }
-                        
-                        return (
-                            <button
-                                key={type.id}
-                                type="button"
-                                onClick={() => {
-                                    setSelectedAssetTypeFilter(type.id as AssetType);
-                                    setSelectedType(type.id as AssetType);
-                                }}
-                                className={`
-                                    flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ml-2
-                                    ${isSelected
-                                        ? (type.color === 'indigo' ? 'bg-indigo-50 text-indigo-700 border-2 border-indigo-500' :
-                                           type.color === 'blue' ? 'bg-blue-50 text-blue-700 border-2 border-blue-500' :
-                                           type.color === 'emerald' ? 'bg-emerald-50 text-emerald-700 border-2 border-emerald-500' :
-                                           'bg-purple-50 text-purple-700 border-2 border-purple-500')
-                                        : 'border-2 border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                                    }
-                                `}
-                            >
-                                <div className={`w-4 h-4 ${isSelected ? (
-                                    type.color === 'indigo' ? 'text-indigo-600' :
-                                    type.color === 'blue' ? 'text-blue-600' :
-                                    type.color === 'emerald' ? 'text-emerald-600' :
-                                    'text-purple-600'
-                                ) : 'text-slate-400'}`}>
-                                    {type.icon}
-                                </div>
-                                <span>{type.label}</span>
-                                <span className={`
-                                    ml-1 px-2 py-0.5 rounded-full text-xs font-medium
-                                    ${isSelected
-                                        ? (type.color === 'indigo' ? 'bg-indigo-100 text-indigo-700' :
-                                           type.color === 'blue' ? 'bg-blue-100 text-blue-700' :
-                                           type.color === 'emerald' ? 'bg-emerald-100 text-emerald-700' :
-                                           'bg-purple-100 text-purple-700')
-                                        : 'bg-slate-100 text-slate-500'
-                                    }
-                                `}>
-                                    {typeEntities.length}
-                                </span>
-                            </button>
-                        );
-                    })}
+                <div className="flex items-center justify-between gap-2 overflow-x-auto pb-2">
+                    <div className="flex items-center gap-2 overflow-x-auto flex-1 min-w-0">
+                        <button
+                            type="button"
+                            onClick={() => setSelectedAssetTypeFilter(null)}
+                            className={`
+                                flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap
+                                ${!selectedAssetTypeFilter
+                                    ? 'bg-slate-100 text-slate-900 border-2 border-slate-300'
+                                    : 'border-2 border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                }
+                            `}
+                        >
+                            <span>All Assets</span>
+                        </button>
+                        {assetTypes.map((type) => {
+                            const isSelected = selectedAssetTypeFilter === type.id;
+                            return (
+                                <button
+                                    key={type.id}
+                                    type="button"
+                                    onClick={() => {
+                                        setSelectedAssetTypeFilter(type.id as AssetType);
+                                        setSelectedType(type.id as AssetType);
+                                    }}
+                                    className={`
+                                        flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ml-2
+                                        ${isSelected
+                                            ? (type.color === 'indigo' ? 'bg-indigo-50 text-indigo-700 border-2 border-indigo-500' :
+                                               type.color === 'blue' ? 'bg-blue-50 text-blue-700 border-2 border-blue-500' :
+                                               type.color === 'emerald' ? 'bg-emerald-50 text-emerald-700 border-2 border-emerald-500' :
+                                               'bg-purple-50 text-purple-700 border-2 border-purple-500')
+                                            : 'border-2 border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                        }
+                                    `}
+                                >
+                                    <div className={`w-4 h-4 ${isSelected ? (
+                                        type.color === 'indigo' ? 'text-indigo-600' :
+                                        type.color === 'blue' ? 'text-blue-600' :
+                                        type.color === 'emerald' ? 'text-emerald-600' :
+                                        'text-purple-600'
+                                    ) : 'text-slate-400'}`}>
+                                        {type.icon}
+                                    </div>
+                                    <span>{type.label}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
                     <button
                         type="button"
                         onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
                             if (isFormOpen) {
-                                // Closing form
                                 setIsFormOpen(false);
                             } else {
-                                // Opening form
                                 handleOpenForm();
                             }
                         }}
                         className={`
-                            ml-4 flex items-center justify-center w-10 h-10 rounded-lg transition-all flex-shrink-0
+                            flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-lg transition-all
                             ${isFormOpen
                                 ? 'bg-indigo-600 text-white hover:bg-indigo-700'
                                 : 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200'
@@ -629,63 +601,69 @@ const AssetsManagement: React.FC = () => {
                         </div>
                         <div>
                             <h2 className="text-lg font-bold text-slate-900">Add New Asset</h2>
-                            <p className="text-xs text-slate-500">Select an asset type below, then fill in the details.</p>
+                            <p className="text-xs text-slate-500">
+                                {selectedAssetTypeFilter
+                                    ? `Fill in the details for the new ${getTypeConfig(selectedType).label}.`
+                                    : 'Select an asset type below, then fill in the details.'}
+                            </p>
                         </div>
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-4">
-                        {/* Asset Type Selection */}
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-700 mb-2">
-                                Asset Type <span className="text-red-500">*</span>
-                            </label>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                {assetTypes.map((type) => {
-                                    const isSelected = selectedType === type.id;
-                                    return (
-                                        <button
-                                            key={type.id}
-                                            type="button"
-                                            onClick={() => {
-                                                setSelectedType(type.id as AssetType);
-                                                handleResetForm();
-                                            }}
-                                            className={`
-                                                p-2 rounded-lg border-2 transition-all text-left
-                                                ${isSelected
-                                                    ? (type.color === 'indigo' ? 'border-indigo-500 bg-indigo-50' :
-                                                       type.color === 'blue' ? 'border-blue-500 bg-blue-50' :
-                                                       type.color === 'emerald' ? 'border-emerald-500 bg-emerald-50' :
-                                                       'border-purple-500 bg-purple-50')
-                                                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                                                }
-                                            `}
-                                        >
-                                            <div className={`w-5 h-5 mb-1 ${
-                                                isSelected
-                                                    ? (type.color === 'indigo' ? 'text-indigo-600' :
-                                                       type.color === 'blue' ? 'text-blue-600' :
-                                                       type.color === 'emerald' ? 'text-emerald-600' :
-                                                       'text-purple-600')
-                                                    : 'text-slate-400'
-                                            }`}>
-                                                {type.icon}
-                                            </div>
-                                            <div className={`font-semibold text-xs ${
-                                                isSelected
-                                                    ? (type.color === 'indigo' ? 'text-indigo-700' :
-                                                       type.color === 'blue' ? 'text-blue-700' :
-                                                       type.color === 'emerald' ? 'text-emerald-700' :
-                                                       'text-purple-700')
-                                                    : 'text-slate-700'
-                                            }`}>
-                                                {type.label}
-                                            </div>
-                                        </button>
-                                    );
-                                })}
+                        {/* Asset Type Selection - only when no type selected from top tabs */}
+                        {!selectedAssetTypeFilter && (
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-2">
+                                    Asset Type <span className="text-red-500">*</span>
+                                </label>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                    {assetTypes.map((type) => {
+                                        const isSelected = selectedType === type.id;
+                                        return (
+                                            <button
+                                                key={type.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedType(type.id as AssetType);
+                                                    handleResetForm();
+                                                }}
+                                                className={`
+                                                    p-2 rounded-lg border-2 transition-all text-left
+                                                    ${isSelected
+                                                        ? (type.color === 'indigo' ? 'border-indigo-500 bg-indigo-50' :
+                                                           type.color === 'blue' ? 'border-blue-500 bg-blue-50' :
+                                                           type.color === 'emerald' ? 'border-emerald-500 bg-emerald-50' :
+                                                           'border-purple-500 bg-purple-50')
+                                                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                                                    }
+                                                `}
+                                            >
+                                                <div className={`w-5 h-5 mb-1 ${
+                                                    isSelected
+                                                        ? (type.color === 'indigo' ? 'text-indigo-600' :
+                                                           type.color === 'blue' ? 'text-blue-600' :
+                                                           type.color === 'emerald' ? 'text-emerald-600' :
+                                                           'text-purple-600')
+                                                        : 'text-slate-400'
+                                                }`}>
+                                                    {type.icon}
+                                                </div>
+                                                <div className={`font-semibold text-xs ${
+                                                    isSelected
+                                                        ? (type.color === 'indigo' ? 'text-indigo-700' :
+                                                           type.color === 'blue' ? 'text-blue-700' :
+                                                           type.color === 'emerald' ? 'text-emerald-700' :
+                                                           'text-purple-700')
+                                                        : 'text-slate-700'
+                                                }`}>
+                                                    {type.label}
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
-                        </div>
+                        )}
 
                     {/* Form Fields */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -834,14 +812,16 @@ const AssetsManagement: React.FC = () => {
                     
                     {/* Description and Submit */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <Textarea
-                            label="Description"
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            placeholder="Additional details..."
-                            rows={2}
-                            className="text-sm !border-slate-300 !border-2 focus:!border-indigo-500"
-                        />
+                        <div className="max-w-md">
+                            <Textarea
+                                label="Description"
+                                value={description}
+                                onChange={(e) => setDescription(e.target.value)}
+                                placeholder="Additional details..."
+                                rows={1}
+                                className="text-sm !border-slate-300 !border-2 focus:!border-indigo-500"
+                            />
+                        </div>
                         <div className="flex items-end gap-2">
                             {editingEntity && (
                                 <Button

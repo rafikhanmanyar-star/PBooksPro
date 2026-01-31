@@ -13,7 +13,7 @@ import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import ComboBox from '../ui/ComboBox';
 import { formatDate } from '../../utils/dateUtils';
 import DatePicker from '../ui/DatePicker';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface ProjectSummary {
@@ -87,7 +87,7 @@ const ProjectPieChart = React.memo(({ data, title }: { data: any[], title: strin
 
 const ProjectSummaryReport: React.FC = () => {
     const { state } = useAppContext();
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
     
     // Filters
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
@@ -312,7 +312,7 @@ const ProjectSummaryReport: React.FC = () => {
                         endDate={endDate}
                         onDateChange={handleCustomDateChange}
                         onExport={handleExport}
-                        onPrint={handlePrint}
+                        onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                         hideGroup={true}
                         showDateFilterPills={true}
                         activeDateRange={dateRange}
