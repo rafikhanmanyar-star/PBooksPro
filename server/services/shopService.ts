@@ -241,6 +241,39 @@ export class ShopService {
         });
     }
 
+    async updateBranch(tenantId: string, branchId: string, data: any) {
+        return this.db.transaction(async (client) => {
+            const managerName = data.managerName || data.manager;
+            const contactNo = data.contactNo || data.contact;
+
+            await client.query(`
+                UPDATE shop_branches 
+                SET 
+                    name = COALESCE($1, name),
+                    code = COALESCE($2, code),
+                    type = COALESCE($3, type),
+                    region = COALESCE($4, region),
+                    manager_name = COALESCE($5, manager_name),
+                    contact_no = COALESCE($6, contact_no),
+                    timezone = COALESCE($7, timezone),
+                    open_time = COALESCE($8, open_time),
+                    close_time = COALESCE($9, close_time),
+                    location = COALESCE($10, location),
+                    status = COALESCE($11, status),
+                    updated_at = NOW()
+                WHERE id = $12 AND tenant_id = $13
+            `, [
+                data.name, data.code, data.type, data.region,
+                managerName, contactNo, data.timezone,
+                data.openTime, data.closeTime, data.location,
+                data.status,
+                branchId, tenantId
+            ]);
+
+            return branchId;
+        });
+    }
+
     // --- Loyalty Methods ---
     async getLoyaltyMembers(tenantId: string) {
         return this.db.query(`

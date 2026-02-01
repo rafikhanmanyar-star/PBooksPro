@@ -2,11 +2,36 @@
 import React, { useState } from 'react';
 import { useMultiStore } from '../../../context/MultiStoreContext';
 import { ICONS } from '../../../constants';
+import { StoreBranch } from '../../../types/multiStore';
 import Card from '../../ui/Card';
+import Modal from '../../ui/Modal';
+import Input from '../../ui/Input';
+import Select from '../../ui/Select';
+import Button from '../../ui/Button';
 
 const BranchDirectory: React.FC = () => {
-    const { stores } = useMultiStore();
+    const { stores, updateStore } = useMultiStore();
     const [search, setSearch] = useState('');
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [editingStore, setEditingStore] = useState<StoreBranch | null>(null);
+    const [editData, setEditData] = useState<Partial<StoreBranch>>({});
+
+    const handleEditClick = (store: StoreBranch) => {
+        setEditingStore(store);
+        setEditData({ ...store });
+        setIsEditModalOpen(true);
+    };
+
+    const handleUpdateStore = async () => {
+        if (!editingStore) return;
+        try {
+            await updateStore(editingStore.id, editData);
+            setIsEditModalOpen(false);
+            setEditingStore(null);
+        } catch (e) {
+            alert('Failed to update branch');
+        }
+    };
 
     const filtered = stores.filter(s =>
         s.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -64,8 +89,8 @@ const BranchDirectory: React.FC = () => {
                                     </td>
                                     <td className="px-6 py-4">
                                         <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${store.type === 'Flagship' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' :
-                                                store.type === 'Warehouse' ? 'bg-amber-100 text-amber-600' :
-                                                    'bg-slate-100 text-slate-600'
+                                            store.type === 'Warehouse' ? 'bg-amber-100 text-amber-600' :
+                                                'bg-slate-100 text-slate-600'
                                             }`}>
                                             {store.type}
                                         </span>
@@ -89,7 +114,10 @@ const BranchDirectory: React.FC = () => {
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <button className="p-2 text-slate-300 hover:text-indigo-600 transition-colors">
+                                        <button
+                                            onClick={() => handleEditClick(store)}
+                                            className="p-2 text-slate-300 hover:text-indigo-600 transition-colors"
+                                        >
                                             {ICONS.edit}
                                         </button>
                                     </td>
@@ -99,6 +127,107 @@ const BranchDirectory: React.FC = () => {
                     </table>
                 </div>
             </Card>
+
+            <Modal
+                isOpen={isEditModalOpen}
+                onClose={() => setIsEditModalOpen(false)}
+                title="Edit Branch Information"
+                size="lg"
+            >
+                <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <Input
+                            label="Branch Name"
+                            value={editData.name || ''}
+                            onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                        />
+                        <Input
+                            label="Branch Code"
+                            value={editData.code || ''}
+                            onChange={(e) => setEditData({ ...editData, code: e.target.value })}
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-4">
+                        <Select
+                            label="Store Type"
+                            value={editData.type || ''}
+                            onChange={(e) => setEditData({ ...editData, type: e.target.value as any })}
+                        >
+                            <option value="Flagship">Flagship</option>
+                            <option value="Express">Express</option>
+                            <option value="Warehouse">Warehouse</option>
+                            <option value="Virtual">Virtual</option>
+                            <option value="Franchise">Franchise</option>
+                        </Select>
+                        <Input
+                            label="Region"
+                            value={editData.region || ''}
+                            onChange={(e) => setEditData({ ...editData, region: e.target.value })}
+                        />
+                        <Input
+                            label="Location"
+                            value={editData.location || ''}
+                            onChange={(e) => setEditData({ ...editData, location: e.target.value })}
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <Input
+                            label="Manager Name"
+                            value={editData.manager || ''}
+                            onChange={(e) => setEditData({ ...editData, manager: e.target.value })}
+                        />
+                        <Input
+                            label="Contact"
+                            value={editData.contact || ''}
+                            onChange={(e) => setEditData({ ...editData, contact: e.target.value })}
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-4">
+                        <Select
+                            label="Timezone"
+                            value={editData.timezone || ''}
+                            onChange={(e) => setEditData({ ...editData, timezone: e.target.value })}
+                        >
+                            <option value="GMT+5">GMT+5 (PKT)</option>
+                            <option value="GMT">GMT</option>
+                            <option value="GMT+4">GMT+4 (Gulf)</option>
+                        </Select>
+                        <Input
+                            label="Open Time"
+                            type="time"
+                            value={editData.openTime || ''}
+                            onChange={(e) => setEditData({ ...editData, openTime: e.target.value })}
+                        />
+                        <Input
+                            label="Close Time"
+                            type="time"
+                            value={editData.closeTime || ''}
+                            onChange={(e) => setEditData({ ...editData, closeTime: e.target.value })}
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <Select
+                            label="Status"
+                            value={editData.status || ''}
+                            onChange={(e) => setEditData({ ...editData, status: e.target.value as any })}
+                        >
+                            <option value="Active">Active</option>
+                            <option value="Suspended">Suspended</option>
+                            <option value="Closed">Closed</option>
+                            <option value="Maintenance">Maintenance</option>
+                        </Select>
+                    </div>
+
+                    <div className="flex justify-end gap-3 mt-6">
+                        <Button variant="secondary" onClick={() => setIsEditModalOpen(false)}>Cancel</Button>
+                        <Button onClick={handleUpdateStore} disabled={!editData.name}>Save Changes</Button>
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 };

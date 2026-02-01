@@ -64,11 +64,10 @@ export const LoyaltyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const addMember = useCallback(async (memberData: any) => {
         try {
             const apiPayload = {
-                customer_name: memberData.customerName,
-                card_number: memberData.cardNumber,
-                status: 'Active',
-                points_balance: 0,
-                tier: 'Silver'
+                name: memberData.customerName,
+                phone: memberData.phone,
+                email: memberData.email,
+                cardNumber: memberData.cardNumber
             };
 
             const response = await shopApi.createLoyaltyMember(apiPayload) as any;

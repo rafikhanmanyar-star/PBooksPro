@@ -23,6 +23,7 @@ interface MultiStoreContextType {
     consolidatedRevenue: number;
     activeTerminalsCount: number;
     addStore: (store: Omit<StoreBranch, 'id' | 'status'>) => Promise<void>;
+    updateStore: (id: string, store: Partial<StoreBranch>) => Promise<void>;
 }
 
 const MultiStoreContext = createContext<MultiStoreContextType | undefined>(undefined);
@@ -121,6 +122,32 @@ export const MultiStoreProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
     };
 
+    const updateStore = async (id: string, storeData: Partial<StoreBranch>) => {
+        try {
+            // Map frontend fields to backend expected fields
+            const apiPayload = {
+                name: storeData.name,
+                code: storeData.code,
+                type: storeData.type,
+                location: storeData.location,
+                region: storeData.region,
+                managerName: storeData.manager,
+                contactNo: storeData.contact,
+                timezone: storeData.timezone,
+                openTime: storeData.openTime,
+                closeTime: storeData.closeTime,
+                status: storeData.status
+            };
+
+            await shopApi.updateBranch(id, apiPayload);
+
+            setStores(prev => prev.map(s => s.id === id ? { ...s, ...storeData } : s));
+        } catch (e) {
+            console.error('Failed to update store:', e);
+            throw e;
+        }
+    };
+
     const lockTerminal = (terminalId: string) => {
         setTerminals(prev => prev.map(t => t.id === terminalId ? { ...t, status: 'Locked' } : t));
     };
@@ -136,6 +163,7 @@ export const MultiStoreProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         updateStoreStatus,
         lockTerminal,
         addStore,
+        updateStore,
         consolidatedRevenue,
         activeTerminalsCount
     };

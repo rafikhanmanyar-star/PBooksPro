@@ -29,6 +29,17 @@ router.post('/branches', async (req: any, res) => {
     }
 });
 
+router.put('/branches/:id', async (req: any, res) => {
+    try {
+        console.log(`[ShopAPI] PUT /branches/${req.params.id} - Tenant: ${req.tenantId}`, req.body);
+        await getShopService().updateBranch(req.tenantId, req.params.id, req.body);
+        res.json({ success: true, message: 'Branch updated successfully' });
+    } catch (error: any) {
+        console.error(`[ShopAPI] PUT /branches error:`, error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // --- Products & Inventory ---
 router.get('/products', async (req: any, res) => {
     try {

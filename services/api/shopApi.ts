@@ -31,4 +31,5 @@ export const shopApi = {
     createProduct: (productData: any) => apiClient.post('/shop/products', productData),
     createLoyaltyMember: (memberData: any) => apiClient.post('/shop/loyalty/members', memberData),
     createBranch: (branchData: any) => apiClient.post('/shop/branches', branchData),
+    updateBranch: (id: string, branchData: any) => apiClient.put(`/shop/branches/${id}`, branchData),
 };
