@@ -41,6 +41,27 @@ export class ShopService {
         return this.db.query('SELECT * FROM shop_products WHERE tenant_id = $1 AND is_active = TRUE', [tenantId]);
     }
 
+    async createProduct(tenantId: string, data: any) {
+        const res = await this.db.query(`
+            INSERT INTO shop_products (
+                tenant_id, name, sku, category_id, unit, 
+                cost_price, retail_price, tax_rate, reorder_point
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id
+        `, [
+            tenantId,
+            data.name,
+            data.sku || `SKU-${Date.now()}`,
+            data.category_id || null, // Ensure category ID is valid or handle lookup if sending name
+            data.unit || 'pcs',
+            data.cost_price || 0,
+            data.retail_price || 0,
+            data.tax_rate || 0,
+            data.reorder_point || 10
+        ]);
+        return res[0].id;
+    }
+
     async getInventory(tenantId: string, branchId?: string) {
         let query = `
             SELECT i.*, p.name as product_name, p.sku, p.retail_price, w.name as warehouse_name 

@@ -33,6 +33,15 @@ router.get('/products', async (req: any, res) => {
     }
 });
 
+router.post('/products', async (req: any, res) => {
+    try {
+        const productId = await getShopService().createProduct(req.tenantId, req.body);
+        res.status(201).json({ id: productId, message: 'Product created successfully' });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 router.get('/inventory', async (req: any, res) => {
     try {
         const inventory = await getShopService().getInventory(req.tenantId);
