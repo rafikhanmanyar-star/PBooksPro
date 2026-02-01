@@ -219,6 +219,17 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 items: [
                     { page: 'bizPlanet', label: 'Biz Planet', icon: ICONS.globe },
                 ]
+            },
+            {
+                title: 'My Shop',
+                items: [
+                    { page: 'posSales', label: 'POS Sales', icon: ICONS.shoppingCart },
+                    { page: 'inventory', label: 'Inventory', icon: ICONS.package },
+                    { page: 'accounting', label: 'Accounting', icon: ICONS.fileText },
+                    { page: 'loyalty', label: 'Loyalty', icon: ICONS.heart },
+                    { page: 'multiStore', label: 'Multi-store', icon: ICONS.grid },
+                    { page: 'biDashboards', label: 'BI Dashboards', icon: ICONS.barChart },
+                ]
             }
         ];
 
@@ -360,8 +371,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                         setIsMobileMenuOpen(false);
                                     }}
                                     className={`w-full mb-3 text-white p-2.5 rounded-lg shadow-lg relative overflow-hidden group ${licenseInfo.isExpired
-                                            ? 'bg-gradient-to-r from-rose-500 to-red-600'
-                                            : 'bg-gradient-to-r from-amber-500 to-orange-600'
+                                        ? 'bg-gradient-to-r from-rose-500 to-red-600'
+                                        : 'bg-gradient-to-r from-amber-500 to-orange-600'
                                         }`}
                                 >
                                     <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
@@ -497,8 +508,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                         <button
                             onClick={() => setIsLicenseModalOpen(true)}
                             className={`w-full mb-3 text-white p-2.5 rounded-lg shadow-lg relative overflow-hidden group ${licenseInfo.isExpired
-                                    ? 'bg-gradient-to-r from-rose-500 to-red-600'
-                                    : 'bg-gradient-to-r from-amber-500 to-orange-600'
+                                ? 'bg-gradient-to-r from-rose-500 to-red-600'
+                                : 'bg-gradient-to-r from-amber-500 to-orange-600'
                                 }`}
                         >
                             <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>

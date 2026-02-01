@@ -63,6 +63,14 @@ const TeamRankingPage = lazyWithRetry(() => import('./components/tasks/TeamRanki
 const BizPlanetPage = lazyWithRetry(() => import('./components/bizPlanet/BizPlanetPage'));
 const PayrollHub = lazyWithRetry(() => import('./components/payroll/PayrollHub'));
 
+// Shop Modules
+const POSSalesPage = lazyWithRetry(() => import('./components/shop/POSSalesPage'));
+const InventoryPage = lazyWithRetry(() => import('./components/shop/InventoryPage'));
+const AccountingPage = lazyWithRetry(() => import('./components/shop/AccountingPage'));
+const LoyaltyPage = lazyWithRetry(() => import('./components/shop/LoyaltyPage'));
+const MultiStorePage = lazyWithRetry(() => import('./components/shop/MultiStorePage'));
+const BIDashboardsPage = lazyWithRetry(() => import('./components/shop/BIDashboardsPage'));
+
 // Define page groups to determine which component instance handles which routes
 const PAGE_GROUPS = {
   DASHBOARD: ['dashboard'],
@@ -81,6 +89,12 @@ const PAGE_GROUPS = {
   IMPORT: ['import'],
   BIZ_PLANET: ['bizPlanet'],
   PAYROLL: ['payroll'],
+  POS_SALES: ['posSales'],
+  INVENTORY: ['inventory'],
+  SHOP_ACCOUNTING: ['accounting'],
+  LOYALTY: ['loyalty'],
+  MULTI_STORE: ['multiStore'],
+  BI_DASHBOARDS: ['biDashboards'],
 };
 
 const App: React.FC = () => {
@@ -423,6 +437,12 @@ const App: React.FC = () => {
       case 'teamRanking': return 'Team Ranking';
       case 'bizPlanet': return 'Biz Planet';
       case 'payroll': return 'Payroll Management';
+      case 'posSales': return 'POS Sales Screen';
+      case 'inventory': return 'Inventory Management';
+      case 'accounting': return 'Shop Accounting';
+      case 'loyalty': return 'Loyalty Program';
+      case 'multiStore': return 'Multi-store Management';
+      case 'biDashboards': return 'BI Dashboards';
       default: return 'PBooks Pro';
     }
   };
@@ -552,6 +572,12 @@ const App: React.FC = () => {
               {renderPersistentPage('PM_CONFIG', <PMConfigPage />)}
               {renderPersistentPage('BIZ_PLANET', <BizPlanetPage />)}
               {renderPersistentPage('PAYROLL', <PayrollHub />)}
+              {renderPersistentPage('POS_SALES', <POSSalesPage />)}
+              {renderPersistentPage('INVENTORY', <InventoryPage />)}
+              {renderPersistentPage('SHOP_ACCOUNTING', <AccountingPage />)}
+              {renderPersistentPage('LOYALTY', <LoyaltyPage />)}
+              {renderPersistentPage('MULTI_STORE', <MultiStorePage />)}
+              {renderPersistentPage('BI_DASHBOARDS', <BIDashboardsPage />)}
               {currentPage === 'tasks' && (
                 <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-center"><div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-2"></div><p className="text-sm text-gray-600">Loading...</p></div></div>}>
                   <TasksPage />

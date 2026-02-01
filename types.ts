@@ -24,7 +24,13 @@ export type Page =
   | 'teamRanking'
   | 'bizPlanet'
   | 'marketing'
-  | 'payroll';
+  | 'payroll'
+  | 'posSales'
+  | 'inventory'
+  | 'accounting'
+  | 'loyalty'
+  | 'multiStore'
+  | 'biDashboards';
 
 export enum TransactionType {
   INCOME = 'Income',
