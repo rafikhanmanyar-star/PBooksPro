@@ -25,8 +25,12 @@ interface MultiStoreContextType {
     activeTerminalsCount: number;
     addStore: (store: Omit<StoreBranch, 'id' | 'status'>) => Promise<void>;
     updateStore: (id: string, store: Partial<StoreBranch>) => Promise<void>;
+    addTerminal: (terminal: Omit<POSTerminal, 'id' | 'status' | 'healthScore' | 'lastSync' | 'code'> & { code?: string }) => Promise<void>;
     savePolicies: (policies: GlobalPolicies) => Promise<void>;
     policies: GlobalPolicies;
+    updateTerminal: (id: string, terminal: Partial<POSTerminal>) => Promise<void>;
+    deleteTerminal: (id: string) => Promise<void>;
+    unlockTerminal: (id: string) => Promise<void>;
 }
 
 const MultiStoreContext = createContext<MultiStoreContextType | undefined>(undefined);
@@ -104,6 +108,24 @@ export const MultiStoreProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                         requireManagerApproval: policyData.require_manager_approval,
                         loyaltyRedemptionRatio: parseFloat(policyData.loyalty_redemption_ratio) || 0.01
                     });
+                }
+
+                // Fetch Terminals
+                const terminalData = await shopApi.getTerminals() as any[];
+                console.log(`[MultiStoreContext] Fetched ${terminalData?.length} terminals`);
+                if (Array.isArray(terminalData)) {
+                    const mappedTerminals = terminalData.map((t: any) => ({
+                        id: t.id,
+                        storeId: t.branch_id,
+                        name: t.name,
+                        status: t.status,
+                        version: t.version,
+                        lastSync: t.last_sync || new Date().toISOString(),
+                        ipAddress: t.ip_address,
+                        healthScore: t.health_score || 100
+                    }));
+                    console.log('[MultiStoreContext] Mapped terminals:', mappedTerminals);
+                    setTerminals(mappedTerminals);
                 }
             } catch (error) {
                 console.error('Failed to fetch stores or policies:', error);
@@ -189,8 +211,79 @@ export const MultiStoreProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
     };
 
-    const lockTerminal = (terminalId: string) => {
-        setTerminals(prev => prev.map(t => t.id === terminalId ? { ...t, status: 'Locked' } : t));
+    const lockTerminal = async (terminalId: string) => {
+        try {
+            await shopApi.updateTerminal(terminalId, { status: 'Locked' });
+            setTerminals(prev => prev.map(t => t.id === terminalId ? { ...t, status: 'Locked' } : t));
+        } catch (e) {
+            console.error('Failed to lock terminal:', e);
+            throw e;
+        }
+    };
+
+    const unlockTerminal = async (terminalId: string) => {
+        try {
+            await shopApi.updateTerminal(terminalId, { status: 'Online' });
+            setTerminals(prev => prev.map(t => t.id === terminalId ? { ...t, status: 'Online' } : t));
+        } catch (e) {
+            console.error('Failed to unlock terminal:', e);
+            throw e;
+        }
+    };
+
+    const updateTerminal = async (id: string, terminalData: Partial<POSTerminal>) => {
+        try {
+            const apiPayload = {
+                name: terminalData.name,
+                status: terminalData.status,
+                ip_address: terminalData.ipAddress,
+                version: terminalData.version,
+                health_score: terminalData.healthScore
+            };
+            await shopApi.updateTerminal(id, apiPayload);
+            setTerminals(prev => prev.map(t => t.id === id ? { ...t, ...terminalData } : t));
+        } catch (e) {
+            console.error('Failed to update terminal:', e);
+            throw e;
+        }
+    };
+
+    const deleteTerminal = async (id: string) => {
+        try {
+            await shopApi.deleteTerminal(id);
+            setTerminals(prev => prev.filter(t => t.id !== id));
+        } catch (e) {
+            console.error('Failed to delete terminal:', e);
+            throw e;
+        }
+    };
+
+    const addTerminal = async (terminalData: Omit<POSTerminal, 'id' | 'status' | 'healthScore' | 'lastSync' | 'code'> & { code?: string }) => {
+        try {
+            const apiPayload = {
+                branchId: terminalData.storeId,
+                name: terminalData.name,
+                version: terminalData.version,
+                ipAddress: terminalData.ipAddress,
+                code: terminalData.code,
+                status: 'Offline'
+            };
+
+            const response = await shopApi.createTerminal(apiPayload) as any;
+
+            const newTerminal: POSTerminal = {
+                ...terminalData,
+                id: response && response.id ? response.id : crypto.randomUUID(),
+                code: terminalData.code || (response && response.code) || `T-${Date.now().toString().slice(-4)}`,
+                status: 'Offline',
+                healthScore: 100,
+                lastSync: new Date().toISOString()
+            };
+            setTerminals(prev => [...prev, newTerminal]);
+        } catch (e) {
+            console.error('Failed to register terminal:', e);
+            throw e;
+        }
     };
 
     const consolidatedRevenue = useMemo(() => performance.reduce((sum, p) => sum + p.salesToday, 0), [performance]);
@@ -203,8 +296,12 @@ export const MultiStoreProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         performance,
         updateStoreStatus,
         lockTerminal,
+        unlockTerminal,
         addStore,
         updateStore,
+        addTerminal,
+        updateTerminal,
+        deleteTerminal,
         savePolicies,
         policies,
         consolidatedRevenue,

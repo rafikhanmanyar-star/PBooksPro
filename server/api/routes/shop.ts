@@ -40,6 +40,43 @@ router.put('/branches/:id', async (req: any, res) => {
     }
 });
 
+// --- Terminals ---
+router.get('/terminals', async (req: any, res) => {
+    try {
+        const terminals = await getShopService().getTerminals(req.tenantId);
+        res.json(terminals);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/terminals', async (req: any, res) => {
+    try {
+        const terminalId = await getShopService().createTerminal(req.tenantId, req.body);
+        res.status(201).json({ id: terminalId, message: 'Terminal registered successfully' });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.put('/terminals/:id', async (req: any, res) => {
+    try {
+        await getShopService().updateTerminal(req.tenantId, req.params.id, req.body);
+        res.json({ success: true, message: 'Terminal updated successfully' });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.delete('/terminals/:id', async (req: any, res) => {
+    try {
+        await getShopService().deleteTerminal(req.tenantId, req.params.id);
+        res.json({ success: true, message: 'Terminal removed successfully' });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // --- Products & Inventory ---
 router.get('/products', async (req: any, res) => {
     try {
@@ -114,6 +151,24 @@ router.post('/loyalty/members', async (req: any, res) => {
     try {
         const memberId = await getShopService().createLoyaltyMember(req.tenantId, req.body);
         res.status(201).json({ id: memberId, message: 'Member enrolled successfully' });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.put('/loyalty/members/:id', async (req: any, res) => {
+    try {
+        await getShopService().updateLoyaltyMember(req.tenantId, req.params.id, req.body);
+        res.json({ success: true, message: 'Member updated successfully' });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.delete('/loyalty/members/:id', async (req: any, res) => {
+    try {
+        await getShopService().deleteLoyaltyMember(req.tenantId, req.params.id);
+        res.json({ success: true, message: 'Member removed successfully' });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }

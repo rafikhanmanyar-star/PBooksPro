@@ -565,6 +565,45 @@ async function runMigrations() {
       'Likes column to marketplace ads'
     );
 
+    // Migration: Shop/POS tables
+    await runMigrationIfNeeded(
+      pool,
+      'add-shop-pos-tables',
+      [
+        join(__dirname, '../migrations/add-shop-pos-tables.sql'),
+        join(__dirname, '../../migrations/add-shop-pos-tables.sql'),
+        join(process.cwd(), 'server/migrations/add-shop-pos-tables.sql'),
+        join(process.cwd(), 'migrations/add-shop-pos-tables.sql'),
+      ],
+      'Shop/POS tables'
+    );
+
+    // Migration: Shop policies
+    await runMigrationIfNeeded(
+      pool,
+      'add-shop-policies',
+      [
+        join(__dirname, '../migrations/add-shop-policies.sql'),
+        join(__dirname, '../../migrations/add-shop-policies.sql'),
+        join(process.cwd(), 'server/migrations/add-shop-policies.sql'),
+        join(process.cwd(), 'migrations/add-shop-policies.sql'),
+      ],
+      'Shop policies'
+    );
+
+    // Migration: Shop RLS policies
+    await runMigrationIfNeeded(
+      pool,
+      'add-shop-rls-policies',
+      [
+        join(__dirname, '../migrations/add-shop-rls-policies.sql'),
+        join(__dirname, '../../migrations/add-shop-rls-policies.sql'),
+        join(process.cwd(), 'server/migrations/add-shop-rls-policies.sql'),
+        join(process.cwd(), 'migrations/add-shop-rls-policies.sql'),
+      ],
+      'Shop RLS policies'
+    );
+
     // Create default admin user if it doesn't exist
     console.log('👤 Ensuring admin user exists...');
     const bcrypt = await import('bcryptjs');

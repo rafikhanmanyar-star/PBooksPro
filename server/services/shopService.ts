@@ -41,6 +41,55 @@ export class ShopService {
         return this.db.query('SELECT * FROM shop_products WHERE tenant_id = $1 AND is_active = TRUE', [tenantId]);
     }
 
+    // --- Terminal Methods ---
+    async getTerminals(tenantId: string) {
+        console.log(`[ShopService] Fetching terminals for tenant: ${tenantId}`);
+        const res = await this.db.query('SELECT * FROM shop_terminals WHERE tenant_id = $1 ORDER BY name ASC', [tenantId]);
+        console.log(`[ShopService] Found ${res.length} terminals in DB for tenant ${tenantId}`);
+        return res;
+    }
+
+    async createTerminal(tenantId: string, data: any) {
+        const res = await this.db.query(`
+            INSERT INTO shop_terminals (
+                tenant_id, branch_id, name, code, status, version, ip_address
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id
+        `, [
+            tenantId,
+            data.branchId,
+            data.name,
+            data.code || `T-${Date.now().toString().slice(-4)}`,
+            data.status || 'Offline',
+            data.version || '1.0.0',
+            data.ipAddress || '0.0.0.0'
+        ]);
+        console.log(`[ShopService] Created terminal ${res[0].id} for tenant ${tenantId}`);
+        return res[0].id;
+    }
+
+    async updateTerminal(tenantId: string, terminalId: string, data: any) {
+        return this.db.query(`
+            UPDATE shop_terminals
+            SET 
+                name = COALESCE($1, name),
+                status = COALESCE($2, status),
+                last_sync = COALESCE($3, last_sync),
+                ip_address = COALESCE($4, ip_address),
+                health_score = COALESCE($5, health_score),
+                updated_at = NOW()
+            WHERE id = $6 AND tenant_id = $7
+        `, [
+            data.name, data.status, data.last_sync,
+            data.ip_address, data.health_score,
+            terminalId, tenantId
+        ]);
+    }
+
+    async deleteTerminal(tenantId: string, terminalId: string) {
+        return this.db.query('DELETE FROM shop_terminals WHERE id = $1 AND tenant_id = $2', [terminalId, tenantId]);
+    }
+
     async createProduct(tenantId: string, data: any) {
         const res = await this.db.query(`
             INSERT INTO shop_products (
@@ -277,7 +326,7 @@ export class ShopService {
     // --- Loyalty Methods ---
     async getLoyaltyMembers(tenantId: string) {
         return this.db.query(`
-            SELECT m.*, c.name as customer_name, c.contact_no
+            SELECT m.*, c.name as customer_name, c.contact_no, c.address as email
             FROM shop_loyalty_members m
             JOIN contacts c ON m.customer_id = c.id AND c.tenant_id = $1
             WHERE m.tenant_id = $1
@@ -303,16 +352,12 @@ export class ShopService {
 
                 // If still no customerId, create new contact
                 if (!customerId) {
+                    const newContactId = `contact_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
                     const newContact = await client.query(`
-                        INSERT INTO contacts (tenant_id, name, type, contact_no, address)
-                        VALUES ($1, $2, 'Customer', $3, $4)
+                        INSERT INTO contacts (id, tenant_id, name, type, contact_no, address)
+                        VALUES ($1, $2, $3, 'Customer', $4, $5)
                         RETURNING id
-                    `, [tenantId, data.name, data.phone, data.email]); // Storing email in address field temporarily or schema mismatch? 
-                    // contacts table: name, type, description, contact_no, company_name, address. No email column in schema shown earlier?
-                    // actually `postgresql-schema.sql` shows contacts table. Let's check.
-                    // Contacts table: id, tenant_id, name, type, description, contact_no, company_name, address.
-                    // It seems contacts table doesn't have email? Users table has email. 
-                    // Maybe store email in description for now or address.
+                    `, [newContactId, tenantId, data.name, data.phone, data.email]);
                     customerId = newContact.rows[0].id;
                 }
             }
@@ -331,6 +376,26 @@ export class ShopService {
 
             return res.rows[0].id;
         });
+    }
+
+    async updateLoyaltyMember(tenantId: string, memberId: string, data: any) {
+        return this.db.query(`
+            UPDATE shop_loyalty_members
+            SET 
+                card_number = COALESCE($1, card_number),
+                tier = COALESCE($2, tier),
+                status = COALESCE($3, status),
+                updated_at = NOW()
+            WHERE id = $4 AND tenant_id = $5
+            RETURNING *
+        `, [data.cardNumber, data.tier, data.status, memberId, tenantId]);
+    }
+
+    async deleteLoyaltyMember(tenantId: string, memberId: string) {
+        return this.db.query(
+            'DELETE FROM shop_loyalty_members WHERE id = $1 AND tenant_id = $2',
+            [memberId, tenantId]
+        );
     }
     // --- Policy Methods ---
     async getPolicies(tenantId: string) {

@@ -18,6 +18,8 @@ interface LoyaltyContextType {
     campaigns: LoyaltyCampaign[];
 
     addMember: (member: Omit<LoyaltyMember, 'id' | 'joinDate' | 'pointsBalance' | 'lifetimePoints'>) => void;
+    updateMember: (id: string, data: Partial<LoyaltyMember>) => void;
+    deleteMember: (id: string) => void;
     processLoyalty: (customerId: string, saleAmount: number, saleId: string, isRedemption?: boolean, redeemPoints?: number) => void;
     updateMemberTier: (memberId: string) => void;
 
@@ -52,8 +54,24 @@ export const LoyaltyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const fetchMembers = async () => {
             try {
                 const data = await shopApi.getLoyaltyMembers();
-                // Map DB snake_case to CamelCase if necessary, or ensure types match
-                setMembers(data);
+                if (Array.isArray(data)) {
+                    const mappedMembers: LoyaltyMember[] = data.map((m: any) => ({
+                        id: m.id,
+                        customerId: m.customer_id,
+                        customerName: m.customer_name || 'Unnamed Member',
+                        cardNumber: m.card_number,
+                        phone: m.contact_no,
+                        email: m.email,
+                        tier: m.tier,
+                        pointsBalance: parseInt(m.points_balance) || 0,
+                        lifetimePoints: parseInt(m.lifetime_points) || 0,
+                        totalSpend: parseFloat(m.total_spend) || 0,
+                        visitCount: parseInt(m.visit_count) || 0,
+                        joinDate: m.joined_at || m.created_at || new Date().toISOString(),
+                        status: m.status
+                    }));
+                    setMembers(mappedMembers);
+                }
             } catch (error) {
                 console.error('Failed to fetch loyalty members:', error);
             }
@@ -99,6 +117,24 @@ export const LoyaltyProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 totalSpend: 0
             };
             setMembers(prev => [...prev, newMember]);
+        }
+    }, []);
+
+    const updateMember = useCallback(async (id: string, data: Partial<LoyaltyMember>) => {
+        try {
+            await shopApi.updateLoyaltyMember(id, data);
+            setMembers(prev => prev.map(m => m.id === id ? { ...m, ...data } : m));
+        } catch (error) {
+            console.error('Failed to update member:', error);
+        }
+    }, []);
+
+    const deleteMember = useCallback(async (id: string) => {
+        try {
+            await shopApi.deleteLoyaltyMember(id);
+            setMembers(prev => prev.filter(m => m.id !== id));
+        } catch (error) {
+            console.error('Failed to delete member:', error);
         }
     }, []);
 
@@ -164,7 +200,7 @@ export const LoyaltyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return (
         <LoyaltyContext.Provider value={{
             members, programs, transactions, tiers, campaigns,
-            addMember, processLoyalty, updateMemberTier, ...stats
+            addMember, updateMember, deleteMember, processLoyalty, updateMemberTier, ...stats
         }}>
             {children}
         </LoyaltyContext.Provider>
