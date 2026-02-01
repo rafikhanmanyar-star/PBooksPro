@@ -66,9 +66,9 @@ router.get('/sales-trend', async (req: TenantRequest, res) => {
             const found = sales.find((s: any) => parseInt(s.hour) === i) || { revenue: 0, orders: 0 };
             trends.push({
                 timestamp: `${i}:00`,
-                revenue: parseFloat(found.revenue || '0') + (Math.random() * 50000), // Add noise for demo if empty
-                orders: parseInt(found.orders || '0') + Math.floor(Math.random() * 10),
-                profit: (parseFloat(found.revenue || '0') * 0.3) + (Math.random() * 15000)
+                revenue: parseFloat(found.revenue || '0'),
+                orders: parseInt(found.orders || '0'),
+                profit: (parseFloat(found.revenue || '0') * 0.3)
             });
         }
         res.json(trends);
@@ -84,7 +84,7 @@ router.get('/store-rankings', async (req: TenantRequest, res) => {
         const rankings = await db.query(`
             SELECT 
                 b.name as storeName,
-                SUM(s.grand_total) as revenue
+                COALESCE(SUM(s.grand_total), 0) as revenue
             FROM shop_branches b
             LEFT JOIN shop_sales s ON b.id = s.branch_id AND s.created_at >= NOW() - INTERVAL '30 days'
             WHERE b.tenant_id = $1
@@ -93,20 +93,14 @@ router.get('/store-rankings', async (req: TenantRequest, res) => {
             LIMIT 5
          `, [req.tenantId]);
 
-        // Add mock fields for growth/margin if not calculated
         const result = rankings.map((r: any) => ({
-            storeName: r.storeName,
+            storeName: r.storename, // query returns storename in lowercase usually or as storeName? pg result is lowercase storename
             revenue: parseFloat(r.revenue || '0'),
-            growth: Math.floor(Math.random() * 20) + 5,
-            margin: Math.floor(Math.random() * 10) + 20
+            growth: 0,
+            margin: 25 // Default margin estimate
         }));
 
-        if (result.length === 0) {
-            // Return fallback if no branches/sales
-            res.json([{ storeName: 'Main Store', revenue: 0, growth: 0, margin: 0 }]); // Avoid breaking UI
-        } else {
-            res.json(result);
-        }
+        res.json(result);
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }

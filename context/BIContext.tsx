@@ -54,23 +54,11 @@ export const BIProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     }, [dateRange]);
 
 
-    const categoryPerformance: CategoryPerformance[] = useMemo(() => [
-        { category: 'Sanitary Ware', revenue: 4500000, stockValue: 12000000, turnoverRate: 3.2 },
-        { category: 'Tiles & Ceramics', revenue: 8200000, stockValue: 25000000, turnoverRate: 2.8 },
-        { category: 'CP Fittings', revenue: 3100000, stockValue: 8000000, turnoverRate: 4.1 },
-    ], []);
+    const categoryPerformance: CategoryPerformance[] = useMemo(() => [], []);
 
-    const cashierMetrics: CashierMetric[] = useMemo(() => [
-        { name: 'Zubair Shah', sales: 450000, aov: 3200, voidCount: 2, discountTotal: 4500 },
-        { name: 'Mariam Ali', sales: 380000, aov: 3100, voidCount: 0, discountTotal: 1200 },
-        { name: 'Kamran Jaffar', sales: 420000, aov: 3400, voidCount: 5, discountTotal: 8900 },
-    ], []);
+    const cashierMetrics: CashierMetric[] = useMemo(() => [], []);
 
-    const customerSegments: CustomerSegmentData[] = useMemo(() => [
-        { segment: 'Champions', count: 120, revenue: 12500000, clv: 104000 },
-        { segment: 'Loyal Customers', count: 450, revenue: 8900000, clv: 19700 },
-        { segment: 'At Risk', count: 85, revenue: 1200000, clv: 14000 },
-    ], []);
+    const customerSegments: CustomerSegmentData[] = useMemo(() => [], []);
 
     const value = {
         kpis,

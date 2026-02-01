@@ -27,35 +27,48 @@ interface MultiStoreContextType {
 const MultiStoreContext = createContext<MultiStoreContextType | undefined>(undefined);
 
 export const MultiStoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [organization] = useState<OrganizationHeader>({
-        name: 'PBooks Retail Group (PVT) LTD',
-        hqAddress: '7th Floor, Executive Tower, Karachi',
-        totalStores: 12,
+    const [organization, setOrganization] = useState<OrganizationHeader>({
+        name: 'My Organization',
+        hqAddress: '',
+        totalStores: 0,
         centralCurrency: 'PKR',
         lastConsolidated: new Date().toISOString()
     });
 
-    const [stores, setStores] = useState<StoreBranch[]>([
-        { id: 'st-1', name: 'Karachi Flagship', code: 'KHI-01', type: 'Flagship', status: 'Active', location: 'DHA Phase 6', region: 'South', manager: 'Zubair Shah', contact: '+92-300-1234567', timezone: 'GMT+5', openTime: '10:00', closeTime: '22:00' },
-        { id: 'st-2', name: 'Lahore Emporium', code: 'LHR-02', type: 'Express', status: 'Active', location: 'Johar Town', region: 'Central', manager: 'Mariam Ali', contact: '+92-300-7654321', timezone: 'GMT+5', openTime: '11:00', closeTime: '23:00' },
-        { id: 'st-3', name: 'Islamabad Centaurus', code: 'ISB-01', type: 'Express', status: 'Active', location: 'Blue Area', region: 'North', manager: 'Kamran Jaffar', contact: '+92-300-9988776', timezone: 'GMT+5', openTime: '11:00', closeTime: '23:00' },
-        { id: 'st-4', name: 'Central Warehouse', code: 'CWH-01', type: 'Warehouse', status: 'Active', location: 'Port Qasim', region: 'South', manager: 'Irfan Khan', contact: '+92-300-5554433', timezone: 'GMT+5', openTime: '08:00', closeTime: '20:00' },
-        { id: 'st-5', name: 'Online Store', code: 'WEB-01', type: 'Virtual', status: 'Active', location: 'Cloud', region: 'Global', manager: 'Ayesha Aziz', contact: 'support@pbooks.com', timezone: 'GMT', openTime: '00:00', closeTime: '23:59' }
-    ]);
+    const [stores, setStores] = useState<StoreBranch[]>([]);
+    const [terminals, setTerminals] = useState<POSTerminal[]>([]);
+    const [performance, setPerformance] = useState<StorePerformance[]>([]);
 
-    const [terminals, setTerminals] = useState<POSTerminal[]>([
-        { id: 't-1', storeId: 'st-1', name: 'Main Counter 01', code: 'KHI-T1', status: 'Online', version: '2.4.1', lastSync: new Date().toISOString(), ipAddress: '192.168.1.45', healthScore: 98 },
-        { id: 't-2', storeId: 'st-1', name: 'Express Lane 02', code: 'KHI-T2', status: 'Online', version: '2.4.1', lastSync: new Date().toISOString(), ipAddress: '192.168.1.46', healthScore: 95 },
-        { id: 't-3', storeId: 'st-2', name: 'Front Desk', code: 'LHR-T1', status: 'Offline', version: '2.4.0', lastSync: new Date(Date.now() - 3600000).toISOString(), ipAddress: '10.0.4.12', healthScore: 82 },
-        { id: 't-4', storeId: 'st-3', name: 'POS-01', code: 'ISB-T1', status: 'Online', version: '2.4.1', lastSync: new Date().toISOString(), ipAddress: '172.16.0.10', healthScore: 100 }
-    ]);
+    React.useEffect(() => {
+        const fetchData = async () => {
+            try {
+                const branches = await shopApi.getBranches();
+                const mappedStores: StoreBranch[] = branches.map((b: any) => ({
+                    id: b.id,
+                    name: b.name,
+                    code: b.code,
+                    type: b.type,
+                    status: b.status,
+                    location: b.location,
+                    region: b.region,
+                    manager: b.manager_name,
+                    contact: b.contact_no,
+                    timezone: b.timezone,
+                    openTime: b.open_time,
+                    closeTime: b.close_time
+                }));
+                setStores(mappedStores);
 
-    const [performance] = useState<StorePerformance[]>([
-        { storeId: 'st-1', salesToday: 450000, salesMTD: 12500000, customerCount: 450, inventoryValue: 35000000, profitMargin: 24, variance: -0.5 },
-        { storeId: 'st-2', salesToday: 280000, salesMTD: 8900000, customerCount: 210, inventoryValue: 18000000, profitMargin: 22, variance: 1.2 },
-        { storeId: 'st-3', salesToday: 310000, salesMTD: 9200000, customerCount: 245, inventoryValue: 22000000, profitMargin: 25, variance: 0.8 },
-        { storeId: 'st-5', salesToday: 185000, salesMTD: 5600000, customerCount: 890, inventoryValue: 0, profitMargin: 28, variance: 2.5 }
-    ]);
+                // Set organization name from first branch or defaults
+                if (mappedStores.length > 0) {
+                    setOrganization(prev => ({ ...prev, name: 'PBooks Enterprise', totalStores: mappedStores.length }));
+                }
+            } catch (error) {
+                console.error('Failed to fetch stores:', error);
+            }
+        };
+        fetchData();
+    }, []);
 
     const updateStoreStatus = (storeId: string, status: any) => {
         setStores(prev => prev.map(s => s.id === storeId ? { ...s, status } : s));

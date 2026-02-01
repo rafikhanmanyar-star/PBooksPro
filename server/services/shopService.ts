@@ -66,8 +66,8 @@ export class ShopService {
         let query = `
             SELECT i.*, p.name as product_name, p.sku, p.retail_price, w.name as warehouse_name 
             FROM shop_inventory i
-            JOIN shop_products p ON i.product_id = p.id
-            JOIN shop_warehouses w ON i.warehouse_id = w.id
+            JOIN shop_products p ON i.product_id = p.id AND p.tenant_id = $1
+            JOIN shop_warehouses w ON i.warehouse_id = w.id AND w.tenant_id = $1
             WHERE i.tenant_id = $1
         `;
         const params: any[] = [tenantId];
@@ -191,8 +191,8 @@ export class ShopService {
         return this.db.query(`
             SELECT s.*, c.name as customer_name, b.name as branch_name 
             FROM shop_sales s
-            LEFT JOIN contacts c ON s.customer_id = c.id
-            LEFT JOIN shop_branches b ON s.branch_id = b.id
+            LEFT JOIN contacts c ON s.customer_id = c.id AND c.tenant_id = $1
+            LEFT JOIN shop_branches b ON s.branch_id = b.id AND b.tenant_id = $1
             WHERE s.tenant_id = $1 
             ORDER BY s.created_at DESC
         `, [tenantId]);
@@ -234,7 +234,7 @@ export class ShopService {
         return this.db.query(`
             SELECT m.*, c.name as customer_name, c.contact_no
             FROM shop_loyalty_members m
-            JOIN contacts c ON m.customer_id = c.id
+            JOIN contacts c ON m.customer_id = c.id AND c.tenant_id = $1
             WHERE m.tenant_id = $1
         `, [tenantId]);
     }
