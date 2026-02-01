@@ -30,8 +30,6 @@ const ENTITY_TO_ENDPOINT: Record<string, string> = {
   bills: '/bills',
   budgets: '/budgets',
   plan_amenities: '/plan-amenities',
-  inventory_items: '/inventory-items',
-  warehouses: '/warehouses',
   contracts: '/contracts',
   sales_returns: '/sales-returns',
   quotations: '/quotations',
@@ -109,11 +107,11 @@ class BidirectionalSyncService {
       logger.logCategory('sync', '📤 Running upstream sync...');
       result.upstream = await this.runUpstream(tenantId);
       logger.logCategory('sync', '📤 Upstream result:', result.upstream);
-      
+
       logger.logCategory('sync', '📥 Running downstream sync...');
       result.downstream = await this.runDownstream(tenantId);
       logger.logCategory('sync', '📥 Downstream result:', result.downstream);
-      
+
       result.success = result.upstream.failed === 0;
       logger.logCategory('sync', '✅ Bi-directional sync completed successfully');
     } catch (error) {
@@ -165,7 +163,7 @@ class BidirectionalSyncService {
     logger.logCategory('sync', '📤 Checking SyncManager queue...');
     const syncMgrStatus = syncManager.getQueueStatus();
     logger.logCategory('sync', `📤 SyncManager status: ${syncMgrStatus.total} total, ${syncMgrStatus.pending} pending, ${syncMgrStatus.syncing} syncing, ${syncMgrStatus.failed} failed`);
-    
+
     if (syncMgrStatus.pending > 0 || syncMgrStatus.failed > 0) {
       logger.logCategory('sync', `📤 SyncManager has ${syncMgrStatus.pending} pending + ${syncMgrStatus.failed} failed, triggering syncQueueBatch...`);
       try {

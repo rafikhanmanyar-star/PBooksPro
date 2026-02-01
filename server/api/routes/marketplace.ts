@@ -37,7 +37,7 @@ router.get('/', async (req: TenantRequest, res) => {
     let sql = `
       SELECT a.id, a.tenant_id, a.title, a.description, a.category_id, a.product_brand, a.product_model,
              a.min_order_quantity, a.unit, a.specifications, a.contact_email, a.contact_phone, a.status,
-             a.created_at, a.updated_at,
+             a.views, a.likes, a.created_at, a.updated_at,
              c.name AS category_name,
              t.name AS supplier_name, t.company_name AS supplier_company_name, t.email AS supplier_email
       FROM marketplace_ads a
@@ -107,7 +107,7 @@ router.get('/my-ads', async (req: TenantRequest, res) => {
     const rows = await db.query(
       `SELECT a.id, a.tenant_id, a.title, a.description, a.category_id, a.product_brand, a.product_model,
               a.min_order_quantity, a.unit, a.specifications, a.contact_email, a.contact_phone, a.status,
-              a.created_at, a.updated_at,
+              a.views, a.likes, a.created_at, a.updated_at,
               c.name AS category_name
        FROM marketplace_ads a
        JOIN marketplace_categories c ON c.id = a.category_id
@@ -173,10 +173,15 @@ router.get('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const { id } = req.params;
+
+    // Increment view count asynchronously (don't block the request)
+    db.query('UPDATE marketplace_ads SET views = COALESCE(views, 0) + 1 WHERE id = $1', [id])
+      .catch(err => console.error('Failed to increment ad views:', err));
+
     const rows = await db.query(
       `SELECT a.id, a.tenant_id, a.title, a.description, a.category_id, a.product_brand, a.product_model,
               a.min_order_quantity, a.unit, a.specifications, a.contact_email, a.contact_phone, a.status,
-              a.created_at, a.updated_at,
+              a.views, a.likes, a.created_at, a.updated_at,
               c.name AS category_name,
               t.name AS supplier_name, t.company_name AS supplier_company_name, t.email AS supplier_email
        FROM marketplace_ads a
@@ -200,6 +205,29 @@ router.get('/:id', async (req: TenantRequest, res) => {
   } catch (error: any) {
     console.error('Marketplace get ad error:', error);
     res.status(500).json({ error: 'Failed to load ad' });
+  }
+});
+
+/**
+ * POST /api/marketplace/:id/like
+ * Increment like count for an ad
+ */
+router.post('/:id/like', async (req: TenantRequest, res) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+
+    const result = await db.query(
+      'UPDATE marketplace_ads SET likes = COALESCE(likes, 0) + 1 WHERE id = $1 RETURNING likes',
+      [id]
+    );
+
+    if (result.length === 0) return res.status(404).json({ error: 'Ad not found' });
+
+    res.json({ likes: result[0].likes });
+  } catch (error: any) {
+    console.error('Marketplace like error:', error);
+    res.status(500).json({ error: 'Failed to like ad' });
   }
 });
 
@@ -251,7 +279,7 @@ router.post('/', async (req: TenantRequest, res) => {
         id, tenant_id, title, description, category_id,
         product_brand, product_model, min_order_quantity, unit, specifications,
         contact_email, contact_phone, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'ACTIVE')`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'PENDING')`,
       [
         id,
         tenantId,

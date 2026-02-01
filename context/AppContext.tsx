@@ -247,13 +247,6 @@ const initialState: AppState = {
     dashboardConfig: { visibleKpis: [] },
     installmentPlans: [],
     planAmenities: [],
-    inventoryItems: [],
-    warehouses: [],
-    // Purchase Bills (My Shop)
-    purchaseBills: [],
-    purchaseBillItems: [],
-    purchaseBillPayments: [],
-    inventoryStock: [],
     agreementSettings: { prefix: 'AGR-', nextNumber: 1, padding: 4 },
     projectAgreementSettings: { prefix: 'P-AGR-', nextNumber: 1, padding: 4 },
     rentalInvoiceSettings: { prefix: 'INV-', nextNumber: 1, padding: 5 },
@@ -609,10 +602,10 @@ const reducer = (state: AppState, action: AppAction): AppState => {
                     const updatedAllocation = {
                         ...relatedAllocation,
                         paidAmount: updatedBill.paidAmount || 0,
-                        status: updatedBill.status === InvoiceStatus.PAID ? 'paid' : 
-                               updatedBill.status === InvoiceStatus.PARTIALLY_PAID ? 'partially_paid' : 'unpaid'
+                        status: updatedBill.status === InvoiceStatus.PAID ? 'paid' :
+                            updatedBill.status === InvoiceStatus.PARTIALLY_PAID ? 'partially_paid' : 'unpaid'
                     };
-                    newState.pmCycleAllocations = newState.pmCycleAllocations.map(a => 
+                    newState.pmCycleAllocations = newState.pmCycleAllocations.map(a =>
                         a.id === updatedAllocation.id ? updatedAllocation : a
                     );
                 }
@@ -655,26 +648,26 @@ const reducer = (state: AppState, action: AppAction): AppState => {
         }
         case 'DELETE_BILL':
             return { ...state, bills: state.bills.filter(b => b.id !== action.payload) };
-        
+
         // --- PM CYCLE ALLOCATIONS ---
         case 'ADD_PM_CYCLE_ALLOCATION':
-            return { 
-                ...state, 
-                pmCycleAllocations: [...(state.pmCycleAllocations || []), action.payload] 
+            return {
+                ...state,
+                pmCycleAllocations: [...(state.pmCycleAllocations || []), action.payload]
             };
         case 'UPDATE_PM_CYCLE_ALLOCATION':
-            return { 
-                ...state, 
-                pmCycleAllocations: (state.pmCycleAllocations || []).map(a => 
+            return {
+                ...state,
+                pmCycleAllocations: (state.pmCycleAllocations || []).map(a =>
                     a.id === action.payload.id ? action.payload : a
-                ) 
+                )
             };
         case 'DELETE_PM_CYCLE_ALLOCATION':
-            return { 
-                ...state, 
-                pmCycleAllocations: (state.pmCycleAllocations || []).filter(a => a.id !== action.payload) 
+            return {
+                ...state,
+                pmCycleAllocations: (state.pmCycleAllocations || []).filter(a => a.id !== action.payload)
             };
-        
+
         case 'ADD_QUOTATION':
             return { ...state, quotations: [...(state.quotations || []), action.payload] };
         case 'UPDATE_QUOTATION':
@@ -704,12 +697,12 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, rentalAgreements: state.rentalAgreements.filter(r => r.id !== action.payload) };
 
         case 'ADD_PROJECT_AGREEMENT':
-            return { 
-                ...state, 
+            return {
+                ...state,
                 projectAgreements: [
-                    ...state.projectAgreements, 
+                    ...state.projectAgreements,
                     { ...action.payload, userId: action.payload?.userId || state.currentUser?.id || undefined }
-                ] 
+                ]
             };
         case 'UPDATE_PROJECT_AGREEMENT':
             return { ...state, projectAgreements: state.projectAgreements.map(p => p.id === action.payload.id ? action.payload : p) };
@@ -904,52 +897,7 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, planAmenities: (state.planAmenities || []).map(a => a.id === action.payload.id ? action.payload : a) };
         case 'DELETE_PLAN_AMENITY':
             return { ...state, planAmenities: (state.planAmenities || []).filter(a => a.id !== action.payload) };
-        case 'ADD_INVENTORY_ITEM':
-            return { ...state, inventoryItems: [...(state.inventoryItems || []), action.payload] };
-        case 'UPDATE_INVENTORY_ITEM':
-            return { ...state, inventoryItems: (state.inventoryItems || []).map(i => i.id === action.payload.id ? action.payload : i) };
-        case 'DELETE_INVENTORY_ITEM':
-            return { ...state, inventoryItems: (state.inventoryItems || []).filter(i => i.id !== action.payload) };
-        case 'SET_INVENTORY_ITEMS':
-            return { ...state, inventoryItems: action.payload };
-        case 'ADD_WAREHOUSE':
-            return { ...state, warehouses: [...(state.warehouses || []), action.payload] };
-        case 'UPDATE_WAREHOUSE':
-            return { ...state, warehouses: (state.warehouses || []).map(w => w.id === action.payload.id ? action.payload : w) };
-        case 'DELETE_WAREHOUSE':
-            return { ...state, warehouses: (state.warehouses || []).filter(w => w.id !== action.payload) };
-        case 'SET_WAREHOUSES':
-            return { ...state, warehouses: action.payload };
-        
-        // Purchase Bills Actions
-        case 'ADD_PURCHASE_BILL':
-            return { ...state, purchaseBills: [...(state.purchaseBills || []), action.payload] };
-        case 'UPDATE_PURCHASE_BILL':
-            return { ...state, purchaseBills: (state.purchaseBills || []).map(b => b.id === action.payload.id ? action.payload : b) };
-        case 'DELETE_PURCHASE_BILL':
-            return { ...state, purchaseBills: (state.purchaseBills || []).filter(b => b.id !== action.payload) };
-        case 'SET_PURCHASE_BILLS':
-            return { ...state, purchaseBills: action.payload };
-        case 'ADD_PURCHASE_BILL_ITEM':
-            return { ...state, purchaseBillItems: [...(state.purchaseBillItems || []), action.payload] };
-        case 'UPDATE_PURCHASE_BILL_ITEM':
-            return { ...state, purchaseBillItems: (state.purchaseBillItems || []).map(i => i.id === action.payload.id ? action.payload : i) };
-        case 'DELETE_PURCHASE_BILL_ITEM':
-            return { ...state, purchaseBillItems: (state.purchaseBillItems || []).filter(i => i.id !== action.payload) };
-        case 'SET_PURCHASE_BILL_ITEMS':
-            return { ...state, purchaseBillItems: action.payload };
-        case 'ADD_PURCHASE_BILL_PAYMENT':
-            return { ...state, purchaseBillPayments: [...(state.purchaseBillPayments || []), action.payload] };
-        case 'SET_INVENTORY_STOCK':
-            return { ...state, inventoryStock: action.payload };
-        case 'UPDATE_INVENTORY_STOCK':
-            return { 
-                ...state, 
-                inventoryStock: (state.inventoryStock || []).map(s => 
-                    s.inventoryItemId === action.payload.inventoryItemId ? action.payload : s
-                )
-            };
-        
+
         case 'UPDATE_PM_COST_PERCENTAGE':
             return { ...state, pmCostPercentage: action.payload };
         case 'UPDATE_DEFAULT_PROJECT':
@@ -997,12 +945,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Get auth status - must be called unconditionally at top level
     // AuthProvider wraps AppProvider in index.tsx, so this should work
     const auth = useAuth();
-    
+
     // Track previous auth state to detect when user re-authenticates
     const prevAuthRef = React.useRef<boolean>(false);
     const prevTenantIdRef = React.useRef<string | null>(null);
     const isAuthenticated = auth.isAuthenticated;
-    
+
     // Track tenant ID to detect tenant switches
     // Read directly from localStorage to avoid circular dependency issues
     const currentTenantId = React.useMemo(() => {
@@ -1016,7 +964,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return null;
         }
     }, [isAuthenticated]);
-    
+
     const [isInitializing, setIsInitializing] = useState(true);
     const [initMessage, setInitMessage] = useState('Initializing application...');
     const [initProgress, setInitProgress] = useState(0);
@@ -1029,16 +977,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Add error boundary logging before hooks
     console.log('[AppContext] About to initialize database hooks...');
     console.log('[AppContext] initialState keys:', Object.keys(initialState));
-    
+
     const [dbState, setDbState] = useDatabaseState<AppState>('finance_app_state_v4', initialState);
     const [fallbackState, setFallbackState] = useDatabaseStateFallback<AppState>('finance_app_state_v4', initialState);
-    
+
     console.log('[AppContext] Database hooks initialized successfully');
 
     // Initialize storedState safely - use initialState as fallback if hooks aren't ready
     const storedState = (useFallback ? fallbackState : dbState) || initialState;
     const setStoredState = useFallback ? setFallbackState : setDbState;
-    
+
     // Use a ref to track storedState to avoid initialization issues in dependency arrays
     // Initialize ref with initialState to ensure it's always defined
     const storedStateRef = useRef<AppState>(initialState);
@@ -1075,7 +1023,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
             return prev;
         });
-        
+
         // Also clear from database if needed (check after state update)
         if (isAppRelaunched || versionChanged) {
             // Clear from database if available (async, don't block)
@@ -1198,12 +1146,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         // Load from API (cloud mode)
                         setInitMessage('Loading data from cloud...');
                         setInitProgress(60);
-                        
+
                         try {
                             // Get current tenant ID to detect tenant switches
                             const { apiClient } = await import('../services/api/client');
                             const currentTenantId = apiClient.getTenantId();
-                            
+
                             // CRITICAL: Before clearing local data, restore offline transactions from sync queue
                             // This ensures offline data is not lost on logout/login
                             let offlineTransactions: Transaction[] = [];
@@ -1212,14 +1160,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             let offlineBills: Bill[] = [];
                             let offlineAccounts: Account[] = [];
                             let offlineCategories: Category[] = [];
-                            
+
                             try {
                                 const syncQueue = getSyncQueue();
                                 if (currentTenantId) {
                                     // Get all pending items from sync queue (these are offline operations)
                                     const pendingItems = await syncQueue.getPendingItems(currentTenantId);
                                     logger.logCategory('sync', `📦 Found ${pendingItems.length} pending sync items to restore`);
-                                    
+
                                     // Extract transactions and other entities from sync queue
                                     for (const item of pendingItems) {
                                         if (item.type === 'transaction' && item.action === 'create') {
@@ -1236,7 +1184,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                             offlineCategories.push(item.data as Category);
                                         }
                                     }
-                                    
+
                                     logger.logCategory('sync', `✅ Extracted offline data from sync queue:`, {
                                         transactions: offlineTransactions.length,
                                         contacts: offlineContacts.length,
@@ -1250,7 +1198,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 logger.warnCategory('sync', '⚠️ Could not load sync queue items:', syncQueueError);
                                 // Continue anyway - offline data might be lost but app should still work
                             }
-                            
+
                             // Clear local database data for previous tenant if tenant changed
                             // This prevents cross-tenant data leakage
                             try {
@@ -1258,17 +1206,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 if (dbService.isReady()) {
                                     const appStateRepo = await getAppStateRepository();
                                     const localState = await appStateRepo.loadState();
-                                    
+
                                     // Check if we need to clear data (tenant switch detected)
                                     // We'll clear tenant-specific data to ensure clean state
                                     const { ContactsRepository, TransactionsRepository, AccountsRepository,
-                                            CategoriesRepository, ProjectsRepository, BuildingsRepository,
-                                            PropertiesRepository, UnitsRepository, InvoicesRepository,
-                                            BillsRepository, BudgetsRepository, RentalAgreementsRepository,
-                                            ProjectAgreementsRepository, ContractsRepository,
-                                            QuotationsRepository, DocumentsRepository,
-                                            RecurringTemplatesRepository, PMCycleAllocationsRepository } = await import('../services/database/repositories/index');
-                                    
+                                        CategoriesRepository, ProjectsRepository, BuildingsRepository,
+                                        PropertiesRepository, UnitsRepository, InvoicesRepository,
+                                        BillsRepository, BudgetsRepository, RentalAgreementsRepository,
+                                        ProjectAgreementsRepository, ContractsRepository,
+                                        QuotationsRepository, DocumentsRepository,
+                                        RecurringTemplatesRepository, PMCycleAllocationsRepository } = await import('../services/database/repositories/index');
+
                                     // Clear all tenant-specific data to start fresh
                                     // This ensures no cross-tenant data leakage
                                     const contactsRepo = new ContactsRepository();
@@ -1289,38 +1237,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     const documentsRepo = new DocumentsRepository();
                                     const recurringTemplatesRepo = new RecurringTemplatesRepository();
                                     const pmCycleAllocationsRepo = new PMCycleAllocationsRepository();
-                                    
-                            // Delete ALL data (from all tenants) to ensure clean state when switching tenants
-                            // Use deleteAllUnfiltered to bypass tenant filtering and clear everything
-                            contactsRepo.deleteAllUnfiltered();
-                            transactionsRepo.deleteAllUnfiltered();
-                            accountsRepo.deleteAllUnfiltered();
-                            categoriesRepo.deleteAllUnfiltered();
-                            projectsRepo.deleteAllUnfiltered();
-                            buildingsRepo.deleteAllUnfiltered();
-                            propertiesRepo.deleteAllUnfiltered();
-                            unitsRepo.deleteAllUnfiltered();
-                            invoicesRepo.deleteAllUnfiltered();
-                            billsRepo.deleteAllUnfiltered();
-                            budgetsRepo.deleteAllUnfiltered();
-                            rentalAgreementsRepo.deleteAllUnfiltered();
-                            projectAgreementsRepo.deleteAllUnfiltered();
-                            contractsRepo.deleteAllUnfiltered();
-                            quotationsRepo.deleteAllUnfiltered();
-                            documentsRepo.deleteAllUnfiltered();
-                            recurringTemplatesRepo.deleteAllUnfiltered();
-                            pmCycleAllocationsRepo.deleteAllUnfiltered();
-                                    
+
+                                    // Delete ALL data (from all tenants) to ensure clean state when switching tenants
+                                    // Use deleteAllUnfiltered to bypass tenant filtering and clear everything
+                                    contactsRepo.deleteAllUnfiltered();
+                                    transactionsRepo.deleteAllUnfiltered();
+                                    accountsRepo.deleteAllUnfiltered();
+                                    categoriesRepo.deleteAllUnfiltered();
+                                    projectsRepo.deleteAllUnfiltered();
+                                    buildingsRepo.deleteAllUnfiltered();
+                                    propertiesRepo.deleteAllUnfiltered();
+                                    unitsRepo.deleteAllUnfiltered();
+                                    invoicesRepo.deleteAllUnfiltered();
+                                    billsRepo.deleteAllUnfiltered();
+                                    budgetsRepo.deleteAllUnfiltered();
+                                    rentalAgreementsRepo.deleteAllUnfiltered();
+                                    projectAgreementsRepo.deleteAllUnfiltered();
+                                    contractsRepo.deleteAllUnfiltered();
+                                    quotationsRepo.deleteAllUnfiltered();
+                                    documentsRepo.deleteAllUnfiltered();
+                                    recurringTemplatesRepo.deleteAllUnfiltered();
+                                    pmCycleAllocationsRepo.deleteAllUnfiltered();
+
                                     console.log('🗑️ Cleared local database data to prevent cross-tenant leakage');
                                 }
                             } catch (clearError) {
                                 console.warn('⚠️ Could not clear local database data:', clearError);
                                 // Continue anyway - tenant filtering in queries will handle it
                             }
-                            
+
                             const apiService = getAppStateApiService();
                             const apiState = await apiService.loadState();
-                            
+
                             // Merge offline data with API data - offline data takes precedence for conflicts
                             // Create maps for efficient lookup
                             const apiTransactionsMap = new Map((apiState.transactions || []).map(tx => [tx.id, tx]));
@@ -1329,37 +1277,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             const apiBillsMap = new Map((apiState.bills || []).map(b => [b.id, b]));
                             const apiAccountsMap = new Map((apiState.accounts || []).map(a => [a.id, a]));
                             const apiCategoriesMap = new Map((apiState.categories || []).map(c => [c.id, c]));
-                            
+
                             // Merge offline transactions (offline takes precedence)
                             for (const offlineTx of offlineTransactions) {
                                 apiTransactionsMap.set(offlineTx.id, offlineTx);
                             }
-                            
+
                             // Merge offline contacts
                             for (const offlineContact of offlineContacts) {
                                 apiContactsMap.set(offlineContact.id, offlineContact);
                             }
-                            
+
                             // Merge offline invoices
                             for (const offlineInvoice of offlineInvoices) {
                                 apiInvoicesMap.set(offlineInvoice.id, offlineInvoice);
                             }
-                            
+
                             // Merge offline bills
                             for (const offlineBill of offlineBills) {
                                 apiBillsMap.set(offlineBill.id, offlineBill);
                             }
-                            
+
                             // Merge offline accounts
                             for (const offlineAccount of offlineAccounts) {
                                 apiAccountsMap.set(offlineAccount.id, offlineAccount);
                             }
-                            
+
                             // Merge offline categories
                             for (const offlineCategory of offlineCategories) {
                                 apiCategoriesMap.set(offlineCategory.id, offlineCategory);
                             }
-                            
+
                             logger.logCategory('sync', `✅ Merged offline data with API data:`, {
                                 transactions: apiTransactionsMap.size,
                                 contacts: apiContactsMap.size,
@@ -1368,7 +1316,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 accounts: apiAccountsMap.size,
                                 categories: apiCategoriesMap.size
                             });
-                            
+
                             // Replace state with merged data using functional update
                             // This ensures we access the current state value correctly
                             if (isMounted) {
@@ -1392,10 +1340,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                         contracts: apiState.contracts || [],
                                         pmCycleAllocations: apiState.pmCycleAllocations || [],
                                         transactionLog: apiState.transactionLog || [],
-                                        inventoryItems: apiState.inventoryItems || [],
-                                        warehouses: apiState.warehouses || [],
                                     };
-                                    
+
                                     // Save API data to local database with proper tenant_id (async, don't await)
                                     // This ensures offline access and proper tenant isolation
                                     // IMPORTANT: Disable sync queueing since this data is FROM cloud, not TO cloud
@@ -1415,7 +1361,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                             }
                                         })();
                                     }
-                                    
+
                                     return fullState;
                                 });
                                 console.log('✅ Loaded and merged data from API + offline sync queue:', {
@@ -1658,639 +1604,639 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 return newState;
             }
 
-        const getDeleteSyncTarget = (action: AppAction): { type: SyncOperationType; id: string } | null => {
-            switch (action.type) {
-                case 'DELETE_INVOICE':
-                    return { type: 'invoice', id: action.payload as string };
-                case 'DELETE_TRANSACTION':
-                    return { type: 'transaction', id: action.payload as string };
-                default:
-                    return null;
-            }
-        };
-
-        const prunePendingSyncItems = async (currentUser: User | null, action: AppAction) => {
-            const target = getDeleteSyncTarget(action);
-            const tenantId = currentUser?.tenant?.id;
-            if (!target || !tenantId) return;
-
-            try {
-                const removed = await getSyncQueue().removePendingByEntity(tenantId, target.type, target.id);
-                if (removed > 0) {
-                    logger.logCategory('sync', `🧹 Removed ${removed} pending sync item(s) for ${target.type}:${target.id}`);
+            const getDeleteSyncTarget = (action: AppAction): { type: SyncOperationType; id: string } | null => {
+                switch (action.type) {
+                    case 'DELETE_INVOICE':
+                        return { type: 'invoice', id: action.payload as string };
+                    case 'DELETE_TRANSACTION':
+                        return { type: 'transaction', id: action.payload as string };
+                    default:
+                        return null;
                 }
-            } catch (error) {
-                logger.warnCategory('sync', '⚠️ Failed to prune pending sync items:', error);
-            }
-        };
+            };
+
+            const prunePendingSyncItems = async (currentUser: User | null, action: AppAction) => {
+                const target = getDeleteSyncTarget(action);
+                const tenantId = currentUser?.tenant?.id;
+                if (!target || !tenantId) return;
+
+                try {
+                    const removed = await getSyncQueue().removePendingByEntity(tenantId, target.type, target.id);
+                    if (removed > 0) {
+                        logger.logCategory('sync', `🧹 Removed ${removed} pending sync item(s) for ${target.type}:${target.id}`);
+                    }
+                } catch (error) {
+                    logger.warnCategory('sync', '⚠️ Failed to prune pending sync items:', error);
+                }
+            };
 
             // Sync to API asynchronously (don't block UI)
             const syncToApi = async () => {
-                    logger.logCategory('sync', `🚀 syncToApi called for action: ${action.type}`, {
-                        actionType: action.type,
-                        isAuthenticated: isAuthenticated,
-                        hasToken: !!localStorage.getItem('auth_token')
-                    });
-                    
+                logger.logCategory('sync', `🚀 syncToApi called for action: ${action.type}`, {
+                    actionType: action.type,
+                    isAuthenticated: isAuthenticated,
+                    hasToken: !!localStorage.getItem('auth_token')
+                });
+
+                try {
+                    // Check if user is authenticated before syncing
+                    if (!isAuthenticated) {
+                        logger.logCategory('sync', '⏭️ Skipping API sync - user not authenticated');
+                        return;
+                    }
+
+                    // Verify token is valid before attempting sync
+                    const token = localStorage.getItem('auth_token');
+                    if (!token) {
+                        logger.warnCategory('sync', '⚠️ No token found, skipping API sync');
+                        return;
+                    }
+
+                    logger.logCategory('sync', `✅ Authentication check passed, proceeding with sync for action: ${action.type}`);
+
+                    // Check token expiration using ApiClient
                     try {
-                        // Check if user is authenticated before syncing
-                        if (!isAuthenticated) {
-                            logger.logCategory('sync', '⏭️ Skipping API sync - user not authenticated');
+                        const { apiClient } = await import('../services/api/client');
+                        if (apiClient.isTokenExpired()) {
+                            logger.warnCategory('sync', '⚠️ Token is expired, skipping API sync. Data saved locally.');
                             return;
                         }
-                        
-                        // Verify token is valid before attempting sync
-                        const token = localStorage.getItem('auth_token');
-                        if (!token) {
-                            logger.warnCategory('sync', '⚠️ No token found, skipping API sync');
-                            return;
-                        }
-                        
-                        logger.logCategory('sync', `✅ Authentication check passed, proceeding with sync for action: ${action.type}`);
-                        
-                        // Check token expiration using ApiClient
-                        try {
-                            const { apiClient } = await import('../services/api/client');
-                            if (apiClient.isTokenExpired()) {
-                                logger.warnCategory('sync', '⚠️ Token is expired, skipping API sync. Data saved locally.');
-                                return;
-                            }
-                        } catch (tokenCheckError) {
-                            logger.warnCategory('sync', '⚠️ Could not verify token, skipping API sync:', tokenCheckError);
-                            return;
-                        }
+                    } catch (tokenCheckError) {
+                        logger.warnCategory('sync', '⚠️ Could not verify token, skipping API sync:', tokenCheckError);
+                        return;
+                    }
 
-                        // Check online status - queue operation if offline
-                        const connectionMonitor = getConnectionMonitor();
-                        if (!connectionMonitor.isOnline()) {
-                            logger.logCategory('sync', '📴 Device is offline, queuing operation for later sync');
-                            await queueOperationForSync(action);
-                            return;
-                        }
-                        
-                        await prunePendingSyncItems(state.currentUser, action);
+                    // Check online status - queue operation if offline
+                    const connectionMonitor = getConnectionMonitor();
+                    if (!connectionMonitor.isOnline()) {
+                        logger.logCategory('sync', '📴 Device is offline, queuing operation for later sync');
+                        await queueOperationForSync(action);
+                        return;
+                    }
 
-                        const apiService = getAppStateApiService();
+                    await prunePendingSyncItems(state.currentUser, action);
 
-                        // Handle account changes
-                        if (action.type === 'ADD_ACCOUNT') {
-                            const account = action.payload as Account;
-                            // Skip system accounts (they're permanent)
-                            if (!account.isPermanent) {
-                                await apiService.saveAccount(account);
-                                logger.logCategory('sync', '✅ Synced account to API:', account.name);
-                            }
-                        } else if (action.type === 'UPDATE_ACCOUNT') {
-                            const account = action.payload as Account;
-                            if (!account.isPermanent) {
-                                await apiService.saveAccount(account);
-                                logger.logCategory('sync', '✅ Synced account update to API:', account.name);
-                            }
-                        } else if (action.type === 'DELETE_ACCOUNT') {
-                            const accountId = action.payload as string;
-                            // Check if it's a system account before deleting
-                            const account = state.accounts.find(a => a.id === accountId);
-                            if (account && !account.isPermanent) {
-                                await apiService.deleteAccount(accountId);
-                                logger.logCategory('sync', '✅ Synced account deletion to API:', accountId);
-                            }
-                        }
+                    const apiService = getAppStateApiService();
 
-                        // Handle contact changes
-                        if (action.type === 'ADD_CONTACT') {
-                            const contact = action.payload;
-                            logger.logCategory('sync', `🔄 Starting sync for ADD_CONTACT: ${contact.name} (${contact.id})`);
-                            try {
-                                logger.logCategory('sync', `📤 Calling apiService.saveContact for: ${contact.name}`);
-                                const savedContact = await apiService.saveContact(contact);
-                                logger.logCategory('sync', `✅ Successfully synced contact to API: ${savedContact.name} (${savedContact.id})`);
-                            } catch (err: any) {
-                                logger.errorCategory('sync', `❌ FAILED to sync contact ${contact.name} to API:`, {
-                                    error: err,
-                                    errorMessage: err?.message || err?.error || 'Unknown error',
-                                    status: err?.status,
-                                    statusText: err?.statusText,
-                                    contact: {
-                                        id: contact.id,
-                                        name: contact.name,
-                                        type: contact.type
-                                    },
-                                    fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
-                                });
-                                // Don't re-throw - log and continue, data is saved locally
-                                // This allows user to continue working even if sync fails
-                            }
-                        } else if (action.type === 'UPDATE_CONTACT') {
-                            const contact = action.payload;
-                            logger.logCategory('sync', `🔄 Starting sync for UPDATE_CONTACT: ${contact.name} (${contact.id})`);
-                            try {
-                                logger.logCategory('sync', `📤 Calling apiService.saveContact for update: ${contact.name}`);
-                                const savedContact = await apiService.saveContact(contact);
-                                logger.logCategory('sync', `✅ Successfully synced contact update to API: ${savedContact.name} (${savedContact.id})`);
-                            } catch (err: any) {
-                                logger.errorCategory('sync', `❌ FAILED to sync contact update ${contact.name} to API:`, {
-                                    error: err,
-                                    errorMessage: err?.message || err?.error || 'Unknown error',
-                                    status: err?.status,
-                                    statusText: err?.statusText,
-                                    contact: {
-                                        id: contact.id,
-                                        name: contact.name,
-                                        type: contact.type
-                                    },
-                                    fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
-                                });
-                                // Don't re-throw - log and continue
-                            }
-                        } else if (action.type === 'DELETE_CONTACT') {
-                            const contactId = action.payload as string;
-                            try {
-                                await apiService.deleteContact(contactId);
-                                logger.logCategory('sync', '✅ Synced contact deletion to API:', contactId);
-                            } catch (err: any) {
-                                console.error(`⚠️ Failed to sync contact deletion ${contactId} to API:`, {
-                                    error: err,
-                                    contactId: contactId,
-                                    errorMessage: err?.message || err?.error || 'Unknown error',
-                                    status: err?.status
-                                });
-                                throw err;
-                            }
+                    // Handle account changes
+                    if (action.type === 'ADD_ACCOUNT') {
+                        const account = action.payload as Account;
+                        // Skip system accounts (they're permanent)
+                        if (!account.isPermanent) {
+                            await apiService.saveAccount(account);
+                            logger.logCategory('sync', '✅ Synced account to API:', account.name);
                         }
-
-                        // Handle transaction changes
-                        if (action.type === 'ADD_TRANSACTION') {
-                            const transaction = action.payload as Transaction;
-                            await apiService.saveTransaction(transaction);
-                            logger.logCategory('sync', '✅ Synced transaction to API:', transaction.id);
-                        } else if (action.type === 'UPDATE_TRANSACTION') {
-                            const transaction = action.payload as Transaction;
-                            await apiService.saveTransaction(transaction);
-                            logger.logCategory('sync', '✅ Synced transaction update to API:', transaction.id);
-                        } else if (action.type === 'DELETE_TRANSACTION') {
-                            const transactionId = action.payload as string;
-                            await apiService.deleteTransaction(transactionId);
-                            logger.logCategory('sync', '✅ Synced transaction deletion to API:', transactionId);
-                        } else if (action.type === 'BATCH_ADD_TRANSACTIONS') {
-                            // Sync batch transactions
-                            const transactions = action.payload as Transaction[];
-                            const syncPromises = transactions.map(tx => 
-                                apiService.saveTransaction(tx).catch(err => {
-                                    logger.errorCategory('sync', `⚠️ Failed to sync transaction ${tx.id}:`, err);
-                                    return null;
-                                })
-                            );
-                            await Promise.all(syncPromises);
-                            logger.logCategory('sync', `✅ Synced ${transactions.length} transactions to API (batch)`);
-                        } else if (action.type === 'RESTORE_TRANSACTION') {
-                            const transaction = action.payload as Transaction;
-                            await apiService.saveTransaction(transaction);
-                            logger.logCategory('sync', '✅ Synced restored transaction to API:', transaction.id);
+                    } else if (action.type === 'UPDATE_ACCOUNT') {
+                        const account = action.payload as Account;
+                        if (!account.isPermanent) {
+                            await apiService.saveAccount(account);
+                            logger.logCategory('sync', '✅ Synced account update to API:', account.name);
                         }
-
-                        // Handle category changes
-                        if (action.type === 'ADD_CATEGORY') {
-                            const category = action.payload;
-                            // Skip system categories (they're permanent and managed by server)
-                            if (!category.isPermanent && !category.id?.startsWith('sys-cat-')) {
-                                await apiService.saveCategory(category);
-                                logger.logCategory('sync', '✅ Synced category to API:', category.name);
-                            } else {
-                                logger.logCategory('sync', '⏭️ Skipped syncing system category:', category.name);
-                            }
-                        } else if (action.type === 'UPDATE_CATEGORY') {
-                            const category = action.payload;
-                            // Skip system categories (they're permanent and read-only)
-                            if (!category.isPermanent && !category.id?.startsWith('sys-cat-')) {
-                                await apiService.saveCategory(category);
-                                logger.logCategory('sync', '✅ Synced category update to API:', category.name);
-                            } else {
-                                logger.logCategory('sync', '⏭️ Skipped syncing system category update:', category.name);
-                            }
-                        } else if (action.type === 'DELETE_CATEGORY') {
-                            const categoryId = action.payload as string;
-                            // Check if it's a system category before deleting
-                            const category = state.categories.find(c => c.id === categoryId);
-                            if (category && !category.isPermanent && !categoryId.startsWith('sys-cat-')) {
-                                await apiService.deleteCategory(categoryId);
-                                logger.logCategory('sync', '✅ Synced category deletion to API:', categoryId);
-                            } else {
-                                logger.logCategory('sync', '⏭️ Skipped deleting system category:', categoryId);
-                            }
-                        }
-
-                        // Handle project changes
-                        if (action.type === 'ADD_PROJECT') {
-                            const project = action.payload;
-                            await apiService.saveProject(project);
-                            logger.logCategory('sync', '✅ Synced project to API:', project.name);
-                        } else if (action.type === 'UPDATE_PROJECT') {
-                            const project = action.payload;
-                            await apiService.saveProject(project);
-                            logger.logCategory('sync', '✅ Synced project update to API:', project.name);
-                        } else if (action.type === 'DELETE_PROJECT') {
-                            const projectId = action.payload as string;
-                            await apiService.deleteProject(projectId);
-                            logger.logCategory('sync', '✅ Synced project deletion to API:', projectId);
-                        }
-
-                        // Handle building changes
-                        if (action.type === 'ADD_BUILDING') {
-                            const building = action.payload;
-                            await apiService.saveBuilding(building);
-                            logger.logCategory('sync', '✅ Synced building to API:', building.name);
-                        } else if (action.type === 'UPDATE_BUILDING') {
-                            const building = action.payload;
-                            await apiService.saveBuilding(building);
-                            logger.logCategory('sync', '✅ Synced building update to API:', building.name);
-                        } else if (action.type === 'DELETE_BUILDING') {
-                            const buildingId = action.payload as string;
-                            await apiService.deleteBuilding(buildingId);
-                            logger.logCategory('sync', '✅ Synced building deletion to API:', buildingId);
-                        }
-
-                        // Handle property changes
-                        if (action.type === 'ADD_PROPERTY') {
-                            const property = action.payload;
-                            await apiService.saveProperty(property);
-                            logger.logCategory('sync', '✅ Synced property to API:', property.name);
-                        } else if (action.type === 'UPDATE_PROPERTY') {
-                            const property = action.payload;
-                            await apiService.saveProperty(property);
-                            logger.logCategory('sync', '✅ Synced property update to API:', property.name);
-                        } else if (action.type === 'DELETE_PROPERTY') {
-                            const propertyId = action.payload as string;
-                            await apiService.deleteProperty(propertyId);
-                            logger.logCategory('sync', '✅ Synced property deletion to API:', propertyId);
-                        }
-
-                        // Handle unit changes
-                        if (action.type === 'ADD_UNIT') {
-                            const unit = action.payload;
-                            await apiService.saveUnit(unit);
-                            logger.logCategory('sync', '✅ Synced unit to API:', unit.name);
-                        } else if (action.type === 'UPDATE_UNIT') {
-                            const unit = action.payload;
-                            await apiService.saveUnit(unit);
-                            logger.logCategory('sync', '✅ Synced unit update to API:', unit.name);
-                        } else if (action.type === 'DELETE_UNIT') {
-                            const unitId = action.payload as string;
-                            await apiService.deleteUnit(unitId);
-                            logger.logCategory('sync', '✅ Synced unit deletion to API:', unitId);
-                        }
-
-                        // Handle installment plan changes
-                        if (action.type === 'ADD_INSTALLMENT_PLAN') {
-                            const plan = action.payload;
-                            await apiService.saveInstallmentPlan(plan);
-                            logger.logCategory('sync', '✅ Synced installment plan to API:', plan.id);
-                        } else if (action.type === 'UPDATE_INSTALLMENT_PLAN') {
-                            const plan = action.payload;
-                            await apiService.saveInstallmentPlan(plan);
-                            logger.logCategory('sync', '✅ Synced installment plan update to API:', plan.id);
-                        } else if (action.type === 'DELETE_INSTALLMENT_PLAN') {
-                            const planId = action.payload as string;
-                            await apiService.deleteInstallmentPlan(planId);
-                            logger.logCategory('sync', '✅ Synced installment plan deletion to API:', planId);
-                        }
-
-                        // Handle plan amenity changes
-                        if (action.type === 'ADD_PLAN_AMENITY') {
-                            const amenity = action.payload;
-                            await apiService.savePlanAmenity(amenity);
-                            logger.logCategory('sync', '✅ Synced plan amenity to API:', amenity.name);
-                        } else if (action.type === 'UPDATE_PLAN_AMENITY') {
-                            const amenity = action.payload;
-                            await apiService.savePlanAmenity(amenity);
-                            logger.logCategory('sync', '✅ Synced plan amenity update to API:', amenity.name);
-                        } else if (action.type === 'DELETE_PLAN_AMENITY') {
-                            const amenityId = action.payload as string;
-                            await apiService.deletePlanAmenity(amenityId);
-                            logger.logCategory('sync', '✅ Synced plan amenity deletion to API:', amenityId);
-                        }
-
-                        // Handle inventory item changes (Settings → Inventory → New Item)
-                        if (action.type === 'ADD_INVENTORY_ITEM') {
-                            const item = action.payload as any;
-                            logger.logCategory('sync', `🔄 Starting sync for ADD_INVENTORY_ITEM: ${item.name} (${item.id})`);
-                            try {
-                                await apiService.saveInventoryItem(item);
-                                logger.logCategory('sync', `✅ Synced inventory item to API: ${item.name} (${item.id})`);
-                            } catch (err: any) {
-                                logger.errorCategory('sync', `❌ FAILED to sync inventory item ${item.name} to API:`, {
-                                    error: err,
-                                    errorMessage: err?.message || err?.error || 'Unknown error',
-                                    status: err?.status,
-                                    item: { id: item.id, name: item.name }
-                                });
-                            }
-                        } else if (action.type === 'UPDATE_INVENTORY_ITEM') {
-                            const item = action.payload as any;
-                            logger.logCategory('sync', `🔄 Starting sync for UPDATE_INVENTORY_ITEM: ${item.name} (${item.id})`);
-                            try {
-                                await apiService.saveInventoryItem(item);
-                                logger.logCategory('sync', `✅ Synced inventory item update to API: ${item.name} (${item.id})`);
-                            } catch (err: any) {
-                                logger.errorCategory('sync', `❌ FAILED to sync inventory item update ${item.name} to API:`, {
-                                    error: err,
-                                    errorMessage: err?.message || err?.error || 'Unknown error',
-                                    status: err?.status,
-                                    item: { id: item.id, name: item.name }
-                                });
-                            }
-                        } else if (action.type === 'DELETE_INVENTORY_ITEM') {
-                            const itemId = action.payload as string;
-                            try {
-                                await apiService.deleteInventoryItem(itemId);
-                                logger.logCategory('sync', '✅ Synced inventory item deletion to API:', itemId);
-                            } catch (err: any) {
-                                logger.errorCategory('sync', `⚠️ Failed to sync inventory item deletion ${itemId} to API:`, {
-                                    error: err,
-                                    itemId,
-                                    errorMessage: err?.message || err?.error || 'Unknown error'
-                                });
-                            }
-                        }
-
-                        // Handle invoice changes
-                        if (action.type === 'ADD_INVOICE') {
-                            const invoice = action.payload;
-                            await apiService.saveInvoice(invoice);
-                            logger.logCategory('sync', '✅ Synced invoice to API:', invoice.invoiceNumber);
-                        } else if (action.type === 'UPDATE_INVOICE') {
-                            const invoice = action.payload;
-                            await apiService.saveInvoice(invoice);
-                            logger.logCategory('sync', '✅ Synced invoice update to API:', invoice.invoiceNumber);
-                        } else if (action.type === 'DELETE_INVOICE') {
-                            const invoiceId = action.payload as string;
-                            await apiService.deleteInvoice(invoiceId);
-                            logger.logCategory('sync', '✅ Synced invoice deletion to API:', invoiceId);
-                        }
-
-                        // Handle bill changes
-                        if (action.type === 'ADD_BILL') {
-                            const bill = action.payload;
-                            logger.logCategory('sync', `🔄 Starting sync for ADD_BILL: ${bill.billNumber} (${bill.id})`);
-                            try {
-                                logger.logCategory('sync', `📤 Calling apiService.saveBill for: ${bill.billNumber}`);
-                                await apiService.saveBill(bill);
-                                logger.logCategory('sync', '✅ Synced bill to API:', bill.billNumber);
-                            } catch (err: any) {
-                                logger.errorCategory('sync', `❌ FAILED to sync bill ${bill.billNumber} to API:`, {
-                                    error: err,
-                                    errorMessage: err?.message || err?.error || 'Unknown error',
-                                    status: err?.status,
-                                    statusText: err?.statusText,
-                                    bill: {
-                                        id: bill.id,
-                                        billNumber: bill.billNumber,
-                                        amount: bill.amount,
-                                        projectId: bill.projectId
-                                    },
-                                    fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
-                                });
-                                // Don't re-throw - log and continue, data is saved locally
-                                // This allows user to continue working even if sync fails
-                            }
-                        } else if (action.type === 'UPDATE_BILL') {
-                            const bill = action.payload;
-                            logger.logCategory('sync', `🔄 Starting sync for UPDATE_BILL: ${bill.billNumber} (${bill.id})`);
-                            try {
-                                logger.logCategory('sync', `📤 Calling apiService.saveBill for update: ${bill.billNumber}`);
-                                await apiService.saveBill(bill);
-                                logger.logCategory('sync', '✅ Synced bill update to API:', bill.billNumber);
-                            } catch (err: any) {
-                                logger.errorCategory('sync', `❌ FAILED to sync bill update ${bill.billNumber} to API:`, {
-                                    error: err,
-                                    errorMessage: err?.message || err?.error || 'Unknown error',
-                                    status: err?.status,
-                                    statusText: err?.statusText,
-                                    bill: {
-                                        id: bill.id,
-                                        billNumber: bill.billNumber,
-                                        amount: bill.amount,
-                                        projectId: bill.projectId
-                                    },
-                                    fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
-                                });
-                                // Don't re-throw - log and continue
-                            }
-                        } else if (action.type === 'DELETE_BILL') {
-                            const billId = action.payload as string;
-                            try {
-                                await apiService.deleteBill(billId);
-                                logger.logCategory('sync', '✅ Synced bill deletion to API:', billId);
-                            } catch (err: any) {
-                                logger.errorCategory('sync', `⚠️ Failed to sync bill deletion ${billId} to API:`, {
-                                    error: err,
-                                    billId: billId,
-                                    errorMessage: err?.message || err?.error || 'Unknown error',
-                                    status: err?.status
-                                });
-                                // Don't re-throw for deletions - allow local deletion even if sync fails
-                            }
-                        }
-
-                        // Handle budget changes
-                        if (action.type === 'ADD_BUDGET') {
-                            const budget = action.payload;
-                            await apiService.saveBudget(budget);
-                            logger.logCategory('sync', '✅ Synced budget to API:', budget.id);
-                        } else if (action.type === 'UPDATE_BUDGET') {
-                            const budget = action.payload;
-                            await apiService.saveBudget(budget);
-                            logger.logCategory('sync', '✅ Synced budget update to API:', budget.id);
-                        } else if (action.type === 'DELETE_BUDGET') {
-                            const budgetId = action.payload as string;
-                            await apiService.deleteBudget(budgetId);
-                            logger.logCategory('sync', '✅ Synced budget deletion to API:', budgetId);
-                        }
-
-                        // Handle rental agreement changes
-                        if (action.type === 'ADD_RENTAL_AGREEMENT') {
-                            const agreement = action.payload;
-                            await apiService.saveRentalAgreement(agreement);
-                            logger.logCategory('sync', '✅ Synced rental agreement to API:', agreement.agreementNumber);
-                        } else if (action.type === 'UPDATE_RENTAL_AGREEMENT') {
-                            const agreement = action.payload;
-                            await apiService.saveRentalAgreement(agreement);
-                            logger.logCategory('sync', '✅ Synced rental agreement update to API:', agreement.agreementNumber);
-                        } else if (action.type === 'DELETE_RENTAL_AGREEMENT') {
-                            const agreementId = action.payload as string;
-                            await apiService.deleteRentalAgreement(agreementId);
-                            logger.logCategory('sync', '✅ Synced rental agreement deletion to API:', agreementId);
-                        }
-
-                        // Handle project agreement changes
-                        if (action.type === 'ADD_PROJECT_AGREEMENT') {
-                            const agreement = action.payload;
-                            await apiService.saveProjectAgreement(agreement);
-                            logger.logCategory('sync', '✅ Synced project agreement to API:', agreement.agreementNumber);
-                        } else if (action.type === 'UPDATE_PROJECT_AGREEMENT') {
-                            const agreement = action.payload;
-                            await apiService.saveProjectAgreement(agreement);
-                            logger.logCategory('sync', '✅ Synced project agreement update to API:', agreement.agreementNumber);
-                        } else if (action.type === 'DELETE_PROJECT_AGREEMENT') {
-                            const agreementId = action.payload as string;
-                            await apiService.deleteProjectAgreement(agreementId);
-                            logger.logCategory('sync', '✅ Synced project agreement deletion to API:', agreementId);
-                        } else if (action.type === 'CANCEL_PROJECT_AGREEMENT') {
-                            // When cancelling, we need to sync the updated agreement
-                            const { agreementId } = action.payload as any;
-                            const updatedAgreement = newState.projectAgreements.find(pa => pa.id === agreementId);
-                            if (updatedAgreement) {
-                                await apiService.saveProjectAgreement(updatedAgreement);
-                                logger.logCategory('sync', '✅ Synced cancelled project agreement to API:', agreementId);
-                            }
-                        }
-
-                        // Handle sales return changes
-                        if (action.type === 'ADD_SALES_RETURN') {
-                            const salesReturn = action.payload as any;
-                            await apiService.saveSalesReturn(salesReturn);
-                            logger.logCategory('sync', '✅ Synced sales return to API:', salesReturn.returnNumber);
-                        } else if (action.type === 'UPDATE_SALES_RETURN') {
-                            const salesReturn = action.payload as any;
-                            await apiService.saveSalesReturn(salesReturn);
-                            logger.logCategory('sync', '✅ Synced sales return update to API:', salesReturn.returnNumber);
-                        } else if (action.type === 'DELETE_SALES_RETURN') {
-                            const salesReturnId = action.payload as string;
-                            await apiService.deleteSalesReturn(salesReturnId);
-                            logger.logCategory('sync', '✅ Synced sales return deletion to API:', salesReturnId);
-                        } else if (action.type === 'MARK_RETURN_REFUNDED') {
-                            // When marking as refunded, update the sales return
-                            const { returnId } = action.payload as any;
-                            const salesReturn = newState.salesReturns.find(sr => sr.id === returnId);
-                            if (salesReturn) {
-                                await apiService.saveSalesReturn(salesReturn);
-                                logger.logCategory('sync', '✅ Synced sales return refund status to API:', salesReturn.returnNumber);
-                            }
-                        }
-
-                        // Handle contract changes
-                        if (action.type === 'ADD_CONTRACT') {
-                            const contract = action.payload;
-                            await apiService.saveContract(contract);
-                            logger.logCategory('sync', '✅ Synced contract to API:', contract.contractNumber);
-                        } else if (action.type === 'UPDATE_CONTRACT') {
-                            const contract = action.payload;
-                            await apiService.saveContract(contract);
-                            logger.logCategory('sync', '✅ Synced contract update to API:', contract.contractNumber);
-                        } else if (action.type === 'DELETE_CONTRACT') {
-                            const contractId = action.payload as string;
-                            await apiService.deleteContract(contractId);
-                            logger.logCategory('sync', '✅ Synced contract deletion to API:', contractId);
-                        }
-
-                        // Handle PM cycle allocation changes
-                        if (action.type === 'ADD_PM_CYCLE_ALLOCATION') {
-                            const allocation = action.payload as any;
-                            await apiService.savePMCycleAllocation(allocation);
-                            logger.logCategory('sync', '✅ Synced PM cycle allocation to API:', allocation.cycleId);
-                        } else if (action.type === 'UPDATE_PM_CYCLE_ALLOCATION') {
-                            const allocation = action.payload as any;
-                            await apiService.savePMCycleAllocation(allocation);
-                            logger.logCategory('sync', '✅ Synced PM cycle allocation update to API:', allocation.cycleId);
-                        } else if (action.type === 'DELETE_PM_CYCLE_ALLOCATION') {
-                            const allocationId = action.payload as string;
-                            await apiService.deletePMCycleAllocation(allocationId);
-                            logger.logCategory('sync', '✅ Synced PM cycle allocation deletion to API:', allocationId);
-                        }
-
-                        // Handle settings changes (both general and communication settings)
-                        const { settingsSyncService } = await import('../services/settingsSyncService');
-                        if (action.type === 'UPDATE_PRINT_SETTINGS') {
-                            await settingsSyncService.saveSetting('printSettings', action.payload);
-                            logger.logCategory('sync', '✅ Synced print settings to cloud');
-                        } else if (action.type === 'UPDATE_WHATSAPP_TEMPLATES') {
-                            await settingsSyncService.saveSetting('whatsAppTemplates', action.payload);
-                            logger.logCategory('sync', '✅ Synced WhatsApp templates to cloud');
-                        } else if (action.type === 'TOGGLE_SYSTEM_TRANSACTIONS') {
-                            await settingsSyncService.saveSetting('showSystemTransactions', action.payload);
-                            logger.logCategory('sync', '✅ Synced showSystemTransactions to cloud');
-                        } else if (action.type === 'TOGGLE_COLOR_CODING') {
-                            await settingsSyncService.saveSetting('enableColorCoding', action.payload);
-                            logger.logCategory('sync', '✅ Synced enableColorCoding to cloud');
-                        } else if (action.type === 'TOGGLE_BEEP_ON_SAVE') {
-                            await settingsSyncService.saveSetting('enableBeepOnSave', action.payload);
-                            logger.logCategory('sync', '✅ Synced enableBeepOnSave to cloud');
-                        } else if (action.type === 'TOGGLE_DATE_PRESERVATION') {
-                            await settingsSyncService.saveSetting('enableDatePreservation', action.payload);
-                            logger.logCategory('sync', '✅ Synced enableDatePreservation to cloud');
-                        } else if (action.type === 'UPDATE_DEFAULT_PROJECT') {
-                            await settingsSyncService.saveSetting('defaultProjectId', action.payload);
-                            logger.logCategory('sync', '✅ Synced defaultProjectId to cloud');
-                        } else if (action.type === 'UPDATE_DASHBOARD_CONFIG') {
-                            await settingsSyncService.saveSetting('dashboardConfig', action.payload);
-                            logger.logCategory('sync', '✅ Synced dashboardConfig to cloud');
-                        } else if (action.type === 'UPDATE_AGREEMENT_SETTINGS') {
-                            await settingsSyncService.saveSetting('agreementSettings', action.payload);
-                            logger.logCategory('sync', '✅ Synced agreementSettings to cloud');
-                        } else if (action.type === 'UPDATE_PROJECT_AGREEMENT_SETTINGS') {
-                            await settingsSyncService.saveSetting('projectAgreementSettings', action.payload);
-                            logger.logCategory('sync', '✅ Synced projectAgreementSettings to cloud');
-                        } else if (action.type === 'UPDATE_RENTAL_INVOICE_SETTINGS') {
-                            await settingsSyncService.saveSetting('rentalInvoiceSettings', action.payload);
-                            logger.logCategory('sync', '✅ Synced rentalInvoiceSettings to cloud');
-                        } else if (action.type === 'UPDATE_PROJECT_INVOICE_SETTINGS') {
-                            await settingsSyncService.saveSetting('projectInvoiceSettings', action.payload);
-                            logger.logCategory('sync', '✅ Synced projectInvoiceSettings to cloud');
-                        }
-                    } catch (error: any) {
-                        // Log error but don't block UI - state is already updated locally
-                        logger.errorCategory('sync', '❌ CRITICAL: Failed to sync to API in syncToApi:', {
-                            actionType: action.type,
-                            error: error,
-                            errorMessage: error?.message || error?.error || 'Unknown error',
-                            status: error?.status,
-                            statusText: error?.statusText,
-                            stack: error?.stack,
-                            fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)),
-                            payload: action.payload ? {
-                                ...(typeof action.payload === 'object' && action.payload !== null 
-                                    ? { id: (action.payload as any).id, name: (action.payload as any).name }
-                                    : action.payload)
-                            } : undefined
-                        });
-                        
-                        // Check if it's a network error (status 0)
-                        if (error?.status === 0 || error?.error === 'NetworkError') {
-                            logger.warnCategory('sync', '📴 Network error detected, queuing operation for later sync');
-                            await queueOperationForSync(action);
-                            return;
-                        }
-
-                        // Show user-friendly notification for expired token
-                        if (error?.status === 401) {
-                            // Only show notification once per session to avoid spam
-                            const hasShownTokenWarning = sessionStorage.getItem('token_expired_warning_shown');
-                            if (!hasShownTokenWarning) {
-                                sessionStorage.setItem('token_expired_warning_shown', 'true');
-                                // Dispatch custom event to show notification
-                                if (typeof window !== 'undefined') {
-                                    window.dispatchEvent(new CustomEvent('show-sync-warning', {
-                                        detail: {
-                                            message: 'Your session has expired. Data is saved locally. Please re-login to sync to the cloud.',
-                                            type: 'info'
-                                        }
-                                    }));
-                                }
-                            }
-                        }
-
-                        // Notify when transaction sync fails (e.g. 400 validation / account not in cloud)
-                        const isTransactionAction = action.type === 'ADD_TRANSACTION' || action.type === 'BATCH_ADD_TRANSACTIONS' || action.type === 'UPDATE_TRANSACTION';
-                        if (error?.status === 400 && isTransactionAction && typeof window !== 'undefined') {
-                            const msg = error?.message || error?.error || 'Payment could not sync to cloud.';
-                            window.dispatchEvent(new CustomEvent('show-sync-warning', {
-                                detail: {
-                                    message: `${msg} Please ensure the payment account exists in cloud and try again.`,
-                                    type: 'warning'
-                                }
-                            }));
+                    } else if (action.type === 'DELETE_ACCOUNT') {
+                        const accountId = action.payload as string;
+                        // Check if it's a system account before deleting
+                        const account = state.accounts.find(a => a.id === accountId);
+                        if (account && !account.isPermanent) {
+                            await apiService.deleteAccount(accountId);
+                            logger.logCategory('sync', '✅ Synced account deletion to API:', accountId);
                         }
                     }
-                };
+
+                    // Handle contact changes
+                    if (action.type === 'ADD_CONTACT') {
+                        const contact = action.payload;
+                        logger.logCategory('sync', `🔄 Starting sync for ADD_CONTACT: ${contact.name} (${contact.id})`);
+                        try {
+                            logger.logCategory('sync', `📤 Calling apiService.saveContact for: ${contact.name}`);
+                            const savedContact = await apiService.saveContact(contact);
+                            logger.logCategory('sync', `✅ Successfully synced contact to API: ${savedContact.name} (${savedContact.id})`);
+                        } catch (err: any) {
+                            logger.errorCategory('sync', `❌ FAILED to sync contact ${contact.name} to API:`, {
+                                error: err,
+                                errorMessage: err?.message || err?.error || 'Unknown error',
+                                status: err?.status,
+                                statusText: err?.statusText,
+                                contact: {
+                                    id: contact.id,
+                                    name: contact.name,
+                                    type: contact.type
+                                },
+                                fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
+                            });
+                            // Don't re-throw - log and continue, data is saved locally
+                            // This allows user to continue working even if sync fails
+                        }
+                    } else if (action.type === 'UPDATE_CONTACT') {
+                        const contact = action.payload;
+                        logger.logCategory('sync', `🔄 Starting sync for UPDATE_CONTACT: ${contact.name} (${contact.id})`);
+                        try {
+                            logger.logCategory('sync', `📤 Calling apiService.saveContact for update: ${contact.name}`);
+                            const savedContact = await apiService.saveContact(contact);
+                            logger.logCategory('sync', `✅ Successfully synced contact update to API: ${savedContact.name} (${savedContact.id})`);
+                        } catch (err: any) {
+                            logger.errorCategory('sync', `❌ FAILED to sync contact update ${contact.name} to API:`, {
+                                error: err,
+                                errorMessage: err?.message || err?.error || 'Unknown error',
+                                status: err?.status,
+                                statusText: err?.statusText,
+                                contact: {
+                                    id: contact.id,
+                                    name: contact.name,
+                                    type: contact.type
+                                },
+                                fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
+                            });
+                            // Don't re-throw - log and continue
+                        }
+                    } else if (action.type === 'DELETE_CONTACT') {
+                        const contactId = action.payload as string;
+                        try {
+                            await apiService.deleteContact(contactId);
+                            logger.logCategory('sync', '✅ Synced contact deletion to API:', contactId);
+                        } catch (err: any) {
+                            console.error(`⚠️ Failed to sync contact deletion ${contactId} to API:`, {
+                                error: err,
+                                contactId: contactId,
+                                errorMessage: err?.message || err?.error || 'Unknown error',
+                                status: err?.status
+                            });
+                            throw err;
+                        }
+                    }
+
+                    // Handle transaction changes
+                    if (action.type === 'ADD_TRANSACTION') {
+                        const transaction = action.payload as Transaction;
+                        await apiService.saveTransaction(transaction);
+                        logger.logCategory('sync', '✅ Synced transaction to API:', transaction.id);
+                    } else if (action.type === 'UPDATE_TRANSACTION') {
+                        const transaction = action.payload as Transaction;
+                        await apiService.saveTransaction(transaction);
+                        logger.logCategory('sync', '✅ Synced transaction update to API:', transaction.id);
+                    } else if (action.type === 'DELETE_TRANSACTION') {
+                        const transactionId = action.payload as string;
+                        await apiService.deleteTransaction(transactionId);
+                        logger.logCategory('sync', '✅ Synced transaction deletion to API:', transactionId);
+                    } else if (action.type === 'BATCH_ADD_TRANSACTIONS') {
+                        // Sync batch transactions
+                        const transactions = action.payload as Transaction[];
+                        const syncPromises = transactions.map(tx =>
+                            apiService.saveTransaction(tx).catch(err => {
+                                logger.errorCategory('sync', `⚠️ Failed to sync transaction ${tx.id}:`, err);
+                                return null;
+                            })
+                        );
+                        await Promise.all(syncPromises);
+                        logger.logCategory('sync', `✅ Synced ${transactions.length} transactions to API (batch)`);
+                    } else if (action.type === 'RESTORE_TRANSACTION') {
+                        const transaction = action.payload as Transaction;
+                        await apiService.saveTransaction(transaction);
+                        logger.logCategory('sync', '✅ Synced restored transaction to API:', transaction.id);
+                    }
+
+                    // Handle category changes
+                    if (action.type === 'ADD_CATEGORY') {
+                        const category = action.payload;
+                        // Skip system categories (they're permanent and managed by server)
+                        if (!category.isPermanent && !category.id?.startsWith('sys-cat-')) {
+                            await apiService.saveCategory(category);
+                            logger.logCategory('sync', '✅ Synced category to API:', category.name);
+                        } else {
+                            logger.logCategory('sync', '⏭️ Skipped syncing system category:', category.name);
+                        }
+                    } else if (action.type === 'UPDATE_CATEGORY') {
+                        const category = action.payload;
+                        // Skip system categories (they're permanent and read-only)
+                        if (!category.isPermanent && !category.id?.startsWith('sys-cat-')) {
+                            await apiService.saveCategory(category);
+                            logger.logCategory('sync', '✅ Synced category update to API:', category.name);
+                        } else {
+                            logger.logCategory('sync', '⏭️ Skipped syncing system category update:', category.name);
+                        }
+                    } else if (action.type === 'DELETE_CATEGORY') {
+                        const categoryId = action.payload as string;
+                        // Check if it's a system category before deleting
+                        const category = state.categories.find(c => c.id === categoryId);
+                        if (category && !category.isPermanent && !categoryId.startsWith('sys-cat-')) {
+                            await apiService.deleteCategory(categoryId);
+                            logger.logCategory('sync', '✅ Synced category deletion to API:', categoryId);
+                        } else {
+                            logger.logCategory('sync', '⏭️ Skipped deleting system category:', categoryId);
+                        }
+                    }
+
+                    // Handle project changes
+                    if (action.type === 'ADD_PROJECT') {
+                        const project = action.payload;
+                        await apiService.saveProject(project);
+                        logger.logCategory('sync', '✅ Synced project to API:', project.name);
+                    } else if (action.type === 'UPDATE_PROJECT') {
+                        const project = action.payload;
+                        await apiService.saveProject(project);
+                        logger.logCategory('sync', '✅ Synced project update to API:', project.name);
+                    } else if (action.type === 'DELETE_PROJECT') {
+                        const projectId = action.payload as string;
+                        await apiService.deleteProject(projectId);
+                        logger.logCategory('sync', '✅ Synced project deletion to API:', projectId);
+                    }
+
+                    // Handle building changes
+                    if (action.type === 'ADD_BUILDING') {
+                        const building = action.payload;
+                        await apiService.saveBuilding(building);
+                        logger.logCategory('sync', '✅ Synced building to API:', building.name);
+                    } else if (action.type === 'UPDATE_BUILDING') {
+                        const building = action.payload;
+                        await apiService.saveBuilding(building);
+                        logger.logCategory('sync', '✅ Synced building update to API:', building.name);
+                    } else if (action.type === 'DELETE_BUILDING') {
+                        const buildingId = action.payload as string;
+                        await apiService.deleteBuilding(buildingId);
+                        logger.logCategory('sync', '✅ Synced building deletion to API:', buildingId);
+                    }
+
+                    // Handle property changes
+                    if (action.type === 'ADD_PROPERTY') {
+                        const property = action.payload;
+                        await apiService.saveProperty(property);
+                        logger.logCategory('sync', '✅ Synced property to API:', property.name);
+                    } else if (action.type === 'UPDATE_PROPERTY') {
+                        const property = action.payload;
+                        await apiService.saveProperty(property);
+                        logger.logCategory('sync', '✅ Synced property update to API:', property.name);
+                    } else if (action.type === 'DELETE_PROPERTY') {
+                        const propertyId = action.payload as string;
+                        await apiService.deleteProperty(propertyId);
+                        logger.logCategory('sync', '✅ Synced property deletion to API:', propertyId);
+                    }
+
+                    // Handle unit changes
+                    if (action.type === 'ADD_UNIT') {
+                        const unit = action.payload;
+                        await apiService.saveUnit(unit);
+                        logger.logCategory('sync', '✅ Synced unit to API:', unit.name);
+                    } else if (action.type === 'UPDATE_UNIT') {
+                        const unit = action.payload;
+                        await apiService.saveUnit(unit);
+                        logger.logCategory('sync', '✅ Synced unit update to API:', unit.name);
+                    } else if (action.type === 'DELETE_UNIT') {
+                        const unitId = action.payload as string;
+                        await apiService.deleteUnit(unitId);
+                        logger.logCategory('sync', '✅ Synced unit deletion to API:', unitId);
+                    }
+
+                    // Handle installment plan changes
+                    if (action.type === 'ADD_INSTALLMENT_PLAN') {
+                        const plan = action.payload;
+                        await apiService.saveInstallmentPlan(plan);
+                        logger.logCategory('sync', '✅ Synced installment plan to API:', plan.id);
+                    } else if (action.type === 'UPDATE_INSTALLMENT_PLAN') {
+                        const plan = action.payload;
+                        await apiService.saveInstallmentPlan(plan);
+                        logger.logCategory('sync', '✅ Synced installment plan update to API:', plan.id);
+                    } else if (action.type === 'DELETE_INSTALLMENT_PLAN') {
+                        const planId = action.payload as string;
+                        await apiService.deleteInstallmentPlan(planId);
+                        logger.logCategory('sync', '✅ Synced installment plan deletion to API:', planId);
+                    }
+
+                    // Handle plan amenity changes
+                    if (action.type === 'ADD_PLAN_AMENITY') {
+                        const amenity = action.payload;
+                        await apiService.savePlanAmenity(amenity);
+                        logger.logCategory('sync', '✅ Synced plan amenity to API:', amenity.name);
+                    } else if (action.type === 'UPDATE_PLAN_AMENITY') {
+                        const amenity = action.payload;
+                        await apiService.savePlanAmenity(amenity);
+                        logger.logCategory('sync', '✅ Synced plan amenity update to API:', amenity.name);
+                    } else if (action.type === 'DELETE_PLAN_AMENITY') {
+                        const amenityId = action.payload as string;
+                        await apiService.deletePlanAmenity(amenityId);
+                        logger.logCategory('sync', '✅ Synced plan amenity deletion to API:', amenityId);
+                    }
+
+                    // Handle inventory item changes (Settings → Inventory → New Item)
+                    if (action.type === 'ADD_INVENTORY_ITEM') {
+                        const item = action.payload as any;
+                        logger.logCategory('sync', `🔄 Starting sync for ADD_INVENTORY_ITEM: ${item.name} (${item.id})`);
+                        try {
+                            await apiService.saveInventoryItem(item);
+                            logger.logCategory('sync', `✅ Synced inventory item to API: ${item.name} (${item.id})`);
+                        } catch (err: any) {
+                            logger.errorCategory('sync', `❌ FAILED to sync inventory item ${item.name} to API:`, {
+                                error: err,
+                                errorMessage: err?.message || err?.error || 'Unknown error',
+                                status: err?.status,
+                                item: { id: item.id, name: item.name }
+                            });
+                        }
+                    } else if (action.type === 'UPDATE_INVENTORY_ITEM') {
+                        const item = action.payload as any;
+                        logger.logCategory('sync', `🔄 Starting sync for UPDATE_INVENTORY_ITEM: ${item.name} (${item.id})`);
+                        try {
+                            await apiService.saveInventoryItem(item);
+                            logger.logCategory('sync', `✅ Synced inventory item update to API: ${item.name} (${item.id})`);
+                        } catch (err: any) {
+                            logger.errorCategory('sync', `❌ FAILED to sync inventory item update ${item.name} to API:`, {
+                                error: err,
+                                errorMessage: err?.message || err?.error || 'Unknown error',
+                                status: err?.status,
+                                item: { id: item.id, name: item.name }
+                            });
+                        }
+                    } else if (action.type === 'DELETE_INVENTORY_ITEM') {
+                        const itemId = action.payload as string;
+                        try {
+                            await apiService.deleteInventoryItem(itemId);
+                            logger.logCategory('sync', '✅ Synced inventory item deletion to API:', itemId);
+                        } catch (err: any) {
+                            logger.errorCategory('sync', `⚠️ Failed to sync inventory item deletion ${itemId} to API:`, {
+                                error: err,
+                                itemId,
+                                errorMessage: err?.message || err?.error || 'Unknown error'
+                            });
+                        }
+                    }
+
+                    // Handle invoice changes
+                    if (action.type === 'ADD_INVOICE') {
+                        const invoice = action.payload;
+                        await apiService.saveInvoice(invoice);
+                        logger.logCategory('sync', '✅ Synced invoice to API:', invoice.invoiceNumber);
+                    } else if (action.type === 'UPDATE_INVOICE') {
+                        const invoice = action.payload;
+                        await apiService.saveInvoice(invoice);
+                        logger.logCategory('sync', '✅ Synced invoice update to API:', invoice.invoiceNumber);
+                    } else if (action.type === 'DELETE_INVOICE') {
+                        const invoiceId = action.payload as string;
+                        await apiService.deleteInvoice(invoiceId);
+                        logger.logCategory('sync', '✅ Synced invoice deletion to API:', invoiceId);
+                    }
+
+                    // Handle bill changes
+                    if (action.type === 'ADD_BILL') {
+                        const bill = action.payload;
+                        logger.logCategory('sync', `🔄 Starting sync for ADD_BILL: ${bill.billNumber} (${bill.id})`);
+                        try {
+                            logger.logCategory('sync', `📤 Calling apiService.saveBill for: ${bill.billNumber}`);
+                            await apiService.saveBill(bill);
+                            logger.logCategory('sync', '✅ Synced bill to API:', bill.billNumber);
+                        } catch (err: any) {
+                            logger.errorCategory('sync', `❌ FAILED to sync bill ${bill.billNumber} to API:`, {
+                                error: err,
+                                errorMessage: err?.message || err?.error || 'Unknown error',
+                                status: err?.status,
+                                statusText: err?.statusText,
+                                bill: {
+                                    id: bill.id,
+                                    billNumber: bill.billNumber,
+                                    amount: bill.amount,
+                                    projectId: bill.projectId
+                                },
+                                fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
+                            });
+                            // Don't re-throw - log and continue, data is saved locally
+                            // This allows user to continue working even if sync fails
+                        }
+                    } else if (action.type === 'UPDATE_BILL') {
+                        const bill = action.payload;
+                        logger.logCategory('sync', `🔄 Starting sync for UPDATE_BILL: ${bill.billNumber} (${bill.id})`);
+                        try {
+                            logger.logCategory('sync', `📤 Calling apiService.saveBill for update: ${bill.billNumber}`);
+                            await apiService.saveBill(bill);
+                            logger.logCategory('sync', '✅ Synced bill update to API:', bill.billNumber);
+                        } catch (err: any) {
+                            logger.errorCategory('sync', `❌ FAILED to sync bill update ${bill.billNumber} to API:`, {
+                                error: err,
+                                errorMessage: err?.message || err?.error || 'Unknown error',
+                                status: err?.status,
+                                statusText: err?.statusText,
+                                bill: {
+                                    id: bill.id,
+                                    billNumber: bill.billNumber,
+                                    amount: bill.amount,
+                                    projectId: bill.projectId
+                                },
+                                fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
+                            });
+                            // Don't re-throw - log and continue
+                        }
+                    } else if (action.type === 'DELETE_BILL') {
+                        const billId = action.payload as string;
+                        try {
+                            await apiService.deleteBill(billId);
+                            logger.logCategory('sync', '✅ Synced bill deletion to API:', billId);
+                        } catch (err: any) {
+                            logger.errorCategory('sync', `⚠️ Failed to sync bill deletion ${billId} to API:`, {
+                                error: err,
+                                billId: billId,
+                                errorMessage: err?.message || err?.error || 'Unknown error',
+                                status: err?.status
+                            });
+                            // Don't re-throw for deletions - allow local deletion even if sync fails
+                        }
+                    }
+
+                    // Handle budget changes
+                    if (action.type === 'ADD_BUDGET') {
+                        const budget = action.payload;
+                        await apiService.saveBudget(budget);
+                        logger.logCategory('sync', '✅ Synced budget to API:', budget.id);
+                    } else if (action.type === 'UPDATE_BUDGET') {
+                        const budget = action.payload;
+                        await apiService.saveBudget(budget);
+                        logger.logCategory('sync', '✅ Synced budget update to API:', budget.id);
+                    } else if (action.type === 'DELETE_BUDGET') {
+                        const budgetId = action.payload as string;
+                        await apiService.deleteBudget(budgetId);
+                        logger.logCategory('sync', '✅ Synced budget deletion to API:', budgetId);
+                    }
+
+                    // Handle rental agreement changes
+                    if (action.type === 'ADD_RENTAL_AGREEMENT') {
+                        const agreement = action.payload;
+                        await apiService.saveRentalAgreement(agreement);
+                        logger.logCategory('sync', '✅ Synced rental agreement to API:', agreement.agreementNumber);
+                    } else if (action.type === 'UPDATE_RENTAL_AGREEMENT') {
+                        const agreement = action.payload;
+                        await apiService.saveRentalAgreement(agreement);
+                        logger.logCategory('sync', '✅ Synced rental agreement update to API:', agreement.agreementNumber);
+                    } else if (action.type === 'DELETE_RENTAL_AGREEMENT') {
+                        const agreementId = action.payload as string;
+                        await apiService.deleteRentalAgreement(agreementId);
+                        logger.logCategory('sync', '✅ Synced rental agreement deletion to API:', agreementId);
+                    }
+
+                    // Handle project agreement changes
+                    if (action.type === 'ADD_PROJECT_AGREEMENT') {
+                        const agreement = action.payload;
+                        await apiService.saveProjectAgreement(agreement);
+                        logger.logCategory('sync', '✅ Synced project agreement to API:', agreement.agreementNumber);
+                    } else if (action.type === 'UPDATE_PROJECT_AGREEMENT') {
+                        const agreement = action.payload;
+                        await apiService.saveProjectAgreement(agreement);
+                        logger.logCategory('sync', '✅ Synced project agreement update to API:', agreement.agreementNumber);
+                    } else if (action.type === 'DELETE_PROJECT_AGREEMENT') {
+                        const agreementId = action.payload as string;
+                        await apiService.deleteProjectAgreement(agreementId);
+                        logger.logCategory('sync', '✅ Synced project agreement deletion to API:', agreementId);
+                    } else if (action.type === 'CANCEL_PROJECT_AGREEMENT') {
+                        // When cancelling, we need to sync the updated agreement
+                        const { agreementId } = action.payload as any;
+                        const updatedAgreement = newState.projectAgreements.find(pa => pa.id === agreementId);
+                        if (updatedAgreement) {
+                            await apiService.saveProjectAgreement(updatedAgreement);
+                            logger.logCategory('sync', '✅ Synced cancelled project agreement to API:', agreementId);
+                        }
+                    }
+
+                    // Handle sales return changes
+                    if (action.type === 'ADD_SALES_RETURN') {
+                        const salesReturn = action.payload as any;
+                        await apiService.saveSalesReturn(salesReturn);
+                        logger.logCategory('sync', '✅ Synced sales return to API:', salesReturn.returnNumber);
+                    } else if (action.type === 'UPDATE_SALES_RETURN') {
+                        const salesReturn = action.payload as any;
+                        await apiService.saveSalesReturn(salesReturn);
+                        logger.logCategory('sync', '✅ Synced sales return update to API:', salesReturn.returnNumber);
+                    } else if (action.type === 'DELETE_SALES_RETURN') {
+                        const salesReturnId = action.payload as string;
+                        await apiService.deleteSalesReturn(salesReturnId);
+                        logger.logCategory('sync', '✅ Synced sales return deletion to API:', salesReturnId);
+                    } else if (action.type === 'MARK_RETURN_REFUNDED') {
+                        // When marking as refunded, update the sales return
+                        const { returnId } = action.payload as any;
+                        const salesReturn = newState.salesReturns.find(sr => sr.id === returnId);
+                        if (salesReturn) {
+                            await apiService.saveSalesReturn(salesReturn);
+                            logger.logCategory('sync', '✅ Synced sales return refund status to API:', salesReturn.returnNumber);
+                        }
+                    }
+
+                    // Handle contract changes
+                    if (action.type === 'ADD_CONTRACT') {
+                        const contract = action.payload;
+                        await apiService.saveContract(contract);
+                        logger.logCategory('sync', '✅ Synced contract to API:', contract.contractNumber);
+                    } else if (action.type === 'UPDATE_CONTRACT') {
+                        const contract = action.payload;
+                        await apiService.saveContract(contract);
+                        logger.logCategory('sync', '✅ Synced contract update to API:', contract.contractNumber);
+                    } else if (action.type === 'DELETE_CONTRACT') {
+                        const contractId = action.payload as string;
+                        await apiService.deleteContract(contractId);
+                        logger.logCategory('sync', '✅ Synced contract deletion to API:', contractId);
+                    }
+
+                    // Handle PM cycle allocation changes
+                    if (action.type === 'ADD_PM_CYCLE_ALLOCATION') {
+                        const allocation = action.payload as any;
+                        await apiService.savePMCycleAllocation(allocation);
+                        logger.logCategory('sync', '✅ Synced PM cycle allocation to API:', allocation.cycleId);
+                    } else if (action.type === 'UPDATE_PM_CYCLE_ALLOCATION') {
+                        const allocation = action.payload as any;
+                        await apiService.savePMCycleAllocation(allocation);
+                        logger.logCategory('sync', '✅ Synced PM cycle allocation update to API:', allocation.cycleId);
+                    } else if (action.type === 'DELETE_PM_CYCLE_ALLOCATION') {
+                        const allocationId = action.payload as string;
+                        await apiService.deletePMCycleAllocation(allocationId);
+                        logger.logCategory('sync', '✅ Synced PM cycle allocation deletion to API:', allocationId);
+                    }
+
+                    // Handle settings changes (both general and communication settings)
+                    const { settingsSyncService } = await import('../services/settingsSyncService');
+                    if (action.type === 'UPDATE_PRINT_SETTINGS') {
+                        await settingsSyncService.saveSetting('printSettings', action.payload);
+                        logger.logCategory('sync', '✅ Synced print settings to cloud');
+                    } else if (action.type === 'UPDATE_WHATSAPP_TEMPLATES') {
+                        await settingsSyncService.saveSetting('whatsAppTemplates', action.payload);
+                        logger.logCategory('sync', '✅ Synced WhatsApp templates to cloud');
+                    } else if (action.type === 'TOGGLE_SYSTEM_TRANSACTIONS') {
+                        await settingsSyncService.saveSetting('showSystemTransactions', action.payload);
+                        logger.logCategory('sync', '✅ Synced showSystemTransactions to cloud');
+                    } else if (action.type === 'TOGGLE_COLOR_CODING') {
+                        await settingsSyncService.saveSetting('enableColorCoding', action.payload);
+                        logger.logCategory('sync', '✅ Synced enableColorCoding to cloud');
+                    } else if (action.type === 'TOGGLE_BEEP_ON_SAVE') {
+                        await settingsSyncService.saveSetting('enableBeepOnSave', action.payload);
+                        logger.logCategory('sync', '✅ Synced enableBeepOnSave to cloud');
+                    } else if (action.type === 'TOGGLE_DATE_PRESERVATION') {
+                        await settingsSyncService.saveSetting('enableDatePreservation', action.payload);
+                        logger.logCategory('sync', '✅ Synced enableDatePreservation to cloud');
+                    } else if (action.type === 'UPDATE_DEFAULT_PROJECT') {
+                        await settingsSyncService.saveSetting('defaultProjectId', action.payload);
+                        logger.logCategory('sync', '✅ Synced defaultProjectId to cloud');
+                    } else if (action.type === 'UPDATE_DASHBOARD_CONFIG') {
+                        await settingsSyncService.saveSetting('dashboardConfig', action.payload);
+                        logger.logCategory('sync', '✅ Synced dashboardConfig to cloud');
+                    } else if (action.type === 'UPDATE_AGREEMENT_SETTINGS') {
+                        await settingsSyncService.saveSetting('agreementSettings', action.payload);
+                        logger.logCategory('sync', '✅ Synced agreementSettings to cloud');
+                    } else if (action.type === 'UPDATE_PROJECT_AGREEMENT_SETTINGS') {
+                        await settingsSyncService.saveSetting('projectAgreementSettings', action.payload);
+                        logger.logCategory('sync', '✅ Synced projectAgreementSettings to cloud');
+                    } else if (action.type === 'UPDATE_RENTAL_INVOICE_SETTINGS') {
+                        await settingsSyncService.saveSetting('rentalInvoiceSettings', action.payload);
+                        logger.logCategory('sync', '✅ Synced rentalInvoiceSettings to cloud');
+                    } else if (action.type === 'UPDATE_PROJECT_INVOICE_SETTINGS') {
+                        await settingsSyncService.saveSetting('projectInvoiceSettings', action.payload);
+                        logger.logCategory('sync', '✅ Synced projectInvoiceSettings to cloud');
+                    }
+                } catch (error: any) {
+                    // Log error but don't block UI - state is already updated locally
+                    logger.errorCategory('sync', '❌ CRITICAL: Failed to sync to API in syncToApi:', {
+                        actionType: action.type,
+                        error: error,
+                        errorMessage: error?.message || error?.error || 'Unknown error',
+                        status: error?.status,
+                        statusText: error?.statusText,
+                        stack: error?.stack,
+                        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)),
+                        payload: action.payload ? {
+                            ...(typeof action.payload === 'object' && action.payload !== null
+                                ? { id: (action.payload as any).id, name: (action.payload as any).name }
+                                : action.payload)
+                        } : undefined
+                    });
+
+                    // Check if it's a network error (status 0)
+                    if (error?.status === 0 || error?.error === 'NetworkError') {
+                        logger.warnCategory('sync', '📴 Network error detected, queuing operation for later sync');
+                        await queueOperationForSync(action);
+                        return;
+                    }
+
+                    // Show user-friendly notification for expired token
+                    if (error?.status === 401) {
+                        // Only show notification once per session to avoid spam
+                        const hasShownTokenWarning = sessionStorage.getItem('token_expired_warning_shown');
+                        if (!hasShownTokenWarning) {
+                            sessionStorage.setItem('token_expired_warning_shown', 'true');
+                            // Dispatch custom event to show notification
+                            if (typeof window !== 'undefined') {
+                                window.dispatchEvent(new CustomEvent('show-sync-warning', {
+                                    detail: {
+                                        message: 'Your session has expired. Data is saved locally. Please re-login to sync to the cloud.',
+                                        type: 'info'
+                                    }
+                                }));
+                            }
+                        }
+                    }
+
+                    // Notify when transaction sync fails (e.g. 400 validation / account not in cloud)
+                    const isTransactionAction = action.type === 'ADD_TRANSACTION' || action.type === 'BATCH_ADD_TRANSACTIONS' || action.type === 'UPDATE_TRANSACTION';
+                    if (error?.status === 400 && isTransactionAction && typeof window !== 'undefined') {
+                        const msg = error?.message || error?.error || 'Payment could not sync to cloud.';
+                        window.dispatchEvent(new CustomEvent('show-sync-warning', {
+                            detail: {
+                                message: `${msg} Please ensure the payment account exists in cloud and try again.`,
+                                type: 'warning'
+                            }
+                        }));
+                    }
+                }
+            };
 
             const user = state.currentUser;
 
@@ -2300,7 +2246,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const syncQueue = getSyncQueue();
                     const tenantId = user?.tenant?.id;
                     const userId = user?.id;
-                    
+
                     if (!tenantId || !userId) {
                         logger.warnCategory('sync', '⚠️ Cannot queue operation: missing tenant or user ID');
                         return;
@@ -2524,14 +2470,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
 
 
-        // Sync reducer state with loaded database state (critical for first load)
+    // Sync reducer state with loaded database state (critical for first load)
     // Initialize with storedState when it's ready (after initialization)
     useEffect(() => {
         // Wait for initialization to complete and storedState to be ready
         if (!isInitializing && storedStateRef.current) {
             // Use ref to access storedState to avoid dependency issues
             const currentStoredState = storedStateRef.current;
-            
+
             // Check if storedState has more data than current state (database loaded)
             const storedHasMoreData = currentStoredState.contacts.length > state.contacts.length ||
                 currentStoredState.transactions.length > state.transactions.length ||
@@ -2593,16 +2539,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 if (!api || api.length === 0) return current;
                 const apiMap = new Map(api.map(item => [item.id, item]));
                 const currentMap = new Map(current.map(item => [item.id, item]));
-                
+
                 // Merge: API data takes precedence for existing items, but keep local items not in API
                 const merged = new Map<string, T>();
-                
+
                 // First, add all current items (preserves local changes)
                 current.forEach(item => merged.set(item.id, item));
-                
+
                 // Then, update with API data (overwrites with server version)
                 api.forEach(item => merged.set(item.id, item));
-                
+
                 return Array.from(merged.values());
             };
 
@@ -2610,7 +2556,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // Merge arrays by ID to preserve local changes that haven't been synced yet
             const updates: Partial<AppState> = {};
             const currentState = stateRef.current;
-            
+
             if (apiState.contacts) updates.contacts = mergeById(currentState.contacts, apiState.contacts);
             if (apiState.transactions) updates.transactions = mergeById(currentState.transactions, apiState.transactions);
             if (apiState.bills) updates.bills = mergeById(currentState.bills, apiState.bills);
@@ -2681,7 +2627,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (!cloudSettings || typeof cloudSettings !== 'object') return;
 
             console.log('📥 Received cloud settings, applying to state...');
-            
+
             // Apply settings to state
             if (cloudSettings.printSettings) {
                 dispatch({ type: 'UPDATE_PRINT_SETTINGS', payload: cloudSettings.printSettings });
@@ -2781,7 +2727,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             return;
                         }
                     }
-                    
+
                     if (pending) return;
                     pending = true;
                     setTimeout(() => {
@@ -2940,14 +2886,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     if (!normalized) return;
                     const existing = stateRef.current.bills.find(b => b.id === normalized.id);
                     const merged = existing ? { ...existing, ...normalized } : normalized;
-                    
+
                     // Mark as remote to prevent sync loop
-                    dispatch({ 
-                        type: existing ? 'UPDATE_BILL' : 'ADD_BILL', 
+                    dispatch({
+                        type: existing ? 'UPDATE_BILL' : 'ADD_BILL',
                         payload: merged,
-                        _isRemote: true 
+                        _isRemote: true
                     } as any);
-                    
+
                     // Update related PM cycle allocation when bill payment status changes
                     if (existing && (existing.paidAmount !== merged.paidAmount || existing.status !== merged.status)) {
                         const relatedAllocation = stateRef.current.pmCycleAllocations?.find(
@@ -2957,8 +2903,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             const updatedAllocation = {
                                 ...relatedAllocation,
                                 paidAmount: merged.paidAmount || 0,
-                                status: merged.status === 'Paid' ? 'paid' : 
-                                       merged.status === 'Partially Paid' ? 'partially_paid' : 'unpaid'
+                                status: merged.status === 'Paid' ? 'paid' :
+                                    merged.status === 'Partially Paid' ? 'partially_paid' : 'unpaid'
                             };
                             dispatch({
                                 type: 'UPDATE_PM_CYCLE_ALLOCATION',
@@ -2975,10 +2921,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     if (!normalized) return;
                     const exists = stateRef.current.bills.some(b => b.id === normalized.id);
                     if (!exists) {
-                        dispatch({ 
-                            type: 'ADD_BILL', 
+                        dispatch({
+                            type: 'ADD_BILL',
                             payload: normalized,
-                            _isRemote: true 
+                            _isRemote: true
                         } as any);
                     }
                 }));
@@ -2986,10 +2932,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const id = data?.billId ?? data?.id;
                     if (!id) return;
-                    dispatch({ 
-                        type: 'DELETE_BILL', 
+                    dispatch({
+                        type: 'DELETE_BILL',
                         payload: id,
-                        _isRemote: true 
+                        _isRemote: true
                     } as any);
                 }));
 
@@ -3001,10 +2947,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     if (!normalizedTx) return;
                     const exists = stateRef.current.transactions.some(t => t.id === normalizedTx.id);
                     if (!exists) {
-                        dispatch({ 
-                            type: 'ADD_TRANSACTION', 
+                        dispatch({
+                            type: 'ADD_TRANSACTION',
                             payload: normalizedTx,
-                            _isRemote: true 
+                            _isRemote: true
                         } as any);
                     }
                 }));
@@ -3013,20 +2959,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const payloadTx = data?.transaction ?? data;
                     const normalizedTx = normalizeTransactionFromEvent(payloadTx);
                     if (!normalizedTx) return;
-                    dispatch({ 
-                        type: 'UPDATE_TRANSACTION', 
+                    dispatch({
+                        type: 'UPDATE_TRANSACTION',
                         payload: normalizedTx,
-                        _isRemote: true 
+                        _isRemote: true
                     } as any);
                 }));
                 unsubSpecific.push(ws.on('transaction:deleted', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const id = data?.transactionId ?? data?.id;
                     if (!id) return;
-                    dispatch({ 
-                        type: 'DELETE_TRANSACTION', 
+                    dispatch({
+                        type: 'DELETE_TRANSACTION',
                         payload: id,
-                        _isRemote: true 
+                        _isRemote: true
                     } as any);
                 }));
 
@@ -3038,10 +2984,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     if (!normalized) return;
                     const exists = stateRef.current.invoices.some(i => i.id === normalized.id);
                     if (!exists) {
-                        dispatch({ 
-                            type: 'ADD_INVOICE', 
+                        dispatch({
+                            type: 'ADD_INVOICE',
                             payload: normalized,
-                            _isRemote: true 
+                            _isRemote: true
                         } as any);
                     }
                 }));
@@ -3052,20 +2998,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     if (!normalized) return;
                     const existing = stateRef.current.invoices.find(i => i.id === normalized.id);
                     const merged = existing ? { ...existing, ...normalized } : normalized;
-                    dispatch({ 
-                        type: existing ? 'UPDATE_INVOICE' : 'ADD_INVOICE', 
+                    dispatch({
+                        type: existing ? 'UPDATE_INVOICE' : 'ADD_INVOICE',
                         payload: merged,
-                        _isRemote: true 
+                        _isRemote: true
                     } as any);
                 }));
                 unsubSpecific.push(ws.on('invoice:deleted', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const id = data?.invoiceId ?? data?.id;
                     if (!id) return;
-                    dispatch({ 
-                        type: 'DELETE_INVOICE', 
+                    dispatch({
+                        type: 'DELETE_INVOICE',
                         payload: id,
-                        _isRemote: true 
+                        _isRemote: true
                     } as any);
                 }));
 
@@ -3077,10 +3023,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     if (!normalized) return;
                     const exists = stateRef.current.rentalAgreements.some(r => r.id === normalized.id);
                     if (!exists) {
-                        dispatch({ 
-                            type: 'ADD_RENTAL_AGREEMENT', 
+                        dispatch({
+                            type: 'ADD_RENTAL_AGREEMENT',
                             payload: normalized,
-                            _isRemote: true 
+                            _isRemote: true
                         } as any);
                     }
                 }));
@@ -3091,20 +3037,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     if (!normalized) return;
                     const existing = stateRef.current.rentalAgreements.find(r => r.id === normalized.id);
                     const merged = existing ? { ...existing, ...normalized } : normalized;
-                    dispatch({ 
-                        type: existing ? 'UPDATE_RENTAL_AGREEMENT' : 'ADD_RENTAL_AGREEMENT', 
+                    dispatch({
+                        type: existing ? 'UPDATE_RENTAL_AGREEMENT' : 'ADD_RENTAL_AGREEMENT',
                         payload: merged,
-                        _isRemote: true 
+                        _isRemote: true
                     } as any);
                 }));
                 unsubSpecific.push(ws.on('rental_agreement:deleted', (data: any) => {
                     if (data?.userId && currentUserId && data.userId === currentUserId) return;
                     const id = data?.agreementId ?? data?.id;
                     if (!id) return;
-                    dispatch({ 
-                        type: 'DELETE_RENTAL_AGREEMENT', 
+                    dispatch({
+                        type: 'DELETE_RENTAL_AGREEMENT',
                         payload: id,
-                        _isRemote: true 
+                        _isRemote: true
                     } as any);
                 }));
 
@@ -3137,7 +3083,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const prevPropertiesLengthRef = useRef(state.properties.length);
     const prevUnitsLengthRef = useRef(state.units.length);
     const prevCategoriesLengthRef = useRef(state.categories.length);
-    const prevInventoryItemsLengthRef = useRef((state.inventoryItems || []).length);
     const prevCurrentUserRef = useRef(state.currentUser);
     const prevCurrentPageRef = useRef(state.currentPage);
 
@@ -3151,7 +3096,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
 
             // Fast length checks (no expensive operations)
-            const inventoryItemsLength = (state.inventoryItems || []).length;
             const dataChanged =
                 prevContactsLengthRef.current !== state.contacts.length ||
                 prevTransactionsLengthRef.current !== state.transactions.length ||
@@ -3163,7 +3107,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 prevPropertiesLengthRef.current !== state.properties.length ||
                 prevUnitsLengthRef.current !== state.units.length ||
                 prevCategoriesLengthRef.current !== state.categories.length ||
-                prevInventoryItemsLengthRef.current !== inventoryItemsLength ||
                 prevCurrentUserRef.current !== state.currentUser;
 
             // Only persist if data changed
@@ -3179,7 +3122,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 prevPropertiesLengthRef.current = state.properties.length;
                 prevUnitsLengthRef.current = state.units.length;
                 prevCategoriesLengthRef.current = state.categories.length;
-                prevInventoryItemsLengthRef.current = inventoryItemsLength;
                 prevCurrentUserRef.current = state.currentUser;
 
                 // Defer save to avoid blocking (use requestIdleCallback or setTimeout)
@@ -3208,7 +3150,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const previousContactsLengthRef = useRef(state.contacts.length);
     const previousTransactionsLengthRef = useRef(state.transactions.length);
     const previousBillsLengthRef = useRef(state.bills.length);
-    const previousInventoryItemsLengthRef = useRef((state.inventoryItems || []).length);
 
     useEffect(() => {
         if (!isInitializing) {
@@ -3216,14 +3157,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const contactsChanged = state.contacts.length !== previousContactsLengthRef.current;
             const transactionsChanged = state.transactions.length !== previousTransactionsLengthRef.current;
             const billsChanged = state.bills.length !== previousBillsLengthRef.current;
-            const inventoryItemsLength = (state.inventoryItems || []).length;
-            const inventoryItemsChanged = inventoryItemsLength !== previousInventoryItemsLengthRef.current;
 
-            if (contactsChanged || transactionsChanged || billsChanged || inventoryItemsChanged) {
+            if (contactsChanged || transactionsChanged || billsChanged) {
                 previousContactsLengthRef.current = state.contacts.length;
                 previousTransactionsLengthRef.current = state.transactions.length;
                 previousBillsLengthRef.current = state.bills.length;
-                previousInventoryItemsLengthRef.current = inventoryItemsLength;
 
                 // Save immediately for critical data changes (no delay for transactions)
                 const saveImmediately = async () => {
@@ -3240,7 +3178,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             transactions: state.transactions.length,
                             bills: state.bills.length,
                             invoices: state.invoices.length,
-                            inventoryItems: inventoryItemsLength
                         });
                     } catch (error) {
                         console.error('❌ Failed to save state after data change:', error);
@@ -3252,8 +3189,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             stateSnapshot: {
                                 contacts: state.contacts.length,
                                 transactions: state.transactions.length,
-                                bills: state.bills.length,
-                                inventoryItems: inventoryItemsLength
+                                bills: state.bills.length
                             }
                         });
                     }
@@ -3269,7 +3205,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }
             }
         }
-    }, [state.contacts.length, state.transactions.length, state.bills.length, state.invoices.length, (state.inventoryItems || []).length, isInitializing, state]);
+    }, [state.contacts.length, state.transactions.length, state.bills.length, state.invoices.length, isInitializing, state]);
 
     // 🔧 FIX: Sync authenticated user from AuthContext to AppContext state
     useEffect(() => {
@@ -3316,7 +3252,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     if (errorMsg.includes('no such table')) {
                         console.error('❌ CRITICAL: Missing database table!', errorMsg);
                         console.log('💡 To fix this issue, clear both localStorage AND OPFS storage');
-                        
+
                         // Show user-friendly error
                         const errorDiv = document.createElement('div');
                         errorDiv.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#dc2626;color:white;padding:16px 24px;border-radius:8px;z-index:9999;max-width:600px;box-shadow:0 4px 6px rgba(0,0,0,0.1);';
@@ -3333,7 +3269,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             </button>
                         `;
                         document.body.appendChild(errorDiv);
-                        
+
                         // Add proper async handler for Fix button
                         const fixButton = document.getElementById('fixDbButton');
                         if (fixButton) {
@@ -3341,12 +3277,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 fixButton.textContent = 'Fixing...';
                                 fixButton.style.opacity = '0.5';
                                 fixButton.style.cursor = 'wait';
-                                
+
                                 try {
                                     // Clear localStorage
                                     localStorage.removeItem('finance_db');
                                     console.log('✅ localStorage cleared');
-                                    
+
                                     // Clear OPFS if supported
                                     if (navigator.storage && navigator.storage.getDirectory) {
                                         try {
@@ -3358,7 +3294,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                             console.log('ℹ️ OPFS file not found or already cleared');
                                         }
                                     }
-                                    
+
                                     console.log('🔄 Reloading to recreate database...');
                                     setTimeout(() => location.reload(), 500);
                                 } catch (error) {
@@ -3369,7 +3305,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 }
                             };
                         }
-                        
+
                         setTimeout(() => errorDiv.remove(), 30000); // Auto-remove after 30s
                     }
                 }
@@ -3416,7 +3352,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // Skip automatic bulk sync on re-authentication to avoid background API traffic.
             // Sync will now occur only on explicit transaction actions.
         }
-        
+
         // Update previous auth state
         prevAuthRef.current = isAuthenticated;
     }, [isAuthenticated, isInitializing]);
@@ -3430,7 +3366,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     logger.logCategory('sync', '🔄 User authenticated, reloading data from API for current tenant...');
                     const apiService = getAppStateApiService();
                     const apiState = await apiService.loadState();
-                    
+
                     // Replace state with API data for this tenant only (server filters by JWT tenant_id)
                     setStoredState(prev => ({
                         ...prev,
@@ -3451,7 +3387,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         installmentPlans: apiState.installmentPlans || [],
                         planAmenities: apiState.planAmenities || [],
                     }));
-                    
+
                     logger.logCategory('sync', '✅ Reloaded data from API:', {
                         contacts: apiState.contacts?.length || 0,
                         projects: apiState.projects?.length || 0,
@@ -3461,7 +3397,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     logger.errorCategory('sync', '⚠️ Failed to reload data from API:', error);
                 }
             };
-            
+
             // Delay reload slightly to ensure token is fully set
             setTimeout(reloadDataFromApi, 1000);
         }
@@ -3471,11 +3407,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     useEffect(() => {
         const currentTenantId = auth.tenant?.id || null;
         const prevTenantId = prevTenantIdRef.current;
-        
+
         // Detect tenant change: tenant exists, is different from previous, and we're authenticated
         if (isAuthenticated && currentTenantId && prevTenantId !== null && prevTenantId !== currentTenantId && !isInitializing) {
             logger.logCategory('sync', `🔄 Tenant changed (${prevTenantId} -> ${currentTenantId}), clearing local database...`);
-            
+
             const clearLocalDatabase = async () => {
                 try {
                     const dbService = getDatabaseService();
@@ -3483,7 +3419,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         // Clear all local data
                         dbService.clearAllData();
                         logger.logCategory('database', '✅ Cleared local database for tenant change');
-                        
+
                         // Reset state to initial state (keeping system defaults)
                         setStoredState(prev => ({
                             ...initialState,
@@ -3502,13 +3438,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             enableDatePreservation: prev.enableDatePreservation,
                             pmCostPercentage: prev.pmCostPercentage,
                         }));
-                        
+
                         // Reload data from API for the new tenant
                         try {
                             logger.logCategory('sync', '🔄 Reloading data from API for new tenant...');
                             const apiService = getAppStateApiService();
                             const apiState = await apiService.loadState();
-                            
+
                             // Create full state with API data using functional update to access current state
                             setStoredState(prev => {
                                 const fullState: AppState = {
@@ -3531,7 +3467,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     installmentPlans: apiState.installmentPlans || [],
                                     planAmenities: apiState.planAmenities || [],
                                 };
-                                
+
                                 // Save API data to local database with proper tenant_id (async, don't await)
                                 // IMPORTANT: Disable sync queueing since this data is FROM cloud, not TO cloud
                                 // DON'T clear sync queue - local changes need to be pushed upstream!
@@ -3545,10 +3481,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                         logger.errorCategory('database', '⚠️ Failed to save API data to local database:', err);
                                     }
                                 })();
-                                
+
                                 return fullState;
                             });
-                            
+
                             logger.logCategory('sync', '✅ Reloaded and saved data from API for new tenant:', {
                                 contacts: apiState.contacts?.length || 0,
                                 projects: apiState.projects?.length || 0,
@@ -3562,11 +3498,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     logger.errorCategory('database', '⚠️ Failed to clear local database for tenant change:', error);
                 }
             };
-            
+
             // Small delay to ensure auth is fully updated
             setTimeout(clearLocalDatabase, 500);
         }
-        
+
         // Update previous tenant ID
         prevTenantIdRef.current = currentTenantId;
     }, [auth.tenant?.id, isAuthenticated, isInitializing, setStoredState]);
@@ -3574,7 +3510,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Show loading/initialization state
     if (isInitializing) {
         return (
-            <InitializationScreen 
+            <InitializationScreen
                 initMessage={initMessage}
                 initProgress={initProgress}
                 useFallback={useFallback}

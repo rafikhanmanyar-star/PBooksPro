@@ -126,10 +126,10 @@ async function runMigrations() {
   }
 
   // Enable SSL for production, staging, and any Render database URLs
-  const shouldUseSSL = process.env.NODE_ENV === 'production' || 
-                       process.env.NODE_ENV === 'staging' ||
-                       (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('.render.com'));
-  
+  const shouldUseSSL = process.env.NODE_ENV === 'production' ||
+    process.env.NODE_ENV === 'staging' ||
+    (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('.render.com'));
+
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: shouldUseSSL ? { rejectUnauthorized: false } : false,
@@ -137,7 +137,7 @@ async function runMigrations() {
 
   try {
     console.log('🔄 Running database migrations...');
-    
+
     // Read and execute PostgreSQL schema (always run to ensure schema_migrations table exists)
     // Try multiple paths to find the SQL file (works in both dev and production)
     const possiblePaths = [
@@ -146,7 +146,7 @@ async function runMigrations() {
       join(process.cwd(), 'server/migrations/postgresql-schema.sql'), // From project root
       join(process.cwd(), 'migrations/postgresql-schema.sql'),    // From project root (if in server/)
     ];
-    
+
     let schemaPath: string | null = null;
     for (const path of possiblePaths) {
       try {
@@ -157,14 +157,14 @@ async function runMigrations() {
         // Try next path
       }
     }
-    
+
     if (!schemaPath) {
       throw new Error(`Could not find postgresql-schema.sql. Tried: ${possiblePaths.join(', ')}`);
     }
-    
+
     console.log('📋 Reading schema from:', schemaPath);
     const schemaSQL = readFileSync(schemaPath, 'utf8');
-    
+
     // Execute schema - DROP IF EXISTS and CREATE IF NOT EXISTS ensure idempotency
     // This must run first to create the schema_migrations table
     const schemaStartTime = Date.now();
@@ -183,9 +183,9 @@ async function runMigrations() {
         throw error;
       }
     }
-    
+
     console.log('✅ Database schema verified');
-    
+
     // Run additional migrations (only if not already applied)
     console.log('🔄 Checking additional migrations...');
 
@@ -292,7 +292,7 @@ async function runMigrations() {
       ],
       'Document ID on contracts and bills'
     );
-    
+
     // Migration: Add user_id to transactions table
     await runMigrationIfNeeded(
       pool,
@@ -305,7 +305,7 @@ async function runMigrations() {
       ],
       'User ID to transactions'
     );
-    
+
     // Migration: Add payment_id column to license_history (if missing)
     if (!(await isMigrationApplied(pool, 'add-payment-id-to-license-history'))) {
       try {
@@ -314,7 +314,7 @@ async function runMigrations() {
           FROM information_schema.columns 
           WHERE table_name = 'license_history' AND column_name = 'payment_id'
         `);
-        
+
         const startTime = Date.now();
         if (columnCheck.rows.length === 0) {
           console.log('📋 Adding payment_id column to license_history...');
@@ -330,7 +330,7 @@ async function runMigrations() {
         // Don't throw - migration might already be applied or table might not exist yet
       }
     }
-    
+
     // Migration: Make transaction_audit_log.user_id nullable
     await runMigrationIfNeeded(
       pool,
@@ -381,7 +381,7 @@ async function runMigrations() {
         // Don't throw - migration might already be applied or constraints exist
       }
     }
-    
+
     // Migration: Add org_id to rental_agreements table (MUST run before contact_id)
     await runMigrationIfNeeded(
       pool,
@@ -394,7 +394,7 @@ async function runMigrations() {
       ],
       'Org ID to rental agreements'
     );
-    
+
     // Migration: Add contact_id to rental_agreements table
     await runMigrationIfNeeded(
       pool,
@@ -433,7 +433,7 @@ async function runMigrations() {
       ],
       'Is supplier column'
     );
-    
+
     // Migration: Add WhatsApp Business API Integration tables
     await runMigrationIfNeeded(
       pool,
@@ -446,7 +446,7 @@ async function runMigrations() {
       ],
       'WhatsApp Integration'
     );
-    
+
     // Migration: Increase user restriction from 5 to 20 per organization
     await runMigrationIfNeeded(
       pool,
@@ -512,31 +512,6 @@ async function runMigrations() {
       'Unit fields (type, area, floor)'
     );
 
-    // Migration: Purchase bills tables (purchase_bills, purchase_bill_items, purchase_bill_payments, inventory_stock)
-    await runMigrationIfNeeded(
-      pool,
-      'add-purchase-bills-tables',
-      [
-        join(__dirname, '../migrations/add-purchase-bills-tables.sql'),
-        join(__dirname, '../../migrations/add-purchase-bills-tables.sql'),
-        join(process.cwd(), 'server/migrations/add-purchase-bills-tables.sql'),
-        join(process.cwd(), 'migrations/add-purchase-bills-tables.sql'),
-      ],
-      'Purchase bills tables'
-    );
-
-    // Migration: Add received_quantity column to purchase_bill_items (for existing tables)
-    await runMigrationIfNeeded(
-      pool,
-      'add-received-quantity-to-purchase-bill-items',
-      [
-        join(__dirname, '../migrations/add-received-quantity-to-purchase-bill-items.sql'),
-        join(__dirname, '../../migrations/add-received-quantity-to-purchase-bill-items.sql'),
-        join(process.cwd(), 'server/migrations/add-received-quantity-to-purchase-bill-items.sql'),
-        join(process.cwd(), 'migrations/add-received-quantity-to-purchase-bill-items.sql'),
-      ],
-      'Received quantity column to purchase bill items'
-    );
 
     // Migration: Biz Planet Marketplace (marketplace_ads, marketplace_categories)
     await runMigrationIfNeeded(
@@ -563,12 +538,38 @@ async function runMigrations() {
       ],
       'Marketplace ad images table'
     );
-    
+
+    // Migration: Add views column to marketplace ads
+    await runMigrationIfNeeded(
+      pool,
+      'add-views-to-marketplace-ads',
+      [
+        join(__dirname, '../migrations/add-views-to-marketplace-ads.sql'),
+        join(__dirname, '../../migrations/add-views-to-marketplace-ads.sql'),
+        join(process.cwd(), 'server/migrations/add-views-to-marketplace-ads.sql'),
+        join(process.cwd(), 'migrations/add-views-to-marketplace-ads.sql'),
+      ],
+      'Views column to marketplace ads'
+    );
+
+    // Migration: Add likes column to marketplace ads
+    await runMigrationIfNeeded(
+      pool,
+      'add-likes-to-marketplace-ads',
+      [
+        join(__dirname, '../migrations/add-likes-to-marketplace-ads.sql'),
+        join(__dirname, '../../migrations/add-likes-to-marketplace-ads.sql'),
+        join(process.cwd(), 'server/migrations/add-likes-to-marketplace-ads.sql'),
+        join(process.cwd(), 'migrations/add-likes-to-marketplace-ads.sql'),
+      ],
+      'Likes column to marketplace ads'
+    );
+
     // Create default admin user if it doesn't exist
     console.log('👤 Ensuring admin user exists...');
     const bcrypt = await import('bcryptjs');
     const defaultPassword = await bcrypt.default.hash('admin123', 10);
-    
+
     await pool.query(
       `INSERT INTO admin_users (id, username, name, email, password, role)
        VALUES ($1, $2, $3, $4, $5, $6)
@@ -582,10 +583,10 @@ async function runMigrations() {
         'super_admin'
       ]
     );
-    
+
     console.log('✅ Admin user ready (username: Admin, password: admin123)');
     console.log('   ⚠️  Please change the password after first login!');
-    
+
   } catch (error: any) {
     console.error('❌ Migration failed:', error.message);
     // Don't exit - let the server start anyway (schema might already exist)

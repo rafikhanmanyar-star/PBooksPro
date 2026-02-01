@@ -38,7 +38,7 @@ class SyncManager {
   private connectionMonitor = getConnectionMonitor();
   private maxRetries = 3;
   private retryDelay = 5000; // 5 seconds
-  
+
   // Batching configuration - larger batches and parallel execution for faster sync
   private readonly BATCH_SIZE = 20; // Process up to 20 operations per batch in parallel
   private readonly BATCH_DELAY_MS = 300; // Short delay between batches (was 2000ms)
@@ -46,7 +46,7 @@ class SyncManager {
   constructor() {
     // Load sync queue from local storage on initialization
     this.loadSyncQueue();
-    
+
     // Start monitoring connection
     // Only sync on reconnection, not continuously
     this.connectionMonitor.startMonitoring({
@@ -79,7 +79,7 @@ class SyncManager {
 
     // Deduplication: Remove any existing pending operations for the same entity+entityId
     // This prevents duplicate sync operations if the same record is modified multiple times
-    this.queue = this.queue.filter(op => 
+    this.queue = this.queue.filter(op =>
       !(op.entity === entity && op.entityId === entityId && op.status === 'pending')
     );
 
@@ -100,7 +100,7 @@ class SyncManager {
 
     const pendingCount = this.queue.filter(op => op.status === 'pending').length;
     console.log(`[SyncManager] Queued ${type} operation for ${entity}:${entityId} (${pendingCount} pending total - will sync on login/reconnection)`);
-    
+
     // DO NOT sync automatically - operations are queued and will sync only on:
     // 1. User login
     // 2. Connection restore (reconnection)
@@ -193,7 +193,7 @@ class SyncManager {
    */
   async syncQueueBatch(): Promise<void> {
     console.log('[SyncManager] 🔄 syncQueueBatch() called');
-    
+
     if (isMobileDevice()) {
       console.log('[SyncManager] Mobile device - skipping sync');
       return; // No sync needed on mobile
@@ -218,7 +218,7 @@ class SyncManager {
 
     // Get pending operations
     const pendingOps = this.queue.filter(op => op.status === 'pending' || op.status === 'failed');
-    
+
     if (pendingOps.length === 0) {
       console.log('[SyncManager] ℹ️ No pending operations to sync');
       return; // Nothing to sync
@@ -229,7 +229,7 @@ class SyncManager {
     const remainingCount = pendingOps.length - batchToSync.length;
 
     this.isSyncing = true;
-    
+
     console.log(`[SyncManager] 🚀 Starting sync batch: ${batchToSync.length} operations in parallel (${remainingCount} remaining in queue)`);
 
     try {
@@ -239,7 +239,7 @@ class SyncManager {
         op.syncStartedAt = Date.now();
       });
       this.saveSyncQueue(); // Save immediately so status is visible
-      
+
       // Process batch in parallel (like SyncEngine) instead of one-by-one
       await Promise.allSettled(
         batchToSync.map(async (operation) => {
@@ -255,12 +255,12 @@ class SyncManager {
               operation.status = 'pending'; // Keep as pending, will sync after login
               return;
             }
-            
+
             operation.retries++;
             operation.status = 'failed';
             operation.syncStartedAt = undefined;
             operation.errorMessage = error instanceof Error ? error.message : String(error);
-            
+
             if (operation.retries >= this.maxRetries) {
               console.error(`[SyncManager] ❌ Failed to sync ${operation.entity}:${operation.entityId} after ${this.maxRetries} retries:`, error);
             } else {
@@ -317,7 +317,7 @@ class SyncManager {
 
     // Import API client dynamically to avoid circular dependencies
     const { apiClient } = await import('../api/client');
-    
+
     // Map entity names to API endpoints
     const endpointMap: Record<string, string> = {
       'transaction': '/transactions',
@@ -336,12 +336,11 @@ class SyncManager {
       'bills': '/bills',
       'installment_plans': '/installment-plans',
       'plan_amenities': '/plan-amenities',
-      'warehouse': '/warehouses',
-      'warehouses': '/warehouses',
+      'sales_returns': '/sales-returns',
     };
-    
+
     const endpoint = endpointMap[operation.entity] || `/${operation.entity}`;
-    
+
     // Skip system users (sys-admin) - they shouldn't be synced
     if (operation.entity === 'users' || operation.entity === 'user') {
       const userId = operation.entityId || operation.data?.id;
@@ -349,7 +348,7 @@ class SyncManager {
         console.log(`[SyncManager] ⏭️ Skipping sync of system user: ${userId}`);
         return; // Skip system users
       }
-      
+
       // Validate required fields for user sync
       if (operation.type === 'create' || operation.type === 'update') {
         const user = operation.data;
@@ -364,7 +363,7 @@ class SyncManager {
         }
       }
     }
-    
+
     try {
       switch (operation.type) {
         case 'create':
@@ -383,21 +382,21 @@ class SyncManager {
         this.stopAutoSync(); // Stop auto-sync until authenticated
         throw new Error('Authentication required'); // Don't retry
       }
-      
+
       // Handle 409 Conflict errors for create operations
       // If the record already exists in the cloud, treat it as success
       // This happens when local DB has records that were already synced to cloud
       if (error?.status === 409 && operation.type === 'create') {
         const errorMessage = (error?.message || error?.error || String(error)).toLowerCase();
-        const isDuplicateError = errorMessage.includes('duplicate') || 
-                                 errorMessage.includes('already exists');
-        
+        const isDuplicateError = errorMessage.includes('duplicate') ||
+          errorMessage.includes('already exists');
+
         if (isDuplicateError) {
           console.log(`[SyncManager] ✅ Record already exists in cloud for ${operation.entity}:${operation.entityId}, treating as success`);
           return; // Success - record already exists, no need to retry
         }
       }
-      
+
       // Re-throw other errors
       throw new Error(`Failed to sync ${operation.type} for ${operation.entity}: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -419,15 +418,15 @@ class SyncManager {
       failed: this.queue.filter(op => op.status === 'failed').length,
     };
     // Reduced logging - only log when status changes or every 10 calls
-    if (!this._lastLoggedStatus || 
-        JSON.stringify(status) !== JSON.stringify(this._lastLoggedStatus) ||
-        (this._statusCallCount++ % 10 === 0)) {
+    if (!this._lastLoggedStatus ||
+      JSON.stringify(status) !== JSON.stringify(this._lastLoggedStatus) ||
+      (this._statusCallCount++ % 10 === 0)) {
       console.log(`[SyncManager] 📊 Queue: ${status.pending} pending, ${status.syncing} syncing, ${status.failed} failed (${status.total} total)`);
       this._lastLoggedStatus = status;
     }
     return status;
   }
-  
+
   private _lastLoggedStatus?: { total: number; pending: number; syncing: number; failed: number };
   private _statusCallCount = 0;
 
@@ -451,7 +450,7 @@ class SyncManager {
     const before = this.queue.length;
     this.queue = this.queue.filter(op => op.status !== 'completed');
     const after = this.queue.length;
-    
+
     if (before !== after) {
       this.saveSyncQueue();
       console.log(`[SyncManager] Cleared ${before - after} completed operations`);
@@ -497,7 +496,7 @@ class SyncManager {
         const beforeCount = this.queue.length;
         this.queue = this.queue.filter(op => op.status !== 'completed');
         const afterCount = this.queue.length;
-        
+
         if (beforeCount !== afterCount) {
           this.saveSyncQueue();
           console.log(`[SyncManager] Loaded ${afterCount} pending operations (removed ${beforeCount - afterCount} completed operations)`);

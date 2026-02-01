@@ -145,7 +145,7 @@ class SyncEngine {
 
     const success = progress.failed === 0;
     console.log(`${success ? '✅' : '⚠️'} Sync complete: ${progress.completed} succeeded, ${progress.failed} failed`);
-    
+
     this.notifyComplete(success, progress);
   }
 
@@ -190,7 +190,7 @@ class SyncEngine {
   private async syncItemWithTimeout(item: SyncQueueItem): Promise<void> {
     return Promise.race([
       this.syncItem(item),
-      new Promise<void>((_, reject) => 
+      new Promise<void>((_, reject) =>
         setTimeout(() => reject(new Error(`Sync timeout after ${SYNC_TIMEOUT_MS}ms`)), SYNC_TIMEOUT_MS)
       )
     ]);
@@ -221,7 +221,7 @@ class SyncEngine {
         await this.syncQueue.updateStatus(item.id, 'completed');
         return; // Skip system users
       }
-      
+
       // Validate required fields for user sync
       if (item.action === 'create' || item.action === 'update') {
         const user = item.data;
@@ -237,7 +237,7 @@ class SyncEngine {
         }
       }
     }
-    
+
     // Route to appropriate API based on type and action
     switch (item.type) {
       case 'transaction':
@@ -276,9 +276,6 @@ class SyncEngine {
       case 'plan_amenity':
         await this.syncPlanAmenity(item);
         break;
-      case 'inventory_item':
-        await this.syncInventoryItem(item);
-        break;
       case 'rental_agreement':
         await this.syncRentalAgreement(item);
         break;
@@ -308,7 +305,7 @@ class SyncEngine {
             await apiClient.post('/users', item.data);
             break;
           case 'delete':
-            await apiClient.delete(`/users/${item.data?.id || item.id}`);
+            await apiClient.delete(`/users/${(item.data as any)?.id || item.id}`);
             break;
         }
         break;
@@ -485,20 +482,6 @@ class SyncEngine {
         break;
       case 'delete':
         await this.apiService.deletePlanAmenity(item.data.id);
-        break;
-    }
-  }
-
-  private async syncInventoryItem(item: SyncQueueItem): Promise<void> {
-    switch (item.action) {
-      case 'create':
-        await this.apiService.saveInventoryItem(item.data);
-        break;
-      case 'update':
-        await this.apiService.saveInventoryItem(item.data);
-        break;
-      case 'delete':
-        await this.apiService.deleteInventoryItem(item.data.id);
         break;
     }
   }

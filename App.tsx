@@ -62,7 +62,6 @@ const TasksCalendarView = lazyWithRetry(() => import('./components/tasks/TasksCa
 const TeamRankingPage = lazyWithRetry(() => import('./components/tasks/TeamRankingPage'));
 const BizPlanetPage = lazyWithRetry(() => import('./components/bizPlanet/BizPlanetPage'));
 const PayrollHub = lazyWithRetry(() => import('./components/payroll/PayrollHub'));
-const InventoryPage = lazyWithRetry(() => import('./components/inventory/InventoryPage'));
 
 // Define page groups to determine which component instance handles which routes
 const PAGE_GROUPS = {
@@ -82,7 +81,6 @@ const PAGE_GROUPS = {
   IMPORT: ['import'],
   BIZ_PLANET: ['bizPlanet'],
   PAYROLL: ['payroll'],
-  INVENTORY: ['inventory'],
 };
 
 const App: React.FC = () => {
@@ -108,7 +106,7 @@ const App: React.FC = () => {
   // Check for payment success page URL - MUST be before any early returns
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
   const [showPaddleCheckout, setShowPaddleCheckout] = useState(false);
-  
+
   useEffect(() => {
     // Check if current URL path matches payment success route
     const pathname = window.location.pathname;
@@ -118,16 +116,16 @@ const App: React.FC = () => {
       searchParams.has('payment_status') ||
       searchParams.has('status') ||
       searchParams.has('_ptxn');
-    
+
     if (pathname === '/license/paddle-checkout' || pathname.endsWith('/license/paddle-checkout')) {
       setShowPaddleCheckout(true);
       setShowPaymentSuccess(false);
       return;
     }
 
-    if (pathname === '/license/payment-success' || 
-        pathname.endsWith('/license/payment-success') ||
-        (pathname === '/' && hasPaymentParams)) {
+    if (pathname === '/license/payment-success' ||
+      pathname.endsWith('/license/payment-success') ||
+      (pathname === '/' && hasPaymentParams)) {
       setShowPaymentSuccess(true);
       setShowPaddleCheckout(false);
     } else {
@@ -189,10 +187,10 @@ const App: React.FC = () => {
     const initializeServices = async () => {
       try {
         console.log('[App] Initializing database services...');
-        
+
         // Initialize unified database service (platform-aware)
         await getUnifiedDatabaseService().initialize();
-        
+
         if (!isMounted) return;
         console.log('[App] ✅ Unified database service initialized');
 
@@ -303,7 +301,7 @@ const App: React.FC = () => {
         console.warn('[App] ⚠️ WebSocket not connected - missing token or tenant ID');
       }
       console.log('[App] ✅ WebSocket client connecting (authenticated)');
-      
+
       // Set dispatch callback and current user ID for real-time sync handler
       // Setting the user ID is critical to prevent duplicate records when the creator
       // receives their own WebSocket event back
@@ -311,7 +309,7 @@ const App: React.FC = () => {
       realtimeSyncHandler.setDispatch(dispatch);
       realtimeSyncHandler.setCurrentUserId(user?.id || null);
       console.log('[App] ✅ Real-time sync handler connected to AppContext dispatch');
-      
+
       return () => {
         wsClient.disconnect();
         realtimeSyncHandler.setDispatch(null);
@@ -425,7 +423,6 @@ const App: React.FC = () => {
       case 'teamRanking': return 'Team Ranking';
       case 'bizPlanet': return 'Biz Planet';
       case 'payroll': return 'Payroll Management';
-      case 'inventory': return 'Inventory';
       default: return 'PBooks Pro';
     }
   };
@@ -536,7 +533,7 @@ const App: React.FC = () => {
           style={{ marginRight: 'var(--right-sidebar-width, 0px)' }}
         >
           <Header title={getPageTitle(currentPage)} isNavigating={isPending} />
-          
+
           {/* Mobile Offline Warning Banner */}
           <MobileOfflineWarning />
 
@@ -555,7 +552,6 @@ const App: React.FC = () => {
               {renderPersistentPage('PM_CONFIG', <PMConfigPage />)}
               {renderPersistentPage('BIZ_PLANET', <BizPlanetPage />)}
               {renderPersistentPage('PAYROLL', <PayrollHub />)}
-              {renderPersistentPage('INVENTORY', <InventoryPage />)}
               {currentPage === 'tasks' && (
                 <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-center"><div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-2"></div><p className="text-sm text-gray-600">Loading...</p></div></div>}>
                   <TasksPage />

@@ -23,10 +23,10 @@ export abstract class BaseRepository<T> {
     protected tableName: string;
     protected primaryKey: string;
     private tableColumns: Set<string> | null = null;
-    
+
     // Static tracker for pending sync operations during transactions
     private static pendingSyncOperations: PendingSyncOperation[] = [];
-    
+
     // Flag to disable sync queueing when syncing FROM cloud TO local
     // This prevents creating sync operations for data that's already in the cloud
     private static syncQueueingDisabled = false;
@@ -35,7 +35,7 @@ export abstract class BaseRepository<T> {
         this.tableName = tableName;
         this.primaryKey = primaryKey;
     }
-    
+
     /**
      * Get all pending sync operations and clear the tracker
      * Called after transaction successfully commits
@@ -45,14 +45,14 @@ export abstract class BaseRepository<T> {
         BaseRepository.pendingSyncOperations = [];
         return operations;
     }
-    
+
     /**
      * Clear pending sync operations (called on rollback)
      */
     static clearPendingSyncOperations(): void {
         BaseRepository.pendingSyncOperations = [];
     }
-    
+
     /**
      * Disable sync queueing (used when syncing FROM cloud TO local)
      * This prevents creating unnecessary sync operations for data already in cloud
@@ -61,7 +61,7 @@ export abstract class BaseRepository<T> {
         BaseRepository.syncQueueingDisabled = true;
         console.log('[BaseRepository] Sync queueing disabled (syncing from cloud)');
     }
-    
+
     /**
      * Enable sync queueing (normal operation)
      */
@@ -69,7 +69,7 @@ export abstract class BaseRepository<T> {
         BaseRepository.syncQueueingDisabled = false;
         console.log('[BaseRepository] Sync queueing enabled (normal operation)');
     }
-    
+
     /**
      * Check if sync queueing is currently disabled
      */
@@ -113,7 +113,7 @@ export abstract class BaseRepository<T> {
         let sql = `SELECT * FROM ${this.tableName}`;
         const whereConditions: string[] = [];
         const whereParams: any[] = [];
-        
+
         // Add tenant_id filter if tenant is logged in
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
@@ -124,17 +124,17 @@ export abstract class BaseRepository<T> {
                 whereParams.push(tenantId);
             }
         }
-        
+
         // Add custom condition if provided
         if (condition) {
             whereConditions.push(condition);
             whereParams.push(...params);
         }
-        
+
         if (whereConditions.length > 0) {
             sql += ` WHERE ${whereConditions.join(' AND ')}`;
         }
-        
+
         if (orderBy) {
             sql += ` ORDER BY ${camelToSnake(orderBy)} ${orderDir}`;
         }
@@ -148,7 +148,7 @@ export abstract class BaseRepository<T> {
         const results = this.db.query<Record<string, any>>(sql, whereParams);
         return results.map(row => dbToObjectFormat<T>(row));
     }
-    
+
     /**
      * Check if this table should be filtered by tenant_id
      * Override in subclasses if needed
@@ -169,7 +169,7 @@ export abstract class BaseRepository<T> {
         }
         let sql = `SELECT * FROM ${this.tableName} WHERE ${camelToSnake(this.primaryKey)} = ?`;
         const params: any[] = [id];
-        
+
         // Add tenant_id filter if tenant is logged in
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
@@ -179,7 +179,7 @@ export abstract class BaseRepository<T> {
                 params.push(tenantId);
             }
         }
-        
+
         const results = this.db.query<Record<string, any>>(sql, params);
         return results.length > 0 ? dbToObjectFormat<T>(results[0]) : null;
     }
@@ -194,7 +194,7 @@ export abstract class BaseRepository<T> {
         }
         let sql = `SELECT * FROM ${this.tableName} WHERE ${condition}`;
         const queryParams = [...params];
-        
+
         // Add tenant_id filter if tenant is logged in
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
@@ -204,7 +204,7 @@ export abstract class BaseRepository<T> {
                 queryParams.push(tenantId);
             }
         }
-        
+
         const results = this.db.query<Record<string, any>>(sql, queryParams);
         return results.map(row => dbToObjectFormat<T>(row));
     }
@@ -212,7 +212,7 @@ export abstract class BaseRepository<T> {
     /**
      * Lazily load table columns to filter out non-existent fields
      */
-    private ensureTableColumns(): Set<string> {
+    protected ensureTableColumns(): Set<string> {
         // Check if database is ready
         if (!this.db.isReady()) {
             console.warn(`⚠️ Database not ready for table columns check: ${this.tableName}`);
@@ -225,7 +225,7 @@ export abstract class BaseRepository<T> {
             `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
             [this.tableName]
         );
-        
+
         if (tableExists.length === 0) {
             console.warn(`⚠️ Table ${this.tableName} does not exist yet. Attempting to create it...`);
             // Try to ensure table exists
@@ -249,12 +249,12 @@ export abstract class BaseRepository<T> {
         // Always refresh column cache to ensure we have latest columns after schema changes
         // This is critical - if columns are added after cache is created, we need fresh data
         const rows = this.db.query<{ name: string }>(`PRAGMA table_info(${this.tableName})`);
-        
+
         if (rows.length === 0) {
             console.warn(`⚠️ PRAGMA table_info(${this.tableName}) returned no columns. Table may not exist or be empty.`);
             return new Set();
         }
-        
+
         this.tableColumns = new Set(rows.map(r => r.name));
         console.log(`✅ Loaded ${this.tableColumns.size} columns for ${this.tableName}:`, Array.from(this.tableColumns).join(', '));
         return this.tableColumns;
@@ -274,7 +274,7 @@ export abstract class BaseRepository<T> {
         try {
             const dbData = objectToDbFormat(data as Record<string, any>);
             const columnsSet = this.ensureTableColumns();
-            
+
             // Add tenant_id if not present and tenant is logged in
             if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
                 const tenantId = getCurrentTenantId();
@@ -365,7 +365,7 @@ export abstract class BaseRepository<T> {
         // Convert camelCase to snake_case for database
         const dbData = objectToDbFormat(data as Record<string, any>);
         const columnsSet = this.ensureTableColumns();
-        
+
         // Add tenant_id if updating and column exists
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
@@ -384,16 +384,16 @@ export abstract class BaseRepository<T> {
                 dbData['user_id'] = userId;
             }
         }
-        
+
         const keys = Object.keys(dbData)
             .filter(k => dbData[k] !== undefined && columnsSet.has(k));
         const setClause = keys.map(k => `${k} = ?`).join(', ');
         const values = keys.map(k => dbData[k]);
         const primaryKeyColumn = camelToSnake(this.primaryKey);
-        
+
         let sql = `UPDATE ${this.tableName} SET ${setClause}, updated_at = datetime('now') WHERE ${primaryKeyColumn} = ?`;
         values.push(id);
-        
+
         // Add tenant_id filter if tenant is logged in
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
@@ -405,7 +405,7 @@ export abstract class BaseRepository<T> {
         }
 
         this.db.execute(sql, values);
-        
+
         // Track or queue sync operation
         if (this.db.isInTransaction()) {
             // Track for later queueing after transaction commits
@@ -429,7 +429,7 @@ export abstract class BaseRepository<T> {
         const primaryKeyColumn = camelToSnake(this.primaryKey);
         let sql = `DELETE FROM ${this.tableName} WHERE ${primaryKeyColumn} = ?`;
         const params: any[] = [id];
-        
+
         // Add tenant_id filter if tenant is logged in
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
@@ -439,9 +439,9 @@ export abstract class BaseRepository<T> {
                 params.push(tenantId);
             }
         }
-        
+
         this.db.execute(sql, params);
-        
+
         // Track or queue sync operation
         if (this.db.isInTransaction()) {
             // Track for later queueing after transaction commits
@@ -504,7 +504,7 @@ export abstract class BaseRepository<T> {
         }
         let sql = `SELECT COUNT(*) as count FROM ${this.tableName}`;
         const params: any[] = [];
-        
+
         // Add tenant_id filter if tenant is logged in
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
@@ -514,7 +514,7 @@ export abstract class BaseRepository<T> {
                 params.push(tenantId);
             }
         }
-        
+
         const results = this.db.query<{ count: number }>(sql, params);
         return results[0]?.count || 0;
     }
@@ -528,7 +528,7 @@ export abstract class BaseRepository<T> {
         if (isMobileDevice()) {
             return;
         }
-        
+
         // Skip queueing if disabled (e.g., when syncing FROM cloud TO local)
         if (BaseRepository.syncQueueingDisabled) {
             console.debug(`[BaseRepository] Skipping sync queue for ${this.tableName}:${entityId} (sync queueing disabled - syncing from cloud)`);
@@ -538,7 +538,7 @@ export abstract class BaseRepository<T> {
         try {
             const syncManager = getSyncManager();
             syncManager.queueOperation(type, this.tableName, entityId, data || {});
-            
+
             // Also persist to sync_outbox for bi-directional sync (if DB is ready)
             const tenantId = getCurrentTenantId();
             const userId = getCurrentUserId();
@@ -567,7 +567,7 @@ export abstract class BaseRepository<T> {
             // Return false silently if database not ready (avoids console warnings during initialization)
             return false;
         }
-        
+
         const primaryKeyColumn = camelToSnake(this.primaryKey);
         const results = this.db.query<{ count: number }>(
             `SELECT COUNT(*) as count FROM ${this.tableName} WHERE ${primaryKeyColumn} = ?`,
@@ -599,6 +599,13 @@ export abstract class BaseRepository<T> {
                 || this.tableName === 'contacts'
                 || this.tableName === 'inventory_items'
                 || this.tableName === 'warehouses'
+                || this.tableName === 'purchase_bills'
+                || this.tableName === 'purchase_bill_items'
+                || this.tableName === 'purchase_bill_payments'
+                || this.tableName === 'shop_config'
+                || this.tableName === 'shop_sales'
+                || this.tableName === 'shop_sale_items'
+                || this.tableName === 'inventory_stock'
                 || this.tableName === 'transactions';
 
             if (useInsertOrReplace) {

@@ -11,17 +11,21 @@ interface ModalProps {
   disableScroll?: boolean;
   fullScreen?: boolean; // Optional full-screen mode for mobile
   maxContentHeight?: number; // Optional max content height in pixels
+  className?: string; // Optional custom classes
+  hideHeader?: boolean; // Optional to hide the default header
 }
 
-const Modal: React.FC<ModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  title, 
-  children, 
-  size = 'md', 
+const Modal: React.FC<ModalProps> = ({
+  isOpen,
+  onClose,
+  title,
+  children,
+  size = 'md',
   disableScroll = false,
   fullScreen = false,
-  maxContentHeight
+  maxContentHeight,
+  className,
+  hideHeader = false
 }) => {
   const [mounted, setMounted] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -75,14 +79,14 @@ const Modal: React.FC<ModalProps> = ({
     if (fullScreen) {
       return 'w-full h-full max-w-full max-h-full rounded-none sm:rounded-xl';
     }
-    
+
     const baseSizes = {
       md: 'w-full mx-4 sm:max-w-2xl sm:mx-0',
       lg: 'w-full mx-4 sm:max-w-4xl sm:mx-0',
       xl: 'w-full mx-4 sm:max-w-6xl sm:mx-0',
       full: 'w-full mx-2 sm:max-w-[95vw] sm:mx-0'
     };
-    
+
     return baseSizes[size as keyof typeof baseSizes] || baseSizes.md;
   })();
 
@@ -91,17 +95,17 @@ const Modal: React.FC<ModalProps> = ({
     if (fullScreen) {
       return 'max-h-screen';
     }
-    
+
     if (maxContentHeight) {
       return '';
     }
-    
+
     // Use CSS classes for responsive max-height
     // Mobile: calc(100vh - 2rem), Tablet: calc(100vh - 3rem), Desktop: calc(100vh - 4rem)
     return 'max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)] md:max-h-[calc(100vh-4rem)]';
   })();
 
-  const maxHeightStyle: React.CSSProperties = maxContentHeight 
+  const maxHeightStyle: React.CSSProperties = maxContentHeight
     ? { maxHeight: `${maxContentHeight}px` }
     : {};
 
@@ -149,8 +153,8 @@ const Modal: React.FC<ModalProps> = ({
     // 2. Mouse down was also on the backdrop (not inside modal content)
     // 3. It wasn't a drag operation (user didn't move mouse significantly)
     if (
-      e.target === e.currentTarget && 
-      mouseDownTarget === e.currentTarget && 
+      e.target === e.currentTarget &&
+      mouseDownTarget === e.currentTarget &&
       !isDragging
     ) {
       onClose();
@@ -171,15 +175,15 @@ const Modal: React.FC<ModalProps> = ({
   };
 
   return createPortal(
-    <div 
+    <div
       className={`fixed inset-0 bg-gray-900/70 z-[9999] flex ${containerClasses} p-0 sm:p-4 backdrop-blur-sm animate-fade-in-fast transition-all`}
       onMouseDown={handleBackdropMouseDown}
       onMouseMove={handleBackdropMouseMove}
       onClick={handleBackdropClick}
     >
-      <div 
+      <div
         ref={modalContentRef}
-        className={`bg-white ${modalPositionClasses} shadow-2xl ${sizeClasses} ${maxHeightClass} flex flex-col overflow-hidden mx-auto sm:mx-0 transition-transform duration-300 transform translate-y-0 border border-gray-200`}
+        className={`bg-white ${modalPositionClasses} shadow-2xl ${sizeClasses} ${maxHeightClass} flex flex-col overflow-hidden mx-auto sm:mx-0 transition-transform duration-300 transform translate-y-0 border border-gray-200 ${className || ''}`}
         style={maxHeightStyle}
         role="dialog"
         aria-modal="true"
@@ -187,17 +191,19 @@ const Modal: React.FC<ModalProps> = ({
         onMouseDown={handleModalContentMouseDown}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-between items-center p-3 sm:p-4 border-b border-gray-200 flex-shrink-0 bg-white">
-          <h2 id="modal-title" className="text-base sm:text-lg font-bold text-gray-800 truncate pr-2 sm:pr-4">{title}</h2>
-          <button 
-            onClick={onClose} 
-            className="text-gray-400 hover:text-gray-800 p-2 rounded-full hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-200 min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
-            aria-label="Close modal"
-          >
-            <span className="text-2xl leading-none">&times;</span>
-          </button>
-        </div>
-        <div 
+        {!hideHeader && (
+          <div className="flex justify-between items-center p-3 sm:p-4 border-b border-gray-200 flex-shrink-0 bg-white">
+            <h2 id="modal-title" className="text-base sm:text-lg font-bold text-gray-800 truncate pr-2 sm:pr-4">{title}</h2>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-800 p-2 rounded-full hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-200 min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
+              aria-label="Close modal"
+            >
+              <span className="text-2xl leading-none">&times;</span>
+            </button>
+          </div>
+        )}
+        <div
           className={`flex-grow min-h-0 ${disableScroll ? 'overflow-hidden flex flex-col' : 'overflow-y-auto scroll-smooth overscroll-contain'} ${!disableScroll ? paddingClasses : ''} ${!disableScroll ? 'pb-[calc(var(--safe-area-bottom,0px)+0.75rem)] sm:pb-[calc(var(--safe-area-bottom,0px)+1rem)] md:pb-[calc(var(--safe-area-bottom,0px)+1.5rem)]' : ''}`}
         >
           {children}

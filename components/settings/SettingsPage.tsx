@@ -35,7 +35,6 @@ import { getDatabaseService } from '../../services/database/databaseService';
 import { apiClient } from '../../services/api/client';
 import ContactsManagement from './ContactsManagement';
 import AssetsManagement from './AssetsManagement';
-import InventoryManagement from './InventoryManagement';
 
 interface TableRowData {
     id: string;
@@ -90,7 +89,7 @@ const SettingsPage: React.FC = () => {
             try {
                 setIsCheckingSupplierStatus(true);
                 const tenantInfo = await apiClient.get<{ is_supplier?: boolean }>('/tenants/me');
-                const supplierStatus = tenantInfo.is_supplier === true || tenantInfo.is_supplier === 'true';
+                const supplierStatus = !!tenantInfo.is_supplier;
                 setIsSupplier(supplierStatus);
             } catch (error) {
                 console.error('Error fetching supplier status:', error);
@@ -146,12 +145,6 @@ const SettingsPage: React.FC = () => {
             ]
         },
         {
-            title: 'Inventory',
-            items: [
-                { id: 'inventory', label: 'Inventory', icon: ICONS.package },
-            ]
-        },
-        {
             title: 'Assets',
             items: [
                 { id: 'assets', label: 'Assets', icon: ICONS.archive },
@@ -185,28 +178,6 @@ const SettingsPage: React.FC = () => {
             { key: 'type', label: 'Type' },
             { key: 'isSystem', label: 'System', render: (val) => val ? 'Yes' : 'No' },
             { key: 'balance', label: 'Balance', isNumeric: true }
-        ],
-        inventory_items: [
-            {
-                key: 'name', label: 'Name', render: (val, row) => (
-                    <div style={{ paddingLeft: `${(row.level || 0) * 20}px` }} className="flex items-center gap-2">
-                        {row.level && row.level > 0 ? <span className="text-slate-300">└</span> : null}
-                        <span className={row.level && row.level > 0 ? 'text-slate-700' : 'font-medium text-slate-800'}>{val}</span>
-                    </div>
-                )
-            },
-            { key: 'categoryName', label: 'Expense Category' },
-            { key: 'unitType', label: 'Unit Type', render: (val) => {
-                const labels: Record<string, string> = {
-                    'LENGTH_FEET': 'Length (Feet)',
-                    'AREA_SQFT': 'Area (Sq Ft)',
-                    'VOLUME_CUFT': 'Volume (Cu Ft)',
-                    'QUANTITY': 'Quantity'
-                };
-                return labels[val] || val;
-            }},
-            { key: 'pricePerUnit', label: 'Price/Unit', isNumeric: true },
-            { key: 'description', label: 'Description' }
         ],
         projects: [
             {
@@ -331,62 +302,6 @@ const SettingsPage: React.FC = () => {
             return finalData;
         }
 
-        // Inventory Items (hierarchical structure)
-        if (activeCategory === 'inventory_items') {
-            const itemsMap = new Map<string, any>();
-            state.inventoryItems.forEach(item => {
-                // Lookup category name if expenseCategoryId exists
-                const categoryName = item.expenseCategoryId 
-                    ? state.categories.find(c => c.id === item.expenseCategoryId)?.name || '-'
-                    : '-';
-                itemsMap.set(item.id, { ...item, categoryName, children: [] });
-            });
-            const rootItems: any[] = [];
-            itemsMap.forEach(item => {
-                if (item.parentId && itemsMap.has(item.parentId)) {
-                    itemsMap.get(item.parentId).children.push(item);
-                } else {
-                    rootItems.push(item);
-                }
-            });
-            const flattened: TableRowData[] = [];
-            const flatten = (items: any[], level = 0) => {
-                items.sort((a, b) => a.name.localeCompare(b.name));
-                items.forEach(item => {
-                    flattened.push({ 
-                        id: item.id, 
-                        name: item.name,
-                        categoryName: item.categoryName,
-                        unitType: item.unitType,
-                        pricePerUnit: item.pricePerUnit || 0,
-                        description: item.description || '-',
-                        level,
-                        originalItem: item
-                    });
-                    if (item.children && item.children.length > 0) flatten(item.children, level + 1);
-                });
-            };
-            flatten(rootItems);
-            let finalData = flattened;
-            if (searchQuery) {
-                const q = searchQuery.toLowerCase();
-                finalData = flattened.filter(item => 
-                    item.name.toLowerCase().includes(q) || 
-                    (item.description && item.description.toLowerCase().includes(q))
-                );
-            }
-            if (sortConfig.key !== 'default') {
-                finalData.sort((a, b) => {
-                    const aVal = a[sortConfig.key];
-                    const bVal = b[sortConfig.key];
-                    if (typeof aVal === 'string' && typeof bVal === 'string') return sortConfig.direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-                    if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-                    if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-                    return 0;
-                });
-            }
-            return finalData;
-        }
 
         // Other entities
         else {
@@ -442,7 +357,6 @@ const SettingsPage: React.FC = () => {
                 case 'buildings': type = 'BUILDING'; break;
                 case 'properties': type = 'PROPERTY'; break;
                 case 'units': type = 'UNIT'; break;
-                case 'inventory_items': type = 'INVENTORYITEM'; break;
             }
         }
         if (type) {
@@ -490,7 +404,7 @@ const SettingsPage: React.FC = () => {
     const handleClearTransactions = async () => {
         try {
             console.log('🗑️ Starting clear transactions process...');
-            
+
             // Step 1: Clear from cloud database (server)
             console.log('📡 Clearing transactions from cloud database...');
             const result = await dataManagementApi.clearTransactions();
@@ -517,7 +431,7 @@ const SettingsPage: React.FC = () => {
             console.error('❌ Error clearing transactions:', error);
             showAlert(
                 error?.message || 'Failed to clear transactions. Please try again.',
-                'error'
+                { title: 'Error' }
             );
             throw error; // Re-throw so modal knows operation failed
         }
@@ -555,7 +469,7 @@ const SettingsPage: React.FC = () => {
         }
     };
 
-    const isTableViewCategory = !!columnConfig[activeCategory] && activeCategory !== 'inventory';
+    const isTableViewCategory = !!columnConfig[activeCategory];
     const SortHeader: React.FC<{ label: string; sortKey: string; align?: string }> = ({ label, sortKey, align = 'left' }) => (
         <th className={`px-4 py-3 text-${align} text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors select-none sticky top-0 bg-white z-10 border-b border-slate-200`} onClick={() => handleSort(sortKey)}>
             <div className={`flex items-center gap-2 ${align === 'right' ? 'justify-end' : 'justify-start'}`}>
@@ -629,7 +543,7 @@ const SettingsPage: React.FC = () => {
                     <Input id={`${idPrefix}-next-num`} name={`${idPrefix}-next-num`} label="Next #" type="number" value={localSettings.nextNumber.toString()} onChange={e => handleChange('nextNumber', e.target.value)} className="text-sm" />
                     <Input id={`${idPrefix}-padding`} name={`${idPrefix}-padding`} label="Padding" type="number" value={localSettings.padding.toString()} onChange={e => handleChange('padding', e.target.value)} className="text-sm" />
                 </div>
-                <Button fullWidth size="sm" variant="secondary" onClick={handleSave} className="mt-1">Update Sequence</Button>
+                <Button variant="secondary" onClick={handleSave} className="mt-1 w-full">Update Sequence</Button>
             </div>
         );
     };
@@ -679,8 +593,8 @@ const SettingsPage: React.FC = () => {
                             </p>
                         </div>
                     </div>
-                    <Button 
-                        variant="primary" 
+                    <Button
+                        variant="primary"
                         onClick={handleUpgradeToSupplier}
                         disabled={isUpgradingToSupplier || isOffline}
                         className="w-full"
@@ -766,7 +680,7 @@ const SettingsPage: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
                     <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                        <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><div className="w-5 h-5">{ICONS.activity}</div></div>
+                        <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><div className="w-5 h-5">{ICONS.trendingUp}</div></div>
                         Database Health
                     </h4>
                     <DatabaseAnalyzer />
@@ -887,7 +801,7 @@ const SettingsPage: React.FC = () => {
                         </div>
                     </div>
                 )}
-                
+
                 {/* Header */}
                 <div className={`px-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-0 bg-slate-50/95 backdrop-blur z-30 ${activeCategory === 'contacts' || activeCategory === 'assets' ? 'py-2' : 'py-6'}`}>
                     {activeCategory !== 'contacts' && activeCategory !== 'assets' && (
@@ -915,8 +829,8 @@ const SettingsPage: React.FC = () => {
                                 </div>
                                 {activeCategory === 'accounts' ? (
                                     <div className="relative">
-                                        <Button 
-                                            onClick={() => setIsAddNewMenuOpen(!isAddNewMenuOpen)} 
+                                        <Button
+                                            onClick={() => setIsAddNewMenuOpen(!isAddNewMenuOpen)}
                                             disabled={isOffline}
                                             className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 border-0 rounded-lg px-4 py-2.5 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
@@ -926,8 +840,8 @@ const SettingsPage: React.FC = () => {
                                         </Button>
                                         {isAddNewMenuOpen && (
                                             <>
-                                                <div 
-                                                    className="fixed inset-0 z-40" 
+                                                <div
+                                                    className="fixed inset-0 z-40"
                                                     onClick={() => setIsAddNewMenuOpen(false)}
                                                 />
                                                 <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-slate-200 z-50 py-1">
@@ -968,8 +882,8 @@ const SettingsPage: React.FC = () => {
                 </div>
 
                 {/* Content Body */}
-                <div className={`flex-1 ${activeCategory === 'contacts' || activeCategory === 'assets' || activeCategory === 'inventory' ? 'overflow-hidden' : 'overflow-y-auto'} px-8 ${activeCategory === 'contacts' || activeCategory === 'assets' || activeCategory === 'inventory' ? 'pb-0' : 'pb-10'}`}>
-                    <div className={`w-full ${activeCategory === 'contacts' || activeCategory === 'assets' || activeCategory === 'inventory' ? 'h-full' : 'max-w-7xl'} mx-auto animate-in fade-in duration-500`}>
+                <div className={`flex-1 ${activeCategory === 'contacts' || activeCategory === 'assets' ? 'overflow-hidden' : 'overflow-y-auto'} px-8 ${activeCategory === 'contacts' || activeCategory === 'assets' ? 'pb-0' : 'pb-10'}`}>
+                    <div className={`w-full ${activeCategory === 'contacts' || activeCategory === 'assets' ? 'h-full' : 'max-w-7xl'} mx-auto animate-in fade-in duration-500`}>
                         {isTableViewCategory ? renderTable() : null}
                         {activeCategory === 'users' && <UserManagement />}
                         {activeCategory === 'preferences' && renderPreferences()}
@@ -987,7 +901,6 @@ const SettingsPage: React.FC = () => {
                         )}
                         {activeCategory === 'contacts' && <ContactsManagement />}
                         {activeCategory === 'assets' && <AssetsManagement />}
-                        {activeCategory === 'inventory' && <InventoryManagement />}
                     </div>
                 </div>
             </div>

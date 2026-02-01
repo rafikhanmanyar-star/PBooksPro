@@ -46,13 +46,7 @@ export class UnitsRepository extends BaseRepository<any> {
     constructor() { super('units'); }
 }
 
-export class InventoryItemsRepository extends BaseRepository<any> {
-    constructor() { super('inventory_items'); }
-}
 
-export class WarehousesRepository extends BaseRepository<any> {
-    constructor() { super('warehouses'); }
-}
 
 export class TransactionsRepository extends BaseRepository<any> {
     private useNativeBackend: boolean = false;
@@ -269,18 +263,42 @@ export class PMCycleAllocationsRepository extends BaseRepository<any> {
     constructor() { super('pm_cycle_allocations'); }
 }
 
+
+
+export class SalesReturnsRepository extends BaseRepository<any> {
+    constructor() { super('sales_returns'); }
+}
+
+
+
+export class TasksRepository extends BaseRepository<any> {
+    constructor() { super('tasks'); }
+}
+
+export class TaskUpdatesRepository extends BaseRepository<any> {
+    constructor() { super('task_updates'); }
+}
+
+export class TaskPerformanceScoresRepository extends BaseRepository<any> {
+    constructor() { super('task_performance_scores'); }
+}
+
+export class TaskPerformanceConfigRepository extends BaseRepository<any> {
+    constructor() { super('task_performance_config'); }
+}
+
 export class ChatMessagesRepository extends BaseRepository<any> {
-    constructor() { 
-        super('chat_messages'); 
+    constructor() {
+        super('chat_messages');
     }
-    
+
     /**
      * Chat messages are local only and should not be filtered by tenant
      */
     protected shouldFilterByTenant(): boolean {
         return false;
     }
-    
+
     /**
      * Override insert to use INSERT OR IGNORE to prevent duplicate key errors
      * Messages can arrive from both API response and WebSocket, causing duplicates
@@ -290,43 +308,43 @@ export class ChatMessagesRepository extends BaseRepository<any> {
             console.log(`📝 [ChatMessagesRepository] Starting insert for ${this.tableName}`);
             console.log(`📝 [ChatMessagesRepository] Database ready: ${this.db.isReady()}`);
             console.log(`📝 [ChatMessagesRepository] Original data:`, data);
-            
+
             // Ensure database is ready and table exists
             if (!this.db.isReady()) {
                 console.error(`❌ [ChatMessagesRepository] Database not ready for insert`);
                 throw new Error('Database not ready');
             }
-            
+
             // Ensure table exists before proceeding
             const tableExists = this.db.query<{ name: string }>(
                 `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
                 [this.tableName]
             );
-            
+
             if (tableExists.length === 0) {
                 console.warn(`⚠️ [ChatMessagesRepository] Table ${this.tableName} does not exist. Creating it...`);
                 this.db.ensureAllTablesExist();
-                
+
                 // Verify table was created
                 const tableExistsAfter = this.db.query<{ name: string }>(
                     `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
                     [this.tableName]
                 );
-                
+
                 if (tableExistsAfter.length === 0) {
                     console.error(`❌ [ChatMessagesRepository] Failed to create table ${this.tableName}`);
                     throw new Error(`Table ${this.tableName} does not exist and could not be created`);
                 }
                 console.log(`✅ [ChatMessagesRepository] Table ${this.tableName} created successfully`);
             }
-            
+
             const dbData = objectToDbFormat(data as Record<string, any>);
             console.log(`📝 [ChatMessagesRepository] Converted data (db format):`, dbData);
-            
+
             const columnsSet = this.ensureTableColumns();
             console.log(`📝 [ChatMessagesRepository] Available columns:`, Array.from(columnsSet));
             console.log(`📝 [ChatMessagesRepository] Data keys after conversion:`, Object.keys(dbData));
-            
+
             const keys = Object.keys(dbData)
                 .filter(k => dbData[k] !== undefined && columnsSet.has(k));
             const values = keys.map(k => dbData[k]);
@@ -364,7 +382,7 @@ export class ChatMessagesRepository extends BaseRepository<any> {
             throw error;
         }
     }
-    
+
     /**
      * Get conversation between two users
      */
@@ -377,30 +395,30 @@ export class ChatMessagesRepository extends BaseRepository<any> {
         const results = this.db.query<Record<string, any>>(sql, [userId1, userId2, userId2, userId1]);
         return results.map(row => dbToObjectFormat(row));
     }
-    
+
     /**
      * Get all conversations for a user (list of users they've chatted with)
      */
     getConversationsForUser(userId: string): any[] {
         console.log(`📝 [ChatMessagesRepository] getConversationsForUser called for userId: ${userId}`);
         console.log(`📝 [ChatMessagesRepository] Database ready: ${this.db.isReady()}`);
-        
+
         if (!this.db.isReady()) {
             console.warn(`⚠️ [ChatMessagesRepository] Database not ready for getConversationsForUser`);
             return [];
         }
-        
+
         // Ensure table exists
         const tableExists = this.db.query<{ name: string }>(
             `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
             [this.tableName]
         );
-        
+
         if (tableExists.length === 0) {
             console.warn(`⚠️ [ChatMessagesRepository] Table ${this.tableName} does not exist for getConversationsForUser`);
             return [];
         }
-        
+
         const sql = `
             SELECT DISTINCT 
                 CASE 
@@ -421,7 +439,7 @@ export class ChatMessagesRepository extends BaseRepository<any> {
         console.log(`📝 [ChatMessagesRepository] Found ${results.length} conversations for user ${userId}`);
         return results.map(row => dbToObjectFormat(row));
     }
-    
+
     /**
      * Mark messages as read
      */
@@ -436,7 +454,7 @@ export class ChatMessagesRepository extends BaseRepository<any> {
             this.db.save();
         }
     }
-    
+
     /**
      * Get unread message count for a user
      */
@@ -449,7 +467,7 @@ export class ChatMessagesRepository extends BaseRepository<any> {
         const results = this.db.query<{ count: number }>(sql, [userId]);
         return results[0]?.count || 0;
     }
-    
+
 }
 
 export class AppSettingsRepository {

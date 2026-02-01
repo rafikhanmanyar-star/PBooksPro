@@ -107,11 +107,7 @@ import p2pBillsRouter from './routes/p2pBills.js';
 import supplierRegistrationsRouter from './routes/supplierRegistrations.js';
 import marketplaceRouter from './routes/marketplace.js';
 import payrollRouter from './routes/payroll.js';
-import inventoryItemsRouter from './routes/inventoryItems.js';
-import warehousesRouter from './routes/warehouses.js';
-import purchaseBillsRouter from './routes/purchaseBills.js';
 import stateChangesRouter from './routes/stateChanges.js';
-import shopSalesRouter from './routes/shopSales.js';
 import { tenantMiddleware } from '../middleware/tenantMiddleware.js';
 import { licenseMiddleware } from '../middleware/licenseMiddleware.js';
 
@@ -127,7 +123,7 @@ import { getDatabaseService } from '../services/databaseService.js';
 (async () => {
   let retries = 5;
   let connected = false;
-  
+
   while (retries > 0 && !connected) {
     try {
       const db = getDatabaseService();
@@ -142,7 +138,7 @@ import { getDatabaseService } from '../services/databaseService.js';
       } else {
         console.error('❌ Database connection error:', err.message);
         console.error('   Make sure PostgreSQL is running and DATABASE_URL is correct');
-        
+
         // Check if it's an ENOTFOUND error (common with internal URLs)
         if (err.code === 'ENOTFOUND' || err.message?.includes('getaddrinfo ENOTFOUND')) {
           const dbUrl = process.env.DATABASE_URL || '';
@@ -167,9 +163,9 @@ import { getDatabaseService } from '../services/databaseService.js';
 // Create pool for tenantMiddleware (it needs direct pool access for RLS)
 // But use DatabaseService for all other operations
 // Enable SSL for production, staging, and any Render database URLs
-const shouldUseSSL = process.env.NODE_ENV === 'production' || 
-                     process.env.NODE_ENV === 'staging' ||
-                     (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('.render.com'));
+const shouldUseSSL = process.env.NODE_ENV === 'production' ||
+  process.env.NODE_ENV === 'staging' ||
+  (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('.render.com'));
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -185,7 +181,7 @@ pool.on('error', (err) => {
 });
 
 // Middleware - CORS configuration
-const corsOrigins = process.env.CORS_ORIGIN 
+const corsOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
   : ['*'];
 
@@ -198,10 +194,10 @@ app.use(cors({
       console.log('✅ CORS: Allowing request with no origin');
       return callback(null, true);
     }
-    
+
     // Check if origin is in allowed list or wildcard is used
     const isAllowed = corsOrigins.includes('*') || corsOrigins.includes(origin);
-    
+
     if (isAllowed) {
       console.log(`✅ CORS: Allowing origin: ${origin}`);
       callback(null, true);
@@ -252,8 +248,8 @@ app.get('/', (req, res) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     timestamp: new Date().toISOString(),
     database: pool.totalCount > 0 ? 'connected' : 'disconnected'
   });
@@ -299,9 +295,9 @@ app.get('/mock-payment', (req, res) => {
       query: req.query,
       method: req.method
     });
-    
+
     const { payment_intent, return_url } = req.query;
-    
+
     if (!payment_intent || typeof payment_intent !== 'string') {
       console.error('Missing payment_intent in query:', req.query);
       return res.status(400).send(`
@@ -319,11 +315,11 @@ app.get('/mock-payment', (req, res) => {
     // Get base URL for API calls
     // On Render, RENDER_EXTERNAL_URL is automatically available for the server URL
     const baseUrl = req.headers.origin || process.env.CLIENT_URL || 'http://localhost:5173';
-    const apiUrl = process.env.API_URL || 
-                   process.env.SERVER_URL || 
-                   process.env.RENDER_EXTERNAL_URL ||
-                   'http://localhost:3000';
-    
+    const apiUrl = process.env.API_URL ||
+      process.env.SERVER_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      'http://localhost:3000';
+
     // Decode return_url if it's URL encoded
     let returnUrl: string;
     if (return_url && typeof return_url === 'string') {
@@ -699,11 +695,7 @@ app.use('/api/p2p-bills', p2pBillsRouter); // P2P Bills (requires authentication
 app.use('/api/supplier-registrations', supplierRegistrationsRouter); // Supplier Registration Requests (requires authentication)
 app.use('/api/marketplace', marketplaceRouter); // Biz Planet Marketplace (browse ads, post ads – 2/day per supplier)
 app.use('/api/payroll', payrollRouter); // Payroll Management (requires authentication)
-app.use('/api/inventory-items', inventoryItemsRouter); // Inventory Items Master Data (requires authentication)
-app.use('/api/warehouses', warehousesRouter); // Warehouses (requires authentication)
-app.use('/api/purchase-bills', purchaseBillsRouter);
-app.use('/api/shop', shopSalesRouter); // Shop/Retail Sales (requires authentication)
-app.use('/api/state', stateChangesRouter); // Incremental sync: GET /api/state/changes?since=ISO8601 // Purchase Bills (My Shop - requires authentication)
+app.use('/api/state', stateChangesRouter); // Incremental sync: GET /api/state/changes?since=ISO8601 
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

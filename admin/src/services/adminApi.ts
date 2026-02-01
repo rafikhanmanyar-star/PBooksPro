@@ -137,7 +137,7 @@ class AdminApi {
       const response = await fetch(`${ADMIN_API_URL}/stats/dashboard`, {
         headers: this.getAuthHeaders(),
       });
-      
+
       if (!response.ok) {
         // Log detailed error for debugging
         const errorText = await response.text();
@@ -147,17 +147,17 @@ class AdminApi {
         } catch {
           errorData = { error: errorText || `HTTP ${response.status}` };
         }
-        
+
         console.error('Dashboard stats API error:', {
           status: response.status,
           statusText: response.statusText,
           url: `${ADMIN_API_URL}/stats/dashboard`,
           error: errorData
         });
-        
+
         throw new Error(errorData.error || `Failed to fetch dashboard stats (${response.status})`);
       }
-      
+
       return response.json();
     } catch (error: any) {
       // Re-throw with more context
@@ -275,6 +275,80 @@ class AdminApi {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Failed to force logout');
+    }
+    return response.json();
+  }
+
+  // Marketplace Management
+  async getMarketplaceAds() {
+    const response = await fetch(`${ADMIN_API_URL}/marketplace/ads`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to fetch marketplace ads');
+    return response.json();
+  }
+
+  async approveMarketplaceAd(adId: string) {
+    const response = await fetch(`${ADMIN_API_URL}/marketplace/ads/${adId}/approve`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to approve ad');
+    return response.json();
+  }
+
+  async rejectMarketplaceAd(adId: string, reason?: string) {
+    const response = await fetch(`${ADMIN_API_URL}/marketplace/ads/${adId}/reject`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ reason }),
+    });
+    if (!response.ok) throw new Error('Failed to reject ad');
+    return response.json();
+  }
+
+  async getMarketplaceCategories() {
+    const response = await fetch(`${ADMIN_API_URL}/marketplace/categories`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to fetch marketplace categories');
+    return response.json();
+  }
+
+  async createMarketplaceCategory(data: { id: string; name: string; display_order?: number }) {
+    const response = await fetch(`${ADMIN_API_URL}/marketplace/categories`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create category');
+    }
+    return response.json();
+  }
+
+  async updateMarketplaceCategory(categoryId: string, data: { name: string; display_order: number }) {
+    const response = await fetch(`${ADMIN_API_URL}/marketplace/categories/${categoryId}`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to update category');
+    }
+    return response.json();
+  }
+
+  async deleteMarketplaceCategory(categoryId: string) {
+    const response = await fetch(`${ADMIN_API_URL}/marketplace/categories/${categoryId}`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to delete category');
     }
     return response.json();
   }

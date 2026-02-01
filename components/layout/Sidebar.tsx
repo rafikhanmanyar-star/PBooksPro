@@ -32,14 +32,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
         daysRemaining: number;
         isExpired: boolean;
     } | null>(null);
-    
+
     // Get user name - prefer AuthContext user (cloud auth) over AppContext currentUser (local)
     // Fallback order: name -> username -> 'User'
     const userName = user?.name || currentUser?.name || user?.username || currentUser?.username || 'User';
     const userRole = user?.role || currentUser?.role || '';
     const organizationName = tenant?.companyName || tenant?.name || '';
     const currentUserId = user?.id || currentUser?.id || '';
-    
+
     const chatRepo = new ChatMessagesRepository();
     const wsClient = getWebSocketClient();
 
@@ -66,7 +66,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
         // Only fetch if user is authenticated
         if (user || currentUser) {
             fetchLicenseStatus();
-            
+
             // Refresh license status every 5 minutes
             const interval = setInterval(fetchLicenseStatus, 300000);
             return () => clearInterval(interval);
@@ -96,7 +96,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
         // Only fetch if user is authenticated
         if (user || currentUser) {
             fetchOnlineUsers();
-            
+
             // Refresh online users count every 30 seconds to keep it updated
             const interval = setInterval(fetchOnlineUsers, 30000);
             return () => clearInterval(interval);
@@ -113,7 +113,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                     // Database not ready yet, skip check (will be retried by interval)
                     return;
                 }
-                
+
                 const count = chatRepo.getUnreadCount(currentUserId);
                 setUnreadMessageCount(count);
             } catch (error) {
@@ -196,7 +196,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                     { page: 'projectManagement', label: 'Projects', icon: ICONS.archive },
                     { page: 'rentalManagement', label: 'Rentals', icon: ICONS.building },
                     { page: 'vendorDirectory', label: 'Vendors', icon: ICONS.briefcase },
-                    { page: 'inventory', label: 'My Shop', icon: ICONS.package },
                     ...(isAdmin ? [{ page: 'investmentManagement', label: 'Inv. Cycle', icon: ICONS.dollarSign }] : []),
                     { page: 'pmConfig', label: 'PM Cycle', icon: ICONS.filter },
                 ]
@@ -218,10 +217,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
             {
                 title: 'B2B',
                 items: [
-            { page: 'bizPlanet', label: 'Biz Planet', icon: ICONS.globe },
-        ]
-    }
-];
+                    { page: 'bizPlanet', label: 'Biz Planet', icon: ICONS.globe },
+                ]
+            }
+        ];
 
         // Add Settings for non-Accounts users
         if (!isAccountsOnly) {
@@ -232,7 +231,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 ]
             });
         }
-        
+
         return groups;
     }, [isAdmin, isAccountsOnly]);
 
@@ -282,14 +281,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
             {isMobileMenuOpen && (
                 <>
                     {/* Backdrop overlay */}
-                    <div 
+                    <div
                         className="fixed inset-0 bg-black/50 z-40 md:hidden animate-fade-in"
                         onClick={() => setIsMobileMenuOpen(false)}
                     />
-                    
+
                     {/* Mobile drawer */}
                     <aside className="fixed left-0 top-0 h-full w-64 bg-slate-900 border-r border-slate-800 z-50 md:hidden flex flex-col text-slate-300 animate-slide-in-left">
-                        
+
                         {/* Brand Header */}
                         <div className="h-14 flex items-center justify-between px-5 border-b border-slate-800/50 bg-slate-900/50 backdrop-blur-sm">
                             <div className="flex items-center gap-3">
@@ -360,11 +359,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                         setIsLicenseModalOpen(true);
                                         setIsMobileMenuOpen(false);
                                     }}
-                                    className={`w-full mb-3 text-white p-2.5 rounded-lg shadow-lg relative overflow-hidden group ${
-                                        licenseInfo.isExpired 
-                                            ? 'bg-gradient-to-r from-rose-500 to-red-600' 
+                                    className={`w-full mb-3 text-white p-2.5 rounded-lg shadow-lg relative overflow-hidden group ${licenseInfo.isExpired
+                                            ? 'bg-gradient-to-r from-rose-500 to-red-600'
                                             : 'bg-gradient-to-r from-amber-500 to-orange-600'
-                                    }`}
+                                        }`}
                                 >
                                     <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
                                     <div className="relative flex items-center justify-between">
@@ -419,9 +417,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                         setIsChatModalOpen(true);
                                         setIsMobileMenuOpen(false);
                                     }}
-                                    className={`w-full mt-2 px-3 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-sm font-medium transition-colors flex items-center justify-center gap-2 relative touch-manipulation ${
-                                        unreadMessageCount > 0 ? 'animate-pulse' : ''
-                                    }`}
+                                    className={`w-full mt-2 px-3 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-sm font-medium transition-colors flex items-center justify-center gap-2 relative touch-manipulation ${unreadMessageCount > 0 ? 'animate-pulse' : ''
+                                        }`}
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
@@ -499,11 +496,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                     {licenseInfo && (licenseInfo.isExpired || licenseInfo.daysRemaining <= 30) && (
                         <button
                             onClick={() => setIsLicenseModalOpen(true)}
-                            className={`w-full mb-3 text-white p-2.5 rounded-lg shadow-lg relative overflow-hidden group ${
-                                licenseInfo.isExpired 
-                                    ? 'bg-gradient-to-r from-rose-500 to-red-600' 
+                            className={`w-full mb-3 text-white p-2.5 rounded-lg shadow-lg relative overflow-hidden group ${licenseInfo.isExpired
+                                    ? 'bg-gradient-to-r from-rose-500 to-red-600'
                                     : 'bg-gradient-to-r from-amber-500 to-orange-600'
-                            }`}
+                                }`}
                         >
                             <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
                             <div className="relative flex items-center justify-between">
@@ -569,9 +565,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                 </div>
                                 <button
                                     onClick={() => setIsChatModalOpen(true)}
-                                    className={`w-full px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition-colors flex items-center justify-center gap-2 relative ${
-                                        unreadMessageCount > 0 ? 'animate-pulse' : ''
-                                    }`}
+                                    className={`w-full px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition-colors flex items-center justify-center gap-2 relative ${unreadMessageCount > 0 ? 'animate-pulse' : ''
+                                        }`}
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
@@ -600,10 +595,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                     <LicenseManagement />
                 </Modal>
             )}
-            
-            <ChatModal 
-                isOpen={isChatModalOpen} 
-                onClose={() => setIsChatModalOpen(false)} 
+
+            <ChatModal
+                isOpen={isChatModalOpen}
+                onClose={() => setIsChatModalOpen(false)}
                 onlineUsers={onlineUsersList}
             />
         </>

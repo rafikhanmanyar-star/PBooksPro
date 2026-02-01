@@ -6,6 +6,7 @@ import BuyerDashboard from './BuyerDashboard';
 import SupplierPortal from './SupplierPortal';
 import MarketplacePage from './MarketplacePage';
 import { consumePendingBizPlanetAction, dispatchBizPlanetNotificationAction } from '../../utils/bizPlanetNotifications';
+import { Globe, Briefcase, ShieldCheck } from 'lucide-react';
 
 type TabType = 'marketplace' | 'supplier' | 'buyer';
 
@@ -72,64 +73,40 @@ const BizPlanetPage: React.FC = () => {
         );
     }
 
-    // Main tabs: Marketplace first (left), then Supplier (if supplier), then Buyer
-    const tabs: { key: TabType; label: string }[] = [
-        { key: 'marketplace', label: 'Marketplace' },
-        ...(isSupplier ? [{ key: 'supplier' as TabType, label: 'Supplier Dashboard' }] : []),
-        { key: 'buyer', label: 'Buyer Dashboard' },
+    const tabs: { key: TabType; label: string; icon: React.ReactNode }[] = [
+        { key: 'marketplace', label: 'Marketplace', icon: <Globe className="w-4 h-4" /> },
+        ...(isSupplier ? [{ key: 'supplier' as TabType, label: 'Supplier Hub', icon: <Briefcase className="w-4 h-4" /> }] : []),
+        { key: 'buyer', label: 'Buyer Center', icon: <ShieldCheck className="w-4 h-4" /> },
     ];
 
-    if (isSupplier) {
-        return (
-            <div className="flex flex-col h-full">
-                <div className="flex-shrink-0 border-b border-slate-200 bg-white">
-                    <div className="flex gap-1 px-4 pt-4 flex-wrap">
-                        {tabs.map(({ key, label }) => (
-                            <button
-                                key={key}
-                                onClick={() => setActiveTab(key)}
-                                className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-                                    activeTab === key
-                                        ? 'bg-indigo-600 text-white shadow-sm'
-                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                }`}
-                            >
-                                {label}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-                <div className="flex-1 overflow-hidden">
-                    {activeTab === 'marketplace' && <MarketplacePage isSupplier={true} />}
-                    {activeTab === 'supplier' && <SupplierPortal />}
-                    {activeTab === 'buyer' && <BuyerDashboard />}
-                </div>
-            </div>
-        );
-    }
-
-    // Non-supplier: Marketplace + Buyer Dashboard only
-    return (
-        <div className="flex flex-col h-full">
-            <div className="flex-shrink-0 border-b border-slate-200 bg-white">
-                <div className="flex gap-1 px-4 pt-4">
-                    {tabs.map(({ key, label }) => (
+    const renderTabs = () => (
+        <div className="flex-shrink-0 bg-white border-b border-slate-200">
+            <div className="max-w-[1600px] mx-auto px-6 pt-6">
+                <div className="flex gap-2 p-1.5 bg-slate-100 rounded-2xl w-fit mb-[-1px] relative z-10 border border-slate-200">
+                    {tabs.map(({ key, label, icon }) => (
                         <button
                             key={key}
                             onClick={() => setActiveTab(key)}
-                            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-                                activeTab === key
-                                    ? 'bg-indigo-600 text-white shadow-sm'
-                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                            }`}
+                            className={`flex items-center gap-2 px-6 py-2.5 text-sm font-black rounded-xl transition-all duration-300 uppercase tracking-tight ${activeTab === key
+                                ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-slate-200'
+                                : 'text-slate-500 hover:bg-white/50 hover:text-slate-700'
+                                }`}
                         >
+                            {icon}
                             {label}
                         </button>
                     ))}
                 </div>
             </div>
-            <div className="flex-1 overflow-hidden">
-                {activeTab === 'marketplace' && <MarketplacePage isSupplier={false} />}
+        </div>
+    );
+
+    return (
+        <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
+            {renderTabs()}
+            <div className="flex-1 overflow-hidden relative">
+                {activeTab === 'marketplace' && <MarketplacePage isSupplier={isSupplier} />}
+                {activeTab === 'supplier' && isSupplier && <SupplierPortal />}
                 {activeTab === 'buyer' && <BuyerDashboard />}
             </div>
         </div>

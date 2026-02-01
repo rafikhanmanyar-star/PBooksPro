@@ -422,6 +422,35 @@ CREATE TABLE IF NOT EXISTS project_agreement_units (
     FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE CASCADE
 );
 
+-- Sales Returns table (Project Sales Returns)
+CREATE TABLE IF NOT EXISTS sales_returns (
+    id TEXT PRIMARY KEY,
+    return_number TEXT NOT NULL,
+    agreement_id TEXT NOT NULL,
+    return_date TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    reason_notes TEXT,
+    penalty_percentage REAL NOT NULL DEFAULT 0,
+    penalty_amount REAL NOT NULL DEFAULT 0,
+    refund_amount REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL,
+    processed_date TEXT,
+    refunded_date TEXT,
+    refund_bill_id TEXT,
+    created_by TEXT,
+    notes TEXT,
+    tenant_id TEXT,
+    user_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (agreement_id) REFERENCES project_agreements(id) ON DELETE RESTRICT,
+    FOREIGN KEY (refund_bill_id) REFERENCES bills(id) ON DELETE SET NULL,
+    UNIQUE(tenant_id, return_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sales_returns_tenant_id ON sales_returns(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_sales_returns_agreement_id ON sales_returns(agreement_id);
+
 -- Contracts table
 CREATE TABLE IF NOT EXISTS contracts (
     id TEXT PRIMARY KEY,
@@ -862,184 +891,10 @@ CREATE INDEX IF NOT EXISTS idx_registered_suppliers_supplier ON registered_suppl
 CREATE INDEX IF NOT EXISTS idx_registered_suppliers_status ON registered_suppliers(status);
 CREATE INDEX IF NOT EXISTS idx_registered_suppliers_tenant_id ON registered_suppliers(tenant_id);
 
--- =====================================================
--- INVENTORY ITEMS (MASTER DATA)
--- =====================================================
 
--- Inventory Items table (hierarchical structure with parent-child relationships)
-CREATE TABLE IF NOT EXISTS inventory_items (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT,
-    user_id TEXT,
-    name TEXT NOT NULL,
-    parent_id TEXT,
-    expense_category_id TEXT,
-    unit_type TEXT NOT NULL CHECK (unit_type IN ('LENGTH_FEET', 'AREA_SQFT', 'VOLUME_CUFT', 'QUANTITY')),
-    price_per_unit REAL NOT NULL DEFAULT 0,
-    description TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (parent_id) REFERENCES inventory_items(id) ON DELETE SET NULL,
-    FOREIGN KEY (expense_category_id) REFERENCES categories(id) ON DELETE SET NULL
-);
 
-CREATE INDEX IF NOT EXISTS idx_inventory_items_tenant ON inventory_items(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_inventory_items_parent ON inventory_items(parent_id);
-CREATE INDEX IF NOT EXISTS idx_inventory_items_user ON inventory_items(user_id);
-CREATE INDEX IF NOT EXISTS idx_inventory_items_name ON inventory_items(name);
-CREATE INDEX IF NOT EXISTS idx_inventory_items_expense_category ON inventory_items(expense_category_id);
 
--- =====================================================
--- WAREHOUSES
--- =====================================================
 
--- Warehouses table
-CREATE TABLE IF NOT EXISTS warehouses (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT,
-    user_id TEXT,
-    name TEXT NOT NULL,
-    address TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_warehouses_tenant ON warehouses(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_warehouses_user ON warehouses(user_id);
-CREATE INDEX IF NOT EXISTS idx_warehouses_name ON warehouses(name);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_warehouses_tenant_name ON warehouses(tenant_id, name);
-
--- =====================================================
--- PURCHASE BILLS (SHOP PURCHASE INVOICES FROM VENDORS)
--- =====================================================
-
--- Purchase Bills table (header/parent record)
-CREATE TABLE IF NOT EXISTS purchase_bills (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT,
-    user_id TEXT,
-    bill_number TEXT NOT NULL,
-    vendor_id TEXT NOT NULL,
-    bill_date TEXT NOT NULL,
-    due_date TEXT,
-    description TEXT,
-    
-    -- Financial tracking
-    total_amount REAL NOT NULL DEFAULT 0,
-    paid_amount REAL NOT NULL DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'Unpaid' CHECK (status IN ('Unpaid', 'Partially Paid', 'Paid')),
-    
-    -- Warehouse tracking
-    warehouse_id TEXT,
-    
-    -- Inventory tracking
-    items_received INTEGER NOT NULL DEFAULT 0,
-    items_received_date TEXT,
-    
-    -- References
-    project_id TEXT,
-    
-    -- Metadata
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    
-    FOREIGN KEY (vendor_id) REFERENCES contacts(id) ON DELETE RESTRICT,
-    FOREIGN KEY (warehouse_id) REFERENCES warehouses(id) ON DELETE SET NULL,
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
-);
-
--- Purchase Bill Items table (line items/details)
-CREATE TABLE IF NOT EXISTS purchase_bill_items (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT,
-    purchase_bill_id TEXT NOT NULL,
-    inventory_item_id TEXT NOT NULL,
-    
-    -- Item details
-    item_name TEXT NOT NULL,
-    description TEXT,
-    quantity REAL NOT NULL,
-    received_quantity REAL NOT NULL DEFAULT 0, -- Quantity received (for partial receiving)
-    price_per_unit REAL NOT NULL,
-    total_amount REAL NOT NULL,
-    
-    -- Metadata
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    
-    FOREIGN KEY (purchase_bill_id) REFERENCES purchase_bills(id) ON DELETE CASCADE,
-    FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(id) ON DELETE RESTRICT
-);
-
--- Purchase Bill Payments table (payment tracking)
-CREATE TABLE IF NOT EXISTS purchase_bill_payments (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT,
-    purchase_bill_id TEXT NOT NULL,
-    
-    -- Payment details
-    amount REAL NOT NULL,
-    payment_date TEXT NOT NULL,
-    payment_account_id TEXT NOT NULL,
-    description TEXT,
-    
-    -- Link to transaction in main ledger
-    transaction_id TEXT,
-    
-    -- Metadata
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    
-    FOREIGN KEY (purchase_bill_id) REFERENCES purchase_bills(id) ON DELETE CASCADE,
-    FOREIGN KEY (payment_account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
-    FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
-);
-
--- Inventory Stock table (current stock levels with weighted average costing)
-CREATE TABLE IF NOT EXISTS inventory_stock (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT,
-    inventory_item_id TEXT NOT NULL,
-    
-    -- Stock tracking
-    current_quantity REAL NOT NULL DEFAULT 0,
-    average_cost REAL NOT NULL DEFAULT 0,
-    
-    -- Last purchase info
-    last_purchase_date TEXT,
-    last_purchase_price REAL,
-    last_purchase_bill_id TEXT,
-    
-    -- Metadata
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    
-    FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(id) ON DELETE CASCADE,
-    FOREIGN KEY (last_purchase_bill_id) REFERENCES purchase_bills(id) ON DELETE SET NULL
-);
-
--- Purchase Bills indexes
-CREATE INDEX IF NOT EXISTS idx_purchase_bills_tenant ON purchase_bills(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_purchase_bills_vendor ON purchase_bills(vendor_id);
-CREATE INDEX IF NOT EXISTS idx_purchase_bills_user ON purchase_bills(user_id);
-CREATE INDEX IF NOT EXISTS idx_purchase_bills_bill_date ON purchase_bills(bill_date);
-CREATE INDEX IF NOT EXISTS idx_purchase_bills_status ON purchase_bills(status);
-CREATE INDEX IF NOT EXISTS idx_purchase_bills_project ON purchase_bills(project_id);
-CREATE INDEX IF NOT EXISTS idx_purchase_bills_warehouse ON purchase_bills(warehouse_id);
-
--- Purchase Bill Items indexes
-CREATE INDEX IF NOT EXISTS idx_purchase_bill_items_tenant ON purchase_bill_items(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_purchase_bill_items_bill ON purchase_bill_items(purchase_bill_id);
-CREATE INDEX IF NOT EXISTS idx_purchase_bill_items_inventory ON purchase_bill_items(inventory_item_id);
-
--- Purchase Bill Payments indexes
-CREATE INDEX IF NOT EXISTS idx_purchase_bill_payments_tenant ON purchase_bill_payments(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_purchase_bill_payments_bill ON purchase_bill_payments(purchase_bill_id);
-CREATE INDEX IF NOT EXISTS idx_purchase_bill_payments_account ON purchase_bill_payments(payment_account_id);
-CREATE INDEX IF NOT EXISTS idx_purchase_bill_payments_transaction ON purchase_bill_payments(transaction_id);
-
--- Inventory Stock indexes
-CREATE INDEX IF NOT EXISTS idx_inventory_stock_tenant ON inventory_stock(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_inventory_stock_inventory ON inventory_stock(inventory_item_id);
-CREATE INDEX IF NOT EXISTS idx_inventory_stock_last_bill ON inventory_stock(last_purchase_bill_id);
 
 -- =====================================================
 -- PAYROLL MODULE TABLES

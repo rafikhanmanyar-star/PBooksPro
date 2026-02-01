@@ -24,8 +24,7 @@ export type Page =
   | 'teamRanking'
   | 'bizPlanet'
   | 'marketing'
-  | 'payroll'
-  | 'inventory';
+  | 'payroll';
 
 export enum TransactionType {
   INCOME = 'Income',
@@ -689,20 +688,6 @@ export interface AppState {
   recurringInvoiceTemplates: RecurringInvoiceTemplate[];
   pmCycleAllocations: PMCycleAllocation[];
 
-  // Inventory Items (Settings/Master Data)
-  inventoryItems: InventoryItem[];
-  warehouses: Warehouse[];
-  
-  // Purchase Bills (My Shop - Purchases)
-  purchaseBills: PurchaseBill[];
-  purchaseBillItems: PurchaseBillItem[];
-  purchaseBillPayments: PurchaseBillPayment[];
-  
-  // Shop/Retail Sales
-  shopConfig: ShopConfig | null;
-  shopSales: ShopSale[];
-  shopSaleItems: ShopSaleItem[];
-  inventoryStock: InventoryStock[];
 
   // Task Management
   tasks: Task[];
@@ -825,14 +810,6 @@ export type AppAction =
   | { type: 'ADD_PLAN_AMENITY'; payload: PlanAmenity }
   | { type: 'UPDATE_PLAN_AMENITY'; payload: PlanAmenity }
   | { type: 'DELETE_PLAN_AMENITY'; payload: string }
-  | { type: 'ADD_INVENTORY_ITEM'; payload: InventoryItem }
-  | { type: 'UPDATE_INVENTORY_ITEM'; payload: InventoryItem }
-  | { type: 'DELETE_INVENTORY_ITEM'; payload: string }
-  | { type: 'ADD_WAREHOUSE'; payload: Warehouse }
-  | { type: 'UPDATE_WAREHOUSE'; payload: Warehouse }
-  | { type: 'DELETE_WAREHOUSE'; payload: string }
-  | { type: 'SET_WAREHOUSES'; payload: Warehouse[] }
-  | { type: 'SET_INVENTORY_ITEMS'; payload: InventoryItem[] }
   | { type: 'UPDATE_PM_COST_PERCENTAGE'; payload: number }
   | { type: 'UPDATE_DEFAULT_PROJECT'; payload: string | undefined }
   | { type: 'UPDATE_DOCUMENT_STORAGE_PATH'; payload: string | undefined }
@@ -861,26 +838,7 @@ export type AppAction =
   | { type: 'UPDATE_TASK'; payload: Task }
   | { type: 'DELETE_TASK'; payload: string }
   | { type: 'ADD_TASK_UPDATE'; payload: TaskUpdate }
-  | { type: 'UPDATE_TASK_PERFORMANCE_CONFIG'; payload: TaskPerformanceConfig }
-  // Purchase Bills Actions
-  | { type: 'ADD_PURCHASE_BILL'; payload: PurchaseBill }
-  | { type: 'UPDATE_PURCHASE_BILL'; payload: PurchaseBill }
-  | { type: 'DELETE_PURCHASE_BILL'; payload: string }
-  | { type: 'SET_PURCHASE_BILLS'; payload: PurchaseBill[] }
-  | { type: 'ADD_PURCHASE_BILL_ITEM'; payload: PurchaseBillItem }
-  | { type: 'UPDATE_PURCHASE_BILL_ITEM'; payload: PurchaseBillItem }
-  | { type: 'DELETE_PURCHASE_BILL_ITEM'; payload: string }
-  | { type: 'SET_PURCHASE_BILL_ITEMS'; payload: PurchaseBillItem[] }
-  | { type: 'ADD_PURCHASE_BILL_PAYMENT'; payload: PurchaseBillPayment }
-  | { type: 'SET_INVENTORY_STOCK'; payload: InventoryStock[] }
-  | { type: 'UPDATE_INVENTORY_STOCK'; payload: InventoryStock }
-  // Shop Sales Actions
-  | { type: 'SET_SHOP_CONFIG'; payload: ShopConfig }
-  | { type: 'ADD_SHOP_SALE'; payload: ShopSale }
-  | { type: 'UPDATE_SHOP_SALE'; payload: ShopSale }
-  | { type: 'DELETE_SHOP_SALE'; payload: string }
-  | { type: 'SET_SHOP_SALES'; payload: ShopSale[] }
-  | { type: 'SET_SHOP_SALE_ITEMS'; payload: ShopSaleItem[] };
+  | { type: 'UPDATE_TASK_PERFORMANCE_CONFIG'; payload: TaskPerformanceConfig };
 
 // ==================== TASK MANAGEMENT TYPES ====================
 
@@ -950,294 +908,6 @@ export interface TaskPerformanceConfig {
   deadline_adherence_weight: number; // 0-1
   kpi_achievement_weight: number; // 0-1
   updated_at?: string;
-}
-
-// ============================================================================
-// SHOP/INVENTORY MANAGEMENT TYPES
-// ============================================================================
-
-// Legacy enum (kept for backward compatibility)
-export enum ShopBillStatus {
-  UNPAID = 'Unpaid',
-  PARTIALLY_PAID = 'Partially Paid',
-  PAID = 'Paid',
-}
-
-// Unit types for inventory items
-export enum InventoryUnitType {
-  LENGTH_FEET = 'LENGTH_FEET',
-  AREA_SQFT = 'AREA_SQFT',
-  VOLUME_CUFT = 'VOLUME_CUFT',
-  QUANTITY = 'QUANTITY',
-}
-
-// Inventory Item (Master Data in Settings)
-export interface InventoryItem {
-  id: string;
-  name: string;
-  parentId?: string;  // Reference to parent inventory item
-  expenseCategoryId?: string;  // Reference to expense category for purchase tracking
-  unitType: InventoryUnitType;
-  pricePerUnit: number;
-  description?: string;
-  userId?: string;
-  createdAt?: string;
-  updatedAt?: string;
-  // Virtual fields for UI
-  children?: InventoryItem[];  // Populated for tree view
-  parentName?: string;         // Populated from parent lookup
-  categoryName?: string;       // Populated from category lookup
-}
-
-// Warehouse
-export interface Warehouse {
-  id: string;
-  name: string;
-  address?: string;
-  userId?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-// Purchase Bill Payment Status Enum
-export enum PurchaseBillStatus {
-  UNPAID = 'Unpaid',
-  PARTIALLY_PAID = 'Partially Paid',
-  PAID = 'Paid',
-}
-
-// Purchase Bill Delivery Status Enum
-export enum PurchaseBillDeliveryStatus {
-  PENDING = 'Pending',
-  PARTIALLY_RECEIVED = 'Partially Received',
-  RECEIVED = 'Received',
-}
-
-// Purchase Bill (Shop Purchase Invoice from Vendor)
-export interface PurchaseBill {
-  id: string;
-  tenantId?: string;
-  userId?: string;
-  billNumber: string;
-  vendorId: string;         // Links to Contact (Vendor type)
-  billDate: string;         // ISO date string
-  dueDate?: string;         // Optional due date
-  description?: string;
-  
-  // Financial tracking
-  totalAmount: number;      // Sum of all line items
-  paidAmount: number;       // Total paid so far
-  status: PurchaseBillStatus;
-  
-  // Delivery/Inventory tracking
-  deliveryStatus: PurchaseBillDeliveryStatus; // Delivery status
-  itemsReceived: boolean;   // Whether ALL items have been physically received (legacy, use deliveryStatus)
-  itemsReceivedDate?: string; // Date when all items were received
-  
-  // References
-  warehouseId?: string;     // Optional warehouse reference
-  projectId?: string;       // Optional project reference
-  
-  // Metadata
-  createdAt?: string;
-  updatedAt?: string;
-  
-  // Virtual fields (populated from joins - not in DB)
-  items?: PurchaseBillItem[]; // Line items (fetched separately)
-  vendorName?: string;       // Populated from contact lookup
-  projectName?: string;      // Populated from project lookup
-}
-
-// Purchase Bill Line Item
-export interface PurchaseBillItem {
-  id: string;
-  tenantId?: string;
-  purchaseBillId: string;
-  inventoryItemId: string;  // Links to InventoryItem master data
-  
-  // Item details
-  itemName: string;         // Display name for the item
-  description?: string;     // Additional description
-  quantity: number;
-  receivedQuantity?: number; // Quantity received (for partial receiving)
-  pricePerUnit: number;
-  totalAmount: number;      // quantity * pricePerUnit
-  
-  // Metadata
-  createdAt?: string;
-  updatedAt?: string;
-  
-  // Virtual fields (populated from joins - not in DB)
-  inventoryItemName?: string; // Populated from inventory_items lookup
-  expenseCategoryId?: string; // Populated from inventory_items
-  expenseCategoryName?: string; // Populated from categories lookup
-}
-
-// Shop Configuration
-export interface ShopConfig {
-  id: string;
-  tenantId?: string;
-  
-  // Shop Details
-  shopName?: string;
-  shopAddress?: string;
-  shopPhone?: string;
-  shopEmail?: string;
-  
-  // Pricing Configuration
-  defaultProfitMarginPercent: number;
-  taxEnabled: boolean;
-  taxPercent: number;
-  taxName: string;
-  
-  // Invoice Configuration
-  invoicePrefix: string;
-  invoiceFooterText?: string;
-  
-  // Display Settings
-  showStockQuantity: boolean;
-  lowStockThreshold: number;
-  
-  // Metadata
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-// Shop Sale Status
-export enum ShopSaleStatus {
-  COMPLETED = 'Completed',
-  CANCELLED = 'Cancelled',
-  RETURNED = 'Returned',
-}
-
-// Shop Sale (Retail Sales Invoice)
-export interface ShopSale {
-  id: string;
-  tenantId?: string;
-  userId?: string;
-  
-  // Invoice Details
-  invoiceNumber: string;
-  saleDate: string; // ISO date string
-  
-  // Customer (Optional)
-  customerId?: string;
-  customerName?: string;
-  customerPhone?: string;
-  
-  // Financial Details
-  subtotal: number;
-  taxAmount: number;
-  discountAmount: number;
-  totalAmount: number;
-  
-  // Payment Details
-  paidAmount: number;
-  paymentMethod: string;
-  paymentAccountId?: string;
-  
-  // Status
-  status: ShopSaleStatus;
-  
-  // Notes
-  notes?: string;
-  
-  // Metadata
-  createdAt?: string;
-  updatedAt?: string;
-  
-  // Virtual fields (populated from joins - not in DB)
-  items?: ShopSaleItem[];
-  customerContact?: Contact;
-}
-
-// Shop Sale Item (Line Item)
-export interface ShopSaleItem {
-  id: string;
-  tenantId?: string;
-  saleId: string;
-  
-  // Item Details
-  inventoryItemId: string;
-  itemName: string;
-  
-  // Quantity & Pricing
-  quantity: number;
-  costPrice: number; // Purchase cost from inventory
-  sellingPrice: number; // Selling price per unit
-  profitMarginPercent?: number;
-  
-  // Line Total
-  lineTotal: number;
-  lineProfit: number; // (selling_price - cost_price) * quantity
-  
-  // Metadata
-  createdAt?: string;
-  updatedAt?: string;
-  
-  // Virtual fields (populated from joins - not in DB)
-  inventoryItem?: InventoryItem;
-  availableStock?: number;
-}
-
-// Purchase Bill Payment
-export interface PurchaseBillPayment {
-  id: string;
-  tenantId?: string;
-  purchaseBillId: string;
-  
-  // Payment details
-  amount: number;
-  paymentDate: string;      // ISO date string
-  paymentAccountId: string; // Links to Account for payment
-  description?: string;
-  
-  // Link to transaction in main ledger
-  transactionId?: string;   // Links to Transaction if created
-  
-  // Metadata
-  createdAt?: string;
-  
-  // Virtual fields (populated from joins - not in DB)
-  accountName?: string;     // Populated from accounts lookup
-}
-
-// Inventory Stock (Current stock levels with costing)
-export interface InventoryStock {
-  id: string;
-  tenantId?: string;
-  inventoryItemId: string;  // Links to InventoryItem master data
-  
-  // Stock tracking
-  currentQuantity: number;
-  averageCost: number;      // Weighted average cost per unit
-  
-  // Last purchase info
-  lastPurchaseDate?: string;
-  lastPurchasePrice?: number;
-  lastPurchaseBillId?: string;
-  
-  // Metadata
-  updatedAt?: string;
-  
-  // Virtual fields (populated from joins - not in DB)
-  inventoryItemName?: string; // Populated from inventory_items lookup
-  itemDescription?: string;   // Populated from inventory_items lookup
-  unitType?: InventoryUnitType; // Populated from inventory_items lookup
-  expenseCategoryId?: string; // Populated from inventory_items
-  expenseCategoryName?: string; // Populated from categories lookup
-}
-
-// Legacy types for backward compatibility (can be removed later)
-export interface ShopBillItem extends PurchaseBillItem {}
-export interface ShopPurchaseBill extends PurchaseBill {}
-export interface ShopInventoryItem extends InventoryStock {
-  categoryId: string;       // Mapped from expenseCategoryId for backward compatibility
-  itemName: string;         // Mapped from inventoryItemName
-}
-export interface ShopPayment extends PurchaseBillPayment {
-  billId: string;          // Mapped from purchaseBillId for backward compatibility
-  accountId: string;       // Mapped from paymentAccountId
 }
 
 // ============================================================================
