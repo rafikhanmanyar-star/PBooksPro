@@ -47,3 +47,12 @@ export interface OrganizationHeader {
     centralCurrency: string;
     lastConsolidated: string;
 }
+
+export interface GlobalPolicies {
+    allowNegativeStock: boolean;
+    universalPricing: boolean;
+    taxInclusive: boolean;
+    defaultTaxRate: number;
+    requireManagerApproval: boolean;
+    loyaltyRedemptionRatio: number; // e.g. 0.05 (5%)
+}

@@ -332,6 +332,47 @@ export class ShopService {
             return res.rows[0].id;
         });
     }
+    // --- Policy Methods ---
+    async getPolicies(tenantId: string) {
+        const res = await this.db.query('SELECT * FROM shop_policies WHERE tenant_id = $1', [tenantId]);
+        if (res.length === 0) {
+            // Create default policies if none exist
+            const defaultRes = await this.db.query(`
+                INSERT INTO shop_policies (tenant_id) VALUES ($1)
+                RETURNING *
+            `, [tenantId]);
+            return defaultRes[0];
+        }
+        return res[0];
+    }
+
+    async updatePolicies(tenantId: string, data: any) {
+        const res = await this.db.query(`
+            INSERT INTO shop_policies (
+                tenant_id, allow_negative_stock, universal_pricing, 
+                tax_inclusive, default_tax_rate, require_manager_approval, 
+                loyalty_redemption_ratio, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            ON CONFLICT (tenant_id) DO UPDATE SET
+                allow_negative_stock = EXCLUDED.allow_negative_stock,
+                universal_pricing = EXCLUDED.universal_pricing,
+                tax_inclusive = EXCLUDED.tax_inclusive,
+                default_tax_rate = EXCLUDED.default_tax_rate,
+                require_manager_approval = EXCLUDED.require_manager_approval,
+                loyalty_redemption_ratio = EXCLUDED.loyalty_redemption_ratio,
+                updated_at = NOW()
+            RETURNING *
+        `, [
+            tenantId,
+            data.allowNegativeStock,
+            data.universalPricing,
+            data.taxInclusive,
+            data.defaultTaxRate,
+            data.requireManagerApproval,
+            data.loyaltyRedemptionRatio
+        ]);
+        return res[0];
+    }
 }
 
 let shopServiceInstance: ShopService | null = null;

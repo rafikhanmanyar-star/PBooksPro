@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MultiStoreProvider, useMultiStore } from '../../context/MultiStoreContext';
 import OrganizationDashboard from './multistore/OrganizationDashboard';
 import BranchDirectory from './multistore/BranchDirectory';
@@ -11,9 +11,27 @@ import Select from '../ui/Select';
 import Button from '../ui/Button';
 
 const MultiStoreContent: React.FC = () => {
-    const { addStore } = useMultiStore();
+    const { addStore, policies, savePolicies } = useMultiStore();
     const [activeTab, setActiveTab] = useState<'org' | 'branches' | 'terminals'>('org');
     const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+    const [isPoliciesModalOpen, setIsPoliciesModalOpen] = useState(false);
+    const [policyForm, setPolicyForm] = useState(policies);
+
+    // Sync form with context when modal opens
+    useEffect(() => {
+        if (isPoliciesModalOpen) {
+            setPolicyForm(policies);
+        }
+    }, [isPoliciesModalOpen, policies]);
+
+    const handleSavePolicies = async () => {
+        try {
+            await savePolicies(policyForm);
+            setIsPoliciesModalOpen(false);
+        } catch (e) {
+            alert('Failed to save policies');
+        }
+    };
     const [newStoreData, setNewStoreData] = useState({
         name: '',
         code: '',
@@ -81,7 +99,10 @@ const MultiStoreContent: React.FC = () => {
                         >
                             {ICONS.plus} Register Store
                         </button>
-                        <button className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all items-center gap-2 hidden md:flex">
+                        <button
+                            onClick={() => setIsPoliciesModalOpen(true)}
+                            className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all items-center gap-2 hidden md:flex"
+                        >
                             {ICONS.settings} Global Policies
                         </button>
                     </div>
@@ -204,6 +225,97 @@ const MultiStoreContent: React.FC = () => {
                     <div className="flex justify-end gap-3 mt-6">
                         <Button variant="secondary" onClick={() => setIsRegisterModalOpen(false)}>Cancel</Button>
                         <Button onClick={handleRegisterStore} disabled={!newStoreData.name}>Register Branch</Button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Global Policies Modal */}
+            <Modal
+                isOpen={isPoliciesModalOpen}
+                onClose={() => setIsPoliciesModalOpen(false)}
+                title="Global Organization Policies"
+            >
+                <div className="space-y-6">
+                    <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl flex gap-3 text-amber-800">
+                        <div className="mt-1">{ICONS.alertTriangle}</div>
+                        <p className="text-xs font-medium leading-relaxed">
+                            Changes here affect all branches and terminals immediately. These are top-level controls for your organization's POS operations.
+                        </p>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl">
+                            <div>
+                                <h4 className="text-sm font-bold text-slate-700">Allow Negative Stock</h4>
+                                <p className="text-[10px] text-slate-400">Permit sales even if system inventory is zero.</p>
+                            </div>
+                            <input
+                                type="checkbox"
+                                checked={policyForm.allowNegativeStock}
+                                onChange={(e) => setPolicyForm({ ...policyForm, allowNegativeStock: e.target.checked })}
+                                className="w-5 h-5 text-indigo-600 rounded"
+                            />
+                        </div>
+
+                        <div className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl">
+                            <div>
+                                <h4 className="text-sm font-bold text-slate-700">Universal Pricing</h4>
+                                <p className="text-[10px] text-slate-400">All branches use the core catalog price.</p>
+                            </div>
+                            <input
+                                type="checkbox"
+                                checked={policyForm.universalPricing}
+                                onChange={(e) => setPolicyForm({ ...policyForm, universalPricing: e.target.checked })}
+                                className="w-5 h-5 text-indigo-600 rounded"
+                            />
+                        </div>
+
+                        <div className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl">
+                            <div>
+                                <h4 className="text-sm font-bold text-slate-700">Tax Inclusive Pricing</h4>
+                                <p className="text-[10px] text-slate-400">Prices displayed include all taxes.</p>
+                            </div>
+                            <input
+                                type="checkbox"
+                                checked={policyForm.taxInclusive}
+                                onChange={(e) => setPolicyForm({ ...policyForm, taxInclusive: e.target.checked })}
+                                className="w-5 h-5 text-indigo-600 rounded"
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <Input
+                                label="Default Tax Rate (%)"
+                                type="number"
+                                value={policyForm.defaultTaxRate}
+                                onChange={(e) => setPolicyForm({ ...policyForm, defaultTaxRate: parseFloat(e.target.value) })}
+                            />
+                            <Input
+                                label="Loyalty Redemption Ratio"
+                                type="number"
+                                step="0.001"
+                                value={policyForm.loyaltyRedemptionRatio}
+                                onChange={(e) => setPolicyForm({ ...policyForm, loyaltyRedemptionRatio: parseFloat(e.target.value) })}
+                            />
+                        </div>
+
+                        <div className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl">
+                            <div>
+                                <h4 className="text-sm font-bold text-slate-700">Require Manager Approval</h4>
+                                <p className="text-[10px] text-slate-400">For discounts exceeding 20% or returns.</p>
+                            </div>
+                            <input
+                                type="checkbox"
+                                checked={policyForm.requireManagerApproval}
+                                onChange={(e) => setPolicyForm({ ...policyForm, requireManagerApproval: e.target.checked })}
+                                className="w-5 h-5 text-indigo-600 rounded"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-4">
+                        <Button variant="secondary" onClick={() => setIsPoliciesModalOpen(false)}>Cancel</Button>
+                        <Button onClick={handleSavePolicies}>Apply Changes</Button>
                     </div>
                 </div>
             </Modal>

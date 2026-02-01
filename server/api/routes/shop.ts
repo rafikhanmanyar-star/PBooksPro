@@ -119,4 +119,25 @@ router.post('/loyalty/members', async (req: any, res) => {
     }
 });
 
+// --- Policies ---
+router.get('/policies', async (req: any, res) => {
+    try {
+        const policies = await getShopService().getPolicies(req.tenantId);
+        res.json(policies);
+    } catch (error: any) {
+        console.error(`[ShopAPI] GET /policies error:`, error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/policies', async (req: any, res) => {
+    try {
+        const policies = await getShopService().updatePolicies(req.tenantId, req.body);
+        res.json(policies);
+    } catch (error: any) {
+        console.error(`[ShopAPI] POST /policies error:`, error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 export default router;

@@ -32,4 +32,6 @@ export const shopApi = {
     createLoyaltyMember: (memberData: any) => apiClient.post('/shop/loyalty/members', memberData),
     createBranch: (branchData: any) => apiClient.post('/shop/branches', branchData),
     updateBranch: (id: string, branchData: any) => apiClient.put(`/shop/branches/${id}`, branchData),
+    getPolicies: () => apiClient.get('/shop/policies'),
+    updatePolicies: (policyData: any) => apiClient.post('/shop/policies', policyData),
 };

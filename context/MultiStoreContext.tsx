@@ -4,7 +4,8 @@ import {
     StoreBranch,
     POSTerminal,
     StorePerformance,
-    OrganizationHeader
+    OrganizationHeader,
+    GlobalPolicies
 } from '../types/multiStore';
 import { shopApi } from '../services/api/shopApi';
 import { useAuth } from './AuthContext';
@@ -24,6 +25,8 @@ interface MultiStoreContextType {
     activeTerminalsCount: number;
     addStore: (store: Omit<StoreBranch, 'id' | 'status'>) => Promise<void>;
     updateStore: (id: string, store: Partial<StoreBranch>) => Promise<void>;
+    savePolicies: (policies: GlobalPolicies) => Promise<void>;
+    policies: GlobalPolicies;
 }
 
 const MultiStoreContext = createContext<MultiStoreContextType | undefined>(undefined);
@@ -40,6 +43,14 @@ export const MultiStoreProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const [stores, setStores] = useState<StoreBranch[]>([]);
     const [terminals, setTerminals] = useState<POSTerminal[]>([]);
     const [performance, setPerformance] = useState<StorePerformance[]>([]);
+    const [policies, setPolicies] = useState<GlobalPolicies>({
+        allowNegativeStock: false,
+        universalPricing: true,
+        taxInclusive: false,
+        defaultTaxRate: 0,
+        requireManagerApproval: false,
+        loyaltyRedemptionRatio: 0.01
+    });
 
     const { isAuthenticated, tenant } = useAuth();
 
@@ -81,8 +92,21 @@ export const MultiStoreProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                     name: tenant?.name || 'My Organization',
                     totalStores: mappedStores.length
                 }));
+
+                // Fetch Global Policies
+                const policyData = await shopApi.getPolicies() as any;
+                if (policyData) {
+                    setPolicies({
+                        allowNegativeStock: policyData.allow_negative_stock,
+                        universalPricing: policyData.universal_pricing,
+                        taxInclusive: policyData.tax_inclusive,
+                        defaultTaxRate: parseFloat(policyData.default_tax_rate) || 0,
+                        requireManagerApproval: policyData.require_manager_approval,
+                        loyaltyRedemptionRatio: parseFloat(policyData.loyalty_redemption_ratio) || 0.01
+                    });
+                }
             } catch (error) {
-                console.error('Failed to fetch stores:', error);
+                console.error('Failed to fetch stores or policies:', error);
             }
         };
         fetchData();
@@ -148,6 +172,23 @@ export const MultiStoreProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
     };
 
+    const savePolicies = async (policyData: GlobalPolicies) => {
+        try {
+            const updated = await shopApi.updatePolicies(policyData) as any;
+            setPolicies({
+                allowNegativeStock: updated.allow_negative_stock,
+                universalPricing: updated.universal_pricing,
+                taxInclusive: updated.tax_inclusive,
+                defaultTaxRate: parseFloat(updated.default_tax_rate),
+                requireManagerApproval: updated.require_manager_approval,
+                loyaltyRedemptionRatio: parseFloat(updated.loyalty_redemption_ratio)
+            });
+        } catch (e) {
+            console.error('Failed to save policies:', e);
+            throw e;
+        }
+    };
+
     const lockTerminal = (terminalId: string) => {
         setTerminals(prev => prev.map(t => t.id === terminalId ? { ...t, status: 'Locked' } : t));
     };
@@ -164,6 +205,8 @@ export const MultiStoreProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         lockTerminal,
         addStore,
         updateStore,
+        savePolicies,
+        policies,
         consolidatedRevenue,
         activeTerminalsCount
     };
