@@ -14,6 +14,15 @@ router.get('/branches', async (req: any, res) => {
     }
 });
 
+router.post('/branches', async (req: any, res) => {
+    try {
+        const branchId = await getShopService().createBranch(req.tenantId, req.body);
+        res.status(201).json({ id: branchId, message: 'Branch registered successfully' });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // --- Products & Inventory ---
 router.get('/products', async (req: any, res) => {
     try {
@@ -70,6 +79,15 @@ router.get('/loyalty/members', async (req: any, res) => {
     try {
         const members = await getShopService().getLoyaltyMembers(req.tenantId);
         res.json(members);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/loyalty/members', async (req: any, res) => {
+    try {
+        const memberId = await getShopService().createLoyaltyMember(req.tenantId, req.body);
+        res.status(201).json({ id: memberId, message: 'Member enrolled successfully' });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }

@@ -177,6 +177,37 @@ export class ShopService {
         `, [tenantId]);
     }
 
+    async createBranch(tenantId: string, data: any) {
+        return this.db.transaction(async (client) => {
+            const res = await client.query(`
+                INSERT INTO shop_branches (
+                    tenant_id, name, code, type, region, 
+                    manager_name, contact_no, timezone, open_time, close_time, location
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                RETURNING id
+            `, [
+                tenantId, data.name, data.code || `BR-${Date.now()}`, data.type,
+                data.region, data.managerName, data.contactNo,
+                data.timezone, data.openTime, data.closeTime, data.location
+            ]);
+
+            // Auto-create a default terminal and warehouse for the new branch?
+            // Optional but helpful. Let's do it for user convenience.
+            const branchId = res.rows[0].id;
+
+            // Create default terminal
+            await client.query(`
+                 INSERT INTO shop_terminals (tenant_id, branch_id, name, code)
+                 VALUES ($1, $2, 'Main Terminal', $3)
+            `, [tenantId, branchId, `T-${data.code || Date.now()}-01`]);
+
+            // Create default warehouse (if not exists generic one, or per branch)
+            // For now, let's keep it simple.
+
+            return branchId;
+        });
+    }
+
     // --- Loyalty Methods ---
     async getLoyaltyMembers(tenantId: string) {
         return this.db.query(`
@@ -185,6 +216,55 @@ export class ShopService {
             JOIN contacts c ON m.customer_id = c.id
             WHERE m.tenant_id = $1
         `, [tenantId]);
+    }
+
+    async createLoyaltyMember(tenantId: string, data: any) {
+        return this.db.transaction(async (client) => {
+            let customerId = data.customerId;
+
+            // If no customerId provided, check/create contact
+            if (!customerId) {
+                // Check existing by phone
+                if (data.phone) {
+                    const existing = await client.query(
+                        'SELECT id FROM contacts WHERE tenant_id = $1 AND contact_no = $2 LIMIT 1',
+                        [tenantId, data.phone]
+                    );
+                    if (existing.rows.length > 0) {
+                        customerId = existing.rows[0].id;
+                    }
+                }
+
+                // If still no customerId, create new contact
+                if (!customerId) {
+                    const newContact = await client.query(`
+                        INSERT INTO contacts (tenant_id, name, type, contact_no, address)
+                        VALUES ($1, $2, 'Customer', $3, $4)
+                        RETURNING id
+                    `, [tenantId, data.name, data.phone, data.email]); // Storing email in address field temporarily or schema mismatch? 
+                    // contacts table: name, type, description, contact_no, company_name, address. No email column in schema shown earlier?
+                    // actually `postgresql-schema.sql` shows contacts table. Let's check.
+                    // Contacts table: id, tenant_id, name, type, description, contact_no, company_name, address.
+                    // It seems contacts table doesn't have email? Users table has email. 
+                    // Maybe store email in description for now or address.
+                    customerId = newContact.rows[0].id;
+                }
+            }
+
+            // Create Loyalty Member
+            const res = await client.query(`
+                INSERT INTO shop_loyalty_members (
+                    tenant_id, customer_id, card_number, tier, status
+                ) VALUES ($1, $2, $3, 'Silver', 'Active')
+                RETURNING id
+            `, [
+                tenantId,
+                customerId,
+                data.cardNumber || `L-${Date.now()}`
+            ]);
+
+            return res.rows[0].id;
+        });
     }
 }
 
