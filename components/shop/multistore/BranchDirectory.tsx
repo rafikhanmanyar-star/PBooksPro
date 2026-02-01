@@ -38,6 +38,36 @@ const BranchDirectory: React.FC = () => {
         s.code.toLowerCase().includes(search.toLowerCase())
     );
 
+    const handleExportRoster = () => {
+        const headers = ['Branch Name', 'Code', 'Type', 'Region', 'Location', 'Manager', 'Contact', 'Open Time', 'Close Time', 'Timezone', 'Status'];
+        const csvContent = [
+            headers.join(','),
+            ...filtered.map(s => [
+                `"${s.name}"`,
+                `"${s.code}"`,
+                `"${s.type}"`,
+                `"${s.region}"`,
+                `"${s.location}"`,
+                `"${s.manager}"`,
+                `"${s.contact}"`,
+                `"${s.openTime}"`,
+                `"${s.closeTime}"`,
+                `"${s.timezone}"`,
+                `"${s.status}"`
+            ].join(','))
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `branch_roster_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
             <div className="flex justify-between items-center mb-4">
@@ -54,7 +84,10 @@ const BranchDirectory: React.FC = () => {
                     />
                 </div>
                 <div className="flex gap-2">
-                    <button className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all flex items-center gap-2">
+                    <button
+                        onClick={handleExportRoster}
+                        className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all flex items-center gap-2"
+                    >
                         {ICONS.download} Export Roster
                     </button>
                 </div>
