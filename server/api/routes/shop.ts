@@ -7,18 +7,24 @@ const router = express.Router();
 // --- Branches ---
 router.get('/branches', async (req: any, res) => {
     try {
+        console.log(`[ShopAPI] GET /branches - Tenant: ${req.tenantId}`);
         const branches = await getShopService().getBranches(req.tenantId);
+        console.log(`[ShopAPI] Found ${branches.length} branches for tenant ${req.tenantId}`);
         res.json(branches);
     } catch (error: any) {
+        console.error(`[ShopAPI] GET /branches error:`, error);
         res.status(500).json({ error: error.message });
     }
 });
 
 router.post('/branches', async (req: any, res) => {
     try {
+        console.log(`[ShopAPI] POST /branches - Tenant: ${req.tenantId}`, req.body);
         const branchId = await getShopService().createBranch(req.tenantId, req.body);
+        console.log(`[ShopAPI] Created branch ${branchId} for tenant ${req.tenantId}`);
         res.status(201).json({ id: branchId, message: 'Branch registered successfully' });
     } catch (error: any) {
+        console.error(`[ShopAPI] POST /branches error:`, error);
         res.status(500).json({ error: error.message });
     }
 });

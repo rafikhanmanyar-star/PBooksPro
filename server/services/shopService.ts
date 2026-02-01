@@ -200,6 +200,10 @@ export class ShopService {
 
     async createBranch(tenantId: string, data: any) {
         return this.db.transaction(async (client) => {
+            const managerName = data.managerName || data.manager || 'Branch Manager';
+            const contactNo = data.contactNo || data.contact || '';
+            const branchCode = data.code || `BR-${Date.now().toString().slice(-4)}`;
+
             const res = await client.query(`
                 INSERT INTO shop_branches (
                     tenant_id, name, code, type, region, 
@@ -207,20 +211,28 @@ export class ShopService {
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 RETURNING id
             `, [
-                tenantId, data.name, data.code || `BR-${Date.now()}`, data.type,
-                data.region, data.managerName, data.contactNo,
-                data.timezone, data.openTime, data.closeTime, data.location
+                tenantId,
+                data.name,
+                branchCode,
+                data.type || 'Express',
+                data.region || '',
+                managerName,
+                contactNo,
+                data.timezone || 'GMT+5',
+                data.openTime || '09:00',
+                data.closeTime || '21:00',
+                data.location || ''
             ]);
 
             // Auto-create a default terminal and warehouse for the new branch?
             // Optional but helpful. Let's do it for user convenience.
             const branchId = res.rows[0].id;
 
-            // Create default terminal
+            // Create default terminal and warehouse for the new branch
             await client.query(`
                  INSERT INTO shop_terminals (tenant_id, branch_id, name, code)
                  VALUES ($1, $2, 'Main Terminal', $3)
-            `, [tenantId, branchId, `T-${data.code || Date.now()}-01`]);
+            `, [tenantId, branchId, `T-${branchCode}-01`]);
 
             // Create default warehouse (if not exists generic one, or per branch)
             // For now, let's keep it simple.

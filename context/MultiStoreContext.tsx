@@ -7,6 +7,7 @@ import {
     OrganizationHeader
 } from '../types/multiStore';
 import { shopApi } from '../services/api/shopApi';
+import { useAuth } from './AuthContext';
 
 interface MultiStoreContextType {
     organization: OrganizationHeader;
@@ -39,10 +40,24 @@ export const MultiStoreProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const [terminals, setTerminals] = useState<POSTerminal[]>([]);
     const [performance, setPerformance] = useState<StorePerformance[]>([]);
 
+    const { isAuthenticated, tenant } = useAuth();
+
     React.useEffect(() => {
         const fetchData = async () => {
+            if (!isAuthenticated) {
+                console.log('[MultiStoreContext] Skipping fetch: not authenticated');
+                return;
+            }
+
             try {
+                console.log('[MultiStoreContext] Fetching branches for tenant:', tenant?.id);
                 const branches = await shopApi.getBranches();
+
+                if (!Array.isArray(branches)) {
+                    console.error('[MultiStoreContext] Received non-array response from getBranches:', branches);
+                    return;
+                }
+
                 const mappedStores: StoreBranch[] = branches.map((b: any) => ({
                     id: b.id,
                     name: b.name,
@@ -59,16 +74,18 @@ export const MultiStoreProvider: React.FC<{ children: React.ReactNode }> = ({ ch
                 }));
                 setStores(mappedStores);
 
-                // Set organization name from first branch or defaults
-                if (mappedStores.length > 0) {
-                    setOrganization(prev => ({ ...prev, name: 'PBooks Enterprise', totalStores: mappedStores.length }));
-                }
+                // Set organization name from tenant or defaults
+                setOrganization(prev => ({
+                    ...prev,
+                    name: tenant?.name || 'My Organization',
+                    totalStores: mappedStores.length
+                }));
             } catch (error) {
                 console.error('Failed to fetch stores:', error);
             }
         };
         fetchData();
-    }, []);
+    }, [isAuthenticated, tenant?.id]);
 
     const updateStoreStatus = (storeId: string, status: any) => {
         setStores(prev => prev.map(s => s.id === storeId ? { ...s, status } : s));
@@ -76,10 +93,21 @@ export const MultiStoreProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const addStore = async (storeData: Omit<StoreBranch, 'id' | 'status'>) => {
         try {
-            const response = await shopApi.createBranch({
-                ...storeData,
-                status: 'Active'
-            }) as any;
+            // Map frontend fields to backend expected fields
+            const apiPayload = {
+                name: storeData.name,
+                code: storeData.code,
+                type: storeData.type,
+                location: storeData.location,
+                region: storeData.region,
+                managerName: storeData.manager,
+                contactNo: storeData.contact,
+                timezone: storeData.timezone,
+                openTime: storeData.openTime,
+                closeTime: storeData.closeTime
+            };
+
+            const response = await shopApi.createBranch(apiPayload) as any;
 
             const newStore: StoreBranch = {
                 ...storeData,
@@ -88,9 +116,8 @@ export const MultiStoreProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             };
             setStores(prev => [...prev, newStore]);
         } catch (e) {
-            console.error(e);
-            // Fallback
-            setStores(prev => [...prev, { ...storeData, id: crypto.randomUUID(), status: 'Active' }]);
+            console.error('Failed to create store:', e);
+            throw e; // Rethrow so the UI can handle/display the error
         }
     };
 
