@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS tenant_modules (
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     UNIQUE(tenant_id, module_key),
-    CONSTRAINT valid_status CHECK (status IN ('active', 'expired', 'suspended'))
+    CONSTRAINT valid_status CHECK (status IN ('active', 'expired', 'suspended', 'inactive'))
 );
 
 -- Index for fast module lookups

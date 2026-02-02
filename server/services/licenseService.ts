@@ -9,7 +9,7 @@ export interface TenantModule {
   id: string;
   tenantId: string;
   moduleKey: ModuleKey;
-  status: 'active' | 'expired' | 'suspended';
+  status: 'active' | 'expired' | 'suspended' | 'inactive';
   activatedAt: Date;
   expiresAt: Date | null;
   settings: any;
@@ -162,7 +162,7 @@ export class LicenseService {
   async updateTenantModule(
     tenantId: string,
     moduleKey: string,
-    status: 'active' | 'expired' | 'suspended',
+    status: 'active' | 'expired' | 'suspended' | 'inactive',
     expiresAt?: Date | null
   ): Promise<void> {
     await this.db.query(
