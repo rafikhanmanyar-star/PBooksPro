@@ -12,6 +12,7 @@ import { getWebSocketClient } from '../../services/websocketClient';
 import { ChatMessagesRepository } from '../../services/database/repositories';
 import { getDatabaseService } from '../../services/database/databaseService';
 import Modal from '../ui/Modal';
+import useLocalStorage from '../../hooks/useLocalStorage';
 
 interface SidebarProps {
     currentPage: Page;
@@ -170,7 +171,18 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
 
     // Determine allowed pages based on role
     const isAccountsOnly = currentUser?.role === 'Accounts';
+
     const isAdmin = userRole === 'Admin' || currentUser?.role === 'Admin';
+
+    // Persisted state for collapsible groups
+    const [collapsedGroups, setCollapsedGroups] = useLocalStorage<Record<string, boolean>>('sidebar_collapsed_groups', {});
+
+    const handleToggleGroup = useCallback((title: string) => {
+        setCollapsedGroups(prev => ({
+            ...prev,
+            [title]: !prev[title]
+        }));
+    }, [setCollapsedGroups]);
 
     // Navigation groups - defined as a stable constant to prevent re-render issues
     // Payroll and other core modules are always visible regardless of auth state
@@ -336,37 +348,52 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                         </div>
 
                         {/* Navigation Menu */}
-                        <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
-                            {navGroups.map((group, idx) => (
-                                <div key={idx}>
-                                    <h3 className="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 opacity-80">{group.title}</h3>
-                                    <div className="space-y-0.5">
-                                        {group.items.map((item) => {
-                                            const active = isCurrent(item.page as Page);
-                                            return (
-                                                <button
-                                                    key={item.page}
-                                                    onClick={() => {
-                                                        setCurrentPage(item.page as Page);
-                                                        setIsMobileMenuOpen(false); // Close menu after navigation
-                                                    }}
-                                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-200 group touch-manipulation
-                                            ${active
-                                                            ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/30'
-                                                            : 'text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700'
-                                                        }`}
-                                                >
-                                                    <div className={`transition-colors ${active ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`}>
-                                                        {React.cloneElement(item.icon as any, { width: 18, height: 18 })}
-                                                    </div>
-                                                    <span className="truncate">{item.label}</span>
-                                                    {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/50"></div>}
-                                                </button>
-                                            );
-                                        })}
+                        <nav className="flex-1 px-3 py-4 space-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                            {navGroups.map((group, idx) => {
+                                const isCollapsed = collapsedGroups[group.title] || false;
+                                return (
+                                    <div key={idx} className="space-y-1">
+                                        <button
+                                            onClick={() => handleToggleGroup(group.title)}
+                                            className="w-full flex items-center justify-between px-3 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider hover:text-slate-300 transition-colors group/header"
+                                        >
+                                            <span className="opacity-80 group-hover/header:opacity-100">{group.title}</span>
+                                            <div className="text-slate-600 group-hover/header:text-slate-400">
+                                                {isCollapsed ?
+                                                    React.cloneElement(ICONS.chevronRight as any, { width: 14, height: 14 }) :
+                                                    React.cloneElement(ICONS.chevronDown as any, { width: 14, height: 14 })
+                                                }
+                                            </div>
+                                        </button>
+
+                                        <div className={`space-y-0.5 overflow-hidden transition-all duration-200 ${isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'}`}>
+                                            {group.items.map((item) => {
+                                                const active = isCurrent(item.page as Page);
+                                                return (
+                                                    <button
+                                                        key={item.page}
+                                                        onClick={() => {
+                                                            setCurrentPage(item.page as Page);
+                                                            setIsMobileMenuOpen(false); // Close menu after navigation
+                                                        }}
+                                                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-200 group touch-manipulation
+                                                ${active
+                                                                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/30'
+                                                                : 'text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700'
+                                                            }`}
+                                                    >
+                                                        <div className={`transition-colors ${active ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`}>
+                                                            {React.cloneElement(item.icon as any, { width: 18, height: 18 })}
+                                                        </div>
+                                                        <span className="truncate">{item.label}</span>
+                                                        {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/50"></div>}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </nav>
 
                         {/* Mobile Footer - Simplified */}
@@ -477,35 +504,51 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 </div>
 
                 {/* Navigation Menu */}
-                <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
-                    {navGroups.map((group, idx) => (
-                        <div key={idx}>
-                            <h3 className="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 opacity-80">{group.title}</h3>
-                            <div className="space-y-0.5">
-                                {group.items.map((item) => {
-                                    const active = isCurrent(item.page as Page);
-                                    return (
-                                        <button
-                                            key={item.page}
-                                            onClick={() => setCurrentPage(item.page as Page)}
-                                            className={`w-full flex items-center gap-3 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 group
-                                    ${active
-                                                    ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/30'
-                                                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                                                }`}
-                                        >
-                                            <div className={`transition-colors ${active ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`}>
-                                                {/* Clone element to force size if needed, though usually controlled by SVG props */}
-                                                {React.cloneElement(item.icon as any, { width: 16, height: 16 })}
-                                            </div>
-                                            <span className="truncate">{item.label}</span>
-                                            {active && <div className="ml-auto w-1 h-1 rounded-full bg-white/50"></div>}
-                                        </button>
-                                    );
-                                })}
+                <nav className="flex-1 px-3 py-4 space-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                    {navGroups.map((group, idx) => {
+                        const isCollapsed = collapsedGroups[group.title] || false;
+
+                        return (
+                            <div key={idx} className="space-y-1">
+                                <button
+                                    onClick={() => handleToggleGroup(group.title)}
+                                    className="w-full flex items-center justify-between px-3 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider hover:text-slate-300 transition-colors group/header"
+                                >
+                                    <span className="opacity-80 group-hover/header:opacity-100">{group.title}</span>
+                                    <div className="text-slate-600 group-hover/header:text-slate-400">
+                                        {isCollapsed ?
+                                            React.cloneElement(ICONS.chevronRight as any, { width: 14, height: 14 }) :
+                                            React.cloneElement(ICONS.chevronDown as any, { width: 14, height: 14 })
+                                        }
+                                    </div>
+                                </button>
+
+                                <div className={`space-y-0.5 overflow-hidden transition-all duration-200 ${isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'}`}>
+                                    {group.items.map((item) => {
+                                        const active = isCurrent(item.page as Page);
+                                        return (
+                                            <button
+                                                key={item.page}
+                                                onClick={() => setCurrentPage(item.page as Page)}
+                                                className={`w-full flex items-center gap-3 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 group
+                                        ${active
+                                                        ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/30'
+                                                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                                                    }`}
+                                            >
+                                                <div className={`transition-colors ${active ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`}>
+                                                    {/* Clone element to force size if needed, though usually controlled by SVG props */}
+                                                    {React.cloneElement(item.icon as any, { width: 16, height: 16 })}
+                                                </div>
+                                                <span className="truncate">{item.label}</span>
+                                                {active && <div className="ml-auto w-1 h-1 rounded-full bg-white/50"></div>}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </nav>
 
                 {/* Footer / User Profile */}

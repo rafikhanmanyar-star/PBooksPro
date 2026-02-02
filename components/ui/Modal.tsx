@@ -165,15 +165,6 @@ const Modal: React.FC<ModalProps> = ({
     setMouseDownPosition(null);
   };
 
-  const handleModalContentMouseDown = (e: React.MouseEvent) => {
-    // Track that mousedown happened inside modal content
-    setMouseDownTarget(e.target);
-    setMouseDownPosition({ x: e.clientX, y: e.clientY });
-    setIsDragging(false);
-    // Stop propagation to prevent backdrop handler from firing
-    e.stopPropagation();
-  };
-
   return createPortal(
     <div
       className={`fixed inset-0 bg-gray-900/70 z-[9999] flex ${containerClasses} p-0 sm:p-4 backdrop-blur-sm animate-fade-in-fast transition-all`}
@@ -188,8 +179,6 @@ const Modal: React.FC<ModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
-        onMouseDown={handleModalContentMouseDown}
-        onClick={(e) => e.stopPropagation()}
       >
         {!hideHeader && (
           <div className="flex justify-between items-center p-3 sm:p-4 border-b border-gray-200 flex-shrink-0 bg-white">

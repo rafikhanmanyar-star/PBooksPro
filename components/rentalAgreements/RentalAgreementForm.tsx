@@ -25,7 +25,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     const getNextAgreementNumber = () => {
         const settings = state.agreementSettings;
         const { prefix, padding, nextNumber } = settings;
-        
+
         let maxNum = nextNumber;
         state.rentalAgreements.forEach(a => {
             if (a.agreementNumber && a.agreementNumber.startsWith(prefix)) {
@@ -67,7 +67,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
         }
         return new Date();
     };
-    
+
     const defaultStart = getDefaultStartDate();
     const defaultEnd = new Date(defaultStart);
     defaultEnd.setFullYear(defaultEnd.getFullYear() + 1);
@@ -82,7 +82,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     const [brokerId, setBrokerId] = useState(agreementToEdit?.brokerId || '');
     const [brokerFee, setBrokerFee] = useState(agreementToEdit?.brokerFee?.toString() || '');
     const [description, setDescription] = useState(agreementToEdit?.description || '');
-    
+
     // Renewal Mode
     const [renewMode, setRenewMode] = useState(false);
 
@@ -90,7 +90,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     const tenants = useMemo(() => state.contacts.filter(c => c.type === ContactType.TENANT), [state.contacts]);
     const brokers = useMemo(() => state.contacts.filter(c => c.type === ContactType.BROKER || c.type === ContactType.DEALER), [state.contacts]);
     const buildings = useMemo(() => state.buildings.map(b => ({ id: b.id, name: b.name })), [state.buildings]);
-    
+
     // Properties: Filtered by Building AND Availability
     const properties = useMemo(() => {
         // Get IDs of properties currently in active agreements
@@ -108,7 +108,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                 })
                 .map(ra => ra.propertyId)
         );
-        
+
         return state.properties
             .filter(p => {
                 // Filter by Building Selection
@@ -125,15 +125,15 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     }, [state.properties, state.rentalAgreements, agreementToEdit, state.contacts, buildingId]);
 
     // Check for existing invoices
-    const existingInvoices = useMemo(() => 
+    const existingInvoices = useMemo(() =>
         agreementToEdit ? state.invoices.filter(i => i.agreementId === agreementToEdit.id) : []
-    , [agreementToEdit, state.invoices]);
+        , [agreementToEdit, state.invoices]);
 
     // Check for open invoices (unpaid, partially paid, or overdue) against this agreement
     const openInvoices = useMemo(() => {
         if (!agreementToEdit) return [];
-        return state.invoices.filter(inv => 
-            inv.agreementId === agreementToEdit.id && 
+        return state.invoices.filter(inv =>
+            inv.agreementId === agreementToEdit.id &&
             inv.status !== InvoiceStatus.PAID
         );
     }, [agreementToEdit, state.invoices]);
@@ -164,12 +164,12 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     const handleStartDateChange = (newDate: Date) => {
         const newStart = newDate.toISOString().split('T')[0];
         setStartDate(newStart);
-        
+
         // Save date to preserved date when changed (if option is enabled)
         if (state.enableDatePreservation && !agreementToEdit) {
             dispatch({ type: 'UPDATE_PRESERVED_DATE', payload: newStart });
         }
-        
+
         if (newStart) {
             const d = new Date(newStart);
             if (!isNaN(d.getTime())) {
@@ -209,7 +209,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
         const confirmMsg = "This will generate the initial invoices for this agreement:\n" +
             (secDep > 0 ? `1. Security Deposit: ${CURRENCY} ${secDep.toLocaleString()}\n` : "") +
             (rent > 0 ? `2. First Month Rent: ${CURRENCY} ${rent.toLocaleString()}\n3. Recurring Invoice Template` : "");
-            
+
         if (!(await showConfirm(confirmMsg, { title: "Generate Invoices", confirmLabel: "Generate" }))) return;
 
         // 3. Prepare Data
@@ -223,12 +223,12 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
 
         // 4. Generate Security Deposit Invoice
         if (secDep > 0) {
-             const secInvNum = getNextInvNumber(currentNextNum, prefix, padding);
-             currentNextNum = parseInt(secInvNum.slice(prefix.length)) + 1;
-             
-             const secCat = state.categories.find(c => c.name === 'Security Deposit');
+            const secInvNum = getNextInvNumber(currentNextNum, prefix, padding);
+            currentNextNum = parseInt(secInvNum.slice(prefix.length)) + 1;
 
-             const secInvoice: Invoice = {
+            const secCat = state.categories.find(c => c.name === 'Security Deposit');
+
+            const secInvoice: Invoice = {
                 id: `inv-sec-man-${Date.now()}`,
                 invoiceNumber: secInvNum,
                 contactId: contactId,
@@ -250,13 +250,13 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
 
         // 5. Generate Rent Invoice & Template
         if (rent > 0) {
-             const rentInvNum = getNextInvNumber(currentNextNum, prefix, padding);
-             currentNextNum = parseInt(rentInvNum.slice(prefix.length)) + 1;
+            const rentInvNum = getNextInvNumber(currentNextNum, prefix, padding);
+            currentNextNum = parseInt(rentInvNum.slice(prefix.length)) + 1;
 
-             const rentCat = state.categories.find(c => c.name === 'Rental Income');
-             const monthName = new Date(startDate).toLocaleString('default', { month: 'long', year: 'numeric' });
+            const rentCat = state.categories.find(c => c.name === 'Rental Income');
+            const monthName = new Date(startDate).toLocaleString('default', { month: 'long', year: 'numeric' });
 
-             const rentInvoice: Invoice = {
+            const rentInvoice: Invoice = {
                 id: `inv-rent-man-${Date.now()}`,
                 invoiceNumber: rentInvNum,
                 contactId: contactId,
@@ -272,25 +272,25 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                 categoryId: rentCat?.id,
                 agreementId: agreementToEdit.id,
                 rentalMonth: startDate.slice(0, 7)
-           };
-           dispatch({ type: 'ADD_INVOICE', payload: rentInvoice });
+            };
+            dispatch({ type: 'ADD_INVOICE', payload: rentInvoice });
 
-           const nextMonthDate = new Date(startDate);
-           nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
-           
-           const recurringTemplate: RecurringInvoiceTemplate = {
-               id: `rec-${Date.now()}`,
-               contactId: contactId,
-               propertyId: propertyId,
-               buildingId: bId || '',
-               amount: rent,
-               descriptionTemplate: "Rent for {Month} [Rental]",
-               dayOfMonth: parseInt(rentDueDate) || 1,
-               nextDueDate: nextMonthDate.toISOString().split('T')[0],
-               active: true,
-               agreementId: agreementToEdit.id
-           };
-           dispatch({ type: 'ADD_RECURRING_TEMPLATE', payload: recurringTemplate });
+            const nextMonthDate = new Date(startDate);
+            nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
+
+            const recurringTemplate: RecurringInvoiceTemplate = {
+                id: `rec-${Date.now()}`,
+                contactId: contactId,
+                propertyId: propertyId,
+                buildingId: bId || '',
+                amount: rent,
+                descriptionTemplate: "Rent for {Month} [Rental]",
+                dayOfMonth: parseInt(rentDueDate) || 1,
+                nextDueDate: nextMonthDate.toISOString().split('T')[0],
+                active: true,
+                agreementId: agreementToEdit.id
+            };
+            dispatch({ type: 'ADD_RECURRING_TEMPLATE', payload: recurringTemplate });
         }
 
         // 6. Update Settings
@@ -303,18 +303,18 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        
+
         if (!contactId || !propertyId || !startDate || !endDate || !monthlyRent) {
             await showAlert("Please fill in all required fields.");
             return;
         }
-        
+
         // Date Validation
         const startD = new Date(startDate);
         const endD = new Date(endDate);
         if (isNaN(startD.getTime()) || isNaN(endD.getTime())) {
-             await showAlert("Invalid Start or End Date selected.");
-             return;
+            await showAlert("Invalid Start or End Date selected.");
+            return;
         }
 
         const agreementData = {
@@ -339,7 +339,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
 
         // RENEWAL LOGIC
         if (renewMode && agreementToEdit) {
-            
+
             // Check for open invoices before allowing renewal
             if (hasOpenInvoices) {
                 await showAlert(
@@ -348,7 +348,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                 );
                 return;
             }
-            
+
             // 1. STOP PREVIOUS RECURRING TEMPLATES
             const activeOldTemplates = state.recurringInvoiceTemplates.filter(t => t.agreementId === agreementToEdit.id && t.active);
             if (activeOldTemplates.length > 0) {
@@ -359,14 +359,14 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             }
 
             // Mark old as Renewed
-            dispatch({ 
-                type: 'UPDATE_RENTAL_AGREEMENT', 
-                payload: { ...agreementToEdit, status: RentalAgreementStatus.RENEWED } 
+            dispatch({
+                type: 'UPDATE_RENTAL_AGREEMENT',
+                payload: { ...agreementToEdit, status: RentalAgreementStatus.RENEWED }
             });
 
             // Create New Agreement
             const newAgreementId = Date.now().toString();
-            
+
             // Generate Unique Agreement Number
             const agreementNumber = getNextAgreementNumber();
             // Update Settings for next time
@@ -384,7 +384,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             const newSec = agreementData.securityDeposit || 0;
             const increment = Math.max(0, newSec - oldSec);
             const rentAmt = agreementData.monthlyRent || 0;
-            
+
             let confirmMessage = "Agreement renewed successfully.\n\nDo you want to generate invoices for the new term?\n\n";
             let hasItems = false;
 
@@ -399,23 +399,23 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
 
             let shouldGenerate = false;
             if (hasItems) {
-                shouldGenerate = await showConfirm(confirmMessage, { 
-                    title: "Generate Renewal Invoices", 
-                    confirmLabel: "Yes, Generate", 
-                    cancelLabel: "No, just save" 
+                shouldGenerate = await showConfirm(confirmMessage, {
+                    title: "Generate Renewal Invoices",
+                    confirmLabel: "Yes, Generate",
+                    cancelLabel: "No, just save"
                 });
             }
 
             if (shouldGenerate) {
                 const property = state.properties.find(p => p.id === propertyId);
                 const bId = property?.buildingId;
-                
+
                 if (increment > 0) {
                     const incInvNum = getNextInvNumber(currentNextNum, prefix, padding);
                     currentNextNum = parseInt(incInvNum.slice(prefix.length)) + 1;
 
                     const secCat = state.categories.find(c => c.name === 'Security Deposit');
-                    
+
                     const incInvoice: Invoice = {
                         id: `inv-sec-inc-${Date.now()}`,
                         invoiceNumber: incInvNum,
@@ -435,16 +435,16 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                     };
                     dispatch({ type: 'ADD_INVOICE', payload: incInvoice });
                 }
-                
+
                 // Standard Rent Invoice for Renewal
                 if (rentAmt > 0) {
-                   const rentInvNum = getNextInvNumber(currentNextNum, prefix, padding);
-                   currentNextNum = parseInt(rentInvNum.slice(prefix.length)) + 1;
+                    const rentInvNum = getNextInvNumber(currentNextNum, prefix, padding);
+                    currentNextNum = parseInt(rentInvNum.slice(prefix.length)) + 1;
 
-                   const rentCat = state.categories.find(c => c.name === 'Rental Income');
-                   const monthName = new Date(agreementData.startDate).toLocaleString('default', { month: 'long', year: 'numeric' });
+                    const rentCat = state.categories.find(c => c.name === 'Rental Income');
+                    const monthName = new Date(agreementData.startDate).toLocaleString('default', { month: 'long', year: 'numeric' });
 
-                   const rentInvoice: Invoice = {
+                    const rentInvoice: Invoice = {
                         id: `inv-rent-renew-${Date.now()}`,
                         invoiceNumber: rentInvNum,
                         contactId: agreementData.contactId,
@@ -460,37 +460,37 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                         categoryId: rentCat?.id,
                         agreementId: newAgreementId,
                         rentalMonth: agreementData.startDate.slice(0, 7)
-                   };
-                   dispatch({ type: 'ADD_INVOICE', payload: rentInvoice });
-                   
-                   // Create NEW Recurring Template
-                   const nextMonthDate = new Date(agreementData.startDate);
-                   nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
-                   
-                   const recurringTemplate: RecurringInvoiceTemplate = {
-                       id: `rec-${Date.now()}`,
-                       contactId: agreementData.contactId,
-                       propertyId: agreementData.propertyId,
-                       buildingId: bId || '',
-                       amount: rentAmt,
-                       descriptionTemplate: "Rent for {Month} [Rental]",
-                       dayOfMonth: agreementData.rentDueDate,
-                       nextDueDate: nextMonthDate.toISOString().split('T')[0],
-                       active: true,
-                       agreementId: newAgreementId
-                   };
-                   dispatch({ type: 'ADD_RECURRING_TEMPLATE', payload: recurringTemplate });
-                   
-                   showToast("Agreement renewed and invoices generated.", "success");
+                    };
+                    dispatch({ type: 'ADD_INVOICE', payload: rentInvoice });
+
+                    // Create NEW Recurring Template
+                    const nextMonthDate = new Date(agreementData.startDate);
+                    nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
+
+                    const recurringTemplate: RecurringInvoiceTemplate = {
+                        id: `rec-${Date.now()}`,
+                        contactId: agreementData.contactId,
+                        propertyId: agreementData.propertyId,
+                        buildingId: bId || '',
+                        amount: rentAmt,
+                        descriptionTemplate: "Rent for {Month} [Rental]",
+                        dayOfMonth: agreementData.rentDueDate,
+                        nextDueDate: nextMonthDate.toISOString().split('T')[0],
+                        active: true,
+                        agreementId: newAgreementId
+                    };
+                    dispatch({ type: 'ADD_RECURRING_TEMPLATE', payload: recurringTemplate });
+
+                    showToast("Agreement renewed and invoices generated.", "success");
                 }
-                
+
                 // Update settings with latest invoice number
                 if (currentNextNum > nextNumSetting) {
                     dispatch({ type: 'UPDATE_RENTAL_INVOICE_SETTINGS', payload: { ...rentalInvoiceSettings, nextNumber: currentNextNum } });
                 }
 
             } else {
-                 showToast("Agreement renewed successfully.", "success");
+                showToast("Agreement renewed successfully.", "success");
             }
 
         } else if (agreementToEdit) {
@@ -498,7 +498,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             // Check if invoices exist for this agreement
             const hasInvoices = state.invoices.some(inv => inv.agreementId === agreementToEdit.id);
             const isChangingStatusToRenewed = agreementData.status === RentalAgreementStatus.RENEWED && agreementToEdit.status !== RentalAgreementStatus.RENEWED;
-            
+
             // If invoices exist and status is not Renewed, only allow changing status to Renewed
             if (hasInvoices && agreementToEdit.status !== RentalAgreementStatus.RENEWED) {
                 // Allow status change to Renewed
@@ -520,13 +520,13 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                     return;
                 }
             }
-            
+
             dispatch({ type: 'UPDATE_RENTAL_AGREEMENT', payload: { ...agreementToEdit, ...agreementData } });
             showToast("Agreement updated.");
         } else {
             // NEW AGREEMENT
             const id = Date.now().toString();
-            
+
             // Generate Unique Agreement Number
             const agreementNumber = getNextAgreementNumber();
             // Update Settings for next time
@@ -549,15 +549,15 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             if (shouldGenerate) {
                 const property = state.properties.find(p => p.id === propertyId);
                 const bId = property?.buildingId;
-                
+
                 // 1. Security Deposit
                 if (agreementData.securityDeposit > 0) {
-                     const secInvNum = getNextInvNumber(currentNextNum, prefix, padding);
-                     currentNextNum = parseInt(secInvNum.slice(prefix.length)) + 1;
-                     
-                     const secCat = state.categories.find(c => c.name === 'Security Deposit');
+                    const secInvNum = getNextInvNumber(currentNextNum, prefix, padding);
+                    currentNextNum = parseInt(secInvNum.slice(prefix.length)) + 1;
 
-                     const secInvoice: Invoice = {
+                    const secCat = state.categories.find(c => c.name === 'Security Deposit');
+
+                    const secInvoice: Invoice = {
                         id: `inv-sec-new-${Date.now()}`,
                         invoiceNumber: secInvNum,
                         contactId: agreementData.contactId,
@@ -579,13 +579,13 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
 
                 // 2. First Month Rent + Recurring
                 if (agreementData.monthlyRent > 0) {
-                     const rentInvNum = getNextInvNumber(currentNextNum, prefix, padding);
-                     currentNextNum = parseInt(rentInvNum.slice(prefix.length)) + 1;
+                    const rentInvNum = getNextInvNumber(currentNextNum, prefix, padding);
+                    currentNextNum = parseInt(rentInvNum.slice(prefix.length)) + 1;
 
-                     const rentCat = state.categories.find(c => c.name === 'Rental Income');
-                     const monthName = new Date(agreementData.startDate).toLocaleString('default', { month: 'long', year: 'numeric' });
+                    const rentCat = state.categories.find(c => c.name === 'Rental Income');
+                    const monthName = new Date(agreementData.startDate).toLocaleString('default', { month: 'long', year: 'numeric' });
 
-                     const rentInvoice: Invoice = {
+                    const rentInvoice: Invoice = {
                         id: `inv-rent-new-${Date.now()}`,
                         invoiceNumber: rentInvNum,
                         contactId: agreementData.contactId,
@@ -601,27 +601,27 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                         categoryId: rentCat?.id,
                         agreementId: id,
                         rentalMonth: agreementData.startDate.slice(0, 7)
-                   };
-                   dispatch({ type: 'ADD_INVOICE', payload: rentInvoice });
+                    };
+                    dispatch({ type: 'ADD_INVOICE', payload: rentInvoice });
 
-                   const nextMonthDate = new Date(agreementData.startDate);
-                   nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
-                   
-                   const recurringTemplate: RecurringInvoiceTemplate = {
-                       id: `rec-${Date.now()}`,
-                       contactId: agreementData.contactId,
-                       propertyId: agreementData.propertyId,
-                       buildingId: bId || '',
-                       amount: agreementData.monthlyRent,
-                       descriptionTemplate: "Rent for {Month} [Rental]",
-                       dayOfMonth: agreementData.rentDueDate,
-                       nextDueDate: nextMonthDate.toISOString().split('T')[0],
-                       active: true,
-                       agreementId: id
-                   };
-                   dispatch({ type: 'ADD_RECURRING_TEMPLATE', payload: recurringTemplate });
+                    const nextMonthDate = new Date(agreementData.startDate);
+                    nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
+
+                    const recurringTemplate: RecurringInvoiceTemplate = {
+                        id: `rec-${Date.now()}`,
+                        contactId: agreementData.contactId,
+                        propertyId: agreementData.propertyId,
+                        buildingId: bId || '',
+                        amount: agreementData.monthlyRent,
+                        descriptionTemplate: "Rent for {Month} [Rental]",
+                        dayOfMonth: agreementData.rentDueDate,
+                        nextDueDate: nextMonthDate.toISOString().split('T')[0],
+                        active: true,
+                        agreementId: id
+                    };
+                    dispatch({ type: 'ADD_RECURRING_TEMPLATE', payload: recurringTemplate });
                 }
-                
+
                 // Update settings if IDs moved forward
                 if (currentNextNum > nextNumSetting) {
                     dispatch({ type: 'UPDATE_RENTAL_INVOICE_SETTINGS', payload: { ...rentalInvoiceSettings, nextNumber: currentNextNum } });
@@ -632,7 +632,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                 showToast("Agreement created.");
             }
         }
-        
+
         onClose();
     };
 
@@ -655,7 +655,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[5fr_3fr] gap-3 lg:gap-4 overflow-y-auto overflow-x-hidden">
                 {/* Left Column: Tenant, Building, Property, Dates */}
                 <div className="flex flex-col gap-3 min-h-0">
-                    <div className="grid grid-cols-2 gap-2 lg:gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 lg:gap-3">
                         <div className="col-span-2">
                             <ComboBox label="Tenant" items={tenants} selectedId={contactId} onSelect={(item) => setContactId(item?.id || '')} placeholder="Select tenant" required disabled={!!agreementToEdit && !renewMode} />
                         </div>
@@ -704,19 +704,48 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                 <div className="flex flex-col gap-3 min-h-0">
                     <div className="p-2 rounded-lg bg-slate-50/80 border border-slate-200 flex-shrink-0">
                         <h3 className="text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">Rent Details</h3>
-                        <div className="grid grid-cols-3 gap-2">
-                            <Input label="Monthly Rent" type="number" value={monthlyRent} onChange={e => setMonthlyRent(e.target.value)} required className="text-sm !py-1 !text-xs" />
-                            <Input label="Due Day" type="number" min="1" max="31" value={rentDueDate} onChange={e => setRentDueDate(e.target.value)} required className="text-sm !py-1 !text-xs" />
-                            <Input label="Security" type="number" value={securityDeposit} onChange={e => setSecurityDeposit(e.target.value)} className="text-sm !py-1 !text-xs" />
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <Input
+                                label="Monthly Rent"
+                                type="number"
+                                value={monthlyRent}
+                                onChange={e => setMonthlyRent(e.target.value)}
+                                required
+                                className="block w-full border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-colors text-sm py-1.5 px-3"
+                            />
+                            <Input
+                                label="Due Day"
+                                type="number"
+                                min="1"
+                                max="31"
+                                value={rentDueDate}
+                                onChange={e => setRentDueDate(e.target.value)}
+                                required
+                                className="block w-full border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-colors text-sm py-1.5 px-3"
+                            />
+                            <Input
+                                label="Security"
+                                type="number"
+                                value={securityDeposit}
+                                onChange={e => setSecurityDeposit(e.target.value)}
+                                className="block w-full border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-colors text-sm py-1.5 px-3"
+                            />
                         </div>
                     </div>
 
-                    <div className="flex gap-2 p-2 rounded-lg bg-slate-50/80 border border-slate-200 flex-shrink-0">
+                    <div className="flex flex-col sm:flex-row gap-2 p-2 rounded-lg bg-slate-50/80 border border-slate-200 flex-shrink-0">
                         <div className="flex-1 min-w-0">
                             <ComboBox label="Broker" items={brokers} selectedId={brokerId} onSelect={(item) => setBrokerId(item?.id || '')} placeholder="Select broker" allowAddNew={false} />
                         </div>
-                        <div className="w-28 flex-shrink-0">
-                            <Input label="Fee" type="number" value={brokerFee} onChange={e => setBrokerFee(e.target.value)} disabled={!brokerId} className="text-sm !py-1 !text-xs" />
+                        <div className="w-full sm:w-28 flex-shrink-0">
+                            <Input
+                                label="Fee"
+                                type="number"
+                                value={brokerFee}
+                                onChange={e => setBrokerFee(e.target.value)}
+                                disabled={!brokerId}
+                                className="block w-full border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-colors text-sm py-1.5 px-3 disabled:bg-slate-100 disabled:cursor-not-allowed"
+                            />
                         </div>
                     </div>
                 </div>

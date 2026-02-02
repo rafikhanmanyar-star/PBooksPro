@@ -28,7 +28,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
     const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
     const [accountId, setAccountId] = useState('');
     const [error, setError] = useState('');
-    
+
     // Filter for Bank Accounts (exclude Internal Clearing)
     const depositAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
 
@@ -42,7 +42,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
         const securityDepositCategory = state.categories.find(c => c.name === 'Security Deposit');
 
         const payments = state.transactions.filter(tx => tx.invoiceId === invoice.id && tx.type === TransactionType.INCOME);
-        
+
         const rentPaid = payments.filter(p => p.categoryId === rentalIncomeCategory?.id).reduce((sum, tx) => sum + tx.amount, 0);
         const securityDepositPaid = payments.filter(p => p.categoryId === securityDepositCategory?.id).reduce((sum, tx) => sum + tx.amount, 0);
 
@@ -58,7 +58,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
             setRentPaidAmount(String(rentRemaining));
             setSecurityDepositPaidAmount(String(securityDepositRemaining));
             setPaymentDate(new Date().toISOString().split('T')[0]);
-            
+
             const cashAccount = depositAccounts.find(a => a.name === 'Cash');
             setAccountId(cashAccount?.id || depositAccounts[0]?.id || '');
 
@@ -71,7 +71,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
         const rentPayment = parseFloat(rentPaidAmount) || 0;
         const securityPayment = parseFloat(securityDepositPaidAmount) || 0;
         const totalPayment = rentPayment + securityPayment;
-        
+
         if (totalPayment <= 0) {
             setError('Total payment amount must be positive.');
         } else if (rentPayment > rentRemaining + 0.01) { // Epsilon for float issues
@@ -95,7 +95,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
 
         const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
         const securityDepositCategory = state.categories.find(c => c.name === 'Security Deposit');
-        
+
         const baseTransaction = {
             date: paymentDate,
             propertyId: invoice.propertyId,
@@ -111,12 +111,12 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
         // 1. Rental Income - for the rent portion (stored in invoice.categoryId)
         // 2. Security Deposit - for the security deposit portion (stored in invoice.securityDepositCharge)
         // When payment is received, we create separate transactions for each category
-        
+
         if (rentPayment > 0) {
             // Use invoice.categoryId (should be "Rental Income" for rental invoices)
             // This represents the rent portion of the invoice
             let categoryId = invoice.categoryId;
-            
+
             // If invoice doesn't have categoryId, try to determine from invoice type
             if (!categoryId) {
                 if (invoice.invoiceType === InvoiceType.RENTAL) {
@@ -126,23 +126,23 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
                     categoryId = serviceChargeCategory?.id;
                 }
             }
-            
+
             // Final fallback: use Rental Income category
             if (!categoryId) {
                 categoryId = rentalIncomeCategory?.id;
             }
-            
+
             if (!categoryId) {
                 await showAlert("Critical Error: 'Rental Income' category not found. Please check settings.");
                 return;
             }
-            
+
             // Create transaction for RENT portion with Rental Income category
-            const tx: Omit<Transaction, 'id'> = { 
-                ...baseTransaction, 
+            const tx: Omit<Transaction, 'id'> = {
+                ...baseTransaction,
                 contactId: invoice.contactId,
                 type: TransactionType.INCOME,
-                amount: rentPayment, 
+                amount: rentPayment,
                 categoryId: categoryId, // Rental Income category
                 accountId: accountId,
                 description: `Rent payment for Invoice #${invoice.invoiceNumber}`,
@@ -150,7 +150,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
             };
             dispatch({ type: 'ADD_TRANSACTION', payload: { ...tx, id: Date.now().toString() + Math.random() } });
         }
-        
+
         // Security Deposit Logic - Create separate transaction with Security Deposit category
         if (securityPayment > 0) {
             if (!securityDepositCategory) {
@@ -158,19 +158,19 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
                 return;
             }
             // Create transaction for SECURITY DEPOSIT portion with Security Deposit category
-             const tx: Omit<Transaction, 'id'> = { 
-                 ...baseTransaction, 
-                 contactId: invoice.contactId,
-                 type: TransactionType.INCOME,
-                 amount: securityPayment, 
-                 categoryId: securityDepositCategory.id, // Security Deposit category
-                 accountId: accountId,
-                 description: `Security Deposit for Invoice #${invoice.invoiceNumber}`,
-                 invoiceId: invoice.id
+            const tx: Omit<Transaction, 'id'> = {
+                ...baseTransaction,
+                contactId: invoice.contactId,
+                type: TransactionType.INCOME,
+                amount: securityPayment,
+                categoryId: securityDepositCategory.id, // Security Deposit category
+                accountId: accountId,
+                description: `Security Deposit for Invoice #${invoice.invoiceNumber}`,
+                invoiceId: invoice.id
             };
-             dispatch({ type: 'ADD_TRANSACTION', payload: { ...tx, id: Date.now().toString() + Math.random() } });
+            dispatch({ type: 'ADD_TRANSACTION', payload: { ...tx, id: Date.now().toString() + Math.random() } });
         }
-        
+
         // --- WhatsApp Confirmation Logic ---
         const contact = state.contacts.find(c => c.id === invoice.contactId);
         if (contact && contact.contactNo) {
@@ -182,12 +182,12 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
             if (shouldSendWhatsapp) {
                 const property = state.properties.find(p => p.id === invoice.propertyId);
                 const building = property ? state.buildings.find(b => b.id === property.buildingId) : null;
-                
+
                 let subject = property?.name || 'your unit';
                 if (building) subject += ` (${building.name})`;
 
                 const newBalance = Math.max(0, totalRemaining - totalPaidNow);
-                
+
                 try {
                     const { whatsAppTemplates } = state;
                     const message = WhatsAppService.generateInvoiceReceipt(
@@ -216,7 +216,7 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`Receive Payment for Invoice #${invoice.invoiceNumber}`}>
             <div className="space-y-4">
-                
+
                 <div className="p-4 bg-slate-50 rounded-lg">
                     <div className="flex justify-between font-bold text-lg">
                         <span>Total Remaining Due:</span>
@@ -233,26 +233,26 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
                     required
                 />
 
-                <Input 
-                    label={`Rent Amount (Due: ${CURRENCY} ${rentRemaining.toLocaleString()})`} 
-                    type="text" 
-                    inputMode="decimal" 
-                    min="0" 
-                    value={rentPaidAmount} 
-                    onChange={e => setRentPaidAmount(e.target.value)} 
+                <Input
+                    label={`${invoice.invoiceType === InvoiceType.RENTAL ? 'Rent' : 'Payment'} Amount (Due: ${CURRENCY} ${rentRemaining.toLocaleString()})`}
+                    type="text"
+                    inputMode="decimal"
+                    min="0"
+                    value={rentPaidAmount}
+                    onChange={e => setRentPaidAmount(e.target.value)}
                 />
 
                 {(invoice.securityDepositCharge || 0) > 0 &&
                     <Input label={`Security Deposit Paid (Due: ${CURRENCY} ${securityDepositRemaining.toLocaleString()})`} type="text" inputMode="decimal" min="0" value={securityDepositPaidAmount} onChange={e => setSecurityDepositPaidAmount(e.target.value)} />
                 }
                 <DatePicker label="Payment Date" value={paymentDate} onChange={d => setPaymentDate(d.toISOString().split('T')[0])} required />
-                
+
                 {error && <p className="text-sm text-danger">{error}</p>}
-                
+
                 <div className="flex justify-end gap-2 pt-4">
                     <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
                     <Button type="button" onClick={handleSubmit} disabled={!!error}>
-                         Record Payment
+                        Record Payment
                     </Button>
                 </div>
             </div>

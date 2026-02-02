@@ -59,15 +59,15 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       tone: NotificationBadgeTone;
     };
     action:
-      | { type: 'installment_plan'; planId: string }
-      | { type: 'bizPlanet'; target: BizPlanetNotification['target']; focus: BizPlanetNotification['focus'] }
-      | { type: 'whatsapp'; phoneNumber: string; contactId?: string; contactName?: string };
+    | { type: 'installment_plan'; planId: string }
+    | { type: 'bizPlanet'; target: BizPlanetNotification['target']; focus: BizPlanetNotification['focus'] }
+    | { type: 'whatsapp'; phoneNumber: string; contactId?: string; contactName?: string };
   };
 
   // Load dismissed notifications from localStorage on mount
   useEffect(() => {
     if (!state.currentUser) return;
-    
+
     try {
       const storageKey = `dismissed_notifications_${state.currentUser.id}`;
       const stored = localStorage.getItem(storageKey);
@@ -86,23 +86,23 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       console.warn('[NOTIFICATIONS] Cannot dismiss notification: no current user');
       return;
     }
-    
+
     console.log('[NOTIFICATIONS] Dismissing notification:', notificationId);
 
     if (notificationId.startsWith('whatsapp:')) {
       setWhatsappNotifications(prev => prev.filter(item => item.id !== notificationId));
     }
-    
+
     setDismissedNotifications(prev => {
       // Check if already dismissed
       if (prev.has(notificationId)) {
         console.log('[NOTIFICATIONS] Notification already dismissed:', notificationId);
         return prev;
       }
-      
+
       const updated = new Set(prev);
       updated.add(notificationId);
-      
+
       // Save to localStorage immediately to persist dismissal
       try {
         const storageKey = `dismissed_notifications_${state.currentUser.id}`;
@@ -112,7 +112,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       } catch (error) {
         console.error('[NOTIFICATIONS] Failed to save dismissed notifications:', error);
       }
-      
+
       return updated;
     });
   }, [state.currentUser]);
@@ -364,8 +364,9 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
 
     if (notification.action.type === 'installment_plan') {
       const planId = notification.action.planId;
-      // Navigate to marketing page
-      dispatch({ type: 'SET_PAGE', payload: 'marketing' });
+      // Navigate to project management page with Marketing tab active
+      dispatch({ type: 'SET_INITIAL_TABS', payload: ['Marketing'] });
+      dispatch({ type: 'SET_PAGE', payload: 'projectManagement' });
 
       // Set editing entity after a small delay to ensure page is loaded
       setTimeout(() => {
@@ -596,8 +597,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
                                   <p className="text-[11px] text-slate-400 mt-1">{formatNotificationTime(item.time)}</p>
                                 )}
                               </div>
-                              <span className={`flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                                item.badge.tone === 'blue'
+                              <span className={`flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${item.badge.tone === 'blue'
                                   ? 'bg-blue-100 text-blue-700'
                                   : item.badge.tone === 'green'
                                     ? 'bg-green-100 text-green-700'
@@ -606,7 +606,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
                                       : item.badge.tone === 'red'
                                         ? 'bg-rose-100 text-rose-700'
                                         : 'bg-slate-100 text-slate-700'
-                              }`}>
+                                }`}>
                                 {item.badge.label}
                               </span>
                             </div>

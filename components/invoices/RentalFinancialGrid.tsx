@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
-import { Invoice, Transaction, InvoiceType } from '../../types';
+import { Invoice, Transaction, InvoiceType, Contact } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
 import Select from '../ui/Select';
@@ -33,11 +33,13 @@ interface RentalFinancialGridProps {
     showButtons?: boolean;
     onBulkPaymentClick?: () => void;
     selectedCount?: number;
+    onEditInvoice?: (invoice: Invoice) => void;
+    onReceivePayment?: (invoice: Invoice) => void;
 }
 
 type SortKey = 'type' | 'reference' | 'date' | 'accountName' | 'amount' | 'remainingAmount' | 'description';
 
-const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onInvoiceClick, onPaymentClick, selectedIds, onToggleSelect, onNewClick, onBulkImportClick, showButtons, onBulkPaymentClick, selectedCount }) => {
+const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onInvoiceClick, onPaymentClick, selectedIds, onToggleSelect, onNewClick, onBulkImportClick, showButtons, onBulkPaymentClick, selectedCount, onEditInvoice, onReceivePayment }) => {
     const { state } = useAppContext();
     const { showToast, showAlert } = useNotification();
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
@@ -74,8 +76,8 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onIn
     };
 
     const { openChat } = useWhatsApp();
-    
-    const handleSendWhatsApp = useCallback((invoice: Invoice, contact: { id: string; contactNo: string; name: string }) => {
+
+    const handleSendWhatsApp = useCallback((invoice: Invoice, contact: Contact) => {
         if (!contact?.contactNo) {
             showAlert("Contact does not have a phone number saved.");
             return;
@@ -86,7 +88,7 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onIn
             const property = invoice.propertyId ? state.properties.find(p => p.id === invoice.propertyId) : null;
             const project = invoice.projectId ? state.projects.find(p => p.id === invoice.projectId) : null;
             const unit = invoice.unitId ? state.units.find(u => u.id === invoice.unitId) : null;
-            
+
             let subject = property?.name || project?.name || 'your invoice';
             if (project && unit) {
                 subject = `${project.name} - Unit ${unit.name}`;
@@ -337,7 +339,8 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onIn
                             <th style={thStyle('accountName')} onClick={() => handleSort('accountName')} className="group px-3 py-2.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Account <SortIcon column="accountName" /><Resizer col="accountName" /></th>
                             <th style={thStyle('amount')} onClick={() => handleSort('amount')} className="group px-3 py-2.5 text-right text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Amount <SortIcon column="amount" /><Resizer col="amount" /></th>
                             <th style={thStyle('remainingAmount')} onClick={() => handleSort('remainingAmount')} className="group px-3 py-2.5 text-right text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Due <SortIcon column="remainingAmount" /><Resizer col="remainingAmount" /></th>
-                            <th className="px-3 py-2.5 text-center text-[10px] uppercase font-bold tracking-wider text-slate-500 border-b border-slate-200 bg-slate-50 w-16">
+                            <th className="px-3 py-2.5 text-center text-[10px] uppercase font-bold tracking-wider text-slate-500 border-b border-slate-200 bg-slate-50 w-24">Status</th>
+                            <th className="px-3 py-2.5 text-center text-[10px] uppercase font-bold tracking-wider text-slate-500 border-b border-slate-200 bg-slate-50 w-20">
                                 Actions
                             </th>
                         </tr>
@@ -353,6 +356,25 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onIn
                             const hasChildren = isBulk && rawTx.children && rawTx.children.length > 0;
                             const isExpanded = expandedIds.has(record.id);
                             const description = record.raw.description || '-';
+
+                            // Calculate Status for Invoice
+                            let statusBadge = null;
+                            if (record.type === 'Invoice') {
+                                const inv = record.raw as Invoice;
+                                const remaining = inv.amount - inv.paidAmount;
+                                const isFullPaid = remaining <= 0.01;
+                                const isPartial = inv.paidAmount > 0.01 && !isFullPaid;
+
+                                if (isFullPaid) {
+                                    statusBadge = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700">PAID</span>;
+                                } else if (isPartial) {
+                                    statusBadge = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700">PARTIAL</span>;
+                                } else {
+                                    const isOverdue = inv.dueDate && new Date(inv.dueDate) < new Date() && remaining > 0;
+                                    if (isOverdue) statusBadge = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">OVERDUE</span>;
+                                    else statusBadge = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">UNPAID</span>;
+                                }
+                            }
 
                             let displayType: string = record.type;
                             let typeStyle = 'bg-slate-100 text-slate-600 border-slate-200';
@@ -430,22 +452,60 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onIn
                                                 <span className="text-slate-300 font-normal">-</span>
                                             )}
                                         </td>
+                                        <td className="px-3 py-2 text-center whitespace-nowrap">
+                                            {statusBadge}
+                                        </td>
                                         <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
                                             {record.type === 'Invoice' && (() => {
                                                 const inv = record.raw as Invoice;
                                                 const contact = state.contacts.find(c => c.id === inv.contactId);
-                                                return contact?.contactNo ? (
-                                                    <button
-                                                        onClick={async (e) => {
-                                                            e.stopPropagation();
-                                                            await handleSendWhatsApp(inv, contact);
-                                                        }}
-                                                        className="p-1.5 rounded-md text-green-600 hover:bg-green-50 hover:text-green-700 transition-colors"
-                                                        title="Send invoice details via WhatsApp"
-                                                    >
-                                                        <div className="w-4 h-4">{ICONS.whatsapp}</div>
-                                                    </button>
-                                                ) : null;
+                                                const isFullyPaid = inv.status === 'Paid' || (inv.amount - inv.paidAmount) <= 0.01;
+
+                                                return (
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        {/* Receive Payment Button (Only if not fully paid) */}
+                                                        {!isFullyPaid && onReceivePayment && (
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    onReceivePayment(inv);
+                                                                }}
+                                                                className="p-1.5 rounded-md text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors"
+                                                                title="Receive Payment"
+                                                            >
+                                                                <div className="w-4 h-4">{ICONS.dollarSign}</div>
+                                                            </button>
+                                                        )}
+
+                                                        {/* Edit Button */}
+                                                        {onEditInvoice && (
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    onEditInvoice(inv);
+                                                                }}
+                                                                className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors"
+                                                                title="Edit Invoice"
+                                                            >
+                                                                <div className="w-4 h-4">{ICONS.edit}</div>
+                                                            </button>
+                                                        )}
+
+                                                        {/* WhatsApp Button */}
+                                                        {contact?.contactNo && (
+                                                            <button
+                                                                onClick={async (e) => {
+                                                                    e.stopPropagation();
+                                                                    await handleSendWhatsApp(inv, contact);
+                                                                }}
+                                                                className="p-1.5 rounded-md text-green-600 hover:bg-green-50 hover:text-green-700 transition-colors"
+                                                                title="Send invoice details via WhatsApp"
+                                                            >
+                                                                <div className="w-4 h-4">{ICONS.whatsapp}</div>
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                );
                                             })()}
                                         </td>
                                     </tr>

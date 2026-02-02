@@ -65,11 +65,10 @@ const InvoiceTreeSidebar: React.FC<{
         return (
             <div key={node.id} className={level > 0 ? 'ml-4 border-l border-slate-200/80 pl-3' : ''}>
                 <div
-                    className={`group flex items-center gap-2 py-1.5 px-2 rounded-lg -mx-0.5 transition-all cursor-pointer ${
-                        isSelected
+                    className={`group flex items-center gap-2 py-1.5 px-2 rounded-lg -mx-0.5 transition-all cursor-pointer ${isSelected
                             ? 'bg-orange-500/10 text-orange-700'
                             : 'hover:bg-slate-100/80 text-slate-700 hover:text-slate-900'
-                    }`}
+                        }`}
                     onClick={() => onSelect(node.id, node.type, level > 0 ? parentId : undefined)}
                     onContextMenu={node.type === 'subgroup' && onContextMenu ? (e) => { e.preventDefault(); e.stopPropagation(); onContextMenu(node, e); } : undefined}
                 >
@@ -882,8 +881,8 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                                         key={opt}
                                         onClick={() => setGroupBy(opt as any)}
                                         className={`px-3 py-1 text-xs font-medium rounded-md transition-all capitalize ${groupBy === opt
-                                                ? 'bg-white text-indigo-600 shadow-sm font-bold ring-1 ring-black/5'
-                                                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                                            ? 'bg-white text-indigo-600 shadow-sm font-bold ring-1 ring-black/5'
+                                            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
                                             }`}
                                     >
                                         {opt}
@@ -939,7 +938,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                                             className={`flex-1 px-2 py-1.5 text-xs font-medium rounded-md transition-all capitalize ${groupBy === opt
                                                 ? 'bg-white text-orange-600 shadow-sm font-bold ring-1 ring-black/5'
                                                 : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
-                                            }`}
+                                                }`}
                                         >
                                             {opt === 'property' && isRental ? 'Property' : opt === 'property' ? 'Unit' : opt}
                                         </button>
@@ -991,6 +990,8 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                         showButtons={showCreateButton}
                         onBulkPaymentClick={() => setIsBulkPayModalOpen(true)}
                         selectedCount={selectedInvoiceIds.size}
+                        onEditInvoice={handleEditInvoiceFromDetail}
+                        onReceivePayment={handleRecordPayment}
                     />
                 </div>
             </div>
