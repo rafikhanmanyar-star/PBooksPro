@@ -7,6 +7,7 @@ import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Textarea from '../ui/Textarea';
 import { useNotification } from '../../context/NotificationContext';
+import { ContactsApiRepository } from '../../services/api/repositories/contactsApi';
 
 interface ContactTypeOption {
     id: ContactType;
@@ -19,7 +20,7 @@ interface ContactTypeOption {
 const ContactsManagement: React.FC = () => {
     const { state: appState, dispatch: appDispatch } = useAppContext();
     const { showConfirm, showToast } = useNotification();
-    
+
     // Form state
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [selectedType, setSelectedType] = useState<ContactType>(ContactType.OWNER);
@@ -29,7 +30,7 @@ const ContactsManagement: React.FC = () => {
     const [company, setCompany] = useState('');
     const [address, setAddress] = useState('');
     const [notes, setNotes] = useState('');
-    
+
     // Grid state
     const [gridSearchQuery, setGridSearchQuery] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
@@ -107,7 +108,7 @@ const ContactsManagement: React.FC = () => {
         // Apply search filter
         if (gridSearchQuery) {
             const query = gridSearchQuery.toLowerCase();
-            contacts = contacts.filter(c => 
+            contacts = contacts.filter(c =>
                 c.name?.toLowerCase().includes(query) ||
                 c.contactNo?.toLowerCase().includes(query) ||
                 c.companyName?.toLowerCase().includes(query) ||
@@ -122,15 +123,15 @@ const ContactsManagement: React.FC = () => {
             contacts.sort((a, b) => {
                 let aVal: any = a[sortConfig.key as keyof Contact];
                 let bVal: any = b[sortConfig.key as keyof Contact];
-                
+
                 // Handle undefined/null values
                 if (aVal === undefined || aVal === null) aVal = '';
                 if (bVal === undefined || bVal === null) bVal = '';
-                
+
                 // Convert to strings for comparison
                 aVal = String(aVal).toLowerCase();
                 bVal = String(bVal).toLowerCase();
-                
+
                 if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
                 if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
                 return 0;
@@ -158,7 +159,7 @@ const ContactsManagement: React.FC = () => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        
+
         if (!name.trim()) {
             showToast('Full Name is required', 'error');
             return;
@@ -166,17 +167,6 @@ const ContactsManagement: React.FC = () => {
 
         if (!email.trim()) {
             showToast('Email is required', 'error');
-            return;
-        }
-
-        // Check for duplicate name
-        const duplicate = appState.contacts.find(c => 
-            c.name.trim().toLowerCase() === name.trim().toLowerCase() && 
-            (!editingContact || c.id !== editingContact.id)
-        );
-
-        if (duplicate) {
-            showToast(`A contact with the name "${duplicate.name}" already exists.`, 'error');
             return;
         }
 
@@ -193,31 +183,34 @@ const ContactsManagement: React.FC = () => {
         // Format: "email:user@example.com\n[other notes]"
         if (email.trim()) {
             const emailLine = `email:${email.trim()}`;
-            contactData.description = notes.trim() 
-                ? `${emailLine}\n${notes.trim()}` 
+            contactData.description = notes.trim()
+                ? `${emailLine}\n${notes.trim()}`
                 : emailLine;
         }
 
-        if (editingContact) {
-            appDispatch({
-                type: 'UPDATE_CONTACT',
-                payload: { ...contactData, id: editingContact.id }
-            });
-            showToast('Contact updated successfully', 'success');
-        } else {
-            appDispatch({
-                type: 'ADD_CONTACT',
-                payload: {
-                    ...contactData,
-                    id: Date.now().toString(),
-                    createdAt: new Date().toISOString()
-                }
-            });
-            showToast('Contact added successfully', 'success');
-        }
+        try {
+            const contactsApi = new ContactsApiRepository();
 
-        // Reset form and close
-        handleResetForm(true);
+            if (editingContact) {
+                await contactsApi.update(editingContact.id, contactData);
+                showToast('Contact updated successfully', 'success');
+            } else {
+                await contactsApi.create(contactData);
+                showToast('Contact created successfully', 'success');
+            }
+
+            // Reset form and close
+            handleResetForm(true);
+        } catch (error: any) {
+            console.error('Error saving contact:', error);
+            const errorMessage = error?.message || error?.error || 'Failed to save contact';
+
+            if (error?.status === 409 || errorMessage.includes('duplicate') || errorMessage.includes('already exists')) {
+                showToast('A contact with this name already exists', 'error');
+            } else {
+                showToast(`Error: ${errorMessage}`, 'error');
+            }
+        }
     };
 
     const handleResetForm = (closeForm = false) => {
@@ -259,7 +252,7 @@ const ContactsManagement: React.FC = () => {
         setPhone(contact.contactNo || '');
         setCompany(contact.companyName || '');
         setAddress(contact.address || '');
-        
+
         // Extract email from description
         const emailMatch = contact.description?.match(/^email:(.+?)(?:\n|$)/);
         if (emailMatch) {
@@ -269,7 +262,7 @@ const ContactsManagement: React.FC = () => {
             setEmail('');
             setNotes(contact.description || '');
         }
-        
+
         if (!isFormOpen) {
             setIsFormOpen(true);
         }
@@ -282,10 +275,17 @@ const ContactsManagement: React.FC = () => {
             `Are you sure you want to delete "${contact.name}"? This action cannot be undone.`
         );
         if (confirmed) {
-            appDispatch({ type: 'DELETE_CONTACT', payload: contact.id });
-            showToast('Contact deleted successfully', 'success');
-            if (editingContact?.id === contact.id) {
-                handleResetForm();
+            try {
+                const contactsApi = new ContactsApiRepository();
+                await contactsApi.delete(contact.id);
+                showToast('Contact deleted successfully', 'success');
+
+                if (editingContact?.id === contact.id) {
+                    handleResetForm();
+                }
+            } catch (error: any) {
+                console.error('Error deleting contact:', error);
+                showToast(`Error: ${error?.message || 'Failed to delete contact'}`, 'error');
             }
         }
     };
@@ -300,16 +300,16 @@ const ContactsManagement: React.FC = () => {
         return {
             bg: config.color === 'blue' ? 'bg-blue-100' :
                 config.color === 'emerald' ? 'bg-emerald-100' :
-                config.color === 'orange' ? 'bg-orange-100' :
-                config.color === 'amber' ? 'bg-amber-100' :
-                config.color === 'rose' ? 'bg-rose-100' :
-                'bg-purple-100',
+                    config.color === 'orange' ? 'bg-orange-100' :
+                        config.color === 'amber' ? 'bg-amber-100' :
+                            config.color === 'rose' ? 'bg-rose-100' :
+                                'bg-purple-100',
             text: config.color === 'blue' ? 'text-blue-700' :
-                  config.color === 'emerald' ? 'text-emerald-700' :
-                  config.color === 'orange' ? 'text-orange-700' :
-                  config.color === 'amber' ? 'text-amber-700' :
-                  config.color === 'rose' ? 'text-rose-700' :
-                  'text-purple-700'
+                config.color === 'emerald' ? 'text-emerald-700' :
+                    config.color === 'orange' ? 'text-orange-700' :
+                        config.color === 'amber' ? 'text-amber-700' :
+                            config.color === 'rose' ? 'text-rose-700' :
+                                'text-purple-700'
         };
     };
 
@@ -352,20 +352,20 @@ const ContactsManagement: React.FC = () => {
                                         flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ml-2
                                         ${isSelected
                                             ? (type.color === 'blue' ? 'bg-blue-50 text-blue-700 border-2 border-blue-500' :
-                                               type.color === 'emerald' ? 'bg-emerald-50 text-emerald-700 border-2 border-emerald-500' :
-                                               type.color === 'orange' ? 'bg-orange-50 text-orange-700 border-2 border-orange-500' :
-                                               type.color === 'amber' ? 'bg-amber-50 text-amber-700 border-2 border-amber-500' :
-                                               'bg-purple-50 text-purple-700 border-2 border-purple-500')
+                                                type.color === 'emerald' ? 'bg-emerald-50 text-emerald-700 border-2 border-emerald-500' :
+                                                    type.color === 'orange' ? 'bg-orange-50 text-orange-700 border-2 border-orange-500' :
+                                                        type.color === 'amber' ? 'bg-amber-50 text-amber-700 border-2 border-amber-500' :
+                                                            'bg-purple-50 text-purple-700 border-2 border-purple-500')
                                             : 'border-2 border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                                         }
                                     `}
                                 >
                                     <div className={`w-4 h-4 ${isSelected ? (
                                         type.color === 'blue' ? 'text-blue-600' :
-                                        type.color === 'emerald' ? 'text-emerald-600' :
-                                        type.color === 'orange' ? 'text-orange-600' :
-                                        type.color === 'amber' ? 'text-amber-600' :
-                                        'text-purple-600'
+                                            type.color === 'emerald' ? 'text-emerald-600' :
+                                                type.color === 'orange' ? 'text-orange-600' :
+                                                    type.color === 'amber' ? 'text-amber-600' :
+                                                        'text-purple-600'
                                     ) : 'text-slate-400'}`}>
                                         {type.icon}
                                     </div>
@@ -416,90 +416,89 @@ const ContactsManagement: React.FC = () => {
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-4">
-                            {/* Form Fields - Compact Grid */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                <div className="sm:col-span-2 lg:col-span-1">
-                                    <Input
-                                        label="Full Name *"
-                                        value={name}
-                                        onChange={(e) => setName(e.target.value)}
-                                        placeholder="John Doe"
-                                        required
-                                        autoFocus
-                                        className="text-sm border-slate-300 border-2 focus:border-indigo-500"
-                                    />
-                                </div>
-                                <div className="sm:col-span-2 lg:col-span-1">
-                                    <Input
-                                        label="Email *"
-                                        type="email"
-                                        value={email}
-                                        onChange={(e) => setEmail(e.target.value)}
-                                        placeholder="john@example.com"
-                                        required
-                                        className="text-sm border-slate-300 border-2 focus:border-indigo-500"
-                                    />
-                                </div>
+                        {/* Form Fields - Compact Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div className="sm:col-span-2 lg:col-span-1">
                                 <Input
-                                    label="Phone"
-                                    value={phone}
-                                    onChange={(e) => setPhone(e.target.value)}
-                                    placeholder="+1 (555) 000-0000"
-                                    className="text-sm border-slate-300 border-2 focus:border-indigo-500"
-                                />
-                                <Input
-                                    label="Company"
-                                    value={company}
-                                    onChange={(e) => setCompany(e.target.value)}
-                                    placeholder="Company name"
+                                    label="Full Name *"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    placeholder="John Doe"
+                                    required
+                                    autoFocus
                                     className="text-sm border-slate-300 border-2 focus:border-indigo-500"
                                 />
                             </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="sm:col-span-2 lg:col-span-1">
                                 <Input
-                                    label="Address"
-                                    value={address}
-                                    onChange={(e) => setAddress(e.target.value)}
-                                    placeholder="Street address, City, State"
+                                    label="Email *"
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    placeholder="john@example.com"
+                                    required
                                     className="text-sm border-slate-300 border-2 focus:border-indigo-500"
                                 />
-                                <div className="max-w-md">
-                                    <Textarea
-                                        label="Notes"
-                                        value={notes}
-                                        onChange={(e) => setNotes(e.target.value)}
-                                        placeholder="Additional notes about this contact..."
-                                        rows={1}
-                                        className="text-sm !border-slate-300 !border-2 focus:!border-indigo-500"
-                                    />
-                                </div>
                             </div>
-                            <div className="flex items-end gap-2">
-                                {editingContact && (
-                                    <Button
-                                        type="button"
-                                        variant="secondary"
-                                        onClick={handleResetForm}
-                                        className="flex-1 text-sm py-2"
-                                    >
-                                        Cancel
-                                    </Button>
-                                )}
+                            <Input
+                                label="Phone"
+                                value={phone}
+                                onChange={(e) => setPhone(e.target.value)}
+                                placeholder="+1 (555) 000-0000"
+                                className="text-sm border-slate-300 border-2 focus:border-indigo-500"
+                            />
+                            <Input
+                                label="Company"
+                                value={company}
+                                onChange={(e) => setCompany(e.target.value)}
+                                placeholder="Company name"
+                                className="text-sm border-slate-300 border-2 focus:border-indigo-500"
+                            />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <Input
+                                label="Address"
+                                value={address}
+                                onChange={(e) => setAddress(e.target.value)}
+                                placeholder="Street address, City, State"
+                                className="text-sm border-slate-300 border-2 focus:border-indigo-500"
+                            />
+                            <div className="max-w-md">
+                                <Textarea
+                                    label="Notes"
+                                    value={notes}
+                                    onChange={(e) => setNotes(e.target.value)}
+                                    placeholder="Additional notes about this contact..."
+                                    rows={1}
+                                    className="text-sm !border-slate-300 !border-2 focus:!border-indigo-500"
+                                />
+                            </div>
+                        </div>
+                        <div className="flex items-end gap-2">
+                            {editingContact && (
                                 <Button
-                                    type="submit"
-                                    className={`flex-1 text-sm py-2 ${
-                                        activeTypeConfig.color === 'blue' ? 'bg-blue-600 hover:bg-blue-700' :
-                                        activeTypeConfig.color === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700' :
-                                        activeTypeConfig.color === 'orange' ? 'bg-orange-600 hover:bg-orange-700' :
-                                        activeTypeConfig.color === 'amber' ? 'bg-amber-600 hover:bg-amber-700' :
-                                        'bg-purple-600 hover:bg-purple-700'
-                                    } text-white`}
+                                    type="button"
+                                    variant="secondary"
+                                    onClick={() => handleResetForm()}
+                                    className="flex-1 text-sm py-2"
                                 >
-                                    {editingContact ? 'Update' : `Add ${activeTypeConfig.label}`}
+                                    Cancel
                                 </Button>
-                            </div>
-                        </form>
-                    </div>
+                            )}
+                            <Button
+                                type="submit"
+                                className={`flex-1 text-sm py-2 ${activeTypeConfig.color === 'blue' ? 'bg-blue-600 hover:bg-blue-700' :
+                                    activeTypeConfig.color === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700' :
+                                        activeTypeConfig.color === 'orange' ? 'bg-orange-600 hover:bg-orange-700' :
+                                            activeTypeConfig.color === 'amber' ? 'bg-amber-600 hover:bg-amber-700' :
+                                                'bg-purple-600 hover:bg-purple-700'
+                                    } text-white`}
+                            >
+                                {editingContact ? 'Update' : `Add ${activeTypeConfig.label}`}
+                            </Button>
+                        </div>
+                    </form>
+                </div >
             )}
 
             {/* Data Grid - Full Width */}
@@ -543,11 +542,9 @@ const ContactsManagement: React.FC = () => {
                                 ].map((col) => (
                                     <th
                                         key={col.key}
-                                        className={`px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider ${
-                                            col.key === 'actions' || col.key === 'balance' ? 'text-right' : ''
-                                        } ${
-                                            col.key !== 'actions' ? 'cursor-pointer hover:bg-slate-100' : ''
-                                        }`}
+                                        className={`px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider ${col.key === 'actions' || col.key === 'balance' ? 'text-right' : ''
+                                            } ${col.key !== 'actions' ? 'cursor-pointer hover:bg-slate-100' : ''
+                                            }`}
                                         onClick={() => col.key !== 'actions' && handleSort(col.key)}
                                     >
                                         <div className="flex items-center gap-1">
@@ -566,8 +563,8 @@ const ContactsManagement: React.FC = () => {
                             {gridContacts.length === 0 ? (
                                 <tr>
                                     <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
-                                        {gridSearchQuery 
-                                            ? 'No contacts found matching your search.' 
+                                        {gridSearchQuery
+                                            ? 'No contacts found matching your search.'
                                             : 'No contacts found. Add your first contact above!'
                                         }
                                     </td>
@@ -578,7 +575,7 @@ const ContactsManagement: React.FC = () => {
                                     const badgeColors = getTypeBadgeColor(contact.type);
                                     const contactEmail = extractEmail(contact);
                                     const notesOnly = contact.description?.replace(/^email:.+?\n?/, '').trim() || '';
-                                    
+
                                     return (
                                         <tr
                                             key={contact.id}
@@ -644,7 +641,7 @@ const ContactsManagement: React.FC = () => {
                     </table>
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 
