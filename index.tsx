@@ -20,7 +20,7 @@ try {
       console.error('❌ Failed to initialize error logger:', error);
     }
   };
-  initErrorLogger().catch(() => {}); // Don't block on error logger
+  initErrorLogger().catch(() => { }); // Don't block on error logger
 
   // Set up comprehensive global error handlers
   const setupGlobalErrorHandlers = () => {
@@ -34,20 +34,20 @@ try {
         lineno: event.lineno,
         colno: event.colno,
         source: 'global_error_handler'
-      }).catch(() => {}); // Don't let error logging fail
+      }).catch(() => { }); // Don't let error logging fail
     });
 
     // Unhandled promise rejections
     window.addEventListener('unhandledrejection', (event) => {
       event.preventDefault(); // Prevent default error handling
       const { getErrorLogger } = require('./services/errorLogger');
-      const error = event.reason instanceof Error 
-        ? event.reason 
+      const error = event.reason instanceof Error
+        ? event.reason
         : new Error(String(event.reason));
       getErrorLogger().logError(error, {
         errorType: 'unhandled_promise_rejection',
         source: 'global_promise_handler'
-      }).catch(() => {});
+      }).catch(() => { });
     });
 
     // Resource loading errors (images, scripts, etc.)
@@ -59,7 +59,7 @@ try {
           errorType: 'resource_error',
           resource: target.tagName,
           source: (target as any).src || (target as any).href
-        }).catch(() => {});
+        }).catch(() => { });
       }
     }, true); // Use capture phase
 
@@ -73,7 +73,7 @@ try {
         getErrorLogger().logError(args[0], {
           errorType: 'console_error',
           source: 'console_interceptor'
-        }).catch(() => {});
+        }).catch(() => { });
       }
     };
   };
@@ -94,7 +94,7 @@ try {
       console.log('   - window.errorLogger');
       console.log('   - window.getDatabaseService()');
       console.log('   - Press F12 to open DevTools');
-    }).catch(() => {});
+    }).catch(() => { });
   }
 
   if (!rootElement) {
@@ -108,112 +108,124 @@ try {
     // Import AppContext separately with better error handling
     console.log('[index] Starting module imports...');
     Promise.all([
-    import('./App').catch(err => {
-      console.error('❌ Failed to import App:', err);
-      throw new Error(`Failed to import App: ${err instanceof Error ? err.message : String(err)}`);
-    }),
-    import('./context/AppContext').catch(err => {
-      console.error('❌ Failed to import AppContext:', err);
-      console.error('❌ AppContext import error details:', {
-        message: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack : undefined,
-        name: err instanceof Error ? err.name : typeof err
-      });
-      throw new Error(`Failed to import AppContext: ${err instanceof Error ? err.message : String(err)}`);
-    }),
-    import('./context/AuthContext').catch(err => {
-      console.error('❌ Failed to import AuthContext:', err);
-      throw new Error(`Failed to import AuthContext: ${err instanceof Error ? err.message : String(err)}`);
-    }),
-    import('./context/ProgressContext'),
-    import('./context/KeyboardContext'),
-    import('./context/KPIContext'),
-    import('./context/NotificationContext'),
-    import('./context/WhatsAppContext'),
-    import('./context/LicenseContext'),
-    import('./context/PWAContext'),
-    import('./context/UpdateContext'),
-    import('./components/ErrorBoundary'),
-    import('./context/PayrollContext'),
-    import('./context/PrintContext')
-  ]).then(([
-    { default: App },
-    { AppProvider },
-    { AuthProvider },
-    { ProgressProvider },
-    { KeyboardProvider },
-    { KPIProvider },
-    { NotificationProvider },
-    { WhatsAppProvider },
-    { LicenseProvider },
-    { PWAProvider },
-    { UpdateProvider },
-    { default: ErrorBoundary },
-    { PayrollProvider },
-    { PrintProvider }
-  ]) => {
-    // Top-level error boundary
-    const TopLevelErrorBoundary: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-      return (
-        <ErrorBoundary
-          onError={(error, errorInfo) => {
-            console.error('Top-level error caught:', error, errorInfo);
-          }}
-        >
-          {children}
-        </ErrorBoundary>
-      );
-    };
+      import('./App').catch(err => {
+        console.error('❌ Failed to import App:', err);
+        throw new Error(`Failed to import App: ${err instanceof Error ? err.message : String(err)}`);
+      }),
+      import('./context/AppContext').catch(err => {
+        console.error('❌ Failed to import AppContext:', err);
+        console.error('❌ AppContext import error details:', {
+          message: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+          name: err instanceof Error ? err.name : typeof err
+        });
+        throw new Error(`Failed to import AppContext: ${err instanceof Error ? err.message : String(err)}`);
+      }),
+      import('./context/AuthContext').catch(err => {
+        console.error('❌ Failed to import AuthContext:', err);
+        throw new Error(`Failed to import AuthContext: ${err instanceof Error ? err.message : String(err)}`);
+      }),
+      import('./context/ProgressContext'),
+      import('./context/KeyboardContext'),
+      import('./context/KPIContext'),
+      import('./context/NotificationContext'),
+      import('./context/WhatsAppContext'),
+      import('./context/LicenseContext'),
+      import('./context/PWAContext'),
+      import('./context/UpdateContext'),
+      import('./components/ErrorBoundary'),
+      import('./context/PayrollContext'),
+      import('./context/PrintContext'),
+      import('./context/InventoryContext'),
+      import('./context/AccountingContext'),
+      import('./context/LoyaltyContext')
+    ]).then(([
+      { default: App },
+      { AppProvider },
+      { AuthProvider },
+      { ProgressProvider },
+      { KeyboardProvider },
+      { KPIProvider },
+      { NotificationProvider },
+      { WhatsAppProvider },
+      { LicenseProvider },
+      { PWAProvider },
+      { UpdateProvider },
+      { default: ErrorBoundary },
+      { PayrollProvider },
+      { PrintProvider },
+      { InventoryProvider },
+      { AccountingProvider },
+      { LoyaltyProvider }
+    ]) => {
+      // Top-level error boundary
+      const TopLevelErrorBoundary: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+        return (
+          <ErrorBoundary
+            onError={(error, errorInfo) => {
+              console.error('Top-level error caught:', error, errorInfo);
+            }}
+          >
+            {children}
+          </ErrorBoundary>
+        );
+      };
 
-    const root = ReactDOM.createRoot(rootElement);
-    
-    root.render(
-      <React.StrictMode>
-        <TopLevelErrorBoundary>
-          <AuthProvider>
-            <AppProvider>
-              <PrintProvider>
-              <PWAProvider>
-                <UpdateProvider>
-                  <LicenseProvider>
-                    <ProgressProvider>
-                      <KeyboardProvider>
-                        <KPIProvider>
-                          <NotificationProvider>
-                            <WhatsAppProvider>
-                              <PayrollProvider>
-                                <App />
-                              </PayrollProvider>
-                            </WhatsAppProvider>
-                          </NotificationProvider>
-                        </KPIProvider>
-                      </KeyboardProvider>
-                    </ProgressProvider>
-                  </LicenseProvider>
-                </UpdateProvider>
-              </PWAProvider>
-              </PrintProvider>
-            </AppProvider>
-          </AuthProvider>
-        </TopLevelErrorBoundary>
-      </React.StrictMode>
-    );
-  }).catch((error) => {
-    appLoadError = error instanceof Error ? error : new Error(String(error));
-    console.error('❌ Failed to load application:', appLoadError);
-    console.error('❌ Error details:', {
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      name: error instanceof Error ? error.name : typeof error,
-      cause: (error as any)?.cause,
-      fileName: (error as any)?.fileName,
-      lineNumber: (error as any)?.lineNumber,
-      columnNumber: (error as any)?.columnNumber
-    });
-    
-    // Show error UI
-    if (rootElement) {
-      rootElement.innerHTML = `
+      const root = ReactDOM.createRoot(rootElement);
+
+      root.render(
+        <React.StrictMode>
+          <TopLevelErrorBoundary>
+            <AuthProvider>
+              <AppProvider>
+                <PrintProvider>
+                  <PWAProvider>
+                    <UpdateProvider>
+                      <LicenseProvider>
+                        <ProgressProvider>
+                          <KeyboardProvider>
+                            <KPIProvider>
+                              <NotificationProvider>
+                                <WhatsAppProvider>
+                                  <PayrollProvider>
+                                    <InventoryProvider>
+                                      <AccountingProvider>
+                                        <LoyaltyProvider>
+                                          <App />
+                                        </LoyaltyProvider>
+                                      </AccountingProvider>
+                                    </InventoryProvider>
+                                  </PayrollProvider>
+                                </WhatsAppProvider>
+                              </NotificationProvider>
+                            </KPIProvider>
+                          </KeyboardProvider>
+                        </ProgressProvider>
+                      </LicenseProvider>
+                    </UpdateProvider>
+                  </PWAProvider>
+                </PrintProvider>
+              </AppProvider>
+            </AuthProvider>
+          </TopLevelErrorBoundary>
+        </React.StrictMode>
+      );
+    }).catch((error) => {
+      appLoadError = error instanceof Error ? error : new Error(String(error));
+      console.error('❌ Failed to load application:', appLoadError);
+      console.error('❌ Error details:', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        name: error instanceof Error ? error.name : typeof error,
+        cause: (error as any)?.cause,
+        fileName: (error as any)?.fileName,
+        lineNumber: (error as any)?.lineNumber,
+        columnNumber: (error as any)?.columnNumber
+      });
+
+      // Show error UI
+      if (rootElement) {
+        rootElement.innerHTML = `
         <div style="
           min-height: 100vh;
           display: flex;
@@ -270,8 +282,8 @@ try {
           </div>
         </div>
       `;
-    }
-  });
+      }
+    });
   };
 
   // Wait for DOM to be fully ready before initializing React
@@ -284,7 +296,7 @@ try {
 } catch (error) {
   appLoadError = error instanceof Error ? error : new Error(String(error));
   console.error('❌ Critical error during initialization:', appLoadError);
-  
+
   // Show error UI
   if (rootElement) {
     rootElement.innerHTML = `

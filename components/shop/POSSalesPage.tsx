@@ -1,6 +1,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { POSProvider, usePOS } from '../../context/POSContext';
+import { LoyaltyProvider } from '../../context/LoyaltyContext';
 import POSHeader from './pos/POSHeader';
 import ProductSearch from './pos/ProductSearch';
 import CartGrid from './pos/CartGrid';

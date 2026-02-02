@@ -151,11 +151,7 @@ const LoyaltyContent: React.FC = () => {
 };
 
 const LoyaltyPage: React.FC = () => {
-    return (
-        <LoyaltyProvider>
-            <LoyaltyContent />
-        </LoyaltyProvider>
-    );
+    return <LoyaltyContent />;
 };
 
 export default LoyaltyPage;

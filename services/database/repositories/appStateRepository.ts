@@ -16,8 +16,9 @@ import {
     RentalAgreementsRepository, ProjectAgreementsRepository, ContractsRepository,
     InstallmentPlansRepository, PlanAmenitiesRepository, RecurringTemplatesRepository, TransactionLogRepository, ErrorLogRepository,
     QuotationsRepository, DocumentsRepository, PMCycleAllocationsRepository, AppSettingsRepository,
-    SalesReturnsRepository, TasksRepository, TaskUpdatesRepository, TaskPerformanceScoresRepository, TaskPerformanceConfigRepository
+    SalesReturnsRepository
 } from './index';
+
 import { migrateTenantColumns } from '../tenantMigration';
 import { BaseRepository } from './baseRepository';
 import { getSyncManager } from '../../sync/syncManager';
@@ -52,10 +53,7 @@ export class AppStateRepository {
     private pmCycleAllocationsRepo = new PMCycleAllocationsRepository();
     private appSettingsRepo = new AppSettingsRepository();
     private salesReturnsRepo = new SalesReturnsRepository();
-    private tasksRepo = new TasksRepository();
-    private taskUpdatesRepo = new TaskUpdatesRepository();
-    private taskPerformanceScoresRepo = new TaskPerformanceScoresRepository();
-    private taskPerformanceConfigRepo = new TaskPerformanceConfigRepository();
+
 
     /**
      * Load complete application state from database
@@ -127,10 +125,7 @@ export class AppStateRepository {
         const installmentPlans = this.installmentPlansRepo.findAll();
         const planAmenities = this.planAmenitiesRepo.findAll();
         const salesReturns = this.salesReturnsRepo.findAll();
-        const tasks = this.tasksRepo.findAll();
-        const taskUpdates = this.taskUpdatesRepo.findAll();
-        const taskPerformanceScores = this.taskPerformanceScoresRepo.findAll();
-        const taskPerformanceConfig = this.taskPerformanceConfigRepo.findAll();
+
 
         // Load settings - try cloud first, then fallback to local
         let settings: any = {};
@@ -571,10 +566,7 @@ export class AppStateRepository {
             defaultProjectId: settings.defaultProjectId || undefined,
             lastServiceChargeRun: settings.lastServiceChargeRun,
             salesReturns,
-            tasks,
-            taskUpdates,
-            taskPerformanceScores,
-            taskPerformanceConfig: taskPerformanceConfig[0] || null,
+
             transactionLog,
             errorLog,
             enableDatePreservation: settings.enableDatePreservation ?? false,
@@ -796,12 +788,7 @@ export class AppStateRepository {
                                 })));
                                 this.budgetsRepo.saveAll(state.budgets);
                                 this.salesReturnsRepo.saveAll(state.salesReturns || []);
-                                this.tasksRepo.saveAll(state.tasks || []);
-                                this.taskUpdatesRepo.saveAll(state.taskUpdates || []);
-                                this.taskPerformanceScoresRepo.saveAll(state.taskPerformanceScores || []);
-                                if (state.taskPerformanceConfig) {
-                                    this.taskPerformanceConfigRepo.saveAll([state.taskPerformanceConfig]);
-                                }
+
                             } catch (e) {
                                 console.error('❌ Failed to save documents/budgets/agreements/contracts:', e);
                                 throw e;
@@ -974,10 +961,7 @@ export class AppStateRepository {
             rental_agreements: this.rentalAgreementsRepo,
             project_agreements: this.projectAgreementsRepo,
             installment_plans: this.installmentPlansRepo,
-            tasks: this.tasksRepo,
-            task_updates: this.taskUpdatesRepo,
-            task_performance_scores: this.taskPerformanceScoresRepo,
-            task_performance_config: this.taskPerformanceConfigRepo,
+
         };
         return map[entityKey] ?? null;
     }

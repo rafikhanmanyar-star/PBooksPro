@@ -11,6 +11,7 @@ import {
     POSProductVariant
 } from '../types/pos';
 import { shopApi } from '../services/api/shopApi';
+import { ContactsApiRepository } from '../services/api/repositories/contactsApi';
 
 
 interface POSContextType {
@@ -168,11 +169,33 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         clearCart();
     }, [cart, customer, totals.grandTotal, clearCart]);
 
-    const recallSale = useCallback((heldSaleId: string) => {
+    const recallSale = useCallback(async (heldSaleId: string) => {
         const heldSale = heldSales.find(s => s.id === heldSaleId);
         if (heldSale) {
             setCart(heldSale.cart);
-            // TODO: Restore customer if exists
+
+            if (heldSale.customerId) {
+                try {
+                    const contactsApi = new ContactsApiRepository();
+                    const contact = await contactsApi.findById(heldSale.customerId);
+                    if (contact) {
+                        // Map contact to POSCustomer
+                        const posCustomer: POSCustomer = {
+                            id: contact.id,
+                            name: contact.name,
+                            phone: contact.contactNo || 'N/A',
+                            points: 0, // In a real app, fetch from loyalty
+                            creditLimit: 0,
+                            balance: 0,
+                            tier: 'Standard'
+                        };
+                        setCustomer(posCustomer);
+                    }
+                } catch (error) {
+                    console.error('Failed to restore customer:', error);
+                }
+            }
+
             setHeldSales(prev => prev.filter(s => s.id !== heldSaleId));
         }
     }, [heldSales]);

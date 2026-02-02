@@ -16,7 +16,7 @@ interface InventoryContextType {
     adjustments: StockAdjustment[];
     transfers: StockTransfer[];
 
-    addItem: (item: InventoryItem) => void;
+    addItem: (item: InventoryItem) => Promise<InventoryItem>;
     updateStock: (itemId: string, warehouseId: string, delta: number, type: any, referenceId: string, notes?: string) => void;
     requestTransfer: (transfer: Omit<StockTransfer, 'id' | 'timestamp' | 'status'>) => void;
     approveAdjustment: (adjustmentId: string) => void;
@@ -38,22 +38,19 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     React.useEffect(() => {
         const fetchData = async () => {
             try {
-                const [branches, products, inventory] = await Promise.all([
-                    shopApi.getBranches(),
+                const [warehousesList, products, inventory] = await Promise.all([
+                    shopApi.getWarehouses(),
                     shopApi.getProducts(),
                     shopApi.getInventory()
                 ]);
 
-                // Map Branches/Warehouses
-                const whs: Warehouse[] = branches.map((b: any) => ({
-                    id: b.id,
-                    name: b.name,
-                    code: b.code,
-                    location: b.location || 'Main' // Use branch ID as warehouse ID for simplicity in this POS context
+                // Map Warehouses
+                const whs: Warehouse[] = warehousesList.map((w: any) => ({
+                    id: w.id,
+                    name: w.name,
+                    code: w.code,
+                    location: w.location || 'Main'
                 }));
-                // Also add logic to fetch actual warehouses if separate from branches, 
-                // but currently we use branches/warehouses interchangeably in simple setup or need separate API.
-                // For now, assuming branches act as locations.
                 setWarehouses(whs);
 
                 // Aggregate Stock
@@ -152,7 +149,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             }));
         } catch (error) {
             console.error('Failed to update stock:', error);
-            // Optionally revert or show error
+            throw error;
         }
     }, []);
 
@@ -161,7 +158,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             const payload = {
                 sku: item.sku,
                 name: item.name,
-                category_id: item.category, // simplified
+                category_id: item.category === 'General' ? null : item.category,
                 retail_price: item.retailPrice,
                 cost_price: item.costPrice,
                 unit: item.unit,
@@ -173,14 +170,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             if (response && response.id) {
                 const newItem = { ...item, id: response.id };
                 setItems(prev => [...prev, newItem]);
+                return newItem;
             } else {
-                // Fallback for mock/local
-                setItems(prev => [...prev, { ...item, id: crypto.randomUUID() }]);
+                throw new Error("Invalid response from server");
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error("Failed to create product:", error);
-            // Fallback for mock/offline
-            setItems(prev => [...prev, { ...item, id: crypto.randomUUID() }]);
+            const msg = error.message || (typeof error === 'string' ? error : 'Check your SKU uniqueness or category.');
+            alert(`Failed to save SKU to database: ${msg}`);
+            // Do NOT fall back to local-only state to avoid confusion
+            throw error;
         }
     }, []);
 

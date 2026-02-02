@@ -36,6 +36,46 @@ export class ShopService {
         return this.db.query('SELECT * FROM shop_branches WHERE tenant_id = $1 ORDER BY name ASC', [tenantId]);
     }
 
+    // --- Warehouse Methods ---
+    async getWarehouses(tenantId: string) {
+        const warehouses = await this.db.query('SELECT * FROM shop_warehouses WHERE tenant_id = $1 ORDER BY name ASC', [tenantId]);
+        const branches = await this.db.query('SELECT * FROM shop_branches WHERE tenant_id = $1', [tenantId]);
+
+        // If mismatch, ensure every branch has at least one warehouse with same ID (to support legacy logic)
+        if (warehouses.length < branches.length) {
+            for (const branch of branches) {
+                const hasWh = warehouses.some((w: any) => w.id === branch.id);
+                if (!hasWh) {
+                    await this.db.query(`
+                        INSERT INTO shop_warehouses (id, tenant_id, name, code, location)
+                        VALUES ($1, $2, $3, $4, $5)
+                        ON CONFLICT (id) DO NOTHING
+                    `, [branch.id, tenantId, branch.name, branch.code, branch.location || 'Store']);
+                }
+            }
+            // Re-fetch after fixing
+            return this.db.query('SELECT * FROM shop_warehouses WHERE tenant_id = $1 ORDER BY name ASC', [tenantId]);
+        }
+
+        return warehouses;
+    }
+
+    async createWarehouse(tenantId: string, data: any) {
+        const res = await this.db.query(`
+            INSERT INTO shop_warehouses (
+                tenant_id, name, code, location, is_active
+            ) VALUES ($1, $2, $3, $4, $5)
+            RETURNING id
+        `, [
+            tenantId,
+            data.name,
+            data.code || `WH-${Date.now().toString().slice(-4)}`,
+            data.location || '',
+            data.isActive ?? true
+        ]);
+        return res[0].id;
+    }
+
     // --- Inventory Methods ---
     async getProducts(tenantId: string) {
         return this.db.query('SELECT * FROM shop_products WHERE tenant_id = $1 AND is_active = TRUE', [tenantId]);
@@ -91,24 +131,44 @@ export class ShopService {
     }
 
     async createProduct(tenantId: string, data: any) {
-        const res = await this.db.query(`
-            INSERT INTO shop_products (
-                tenant_id, name, sku, category_id, unit, 
-                cost_price, retail_price, tax_rate, reorder_point
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            RETURNING id
-        `, [
-            tenantId,
-            data.name,
-            data.sku || `SKU-${Date.now()}`,
-            data.category_id || null, // Ensure category ID is valid or handle lookup if sending name
-            data.unit || 'pcs',
-            data.cost_price || 0,
-            data.retail_price || 0,
-            data.tax_rate || 0,
-            data.reorder_point || 10
-        ]);
-        return res[0].id;
+        return this.db.transaction(async (client) => {
+            // 1. Resolve Category ID if name is provided (or use ID directly)
+            let categoryId = data.category_id || null;
+            if (categoryId && categoryId.length < 32) { // Heuristic: likely a name, not a UUID/ID
+                const catRes = await client.query(
+                    'SELECT id FROM categories WHERE tenant_id = $1 AND name ILIKE $2 LIMIT 1',
+                    [tenantId, categoryId]
+                );
+                categoryId = catRes.rows.length > 0 ? catRes.rows[0].id : null;
+            }
+
+            // 2. Insert Product
+            try {
+                const res = await client.query(`
+                    INSERT INTO shop_products (
+                        tenant_id, name, sku, category_id, unit, 
+                        cost_price, retail_price, tax_rate, reorder_point
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    RETURNING id
+                `, [
+                    tenantId,
+                    data.name,
+                    data.sku || `SKU-${Date.now()}`,
+                    categoryId,
+                    data.unit || 'pcs',
+                    data.cost_price || 0,
+                    data.retail_price || 0,
+                    data.tax_rate || 0,
+                    data.reorder_point || 10
+                ]);
+                return res.rows[0].id;
+            } catch (err: any) {
+                if (err.code === '23505') { // Unique constraint violation
+                    throw new Error(`SKU "${data.sku}" already exists in the system.`);
+                }
+                throw err;
+            }
+        });
     }
 
     async getInventory(tenantId: string, branchId?: string) {
@@ -140,7 +200,7 @@ export class ShopService {
             const updateRes = await client.query(`
                 INSERT INTO shop_inventory (tenant_id, product_id, warehouse_id, quantity_on_hand, updated_at)
                 VALUES ($1, $2, $3, $4, NOW())
-                ON CONFLICT (product_id, warehouse_id) 
+                ON CONFLICT (tenant_id, product_id, warehouse_id) 
                 DO UPDATE SET quantity_on_hand = shop_inventory.quantity_on_hand + $4, updated_at = NOW()
                 RETURNING *
              `, [tenantId, data.productId, data.warehouseId, data.quantity]);
@@ -148,7 +208,7 @@ export class ShopService {
             // 2. Record Movement
             await client.query(`
                 INSERT INTO shop_inventory_movements (
-                    tenant_id, product_id, warehouse_id, type, quantity, reference_id, user_id, notes
+                    tenant_id, product_id, warehouse_id, type, quantity, reference_id, user_id, reason
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              `, [
                 tenantId,
@@ -278,13 +338,17 @@ export class ShopService {
             const branchId = res.rows[0].id;
 
             // Create default terminal and warehouse for the new branch
+            // Create default terminal for the new branch
             await client.query(`
                  INSERT INTO shop_terminals (tenant_id, branch_id, name, code)
                  VALUES ($1, $2, 'Main Terminal', $3)
             `, [tenantId, branchId, `T-${branchCode}-01`]);
 
-            // Create default warehouse (if not exists generic one, or per branch)
-            // For now, let's keep it simple.
+            // Create a corresponding warehouse for the branch
+            await client.query(`
+                INSERT INTO shop_warehouses (id, tenant_id, name, code, location)
+                VALUES ($1, $2, $3, $4, $5)
+            `, [branchId, tenantId, data.name, branchCode, data.location || 'Store']);
 
             return branchId;
         });

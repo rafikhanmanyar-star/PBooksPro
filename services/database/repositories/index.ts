@@ -271,21 +271,7 @@ export class SalesReturnsRepository extends BaseRepository<any> {
 
 
 
-export class TasksRepository extends BaseRepository<any> {
-    constructor() { super('tasks'); }
-}
 
-export class TaskUpdatesRepository extends BaseRepository<any> {
-    constructor() { super('task_updates'); }
-}
-
-export class TaskPerformanceScoresRepository extends BaseRepository<any> {
-    constructor() { super('task_performance_scores'); }
-}
-
-export class TaskPerformanceConfigRepository extends BaseRepository<any> {
-    constructor() { super('task_performance_config'); }
-}
 
 export class ChatMessagesRepository extends BaseRepository<any> {
     constructor() {

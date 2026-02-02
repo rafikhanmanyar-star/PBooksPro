@@ -40,6 +40,25 @@ router.put('/branches/:id', async (req: any, res) => {
     }
 });
 
+// --- Warehouses ---
+router.get('/warehouses', async (req: any, res) => {
+    try {
+        const warehouses = await getShopService().getWarehouses(req.tenantId);
+        res.json(warehouses);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/warehouses', async (req: any, res) => {
+    try {
+        const warehouseId = await getShopService().createWarehouse(req.tenantId, req.body);
+        res.status(201).json({ id: warehouseId, message: 'Warehouse created successfully' });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // --- Terminals ---
 router.get('/terminals', async (req: any, res) => {
     try {

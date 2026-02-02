@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { usePOS } from '../../../context/POSContext';
 import { ICONS, CURRENCY } from '../../../constants';
 import Button from '../../ui/Button';
+import CustomerSelectionModal from './CustomerSelectionModal';
 
 const CheckoutPanel: React.FC = () => {
     const {
@@ -19,6 +20,7 @@ const CheckoutPanel: React.FC = () => {
     } = usePOS();
 
     const [isDiscountOpen, setIsDiscountOpen] = useState(false);
+    const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
 
     const handleHold = () => {
         if (cart.length === 0) return;
@@ -63,18 +65,7 @@ const CheckoutPanel: React.FC = () => {
                 ) : (
                     <button
                         className="w-full flex items-center justify-between px-4 py-3 bg-white border border-slate-200 border-dashed rounded-xl text-slate-400 hover:text-indigo-600 hover:border-indigo-300 hover:bg-white transition-all group"
-                        onClick={() => {
-                            // Dummy: In real app open search or create customer modal
-                            setCustomer({
-                                id: 'c1',
-                                name: 'Walk-in Customer',
-                                phone: '+92 300 0000000',
-                                points: 450,
-                                creditLimit: 10000,
-                                balance: 0,
-                                tier: 'Gold'
-                            });
-                        }}
+                        onClick={() => setIsCustomerModalOpen(true)}
                     >
                         <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full border border-slate-200 flex items-center justify-center group-hover:border-indigo-100 group-hover:bg-indigo-50 transition-colors">
@@ -165,18 +156,16 @@ const CheckoutPanel: React.FC = () => {
                 <div className="grid grid-cols-2 gap-3">
                     <Button
                         variant="secondary"
-                        fullWidth
-                        size="lg"
-                        className="bg-white hover:bg-slate-50 text-slate-600 border-slate-200 font-bold"
+                        size="default"
+                        className="w-full bg-white hover:bg-slate-50 text-slate-600 border-slate-200 font-bold"
                         onClick={handleProforma}
                     >
                         PROFORMA
                     </Button>
                     <Button
                         variant="secondary"
-                        fullWidth
-                        size="lg"
-                        className="bg-white hover:bg-slate-50 text-amber-600 border-amber-100 font-bold"
+                        size="default"
+                        className="w-full bg-white hover:bg-slate-50 text-amber-600 border-amber-100 font-bold"
                         onClick={handleHold}
                     >
                         HOLD (F2)
@@ -197,6 +186,11 @@ const CheckoutPanel: React.FC = () => {
                     </span>
                 </button>
             </div>
+
+            <CustomerSelectionModal
+                isOpen={isCustomerModalOpen}
+                onClose={() => setIsCustomerModalOpen(false)}
+            />
         </div>
     );
 };

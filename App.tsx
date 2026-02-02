@@ -57,11 +57,12 @@ const VendorDirectoryPage = lazyWithRetry(() => import('./components/vendors/Ven
 const ContactsPage = lazyWithRetry(() => import('./components/contacts/ContactsPage'));
 const BudgetManagement = lazyWithRetry(() => import('./components/settings/BudgetManagement'));
 const MobilePaymentsPage = lazyWithRetry(() => import('./components/mobile/MobilePaymentsPage'));
-const TasksPage = lazyWithRetry(() => import('./components/tasks/TasksPage'));
-const TasksCalendarView = lazyWithRetry(() => import('./components/tasks/TasksCalendarView'));
-const TeamRankingPage = lazyWithRetry(() => import('./components/tasks/TeamRankingPage'));
+
 const BizPlanetPage = lazyWithRetry(() => import('./components/bizPlanet/BizPlanetPage'));
 const PayrollHub = lazyWithRetry(() => import('./components/payroll/PayrollHub'));
+
+// Task Management Modules
+const TaskModuleRouter = lazyWithRetry(() => import('./components/tasks/TaskModuleRouter'));
 
 // Shop Modules
 const POSSalesPage = lazyWithRetry(() => import('./components/shop/POSSalesPage'));
@@ -70,6 +71,7 @@ const AccountingPage = lazyWithRetry(() => import('./components/shop/AccountingP
 const LoyaltyPage = lazyWithRetry(() => import('./components/shop/LoyaltyPage'));
 const MultiStorePage = lazyWithRetry(() => import('./components/shop/MultiStorePage'));
 const BIDashboardsPage = lazyWithRetry(() => import('./components/shop/BIDashboardsPage'));
+const ProcurementPage = lazyWithRetry(() => import('./components/shop/ProcurementPage'));
 
 // Define page groups to determine which component instance handles which routes
 const PAGE_GROUPS = {
@@ -84,7 +86,14 @@ const PAGE_GROUPS = {
   PROJECT: ['projectManagement', 'projectInvoices', 'bills'],
   INVESTMENT: ['investmentManagement'],
   PM_CONFIG: ['pmConfig'],
-  TASKS: ['tasks', 'tasksCalendar', 'teamRanking'],
+  TASKS: [
+    'tasks', 'tasksCalendar', 'teamRanking',
+    'taskCreation', 'taskAssignment', 'taskWorkflow', 'taskExecution',
+    'taskDashboards', 'taskKPIs', 'taskNotifications', 'taskAutomation',
+    'taskReports', 'taskConfiguration', 'taskAudit',
+    'taskOKR', 'taskInitiatives', 'taskRoles', 'taskManagement'
+  ],
+
   SETTINGS: ['settings'],
   IMPORT: ['import'],
   BIZ_PLANET: ['bizPlanet'],
@@ -94,6 +103,7 @@ const PAGE_GROUPS = {
   SHOP_ACCOUNTING: ['accounting'],
   LOYALTY: ['loyalty'],
   MULTI_STORE: ['multiStore'],
+  PROCUREMENT: ['procurement'],
   BI_DASHBOARDS: ['biDashboards'],
 };
 
@@ -432,9 +442,7 @@ const App: React.FC = () => {
       case 'vendorDirectory': return 'Vendor Directory';
       case 'contacts': return 'Contacts';
       case 'budgets': return 'Budget Planner';
-      case 'tasks': return 'My Tasks';
-      case 'tasksCalendar': return 'Task Calendar';
-      case 'teamRanking': return 'Team Ranking';
+
       case 'bizPlanet': return 'Biz Planet';
       case 'payroll': return 'Payroll Management';
       case 'posSales': return 'POS Sales Screen';
@@ -443,6 +451,28 @@ const App: React.FC = () => {
       case 'loyalty': return 'Loyalty Program';
       case 'multiStore': return 'Multi-store Management';
       case 'biDashboards': return 'BI Dashboards';
+      case 'procurement': return 'Procurement & Purchasing';
+
+      // Task Modules
+      case 'tasks': return 'My Tasks';
+      case 'tasksCalendar': return 'Task Calendar';
+      case 'teamRanking': return 'Team Ranking';
+      case 'taskCreation': return 'Create Task';
+      case 'taskAssignment': return 'Task Assignment';
+      case 'taskWorkflow': return 'Workflow & Status';
+      case 'taskExecution': return 'Task Execution';
+      case 'taskDashboards': return 'Task Dashboards';
+      case 'taskKPIs': return 'Task KPIs & SLAs';
+      case 'taskNotifications': return 'Notifications';
+      case 'taskAutomation': return 'Automation Rules';
+      case 'taskReports': return 'Task Reports';
+      case 'taskConfiguration': return 'Task Configuration';
+      case 'taskAudit': return 'Task Audit Trail';
+      case 'taskOKR': return 'OKRs & Strategy';
+      case 'taskInitiatives': return 'Initiatives';
+      case 'taskRoles': return 'Roles & Access';
+      case 'taskManagement': return 'Tasks';
+
       default: return 'PBooks Pro';
     }
   };
@@ -570,6 +600,7 @@ const App: React.FC = () => {
               {renderPersistentPage('PROJECT', <ProjectManagementPage initialPage={currentPage} />)}
               {renderPersistentPage('INVESTMENT', <InvestmentManagementPage />)}
               {renderPersistentPage('PM_CONFIG', <PMConfigPage />)}
+              {renderPersistentPage('TASKS', <TaskModuleRouter currentPage={currentPage} />)}
               {renderPersistentPage('BIZ_PLANET', <BizPlanetPage />)}
               {renderPersistentPage('PAYROLL', <PayrollHub />)}
               {renderPersistentPage('POS_SALES', <POSSalesPage />)}
@@ -578,21 +609,8 @@ const App: React.FC = () => {
               {renderPersistentPage('LOYALTY', <LoyaltyPage />)}
               {renderPersistentPage('MULTI_STORE', <MultiStorePage />)}
               {renderPersistentPage('BI_DASHBOARDS', <BIDashboardsPage />)}
-              {currentPage === 'tasks' && (
-                <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-center"><div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-2"></div><p className="text-sm text-gray-600">Loading...</p></div></div>}>
-                  <TasksPage />
-                </Suspense>
-              )}
-              {currentPage === 'tasksCalendar' && (
-                <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-center"><div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-2"></div><p className="text-sm text-gray-600">Loading...</p></div></div>}>
-                  <TasksCalendarView />
-                </Suspense>
-              )}
-              {currentPage === 'teamRanking' && (
-                <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-center"><div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-2"></div><p className="text-sm text-gray-600">Loading...</p></div></div>}>
-                  <TeamRankingPage />
-                </Suspense>
-              )}
+              {renderPersistentPage('PROCUREMENT', <ProcurementPage />)}
+
               {renderPersistentPage('SETTINGS', <SettingsPage />)}
               {renderPersistentPage('IMPORT', <ImportExportWizard />)}
             </ErrorBoundary>

@@ -100,6 +100,7 @@ import appInfoRouter from './routes/app-info.js';
 import whatsappRouter from './routes/whatsapp.js';
 import whatsappWebhookRouter from './routes/whatsapp-webhook.js';
 import tasksRouter from './routes/tasks.js';
+
 import suppliersRouter from './routes/suppliers.js';
 import purchaseOrdersRouter from './routes/purchaseOrders.js';
 import p2pInvoicesRouter from './routes/p2pInvoices.js';
@@ -689,7 +690,7 @@ app.use('/api/pm-cycle-allocations', pmCycleAllocationsRouter); // PM Cycle Allo
 app.use('/api/data-management', dataManagementRouter); // Data Management (Admin only)
 app.use('/api/data-import-export', dataImportExportRouter); // Data Import/Export
 app.use('/api/whatsapp', whatsappRouter); // WhatsApp API (requires authentication)
-app.use('/api/tasks', tasksRouter); // Task Management (requires authentication)
+
 app.use('/api/suppliers', suppliersRouter); // Supplier Management (requires authentication)
 app.use('/api/purchase-orders', purchaseOrdersRouter); // Purchase Orders (requires authentication)
 app.use('/api/p2p-invoices', p2pInvoicesRouter); // P2P Invoices (requires authentication)
@@ -699,6 +700,7 @@ app.use('/api/marketplace', marketplaceRouter); // Biz Planet Marketplace (brows
 app.use('/api/payroll', payrollRouter); // Payroll Management (requires authentication)
 app.use('/api/shop', shopRouter);
 app.use('/api/analytics', analyticsRouter);
+app.use('/api/tasks', tasksRouter);
 app.use('/api/state', stateChangesRouter); // Incremental sync: GET /api/state/changes?since=ISO8601 
 
 // Error handling middleware

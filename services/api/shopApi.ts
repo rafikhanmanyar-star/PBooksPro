@@ -22,6 +22,7 @@ export interface ShopProduct {
 
 export const shopApi = {
     getBranches: () => apiClient.get<ShopBranch[]>('/shop/branches'),
+    getWarehouses: () => apiClient.get<any[]>('/shop/warehouses'),
     getProducts: () => apiClient.get<ShopProduct[]>('/shop/products'),
     getInventory: () => apiClient.get<any[]>('/shop/inventory'),
     adjustInventory: (data: any) => apiClient.post('/shop/inventory/adjust', data),

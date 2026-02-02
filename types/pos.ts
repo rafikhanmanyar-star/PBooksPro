@@ -91,7 +91,7 @@ export interface POSCustomer {
     points: number;
     creditLimit: number;
     balance: number;
-    tier: 'Standard' | 'Silver' | 'Gold' | 'VIP';
+    tier: 'Standard' | 'Silver' | 'Gold' | 'Platinum' | 'VIP';
 }
 
 export interface POSSessionState {

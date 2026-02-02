@@ -201,17 +201,24 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 ]
             },
             {
-                title: 'Tasks',
-                items: [
-                    { page: 'tasks', label: 'My Tasks', icon: ICONS.checkSquare },
-                    { page: 'tasksCalendar', label: 'Calendar', icon: ICONS.calendar },
-                    ...(isAdmin ? [{ page: 'teamRanking', label: 'Team Ranking', icon: ICONS.trophy }] : []),
-                ]
-            },
-            {
                 title: 'People',
                 items: [
                     { page: 'payroll', label: 'Payroll', icon: ICONS.users },
+                ]
+            },
+            {
+                title: 'Tasks',
+                items: [
+                    { page: 'tasks', label: 'Overview', icon: ICONS.home },
+                    { page: 'taskOKR', label: 'OKRs & Strategy', icon: ICONS.target },
+                    { page: 'taskInitiatives', label: 'Initiatives', icon: ICONS.briefcase },
+                    { page: 'taskManagement', label: 'Tasks', icon: ICONS.checkSquare },
+                    { page: 'taskAssignment', label: 'Assignments', icon: ICONS.users },
+                    { page: 'taskWorkflow', label: 'Workflow', icon: ICONS.trendingUp },
+                    { page: 'taskExecution', label: 'Execution', icon: ICONS.activity },
+                    { page: 'taskKPIs', label: 'KPIs & Progress', icon: ICONS.barChart },
+                    { page: 'taskNotifications', label: 'Notifications', icon: ICONS.bell },
+                    { page: 'taskRoles', label: 'Roles & Access', icon: ICONS.shield },
                 ]
             },
             {
@@ -225,6 +232,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 items: [
                     { page: 'posSales', label: 'POS Sales', icon: ICONS.shoppingCart },
                     { page: 'inventory', label: 'Inventory', icon: ICONS.package },
+                    { page: 'procurement', label: 'Procurement', icon: ICONS.archive },
                     { page: 'accounting', label: 'Accounting', icon: ICONS.fileText },
                     { page: 'loyalty', label: 'Loyalty', icon: ICONS.heart },
                     { page: 'multiStore', label: 'Multi-store', icon: ICONS.grid },

@@ -3,9 +3,12 @@ import React from 'react';
 import { useBI } from '../../../context/BIContext';
 import { ICONS, CURRENCY } from '../../../constants';
 import Card from '../../ui/Card';
+import InventoryAuditWizard from './InventoryAuditWizard';
 
 const InventoryIntelligence: React.FC = () => {
     const { categoryPerformance } = useBI();
+
+    const [isAuditWizardOpen, setIsAuditWizardOpen] = React.useState(false);
 
     return (
         <div className="space-y-8 animate-in zoom-in duration-700">
@@ -77,13 +80,22 @@ const InventoryIntelligence: React.FC = () => {
                             <p className="text-[10px] text-rose-700 mt-1">No Sale in 120 Days</p>
                         </div>
                     </div>
-                    <button className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl hover:bg-black transition-all">
+                    <button
+                        onClick={() => setIsAuditWizardOpen(true)}
+                        className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl hover:bg-black transition-all"
+                    >
                         Inventory Audit Wizard
                     </button>
                 </Card>
             </div>
+
+            <InventoryAuditWizard
+                isOpen={isAuditWizardOpen}
+                onClose={() => setIsAuditWizardOpen(false)}
+            />
         </div>
     );
+
 };
 
 export default InventoryIntelligence;

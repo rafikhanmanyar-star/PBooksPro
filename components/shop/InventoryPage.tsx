@@ -174,11 +174,7 @@ const InventoryContent: React.FC = () => {
 };
 
 const InventoryPage: React.FC = () => {
-    return (
-        <InventoryProvider>
-            <InventoryContent />
-        </InventoryProvider>
-    );
+    return <InventoryContent />;
 };
 
 export default InventoryPage;

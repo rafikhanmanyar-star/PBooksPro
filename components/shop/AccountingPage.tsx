@@ -273,11 +273,7 @@ const AccountingContent: React.FC = () => {
 };
 
 const AccountingPage: React.FC = () => {
-    return (
-        <AccountingProvider>
-            <AccountingContent />
-        </AccountingProvider>
-    );
+    return <AccountingContent />;
 };
 
 export default AccountingPage;
