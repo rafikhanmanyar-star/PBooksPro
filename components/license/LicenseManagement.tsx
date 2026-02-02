@@ -92,7 +92,13 @@ const LicenseManagement: React.FC = () => {
     }
   };
 
-  const [activeTab, setActiveTab] = useState<'status' | 'offers'>(licenseInfo.isExpired ? 'offers' : 'status');
+  const [activeTab, setActiveTab] = useState<'status' | 'offers'>('status');
+
+  useEffect(() => {
+    if (licenseInfo?.isExpired) {
+      setActiveTab('offers');
+    }
+  }, [licenseInfo?.isExpired]);
 
   const handleRenewalSuccess = () => {
     setShowPaymentModal(false);
@@ -321,8 +327,8 @@ const LicenseManagement: React.FC = () => {
 
                           <button
                             className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 ${isOwned
-                                ? 'bg-slate-100 text-slate-300 cursor-default'
-                                : 'bg-slate-900 text-white hover:bg-indigo-600 hover:-translate-y-1 active:translate-y-0 shadow-lg shadow-slate-200 hover:shadow-indigo-200'
+                              ? 'bg-slate-100 text-slate-300 cursor-default'
+                              : 'bg-slate-900 text-white hover:bg-indigo-600 hover:-translate-y-1 active:translate-y-0 shadow-lg shadow-slate-200 hover:shadow-indigo-200'
                               }`}
                             onClick={() => {
                               if (!isOwned) {
