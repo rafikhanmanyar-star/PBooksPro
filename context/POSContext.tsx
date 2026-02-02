@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import {
     POSCartItem,
@@ -12,6 +11,7 @@ import {
 } from '../types/pos';
 import { shopApi } from '../services/api/shopApi';
 import { ContactsApiRepository } from '../services/api/repositories/contactsApi';
+import { CURRENCY } from '../constants';
 
 
 interface POSContextType {
@@ -39,9 +39,16 @@ interface POSContextType {
     grandTotal: number;
     totalPaid: number;
     balanceDue: number;
+    changeDue: number;
 
     isPaymentModalOpen: boolean;
     setIsPaymentModalOpen: (isOpen: boolean) => void;
+
+    isHeldSalesModalOpen: boolean;
+    setIsHeldSalesModalOpen: (isOpen: boolean) => void;
+
+    isCustomerModalOpen: boolean;
+    setIsCustomerModalOpen: (isOpen: boolean) => void;
 
     searchQuery: string;
     setSearchQuery: (query: string) => void;
@@ -57,6 +64,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const [payments, setPayments] = useState<POSPayment[]>([]);
     const [heldSales, setHeldSales] = useState<POSHeldSale[]>([]);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+    const [isHeldSalesModalOpen, setIsHeldSalesModalOpen] = useState(false);
+    const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
     // Totals Calculation
@@ -67,8 +76,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const grandTotal = subtotal - discountTotal + taxTotal;
         const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
         const balanceDue = Math.max(0, grandTotal - totalPaid);
+        const changeDue = Math.max(0, totalPaid - grandTotal); // Refund/change amount
 
-        return { subtotal, taxTotal, discountTotal, grandTotal, totalPaid, balanceDue };
+        return { subtotal, taxTotal, discountTotal, grandTotal, totalPaid, balanceDue, changeDue };
     }, [cart, payments]);
 
     const addToCart = useCallback((product: POSProduct, variant?: POSProductVariant, quantity: number = 1) => {
@@ -214,6 +224,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 taxTotal: totals.taxTotal,
                 discountTotal: totals.discountTotal,
                 grandTotal: totals.grandTotal,
+                totalPaid: totals.totalPaid,
+                changeDue: totals.changeDue,
                 paymentMethod: payments.length > 1 ? 'Multiple' : payments[0]?.method || 'Cash',
                 paymentDetails: payments,
                 items: cart.map(item => ({
@@ -230,7 +242,13 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             clearCart();
             setIsPaymentModalOpen(false);
-            alert('Sale completed successfully and synced to backend!');
+
+            // Show success message with change due if applicable
+            if (totals.changeDue > 0) {
+                alert(`Sale completed!\n\nChange to return: ${CURRENCY} ${totals.changeDue.toLocaleString()}`);
+            } else {
+                alert('Sale completed successfully and synced to backend!');
+            }
         } catch (error: any) {
             console.error('Failed to complete sale:', error);
             alert('Error completing sale: ' + (error.message || 'Unknown error'));
@@ -272,6 +290,10 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...totals,
         isPaymentModalOpen,
         setIsPaymentModalOpen,
+        isHeldSalesModalOpen,
+        setIsHeldSalesModalOpen,
+        isCustomerModalOpen,
+        setIsCustomerModalOpen,
         searchQuery,
         setSearchQuery,
         completeSale

@@ -11,6 +11,7 @@ const PaymentModal: React.FC = () => {
         setIsPaymentModalOpen,
         grandTotal,
         balanceDue,
+        changeDue,
         addPayment,
         payments,
         removePayment,
@@ -142,13 +143,31 @@ const PaymentModal: React.FC = () => {
                     </div>
 
                     <div className="mt-8 space-y-4">
-                        <div className="bg-white p-4 rounded-xl border-2 border-slate-100 space-y-1">
+                        <div className="bg-white p-4 rounded-xl border-2 border-slate-100 space-y-3">
                             <div className="flex justify-between items-center">
                                 <span className="text-[10px] font-black uppercase text-slate-400">Balance Due</span>
                                 <span className={`text-2xl font-black font-mono ${balanceDue > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
                                     {balanceDue.toLocaleString()}
                                 </span>
                             </div>
+
+                            {changeDue > 0 && (
+                                <>
+                                    <div className="h-px bg-gradient-to-r from-transparent via-amber-200 to-transparent"></div>
+                                    <div className="flex justify-between items-center bg-gradient-to-r from-amber-50 to-orange-50 -mx-4 -mb-4 px-4 py-4 rounded-b-xl border-t-2 border-amber-200">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] font-black uppercase text-amber-600 tracking-widest">Change to Return</span>
+                                            <span className="text-[8px] uppercase text-amber-500 tracking-wider">Customer Refund</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></div>
+                                            <span className="text-3xl font-black font-mono text-amber-600">
+                                                {CURRENCY} {changeDue.toLocaleString()}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
                         </div>
 
                         <button

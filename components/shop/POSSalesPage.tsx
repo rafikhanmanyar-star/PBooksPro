@@ -8,30 +8,56 @@ import CartGrid from './pos/CartGrid';
 import CheckoutPanel from './pos/CheckoutPanel';
 import ShortcutBar from './pos/ShortcutBar';
 import PaymentModal from './pos/PaymentModal';
+import HeldSalesModal from './pos/HeldSalesModal';
+import CustomerSelectionModal from './pos/CustomerSelectionModal';
 
 const POSSalesContent: React.FC = () => {
-    const { setIsPaymentModalOpen, holdSale, clearCart } = usePOS();
+    const {
+        isPaymentModalOpen,
+        setIsPaymentModalOpen,
+        isHeldSalesModalOpen,
+        setIsHeldSalesModalOpen,
+        isCustomerModalOpen,
+        setIsCustomerModalOpen,
+        holdSale,
+        clearCart,
+        completeSale,
+        balanceDue
+    } = usePOS();
     const mainRef = useRef<HTMLDivElement>(null);
 
     // Global keyboard shortcuts
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Prevent default for F-keys
+            // Prevent default for F-keys and others we use
             if (e.key.startsWith('F')) {
                 e.preventDefault();
             }
 
             switch (e.key) {
                 case 'F1': clearCart(); break;
-                case 'F2': holdSale('Quick Hold'); break;
-                case 'F8': setIsPaymentModalOpen(true); break;
+                case 'F2': holdSale(`Hold-${new Date().toLocaleTimeString()}`); break;
+                case 'F3': setIsHeldSalesModalOpen(!isHeldSalesModalOpen); break;
+                case 'F4': // Search focus is handled by ProductSearch autoFocus or ref
+                    const searchInput = document.getElementById('pos-product-search');
+                    if (searchInput) searchInput.focus();
+                    break;
+                case 'F6': setIsCustomerModalOpen(!isCustomerModalOpen); break;
+                case 'F8': setIsPaymentModalOpen(!isPaymentModalOpen); break;
+                case 'F12':
+                    if (balanceDue <= 0) {
+                        completeSale();
+                    } else {
+                        setIsPaymentModalOpen(true);
+                    }
+                    break;
                 // Add more as needed
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [clearCart, holdSale, setIsPaymentModalOpen]);
+    }, [clearCart, holdSale, setIsPaymentModalOpen, setIsHeldSalesModalOpen, setIsCustomerModalOpen, completeSale, balanceDue]);
 
     return (
         <div className="flex flex-col h-full bg-slate-100 -m-4 md:-m-8 overflow-hidden font-sans select-none" ref={mainRef}>
@@ -60,6 +86,11 @@ const POSSalesContent: React.FC = () => {
 
             {/* Modals */}
             <PaymentModal />
+            <HeldSalesModal />
+            <CustomerSelectionModal
+                isOpen={usePOS().isCustomerModalOpen}
+                onClose={() => usePOS().setIsCustomerModalOpen(false)}
+            />
         </div>
     );
 };

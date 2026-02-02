@@ -14,6 +14,8 @@ export interface ShopSale {
     taxTotal: number;
     discountTotal: number;
     grandTotal: number;
+    totalPaid: number;
+    changeDue: number;
     paymentMethod: string;
     paymentDetails: any;
     items: ShopSaleItem[];
@@ -253,14 +255,16 @@ export class ShopService {
                 INSERT INTO shop_sales (
                     tenant_id, branch_id, terminal_id, user_id, customer_id, 
                     loyalty_member_id, sale_number, subtotal, tax_total, 
-                    discount_total, grand_total, payment_method, payment_details
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                    discount_total, grand_total, total_paid, change_due,
+                    payment_method, payment_details
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
                 RETURNING id
             `, [
                 tenantId, saleData.branchId, saleData.terminalId, saleData.userId,
                 saleData.customerId, saleData.loyaltyMemberId, saleData.saleNumber,
                 saleData.subtotal, saleData.taxTotal, saleData.discountTotal,
-                saleData.grandTotal, saleData.paymentMethod, JSON.stringify(saleData.paymentDetails)
+                saleData.grandTotal, saleData.totalPaid, saleData.changeDue,
+                saleData.paymentMethod, JSON.stringify(saleData.paymentDetails)
             ]);
 
             const saleId = saleRes.rows[0].id;

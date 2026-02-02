@@ -4,16 +4,40 @@ import { usePOS } from '../../../context/POSContext';
 import { ICONS } from '../../../constants';
 
 const ShortcutBar: React.FC = () => {
-    const { clearCart, holdSale, setIsPaymentModalOpen } = usePOS();
+    const {
+        clearCart,
+        holdSale,
+        setIsPaymentModalOpen,
+        setIsHeldSalesModalOpen,
+        setIsCustomerModalOpen,
+        balanceDue,
+        completeSale,
+        isPaymentModalOpen,
+        isHeldSalesModalOpen,
+        isCustomerModalOpen
+    } = usePOS();
 
     const shortcuts = [
         { key: 'F1', label: 'New', action: clearCart },
-        { key: 'F2', label: 'Hold', action: () => holdSale('Manual Hold') },
-        { key: 'F3', label: 'Recall', action: () => { } },
-        { key: 'F4', label: 'Search', action: () => { } },
-        { key: 'F6', label: 'Customer', action: () => { } },
-        { key: 'F8', label: 'Payment', action: () => setIsPaymentModalOpen(true) },
-        { key: 'F12', label: 'Finish', action: () => { } },
+        { key: 'F2', label: 'Hold', action: () => holdSale(`Hold-${new Date().toLocaleTimeString()}`) },
+        { key: 'F3', label: 'Recall', action: () => setIsHeldSalesModalOpen(!isHeldSalesModalOpen) },
+        {
+            key: 'F4', label: 'Search', action: () => {
+                const searchInput = document.getElementById('pos-product-search');
+                if (searchInput) searchInput.focus();
+            }
+        },
+        { key: 'F6', label: 'Customer', action: () => setIsCustomerModalOpen(!isCustomerModalOpen) },
+        { key: 'F8', label: 'Payment', action: () => setIsPaymentModalOpen(!isPaymentModalOpen) },
+        {
+            key: 'F12', label: 'Finish', action: () => {
+                if (balanceDue <= 0) {
+                    completeSale();
+                } else {
+                    setIsPaymentModalOpen(true);
+                }
+            }
+        },
     ];
 
     return (

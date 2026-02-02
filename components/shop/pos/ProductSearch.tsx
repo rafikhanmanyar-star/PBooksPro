@@ -110,6 +110,7 @@ const ProductSearch: React.FC = () => {
                     </div>
                     <input
                         ref={searchInputRef}
+                        id="pos-product-search"
                         type="text"
                         className="block w-full pl-10 pr-3 py-3 border border-slate-200 rounded-xl leading-5 bg-slate-100 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-all shadow-inner"
                         placeholder="Scan Barcode or Search (F4)..."
