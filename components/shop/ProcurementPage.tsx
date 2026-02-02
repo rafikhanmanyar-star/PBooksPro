@@ -19,6 +19,12 @@ const ProcurementContent: React.FC = () => {
     const { items, warehouses, updateStock, addItem } = useInventory();
     const { accounts, postJournalEntry } = useAccounting();
 
+    // 🔍 DEBUG: Check if warehouses are loaded
+    React.useEffect(() => {
+        console.log('📦 [ProcurementPage] Warehouses loaded:', warehouses);
+        console.log('📦 [ProcurementPage] Warehouses count:', warehouses?.length || 0);
+    }, [warehouses]);
+
     const billsApi = useMemo(() => new BillsApiRepository(), []);
     const contactsApi = useMemo(() => new ContactsApiRepository(), []);
 

@@ -38,11 +38,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     React.useEffect(() => {
         const fetchData = async () => {
             try {
+                console.log('🔄 [InventoryContext] Fetching warehouses, products, and inventory...');
                 const [warehousesList, products, inventory] = await Promise.all([
                     shopApi.getWarehouses(),
                     shopApi.getProducts(),
                     shopApi.getInventory()
                 ]);
+
+                console.log('📦 [InventoryContext] Raw warehouses from API:', warehousesList);
+                console.log('📦 [InventoryContext] Warehouses count:', warehousesList?.length || 0);
 
                 // Map Warehouses
                 const whs: Warehouse[] = warehousesList.map((w: any) => ({
@@ -52,6 +56,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                     location: w.location || 'Main'
                 }));
                 setWarehouses(whs);
+                console.log('✅ [InventoryContext] Warehouses set in state:', whs);
 
                 // Aggregate Stock
                 const stockMap: Record<string, { total: number, reserved: number, byWh: Record<string, number> }> = {};

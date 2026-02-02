@@ -38,14 +38,19 @@ export class ShopService {
 
     // --- Warehouse Methods ---
     async getWarehouses(tenantId: string) {
+        console.log(`[ShopService] Fetching warehouses for tenant: ${tenantId}`);
         const warehouses = await this.db.query('SELECT * FROM shop_warehouses WHERE tenant_id = $1 ORDER BY name ASC', [tenantId]);
         const branches = await this.db.query('SELECT * FROM shop_branches WHERE tenant_id = $1', [tenantId]);
 
+        console.log(`[ShopService] Found ${warehouses.length} warehouses and ${branches.length} branches`);
+
         // If mismatch, ensure every branch has at least one warehouse with same ID (to support legacy logic)
         if (warehouses.length < branches.length) {
+            console.log(`[ShopService] Creating missing warehouses from branches...`);
             for (const branch of branches) {
                 const hasWh = warehouses.some((w: any) => w.id === branch.id);
                 if (!hasWh) {
+                    console.log(`[ShopService] Creating warehouse for branch: ${branch.name}`);
                     await this.db.query(`
                         INSERT INTO shop_warehouses (id, tenant_id, name, code, location)
                         VALUES ($1, $2, $3, $4, $5)
@@ -54,9 +59,24 @@ export class ShopService {
                 }
             }
             // Re-fetch after fixing
-            return this.db.query('SELECT * FROM shop_warehouses WHERE tenant_id = $1 ORDER BY name ASC', [tenantId]);
+            const refreshed = await this.db.query('SELECT * FROM shop_warehouses WHERE tenant_id = $1 ORDER BY name ASC', [tenantId]);
+            console.log(`[ShopService] After sync, total warehouses: ${refreshed.length}`);
+            return refreshed;
         }
 
+        // 🔥 FIX: If no warehouses exist at all, create a default one
+        if (warehouses.length === 0) {
+            console.log(`[ShopService] ⚠️ No warehouses found! Creating default warehouse...`);
+            const defaultWarehouse = await this.db.query(`
+                INSERT INTO shop_warehouses (tenant_id, name, code, location, is_active)
+                VALUES ($1, 'Main Warehouse', 'WH-MAIN', 'Head Office', TRUE)
+                RETURNING *
+            `, [tenantId]);
+            console.log(`[ShopService] ✅ Default warehouse created:`, defaultWarehouse[0]);
+            return defaultWarehouse;
+        }
+
+        console.log(`[ShopService] Returning ${warehouses.length} warehouses`);
         return warehouses;
     }
 
