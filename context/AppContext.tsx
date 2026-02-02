@@ -3059,6 +3059,80 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     } as any);
                 }));
 
+                // Contact events - immediate updates for real-time sync (including creator's own events)
+                unsubSpecific.push(ws.on('contact:created', (data: any) => {
+                    // DO NOT skip creator's events - they need to see their own contacts
+                    const payloadContact = data?.contact ?? data;
+                    if (!payloadContact || !payloadContact.id) return;
+
+                    // Check if contact already exists (prevent duplicates)
+                    const exists = stateRef.current.contacts.some(c => c.id === payloadContact.id);
+                    if (exists) return;
+
+                    // Normalize contact data (snake_case -> camelCase)
+                    const normalized = {
+                        id: payloadContact.id,
+                        name: payloadContact.name,
+                        type: payloadContact.type,
+                        contactNo: payloadContact.contact_no ?? payloadContact.contactNo ?? undefined,
+                        companyName: payloadContact.company_name ?? payloadContact.companyName ?? undefined,
+                        address: payloadContact.address ?? undefined,
+                        description: payloadContact.description ?? undefined,
+                        userId: payloadContact.user_id ?? payloadContact.userId ?? undefined,
+                        createdAt: payloadContact.created_at ?? payloadContact.createdAt ?? new Date().toISOString(),
+                        updatedAt: payloadContact.updated_at ?? payloadContact.updatedAt ?? new Date().toISOString()
+                    };
+
+                    dispatch({
+                        type: 'ADD_CONTACT',
+                        payload: normalized,
+                        _isRemote: true
+                    } as any);
+                }));
+
+                unsubSpecific.push(ws.on('contact:updated', (data: any) => {
+                    // DO NOT skip creator's events
+                    const payloadContact = data?.contact ?? data;
+                    if (!payloadContact || !payloadContact.id) return;
+
+                    const existing = stateRef.current.contacts.find(c => c.id === payloadContact.id);
+
+                    // Normalize and merge with existing data (snake_case -> camelCase)
+                    const normalized = {
+                        id: payloadContact.id,
+                        name: payloadContact.name,
+                        type: payloadContact.type,
+                        contactNo: payloadContact.contact_no ?? payloadContact.contactNo ?? undefined,
+                        companyName: payloadContact.company_name ?? payloadContact.companyName ?? undefined,
+                        address: payloadContact.address ?? undefined,
+                        description: payloadContact.description ?? undefined,
+                        userId: payloadContact.user_id ?? payloadContact.userId ?? undefined,
+                        createdAt: payloadContact.created_at ?? payloadContact.createdAt ?? existing?.createdAt ?? new Date().toISOString(),
+                        updatedAt: payloadContact.updated_at ?? payloadContact.updatedAt ?? new Date().toISOString()
+                    };
+
+                    const merged = existing ? { ...existing, ...normalized } : normalized;
+
+                    dispatch({
+                        type: existing ? 'UPDATE_CONTACT' : 'ADD_CONTACT',
+                        payload: merged,
+                        _isRemote: true
+                    } as any);
+                }));
+
+                unsubSpecific.push(ws.on('contact:deleted', (data: any) => {
+                    // DO NOT skip creator's events
+                    const id = data?.contactId ?? data?.id;
+                    if (!id) return;
+
+                    dispatch({
+                        type: 'DELETE_CONTACT',
+                        payload: id,
+                        _isRemote: true
+                    } as any);
+                }));
+
+
                 cleanup = () => {
                     unsubFallback.forEach(unsub => unsub());
                     unsubSpecific.forEach(unsub => unsub());
