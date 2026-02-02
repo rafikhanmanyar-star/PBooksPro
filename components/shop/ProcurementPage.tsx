@@ -700,7 +700,13 @@ const ProcurementContent: React.FC = () => {
 };
 
 const ProcurementPage: React.FC = () => {
-    return <ProcurementContent />;
+    return (
+        <InventoryProvider>
+            <AccountingProvider>
+                <ProcurementContent />
+            </AccountingProvider>
+        </InventoryProvider>
+    );
 };
 
 export default ProcurementPage;
