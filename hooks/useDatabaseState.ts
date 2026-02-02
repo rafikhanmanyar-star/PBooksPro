@@ -45,7 +45,7 @@ let initializationPromise: Promise<void> | null = null;
 
 async function ensureDatabaseInitialized(): Promise<void> {
     if (dbInitialized) return;
-    
+
     if (initializationPromise) {
         return initializationPromise;
     }
@@ -53,11 +53,11 @@ async function ensureDatabaseInitialized(): Promise<void> {
     initializationPromise = (async () => {
         try {
             console.log('[useDatabaseState] Getting database service...');
-            
+
             // Initialize unified service first
             const unifiedService = getUnifiedDatabaseService();
             await unifiedService.initialize();
-            
+
             // For desktop, also initialize local SQLite
             if (!isMobileDevice()) {
                 const dbService = getDatabaseService();
@@ -67,7 +67,7 @@ async function ensureDatabaseInitialized(): Promise<void> {
             } else {
                 console.log('[useDatabaseState] Mobile platform: Using API repositories only');
             }
-            
+
             dbInitialized = true;
         } catch (error) {
             console.error('❌ [useDatabaseState] Database initialization failed:', error);
@@ -92,6 +92,7 @@ export function useDatabaseState<T extends AppState>(
     const [isLoading, setIsLoading] = useState(true); // Start as true to indicate loading
     const saveTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
     const pendingSaveRef = React.useRef<T | null>(null);
+    const hasModifiedRef = React.useRef(false);
 
     // Load initial state from database
     useEffect(() => {
@@ -101,7 +102,7 @@ export function useDatabaseState<T extends AppState>(
         const loadState = async () => {
             try {
                 setIsLoading(true);
-                
+
                 // Add timeout to prevent infinite loading
                 timeoutId = setTimeout(() => {
                     if (isMounted) {
@@ -123,7 +124,7 @@ export function useDatabaseState<T extends AppState>(
                     }
                     return;
                 }
-                
+
                 if (!isMounted) {
                     if (timeoutId) clearTimeout(timeoutId);
                     return;
@@ -132,44 +133,55 @@ export function useDatabaseState<T extends AppState>(
                 try {
                     const appStateRepo = await getAppStateRepository();
                     const state = await appStateRepo.loadState();
-                    
+
                     if (isMounted && timeoutId) {
-                        clearTimeout(timeoutId);
-                        // Always use loaded state from database (it's the source of truth)
-                        // The database will have the initial state if it's a fresh install
-                        console.log('✅ Loaded state from database:', {
-                            users: state.users.length,
-                            accounts: state.accounts.length,
-                            transactions: state.transactions.length,
-                            invoices: state.invoices.length,
-                            contacts: state.contacts.length
-                        });
-                        setStoredValue(state as T);
-                        setIsLoading(false);
+                        if (timeoutId) clearTimeout(timeoutId);
+
+                        // Only update if the state hasn't been modified by the user in the meantime
+                        if (!hasModifiedRef.current) {
+                            // Always use loaded state from database (it's the source of truth)
+                            // The database will have the initial state if it's a fresh install
+                            console.log('✅ Loaded state from database:', {
+                                users: state.users.length,
+                                accounts: state.accounts.length,
+                                transactions: state.transactions.length,
+                                invoices: state.invoices.length,
+                                contacts: state.contacts.length
+                            });
+                            setStoredValue(state as T);
+                            setIsLoading(false);
+                        } else {
+                            console.log('⚠️ Database loaded but state was already modified by user - preserving user changes');
+                            setIsLoading(false);
+                        }
                     }
                 } catch (loadError) {
                     console.error('❌ Failed to load state from database, using initial state:', loadError);
                     // Use initial state if load fails
                     if (isMounted && timeoutId) {
                         clearTimeout(timeoutId);
-                        setStoredValue(initialValue);
+                        if (!hasModifiedRef.current) {
+                            setStoredValue(initialValue);
+                        }
                         setIsLoading(false);
                     }
                 }
             } catch (error) {
                 console.error('❌ Unexpected error in loadState:', error);
-                
+
                 // Log error (but don't block)
                 import('../services/errorLogger').then(({ getErrorLogger }) => {
                     getErrorLogger().logError(error instanceof Error ? error : new Error(String(error)), {
                         errorType: 'database_load',
                         componentStack: 'useDatabaseState hook'
                     });
-                }).catch(() => {});
-                
+                }).catch(() => { });
+
                 if (isMounted && timeoutId) {
                     clearTimeout(timeoutId);
-                    setStoredValue(initialValue);
+                    if (!hasModifiedRef.current) {
+                        setStoredValue(initialValue);
+                    }
                     setIsLoading(false);
                 }
             }
@@ -189,7 +201,8 @@ export function useDatabaseState<T extends AppState>(
         try {
             const valueToStore = value instanceof Function ? value(storedValue) : value;
             setStoredValue(valueToStore);
-            
+            hasModifiedRef.current = true;
+
             // Store pending save
             pendingSaveRef.current = valueToStore;
 
@@ -202,7 +215,7 @@ export function useDatabaseState<T extends AppState>(
             saveTimeoutRef.current = setTimeout(async () => {
                 const valueToSave = pendingSaveRef.current;
                 if (!valueToSave) return;
-                
+
                 try {
                     try {
                         await ensureDatabaseInitialized();
@@ -210,14 +223,14 @@ export function useDatabaseState<T extends AppState>(
                         console.warn('⚠️ Database not available for save, state will be lost on reload:', initError);
                         return; // Don't try to save if database isn't available
                     }
-                    
+
                     const appStateRepo = await getAppStateRepository();
                     await appStateRepo.saveState(valueToSave as AppState);
                     console.log('✅ State saved to database');
                     pendingSaveRef.current = null;
                 } catch (error) {
                     console.error('⚠️ Failed to save state to database:', error);
-                    
+
                     // Log error but don't throw
                     try {
                         const { getErrorLogger } = await import('../services/errorLogger');
@@ -235,12 +248,12 @@ export function useDatabaseState<T extends AppState>(
             console.error('Failed to update state:', error);
         }
     }, [storedValue]);
-    
+
     // Immediate save function (for critical operations)
     const saveImmediately = useCallback(async () => {
         const valueToSave = pendingSaveRef.current || storedValue;
         if (!valueToSave) return;
-        
+
         try {
             await ensureDatabaseInitialized();
             const appStateRepo = await getAppStateRepository();
@@ -259,14 +272,14 @@ export function useDatabaseState<T extends AppState>(
             if (saveTimeoutRef.current) {
                 clearTimeout(saveTimeoutRef.current);
             }
-            
+
             // Save immediately on unmount (only if not already saving)
             if (!isLoading && !pendingSaveRef.current) {
                 const valueToSave = pendingSaveRef.current || storedValue;
                 if (valueToSave && valueToSave !== initialValue) {
                     // Mark as saving to prevent multiple unmount saves
                     pendingSaveRef.current = valueToSave;
-                    
+
                     ensureDatabaseInitialized()
                         .then(async () => {
                             const appStateRepo = await getAppStateRepository();
@@ -291,7 +304,7 @@ export function useDatabaseState<T extends AppState>(
             }
         };
     }, [storedValue, isLoading, initialValue]);
-    
+
     // Add window unload handler to save state before page closes
     useEffect(() => {
         const handleBeforeUnload = () => {
@@ -315,10 +328,10 @@ export function useDatabaseState<T extends AppState>(
                 }
             }
         };
-        
+
         window.addEventListener('beforeunload', handleBeforeUnload);
         window.addEventListener('pagehide', handleBeforeUnload);
-        
+
         return () => {
             window.removeEventListener('beforeunload', handleBeforeUnload);
             window.removeEventListener('pagehide', handleBeforeUnload);

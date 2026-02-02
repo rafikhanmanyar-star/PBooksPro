@@ -1499,6 +1499,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const reducerWithPersistence = useCallback((state: AppState, action: AppAction) => {
         const newState = reducer(state, action);
 
+        // Optimization: If state didn't change (e.g. duplicate add), do nothing (no sync, no persistence)
+        if (newState === state) {
+            return newState;
+        }
+
         // Sync to API if authenticated (cloud mode)
         // IMPORTANT: Only organization data is synced, not user-specific preferences
         if (isAuthenticated && !(action as any)._isRemote) {

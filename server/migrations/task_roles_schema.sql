@@ -78,18 +78,22 @@ ALTER TABLE task_role_audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- Create Policies
 -- Roles (Viewable by all in tenant, editable by Admin)
+DROP POLICY IF EXISTS tenant_isolation_task_roles ON task_roles;
 CREATE POLICY tenant_isolation_task_roles ON task_roles FOR ALL USING (tenant_id = current_setting('app.current_tenant_id', true));
 
 -- Role Permissions (Viewable by all)
 -- (No tenant_id on permissions table as they are system-wide usually, but mapping is per role)
+DROP POLICY IF EXISTS role_perm_visibility ON task_role_permissions;
 CREATE POLICY role_perm_visibility ON task_role_permissions FOR SELECT USING (
     EXISTS (SELECT 1 FROM task_roles WHERE id = task_role_permissions.role_id AND tenant_id = current_setting('app.current_tenant_id', true))
 );
 
 -- User Roles
+DROP POLICY IF EXISTS tenant_isolation_task_user_roles ON task_user_roles;
 CREATE POLICY tenant_isolation_task_user_roles ON task_user_roles FOR ALL USING (tenant_id = current_setting('app.current_tenant_id', true));
 
 -- Audit Logs
+DROP POLICY IF EXISTS tenant_isolation_task_role_audit ON task_role_audit_logs;
 CREATE POLICY tenant_isolation_task_role_audit ON task_role_audit_logs FOR ALL USING (tenant_id = current_setting('app.current_tenant_id', true));
 
 COMMIT;
