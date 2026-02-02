@@ -148,47 +148,73 @@ export const LoyaltyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }));
     }, [tiers]);
 
-    const processLoyalty = useCallback((customerId: string, saleAmount: number, saleId: string, isRedemption = false, redeemPoints = 0) => {
-        setMembers(prev => prev.map(member => {
-            if (member.customerId === customerId) {
-                const program = programs[0];
-                let pointsChange = 0;
-                let txType: any = 'Earn';
+    const processLoyalty = useCallback(async (customerId: string, saleAmount: number, saleId: string, isRedemption = false, redeemPoints = 0) => {
+        const member = members.find(m => m.customerId === customerId);
+        if (!member) {
+            console.warn(`[LoyaltyContext] Member not found for customer ${customerId}`);
+            return;
+        }
 
-                if (isRedemption) {
-                    pointsChange = -redeemPoints;
-                    txType = 'Redeem';
-                } else {
-                    const tierMultiplier = tiers.find(t => t.tier === member.tier)?.multiplier || 1;
-                    pointsChange = Math.floor(saleAmount * program.earnRate * tierMultiplier);
-                }
+        const program = programs[0];
+        let pointsChange = 0;
+        let txType: any = 'Earn';
 
-                const transaction: LoyaltyTransaction = {
-                    id: crypto.randomUUID(),
-                    memberId: member.id,
-                    type: txType,
-                    points: Math.abs(pointsChange),
-                    value: isRedemption ? redeemPoints * 0.1 : 0, // Mock conversion
-                    referenceId: saleId,
-                    timestamp: new Date().toISOString()
-                };
+        if (isRedemption) {
+            pointsChange = -redeemPoints;
+            txType = 'Redeem';
+        } else {
+            const tierMultiplier = tiers.find(t => t.tier === member.tier)?.multiplier || 1;
+            pointsChange = Math.floor(saleAmount * program.earnRate * tierMultiplier);
+        }
 
-                setTransactions(txs => [transaction, ...txs]);
+        const transaction: LoyaltyTransaction = {
+            id: crypto.randomUUID(),
+            memberId: member.id,
+            type: txType,
+            points: Math.abs(pointsChange),
+            value: isRedemption ? redeemPoints * 0.1 : 0,
+            referenceId: saleId,
+            timestamp: new Date().toISOString()
+        };
 
-                const newTotalSpend = isRedemption ? member.totalSpend : member.totalSpend + saleAmount;
-                const newPoints = member.pointsBalance + pointsChange;
+        setTransactions(txs => [transaction, ...txs]);
 
-                return {
-                    ...member,
-                    pointsBalance: newPoints,
-                    lifetimePoints: pointsChange > 0 ? member.lifetimePoints + pointsChange : member.lifetimePoints,
-                    totalSpend: newTotalSpend,
-                    visitCount: isRedemption ? member.visitCount : member.visitCount + 1
-                };
-            }
-            return member;
-        }));
-    }, [programs, tiers]);
+        const newTotalSpend = isRedemption ? member.totalSpend : member.totalSpend + saleAmount;
+        const newPoints = member.pointsBalance + pointsChange;
+        const newLifetimePoints = pointsChange > 0 ? member.lifetimePoints + pointsChange : member.lifetimePoints;
+        const newVisitCount = isRedemption ? member.visitCount : member.visitCount + 1;
+
+        // Calculate new tier based on updated total spend
+        const newTier = tiers.reduce((acc, t) => newTotalSpend >= t.threshold ? t.tier : acc, 'Silver' as LoyaltyTier);
+
+        const updatedData = {
+            pointsBalance: newPoints,
+            lifetimePoints: newLifetimePoints,
+            totalSpend: newTotalSpend,
+            visitCount: newVisitCount,
+            tier: newTier
+        };
+
+        try {
+            // 🔥 CRITICAL FIX: Persist to database before updating local state
+            console.log(`[LoyaltyContext] Updating member ${member.id} in database with:`, updatedData);
+            await shopApi.updateLoyaltyMember(member.id, updatedData);
+            console.log(`[LoyaltyContext] ✅ Member ${member.id} updated successfully in database`);
+
+            // Update local state after successful DB update
+            setMembers(prev => prev.map(m =>
+                m.id === member.id ? { ...m, ...updatedData } : m
+            ));
+        } catch (error) {
+            console.error('[LoyaltyContext] ❌ Failed to update member in database:', error);
+            // Still update local state for better UX, but warn user
+            setMembers(prev => prev.map(m =>
+                m.id === member.id ? { ...m, ...updatedData } : m
+            ));
+            // TODO: Add to offline sync queue
+            alert('Warning: Loyalty points updated locally but may not have saved to server. Please check your connection.');
+        }
+    }, [members, programs, tiers]);
 
     const stats = useMemo(() => ({
         totalMembers: members.length,
