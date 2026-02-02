@@ -156,38 +156,40 @@ const LicenseManagement: React.FC = () => {
   return (
     <div className="bg-slate-50 min-h-full">
       {/* Hero Section */}
-      <div className="relative overflow-hidden bg-slate-900 px-6 py-10 text-white rounded-b-[2rem] shadow-xl">
-        <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-0 left-0 translate-y-1/2 -translate-x-1/2 w-64 h-64 bg-purple-500/20 rounded-full blur-3xl"></div>
+      <div className="relative overflow-hidden bg-[#0f172a] px-6 pt-10 pb-16 text-white rounded-b-[2.5rem] shadow-2xl">
+        <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 w-96 h-96 bg-indigo-500/10 rounded-full blur-[100px]"></div>
+        <div className="absolute bottom-0 left-0 translate-y-1/2 -translate-x-1/2 w-96 h-96 bg-purple-500/10 rounded-full blur-[100px]"></div>
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8 max-w-7xl mx-auto">
           <div>
-            <div className="flex items-center gap-3 mb-2">
-              <span className={`flex h-3 w-3 rounded-full ${statusColors.bg} animate-pulse shadow-[0_0_12px_rgba(0,0,0,0.5)]`} style={{ boxShadow: `0 0 15px ${statusColors.bg}` }}></span>
-              <span className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Current Standing</span>
+            <div className="flex items-center gap-3 mb-3">
+              <span className={`flex h-3 w-3 rounded-full ${statusColors.bg} animate-pulse shadow-[0_0_15px_rgba(255,255,255,0.3)]`} style={{ boxShadow: `0 0 15px ${statusColors.bg}` }}></span>
+              <span className="text-xs font-bold uppercase tracking-[0.25em] text-slate-400">Security Registry</span>
             </div>
-            <h2 className="text-3xl font-black tracking-tight mb-1">
+            <h2 className="text-4xl font-black tracking-tight mb-2 text-white drop-shadow-sm">
               {licenseInfo.licenseStatus === 'active' ? 'License Active' : 'Action Required'}
             </h2>
-            <p className="text-slate-400 text-sm font-medium">
-              Registered to your organization • Ref: {licenseInfo.licenseType.toUpperCase()}
+            <p className="text-slate-300 text-sm font-medium opacity-80 decoration-indigo-500/30">
+              Verified Organization • Reference ID: <span className="text-indigo-300">{licenseInfo.licenseType.toUpperCase()}</span>
             </p>
           </div>
 
           <div className="flex items-center gap-4">
-            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10 flex flex-col items-center min-w-[120px]">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Expires In</span>
-              <span className={`text-2xl font-black ${licenseInfo.daysRemaining <= 7 ? 'text-rose-400' : 'text-indigo-400'}`}>
-                {licenseInfo.daysRemaining === Infinity ? '∞' : licenseInfo.daysRemaining}
-              </span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Days</span>
+            <div className="bg-white/5 backdrop-blur-xl rounded-3xl p-5 border border-white/10 flex flex-col items-center min-w-[140px] shadow-2xl">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">Validity Remaining</span>
+              <div className="flex items-baseline gap-1">
+                <span className={`text-4xl font-black ${licenseInfo.daysRemaining <= 7 ? 'text-rose-400' : 'text-indigo-400'}`}>
+                  {licenseInfo.daysRemaining === Infinity ? '∞' : licenseInfo.daysRemaining}
+                </span>
+                <span className="text-[10px] font-bold text-slate-500 uppercase">Days</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="px-6 -mt-6">
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-2 flex gap-1">
+      <div className="px-6 -mt-8 relative z-20 max-w-7xl mx-auto">
+        <div className="bg-white rounded-[1.5rem] shadow-xl border border-slate-200 p-2 flex gap-1">
           <button
             onClick={() => setActiveTab('status')}
             className={`flex-1 py-3 px-4 rounded-xl text-sm font-bold transition-all duration-300 flex items-center justify-center gap-2 ${activeTab === 'status' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-50'
@@ -205,7 +207,7 @@ const LicenseManagement: React.FC = () => {
         </div>
       </div>
 
-      <div className="p-6 space-y-6">
+      <div className="p-6 max-w-7xl mx-auto space-y-8">
         {activeTab === 'status' ? (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Core Details Grid */}
