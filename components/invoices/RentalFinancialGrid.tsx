@@ -473,9 +473,28 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onIn
                                                                 className="p-1.5 rounded-md text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors"
                                                                 title="Receive Payment"
                                                             >
-                                                                <div className="w-4 h-4">{ICONS.dollarSign}</div>
+                                                                <div className="w-4 h-4">{ICONS.handDollar}</div>
                                                             </button>
                                                         )}
+
+                                                        {/* WhatsApp Button - Always show, alert if no contact */}
+                                                        <button
+                                                            onClick={async (e) => {
+                                                                e.stopPropagation();
+                                                                if (!contact?.contactNo) {
+                                                                    showAlert("Contact does not have a phone number saved.");
+                                                                    return;
+                                                                }
+                                                                await handleSendWhatsApp(inv, contact);
+                                                            }}
+                                                            className={`p-1.5 rounded-md transition-colors ${contact?.contactNo
+                                                                    ? 'text-green-600 hover:bg-green-50 hover:text-green-700'
+                                                                    : 'text-slate-300 hover:bg-slate-50 hover:text-slate-400'
+                                                                }`}
+                                                            title={contact?.contactNo ? "Send invoice via WhatsApp" : "No contact number available"}
+                                                        >
+                                                            <div className="w-4 h-4">{ICONS.whatsapp}</div>
+                                                        </button>
 
                                                         {/* Edit Button */}
                                                         {onEditInvoice && (
@@ -488,20 +507,6 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onIn
                                                                 title="Edit Invoice"
                                                             >
                                                                 <div className="w-4 h-4">{ICONS.edit}</div>
-                                                            </button>
-                                                        )}
-
-                                                        {/* WhatsApp Button */}
-                                                        {contact?.contactNo && (
-                                                            <button
-                                                                onClick={async (e) => {
-                                                                    e.stopPropagation();
-                                                                    await handleSendWhatsApp(inv, contact);
-                                                                }}
-                                                                className="p-1.5 rounded-md text-green-600 hover:bg-green-50 hover:text-green-700 transition-colors"
-                                                                title="Send invoice details via WhatsApp"
-                                                            >
-                                                                <div className="w-4 h-4">{ICONS.whatsapp}</div>
                                                             </button>
                                                         )}
                                                     </div>
