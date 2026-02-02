@@ -184,31 +184,34 @@ const UserManagement: React.FC = () => {
                                     <td className="px-4 py-3 text-slate-600">{user.username}</td>
                                     <td className="px-4 py-3 text-slate-600">{user.email || '-'}</td>
                                     <td className="px-4 py-3">
-                                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                            user.role === 'Admin' ? 'bg-purple-100 text-purple-800' :
+                                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${user.role === 'Admin' ? 'bg-purple-100 text-purple-800' :
                                             user.role === 'Manager' ? 'bg-blue-100 text-blue-800' :
-                                            'bg-slate-100 text-slate-800'
-                                        }`}>
+                                                user.role === 'Accounts' ? 'bg-slate-100 text-slate-800' :
+                                                    user.role === 'Store Manager' ? 'bg-emerald-100 text-emerald-800' :
+                                                        user.role === 'Cashier' ? 'bg-cyan-100 text-cyan-800' :
+                                                            user.role === 'Inventory Manager' ? 'bg-orange-100 text-orange-800' :
+                                                                'bg-gray-100 text-gray-800'
+                                            }`}>
                                             {user.role}
                                         </span>
                                     </td>
                                     <td className="px-4 py-3 text-slate-600">
-                                        {user.last_login 
+                                        {user.last_login
                                             ? new Date(user.last_login).toLocaleDateString()
                                             : 'Never'}
                                     </td>
                                     <td className="px-4 py-3 text-right">
                                         <div className="flex justify-end gap-2">
-                                            <button 
-                                                onClick={() => openModal(user)} 
+                                            <button
+                                                onClick={() => openModal(user)}
                                                 className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
                                                 title="Edit User"
                                             >
                                                 <div className="w-4 h-4">{ICONS.edit}</div>
                                             </button>
                                             {currentUser && user.id !== currentUser.id && (
-                                                <button 
-                                                    onClick={() => handleDelete(user)} 
+                                                <button
+                                                    onClick={() => handleDelete(user)}
                                                     className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
                                                     title="Delete User"
                                                 >
@@ -226,31 +229,31 @@ const UserManagement: React.FC = () => {
 
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={userToEdit ? 'Edit User' : 'New User'}>
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    <Input 
-                        label="Full Name" 
-                        value={name} 
-                        onChange={e => setName(e.target.value)} 
-                        required 
+                    <Input
+                        label="Full Name"
+                        value={name}
+                        onChange={e => setName(e.target.value)}
+                        required
                     />
-                    <Input 
-                        label="Username" 
-                        value={username} 
-                        onChange={e => setUsername(e.target.value)} 
-                        required 
+                    <Input
+                        label="Username"
+                        value={username}
+                        onChange={e => setUsername(e.target.value)}
+                        required
                     />
-                    <Input 
-                        label="Email (Optional)" 
+                    <Input
+                        label="Email (Optional)"
                         type="email"
-                        value={email} 
-                        onChange={e => setEmail(e.target.value)} 
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
                     />
-                    
+
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">
                             {userToEdit ? 'New Password (Optional)' : 'Password'}
                         </label>
-                        <input 
-                            type="password" 
+                        <input
+                            type="password"
                             className="block w-full px-3 py-2 border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/50 sm:text-sm"
                             value={password}
                             onChange={e => setPassword(e.target.value)}
@@ -261,20 +264,96 @@ const UserManagement: React.FC = () => {
                         />
                     </div>
 
-                    <Select 
-                        label="Role" 
-                        value={role} 
+                    <Select
+                        label="Role"
+                        value={role}
                         onChange={e => setRole(e.target.value as UserRole)}
                     >
-                        <option value="Admin">Admin (Full Access)</option>
-                        <option value="Manager">Manager (Config + Data, No Sensitive Reports)</option>
-                        <option value="Accounts">Accounts (Data Entry Only)</option>
+                        <optgroup label="Administrative Roles">
+                            <option value="Admin">👑 Admin (Full Access)</option>
+                            <option value="Manager">📊 Manager (Config + Data)</option>
+                            <option value="Accounts">💰 Accounts (Data Entry)</option>
+                        </optgroup>
+                        <optgroup label="POS & Shop Roles">
+                            <option value="Store Manager">🏪 Store Manager (Shop Operations)</option>
+                            <option value="Cashier">🛒 Cashier (POS Only)</option>
+                            <option value="Inventory Manager">📦 Inventory Manager (Stock Control)</option>
+                        </optgroup>
                     </Select>
-                    
-                    <div className="pt-2 text-xs text-slate-500">
-                        {role === 'Admin' && <p>• Full system access.</p>}
-                        {role === 'Manager' && <p>• Can manage settings, contacts, and data.<br/>• Cannot see Profit/Loss, Balance Sheet, Investor reports.</p>}
-                        {role === 'Accounts' && <p>• Can only enter transactions, invoices, bills.<br/>• No access to Settings or analytical reports.</p>}
+
+                    <div className="pt-2 text-xs text-slate-500 bg-slate-50 p-3 rounded-lg">
+                        {role === 'Admin' && (
+                            <div>
+                                <p className="font-bold text-slate-700 mb-1">👑 Administrator</p>
+                                <ul className="list-disc list-inside space-y-1">
+                                    <li>Full system access to all modules</li>
+                                    <li>User management and system settings</li>
+                                    <li>All financial reports including P&L</li>
+                                    <li>Can manage POS, inventory, and procurement</li>
+                                </ul>
+                            </div>
+                        )}
+                        {role === 'Manager' && (
+                            <div>
+                                <p className="font-bold text-slate-700 mb-1">📊 Manager</p>
+                                <ul className="list-disc list-inside space-y-1">
+                                    <li>Can manage settings, contacts, and data</li>
+                                    <li>Access to operational reports</li>
+                                    <li>Cannot see Profit/Loss or Balance Sheet</li>
+                                    <li>No access to sensitive investor reports</li>
+                                </ul>
+                            </div>
+                        )}
+                        {role === 'Accounts' && (
+                            <div>
+                                <p className="font-bold text-slate-700 mb-1">💰 Accounts</p>
+                                <ul className="list-disc list-inside space-y-1">
+                                    <li>Can enter transactions, invoices, bills</li>
+                                    <li>Basic ledger and payment entry</li>
+                                    <li>No access to Settings or analytical reports</li>
+                                    <li>Cannot modify system configurations</li>
+                                </ul>
+                            </div>
+                        )}
+                        {role === 'Store Manager' && (
+                            <div>
+                                <p className="font-bold text-slate-700 mb-1">🏪 Store Manager</p>
+                                <ul className="list-disc list-inside space-y-1">
+                                    <li>Full access to POS and Shop modules</li>
+                                    <li>Manage products, pricing, and promotions</li>
+                                    <li>View sales reports and analytics</li>
+                                    <li>Manage cashiers and shift operations</li>
+                                    <li>Oversee inventory and procurement</li>
+                                    <li>Handle customer loyalty programs</li>
+                                </ul>
+                            </div>
+                        )}
+                        {role === 'Cashier' && (
+                            <div>
+                                <p className="font-bold text-slate-700 mb-1">🛒 Cashier</p>
+                                <ul className="list-disc list-inside space-y-1">
+                                    <li>Access to POS sales screen only</li>
+                                    <li>Process sales transactions and payments</li>
+                                    <li>Handle customer checkouts</li>
+                                    <li>View own shift sales summary</li>
+                                    <li>Cannot modify prices or products</li>
+                                    <li>Cannot access other modules</li>
+                                </ul>
+                            </div>
+                        )}
+                        {role === 'Inventory Manager' && (
+                            <div>
+                                <p className="font-bold text-slate-700 mb-1">📦 Inventory Manager</p>
+                                <ul className="list-disc list-inside space-y-1">
+                                    <li>Full access to Inventory module</li>
+                                    <li>Manage stock levels and warehouses</li>
+                                    <li>Process stock adjustments and transfers</li>
+                                    <li>Handle procurement and purchase orders</li>
+                                    <li>View inventory reports and analytics</li>
+                                    <li>Cannot access POS or financial data</li>
+                                </ul>
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex justify-end gap-2 pt-4 border-t">

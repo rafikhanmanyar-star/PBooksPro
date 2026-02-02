@@ -183,7 +183,15 @@ export enum ImportType {
 
 
 
-export type UserRole = 'Admin' | 'Manager' | 'Accounts';
+export type UserRole =
+  // Administrative Roles
+  | 'Admin'
+  | 'Manager'
+  | 'Accounts'
+  // POS & Shop Roles  
+  | 'Store Manager'
+  | 'Cashier'
+  | 'Inventory Manager';
 
 export interface User {
   id: string;

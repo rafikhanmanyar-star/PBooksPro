@@ -41,6 +41,7 @@ import MobileOfflineWarning from './components/ui/MobileOfflineWarning';
 import { PrintController } from './components/print/PrintController';
 // import WebSocketDebugPanel from './components/ui/WebSocketDebugPanel'; // Removed per user request
 import { lazyWithRetry } from './utils/lazyWithRetry';
+import { ContactsApiRepository } from './services/api/repositories/contactsApi';
 
 
 // Lazy Load Components
@@ -341,6 +342,29 @@ const App: React.FC = () => {
       };
     }
   }, [isAuthenticated, dispatch, user?.id]);
+
+  // Load contacts from API when authenticated
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      const loadContacts = async () => {
+        try {
+          console.log('[App] 📥 Loading contacts from API...');
+          const contactsApi = new ContactsApiRepository();
+          const contacts = await contactsApi.findAll();
+          console.log(`[App] ✅ Loaded ${contacts.length} contacts from API`);
+
+          // Dispatch each contact to AppContext to avoid duplicates
+          contacts.forEach(contact => {
+            dispatch({ type: 'ADD_CONTACT', payload: contact });
+          });
+        } catch (error) {
+          console.error('[App] ❌ Failed to load contacts:', error);
+        }
+      };
+
+      loadContacts();
+    }
+  }, [isAuthenticated, user, dispatch]);
 
   // Optimized navigation handler - uses startTransition for non-blocking updates
   const handleSetPage = useCallback((page: Page) => {
