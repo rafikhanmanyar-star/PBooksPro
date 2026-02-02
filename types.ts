@@ -191,7 +191,11 @@ export type UserRole =
   // POS & Shop Roles  
   | 'Store Manager'
   | 'Cashier'
-  | 'Inventory Manager';
+  | 'Inventory Manager'
+  // Task & Performance Roles
+  | 'Project Manager'
+  | 'Team Lead'
+  | 'Task Contributor';
 
 export interface User {
   id: string;

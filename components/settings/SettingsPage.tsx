@@ -35,6 +35,7 @@ import { getDatabaseService } from '../../services/database/databaseService';
 import { apiClient } from '../../services/api/client';
 import ContactsManagement from './ContactsManagement';
 import AssetsManagement from './AssetsManagement';
+import TaskRolesPage from '../tasks/TaskRolesPage';
 
 interface TableRowData {
     id: string;
@@ -132,10 +133,19 @@ const SettingsPage: React.FC = () => {
             items: [
                 { id: 'preferences', label: 'Preferences', icon: ICONS.settings },
                 { id: 'license', label: 'License & Subscription', icon: ICONS.lock || '🔒' },
-                ...(isAdmin ? [{ id: 'users', label: 'Users & Access', icon: ICONS.users }] : []),
+                ...(isAdmin ? [
+                    { id: 'users', label: 'Users & Access', icon: ICONS.users },
+                    { id: 'taskRoles', label: 'Task Roles', icon: ICONS.userCheck || '✅' }
+                ] : []),
                 { id: 'backup', label: 'Backup & Restore', icon: ICONS.download },
                 { id: 'data', label: 'Data Management', icon: ICONS.trash }, // Changed Icon
                 { id: 'help', label: 'Help & Guide', icon: ICONS.fileText },
+            ]
+        },
+        {
+            title: 'Operations',
+            items: [
+                { id: 'projects', label: 'Projects & Tasks', icon: ICONS.briefcase },
             ]
         },
         {
@@ -886,6 +896,7 @@ const SettingsPage: React.FC = () => {
                     <div className={`w-full ${activeCategory === 'contacts' || activeCategory === 'assets' ? 'h-full' : 'max-w-7xl'} mx-auto animate-in fade-in duration-500`}>
                         {isTableViewCategory ? renderTable() : null}
                         {activeCategory === 'users' && <UserManagement />}
+                        {activeCategory === 'taskRoles' && <TaskRolesPage />}
                         {activeCategory === 'preferences' && renderPreferences()}
                         {activeCategory === 'license' && (
                             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">

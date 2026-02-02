@@ -115,5 +115,34 @@ export const tasksApi = {
     // Reports
     getTeamReport: async (): Promise<any> => {
         return apiClient.get<any>('/tasks/reports/team-summary');
+    },
+
+    // Roles & Permissions
+    getRoles: async (): Promise<any[]> => {
+        return apiClient.get<any[]>('/tasks/roles/list');
+    },
+
+    createRole: async (role: any): Promise<any> => {
+        return apiClient.post<any>('/tasks/roles', role);
+    },
+
+    getPermissions: async (): Promise<any[]> => {
+        return apiClient.get<any[]>('/tasks/permissions/list');
+    },
+
+    getRolePermissions: async (roleId: string): Promise<any[]> => {
+        return apiClient.get<any[]>(`/tasks/roles/${roleId}/permissions`);
+    },
+
+    updateRolePermissions: async (roleId: string, permissionIds: string[]): Promise<any> => {
+        return apiClient.post<any>(`/tasks/roles/${roleId}/permissions`, { permission_ids: permissionIds });
+    },
+
+    getUserRoles: async (userId: string): Promise<any[]> => {
+        return apiClient.get<any[]>(`/tasks/user-roles/${userId}`);
+    },
+
+    updateUserRoles: async (userId: string, roleIds: string[]): Promise<any> => {
+        return apiClient.post<any>(`/tasks/user-roles/${userId}`, { role_ids: roleIds });
     }
 };

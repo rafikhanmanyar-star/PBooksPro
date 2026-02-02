@@ -8,6 +8,7 @@ import Select from '../ui/Select';
 import { ICONS } from '../../constants';
 import Modal from '../ui/Modal';
 import { useNotification } from '../../context/NotificationContext';
+import { tasksApi } from '../../services/api/repositories/tasksApi';
 
 interface User {
     id: string;
@@ -35,6 +36,24 @@ const UserManagement: React.FC = () => {
     const [password, setPassword] = useState('');
     const [role, setRole] = useState<UserRole>('Accounts');
 
+    // Task Roles state
+    const [allTaskRoles, setAllTaskRoles] = useState<any[]>([]);
+    const [selectedTaskRoleIds, setSelectedTaskRoleIds] = useState<string[]>([]);
+    const [loadingTaskRoles, setLoadingTaskRoles] = useState(false);
+
+    // Initial load of all available task roles
+    useEffect(() => {
+        const fetchTaskRoles = async () => {
+            try {
+                const data = await tasksApi.getRoles();
+                setAllTaskRoles(data);
+            } catch (error) {
+                console.error('Error fetching task roles:', error);
+            }
+        };
+        fetchTaskRoles();
+    }, []);
+
     // Load users from API
     const loadUsers = async () => {
         try {
@@ -53,7 +72,7 @@ const UserManagement: React.FC = () => {
         loadUsers();
     }, []);
 
-    const openModal = (user?: User) => {
+    const openModal = async (user?: User) => {
         if (user) {
             setUserToEdit(user);
             setUsername(user.username);
@@ -61,6 +80,17 @@ const UserManagement: React.FC = () => {
             setEmail(user.email || '');
             setRole(user.role);
             setPassword(''); // Don't show password, allow reset
+
+            // Fetch user's granular task roles
+            try {
+                setLoadingTaskRoles(true);
+                const userRoles = await tasksApi.getUserRoles(user.id);
+                setSelectedTaskRoleIds(userRoles.map(r => r.id));
+            } catch (error) {
+                console.error('Error fetching user roles:', error);
+            } finally {
+                setLoadingTaskRoles(false);
+            }
         } else {
             setUserToEdit(null);
             setUsername('');
@@ -68,6 +98,7 @@ const UserManagement: React.FC = () => {
             setEmail('');
             setPassword('');
             setRole('Accounts');
+            setSelectedTaskRoleIds([]);
         }
         setIsModalOpen(true);
     };
@@ -120,16 +151,26 @@ const UserManagement: React.FC = () => {
                     updateData.password = password;
                 }
                 await apiClient.put(`/users/${userToEdit.id}`, updateData);
+
+                // Update task roles
+                await tasksApi.updateUserRoles(userToEdit.id, selectedTaskRoleIds);
+
                 showToast('User updated successfully.');
             } else {
                 // Create new user
-                await apiClient.post('/users', {
+                const newUser = await apiClient.post<User>('/users', {
                     username,
                     name,
                     email: email || undefined,
                     password,
                     role
                 });
+
+                // Update task roles for new user
+                if (selectedTaskRoleIds.length > 0) {
+                    await tasksApi.updateUserRoles(newUser.id, selectedTaskRoleIds);
+                }
+
                 showToast('User created successfully.');
             }
             setIsModalOpen(false);
@@ -190,7 +231,10 @@ const UserManagement: React.FC = () => {
                                                     user.role === 'Store Manager' ? 'bg-emerald-100 text-emerald-800' :
                                                         user.role === 'Cashier' ? 'bg-cyan-100 text-cyan-800' :
                                                             user.role === 'Inventory Manager' ? 'bg-orange-100 text-orange-800' :
-                                                                'bg-gray-100 text-gray-800'
+                                                                user.role === 'Project Manager' ? 'bg-indigo-100 text-indigo-800' :
+                                                                    user.role === 'Team Lead' ? 'bg-violet-100 text-violet-800' :
+                                                                        user.role === 'Task Contributor' ? 'bg-sky-100 text-sky-800' :
+                                                                            'bg-gray-100 text-gray-800'
                                             }`}>
                                             {user.role}
                                         </span>
@@ -279,9 +323,41 @@ const UserManagement: React.FC = () => {
                             <option value="Cashier">🛒 Cashier (POS Only)</option>
                             <option value="Inventory Manager">📦 Inventory Manager (Stock Control)</option>
                         </optgroup>
+                        <optgroup label="Task & Performance Roles">
+                            <option value="Project Manager">📅 Project Manager (Tasks + OKRs)</option>
+                            <option value="Team Lead">👥 Team Lead (Manage Team Tasks)</option>
+                            <option value="Task Contributor">✍️ Task Contributor (Execution Only)</option>
+                        </optgroup>
                     </Select>
 
-                    <div className="pt-2 text-xs text-slate-500 bg-slate-50 p-3 rounded-lg">
+                    <div className="pt-2">
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Granular Task Roles</label>
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 max-h-48 overflow-y-auto space-y-2">
+                            {allTaskRoles.length === 0 ? (
+                                <p className="text-xs text-slate-400 italic">No custom task roles defined. Create them in "Task Roles" section.</p>
+                            ) : (
+                                allTaskRoles.map(tr => (
+                                    <label key={tr.id} className="flex items-center gap-3 p-2 bg-white border border-slate-100 rounded-lg hover:bg-indigo-50 cursor-pointer transition-all">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedTaskRoleIds.includes(tr.id)}
+                                            onChange={(e) => {
+                                                if (e.target.checked) setSelectedTaskRoleIds([...selectedTaskRoleIds, tr.id]);
+                                                else setSelectedTaskRoleIds(selectedTaskRoleIds.filter(id => id !== tr.id));
+                                            }}
+                                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                        />
+                                        <div>
+                                            <p className="text-xs font-bold text-slate-800">{tr.name}</p>
+                                            {tr.description && <p className="text-[10px] text-slate-500 leading-tight">{tr.description}</p>}
+                                        </div>
+                                    </label>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="pt-2 text-xs text-slate-500 bg-slate-50 p-3 rounded-lg overflow-y-auto max-h-40">
                         {role === 'Admin' && (
                             <div>
                                 <p className="font-bold text-slate-700 mb-1">👑 Administrator</p>
@@ -351,6 +427,42 @@ const UserManagement: React.FC = () => {
                                     <li>Handle procurement and purchase orders</li>
                                     <li>View inventory reports and analytics</li>
                                     <li>Cannot access POS or financial data</li>
+                                </ul>
+                            </div>
+                        )}
+                        {role === 'Project Manager' && (
+                            <div>
+                                <p className="font-bold text-slate-700 mb-1">📅 Project Manager (Tasks)</p>
+                                <ul className="list-disc list-inside space-y-1">
+                                    <li>Create and manage Task Initiatives</li>
+                                    <li>Set up and track OKRs (Objectives & Key Results)</li>
+                                    <li>Full access to Task Reports and Analytics</li>
+                                    <li>Configure Task Workflows and Stages</li>
+                                    <li>Assign tasks to any team member</li>
+                                </ul>
+                            </div>
+                        )}
+                        {role === 'Team Lead' && (
+                            <div>
+                                <p className="font-bold text-slate-700 mb-1">👥 Team Lead</p>
+                                <ul className="list-disc list-inside space-y-1">
+                                    <li>Manage tasks for specific teams/projects</li>
+                                    <li>Review and approve task completions</li>
+                                    <li>View team productivity and status reports</li>
+                                    <li>Reassign tasks within their department</li>
+                                    <li>Submit initiative progress updates</li>
+                                </ul>
+                            </div>
+                        )}
+                        {role === 'Task Contributor' && (
+                            <div>
+                                <p className="font-bold text-slate-700 mb-1">✍️ Task Contributor</p>
+                                <ul className="list-disc list-inside space-y-1">
+                                    <li>Execute assigned tasks and update status</li>
+                                    <li>Log time and progress on tasks</li>
+                                    <li>Upload attachments and add comments</li>
+                                    <li>View personal task calendar and deadline</li>
+                                    <li>Cannot create initiatives or review others' work</li>
                                 </ul>
                             </div>
                         )}

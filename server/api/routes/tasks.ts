@@ -422,4 +422,214 @@ router.get('/reports/team-summary', async (req: TenantRequest, res) => {
     }
 });
 
+// ==========================================
+// 5. Task Roles & Permissions
+// ==========================================
+
+// GET all task roles
+router.get('/roles/list', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const roles = await db.query(
+            `SELECT r.*, COUNT(ur.user_id) as users_count 
+             FROM task_roles r 
+             LEFT JOIN task_user_roles ur ON r.id = ur.role_id 
+             WHERE r.tenant_id = $1 
+             GROUP BY r.id 
+             ORDER BY r.name ASC`,
+            [req.tenantId]
+        );
+        res.json(roles);
+    } catch (error) {
+        console.error('Error fetching task roles:', error);
+        res.status(500).json({ error: 'Failed to fetch task roles' });
+    }
+});
+
+// POST create task role
+router.post('/roles', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const { name, description, is_system, parent_role_id, permission_ids } = req.body;
+
+        const role = await db.transaction(async (client) => {
+            const result = await client.query(
+                `INSERT INTO task_roles (tenant_id, name, description, is_system, parent_role_id)
+                 VALUES ($1, $2, $3, $4, $5)
+                 RETURNING *`,
+                [req.tenantId, name, description, is_system || false, parent_role_id || null]
+            );
+            const newRole = result.rows[0];
+
+            if (permission_ids && permission_ids.length > 0) {
+                const values = permission_ids.map((pId: string) => `('${newRole.id}', '${pId}')`).join(',');
+                await client.query(`INSERT INTO task_role_permissions (role_id, permission_id) VALUES ${values}`);
+            }
+
+            return newRole;
+        });
+
+        res.status(201).json(role);
+    } catch (error: any) {
+        console.error('Error creating task role:', error);
+        res.status(500).json({ error: 'Failed to create task role', message: error.message });
+    }
+});
+
+// PUT update task role
+router.put('/roles/:id', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const { name, description, permission_ids } = req.body;
+
+        await db.transaction(async (client) => {
+            // Update role info
+            await client.query(
+                `UPDATE task_roles SET name = $1, description = $2, updated_at = NOW()
+                 WHERE id = $3 AND tenant_id = $4`,
+                [name, description, req.params.id, req.tenantId]
+            );
+
+            // Update permissions if provided
+            if (permission_ids) {
+                await client.query(
+                    'DELETE FROM task_role_permissions WHERE role_id = $1',
+                    [req.params.id]
+                );
+
+                if (permission_ids.length > 0) {
+                    const values = permission_ids.map((pId: string) => `('${req.params.id}', '${pId}')`).join(',');
+                    await client.query(`INSERT INTO task_role_permissions (role_id, permission_id) VALUES ${values}`);
+                }
+            }
+        });
+
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error('Error updating task role:', error);
+        res.status(500).json({ error: 'Failed to update task role', message: error.message });
+    }
+});
+
+// DELETE task role
+router.delete('/roles/:id', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const result = await db.query(
+            'DELETE FROM task_roles WHERE id = $1 AND tenant_id = $2 AND is_system = FALSE RETURNING *',
+            [req.params.id, req.tenantId]
+        );
+
+        if (result.length === 0) {
+            return res.status(404).json({ error: 'Role not found or is a system role' });
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error deleting task role:', error);
+        res.status(500).json({ error: 'Failed to delete task role' });
+    }
+});
+
+// GET all permissions
+router.get('/permissions/list', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const permissions = await db.query('SELECT * FROM task_permissions ORDER BY module, action');
+        res.json(permissions);
+    } catch (error) {
+        console.error('Error fetching permissions:', error);
+        res.status(500).json({ error: 'Failed to fetch permissions' });
+    }
+});
+
+// GET roles for a user
+router.get('/user-roles/:userId', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const roles = await db.query(
+            `SELECT r.* FROM task_roles r
+             JOIN task_user_roles ur ON r.id = ur.role_id
+             WHERE ur.user_id = $1 AND ur.tenant_id = $2`,
+            [req.params.userId, req.tenantId]
+        );
+        res.json(roles);
+    } catch (error) {
+        console.error('Error fetching user roles:', error);
+        res.status(500).json({ error: 'Failed to fetch user roles' });
+    }
+});
+
+// POST update user roles
+router.post('/user-roles/:userId', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const { role_ids } = req.body; // Array of role IDs
+
+        await db.transaction(async (client) => {
+            // Remove existing assignments
+            await client.query(
+                'DELETE FROM task_user_roles WHERE user_id = $1 AND tenant_id = $2',
+                [req.params.userId, req.tenantId]
+            );
+
+            // Add new assignments
+            if (role_ids && role_ids.length > 0) {
+                const values = role_ids.map((rId: string) => `('${req.params.userId}', '${rId}', '${req.tenantId}')`).join(',');
+                await client.query(`INSERT INTO task_user_roles (user_id, role_id, tenant_id) VALUES ${values}`);
+            }
+        });
+
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error('Error updating user roles:', error);
+        res.status(500).json({ error: 'Failed to update user roles', message: error.message });
+    }
+});
+
+// GET permissions for a role
+router.get('/roles/:id/permissions', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const permissions = await db.query(
+            `SELECT p.* FROM task_permissions p
+             JOIN task_role_permissions rp ON p.id = rp.permission_id
+             JOIN task_roles r ON rp.role_id = r.id
+             WHERE r.id = $1 AND r.tenant_id = $2`,
+            [req.params.id, req.tenantId]
+        );
+        res.json(permissions);
+    } catch (error) {
+        console.error('Error fetching role permissions:', error);
+        res.status(500).json({ error: 'Failed to fetch role permissions' });
+    }
+});
+
+// POST update role permissions
+router.post('/roles/:id/permissions', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const { permission_ids } = req.body; // Array of permission IDs
+
+        await db.transaction(async (client) => {
+            // Remove existing permissions
+            await client.query(
+                'DELETE FROM task_role_permissions WHERE role_id = $1',
+                [req.params.id]
+            );
+
+            // Add new permissions
+            if (permission_ids && permission_ids.length > 0) {
+                const values = permission_ids.map((pId: string) => `('${req.params.id}', '${pId}')`).join(',');
+                await client.query(`INSERT INTO task_role_permissions (role_id, permission_id) VALUES ${values}`);
+            }
+        });
+
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error('Error updating role permissions:', error);
+        res.status(500).json({ error: 'Failed to update role permissions', message: error.message });
+    }
+});
+
 export default router;
