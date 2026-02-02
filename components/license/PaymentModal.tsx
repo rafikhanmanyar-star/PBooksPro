@@ -8,13 +8,15 @@ interface PaymentModalProps {
   onClose: () => void;
   onSuccess?: () => void;
   licenseType?: 'monthly' | 'yearly';
+  moduleKey?: string;
 }
 
-const PaymentModal: React.FC<PaymentModalProps> = ({ 
-  isOpen, 
-  onClose, 
+const PaymentModal: React.FC<PaymentModalProps> = ({
+  isOpen,
+  onClose,
   onSuccess,
-  licenseType: initialLicenseType 
+  licenseType: initialLicenseType,
+  moduleKey
 }) => {
   const [selectedLicenseType, setSelectedLicenseType] = useState<'monthly' | 'yearly'>(initialLicenseType || 'yearly');
   const [currency, setCurrency] = useState<'PKR' | 'USD'>('PKR');
@@ -23,7 +25,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const [paymentSession, setPaymentSession] = useState<PaymentSession | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Pricing (in PKR)
   const pricing = {
     monthly: {
       PKR: 7083, // ~85,000 / 12
@@ -35,7 +36,22 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     }
   };
 
-  const currentPrice = pricing[selectedLicenseType][currency];
+  const getModuleName = (key: string) => {
+    return key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  };
+
+  const modulePricing: Record<string, { PKR: number, USD: number }> = {
+    real_estate: { PKR: 5000, USD: 18 },
+    rental: { PKR: 3000, USD: 11 },
+    tasks: { PKR: 2000, USD: 7 },
+    biz_planet: { PKR: 2000, USD: 7 },
+    shop: { PKR: 4000, USD: 14 }
+  };
+
+  const isModulePayment = !!moduleKey;
+  const currentPrice = isModulePayment
+    ? (selectedLicenseType === 'monthly' ? modulePricing[moduleKey!][currency] : modulePricing[moduleKey!][currency] * 10)
+    : pricing[selectedLicenseType][currency];
 
   useEffect(() => {
     if (!isOpen) {
@@ -55,6 +71,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       const session = await paymentsApi.createPaymentSession({
         licenseType: selectedLicenseType,
         currency,
+        moduleKey,
       });
 
       setPaymentSession(session);
@@ -62,7 +79,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       // If there's a checkout URL, redirect to it
       if (session.checkoutUrl) {
         setIsProcessing(true);
-        
+
         // Check if it's a mock gateway URL (starts with /mock-payment)
         if (session.checkoutUrl.startsWith('/mock-payment')) {
           // For mock gateway, navigate to mock payment page
@@ -99,8 +116,12 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-bold">Renew License</h2>
-              <p className="text-blue-100 mt-1">Choose your license plan and payment method</p>
+              <h2 className="text-2xl font-bold">{isModulePayment ? 'Activate Module' : 'Renew License'}</h2>
+              <p className="text-blue-100 mt-1">
+                {isModulePayment
+                  ? `Enable ${getModuleName(moduleKey!)} for your organization`
+                  : 'Choose your license plan and payment method'}
+              </p>
             </div>
             {!isProcessing && (
               <button
@@ -125,18 +146,19 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setSelectedLicenseType('monthly')}
-                    className={`p-4 border-2 rounded-lg transition-all ${
-                      selectedLicenseType === 'monthly'
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-slate-200 hover:border-slate-300'
-                    }`}
+                    className={`p-4 border-2 rounded-lg transition-all ${selectedLicenseType === 'monthly'
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-slate-200 hover:border-slate-300'
+                      }`}
                   >
                     <div className="text-left">
                       <div className="font-bold text-lg text-slate-800">Monthly</div>
                       <div className="text-sm text-slate-600 mt-1">Billed monthly</div>
                       <div className="text-2xl font-bold text-blue-600 mt-2">
-                        {currency === 'PKR' ? 'PKR' : '$'}
-                        {pricing.monthly[currency].toLocaleString()}
+                        {currency === 'PKR' ? 'PKR ' : '$'}
+                        {isModulePayment
+                          ? modulePricing[moduleKey!][currency].toLocaleString()
+                          : pricing.monthly[currency].toLocaleString()}
                         {currency === 'PKR' ? '' : '/mo'}
                       </div>
                     </div>
@@ -145,23 +167,26 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setSelectedLicenseType('yearly')}
-                    className={`p-4 border-2 rounded-lg transition-all ${
-                      selectedLicenseType === 'yearly'
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-slate-200 hover:border-slate-300'
-                    }`}
+                    className={`p-4 border-2 rounded-lg transition-all ${selectedLicenseType === 'yearly'
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-slate-200 hover:border-slate-300'
+                      }`}
                   >
                     <div className="text-left">
                       <div className="font-bold text-lg text-slate-800">Yearly</div>
                       <div className="text-sm text-slate-600 mt-1">Best value - Save 20%</div>
                       <div className="text-2xl font-bold text-blue-600 mt-2">
-                        {currency === 'PKR' ? 'PKR' : '$'}
-                        {pricing.yearly[currency].toLocaleString()}
+                        {currency === 'PKR' ? 'PKR ' : '$'}
+                        {isModulePayment
+                          ? (modulePricing[moduleKey!][currency] * 10).toLocaleString()
+                          : pricing.yearly[currency].toLocaleString()}
                         {currency === 'PKR' ? '/yr' : '/yr'}
                       </div>
                       <div className="text-xs text-green-600 font-semibold mt-1">
-                        Save {currency === 'PKR' ? 'PKR' : '$'}
-                        {(pricing.monthly[currency] * 12 - pricing.yearly[currency]).toLocaleString()}
+                        Save {currency === 'PKR' ? 'PKR ' : '$'}
+                        {(isModulePayment
+                          ? (modulePricing[moduleKey!][currency] * 2)
+                          : (pricing.monthly[currency] * 12 - pricing.yearly[currency])).toLocaleString()}
                       </div>
                     </div>
                   </button>
@@ -177,22 +202,20 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setCurrency('PKR')}
-                    className={`px-4 py-2 rounded-lg border-2 transition-all ${
-                      currency === 'PKR'
-                        ? 'border-blue-500 bg-blue-50 text-blue-700 font-semibold'
-                        : 'border-slate-200 text-slate-600 hover:border-slate-300'
-                    }`}
+                    className={`px-4 py-2 rounded-lg border-2 transition-all ${currency === 'PKR'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700 font-semibold'
+                      : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                      }`}
                   >
                     PKR (Pakistani Rupee)
                   </button>
                   <button
                     type="button"
                     onClick={() => setCurrency('USD')}
-                    className={`px-4 py-2 rounded-lg border-2 transition-all ${
-                      currency === 'USD'
-                        ? 'border-blue-500 bg-blue-50 text-blue-700 font-semibold'
-                        : 'border-slate-200 text-slate-600 hover:border-slate-300'
-                    }`}
+                    className={`px-4 py-2 rounded-lg border-2 transition-all ${currency === 'USD'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700 font-semibold'
+                      : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                      }`}
                   >
                     USD (US Dollar)
                   </button>
@@ -202,9 +225,17 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               {/* Summary */}
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-slate-600">License Type:</span>
-                  <span className="font-semibold capitalize">{selectedLicenseType}</span>
+                  <span className="text-slate-600">{isModulePayment ? 'Module:' : 'License Type:'}</span>
+                  <span className="font-semibold capitalize">
+                    {isModulePayment ? getModuleName(moduleKey!) : selectedLicenseType}
+                  </span>
                 </div>
+                {isModulePayment && (
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-slate-600">Plan:</span>
+                    <span className="font-semibold capitalize">{selectedLicenseType}</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-slate-600">Currency:</span>
                   <span className="font-semibold">{currency}</span>
@@ -250,7 +281,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               {isProcessing ? (
                 <>
                   <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <div className="w-8 h-8 text-blue-600 animate-spin">{ICONS.loading || '⟳'}</div>
+                    <div className="w-8 h-8 text-blue-600 animate-spin">{ICONS.rotateCw}</div>
                   </div>
                   <h3 className="text-xl font-bold text-slate-800 mb-2">Redirecting to Payment Gateway...</h3>
                   <p className="text-slate-600">

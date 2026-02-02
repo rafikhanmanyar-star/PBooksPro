@@ -10,7 +10,7 @@ const getDb = () => getDatabaseService();
 // Create payment session for license renewal
 router.post('/create-session', async (req: TenantRequest, res: Response) => {
   try {
-    const { licenseType, currency } = req.body;
+    const { licenseType, currency, moduleKey } = req.body;
     const tenantId = req.tenantId!;
 
     if (!['monthly', 'yearly'].includes(licenseType)) {
@@ -33,6 +33,7 @@ router.post('/create-session', async (req: TenantRequest, res: Response) => {
       tenantId,
       licenseType,
       currency: currency || 'PKR',
+      moduleKey,
       returnUrl,
       cancelUrl,
     });
@@ -94,7 +95,7 @@ router.post('/confirm', async (req: TenantRequest, res: Response) => {
 export async function handleWebhookRoute(req: Request, res: Response, next: NextFunction) {
   try {
     const { gateway } = req.params;
-    
+
     // Get signature based on gateway type
     let signature: string | undefined;
     if (gateway === 'paddle') {

@@ -60,12 +60,40 @@ export const PRICING_TIERS: Record<string, PricingTier> = {
   }
 };
 
+// Module-specific pricing (Add-ons)
+export const MODULE_PRICING: Record<string, LicensePricing> = {
+  real_estate: {
+    monthly: { PKR: 5000, USD: 18 },
+    yearly: { PKR: 50000, USD: 180 }
+  },
+  rental: {
+    monthly: { PKR: 3000, USD: 11 },
+    yearly: { PKR: 30000, USD: 110 }
+  },
+  tasks: {
+    monthly: { PKR: 2000, USD: 7 },
+    yearly: { PKR: 20000, USD: 70 }
+  },
+  biz_planet: {
+    monthly: { PKR: 2000, USD: 7 },
+    yearly: { PKR: 20000, USD: 70 }
+  },
+  shop: {
+    monthly: { PKR: 4000, USD: 14 },
+    yearly: { PKR: 40000, USD: 140 }
+  }
+};
+
 // Get pricing for a license type and currency
 export function getPricing(
   subscriptionTier: string = 'free',
   licenseType: 'monthly' | 'yearly',
-  currency: 'PKR' | 'USD' = 'PKR'
+  currency: 'PKR' | 'USD' = 'PKR',
+  moduleKey?: string
 ): number {
+  if (moduleKey && MODULE_PRICING[moduleKey]) {
+    return MODULE_PRICING[moduleKey][licenseType][currency];
+  }
   const tier = PRICING_TIERS[subscriptionTier] || PRICING_TIERS.free;
   return tier.pricing[licenseType][currency];
 }

@@ -26,6 +26,7 @@ export interface PaymentRecord {
 export interface CreatePaymentSessionRequest {
   licenseType: 'monthly' | 'yearly';
   currency?: 'PKR' | 'USD';
+  moduleKey?: string;
 }
 
 export interface PaymentStatus {
