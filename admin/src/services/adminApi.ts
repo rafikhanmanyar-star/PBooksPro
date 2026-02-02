@@ -279,6 +279,31 @@ class AdminApi {
     return response.json();
   }
 
+  // Tenant Module Management
+  async getTenantModules(tenantId: string) {
+    const response = await fetch(`${ADMIN_API_URL}/tenants/${tenantId}/modules`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to fetch tenant modules');
+    }
+    return response.json();
+  }
+
+  async updateTenantModule(tenantId: string, moduleKey: string, status: string, expiresAt: string | null) {
+    const response = await fetch(`${ADMIN_API_URL}/tenants/${tenantId}/modules`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ moduleKey, status, expiresAt }),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to update tenant module');
+    }
+    return response.json();
+  }
+
   // Marketplace Management
   async getMarketplaceAds() {
     const response = await fetch(`${ADMIN_API_URL}/marketplace/ads`, {

@@ -5,6 +5,7 @@ import { ICONS, APP_LOGO } from '../../constants';
 import LicenseManagement from '../license/LicenseManagement';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
+import { useLicense } from '../../context/LicenseContext';
 import { apiClient } from '../../services/api/client';
 import packageJson from '../../package.json';
 import ChatModal from '../chat/ChatModal';
@@ -22,6 +23,7 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const { state, dispatch } = useAppContext();
     const { logout, tenant, user } = useAuth();
+    const { hasModule } = useLicense();
     const { currentUser } = state;
     const [isLicenseModalOpen, setIsLicenseModalOpen] = useState(false);
     const [onlineUsers, setOnlineUsers] = useState<number | null>(null);
@@ -263,8 +265,34 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
             });
         }
 
-        return groups;
-    }, [isAdmin, isAccountsOnly]);
+        // Filter groups based on modules
+        return groups.filter(group => {
+            if (group.title === 'Operations') {
+                // Keep Real Estate / Rental modules if enabled
+                const hasRealEstate = hasModule('real_estate');
+                const hasRental = hasModule('rental');
+
+                // If neither, we might still show basic operations like Vendor Directory
+                // But the user requested these to be optional
+                group.items = group.items.filter(item => {
+                    if (item.page === 'projectManagement' || item.page === 'pmConfig' || item.page === 'investmentManagement') return hasRealEstate;
+                    if (item.page === 'rentalManagement') return hasRental;
+                    return true; // Always show Vendor Directory (Basic)
+                });
+                return group.items.length > 0;
+            }
+            if (group.title === 'Tasks') {
+                return hasModule('tasks');
+            }
+            if (group.title === 'B2B') {
+                return hasModule('biz_planet');
+            }
+            if (group.title === 'My Shop') {
+                return hasModule('shop');
+            }
+            return true; // Always show Overview, Financials, People, System
+        });
+    }, [isAdmin, isAccountsOnly, hasModule]);
 
     const isCurrent = (itemPage: Page) => {
         if (currentPage === itemPage) return true;

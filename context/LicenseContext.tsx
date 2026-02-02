@@ -11,6 +11,8 @@ interface LicenseContextType {
     licenseKey: string;
     deviceId: string;
     installDate: string;
+    modules: string[];
+    hasModule: (moduleKey: string) => boolean;
 }
 
 const LicenseContext = createContext<LicenseContextType | undefined>(undefined);
@@ -19,21 +21,21 @@ const TRIAL_DURATION_DAYS = 30;
 
 /** Generate a short unique ID; works in HTTP and older browsers where crypto.randomUUID may be missing. */
 function generateDeviceId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID().toUpperCase().slice(0, 8);
-  }
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-    const bytes = new Uint8Array(4);
-    crypto.getRandomValues(bytes);
-    return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('').toUpperCase().slice(0, 8);
-  }
-  return Math.random().toString(36).slice(2, 10).toUpperCase();
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID().toUpperCase().slice(0, 8);
+    }
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+        const bytes = new Uint8Array(4);
+        crypto.getRandomValues(bytes);
+        return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('').toUpperCase().slice(0, 8);
+    }
+    return Math.random().toString(36).slice(2, 10).toUpperCase();
 }
 
 export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const { installDate, licenseKey, deviceId, setInstallDate, setLicenseKey, setDeviceId } = useDatabaseLicense();
     const { isAuthenticated, checkLicenseStatus } = useAuth();
-    
+
     const [isRegistered, setIsRegistered] = useState(false);
     const [daysRemaining, setDaysRemaining] = useState(0);
     const [isExpired, setIsExpired] = useState(false);
@@ -43,6 +45,7 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
         expiryDate?: string | Date | null;
         daysRemaining?: number;
         isExpired?: boolean;
+        modules?: string[];
     } | null>(null);
 
     useEffect(() => {
@@ -89,7 +92,7 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
         const start = new Date(date);
         const now = new Date();
         const diffTime = Math.abs(now.getTime() - start.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         const remaining = TRIAL_DURATION_DAYS - diffDays;
 
         setDaysRemaining(remaining > 0 ? remaining : 0);
@@ -114,6 +117,12 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     }, [installDate, licenseKey, deviceId, isAuthenticated, cloudLicense]);
 
+    const hasModule = (moduleKey: string) => {
+        if (!isAuthenticated) return false;
+        if (!cloudLicense?.modules) return false;
+        return cloudLicense.modules.includes(moduleKey);
+    };
+
     return (
         <LicenseContext.Provider value={{
             isRegistered,
@@ -122,7 +131,9 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
             daysRemaining,
             licenseKey,
             deviceId,
-            installDate
+            installDate,
+            modules: cloudLicense?.modules || [],
+            hasModule
         }}>
             {children}
         </LicenseContext.Provider>

@@ -8,7 +8,7 @@ export function licenseMiddleware() {
     try {
       const db = getDatabaseService();
       const licenseService = new LicenseService(db);
-      
+
       if (!req.tenantId) {
         return res.status(401).json({ error: 'No tenant context' });
       }
@@ -41,6 +41,37 @@ export function licenseMiddleware() {
     } catch (error) {
       console.error('License middleware error:', error);
       res.status(500).json({ error: 'License check failed' });
+    }
+  };
+}
+
+/**
+ * Middleware to require a specific module to be enabled
+ */
+export function requireModule(moduleKey: string) {
+  return async (req: TenantRequest, res: Response, next: NextFunction) => {
+    try {
+      const db = getDatabaseService();
+      const licenseService = new LicenseService(db);
+
+      if (!req.tenantId) {
+        return res.status(401).json({ error: 'No tenant context' });
+      }
+
+      const isEnabled = await licenseService.isModuleEnabled(req.tenantId, moduleKey);
+
+      if (!isEnabled) {
+        return res.status(403).json({
+          error: 'Module not enabled',
+          moduleKey,
+          message: `The ${moduleKey} module is not part of your current subscription. Please enable it in the admin portal.`
+        });
+      }
+
+      next();
+    } catch (error) {
+      console.error('Module requirement check failed:', error);
+      res.status(500).json({ error: 'Module authorization check failed' });
     }
   };
 }

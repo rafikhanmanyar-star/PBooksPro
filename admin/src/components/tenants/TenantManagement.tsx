@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '../../services/adminApi';
-import { Search, Eye, Ban, CheckCircle, Edit2, Save, X, Trash2, Users, Key, LogOut, UserX, RefreshCw } from 'lucide-react';
+import { Search, Eye, Ban, CheckCircle, Edit2, Save, X, Trash2, Users, Key, LogOut, UserX, RefreshCw, Box, ShieldCheck, ShieldAlert } from 'lucide-react';
 
 interface Tenant {
   id: string;
@@ -36,7 +36,7 @@ const TenantManagement: React.FC = () => {
       const filters: any = {};
       if (statusFilter) filters.status = statusFilter;
       if (searchTerm) filters.search = searchTerm;
-      
+
       const data = await adminApi.getTenants(filters);
       setTenants(data);
       setError('');
@@ -49,7 +49,7 @@ const TenantManagement: React.FC = () => {
 
   const handleSuspend = async (tenantId: string) => {
     if (!confirm('Are you sure you want to suspend this tenant?')) return;
-    
+
     try {
       await adminApi.suspendTenant(tenantId);
       await loadTenants();
@@ -69,16 +69,16 @@ const TenantManagement: React.FC = () => {
 
   const handleDelete = async (tenantId: string, tenantName: string) => {
     const confirmMessage = `Are you sure you want to delete "${tenantName}"?\n\nThis action will permanently delete:\n- The tenant account\n- All associated users\n- All financial data\n- All transactions and records\n\nThis action CANNOT be undone!`;
-    
+
     if (!confirm(confirmMessage)) return;
-    
+
     // Double confirmation for safety
     const doubleConfirm = prompt(`Type "DELETE" to confirm deletion of "${tenantName}":`);
     if (doubleConfirm !== 'DELETE') {
       alert('Deletion cancelled. You must type "DELETE" to confirm.');
       return;
     }
-    
+
     try {
       await adminApi.deleteTenant(tenantId);
       alert('Tenant deleted successfully');
@@ -280,10 +280,19 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
   const [users, setUsers] = useState<TenantUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [selectedUser, setSelectedUser] = useState<TenantUser | null>(null);
-  const [showPasswordReset, setShowPasswordReset] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
   const [resettingPassword, setResettingPassword] = useState(false);
-  
+  const [tenantModules, setTenantModules] = useState<any[]>([]);
+  const [loadingModules, setLoadingModules] = useState(false);
+  const [updatingModule, setUpdatingModule] = useState<string | null>(null);
+
+  const MODULES = [
+    { key: 'real_estate', label: 'Real Estate Developer & Constructor' },
+    { key: 'rental', label: 'Real Estate Rental Management' },
+    { key: 'tasks', label: 'Tasks (Task Management Suite)' },
+    { key: 'biz_planet', label: 'Biz Planet (B2B Marketplace)' },
+    { key: 'shop', label: 'My Shop (POS, Inventory, Multi-store)' },
+  ];
+
   // Form fields
   const [formData, setFormData] = useState({
     name: tenant.name,
@@ -301,7 +310,34 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
     loadStats();
     loadTenantDetails();
     loadUsers();
+    loadModules();
   }, [tenant.id]);
+
+  const loadModules = async () => {
+    try {
+      setLoadingModules(true);
+      const data = await adminApi.getTenantModules(tenant.id);
+      setTenantModules(data);
+    } catch (error) {
+      console.error('Failed to load modules:', error);
+    } finally {
+      setLoadingModules(false);
+    }
+  };
+
+  const handleToggleModule = async (moduleKey: string, currentStatus: string) => {
+    try {
+      setUpdatingModule(moduleKey);
+      const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+      // For now, setting no expiry (perpetual for the module until toggled off)
+      await adminApi.updateTenantModule(tenant.id, moduleKey, newStatus, null);
+      await loadModules();
+    } catch (error: any) {
+      alert(error.message || 'Failed to update module');
+    } finally {
+      setUpdatingModule(null);
+    }
+  };
 
   const loadTenantDetails = async () => {
     try {
@@ -373,9 +409,9 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
   const handleDeleteUser = async (user: TenantUser) => {
     const userType = user.is_tenant_admin ? 'Tenant Admin' : 'Sub User';
     const confirmMessage = `Are you sure you want to delete "${user.name}" (${user.username})?\n\nUser Type: ${userType}\n\nThis action will permanently delete:\n- The user account\n- All associated sessions\n\nThis action CANNOT be undone!`;
-    
+
     if (!confirm(confirmMessage)) return;
-    
+
     try {
       await adminApi.deleteTenantUser(tenant.id, user.id);
       alert('User deleted successfully');
@@ -473,10 +509,10 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
       zIndex: 1000,
       padding: '1rem'
     }} onClick={onClose}>
-      <div className="card" style={{ 
-        maxWidth: '900px', 
-        width: '100%', 
-        maxHeight: '95vh', 
+      <div className="card" style={{
+        maxWidth: '900px',
+        width: '100%',
+        maxHeight: '95vh',
         overflow: 'auto',
         padding: '1rem'
       }} onClick={(e) => e.stopPropagation()}>
@@ -505,9 +541,9 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
 
         <div style={{ display: 'grid', gap: '0.75rem' }}>
           {/* Basic Information - Compact Grid */}
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
             gap: '0.75rem',
             paddingBottom: '0.75rem',
             borderBottom: '1px solid #e5e7eb'
@@ -592,10 +628,10 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
 
           {/* License & Subscription Information - Compact Grid */}
           <div style={{ paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
-              gap: '0.75rem' 
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gap: '0.75rem'
             }}>
               <div>
                 <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>License Type</label>
@@ -693,10 +729,10 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
           {stats && (
             <div style={{ paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
               <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem', color: '#374151' }}>Statistics</h3>
-              <div style={{ 
-                display: 'grid', 
-                gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', 
-                gap: '0.75rem' 
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                gap: '0.75rem'
               }}>
                 <div>
                   <div style={{ fontSize: '0.6875rem', color: '#6b7280', marginBottom: '0.125rem' }}>Users</div>
@@ -744,6 +780,58 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
             </div>
           )}
 
+          {/* Module Management Section */}
+          <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
+            <h3 style={{ fontSize: '0.875rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.375rem', color: '#374151', marginBottom: '0.75rem' }}>
+              <Box size={16} />
+              Module Licenses
+            </h3>
+
+            {loadingModules ? (
+              <div style={{ padding: '1rem', textAlign: 'center', color: '#6b7280', fontSize: '0.8125rem' }}>Loading modules...</div>
+            ) : (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+                gap: '0.75rem'
+              }}>
+                {MODULES.map(module => {
+                  const activeModule = tenantModules.find(tm => tm.module_key === module.key);
+                  const isActive = activeModule?.status === 'active';
+
+                  return (
+                    <div key={module.key} style={{
+                      padding: '0.75rem',
+                      borderRadius: '0.5rem',
+                      border: '1px solid #e5e7eb',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      backgroundColor: isActive ? '#f0fdf4' : '#f9fafb'
+                    }}>
+                      <div style={{ flex: 1, marginRight: '0.5rem' }}>
+                        <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: isActive ? '#166534' : '#374151' }}>
+                          {module.label}
+                        </div>
+                        <div style={{ fontSize: '0.6875rem', color: isActive ? '#15803d' : '#6b7280' }}>
+                          {isActive ? 'Module Enabled' : 'Module Disabled'}
+                        </div>
+                      </div>
+                      <button
+                        className={`btn ${isActive ? 'btn-danger' : 'btn-success'}`}
+                        onClick={() => handleToggleModule(module.key, activeModule?.status || 'inactive')}
+                        disabled={updatingModule === module.key}
+                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', minWidth: '80px' }}
+                      >
+                        {updatingModule === module.key ? 'Wait...' : isActive ? 'Disable' : 'Enable'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Users Section */}
           <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -758,7 +846,7 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                 style={{ padding: '0.375rem 0.625rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}
                 title="Refresh Users"
               >
-                <RefreshCw size={14} style={{ 
+                <RefreshCw size={14} style={{
                   opacity: loadingUsers ? 0.6 : 1,
                   cursor: loadingUsers ? 'not-allowed' : 'pointer'
                 }} />
@@ -796,24 +884,24 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                         <td style={{ padding: '0.5rem', fontSize: '0.8125rem' }}>{user.username}</td>
                         <td style={{ padding: '0.5rem' }}>
                           {user.is_tenant_admin ? (
-                            <span style={{ 
-                              padding: '0.1875rem 0.375rem', 
-                              borderRadius: '0.25rem', 
-                              fontSize: '0.6875rem', 
+                            <span style={{
+                              padding: '0.1875rem 0.375rem',
+                              borderRadius: '0.25rem',
+                              fontSize: '0.6875rem',
                               fontWeight: 600,
-                              backgroundColor: '#dbeafe', 
-                              color: '#1e40af' 
+                              backgroundColor: '#dbeafe',
+                              color: '#1e40af'
                             }}>
                               Admin
                             </span>
                           ) : (
-                            <span style={{ 
-                              padding: '0.1875rem 0.375rem', 
-                              borderRadius: '0.25rem', 
-                              fontSize: '0.6875rem', 
+                            <span style={{
+                              padding: '0.1875rem 0.375rem',
+                              borderRadius: '0.25rem',
+                              fontSize: '0.6875rem',
                               fontWeight: 600,
-                              backgroundColor: '#f3f4f6', 
-                              color: '#4b5563' 
+                              backgroundColor: '#f3f4f6',
+                              color: '#4b5563'
                             }}>
                               User
                             </span>
@@ -822,24 +910,24 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                         <td style={{ padding: '0.5rem', fontSize: '0.8125rem' }}>{user.role}</td>
                         <td style={{ padding: '0.5rem' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1875rem' }}>
-                            <span style={{ 
-                              padding: '0.125rem 0.375rem', 
-                              borderRadius: '0.25rem', 
-                              fontSize: '0.6875rem', 
+                            <span style={{
+                              padding: '0.125rem 0.375rem',
+                              borderRadius: '0.25rem',
+                              fontSize: '0.6875rem',
                               fontWeight: 500,
-                              backgroundColor: user.is_active ? '#d1fae5' : '#fee2e2', 
+                              backgroundColor: user.is_active ? '#d1fae5' : '#fee2e2',
                               color: user.is_active ? '#065f46' : '#991b1b',
                               width: 'fit-content'
                             }}>
                               {user.is_active ? 'Active' : 'Inactive'}
                             </span>
                             {user.login_status && (
-                              <span style={{ 
-                                padding: '0.125rem 0.375rem', 
-                                borderRadius: '0.25rem', 
-                                fontSize: '0.6875rem', 
+                              <span style={{
+                                padding: '0.125rem 0.375rem',
+                                borderRadius: '0.25rem',
+                                fontSize: '0.6875rem',
                                 fontWeight: 500,
-                                backgroundColor: '#dbeafe', 
+                                backgroundColor: '#dbeafe',
                                 color: '#1e40af',
                                 width: 'fit-content'
                               }}>
@@ -902,80 +990,81 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
             )}
           </div>
         </div>
-      </div>
 
-      {/* Password Reset Modal */}
-      {showPasswordReset && selectedUser && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 2000,
-          padding: '1rem'
-        }} onClick={() => {
-          setShowPasswordReset(false);
-          setSelectedUser(null);
-          setNewPassword('');
-        }}>
-          <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '1rem' }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Reset Password</h3>
-              <button onClick={() => {
-                setShowPasswordReset(false);
-                setSelectedUser(null);
-                setNewPassword('');
-              }} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: '0.25rem', lineHeight: 1 }}>×</button>
-            </div>
-            <div style={{ marginBottom: '0.75rem' }}>
-              <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.5rem' }}>
-                Reset password for: <strong>{selectedUser.name}</strong> ({selectedUser.username})
-              </p>
-              <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>
-                New Password *
-              </label>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="input"
-                placeholder="Enter new password (min 6 characters)"
-                style={{ width: '100%', padding: '0.375rem', fontSize: '0.8125rem' }}
-                autoFocus
-                autoComplete="off"
-                data-form-type="other"
-              />
-              <div style={{ fontSize: '0.6875rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                Password must be at least 6 characters long
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-              <button
-                className="btn btn-secondary"
-                onClick={() => {
+        {/* Password Reset Modal */}
+        {showPasswordReset && selectedUser && (
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000,
+            padding: '1rem'
+          }} onClick={(e) => {
+            e.stopPropagation();
+            setShowPasswordReset(false);
+            setSelectedUser(null);
+            setNewPassword('');
+          }}>
+            <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '1rem' }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Reset Password</h3>
+                <button onClick={() => {
                   setShowPasswordReset(false);
                   setSelectedUser(null);
                   setNewPassword('');
-                }}
-                disabled={resettingPassword}
-                style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
-              >
-                Cancel
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={handleResetPassword}
-                disabled={resettingPassword || !newPassword || newPassword.length < 6}
-                style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
-              >
-                {resettingPassword ? 'Resetting...' : 'Reset'}
-              </button>
+                }} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: '0.25rem', lineHeight: 1 }}>×</button>
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.5rem' }}>
+                  Reset password for: <strong>{selectedUser.name}</strong> ({selectedUser.username})
+                </p>
+                <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>
+                  New Password *
+                </label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="input"
+                  placeholder="Enter new password (min 6 characters)"
+                  style={{ width: '100%', padding: '0.375rem', fontSize: '0.8125rem' }}
+                  autoFocus
+                  autoComplete="off"
+                  data-form-type="other"
+                />
+                <div style={{ fontSize: '0.6875rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                  Password must be at least 6 characters long
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setShowPasswordReset(false);
+                    setSelectedUser(null);
+                    setNewPassword('');
+                  }}
+                  disabled={resettingPassword}
+                  style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleResetPassword}
+                  disabled={resettingPassword || !newPassword || newPassword.length < 6}
+                  style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
+                >
+                  {resettingPassword ? 'Resetting...' : 'Reset'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };

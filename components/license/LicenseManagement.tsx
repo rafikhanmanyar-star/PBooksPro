@@ -13,6 +13,7 @@ interface LicenseInfo {
   expiryDate: string | null;
   daysRemaining: number;
   isExpired: boolean;
+  modules?: string[];
 }
 
 const LicenseManagement: React.FC = () => {
@@ -147,13 +148,12 @@ const LicenseManagement: React.FC = () => {
               <div className="flex justify-between items-center">
                 <span className="text-slate-600">Days Remaining:</span>
                 <span
-                  className={`font-semibold ${
-                    licenseInfo.daysRemaining <= 7
+                  className={`font-semibold ${licenseInfo.daysRemaining <= 7
                       ? 'text-red-600'
                       : licenseInfo.daysRemaining <= 30
-                      ? 'text-yellow-600'
-                      : 'text-green-600'
-                  }`}
+                        ? 'text-yellow-600'
+                        : 'text-green-600'
+                    }`}
                 >
                   {licenseInfo.daysRemaining} days
                 </span>
@@ -199,6 +199,22 @@ const LicenseManagement: React.FC = () => {
                   <strong>License Expired:</strong> Your license has expired. Please renew to
                   continue using the application.
                 </p>
+              </div>
+            )}
+            {/* Modules List */}
+            {licenseInfo.modules && licenseInfo.modules.length > 0 && (
+              <div className="border-t border-slate-200 pt-4">
+                <h4 className="text-sm font-semibold text-slate-700 mb-2">Active Modules:</h4>
+                <div className="flex flex-wrap gap-2">
+                  {licenseInfo.modules.map(module => (
+                    <span
+                      key={module}
+                      className="px-2 py-1 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded text-xs font-medium"
+                    >
+                      {module.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
           </div>
