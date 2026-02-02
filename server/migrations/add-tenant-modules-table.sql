@@ -2,7 +2,7 @@
 -- Created at: 2026-02-02
 
 CREATE TABLE IF NOT EXISTS tenant_modules (
-    id TEXT PRIMARY KEY DEFAULT 'mod_' || lower(hex(random_bytes(8))),
+    id TEXT PRIMARY KEY DEFAULT 'mod_' || substr(md5(random()::text), 1, 16),
     tenant_id TEXT NOT NULL,
     module_key TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'active',

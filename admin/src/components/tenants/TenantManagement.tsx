@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '../../services/adminApi';
-import { Search, Eye, Ban, CheckCircle, Edit2, Save, X, Trash2, Users, Key, LogOut, UserX, RefreshCw, Box, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { Search, Eye, Ban, CheckCircle, Edit2, Save, X, Trash2, Users, Key, LogOut, UserX, RefreshCw, Box } from 'lucide-react';
 
 interface Tenant {
   id: string;
@@ -280,6 +280,8 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
   const [users, setUsers] = useState<TenantUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [selectedUser, setSelectedUser] = useState<TenantUser | null>(null);
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
   const [resettingPassword, setResettingPassword] = useState(false);
   const [tenantModules, setTenantModules] = useState<any[]>([]);
   const [loadingModules, setLoadingModules] = useState(false);
