@@ -62,27 +62,9 @@ const TreeItem: React.FC<{
                 onContextMenu={handleContextMenu}
                 className={`group contents cursor-pointer text-sm transition-all duration-200`}
             >
-                {/* Balance Column (Fixed/Resizable) */}
-                <div
-                    className={`p-2 border-b border-r border-slate-200 text-right flex-shrink-0 tabular-nums text-xs transition-colors
-                        ${isSelected
-                            ? 'bg-indigo-600 text-white'
-                            : 'hover:bg-slate-50'
-                        }`}
-                    style={{ width: colWidths.balance }}
-                >
-                    {node.balance > 0 ? (
-                        <span className={`font-semibold ${isSelected ? 'text-rose-200' : 'text-rose-600'}`}>
-                            {node.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                        </span>
-                    ) : (
-                        <span className={`${isSelected ? 'text-white/60' : 'text-emerald-600'}`}>-</span>
-                    )}
-                </div>
-
                 {/* Name Column (Fluid) */}
                 <div
-                    className={`p-2 border-b border-slate-200 flex items-center gap-2 min-w-0 overflow-hidden transition-colors
+                    className={`p-2 border-b border-r border-slate-200 flex items-center gap-2 min-w-0 overflow-hidden transition-colors
                         ${isSelected
                             ? 'bg-indigo-600 text-white font-bold z-10 shadow-sm relative scale-[1.01] origin-left'
                             : 'text-slate-700 hover:bg-slate-50'
@@ -102,6 +84,24 @@ const TreeItem: React.FC<{
                         <span className="w-4 h-4 inline-block flex-shrink-0"></span>
                     )}
                     <span className="truncate" title={node.name}>{node.name}</span>
+                </div>
+
+                {/* Balance Column (Fixed/Resizable) */}
+                <div
+                    className={`p-2 border-b border-slate-200 text-right flex-shrink-0 tabular-nums text-xs transition-colors
+                        ${isSelected
+                            ? 'bg-indigo-600 text-white'
+                            : 'hover:bg-slate-50'
+                        }`}
+                    style={{ width: colWidths.balance }}
+                >
+                    {node.balance > 0 ? (
+                        <span className={`font-semibold ${isSelected ? 'text-rose-200' : 'text-rose-600'}`}>
+                            {node.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </span>
+                    ) : (
+                        <span className={`${isSelected ? 'text-white/60' : 'text-emerald-600'}`}>-</span>
+                    )}
                 </div>
             </div>
 
@@ -199,7 +199,7 @@ const InvoiceTreeView: React.FC<InvoiceTreeViewProps> = ({ treeData, selectedNod
 
     // Dynamic grid template
     // Name col is 1fr (fluid), others are fixed pixel widths based on state
-    const gridTemplateColumns = `${colWidths.balance}px 1fr`;
+    const gridTemplateColumns = `1fr ${colWidths.balance}px`;
 
     return (
         <div className="bg-white rounded-lg shadow-sm border border-slate-300 flex flex-col h-full overflow-hidden">
@@ -209,7 +209,14 @@ const InvoiceTreeView: React.FC<InvoiceTreeViewProps> = ({ treeData, selectedNod
                 style={{ gridTemplateColumns }}
             >
                 <div
-                    className="p-2 text-right border-r border-slate-300 cursor-pointer hover:bg-slate-200 flex items-center justify-end relative select-none"
+                    className="p-2 border-r border-slate-300 cursor-pointer hover:bg-slate-200 flex items-center justify-between select-none"
+                    onClick={() => handleSort('name')}
+                >
+                    Entity <SortIcon column="name" />
+                </div>
+
+                <div
+                    className="p-2 text-right cursor-pointer hover:bg-slate-200 flex items-center justify-end relative select-none"
                     onClick={() => handleSort('balance')}
                 >
                     A/R <SortIcon column="balance" />
@@ -218,13 +225,6 @@ const InvoiceTreeView: React.FC<InvoiceTreeViewProps> = ({ treeData, selectedNod
                         onMouseDown={startResizing('balance')}
                         onClick={e => e.stopPropagation()}
                     ></div>
-                </div>
-
-                <div
-                    className="p-2 border-slate-300 cursor-pointer hover:bg-slate-200 flex items-center justify-between select-none"
-                    onClick={() => handleSort('name')}
-                >
-                    Entity <SortIcon column="name" />
                 </div>
             </div>
 
@@ -254,13 +254,14 @@ const InvoiceTreeView: React.FC<InvoiceTreeViewProps> = ({ treeData, selectedNod
                 className="grid bg-slate-50 border-t border-slate-300 font-bold text-xs text-slate-700"
                 style={{ gridTemplateColumns }}
             >
-                <div className="p-2 text-right text-rose-600 tabular-nums border-r border-slate-300">
+                <div className="p-2 text-left border-r border-slate-300">Total</div>
+                <div className="p-2 text-right text-rose-600 tabular-nums">
                     {CURRENCY} {treeData.reduce((sum, n) => sum + n.balance, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </div>
-                <div className="p-2 text-left">Total</div>
             </div>
         </div>
     );
 };
+
 
 export default InvoiceTreeView;

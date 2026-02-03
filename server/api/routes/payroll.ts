@@ -123,7 +123,7 @@ router.post('/employees', async (req: TenantRequest, res) => {
          ORDER BY employee_code DESC LIMIT 1`,
         [tenantId]
       );
-      
+
       if (lastEmployee.length > 0 && lastEmployee[0].employee_code) {
         // Extract number from EID-XXXX format
         const lastCode = lastEmployee[0].employee_code;
@@ -144,8 +144,8 @@ router.post('/employees', async (req: TenantRequest, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'ACTIVE', $13, $14)
        RETURNING *`,
       [tenantId, name, email, phone, address, designation, department, effectiveDepartmentId || null, grade,
-       joining_date, JSON.stringify(salary || { basic: 0, allowances: [], deductions: [] }),
-       JSON.stringify(projects || []), employeeCode, userId]
+        joining_date, JSON.stringify(salary || { basic: 0, allowances: [], deductions: [] }),
+        JSON.stringify(projects || []), employeeCode, userId]
     );
 
     // Notify via WebSocket
@@ -171,7 +171,7 @@ router.put('/employees/:id', async (req: TenantRequest, res) => {
 
     const {
       name, email, phone, address, photo, designation, department, department_id,
-      grade, status, termination_date, salary, adjustments, projects
+      grade, joining_date, status, termination_date, salary, adjustments, projects
     } = req.body;
 
     // If department_id is provided, use it; otherwise try to find by department name
@@ -197,20 +197,21 @@ router.put('/employees/:id', async (req: TenantRequest, res) => {
         department = COALESCE($7, department),
         department_id = COALESCE($8, department_id),
         grade = COALESCE($9, grade),
-        status = COALESCE($10, status),
-        termination_date = COALESCE($11, termination_date),
-        salary = COALESCE($12, salary),
-        adjustments = COALESCE($13, adjustments),
-        projects = COALESCE($14, projects),
-        updated_by = $15
-       WHERE id = $16 AND tenant_id = $17
+        joining_date = COALESCE($10, joining_date),
+        status = COALESCE($11, status),
+        termination_date = COALESCE($12, termination_date),
+        salary = COALESCE($13, salary),
+        adjustments = COALESCE($14, adjustments),
+        projects = COALESCE($15, projects),
+        updated_by = $16
+       WHERE id = $17 AND tenant_id = $18
        RETURNING *`,
       [name, email, phone, address, photo, designation, department, effectiveDepartmentId,
-       grade, status, termination_date,
-       salary ? JSON.stringify(salary) : null,
-       adjustments ? JSON.stringify(adjustments) : null,
-       projects ? JSON.stringify(projects) : null,
-       userId, id, tenantId]
+        grade, joining_date, status, termination_date,
+        salary ? JSON.stringify(salary) : null,
+        adjustments ? JSON.stringify(adjustments) : null,
+        projects ? JSON.stringify(projects) : null,
+        userId, id, tenantId]
     );
 
     if (result.length === 0) {
@@ -378,7 +379,7 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
 
     // Validate status transition
     if (!validTransitions[currentStatus]?.includes(status)) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: `Invalid status transition from ${currentStatus} to ${status}`,
         validTransitions: validTransitions[currentStatus] || []
       });
@@ -402,7 +403,7 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
 
       // Check if all active employees have payslips
       if (payslips.length < activeCount) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: `Cannot approve: ${activeCount - payslips.length} active employees are missing payslips. Please process payroll first.`,
           missingPayslips: activeCount - payslips.length,
           totalActive: activeCount,
@@ -419,7 +420,7 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
 
       // Allow small rounding differences (up to 0.01)
       if (difference > 0.01) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: `Cannot approve: Total amount mismatch. Run total: ${runTotal}, Payslips sum: ${payslipTotal}, Difference: ${difference}`,
           runTotal,
           payslipTotal,
@@ -429,7 +430,7 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
 
       // Validate employee count matches
       if (payslips.length !== parseInt(currentRun[0].employee_count || 0)) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: `Cannot approve: Employee count mismatch. Run count: ${currentRun[0].employee_count}, Payslips count: ${payslips.length}`,
           runEmployeeCount: currentRun[0].employee_count,
           payslipCount: payslips.length
@@ -441,7 +442,7 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
     if (status === 'PAID') {
       // Require APPROVED status first
       if (currentStatus !== 'APPROVED') {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: 'Payroll run must be APPROVED before it can be marked as PAID',
           currentStatus
         });
@@ -460,13 +461,13 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
       const paidPayslips = parseInt(payslips[0].paid);
 
       if (totalPayslips === 0) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: 'Cannot mark as PAID: No payslips found for this run'
         });
       }
 
       if (paidPayslips < totalPayslips) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: `Cannot mark as PAID: ${totalPayslips - paidPayslips} payslips are still unpaid`,
           totalPayslips,
           paidPayslips,
@@ -546,7 +547,7 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
     // Prevent reprocessing approved or paid runs
     const currentStatus = runCheck[0].status;
     if (currentStatus === 'APPROVED' || currentStatus === 'PAID') {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: `Cannot process payroll run with status ${currentStatus}. Please revert to DRAFT first if modifications are needed.`,
         currentStatus
       });
@@ -562,86 +563,86 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
 
     try {
       // Get employees who already have payslips for this run
-    const existingPayslips = await getDb().query(
-      `SELECT employee_id, net_pay FROM payslips 
+      const existingPayslips = await getDb().query(
+        `SELECT employee_id, net_pay FROM payslips 
        WHERE payroll_run_id = $1 AND tenant_id = $2`,
-      [id, tenantId]
-    );
+        [id, tenantId]
+      );
 
-    const existingEmployeeIds = new Set(existingPayslips.map((p: any) => p.employee_id));
-    const existingTotalAmount = existingPayslips.reduce((sum: number, p: any) => sum + parseFloat(p.net_pay || 0), 0);
+      const existingEmployeeIds = new Set(existingPayslips.map((p: any) => p.employee_id));
+      const existingTotalAmount = existingPayslips.reduce((sum: number, p: any) => sum + parseFloat(p.net_pay || 0), 0);
 
-    // Get active employees who DON'T already have a payslip for this run
-    const employees = await getDb().query(
-      `SELECT * FROM payroll_employees 
+      // Get active employees who DON'T already have a payslip for this run
+      const employees = await getDb().query(
+        `SELECT * FROM payroll_employees 
        WHERE tenant_id = $1 AND status = 'ACTIVE'
        AND id NOT IN (
          SELECT employee_id FROM payslips 
          WHERE payroll_run_id = $2 AND tenant_id = $1
        )`,
-      [tenantId, id]
-    );
+        [tenantId, id]
+      );
 
-    let newTotalAmount = 0;
-    let newPayslipsCount = 0;
+      let newTotalAmount = 0;
+      let newPayslipsCount = 0;
 
-    // Generate payslips only for new employees (those without existing payslips)
-    for (const emp of employees) {
-      const salary = emp.salary;
-      const basic = roundToTwo(salary.basic || 0);
-      
-      // Calculate allowances (filter out "Basic Pay" if it exists in legacy data)
-      // All amounts rounded to 2 decimal places
-      let totalAllowances = 0;
-      (salary.allowances || [])
-        .filter((a: any) => {
-          const name = (a.name || '').toLowerCase();
-          return name !== 'basic pay' && name !== 'basic salary';
-        })
-        .forEach((a: any) => {
-          totalAllowances += calculateAmount(basic, a.amount, a.is_percentage);
+      // Generate payslips only for new employees (those without existing payslips)
+      for (const emp of employees) {
+        const salary = emp.salary;
+        const basic = roundToTwo(salary.basic || 0);
+
+        // Calculate allowances (filter out "Basic Pay" if it exists in legacy data)
+        // All amounts rounded to 2 decimal places
+        let totalAllowances = 0;
+        (salary.allowances || [])
+          .filter((a: any) => {
+            const name = (a.name || '').toLowerCase();
+            return name !== 'basic pay' && name !== 'basic salary';
+          })
+          .forEach((a: any) => {
+            totalAllowances += calculateAmount(basic, a.amount, a.is_percentage);
+          });
+        totalAllowances = roundToTwo(totalAllowances);
+
+        // Calculate deductions (rounded to 2 decimal places)
+        const grossForDeductions = roundToTwo(basic + totalAllowances);
+        let totalDeductions = 0;
+        (salary.deductions || []).forEach((d: any) => {
+          totalDeductions += calculateAmount(grossForDeductions, d.amount, d.is_percentage);
         });
-      totalAllowances = roundToTwo(totalAllowances);
+        totalDeductions = roundToTwo(totalDeductions);
 
-      // Calculate deductions (rounded to 2 decimal places)
-      const grossForDeductions = roundToTwo(basic + totalAllowances);
-      let totalDeductions = 0;
-      (salary.deductions || []).forEach((d: any) => {
-        totalDeductions += calculateAmount(grossForDeductions, d.amount, d.is_percentage);
-      });
-      totalDeductions = roundToTwo(totalDeductions);
+        // Calculate adjustments (rounded to 2 decimal places)
+        const adjustments = emp.adjustments || [];
+        const earningAdj = roundToTwo(adjustments.filter((a: any) => a.type === 'EARNING')
+          .reduce((sum: number, a: any) => sum + a.amount, 0));
+        const deductionAdj = roundToTwo(adjustments.filter((a: any) => a.type === 'DEDUCTION')
+          .reduce((sum: number, a: any) => sum + a.amount, 0));
 
-      // Calculate adjustments (rounded to 2 decimal places)
-      const adjustments = emp.adjustments || [];
-      const earningAdj = roundToTwo(adjustments.filter((a: any) => a.type === 'EARNING')
-        .reduce((sum: number, a: any) => sum + a.amount, 0));
-      const deductionAdj = roundToTwo(adjustments.filter((a: any) => a.type === 'DEDUCTION')
-        .reduce((sum: number, a: any) => sum + a.amount, 0));
+        const grossPay = roundToTwo(basic + totalAllowances + earningAdj);
+        const netPay = roundToTwo(grossPay - totalDeductions - deductionAdj);
 
-      const grossPay = roundToTwo(basic + totalAllowances + earningAdj);
-      const netPay = roundToTwo(grossPay - totalDeductions - deductionAdj);
-      
-      newTotalAmount += netPay;
-      newPayslipsCount++;
+        newTotalAmount += netPay;
+        newPayslipsCount++;
 
-      // Insert payslip (no ON CONFLICT update - we only insert new ones)
-      await getDb().query(
-        `INSERT INTO payslips 
+        // Insert payslip (no ON CONFLICT update - we only insert new ones)
+        await getDb().query(
+          `INSERT INTO payslips 
          (tenant_id, payroll_run_id, employee_id, basic_pay, total_allowances, 
           total_deductions, total_adjustments, gross_pay, net_pay,
           allowance_details, deduction_details, adjustment_details)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-        [tenantId, id, emp.id, basic, totalAllowances, totalDeductions,
-         earningAdj - deductionAdj, grossPay, netPay,
-         JSON.stringify(salary.allowances || []),
-         JSON.stringify(salary.deductions || []),
-         JSON.stringify(adjustments)]
-      );
-    }
+          [tenantId, id, emp.id, basic, totalAllowances, totalDeductions,
+            earningAdj - deductionAdj, grossPay, netPay,
+            JSON.stringify(salary.allowances || []),
+            JSON.stringify(salary.deductions || []),
+            JSON.stringify(adjustments)]
+        );
+      }
 
-    // Calculate combined totals (existing + new)
-    const combinedTotalAmount = existingTotalAmount + newTotalAmount;
-    const totalEmployeeCount = existingEmployeeIds.size + newPayslipsCount;
+      // Calculate combined totals (existing + new)
+      const combinedTotalAmount = existingTotalAmount + newTotalAmount;
+      const totalEmployeeCount = existingEmployeeIds.size + newPayslipsCount;
 
       // Update payroll run with combined totals
       // Set status to DRAFT so it can be reviewed and approved
@@ -1036,22 +1037,22 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
   const userId = req.userId;
   const { id } = req.params;
   let accountId: string | undefined;
-  
+
   try {
 
-    console.log('💰 Payslip payment request:', { 
-      payslipId: id, 
-      tenantId, 
+    console.log('💰 Payslip payment request:', {
+      payslipId: id,
+      tenantId,
       tenantIdType: typeof tenantId,
       tenantIdLength: tenantId?.length,
-      userId, 
-      body: req.body 
+      userId,
+      body: req.body
     });
 
     if (!tenantId || !userId) {
       return res.status(400).json({ error: 'Authentication required' });
     }
-    
+
     const { categoryId, projectId, description, amount: requestAmount } = req.body;
     accountId = req.body.accountId;
 
@@ -1080,9 +1081,9 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     }
 
     const payslip = payslipResult[0];
-    console.log('✅ Payslip found:', { 
-      id: payslip.id, 
-      employee: payslip.employee_name, 
+    console.log('✅ Payslip found:', {
+      id: payslip.id,
+      employee: payslip.employee_name,
       netPay: payslip.net_pay,
       isPaid: payslip.is_paid,
       runStatus: payslip.run_status
@@ -1106,8 +1107,8 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     // Determine project from employee's project allocation (first one with highest allocation)
     let effectiveProjectId = projectId;
     if (!effectiveProjectId && payslip.employee_projects) {
-      const projects = typeof payslip.employee_projects === 'string' 
-        ? JSON.parse(payslip.employee_projects) 
+      const projects = typeof payslip.employee_projects === 'string'
+        ? JSON.parse(payslip.employee_projects)
         : payslip.employee_projects;
       if (projects && projects.length > 0) {
         // Sort by percentage descending and get the first one
@@ -1156,7 +1157,7 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
             [accountId, tenantId, systemAccount.name, systemAccount.type, systemAccount.description]
           );
           console.log(`✅ POST /payroll/payslips/:id/pay - System account created: ${accountId}`);
-          
+
           // Re-query to get the newly created account
           const newAccountCheck = await client.query(
             'SELECT id, name, type, balance FROM accounts WHERE id = $1 AND tenant_id = $2',
@@ -1166,7 +1167,7 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
             accountCheck.rows.push(newAccountCheck.rows[0]);
           }
         }
-        
+
         // If still not found, throw error (same as transactions route)
         if (accountCheck.rows.length === 0) {
           throw {
@@ -1243,8 +1244,8 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     const paidPayslips = parseInt(payslipStatus[0].paid);
 
     // Emit WebSocket event
-    emitToTenant(tenantId, 'payslip_paid', { 
-      payslipId: id, 
+    emitToTenant(tenantId, 'payslip_paid', {
+      payslipId: id,
       transactionId: result.transaction.id,
       employeeId: payslip.employee_id,
       runId: payslip.run_id,
@@ -1265,7 +1266,7 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     });
   } catch (error: any) {
     console.error('❌ Error paying payslip:', error);
-    
+
     // Handle specific error codes (same as transactions route)
     if (error.code === 'ACCOUNT_NOT_FOUND') {
       // Get available accounts for better error message
@@ -1273,15 +1274,15 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
         'SELECT id, name, type FROM accounts WHERE tenant_id = $1 ORDER BY name LIMIT 20',
         [tenantId]
       );
-      
-      return res.status(404).json({ 
+
+      return res.status(404).json({
         error: 'Payment account not found',
         message: error.message || `Account with ID "${accountId}" does not exist or does not belong to this tenant. Please select a valid account.`,
         accountId: accountId,
         availableAccounts: availableAccounts.map((a: any) => ({ id: a.id, name: a.name, type: a.type }))
       });
     }
-    
+
     // Provide more specific error messages
     let errorMessage = 'Failed to pay payslip';
     if (error.code === '23503') {
@@ -1291,10 +1292,10 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     } else if (error.message) {
       errorMessage = error.message;
     }
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       error: errorMessage,
-      details: error.message 
+      details: error.message
     });
   }
 });
@@ -1459,9 +1460,9 @@ router.get('/departments/:id', async (req: TenantRequest, res) => {
       [id, tenantId]
     );
 
-    res.json({ 
+    res.json({
       ...departments[0],
-      employees 
+      employees
     });
   } catch (error) {
     console.error('Error fetching department:', error);
@@ -1479,15 +1480,15 @@ router.post('/departments', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Authentication required' });
     }
 
-    const { 
-      name, 
-      code, 
-      description, 
+    const {
+      name,
+      code,
+      description,
       parent_department_id,
       head_employee_id,
       cost_center_code,
       budget_allocation,
-      is_active 
+      is_active
     } = req.body;
 
     if (!name) {
@@ -1500,10 +1501,10 @@ router.post('/departments', async (req: TenantRequest, res) => {
         cost_center_code, budget_allocation, is_active, created_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
-      [tenantId, name, code || null, description || null, 
-       parent_department_id || null, head_employee_id || null,
-       cost_center_code || null, budget_allocation || 0,
-       is_active !== false, userId]
+      [tenantId, name, code || null, description || null,
+        parent_department_id || null, head_employee_id || null,
+        cost_center_code || null, budget_allocation || 0,
+        is_active !== false, userId]
     );
 
     emitToTenant(tenantId, 'payroll_department_created', { id: result[0].id });
@@ -1553,9 +1554,9 @@ router.put('/departments/:id', async (req: TenantRequest, res) => {
         updated_by = $9
        WHERE id = $10 AND tenant_id = $11
        RETURNING *`,
-      [name, code, description, parent_department_id || null, 
-       head_employee_id || null, cost_center_code, budget_allocation, 
-       is_active, userId, id, tenantId]
+      [name, code, description, parent_department_id || null,
+        head_employee_id || null, cost_center_code, budget_allocation,
+        is_active, userId, id, tenantId]
     );
 
     if (result.length === 0) {
@@ -1592,8 +1593,8 @@ router.delete('/departments/:id', async (req: TenantRequest, res) => {
     );
 
     if (parseInt(empCount[0].count) > 0) {
-      return res.status(400).json({ 
-        error: 'Cannot delete department with assigned employees. Please reassign employees first.' 
+      return res.status(400).json({
+        error: 'Cannot delete department with assigned employees. Please reassign employees first.'
       });
     }
 
@@ -1605,8 +1606,8 @@ router.delete('/departments/:id', async (req: TenantRequest, res) => {
     );
 
     if (parseInt(childCount[0].count) > 0) {
-      return res.status(400).json({ 
-        error: 'Cannot delete department with sub-departments. Please delete or reassign sub-departments first.' 
+      return res.status(400).json({
+        error: 'Cannot delete department with sub-departments. Please delete or reassign sub-departments first.'
       });
     }
 
@@ -1670,8 +1671,8 @@ router.post('/departments/migrate', async (req: TenantRequest, res) => {
 
     const migratedCount = result[0]?.migrated_count || 0;
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: `Successfully migrated ${migratedCount} employee department references`,
       migrated_count: migratedCount
     });

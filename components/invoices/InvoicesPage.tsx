@@ -82,12 +82,12 @@ const InvoiceTreeSidebar: React.FC<{
                     ) : (
                         <span className="w-5 flex-shrink-0" />
                     )}
+                    <span className="flex-1 text-xs font-medium truncate">{node.name}</span>
                     {node.balance > 0 && (
-                        <span className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded border ${isSelected ? 'bg-orange-500 text-white border-orange-600' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
+                        <span className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded border flex-shrink-0 ${isSelected ? 'bg-orange-500 text-white border-orange-600' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
                             {node.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </span>
                     )}
-                    <span className="flex-1 text-xs font-medium truncate">{node.name}</span>
                 </div>
                 {hasChildren && isExpanded && (
                     <div className="mt-0.5">

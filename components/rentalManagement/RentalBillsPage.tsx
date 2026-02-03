@@ -60,12 +60,12 @@ const BillTreeSidebar: React.FC<{
                     ) : (
                         <span className="w-5 flex-shrink-0" />
                     )}
+                    <span className="flex-1 text-xs font-medium truncate">{node.name}</span>
                     {node.balance > 0 && (
-                        <span className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded border ${isSelected ? 'bg-orange-500 text-white border-orange-600' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
+                        <span className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded border flex-shrink-0 ${isSelected ? 'bg-orange-500 text-white border-orange-600' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
                             {node.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </span>
                     )}
-                    <span className="flex-1 text-xs font-medium truncate">{node.name}</span>
                 </div>
                 {hasChildren && isExpanded && (
                     <div className="mt-0.5">
@@ -569,8 +569,8 @@ const RentalBillsPage: React.FC = () => {
                                 key={opt}
                                 onClick={() => handleRangeChange(opt)}
                                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap capitalize ${dateRange === opt
-                                        ? 'bg-white text-accent shadow-sm font-bold'
-                                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
+                                    ? 'bg-white text-accent shadow-sm font-bold'
+                                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
                                     }`}
                             >
                                 {opt === 'all' ? 'All Time' : opt.replace(/([A-Z])/g, ' $1')}
