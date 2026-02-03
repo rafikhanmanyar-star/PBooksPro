@@ -1,285 +1,483 @@
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '../../services/adminApi';
 import {
-    Activity,
-    Database,
-    Server,
-    HardDrive,
-    RefreshCw,
-    AlertTriangle,
-    CheckCircle
+    Server, Database, Users, Activity,
+    AlertTriangle, CheckCircle,
+    Cpu
 } from 'lucide-react';
 
 interface SystemMetrics {
-    system: {
-        uptime: number;
-        platform: string;
-        arch: string;
-        cpuCount: number;
-        loadAverage: number[];
+    timestamp: string;
+    server: {
         memory: {
+            used: number;
             total: number;
-            free: number;
-            process: {
-                rss: number;
-                heapTotal: number;
-                heapUsed: number;
-                external: number;
-            };
+            rss: number;
+            external: number;
+            percentUsed: number;
         };
+        cpu: {
+            usage: {
+                user: number;
+                system: number;
+            };
+            loadAverage: number[];
+            cores: number;
+        };
+        process: {
+            uptime: number;
+            pid: number;
+            version: string;
+            platform: string;
+            nodeEnv: string;
+        };
+        system: {
+            totalMemory: number;
+            freeMemory: number;
+            memoryUsagePercent: number;
+            hostname: string;
+            uptime: number;
+        };
+    };
+    requests: {
+        totalRequests: number;
+        requestsPerMinute: number;
+        averageResponseTime: number;
+        successRate: number;
+        errorRate: number;
+        statusCodes: Record<number, number>;
+        methodDistribution: Record<string, number>;
     };
     database: {
-        status: {
-            totalConnections: number;
-            idleConnections: number;
-            waitingConnections: number;
+        pool: {
+            total: number;
+            idle: number;
+            waiting: number;
+            utilizationPercent: number;
         };
-        latencyMs: number;
+        performance: {
+            queryCount: number;
+            slowQueries: number;
+            averageQueryTime: number;
+        };
+        size: {
+            database: string;
+            tables: Array<{
+                table_name: string;
+                size: string;
+                row_count: string;
+            }>;
+        };
+        connections: {
+            active: number;
+            total: number;
+            maxConnections: number;
+        };
     };
-    timestamp: string;
+    clients: {
+        activeSessions: number;
+        activeUsers: number;
+        tenantDistribution: Array<{
+            tenant_name: string;
+            user_count: string;
+            active_users: string;
+        }>;
+        recentActivity: number;
+    };
 }
 
 const SystemMonitoring: React.FC = () => {
     const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
-    const [refreshing, setRefreshing] = useState(false);
+    const [error, setError] = useState('');
+    const [autoRefresh, setAutoRefresh] = useState(true);
 
-    const fetchMetrics = async (isRefresh = false) => {
+    useEffect(() => {
+        loadMetrics();
+
+        if (autoRefresh) {
+            const interval = setInterval(loadMetrics, 10000); // Refresh every 10 seconds
+            return () => clearInterval(interval);
+        }
+    }, [autoRefresh]);
+
+    const loadMetrics = async () => {
         try {
-            if (isRefresh) setRefreshing(true);
-            else setLoading(true);
-
+            setError('');
             const data = await adminApi.getSystemMetrics();
             setMetrics(data);
-            setLastUpdated(new Date());
-            setError(null);
-        } catch (err: any) {
-            console.error('Error fetching metrics:', err);
-            setError(err.message || 'Failed to fetch system metrics');
-        } finally {
             setLoading(false);
-            setRefreshing(false);
+        } catch (err: any) {
+            console.error('System metrics load error:', err);
+            setError(err?.message || 'Failed to load system metrics');
+            setLoading(false);
         }
     };
 
-    useEffect(() => {
-        fetchMetrics();
-
-        // Auto refresh every 10 seconds
-        const interval = setInterval(() => {
-            fetchMetrics(true);
-        }, 10000);
-
-        return () => clearInterval(interval);
-    }, []);
-
-    const formatBytes = (bytes: number, decimals = 2) => {
+    const formatBytes = (bytes: number) => {
         if (bytes === 0) return '0 Bytes';
         const k = 1024;
-        const dm = decimals < 0 ? 0 : decimals;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
     };
 
     const formatUptime = (seconds: number) => {
-        const d = Math.floor(seconds / (3600 * 24));
-        const h = Math.floor((seconds % (3600 * 24)) / 3600);
-        const m = Math.floor((seconds % 3600) / 60);
-        const s = Math.floor(seconds % 60);
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
 
-        const parts = [];
-        if (d > 0) parts.push(`${d}d`);
-        if (h > 0) parts.push(`${h}h`);
-        if (m > 0) parts.push(`${m}m`);
-        parts.push(`${s}s`);
+        if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+        if (hours > 0) return `${hours}h ${minutes}m`;
+        return `${minutes}m`;
+    };
 
-        return parts.join(' ');
+    const getHealthColor = (percent: number) => {
+        if (percent < 60) return '#10b981'; // green
+        if (percent < 80) return '#f59e0b'; // amber
+        return '#ef4444'; // red
+    };
+
+    const getHealthIcon = (percent: number) => {
+        if (percent < 60) return CheckCircle;
+        if (percent < 80) return AlertTriangle;
+        return AlertTriangle;
     };
 
     if (loading && !metrics) {
         return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+                Loading system metrics...
             </div>
         );
     }
 
-    if (error) {
-        return (
-            <div className="p-4 bg-red-50 text-red-700 rounded-lg flex items-center gap-2">
-                <AlertTriangle size={20} />
-                <div>
-                    <h3 className="font-bold">Error Loading Metrics</h3>
-                    <p>{error}</p>
-                    <button
-                        onClick={() => fetchMetrics()}
-                        className="mt-2 px-3 py-1 bg-red-100 hover:bg-red-200 rounded text-sm font-medium transition-colors"
-                    >
-                        Retry
-                    </button>
-                </div>
-            </div>
-        );
+    if (error && !metrics) {
+        return <div style={{ color: 'red' }}>Error: {error}</div>;
     }
+
+    if (!metrics) {
+        return <div>No metrics available</div>;
+    }
+
+    const memoryHealthIcon = getHealthIcon(metrics.server.memory.percentUsed);
+    const cpuLoadPercent = (metrics.server.cpu.loadAverage[0] / metrics.server.cpu.cores) * 100;
+    const dbUtilPercent = metrics.database.pool.utilizationPercent;
 
     return (
-        <div className="p-6 max-w-7xl mx-auto">
-            <div className="flex justify-between items-center mb-6">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900">System Monitoring</h1>
-                    <p className="text-sm text-gray-500 mt-1 flex items-center gap-2">
-                        <Activity size={14} />
-                        Live System Metrics
-                    </p>
-                </div>
-
-                <div className="flex items-center gap-4">
-                    <span className="text-xs text-gray-500">
-                        Last updated: {lastUpdated.toLocaleTimeString()}
-                    </span>
+        <div>
+            <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '2rem'
+            }}>
+                <h1 style={{ fontSize: '2rem', fontWeight: 'bold' }}>
+                    System Monitoring
+                </h1>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}>
+                        <input
+                            type="checkbox"
+                            checked={autoRefresh}
+                            onChange={(e) => setAutoRefresh(e.target.checked)}
+                        />
+                        Auto-refresh (10s)
+                    </label>
                     <button
-                        onClick={() => fetchMetrics(true)}
-                        disabled={refreshing}
-                        className={`p-2 rounded-full hover:bg-gray-100 transition-colors ${refreshing ? 'animate-spin' : ''}`}
-                        title="Refresh Metrics"
+                        onClick={loadMetrics}
+                        style={{
+                            padding: '0.5rem 1rem',
+                            backgroundColor: '#2563eb',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '0.375rem',
+                            cursor: 'pointer',
+                            fontSize: '0.875rem',
+                            fontWeight: 500
+                        }}
                     >
-                        <RefreshCw size={20} className="text-gray-600" />
+                        Refresh Now
                     </button>
                 </div>
             </div>
 
-            {!metrics ? null : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {/* Server Overview */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="p-2 bg-blue-50 rounded-lg">
-                                <Server className="text-blue-600" size={24} />
-                            </div>
-                            <h2 className="text-lg font-semibold text-gray-900">Server Info</h2>
-                        </div>
+            {error && (
+                <div style={{
+                    backgroundColor: '#fef2f2',
+                    color: '#991b1b',
+                    padding: '0.75rem',
+                    borderRadius: '0.375rem',
+                    marginBottom: '1rem',
+                    fontSize: '0.875rem'
+                }}>
+                    {error}
+                </div>
+            )}
 
-                        <div className="space-y-4">
-                            <div className="flex justify-between items-center">
-                                <span className="text-gray-600 text-sm">Platform</span>
-                                <span className="font-medium text-gray-900 capitalize">{metrics.system.platform} ({metrics.system.arch})</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <span className="text-gray-600 text-sm">CPU Cores</span>
-                                <span className="font-medium text-gray-900">{metrics.system.cpuCount} Cores</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <span className="text-gray-600 text-sm">Uptime</span>
-                                <span className="font-medium text-gray-900 font-mono text-sm bg-gray-50 px-2 py-1 rounded">
-                                    {formatUptime(metrics.system.uptime)}
-                                </span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <span className="text-gray-600 text-sm">Load Average</span>
-                                <span className="font-medium text-gray-900 text-sm">
-                                    {metrics.system.loadAverage.map(l => l.toFixed(2)).join(' / ')}
-                                </span>
-                            </div>
+            {/* Health Overview Cards */}
+            <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '1rem',
+                marginBottom: '2rem'
+            }}>
+                <div className="card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                        <div>
+                            <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+                                API Server
+                            </p>
+                            <p style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>
+                                {metrics.server.process.nodeEnv === 'production' ? 'Live' : 'Dev'}
+                            </p>
+                            <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                                Uptime: {formatUptime(metrics.server.process.uptime)}
+                            </p>
+                        </div>
+                        <Server size={32} color="#2563eb" />
+                    </div>
+                </div>
+
+                <div className="card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                        <div>
+                            <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+                                Memory Usage
+                            </p>
+                            <p style={{ fontSize: '1.25rem', fontWeight: 'bold', color: getHealthColor(metrics.server.memory.percentUsed) }}>
+                                {metrics.server.memory.percentUsed.toFixed(1)}%
+                            </p>
+                            <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                                {formatBytes(metrics.server.memory.used)} / {formatBytes(metrics.server.memory.total)}
+                            </p>
+                        </div>
+                        {React.createElement(memoryHealthIcon, { size: 32, color: getHealthColor(metrics.server.memory.percentUsed) })}
+                    </div>
+                </div>
+
+                <div className="card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                        <div>
+                            <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+                                CPU Load
+                            </p>
+                            <p style={{ fontSize: '1.25rem', fontWeight: 'bold', color: getHealthColor(cpuLoadPercent) }}>
+                                {metrics.server.cpu.loadAverage[0].toFixed(2)}
+                            </p>
+                            <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                                {metrics.server.cpu.cores} cores
+                            </p>
+                        </div>
+                        <Cpu size={32} color={getHealthColor(cpuLoadPercent)} />
+                    </div>
+                </div>
+
+                <div className="card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                        <div>
+                            <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+                                DB Pool
+                            </p>
+                            <p style={{ fontSize: '1.25rem', fontWeight: 'bold', color: getHealthColor(dbUtilPercent) }}>
+                                {dbUtilPercent.toFixed(1)}%
+                            </p>
+                            <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                                {metrics.database.pool.total - metrics.database.pool.idle} / {metrics.database.pool.total} used
+                            </p>
+                        </div>
+                        <Database size={32} color={getHealthColor(dbUtilPercent)} />
+                    </div>
+                </div>
+
+                <div className="card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                        <div>
+                            <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+                                Active Users
+                            </p>
+                            <p style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>
+                                {metrics.clients.activeUsers}
+                            </p>
+                            <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                                {metrics.clients.activeSessions} sessions (30m)
+                            </p>
+                        </div>
+                        <Users size={32} color="#10b981" />
+                    </div>
+                </div>
+
+                <div className="card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                        <div>
+                            <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+                                Requests/min
+                            </p>
+                            <p style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>
+                                {metrics.requests.requestsPerMinute.toFixed(1)}
+                            </p>
+                            <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                                {metrics.requests.totalRequests} in 5min
+                            </p>
+                        </div>
+                        <Activity size={32} color="#8b5cf6" />
+                    </div>
+                </div>
+            </div>
+
+            {/* API Server Details */}
+            <div className="card" style={{ marginBottom: '1.5rem' }}>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Server size={20} />
+                    API Server Metrics
+                </h2>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem' }}>
+                    <div>
+                        <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem', color: '#374151' }}>
+                            Request Performance (5 min)
+                        </h3>
+                        <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                            <p>Avg Response Time: <strong>{metrics.requests.averageResponseTime.toFixed(2)}ms</strong></p>
+                            <p>Success Rate: <strong style={{ color: '#10b981' }}>{metrics.requests.successRate.toFixed(1)}%</strong></p>
+                            <p>Error Rate: <strong style={{ color: metrics.requests.errorRate > 5 ? '#ef4444' : '#6b7280' }}>{metrics.requests.errorRate.toFixed(1)}%</strong></p>
                         </div>
                     </div>
-
-                    {/* Memory Usage */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="p-2 bg-purple-50 rounded-lg">
-                                <HardDrive className="text-purple-600" size={24} />
-                            </div>
-                            <h2 className="text-lg font-semibold text-gray-900">Memory Usage</h2>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div>
-                                <div className="flex justify-between text-sm mb-1">
-                                    <span className="text-gray-600">Total System Memory</span>
-                                    <span className="font-medium text-gray-900">{formatBytes(metrics.system.memory.total)}</span>
-                                </div>
-                                <div className="w-full bg-gray-100 rounded-full h-2">
-                                    <div
-                                        className="bg-purple-500 h-2 rounded-full transition-all duration-500"
-                                        style={{ width: `${((metrics.system.memory.total - metrics.system.memory.free) / metrics.system.memory.total) * 100}%` }}
-                                    ></div>
-                                </div>
-                                <div className="flex justify-end mt-1 text-xs text-gray-500">
-                                    {formatBytes(metrics.system.memory.free)} Free
-                                </div>
-                            </div>
-
-                            <div className="pt-2 border-t border-gray-100">
-                                <h3 className="text-sm font-medium text-gray-900 mb-2">Process Memory</h3>
-                                <div className="space-y-2">
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-gray-600">RSS (Resident)</span>
-                                        <span className="font-mono text-gray-800">{formatBytes(metrics.system.memory.process.rss)}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-gray-600">Heap Used</span>
-                                        <span className="font-mono text-gray-800">{formatBytes(metrics.system.memory.process.heapUsed)}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-gray-600">Heap Total</span>
-                                        <span className="font-mono text-gray-800">{formatBytes(metrics.system.memory.process.heapTotal)}</span>
-                                    </div>
-                                </div>
-                            </div>
+                    <div>
+                        <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem', color: '#374151' }}>
+                            System Resources
+                        </h3>
+                        <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                            <p>System Memory: <strong>{formatBytes(metrics.server.system.totalMemory - metrics.server.system.freeMemory)} / {formatBytes(metrics.server.system.totalMemory)}</strong></p>
+                            <p>Process RSS: <strong>{formatBytes(metrics.server.memory.rss)}</strong></p>
+                            <p>System Uptime: <strong>{formatUptime(metrics.server.system.uptime)}</strong></p>
                         </div>
                     </div>
-
-                    {/* Database Health */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="p-2 bg-green-50 rounded-lg">
-                                <Database className="text-green-600" size={24} />
-                            </div>
-                            <h2 className="text-lg font-semibold text-gray-900">Database Health</h2>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div className="flex justify-between items-center">
-                                <span className="text-gray-600 text-sm">Connection Status</span>
-                                <span className="flex items-center gap-1.5 text-sm font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">
-                                    <CheckCircle size={14} />
-                                    Connected
-                                </span>
-                            </div>
-
-                            <div className="flex justify-between items-center">
-                                <span className="text-gray-600 text-sm">Query Latency</span>
-                                <span className={`font-medium ${metrics.database.latencyMs > 100 ? 'text-yellow-600' : 'text-green-600'}`}>
-                                    {metrics.database.latencyMs}ms
-                                </span>
-                            </div>
-
-                            <div className="pt-2 border-t border-gray-100">
-                                <h3 className="text-sm font-medium text-gray-900 mb-2">Connection Pool</h3>
-                                <div className="grid grid-cols-3 gap-2 text-center">
-                                    <div className="p-2 bg-gray-50 rounded-lg">
-                                        <div className="text-lg font-bold text-gray-900">{metrics.database.status.totalConnections}</div>
-                                        <div className="text-xs text-gray-500">Total</div>
-                                    </div>
-                                    <div className="p-2 bg-gray-50 rounded-lg">
-                                        <div className="text-lg font-bold text-green-600">{metrics.database.status.idleConnections}</div>
-                                        <div className="text-xs text-gray-500">Idle</div>
-                                    </div>
-                                    <div className="p-2 bg-gray-50 rounded-lg">
-                                        <div className={`text-lg font-bold ${metrics.database.status.waitingConnections > 0 ? 'text-red-500' : 'text-gray-400'}`}>
-                                            {metrics.database.status.waitingConnections}
-                                        </div>
-                                        <div className="text-xs text-gray-500">Waiting</div>
-                                    </div>
-                                </div>
-                            </div>
+                    <div>
+                        <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem', color: '#374151' }}>
+                            Environment
+                        </h3>
+                        <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                            <p>Node: <strong>{metrics.server.process.version}</strong></p>
+                            <p>Platform: <strong>{metrics.server.process.platform}</strong></p>
+                            <p>Hostname: <strong>{metrics.server.system.hostname}</strong></p>
                         </div>
                     </div>
                 </div>
-            )}
+            </div>
+
+            {/* Database Details */}
+            <div className="card" style={{ marginBottom: '1.5rem' }}>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Database size={20} />
+                    Database Metrics
+                </h2>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+                    <div>
+                        <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem', color: '#374151' }}>
+                            Connections
+                        </h3>
+                        <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                            <p>Active: <strong>{metrics.database.connections.active}</strong></p>
+                            <p>Total: <strong>{metrics.database.connections.total}</strong></p>
+                            <p>Max Allowed: <strong>{metrics.database.connections.maxConnections}</strong></p>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem', color: '#374151' }}>
+                            Pool Status
+                        </h3>
+                        <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                            <p>Total Clients: <strong>{metrics.database.pool.total}</strong></p>
+                            <p>Idle: <strong>{metrics.database.pool.idle}</strong></p>
+                            <p>Waiting: <strong>{metrics.database.pool.waiting}</strong></p>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem', color: '#374151' }}>
+                            Performance
+                        </h3>
+                        <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                            <p>Total Queries: <strong>{metrics.database.performance.queryCount.toLocaleString()}</strong></p>
+                            <p>Avg Query Time: <strong>{metrics.database.performance.averageQueryTime.toFixed(2)}ms</strong></p>
+                            <p>Slow Queries (&gt;1s): <strong style={{ color: metrics.database.performance.slowQueries > 0 ? '#ef4444' : '#10b981' }}>{metrics.database.performance.slowQueries}</strong></p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: '#374151' }}>
+                    Database Size: {metrics.database.size.database}
+                </h3>
+                {metrics.database.size.tables.length > 0 && (
+                    <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', fontSize: '0.875rem', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ borderBottom: '2px solid #e5e7eb', textAlign: 'left' }}>
+                                    <th style={{ padding: '0.5rem', color: '#374151', fontWeight: 600 }}>Table</th>
+                                    <th style={{ padding: '0.5rem', color: '#374151', fontWeight: 600 }}>Size</th>
+                                    <th style={{ padding: '0.5rem', color: '#374151', fontWeight: 600 }}>Rows</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {metrics.database.size.tables.map((table, idx) => (
+                                    <tr key={idx} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                        <td style={{ padding: '0.5rem', color: '#6b7280' }}>{table.table_name}</td>
+                                        <td style={{ padding: '0.5rem', color: '#6b7280' }}>{table.size}</td>
+                                        <td style={{ padding: '0.5rem', color: '#6b7280' }}>{parseInt(table.row_count).toLocaleString()}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
+            {/* Client Activity */}
+            <div className="card">
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Users size={20} />
+                    Client Load & Activity
+                </h2>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+                    <div>
+                        <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem', color: '#374151' }}>
+                            User Activity
+                        </h3>
+                        <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                            <p>Active Users (24h): <strong>{metrics.clients.activeUsers}</strong></p>
+                            <p>Active Sessions (30m): <strong>{metrics.clients.activeSessions}</strong></p>
+                            <p>Recent Transactions (1h): <strong>{metrics.clients.recentActivity}</strong></p>
+                        </div>
+                    </div>
+                </div>
+
+                {metrics.clients.tenantDistribution.length > 0 && (
+                    <>
+                        <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: '#374151' }}>
+                            Top Active Tenants
+                        </h3>
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', fontSize: '0.875rem', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: '2px solid #e5e7eb', textAlign: 'left' }}>
+                                        <th style={{ padding: '0.5rem', color: '#374151', fontWeight: 600 }}>Tenant</th>
+                                        <th style={{ padding: '0.5rem', color: '#374151', fontWeight: 600 }}>Total Users</th>
+                                        <th style={{ padding: '0.5rem', color: '#374151', fontWeight: 600 }}>Active (24h)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {metrics.clients.tenantDistribution.map((tenant, idx) => (
+                                        <tr key={idx} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                            <td style={{ padding: '0.5rem', color: '#6b7280' }}>{tenant.tenant_name}</td>
+                                            <td style={{ padding: '0.5rem', color: '#6b7280' }}>{tenant.user_count}</td>
+                                            <td style={{ padding: '0.5rem', color: '#6b7280', fontWeight: 600 }}>{tenant.active_users}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </>
+                )}
+            </div>
         </div>
     );
 };
