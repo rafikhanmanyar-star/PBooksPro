@@ -390,6 +390,29 @@ class AdminApi {
     }
     return response.json();
   }
+
+  // System Metrics
+  async getSystemMetrics() {
+    const response = await fetch(`${ADMIN_API_URL}/system-metrics`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to fetch system metrics');
+    }
+    return response.json();
+  }
+
+  async getMetricsHistory(hours: number = 24) {
+    const response = await fetch(`${ADMIN_API_URL}/system-metrics/history?hours=${hours}`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to fetch metrics history');
+    }
+    return response.json();
+  }
 }
 
 export const adminApi = new AdminApi();

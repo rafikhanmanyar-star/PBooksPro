@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '../../services/adminApi';
-import { Users, Key, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { Users, Key, AlertCircle, CheckCircle, Clock, Server } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface DashboardStats {
   tenants: {
@@ -26,13 +27,37 @@ interface DashboardStats {
   };
 }
 
+interface SystemMetrics {
+  server: {
+    memory: { percentUsed: number };
+    cpu: { loadAverage: number[]; cores: number };
+  };
+  database: {
+    pool: { utilizationPercent: number };
+  };
+  clients: {
+    activeUsers: number;
+    activeSessions: number;
+  };
+  requests: {
+    requestsPerMinute: number;
+  };
+}
+
 const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [systemMetrics, setSystemMetrics] = useState<SystemMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const navigate = useNavigate();
 
   useEffect(() => {
     loadStats();
+    loadSystemMetrics();
+
+    // Refresh system metrics every 30 seconds
+    const interval = setInterval(loadSystemMetrics, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadStats = async () => {
@@ -45,7 +70,7 @@ const AdminDashboard: React.FC = () => {
       console.error('Dashboard stats load error:', err);
       const errorMessage = err?.message || err?.error || 'Failed to load dashboard statistics';
       setError(errorMessage);
-      
+
       // If it's a 401, the user might need to re-login
       if (err?.status === 401 || errorMessage.includes('401')) {
         setError('Session expired. Please login again.');
@@ -56,6 +81,16 @@ const AdminDashboard: React.FC = () => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadSystemMetrics = async () => {
+    try {
+      const data = await adminApi.getSystemMetrics();
+      setSystemMetrics(data);
+    } catch (err: any) {
+      console.error('System metrics load error:', err);
+      // Don't show error for system metrics on dashboard
     }
   };
 
@@ -161,6 +196,12 @@ const AdminDashboard: React.FC = () => {
     ));
   };
 
+  const getHealthColor = (percent: number) => {
+    if (percent < 60) return '#10b981';
+    if (percent < 80) return '#f59e0b';
+    return '#ef4444';
+  };
+
   return (
     <div>
       <h1 style={{ fontSize: '2rem', fontWeight: 'bold', marginBottom: '2rem' }}>
@@ -202,6 +243,75 @@ const AdminDashboard: React.FC = () => {
           );
         })}
       </div>
+
+      {/* System Health Summary */}
+      {systemMetrics && (
+        <div className="card" style={{ marginBottom: '2rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Server size={20} />
+              System Health
+            </h2>
+            <button
+              onClick={() => navigate('/system-monitoring')}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: '#2563eb',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.375rem',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: 500
+              }}
+            >
+              View Details
+            </button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
+            <div>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+                Memory Usage
+              </p>
+              <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: getHealthColor(systemMetrics.server.memory.percentUsed) }}>
+                {systemMetrics.server.memory.percentUsed.toFixed(1)}%
+              </p>
+            </div>
+            <div>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+                CPU Load
+              </p>
+              <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: getHealthColor((systemMetrics.server.cpu.loadAverage[0] / systemMetrics.server.cpu.cores) * 100) }}>
+                {systemMetrics.server.cpu.loadAverage[0].toFixed(2)}
+              </p>
+            </div>
+            <div>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+                DB Pool Usage
+              </p>
+              <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: getHealthColor(systemMetrics.database.pool.utilizationPercent) }}>
+                {systemMetrics.database.pool.utilizationPercent.toFixed(1)}%
+              </p>
+            </div>
+            <div>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+                Active Users
+              </p>
+              <p style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
+                {systemMetrics.clients.activeUsers}
+              </p>
+            </div>
+            <div>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+                Requests/min
+              </p>
+              <p style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
+                {systemMetrics.requests.requestsPerMinute.toFixed(1)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="card">
         <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1rem' }}>

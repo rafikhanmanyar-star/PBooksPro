@@ -77,7 +77,7 @@ const PropertyLayoutReport: React.FC = () => {
     // --- Helper: Parse Property Name ---
     const parseProperty = (name: string, id: string): { buildingCode: string, floorIndex: number, floorLabel: string, unitIndex: number, isUnconventional: boolean, type: string } => {
         const cleanName = name.trim().toUpperCase();
-        
+
         // Attempt to determine type
         let type = 'UNIT';
         if (cleanName.includes('OFF')) type = 'OFFICE';
@@ -114,7 +114,7 @@ const PropertyLayoutReport: React.FC = () => {
         } else {
             // Numeric handling for standard floors
             const numberMatch = remainder.match(/^(\d+)/);
-            
+
             if (numberMatch) {
                 const numericVal = parseInt(numberMatch[1]);
                 if (numericVal >= 100) {
@@ -128,7 +128,7 @@ const PropertyLayoutReport: React.FC = () => {
             } else {
                 isUnconventional = true;
                 floorLabel = 'Other';
-                unitIndex = name.length; 
+                unitIndex = name.length;
             }
         }
 
@@ -138,7 +138,7 @@ const PropertyLayoutReport: React.FC = () => {
     // --- Helper: Parse Unit Name (Project Context) ---
     const parseUnit = (name: string): { floorIndex: number, floorLabel: string, unitIndex: number, isUnconventional: boolean, type: string } => {
         let cleanName = name.trim().toUpperCase();
-        
+
         let type = 'UNIT';
         if (cleanName.includes('OFF')) type = 'OFFICE';
         else if (cleanName.includes('APT')) type = 'APARTMENT';
@@ -188,7 +188,7 @@ const PropertyLayoutReport: React.FC = () => {
                     floorIndex = parseInt(floorPart); unitIndex = parseInt(unitPart); floorLabel = floorIndex.toString();
                 }
             } else {
-                isUnconventional = true; floorLabel = 'Other'; unitIndex = name.length; 
+                isUnconventional = true; floorLabel = 'Other'; unitIndex = name.length;
             }
         }
         return { floorIndex, floorLabel, unitIndex, isUnconventional, type };
@@ -197,12 +197,12 @@ const PropertyLayoutReport: React.FC = () => {
     const data = useMemo(() => {
         // --- RENTAL MODE ---
         // If properties exist, prioritize Rental View. 
-        
+
         if (state.properties.length > 0) {
             const buildingsMap: { [code: string]: BuildingData } = {};
             const today = new Date();
-            today.setHours(0,0,0,0);
-            
+            today.setHours(0, 0, 0, 0);
+
             // Use local time for current month string to align with user expectation
             const currentMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 
@@ -213,7 +213,7 @@ const PropertyLayoutReport: React.FC = () => {
 
             propertiesToProcess.forEach(prop => {
                 const parsed = parseProperty(prop.name, prop.id);
-                
+
                 // Financials
                 const propertyInvoices = state.invoices.filter(inv => inv.propertyId === prop.id);
                 const receivable = propertyInvoices
@@ -232,11 +232,11 @@ const PropertyLayoutReport: React.FC = () => {
                 const propIncome = state.transactions
                     .filter(tx => tx.propertyId === prop.id && tx.type === TransactionType.INCOME)
                     .reduce((sum, tx) => sum + tx.amount, 0);
-                
+
                 const propExpense = state.transactions
                     .filter(tx => tx.propertyId === prop.id && tx.type === TransactionType.EXPENSE)
                     .reduce((sum, tx) => sum + tx.amount, 0);
-                
+
                 const payoutDue = Math.max(0, propIncome - propExpense);
 
                 // Owner & Tenant
@@ -250,28 +250,28 @@ const PropertyLayoutReport: React.FC = () => {
                 const invoiceDates = propertyInvoices.map(inv => inv.issueDate);
                 const agreementDates = activeAgreement ? [activeAgreement.endDate] : [];
                 const allDates = [...transactionDates, ...invoiceDates, ...agreementDates];
-                const lastUpdated = allDates.length > 0 
-                    ? allDates.sort().reverse()[0] 
+                const lastUpdated = allDates.length > 0
+                    ? allDates.sort().reverse()[0]
                     : new Date().toISOString().split('T')[0];
-                
+
                 // Check all invoices for the current month
-                const currentMonthInvoices = state.invoices.filter(inv => 
-                    inv.propertyId === prop.id && 
+                const currentMonthInvoices = state.invoices.filter(inv =>
+                    inv.propertyId === prop.id &&
                     inv.invoiceType === InvoiceType.RENTAL &&
                     (
-                        (inv.rentalMonth === currentMonthStr) || 
+                        (inv.rentalMonth === currentMonthStr) ||
                         (inv.issueDate.startsWith(currentMonthStr))
                     )
                 );
-                
+
                 // Mark as PAID only if invoices exist and all are fully paid (balance near 0)
-                const isCurrentMonthRentPaid = currentMonthInvoices.length > 0 && 
+                const isCurrentMonthRentPaid = currentMonthInvoices.length > 0 &&
                     currentMonthInvoices.every(inv => (inv.amount - inv.paidAmount) <= 0.01);
 
                 let isExpiringSoon = false;
                 let agreementEndDate: string | null = null;
                 let daysUntilExpiry: number | null = null;
-                
+
                 if (activeAgreement) {
                     const endDate = new Date(activeAgreement.endDate);
                     const timeDiff = endDate.getTime() - today.getTime();
@@ -341,8 +341,8 @@ const PropertyLayoutReport: React.FC = () => {
             });
 
             return { type: 'RENTAL', data: sortedBuildings, maxPayoutDue };
-        } 
-        
+        }
+
         // --- PROJECT MODE ---
         else {
             const projectsMap: { [id: string]: ProjectLayoutData } = {};
@@ -359,7 +359,7 @@ const PropertyLayoutReport: React.FC = () => {
                 }
 
                 const parsed = parseUnit(unit.name);
-                const activeAgreement = state.projectAgreements.find(pa => 
+                const activeAgreement = state.projectAgreements.find(pa =>
                     pa.unitIds?.includes(unit.id) && pa.status === 'Active'
                 );
                 const client = activeAgreement ? state.contacts.find(c => c.id === activeAgreement.clientId) : null;
@@ -402,9 +402,9 @@ const PropertyLayoutReport: React.FC = () => {
                 p.unconventional.sort((u1, u2) => u1.name.localeCompare(u2.name));
             });
 
-            return { 
-                type: 'PROJECT', 
-                data: Object.values(projectsMap).filter(p => p.floors.length > 0 || p.unconventional.length > 0).sort((a, b) => a.name.localeCompare(b.name)) 
+            return {
+                type: 'PROJECT',
+                data: Object.values(projectsMap).filter(p => p.floors.length > 0 || p.unconventional.length > 0).sort((a, b) => a.name.localeCompare(b.name))
             };
         }
     }, [state, selectedBuildingId]);
@@ -420,15 +420,15 @@ const PropertyLayoutReport: React.FC = () => {
         if (maxPayoutDue === 0 || payoutDue === 0) {
             return {};
         }
-        
+
         // Calculate saturation ratio (0 to 1)
         const ratio = Math.min(payoutDue / maxPayoutDue, 1);
-        
+
         // Map ratio to opacity for indigo background
         // Higher payoutDue = more saturated (higher opacity) color
         // Using opacity from 0.05 (very light) to 0.25 (more visible) for subtle background
         const opacity = 0.05 + (ratio * 0.20); // Range: 0.05 to 0.25
-        
+
         return {
             backgroundColor: `rgba(99, 102, 241, ${opacity})` // indigo-500 with variable opacity
         };
@@ -444,21 +444,21 @@ const PropertyLayoutReport: React.FC = () => {
             if (unit.status === 'Available') return 'border-slate-300';
             if (unit.receivable <= 0) return 'border-emerald-500';
             if (unit.receivable < 50000) return 'border-orange-500';
-            return 'border-red-500'; 
+            return 'border-red-500';
         }
     };
 
     const handleCardClick = (unit: any) => {
         setSelectedProperty({ id: unit.id, name: unit.name });
     };
-    
+
     const renderBox = (unit: any, mode: 'RENTAL' | 'PROJECT', maxPayoutDue: number = 0) => {
         const statusBadge = mode === 'RENTAL' ? getStatusBadge(unit) : null;
         const backgroundColorStyle = mode === 'RENTAL' ? getBackgroundColorStyle(unit.payoutDue || 0, maxPayoutDue) : {};
-        
+
         return (
-            <div 
-                key={unit.id} 
+            <div
+                key={unit.id}
                 onClick={() => handleCardClick(unit)}
                 className={`relative rounded-xl bg-white border shadow-sm p-2 flex flex-col justify-between transition-all min-h-[12rem] w-64 flex-shrink-0 cursor-pointer hover:shadow-md hover:scale-[1.02]
                     ${getColorClasses(unit, mode)}
@@ -472,7 +472,7 @@ const PropertyLayoutReport: React.FC = () => {
                         <span className="font-bold text-xs text-slate-900 block truncate" title={unit.name}>{unit.name}</span>
                     </div>
                     {mode === 'RENTAL' && statusBadge && (
-                        <div 
+                        <div
                             className={`${statusBadge.color} text-white text-[8px] font-bold px-1 py-0.5 rounded flex-shrink-0 ml-1.5`}
                             title={statusBadge.text}
                         >
@@ -483,7 +483,7 @@ const PropertyLayoutReport: React.FC = () => {
                         <div className="rounded-full bg-emerald-500 flex-shrink-0 mt-1 w-2 h-2" title="Sold"></div>
                     )}
                 </div>
-                
+
                 {mode === 'RENTAL' && unit.isCurrentMonthRentPaid && (
                     <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 opacity-20 pointer-events-none select-none z-0">
                         <div className="border-4 border-emerald-600 text-emerald-600 font-black text-2xl px-2 py-1 rounded rotate-[-15deg] tracking-widest">
@@ -491,7 +491,7 @@ const PropertyLayoutReport: React.FC = () => {
                         </div>
                     </div>
                 )}
-                
+
                 {/* Owner/Tenant Section */}
                 {mode === 'RENTAL' && (
                     <div className="text-[9px] leading-tight space-y-0.5 mb-1 relative z-10">
@@ -521,14 +521,13 @@ const PropertyLayoutReport: React.FC = () => {
 
                 {/* Agreement Expiry Indicator */}
                 {mode === 'RENTAL' && unit.agreementEndDate && unit.daysUntilExpiry !== null && (
-                    <div className={`text-[8px] font-semibold mb-0.5 relative z-10 ${
-                        unit.daysUntilExpiry < 0 
-                            ? 'text-red-600' 
-                            : unit.daysUntilExpiry <= 30 
-                            ? 'text-orange-600 animate-pulse' 
-                            : 'text-slate-500'
-                    }`}>
-                        {unit.daysUntilExpiry < 0 
+                    <div className={`text-[8px] font-semibold mb-0.5 relative z-10 ${unit.daysUntilExpiry < 0
+                            ? 'text-red-600'
+                            : unit.daysUntilExpiry <= 30
+                                ? 'text-orange-600 animate-pulse'
+                                : 'text-slate-500'
+                        }`}>
+                        {unit.daysUntilExpiry < 0
                             ? `Expired ${Math.abs(unit.daysUntilExpiry)}d ago`
                             : `Expires in ${unit.daysUntilExpiry}d`
                         }
@@ -599,8 +598,8 @@ const PropertyLayoutReport: React.FC = () => {
     };
 
     return (
-        <div className="space-y-6">
-             <style>{STANDARD_PRINT_STYLES}</style>
+        <div className="space-y-6 h-full overflow-y-auto pr-2 pb-20">
+            <style>{STANDARD_PRINT_STYLES}</style>
 
             {/* Custom Toolbar - All controls in first row */}
             <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm no-print mb-4">
@@ -674,17 +673,17 @@ const PropertyLayoutReport: React.FC = () => {
                                             <div className="w-full md:w-12 h-8 md:h-auto flex-shrink-0 flex items-center justify-center bg-indigo-600 text-white rounded-lg font-bold text-sm shadow-lg mb-2 md:mb-0">
                                                 {floor.label}
                                             </div>
-                                    <div className="flex-grow flex overflow-x-auto pb-4 gap-3">
-                                        {floor.units.map((unit: any) => renderBox(unit, data.type as any, data.maxPayoutDue || 0))}
-                                    </div>
+                                            <div className="flex-grow flex overflow-x-auto pb-4 gap-3">
+                                                {floor.units.map((unit: any) => renderBox(unit, data.type as any, data.maxPayoutDue || 0))}
+                                            </div>
                                         </div>
                                     ))}
                                     {group.unconventional.length > 0 && (
-                                <div className="mt-2 pt-2 border-t border-dashed border-slate-300">
-                                     <div className="flex overflow-x-auto pb-4 gap-3 md:pl-14">
-                                          {group.unconventional.map((unit: any) => renderBox(unit, data.type as any, data.maxPayoutDue || 0))}
-                                     </div>
-                                </div>
+                                        <div className="mt-2 pt-2 border-t border-dashed border-slate-300">
+                                            <div className="flex overflow-x-auto pb-4 gap-3 md:pl-14">
+                                                {group.unconventional.map((unit: any) => renderBox(unit, data.type as any, data.maxPayoutDue || 0))}
+                                            </div>
+                                        </div>
                                     )}
                                 </div>
                             </div>
@@ -695,11 +694,11 @@ const PropertyLayoutReport: React.FC = () => {
             </div>
 
             {selectedProperty && (
-                <PropertyHistoryModal 
-                    isOpen={!!selectedProperty} 
-                    onClose={() => setSelectedProperty(null)} 
-                    propertyId={selectedProperty.id} 
-                    propertyName={selectedProperty.name} 
+                <PropertyHistoryModal
+                    isOpen={!!selectedProperty}
+                    onClose={() => setSelectedProperty(null)}
+                    propertyId={selectedProperty.id}
+                    propertyName={selectedProperty.name}
                 />
             )}
         </div>

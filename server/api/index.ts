@@ -113,6 +113,7 @@ import shopRouter from './routes/shop.js';
 import analyticsRouter from './routes/analytics.js';
 import { tenantMiddleware } from '../middleware/tenantMiddleware.js';
 import { licenseMiddleware } from '../middleware/licenseMiddleware.js';
+import { trackRequestMetrics } from './routes/admin/system-metrics.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -232,6 +233,9 @@ app.use(express.urlencoded({
     (req as any).rawBody = buf;
   }
 }));
+
+// Track system metrics (request stats)
+app.use(trackRequestMetrics);
 
 // Root route
 app.get('/', (req, res) => {
