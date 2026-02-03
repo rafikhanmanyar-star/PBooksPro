@@ -15,11 +15,10 @@ const Layout: React.FC = () => {
 
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { path: '/system-monitoring', label: 'System Monitoring', icon: Activity },
+    { path: '/monitoring', label: 'System Monitoring', icon: Activity },
     { path: '/tenants', label: 'Tenants', icon: Users },
     { path: '/users', label: 'Admin Users', icon: UserCog },
     { path: '/marketplace', label: 'Marketplace', icon: ShoppingBag },
-    { path: '/monitoring', label: 'System Monitoring', icon: Activity },
   ];
 
   return (

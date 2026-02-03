@@ -393,7 +393,7 @@ class AdminApi {
 
   // System Monitoring
   async getSystemMetrics() {
-    const response = await fetch(`${ADMIN_API_URL}/system/metrics`, {
+    const response = await fetch(`${ADMIN_API_URL}/system-metrics`, {
       headers: this.getAuthHeaders(),
     });
     if (!response.ok) {
