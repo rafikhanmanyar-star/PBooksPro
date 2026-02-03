@@ -12,6 +12,7 @@ import PropertyLayoutReport from '../reports/PropertyLayoutReport';
 import ServiceChargesDeductionReport from '../reports/ServiceChargesDeductionReport';
 import BMAnalysisReport from '../reports/BMAnalysisReport';
 import AgreementExpiryReport from '../reports/AgreementExpiryReport';
+import InvoicePaymentAnalysisReport from '../reports/InvoicePaymentAnalysisReport';
 
 const ALL_REPORTS = [
     'Visual Layout',
@@ -19,6 +20,7 @@ const ALL_REPORTS = [
     'Agreement Expiry',
     'Building Analysis',
     'BM Analysis',
+    'Invoice & Payment Analysis',
     'Owner Income',
     'Service Charges Deduction',
     'Tenant Ledger',
@@ -77,6 +79,8 @@ const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => 
                 return <BuildingAccountsReport />;
             case 'BM Analysis':
                 return <BMAnalysisReport />;
+            case 'Invoice & Payment Analysis':
+                return <InvoicePaymentAnalysisReport />;
             case 'Owner Income':
                 return <OwnerPayoutsReport />;
             case 'Service Charges Deduction':
@@ -104,10 +108,10 @@ const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => 
                         className="px-4 py-2 text-sm font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md border border-slate-300 transition-colors flex items-center gap-2"
                     >
                         <span>Reports</span>
-                        <svg 
+                        <svg
                             className={`w-4 h-4 transition-transform ${isMenuOpen ? 'rotate-180' : ''}`}
-                            fill="none" 
-                            stroke="currentColor" 
+                            fill="none"
+                            stroke="currentColor"
                             viewBox="0 0 24 24"
                         >
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -122,11 +126,10 @@ const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => 
                                     <button
                                         key={report}
                                         onClick={() => handleReportSelect(report)}
-                                        className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-100 transition-colors ${
-                                            activeReport === report 
-                                                ? 'bg-indigo-50 text-indigo-700 font-semibold' 
-                                                : 'text-slate-700'
-                                        }`}
+                                        className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-100 transition-colors ${activeReport === report
+                                            ? 'bg-indigo-50 text-indigo-700 font-semibold'
+                                            : 'text-slate-700'
+                                            }`}
                                     >
                                         {report}
                                     </button>
@@ -142,6 +145,7 @@ const RentalReportsPage: React.FC<RentalReportsPageProps> = ({ initialTab }) => 
                         {activeReport}
                     </div>
                 )}
+
             </div>
             <div className="flex-grow overflow-y-auto animate-fade-in-fast pb-4">
                 {renderReport()}

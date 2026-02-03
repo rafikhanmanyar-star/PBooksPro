@@ -66,8 +66,8 @@ const InvoiceTreeSidebar: React.FC<{
             <div key={node.id} className={level > 0 ? 'ml-4 border-l border-slate-200/80 pl-3' : ''}>
                 <div
                     className={`group flex items-center gap-2 py-1.5 px-2 rounded-lg -mx-0.5 transition-all cursor-pointer ${isSelected
-                            ? 'bg-orange-500/10 text-orange-700'
-                            : 'hover:bg-slate-100/80 text-slate-700 hover:text-slate-900'
+                        ? 'bg-orange-500/10 text-orange-700'
+                        : 'hover:bg-slate-100/80 text-slate-700 hover:text-slate-900'
                         }`}
                     onClick={() => onSelect(node.id, node.type, level > 0 ? parentId : undefined)}
                     onContextMenu={node.type === 'subgroup' && onContextMenu ? (e) => { e.preventDefault(); e.stopPropagation(); onContextMenu(node, e); } : undefined}
@@ -529,12 +529,53 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                 });
             }
 
+            if (treeFilter) {
+                if (treeFilter.type === 'group') {
+                    invoices = invoices.filter(inv => {
+                        if (inv.projectId === treeFilter.id) return true;
+                        if (inv.buildingId === treeFilter.id) return true;
+                        if (inv.agreementId && state.projectAgreements.find(pa => pa.id === inv.agreementId)?.projectId === treeFilter.id) return true;
+                        if (inv.propertyId) {
+                            const prop = state.properties.find(p => p.id === inv.propertyId);
+                            if (prop && prop.buildingId === treeFilter.id) return true;
+                        }
+                        return false;
+                    });
+                } else if (treeFilter.type === 'subgroup') {
+                    const parentId = treeFilter.parentId ?? null;
+                    if (invoiceTypeFilter === InvoiceType.RENTAL) {
+                        invoices = invoices.filter(inv => {
+                            const invBuildingId = inv.buildingId || (inv.propertyId ? state.properties.find(p => p.id === inv.propertyId)?.buildingId : undefined) || 'Unassigned';
+                            const matchParent = parentId === null || invBuildingId === parentId;
+                            if (!matchParent) return false;
+                            if (groupBy === 'tenant') return inv.contactId === treeFilter.id;
+                            if (groupBy === 'owner') {
+                                const prop = state.properties.find(p => p.id === inv.propertyId);
+                                return prop && prop.ownerId === treeFilter.id;
+                            }
+                            if (groupBy === 'property') return inv.propertyId === treeFilter.id;
+                            return false;
+                        });
+                    } else if (invoiceTypeFilter === InvoiceType.INSTALLMENT) {
+                        invoices = invoices.filter(inv => {
+                            const matchParent = parentId === null || inv.projectId === parentId;
+                            if (!matchParent) return false;
+                            if (groupBy === 'owner') return inv.contactId === treeFilter.id;
+                            if (groupBy === 'property') return inv.unitId === treeFilter.id;
+                            return false;
+                        });
+                    }
+                } else if (treeFilter.type === 'invoice') {
+                    invoices = invoices.filter(inv => inv.id === treeFilter.id);
+                }
+            }
+
             return invoices;
         } catch (error) {
             console.error("Error filtering invoices without status filter:", error);
             return [];
         }
-    }, [state.invoices, state.contacts, state.properties, state.units, invoiceTypeFilter, searchQuery, buildingFilter, projectFilter]);
+    }, [state.invoices, state.contacts, state.properties, state.units, state.projectAgreements, invoiceTypeFilter, searchQuery, buildingFilter, projectFilter, treeFilter, groupBy]);
 
     // --- Combined Financial Records for Grid View ---
     const financialRecords = useMemo<FinancialRecord[]>(() => {

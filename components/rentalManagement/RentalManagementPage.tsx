@@ -10,6 +10,7 @@ import { useAppContext } from '../../context/AppContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
 
 // Direct Report Imports
+// Direct Report Imports
 import PropertyLayoutReport from '../reports/PropertyLayoutReport';
 import UnitStatusReport from '../reports/UnitStatusReport';
 import AgreementExpiryReport from '../reports/AgreementExpiryReport';
@@ -21,23 +22,25 @@ import TenantLedgerReport from '../reports/TenantLedgerReport';
 import VendorLedgerReport from '../reports/VendorLedgerReport';
 import OwnerSecurityDepositReport from '../reports/OwnerSecurityDepositReport';
 import BrokerFeeReport from '../reports/BrokerFeeReport';
+import InvoicePaymentAnalysisReport from '../reports/InvoicePaymentAnalysisReport';
 
 interface RentalManagementPageProps {
-  initialPage: Page;
+    initialPage: Page;
 }
 
 // Define all possible view keys
-type RentalView = 
+type RentalView =
     | 'Agreements' | 'Invoices' | 'Bills' | 'Payment' | 'Payouts'
     | 'Visual Layout' | 'Tabular Layout'
-    | 'Agreement Expiry' | 'Building Analysis' | 'BM Analysis' | 'Owner Income'
+    | 'Agreement Expiry' | 'Building Analysis' | 'BM Analysis' | 'Invoice & Payment Analysis'
+    | 'Owner Income'
     | 'Service Charges Deduction' | 'Tenant Ledger' | 'Vendor Ledger'
     | 'Owner Security Deposit' | 'Broker Fees';
 
 const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage }) => {
     const { state, dispatch } = useAppContext();
     const { initialTabs } = state;
-    
+
     // Detect Mobile
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
     useEffect(() => {
@@ -63,7 +66,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
 
     useEffect(() => {
         // This hook handles the initial page load based on the footer navigation.
-        switch(initialPage) {
+        switch (initialPage) {
             case 'rentalInvoices':
                 setActiveView('Invoices');
                 break;
@@ -99,35 +102,36 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
     }, [initialTabs, dispatch, setActiveView]);
 
     const renderContent = () => {
-        switch(activeView) {
+        switch (activeView) {
             // Operations
             case 'Agreements': return <RentalAgreementsPage />;
             case 'Invoices': return <RentalInvoicesPage />;
             case 'Bills': return <RentalBillsPage />;
             case 'Payment': return <RentalPaymentSearch />;
             case 'Payouts': return <OwnerPayoutsPage />;
-            
+
             // Primary Reports (Views)
             case 'Visual Layout': return <PropertyLayoutReport />;
             case 'Tabular Layout': return <UnitStatusReport />;
-            
+
             // Secondary Reports (From Dropdown)
             case 'Agreement Expiry': return <AgreementExpiryReport />;
             case 'Building Analysis': return <BuildingAccountsReport />;
             case 'BM Analysis': return <BMAnalysisReport />;
+            case 'Invoice & Payment Analysis': return <InvoicePaymentAnalysisReport />;
             case 'Owner Income': return <OwnerPayoutsReport />;
             case 'Service Charges Deduction': return <ServiceChargesDeductionReport />;
             case 'Tenant Ledger': return <TenantLedgerReport />;
             case 'Vendor Ledger': return <VendorLedgerReport context="Rental" />;
             case 'Owner Security Deposit': return <OwnerSecurityDepositReport />;
             case 'Broker Fees': return <BrokerFeeReport />;
-            
+
             default: return null;
         }
     };
 
     const isReportActive = [
-        'Agreement Expiry', 'Building Analysis', 'BM Analysis', 'Owner Income',
+        'Agreement Expiry', 'Building Analysis', 'BM Analysis', 'Invoice & Payment Analysis', 'Owner Income',
         'Service Charges Deduction', 'Tenant Ledger', 'Vendor Ledger',
         'Owner Security Deposit', 'Broker Fees'
     ].includes(activeView);
@@ -135,11 +139,10 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
     const NavButton = ({ view, label }: { view: RentalView, label: string }) => (
         <button
             onClick={() => setActiveView(view)}
-            className={`whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeView === view 
-                ? 'bg-indigo-50 text-accent ring-1 ring-indigo-100' 
-                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-            }`}
+            className={`whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors ${activeView === view
+                    ? 'bg-indigo-50 text-accent ring-1 ring-indigo-100'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
         >
             {label}
         </button>
@@ -149,7 +152,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         <div className="flex flex-col h-full space-y-4">
             {/* Custom Navigation Bar */}
             <div className="flex flex-col md:flex-row md:items-center justify-between bg-white border-b border-slate-200 px-4 py-2 shadow-sm flex-shrink-0 gap-3 md:gap-4 z-50 relative">
-                
+
                 {/* Left Side: Operational Tabs & Reports Dropdown */}
                 <div className="flex items-center flex-grow min-w-0">
                     {/* Operational Tabs - Scrollable */}
@@ -168,11 +171,10 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                     <div className="relative flex-shrink-0" ref={reportDropdownRef}>
                         <button
                             onClick={() => setIsReportDropdownOpen(!isReportDropdownOpen)}
-                            className={`whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                                isReportActive || isReportDropdownOpen
-                                ? 'bg-indigo-50 text-accent ring-1 ring-indigo-100' 
-                                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                            }`}
+                            className={`whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors ${isReportActive || isReportDropdownOpen
+                                    ? 'bg-indigo-50 text-accent ring-1 ring-indigo-100'
+                                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                }`}
                         >
                             Reports
                         </button>
@@ -184,7 +186,8 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                                     {[
                                         'Agreement Expiry',
                                         'Building Analysis',
-                                        'BM Analysis'
+                                        'BM Analysis',
+                                        'Invoice & Payment Analysis'
                                     ].map((reportName) => (
                                         <button
                                             key={reportName}
@@ -192,13 +195,13 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                                                 setActiveView(reportName as RentalView);
                                                 setIsReportDropdownOpen(false);
                                             }}
-                                            className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors border-b border-slate-50 ${
-                                                activeView === reportName ? 'text-accent font-medium bg-indigo-50/50' : 'text-slate-700'
-                                            }`}
+                                            className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors border-b border-slate-50 ${activeView === reportName ? 'text-accent font-medium bg-indigo-50/50' : 'text-slate-700'
+                                                }`}
                                         >
                                             {reportName}
                                         </button>
                                     ))}
+
 
                                     <div className="bg-slate-50 px-4 py-1 text-xs font-semibold text-slate-500 border-b border-slate-200">LEDGERS</div>
                                     {[
@@ -215,9 +218,8 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                                                 setActiveView(reportName as RentalView);
                                                 setIsReportDropdownOpen(false);
                                             }}
-                                            className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 ${
-                                                activeView === reportName ? 'text-accent font-medium bg-indigo-50/50' : 'text-slate-700'
-                                            }`}
+                                            className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 ${activeView === reportName ? 'text-accent font-medium bg-indigo-50/50' : 'text-slate-700'
+                                                }`}
                                         >
                                             {reportName}
                                         </button>
@@ -232,21 +234,19 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                 <div className="flex items-center bg-slate-100 rounded-full p-1 flex-shrink-0 self-start md:self-center">
                     <button
                         onClick={() => setActiveView('Visual Layout')}
-                        className={`px-4 py-1.5 text-xs sm:text-sm font-medium rounded-full transition-all duration-200 ${
-                            activeView === 'Visual Layout'
-                            ? 'bg-slate-200 text-slate-800 shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]'
-                            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
-                        }`}
+                        className={`px-4 py-1.5 text-xs sm:text-sm font-medium rounded-full transition-all duration-200 ${activeView === 'Visual Layout'
+                                ? 'bg-slate-200 text-slate-800 shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]'
+                                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                            }`}
                     >
                         Visual Layout
                     </button>
                     <button
                         onClick={() => setActiveView('Tabular Layout')}
-                        className={`px-4 py-1.5 text-xs sm:text-sm font-medium rounded-full transition-all duration-200 ${
-                            activeView === 'Tabular Layout'
-                            ? 'bg-slate-200 text-slate-800 shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]'
-                            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
-                        }`}
+                        className={`px-4 py-1.5 text-xs sm:text-sm font-medium rounded-full transition-all duration-200 ${activeView === 'Tabular Layout'
+                                ? 'bg-slate-200 text-slate-800 shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]'
+                                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                            }`}
                     >
                         Tabular Layout
                     </button>
