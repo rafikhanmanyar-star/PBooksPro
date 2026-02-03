@@ -131,6 +131,19 @@ class AdminApi {
     return response.json();
   }
 
+  async applyManualLicense(tenantId: string, licenseType: 'monthly' | 'yearly') {
+    const response = await fetch(`${ADMIN_API_URL}/licenses/apply-manual`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ tenantId, licenseType }),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to apply manual license');
+    }
+    return response.json();
+  }
+
   // Dashboard Stats
   async getDashboardStats() {
     try {

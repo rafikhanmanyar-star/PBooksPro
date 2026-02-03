@@ -80,6 +80,15 @@ code {
   background-color: #d97706;
 }
 
+.btn-info {
+  background-color: #0ea5e9;
+  color: white;
+}
+
+.btn-info:hover {
+  background-color: #0284c7;
+}
+
 .input {
   width: 100%;
   padding: 0.5rem;

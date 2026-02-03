@@ -286,6 +286,7 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
   const [tenantModules, setTenantModules] = useState<any[]>([]);
   const [loadingModules, setLoadingModules] = useState(false);
   const [updatingModule, setUpdatingModule] = useState<string | null>(null);
+  const [isRenewing, setIsRenewing] = useState(false);
 
   const MODULES = [
     { key: 'real_estate', label: 'Real Estate Developer & Constructor' },
@@ -331,9 +332,31 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
     try {
       setUpdatingModule(moduleKey);
       const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
-      // For now, setting no expiry (perpetual for the module until toggled off)
       await adminApi.updateTenantModule(tenant.id, moduleKey, newStatus, null);
       await loadModules();
+    } catch (error: any) {
+      alert(error.message || 'Failed to update module');
+    } finally {
+      setUpdatingModule(null);
+    }
+  };
+
+  const handleApplyModuleLicense = async (moduleKey: string, type: 'monthly' | 'yearly' | 'perpetual') => {
+    try {
+      setUpdatingModule(moduleKey);
+      let expiresAt = null;
+      if (type === 'monthly') {
+        const date = new Date();
+        date.setMonth(date.getMonth() + 1);
+        expiresAt = date.toISOString();
+      } else if (type === 'yearly') {
+        const date = new Date();
+        date.setFullYear(date.getFullYear() + 1);
+        expiresAt = date.toISOString();
+      }
+      await adminApi.updateTenantModule(tenant.id, moduleKey, 'active', expiresAt);
+      await loadModules();
+      alert(`Manual ${type} license applied for ${moduleKey}`);
     } catch (error: any) {
       alert(error.message || 'Failed to update module');
     } finally {
@@ -481,6 +504,24 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
       setError(err.message || 'Failed to update tenant');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleApplyManualLicense = async (type: 'monthly' | 'yearly') => {
+    if (!confirm(`Are you sure you want to apply a manual ${type} license for this tenant? This will extend their expiry date from today.`)) {
+      return;
+    }
+
+    setIsRenewing(true);
+    try {
+      await adminApi.applyManualLicense(tenant.id, type);
+      alert(`Manual ${type} license applied successfully`);
+      await loadTenantDetails();
+      if (onUpdate) onUpdate();
+    } catch (err: any) {
+      alert(err.message || 'Failed to apply manual license');
+    } finally {
+      setIsRenewing(false);
     }
   };
 
@@ -727,6 +768,82 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
             </div>
           </div>
 
+          {/* Manual License Application - Premium Design */}
+          <div style={{
+            padding: '1rem',
+            backgroundColor: '#f8fafc',
+            borderRadius: '0.75rem',
+            border: '1px solid #e2e8f0',
+            marginTop: '0.5rem'
+          }}>
+            <h3 style={{
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              color: '#1e293b',
+              marginBottom: '0.75rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <Key size={16} className="text-primary" />
+              Manual License Application
+            </h3>
+            <p style={{ fontSize: '0.8125rem', color: '#64748b', marginBottom: '1rem' }}>
+              Select a license plan to apply manually. This will reset the expiry date starting from today.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => handleApplyManualLicense('monthly')}
+                disabled={isRenewing}
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  padding: '0.75rem',
+                  backgroundColor: '#ffffff',
+                  color: '#0f172a',
+                  border: '1px solid #e2e8f0',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                  transition: 'all 0.2s'
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.backgroundColor = '#f0f9ff'; }}
+                onMouseOut={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.backgroundColor = '#ffffff'; }}
+              >
+                <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Monthly License</span>
+                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Expires in 30 days</span>
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => handleApplyManualLicense('yearly')}
+                disabled={isRenewing}
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  padding: '0.75rem',
+                  backgroundColor: '#ffffff',
+                  color: '#0f172a',
+                  border: '1px solid #e2e8f0',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                  transition: 'all 0.2s'
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.backgroundColor = '#f0f9ff'; }}
+                onMouseOut={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.backgroundColor = '#ffffff'; }}
+              >
+                <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Yearly License</span>
+                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Expires in 365 days</span>
+              </button>
+            </div>
+            {isRenewing && (
+              <div style={{ marginTop: '0.5rem', textAlign: 'center', fontSize: '0.75rem', color: '#3b82f6', fontWeight: 500 }}>
+                Applying license... please wait.
+              </div>
+            )}
+          </div>
+
           {/* Statistics - Compact Grid */}
           {stats && (
             <div style={{ paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
@@ -819,14 +936,55 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                           {isActive ? 'Module Enabled' : 'Module Disabled'}
                         </div>
                       </div>
-                      <button
-                        className={`btn ${isActive ? 'btn-danger' : 'btn-success'}`}
-                        onClick={() => handleToggleModule(module.key, activeModule?.status || 'inactive')}
-                        disabled={updatingModule === module.key}
-                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', minWidth: '80px' }}
-                      >
-                        {updatingModule === module.key ? 'Wait...' : isActive ? 'Disable' : 'Enable'}
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.25rem' }}>
+                        {isActive ? (
+                          <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                            {activeModule?.expires_at && (
+                              <div style={{ fontSize: '0.6875rem', color: '#6b7280', marginRight: '0.5rem' }}>
+                                Exp: {new Date(activeModule.expires_at).toLocaleDateString()}
+                              </div>
+                            )}
+                            <button
+                              className="btn btn-danger"
+                              onClick={() => handleToggleModule(module.key, 'active')}
+                              disabled={updatingModule === module.key}
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                            >
+                              {updatingModule === module.key ? '...' : 'Disable'}
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: '0.25rem' }}>
+                            <button
+                              className="btn btn-success"
+                              onClick={() => handleApplyModuleLicense(module.key, 'perpetual')}
+                              disabled={updatingModule === module.key}
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.65rem' }}
+                              title="Perpetual"
+                            >
+                              Full
+                            </button>
+                            <button
+                              className="btn btn-info"
+                              onClick={() => handleApplyModuleLicense(module.key, 'monthly')}
+                              disabled={updatingModule === module.key}
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.65rem' }}
+                              title="1 Month"
+                            >
+                              M
+                            </button>
+                            <button
+                              className="btn btn-warning"
+                              onClick={() => handleApplyModuleLicense(module.key, 'yearly')}
+                              disabled={updatingModule === module.key}
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.65rem' }}
+                              title="1 Year"
+                            >
+                              Y
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
