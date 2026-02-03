@@ -7,6 +7,7 @@ import SystemMonitoring from './components/dashboard/SystemMonitoring';
 import TenantManagement from './components/tenants/TenantManagement';
 import UserManagement from './components/users/UserManagement';
 import MarketplaceManagement from './components/marketplace/MarketplaceManagement';
+import SystemMonitoring from './components/monitoring/SystemMonitoring';
 import Layout from './components/layout/Layout';
 import ProtectedRoute from './components/layout/ProtectedRoute';
 
@@ -27,6 +28,7 @@ const AppRoutes: React.FC = () => {
         <Route path="tenants" element={<TenantManagement />} />
         <Route path="users" element={<UserManagement />} />
         <Route path="marketplace" element={<MarketplaceManagement />} />
+        <Route path="monitoring" element={<SystemMonitoring />} />
       </Route>
     </Routes>
   );

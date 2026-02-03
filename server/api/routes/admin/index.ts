@@ -7,7 +7,7 @@ import statsRoutes from './stats.js';
 import userRoutes from './users.js';
 import marketplaceRoutes from './marketplace.js';
 import createAdminRoutes from './create-admin.js';
-import systemMetricsRoutes from './system-metrics.js';
+import systemRoutes from './system.js';
 
 const router = Router();
 
@@ -27,7 +27,7 @@ router.use('/licenses', licenseRoutes);
 router.use('/stats', statsRoutes);
 router.use('/users', userRoutes);
 router.use('/marketplace', marketplaceRoutes);
-router.use('/system-metrics', systemMetricsRoutes);
+router.use('/system', systemRoutes);
 
 export default router;
 
