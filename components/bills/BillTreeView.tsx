@@ -22,19 +22,19 @@ interface BillTreeViewProps {
     onNodeSelect: (id: string, type: 'group' | 'vendor', parentId?: string) => void;
 }
 
-const TreeItem: React.FC<{ 
-    node: BillTreeNode; 
+const TreeItem: React.FC<{
+    node: BillTreeNode;
     selectedNodeId: string | null;
     selectedParentId?: string | null;
-    onNodeSelect: (id: string, type: 'group' | 'vendor', parentId?: string) => void; 
+    onNodeSelect: (id: string, type: 'group' | 'vendor', parentId?: string) => void;
     parentId?: string;
-    level?: number 
+    level?: number
 }> = ({ node, selectedNodeId, selectedParentId, onNodeSelect, parentId, level = 0 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
-    
+
     // Only select if ID matches AND (it's a group OR the parent context matches)
     const isSelected = selectedNodeId === node.id && (node.type === 'group' || selectedParentId === parentId);
-    
+
     const hasChildren = node.children && node.children.length > 0;
 
     const handleToggle = (e: React.MouseEvent) => {
@@ -53,18 +53,18 @@ const TreeItem: React.FC<{
 
     return (
         <li>
-            <button 
+            <button
                 onClick={handleSelect}
                 className={`w-full flex items-center justify-between text-left py-2 pr-2 rounded-md transition-all duration-200 
-                    ${isSelected 
-                        ? 'bg-indigo-600 text-white font-bold shadow-md transform scale-[1.02] origin-left z-10 relative' 
+                    ${isSelected
+                        ? 'bg-indigo-600 text-white font-bold shadow-md transform scale-[1.02] origin-left z-10 relative'
                         : 'hover:bg-slate-100 text-slate-700'
                     }`}
                 style={{ paddingLeft }}
             >
                 <div className="flex items-center gap-2 truncate min-w-0">
                     {hasChildren ? (
-                        <span 
+                        <span
                             onClick={handleToggle}
                             className={`transform transition-transform p-0.5 rounded ${isExpanded ? 'rotate-90' : ''} ${isSelected ? 'text-white/80 hover:bg-white/20' : 'text-slate-400 hover:bg-slate-200'}`}
                         >
@@ -73,35 +73,29 @@ const TreeItem: React.FC<{
                     ) : (
                         <span className="w-5 h-5 inline-block"></span>
                     )}
-                    
+
+                    {node.balance > 0 && (
+                        <span className={`text-[10px] font-mono font-bold rounded px-1.5 py-0.5 flex-shrink-0 ${isSelected ? 'bg-rose-500 text-white' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>
+                            {node.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </span>
+                    )}
+
                     {node.type === 'group' ? (
-                         <span className={`opacity-70 ${isSelected ? 'text-white' : 'text-slate-400'}`}>{ICONS.briefcase}</span>
+                        <span className={`opacity-70 ${isSelected ? 'text-white' : 'text-slate-400'}`}>{ICONS.briefcase}</span>
                     ) : (
-                         <span className={`opacity-70 ${isSelected ? 'text-white' : 'text-slate-400'}`}>{ICONS.users}</span>
+                        <span className={`opacity-70 ${isSelected ? 'text-white' : 'text-slate-400'}`}>{ICONS.users}</span>
                     )}
 
                     <span className="truncate text-sm" title={node.name}>{node.name}</span>
                 </div>
-                
-                {node.balance > 0 ? (
-                    <span className={`text-[10px] font-mono font-bold rounded px-1.5 py-0.5 ml-2 flex-shrink-0 ${isSelected ? 'bg-rose-500 text-white' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>
-                        {CURRENCY} {node.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </span>
-                ) : (
-                    node.count > 0 && (
-                        <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ml-2 flex-shrink-0 ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-400'}`}>
-                            {node.count}
-                        </span>
-                    )
-                )}
             </button>
-            
+
             {isExpanded && hasChildren && (
                 <ul className="space-y-0.5 mt-0.5 border-l border-slate-200 ml-4">
                     {node.children.map(childNode => (
-                        <TreeItem 
-                            key={childNode.id} 
-                            node={childNode} 
+                        <TreeItem
+                            key={childNode.id}
+                            node={childNode}
                             selectedNodeId={selectedNodeId}
                             selectedParentId={selectedParentId}
                             onNodeSelect={onNodeSelect}
@@ -160,40 +154,34 @@ const BillTreeView: React.FC<BillTreeViewProps> = ({ treeData, selectedNodeId, s
             <div className="px-2 py-2 border-b border-slate-200 flex-shrink-0 bg-slate-50">
                 <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
                     <button
-                        onClick={() => handleSort('name')}
-                        className="flex items-center gap-1 hover:text-slate-900 cursor-pointer"
-                        title="Sort by Name"
-                    >
-                        Name <SortIcon column="name" />
-                    </button>
-                    <div className="flex-1"></div>
-                    <button
                         onClick={() => handleSort('balance')}
                         className="flex items-center gap-1 hover:text-slate-900 cursor-pointer"
                         title="Sort by Account Payable (Balance)"
                     >
                         Payable <SortIcon column="balance" />
                     </button>
+                    <div className="w-px h-3 bg-slate-300 mx-1"></div>
                     <button
-                        onClick={() => handleSort('count')}
-                        className="flex items-center gap-1 hover:text-slate-900 cursor-pointer ml-2"
-                        title="Sort by Count"
+                        onClick={() => handleSort('name')}
+                        className="flex items-center gap-1 hover:text-slate-900 cursor-pointer"
+                        title="Sort by Name"
                     >
-                        Count <SortIcon column="count" />
+                        Entity <SortIcon column="name" />
                     </button>
+                    <div className="flex-1"></div>
                 </div>
             </div>
-            
+
             {/* Tree Content */}
             <div className="flex-1 overflow-y-auto p-2">
                 <ul className="space-y-1">
                     {sortedTreeData.map(node => (
-                        <TreeItem 
-                            key={node.id} 
-                            node={node} 
-                            selectedNodeId={selectedNodeId} 
+                        <TreeItem
+                            key={node.id}
+                            node={node}
+                            selectedNodeId={selectedNodeId}
                             selectedParentId={selectedParentId}
-                            onNodeSelect={onNodeSelect} 
+                            onNodeSelect={onNodeSelect}
                         />
                     ))}
                 </ul>

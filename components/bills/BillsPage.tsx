@@ -72,9 +72,8 @@ const BillTreeSidebar: React.FC<{
         return (
             <div key={node.id} className={level > 0 ? 'ml-4 border-l border-slate-200/80 pl-3' : ''}>
                 <div
-                    className={`group flex items-center gap-2 py-1.5 px-2 rounded-lg -mx-0.5 transition-all cursor-pointer ${
-                        isSelected ? 'bg-orange-500/10 text-orange-700' : 'hover:bg-slate-100/80 text-slate-700 hover:text-slate-900'
-                    }`}
+                    className={`group flex items-center gap-2 py-1.5 px-2 rounded-lg -mx-0.5 transition-all cursor-pointer ${isSelected ? 'bg-orange-500/10 text-orange-700' : 'hover:bg-slate-100/80 text-slate-700 hover:text-slate-900'
+                        }`}
                     onClick={() => onSelect(node.id, node.type, parentId)}
                 >
                     {hasChildren ? (
@@ -87,15 +86,12 @@ const BillTreeSidebar: React.FC<{
                     ) : (
                         <span className="w-5 flex-shrink-0" />
                     )}
-                    <span className="flex-shrink-0 w-6 h-6 rounded-md bg-slate-800 text-slate-200 text-[10px] font-bold flex items-center justify-center">
-                        {initials}
-                    </span>
-                    <span className="flex-1 text-xs font-medium truncate">{node.name}</span>
-                    {node.count > 0 && (
-                        <span className={`text-[10px] font-semibold tabular-nums ${isSelected ? 'text-orange-600' : 'text-slate-500'}`}>
-                            {node.count}
+                    {node.balance > 0 && (
+                        <span className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded border ${isSelected ? 'bg-orange-500 text-white border-orange-600' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
+                            {node.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </span>
                     )}
+                    <span className="flex-1 text-xs font-medium truncate">{node.name}</span>
                 </div>
                 {hasChildren && isExpanded && (
                     <div className="mt-0.5">
