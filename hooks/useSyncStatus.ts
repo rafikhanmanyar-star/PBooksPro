@@ -27,11 +27,19 @@ export function useSyncStatus(): UseSyncStatusResult {
   });
 
   useEffect(() => {
+    // Mobile: No sync queue
+    if (isMobileDevice()) {
+      return;
+    }
+
     const syncManager = getSyncManager();
     
     // Get initial status
     const updateStatus = () => {
-      setStatus(syncManager.getQueueStatus());
+      const newStatus = syncManager.getQueueStatus();
+      // Reduced logging per user request
+      // console.log('[useSyncStatus] Updating status:', newStatus);
+      setStatus(newStatus);
     };
     
     updateStatus();

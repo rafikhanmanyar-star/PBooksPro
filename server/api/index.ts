@@ -18,15 +18,15 @@ if (result.error && !process.env.DATABASE_URL) {
   console.warn('   __dirname:', __dirname);
 }
 
-// Optional log filter for debugging (e.g., focus on payment logs)
-// Enable with LOG_ONLY_PAYMENT=true to suppress non-payment logs
+// Optional log filter for debugging (e.g., focus on payment/WhatsApp logs)
+// Enable with LOG_ONLY_PAYMENT=true to suppress other logs; allows payment|paddle|webhook|whatsapp
 if (process.env.LOG_ONLY_PAYMENT === 'true') {
   const shouldLog = (args: unknown[]) => {
     const text = args
       .map(arg => (arg instanceof Error ? arg.message : String(arg)))
       .join(' ')
       .toLowerCase();
-    return /payment|paddle|webhook/.test(text);
+    return /payment|paddle|webhook|whatsapp/.test(text);
   };
 
   const wrap = (method: (...args: any[]) => void) => (...args: any[]) => {
@@ -40,13 +40,22 @@ if (process.env.LOG_ONLY_PAYMENT === 'true') {
   console.error = wrap(console.error);
 }
 
-// Run migrations on startup (non-blocking)
+// Run migrations on startup (non-blocking - don't await)
+// Set DISABLE_MIGRATIONS=true to skip (e.g. staging DB already updated)
 (async () => {
+  if (process.env.DISABLE_MIGRATIONS === 'true') {
+    console.log('⏭️  Migrations disabled (DISABLE_MIGRATIONS=true)');
+    return;
+  }
   try {
     const { runMigrations } = await import('../scripts/run-migrations-on-startup.js');
-    await runMigrations();
+    runMigrations().catch((err: any) => {
+      console.error('⚠️  Background migration error:', err);
+      // Log but don't block server startup
+    });
+    console.log('🚀 Server starting (migrations running in background)...');
   } catch (error) {
-    console.warn('⚠️  Could not run migrations on startup:', error);
+    console.warn('⚠️  Could not start migrations on startup:', error);
     // Continue anyway - migrations might already be done
   }
 })();
@@ -91,18 +100,23 @@ import appInfoRouter from './routes/app-info.js';
 import whatsappRouter from './routes/whatsapp.js';
 import whatsappWebhookRouter from './routes/whatsapp-webhook.js';
 import tasksRouter from './routes/tasks.js';
+
 import suppliersRouter from './routes/suppliers.js';
 import purchaseOrdersRouter from './routes/purchaseOrders.js';
 import p2pInvoicesRouter from './routes/p2pInvoices.js';
 import p2pBillsRouter from './routes/p2pBills.js';
 import supplierRegistrationsRouter from './routes/supplierRegistrations.js';
+import marketplaceRouter from './routes/marketplace.js';
 import payrollRouter from './routes/payroll.js';
+import stateChangesRouter from './routes/stateChanges.js';
+import shopRouter from './routes/shop.js';
+import analyticsRouter from './routes/analytics.js';
 import { tenantMiddleware } from '../middleware/tenantMiddleware.js';
 import { licenseMiddleware } from '../middleware/licenseMiddleware.js';
 
 const app = express();
 const httpServer = createServer(app);
-const port = process.env.PORT || 3000;
+const port = Number(process.env.PORT) || 3000;
 
 // Use DatabaseService singleton instead of creating separate pool
 // This ensures consistent connection management across the application
@@ -112,7 +126,7 @@ import { getDatabaseService } from '../services/databaseService.js';
 (async () => {
   let retries = 5;
   let connected = false;
-  
+
   while (retries > 0 && !connected) {
     try {
       const db = getDatabaseService();
@@ -127,7 +141,7 @@ import { getDatabaseService } from '../services/databaseService.js';
       } else {
         console.error('❌ Database connection error:', err.message);
         console.error('   Make sure PostgreSQL is running and DATABASE_URL is correct');
-        
+
         // Check if it's an ENOTFOUND error (common with internal URLs)
         if (err.code === 'ENOTFOUND' || err.message?.includes('getaddrinfo ENOTFOUND')) {
           const dbUrl = process.env.DATABASE_URL || '';
@@ -152,9 +166,9 @@ import { getDatabaseService } from '../services/databaseService.js';
 // Create pool for tenantMiddleware (it needs direct pool access for RLS)
 // But use DatabaseService for all other operations
 // Enable SSL for production, staging, and any Render database URLs
-const shouldUseSSL = process.env.NODE_ENV === 'production' || 
-                     process.env.NODE_ENV === 'staging' ||
-                     (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('.render.com'));
+const shouldUseSSL = process.env.NODE_ENV === 'production' ||
+  process.env.NODE_ENV === 'staging' ||
+  (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('.render.com'));
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -170,7 +184,7 @@ pool.on('error', (err) => {
 });
 
 // Middleware - CORS configuration
-const corsOrigins = process.env.CORS_ORIGIN 
+const corsOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
   : ['*'];
 
@@ -183,10 +197,10 @@ app.use(cors({
       console.log('✅ CORS: Allowing request with no origin');
       return callback(null, true);
     }
-    
+
     // Check if origin is in allowed list or wildcard is used
     const isAllowed = corsOrigins.includes('*') || corsOrigins.includes(origin);
-    
+
     if (isAllowed) {
       console.log(`✅ CORS: Allowing origin: ${origin}`);
       callback(null, true);
@@ -237,8 +251,8 @@ app.get('/', (req, res) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     timestamp: new Date().toISOString(),
     database: pool.totalCount > 0 ? 'connected' : 'disconnected'
   });
@@ -284,9 +298,9 @@ app.get('/mock-payment', (req, res) => {
       query: req.query,
       method: req.method
     });
-    
+
     const { payment_intent, return_url } = req.query;
-    
+
     if (!payment_intent || typeof payment_intent !== 'string') {
       console.error('Missing payment_intent in query:', req.query);
       return res.status(400).send(`
@@ -304,11 +318,11 @@ app.get('/mock-payment', (req, res) => {
     // Get base URL for API calls
     // On Render, RENDER_EXTERNAL_URL is automatically available for the server URL
     const baseUrl = req.headers.origin || process.env.CLIENT_URL || 'http://localhost:5173';
-    const apiUrl = process.env.API_URL || 
-                   process.env.SERVER_URL || 
-                   process.env.RENDER_EXTERNAL_URL ||
-                   'http://localhost:3000';
-    
+    const apiUrl = process.env.API_URL ||
+      process.env.SERVER_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      'http://localhost:3000';
+
     // Decode return_url if it's URL encoded
     let returnUrl: string;
     if (return_url && typeof return_url === 'string') {
@@ -676,13 +690,18 @@ app.use('/api/pm-cycle-allocations', pmCycleAllocationsRouter); // PM Cycle Allo
 app.use('/api/data-management', dataManagementRouter); // Data Management (Admin only)
 app.use('/api/data-import-export', dataImportExportRouter); // Data Import/Export
 app.use('/api/whatsapp', whatsappRouter); // WhatsApp API (requires authentication)
-app.use('/api/tasks', tasksRouter); // Task Management (requires authentication)
+
 app.use('/api/suppliers', suppliersRouter); // Supplier Management (requires authentication)
 app.use('/api/purchase-orders', purchaseOrdersRouter); // Purchase Orders (requires authentication)
 app.use('/api/p2p-invoices', p2pInvoicesRouter); // P2P Invoices (requires authentication)
 app.use('/api/p2p-bills', p2pBillsRouter); // P2P Bills (requires authentication)
 app.use('/api/supplier-registrations', supplierRegistrationsRouter); // Supplier Registration Requests (requires authentication)
+app.use('/api/marketplace', marketplaceRouter); // Biz Planet Marketplace (browse ads, post ads – 2/day per supplier)
 app.use('/api/payroll', payrollRouter); // Payroll Management (requires authentication)
+app.use('/api/shop', shopRouter);
+app.use('/api/analytics', analyticsRouter);
+app.use('/api/tasks', tasksRouter);
+app.use('/api/state', stateChangesRouter); // Incremental sync: GET /api/state/changes?since=ISO8601 
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -711,9 +730,10 @@ export { wsService };
   }
 })();
 
-// Start server
-httpServer.listen(port, () => {
-  console.log(`🚀 API server running on port ${port}`);
+// Start server - listen on 0.0.0.0 so other PCs on the network can reach the API
+const host = process.env.SERVER_HOST || '0.0.0.0';
+httpServer.listen(port, host, () => {
+  console.log(`🚀 API server running on http://${host}:${port}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔌 WebSocket server initialized`);
 });

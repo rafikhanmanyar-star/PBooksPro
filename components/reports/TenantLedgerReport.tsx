@@ -19,7 +19,8 @@ import ReportFooter from './ReportFooter';
 import { useNotification } from '../../context/NotificationContext';
 import { formatDate } from '../../utils/dateUtils';
 import { WhatsAppService } from '../../services/whatsappService';
-import { usePrint } from '../../hooks/usePrint';
+import { useWhatsApp } from '../../context/WhatsAppContext';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
@@ -39,6 +40,7 @@ interface LedgerItem {
 const TenantLedgerReport: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { showAlert, showToast } = useNotification();
+    const { openChat } = useWhatsApp();
     
     const [dateRangeType, setDateRangeType] = useState<DateRangeOption>('all');
     const [startDate, setStartDate] = useState('2000-01-01');
@@ -217,7 +219,7 @@ const TenantLedgerReport: React.FC = () => {
         }, { debit: 0, credit: 0 });
     }, [reportData]);
 
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
 
     const getLinkedItemName = (tx: Transaction | null): string => {
         if (!tx) return '';
@@ -292,10 +294,11 @@ const TenantLedgerReport: React.FC = () => {
             message += `Period: ${formatDate(startDate)} to ${formatDate(endDate)}\n\n`;
             message += `Final Balance Due: *${CURRENCY} ${finalBalance.toLocaleString()}*\n\n`;
             message += `This is an automated summary from PBooksPro.`;
-        
-            WhatsAppService.sendMessage({ contact: selectedTenant, message });
+
+            // Open WhatsApp side panel with pre-filled message
+            openChat(selectedTenant, selectedTenant.contactNo, message);
         } catch (error) {
-            await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
+            await showAlert(error instanceof Error ? error.message : 'Failed to send WhatsApp message');
         }
     };
     
@@ -410,7 +413,7 @@ const TenantLedgerReport: React.FC = () => {
                             <PrintButton
                                 variant="secondary"
                                 size="sm"
-                                onPrint={handlePrint}
+                                onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                                 className="whitespace-nowrap"
                             />
                         </div>

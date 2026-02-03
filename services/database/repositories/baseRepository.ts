@@ -10,23 +10,88 @@ import { getCurrentTenantId, shouldFilterByTenant } from '../tenantUtils';
 import { getCurrentUserId, shouldTrackUserId } from '../userUtils';
 import { isMobileDevice } from '../../../utils/platformDetection';
 import { getSyncManager } from '../../sync/syncManager';
+import { getSyncOutboxService } from '../../sync/syncOutboxService';
+
+interface PendingSyncOperation {
+    type: 'create' | 'update' | 'delete';
+    entityId: string;
+    data: any;
+    tableName: string;
+}
 
 export abstract class BaseRepository<T> {
     protected tableName: string;
     protected primaryKey: string;
     private tableColumns: Set<string> | null = null;
 
+    // Static tracker for pending sync operations during transactions
+    private static pendingSyncOperations: PendingSyncOperation[] = [];
+
+    // Flag to disable sync queueing when syncing FROM cloud TO local
+    // This prevents creating sync operations for data that's already in the cloud
+    private static syncQueueingDisabled = false;
+
     constructor(tableName: string, primaryKey: string = 'id') {
         this.tableName = tableName;
         this.primaryKey = primaryKey;
     }
 
+    /**
+     * Get all pending sync operations and clear the tracker
+     * Called after transaction successfully commits
+     */
+    static flushPendingSyncOperations(): PendingSyncOperation[] {
+        const operations = [...BaseRepository.pendingSyncOperations];
+        BaseRepository.pendingSyncOperations = [];
+        return operations;
+    }
+
+    /**
+     * Clear pending sync operations (called on rollback)
+     */
+    static clearPendingSyncOperations(): void {
+        BaseRepository.pendingSyncOperations = [];
+    }
+
+    /**
+     * Disable sync queueing (used when syncing FROM cloud TO local)
+     * This prevents creating unnecessary sync operations for data already in cloud
+     */
+    static disableSyncQueueing(): void {
+        BaseRepository.syncQueueingDisabled = true;
+        console.log('[BaseRepository] Sync queueing disabled (syncing from cloud)');
+    }
+
+    /**
+     * Enable sync queueing (normal operation)
+     */
+    static enableSyncQueueing(): void {
+        BaseRepository.syncQueueingDisabled = false;
+        console.log('[BaseRepository] Sync queueing enabled (normal operation)');
+    }
+
+    /**
+     * Check if sync queueing is currently disabled
+     */
+    static isSyncQueueingDisabled(): boolean {
+        return BaseRepository.syncQueueingDisabled;
+    }
+
     protected get db() {
+        // BaseRepository is for local SQLite operations (desktop only)
+        // Mobile devices should use API repositories instead
+        if (isMobileDevice()) {
+            throw new Error(
+                `BaseRepository (local SQLite) is not available on mobile devices. ` +
+                `Use API repositories (e.g., ${this.tableName}ApiRepository) instead.`
+            );
+        }
         return getDatabaseService();
     }
 
     /**
      * Find all records with options
+     * Tenant isolation: if table is tenant-scoped but no tenant in context, return empty (never return other tenants' data).
      */
     findAll(options: {
         limit?: number;
@@ -38,10 +103,17 @@ export abstract class BaseRepository<T> {
     } = {}): T[] {
         const { limit, offset, orderBy, orderDir = 'DESC', condition, params = [] } = options;
 
+        if (this.shouldFilterByTenant()) {
+            const tenantId = getCurrentTenantId();
+            if (!tenantId) {
+                return [];
+            }
+        }
+
         let sql = `SELECT * FROM ${this.tableName}`;
         const whereConditions: string[] = [];
         const whereParams: any[] = [];
-        
+
         // Add tenant_id filter if tenant is logged in
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
@@ -52,17 +124,17 @@ export abstract class BaseRepository<T> {
                 whereParams.push(tenantId);
             }
         }
-        
+
         // Add custom condition if provided
         if (condition) {
             whereConditions.push(condition);
             whereParams.push(...params);
         }
-        
+
         if (whereConditions.length > 0) {
             sql += ` WHERE ${whereConditions.join(' AND ')}`;
         }
-        
+
         if (orderBy) {
             sql += ` ORDER BY ${camelToSnake(orderBy)} ${orderDir}`;
         }
@@ -76,7 +148,7 @@ export abstract class BaseRepository<T> {
         const results = this.db.query<Record<string, any>>(sql, whereParams);
         return results.map(row => dbToObjectFormat<T>(row));
     }
-    
+
     /**
      * Check if this table should be filtered by tenant_id
      * Override in subclasses if needed
@@ -89,11 +161,15 @@ export abstract class BaseRepository<T> {
 
     /**
      * Find by primary key
+     * Tenant isolation: if table is tenant-scoped but no tenant in context, return null.
      */
     findById(id: string): T | null {
+        if (this.shouldFilterByTenant() && !getCurrentTenantId()) {
+            return null;
+        }
         let sql = `SELECT * FROM ${this.tableName} WHERE ${camelToSnake(this.primaryKey)} = ?`;
         const params: any[] = [id];
-        
+
         // Add tenant_id filter if tenant is logged in
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
@@ -103,18 +179,22 @@ export abstract class BaseRepository<T> {
                 params.push(tenantId);
             }
         }
-        
+
         const results = this.db.query<Record<string, any>>(sql, params);
         return results.length > 0 ? dbToObjectFormat<T>(results[0]) : null;
     }
 
     /**
      * Find by condition
+     * Tenant isolation: if table is tenant-scoped but no tenant in context, return empty.
      */
     findBy(condition: string, params: any[] = []): T[] {
+        if (this.shouldFilterByTenant() && !getCurrentTenantId()) {
+            return [];
+        }
         let sql = `SELECT * FROM ${this.tableName} WHERE ${condition}`;
         const queryParams = [...params];
-        
+
         // Add tenant_id filter if tenant is logged in
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
@@ -124,7 +204,7 @@ export abstract class BaseRepository<T> {
                 queryParams.push(tenantId);
             }
         }
-        
+
         const results = this.db.query<Record<string, any>>(sql, queryParams);
         return results.map(row => dbToObjectFormat<T>(row));
     }
@@ -132,7 +212,7 @@ export abstract class BaseRepository<T> {
     /**
      * Lazily load table columns to filter out non-existent fields
      */
-    private ensureTableColumns(): Set<string> {
+    protected ensureTableColumns(): Set<string> {
         // Check if database is ready
         if (!this.db.isReady()) {
             console.warn(`⚠️ Database not ready for table columns check: ${this.tableName}`);
@@ -145,7 +225,7 @@ export abstract class BaseRepository<T> {
             `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
             [this.tableName]
         );
-        
+
         if (tableExists.length === 0) {
             console.warn(`⚠️ Table ${this.tableName} does not exist yet. Attempting to create it...`);
             // Try to ensure table exists
@@ -169,12 +249,12 @@ export abstract class BaseRepository<T> {
         // Always refresh column cache to ensure we have latest columns after schema changes
         // This is critical - if columns are added after cache is created, we need fresh data
         const rows = this.db.query<{ name: string }>(`PRAGMA table_info(${this.tableName})`);
-        
+
         if (rows.length === 0) {
             console.warn(`⚠️ PRAGMA table_info(${this.tableName}) returned no columns. Table may not exist or be empty.`);
             return new Set();
         }
-        
+
         this.tableColumns = new Set(rows.map(r => r.name));
         console.log(`✅ Loaded ${this.tableColumns.size} columns for ${this.tableName}:`, Array.from(this.tableColumns).join(', '));
         return this.tableColumns;
@@ -194,7 +274,7 @@ export abstract class BaseRepository<T> {
         try {
             const dbData = objectToDbFormat(data as Record<string, any>);
             const columnsSet = this.ensureTableColumns();
-            
+
             // Add tenant_id if not present and tenant is logged in
             if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
                 const tenantId = getCurrentTenantId();
@@ -251,8 +331,11 @@ export abstract class BaseRepository<T> {
 
                 if (!this.db.isInTransaction()) {
                     this.db.save();
-                    // Queue for sync to cloud (desktop only)
-                    this.queueForSync('create', id, data);
+                    // Queue for sync to cloud (desktop only) - get ID from data
+                    const entityId = (data as any)?.id || (dbData as any)?.id;
+                    if (entityId) {
+                        this.queueForSync('create', entityId, data);
+                    }
                 }
             } catch (executeError: any) {
                 // Check if this is a transaction-related error
@@ -282,7 +365,7 @@ export abstract class BaseRepository<T> {
         // Convert camelCase to snake_case for database
         const dbData = objectToDbFormat(data as Record<string, any>);
         const columnsSet = this.ensureTableColumns();
-        
+
         // Add tenant_id if updating and column exists
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
@@ -301,16 +384,16 @@ export abstract class BaseRepository<T> {
                 dbData['user_id'] = userId;
             }
         }
-        
+
         const keys = Object.keys(dbData)
             .filter(k => dbData[k] !== undefined && columnsSet.has(k));
         const setClause = keys.map(k => `${k} = ?`).join(', ');
         const values = keys.map(k => dbData[k]);
         const primaryKeyColumn = camelToSnake(this.primaryKey);
-        
+
         let sql = `UPDATE ${this.tableName} SET ${setClause}, updated_at = datetime('now') WHERE ${primaryKeyColumn} = ?`;
         values.push(id);
-        
+
         // Add tenant_id filter if tenant is logged in
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
@@ -322,9 +405,19 @@ export abstract class BaseRepository<T> {
         }
 
         this.db.execute(sql, values);
-        if (!this.db.isInTransaction()) {
+
+        // Track or queue sync operation
+        if (this.db.isInTransaction()) {
+            // Track for later queueing after transaction commits
+            BaseRepository.pendingSyncOperations.push({
+                type: 'update',
+                entityId: id,
+                data,
+                tableName: this.tableName
+            });
+        } else {
+            // Queue immediately if not in transaction
             this.db.save();
-            // Queue for sync to cloud (desktop only)
             this.queueForSync('update', id, data);
         }
     }
@@ -336,7 +429,7 @@ export abstract class BaseRepository<T> {
         const primaryKeyColumn = camelToSnake(this.primaryKey);
         let sql = `DELETE FROM ${this.tableName} WHERE ${primaryKeyColumn} = ?`;
         const params: any[] = [id];
-        
+
         // Add tenant_id filter if tenant is logged in
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
@@ -346,11 +439,21 @@ export abstract class BaseRepository<T> {
                 params.push(tenantId);
             }
         }
-        
+
         this.db.execute(sql, params);
-        if (!this.db.isInTransaction()) {
+
+        // Track or queue sync operation
+        if (this.db.isInTransaction()) {
+            // Track for later queueing after transaction commits
+            BaseRepository.pendingSyncOperations.push({
+                type: 'delete',
+                entityId: id,
+                data: null,
+                tableName: this.tableName
+            });
+        } else {
+            // Queue immediately if not in transaction
             this.db.save();
-            // Queue for sync to cloud (desktop only)
             this.queueForSync('delete', id, null);
         }
     }
@@ -388,6 +491,7 @@ export abstract class BaseRepository<T> {
 
     /**
      * Count records
+     * Tenant isolation: if table is tenant-scoped but no tenant in context, return 0.
      */
     count(): number {
         // Check if database is ready before querying
@@ -395,10 +499,12 @@ export abstract class BaseRepository<T> {
             // Return 0 silently if database not ready (avoids console warnings during initialization)
             return 0;
         }
-        
+        if (this.shouldFilterByTenant() && !getCurrentTenantId()) {
+            return 0;
+        }
         let sql = `SELECT COUNT(*) as count FROM ${this.tableName}`;
         const params: any[] = [];
-        
+
         // Add tenant_id filter if tenant is logged in
         if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
             const tenantId = getCurrentTenantId();
@@ -408,18 +514,44 @@ export abstract class BaseRepository<T> {
                 params.push(tenantId);
             }
         }
-        
+
         const results = this.db.query<{ count: number }>(sql, params);
         return results[0]?.count || 0;
     }
 
     /**
-     * Queue operation for sync to cloud
+     * Queue operation for sync to cloud (desktop only)
+     * Skips queueing if sync queueing is disabled (e.g., when syncing from cloud)
      */
     private queueForSync(type: 'create' | 'update' | 'delete', entityId: string, data: any): void {
+        // Only queue on desktop (mobile uses cloud directly)
+        if (isMobileDevice()) {
+            return;
+        }
+
+        // Skip queueing if disabled (e.g., when syncing FROM cloud TO local)
+        if (BaseRepository.syncQueueingDisabled) {
+            console.debug(`[BaseRepository] Skipping sync queue for ${this.tableName}:${entityId} (sync queueing disabled - syncing from cloud)`);
+            return;
+        }
+
         try {
             const syncManager = getSyncManager();
             syncManager.queueOperation(type, this.tableName, entityId, data || {});
+
+            // Also persist to sync_outbox for bi-directional sync (if DB is ready)
+            const tenantId = getCurrentTenantId();
+            const userId = getCurrentUserId();
+            if (tenantId && this.db.isReady()) {
+                try {
+                    const outbox = getSyncOutboxService();
+                    outbox.enqueue(tenantId, this.tableName, type, entityId, data || {}, userId ?? undefined);
+                    console.log(`[BaseRepository] ✅ Queued to outbox: ${type} ${this.tableName}:${entityId}`);
+                } catch (outboxError) {
+                    console.warn(`[BaseRepository] ⚠️ Failed to queue to outbox (${this.tableName}:${entityId}):`, outboxError);
+                    // Continue - SyncManager queue is still there
+                }
+            }
         } catch (error) {
             // Sync manager might not be initialized yet, that's okay
             console.debug(`[BaseRepository] Failed to queue sync for ${this.tableName}:${entityId}:`, error);
@@ -435,7 +567,7 @@ export abstract class BaseRepository<T> {
             // Return false silently if database not ready (avoids console warnings during initialization)
             return false;
         }
-        
+
         const primaryKeyColumn = camelToSnake(this.primaryKey);
         const results = this.db.query<{ count: number }>(
             `SELECT COUNT(*) as count FROM ${this.tableName} WHERE ${primaryKeyColumn} = ?`,
@@ -452,14 +584,29 @@ export abstract class BaseRepository<T> {
         try {
             console.log(`🔄 saveAll called for ${this.tableName} with ${records.length} records`);
 
-            // For users, salary_components, bills, accounts, and categories tables, use INSERT OR REPLACE
+            // For certain tables, use INSERT OR REPLACE
             // This prevents UNIQUE constraint violations when saving the same records multiple times
             // and avoids cross-tenant collisions for system IDs (e.g., sys-acc-*, sys-cat-*)
             const useInsertOrReplace = this.tableName === 'users'
                 || this.tableName === 'salary_components'
                 || this.tableName === 'bills'
                 || this.tableName === 'accounts'
-                || this.tableName === 'categories';
+                || this.tableName === 'categories'
+                || this.tableName === 'buildings'
+                || this.tableName === 'projects'
+                || this.tableName === 'properties'
+                || this.tableName === 'units'
+                || this.tableName === 'contacts'
+                || this.tableName === 'inventory_items'
+                || this.tableName === 'warehouses'
+                || this.tableName === 'purchase_bills'
+                || this.tableName === 'purchase_bill_items'
+                || this.tableName === 'purchase_bill_payments'
+                || this.tableName === 'shop_config'
+                || this.tableName === 'shop_sales'
+                || this.tableName === 'shop_sale_items'
+                || this.tableName === 'inventory_stock'
+                || this.tableName === 'transactions';
 
             if (useInsertOrReplace) {
                 // For users, use INSERT OR REPLACE instead of DELETE + INSERT
@@ -596,13 +743,24 @@ export abstract class BaseRepository<T> {
                     values
                 );
 
-                if (!this.db.isInTransaction()) {
-                    this.db.save();
-                    // Queue for sync to cloud (desktop only) - get ID from data
-                    const entityId = (data as any)?.id || (dbData as any)?.id;
-                    if (entityId) {
+                // Track or queue sync operation
+                const entityId = (data as any)?.id || (dbData as any)?.id;
+                if (entityId) {
+                    if (this.db.isInTransaction()) {
+                        // Track for later queueing after transaction commits
+                        BaseRepository.pendingSyncOperations.push({
+                            type: 'create',
+                            entityId,
+                            data,
+                            tableName: this.tableName
+                        });
+                    } else {
+                        // Queue immediately if not in transaction
+                        this.db.save();
                         this.queueForSync('create', entityId, data);
                     }
+                } else if (!this.db.isInTransaction()) {
+                    this.db.save();
                 }
             } catch (executeError: any) {
                 const errorMsg = (executeError?.message || String(executeError)).toLowerCase();

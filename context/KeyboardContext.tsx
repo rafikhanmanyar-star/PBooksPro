@@ -32,20 +32,25 @@ export const KeyboardProvider: React.FC<{ children: ReactNode }> = ({ children }
   const onKeyPress = (key: string) => {
     if (!inputRef || !inputRef.current) return;
     const input = inputRef.current;
-    const { value, selectionStart, selectionEnd } = input;
+    const { value } = input;
+    // Normalize selection: some browsers can report reversed or null during right-to-left selection
+    const rawStart = input.selectionStart ?? 0;
+    const rawEnd = input.selectionEnd ?? 0;
+    const selectionStart = Math.min(rawStart, rawEnd);
+    const selectionEnd = Math.max(rawStart, rawEnd);
     
     if (key === 'backspace') {
-        if (selectionStart === selectionEnd && selectionStart && selectionStart > 0) {
-            input.value = value.slice(0, selectionStart - 1) + value.slice(selectionEnd || 0);
+        if (selectionStart === selectionEnd && selectionStart > 0) {
+            input.value = value.slice(0, selectionStart - 1) + value.slice(selectionEnd);
             input.setSelectionRange(selectionStart - 1, selectionStart - 1);
         } else if (selectionStart !== selectionEnd) {
-             input.value = value.slice(0, selectionStart || 0) + value.slice(selectionEnd || 0);
-             if (selectionStart) input.setSelectionRange(selectionStart, selectionStart);
+             input.value = value.slice(0, selectionStart) + value.slice(selectionEnd);
+             input.setSelectionRange(selectionStart, selectionStart);
         }
     } else {
-        const newValue = value.slice(0, selectionStart || 0) + key + value.slice(selectionEnd || 0);
+        const newValue = value.slice(0, selectionStart) + key + value.slice(selectionEnd);
         input.value = newValue;
-        const newPosition = (selectionStart || 0) + 1;
+        const newPosition = selectionStart + 1;
         input.setSelectionRange(newPosition, newPosition);
     }
 

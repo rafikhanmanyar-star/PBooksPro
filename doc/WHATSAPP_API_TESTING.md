@@ -78,7 +78,7 @@ Response will include a `token` field. Save this token for subsequent requests.
 
 ### 3. Get WhatsApp Configuration
 
-Check if WhatsApp is configured (should return 404 if not configured):
+Check if WhatsApp is configured:
 
 ```bash
 curl -X GET http://localhost:3000/api/whatsapp/config \
@@ -88,7 +88,8 @@ curl -X GET http://localhost:3000/api/whatsapp/config \
 Expected response (if not configured):
 ```json
 {
-  "error": "WhatsApp API not configured"
+  "configured": false,
+  "message": "WhatsApp API not configured yet"
 }
 ```
 
@@ -117,6 +118,7 @@ curl -X POST http://localhost:3000/api/whatsapp/config \
 Expected response:
 ```json
 {
+  "configured": true,
   "id": "whatsapp_config_...",
   "tenantId": "tenant_123",
   "phoneNumberId": "YOUR_PHONE_NUMBER_ID",

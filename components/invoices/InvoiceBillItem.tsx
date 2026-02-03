@@ -10,6 +10,8 @@ import Button from '../ui/Button';
 import Card from '../ui/Card';
 import { formatDate } from '../../utils/dateUtils';
 import { WhatsAppService } from '../../services/whatsappService';
+import { WhatsAppChatService } from '../../services/whatsappChatService';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 import { formatCurrency } from '../../utils/numberUtils';
 
 interface InvoiceBillItemProps {
@@ -24,7 +26,8 @@ interface InvoiceBillItemProps {
 
 const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordPayment, onItemClick, isSelected, onToggleSelect, selectionMode }) => {
   const { state, dispatch } = useAppContext();
-  const { showConfirm, showToast, showAlert } = useNotification(); 
+  const { showConfirm, showToast, showAlert } = useNotification();
+  const { openChat } = useWhatsApp();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   
   const { contactId, amount, paidAmount, issueDate, status, description, projectId } = item;
@@ -134,7 +137,8 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
         );
       }
 
-      WhatsAppService.sendMessage({ contact, message });
+      // Open WhatsApp modal with pre-filled message
+      openChat(contact, contact.contactNo, message);
     } catch (error) {
       showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
     }

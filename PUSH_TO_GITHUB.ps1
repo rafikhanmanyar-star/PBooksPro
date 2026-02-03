@@ -2,7 +2,7 @@
 # Run this script to push your changes to GitHub
 
 $ErrorActionPreference = "Continue"
-$projectPath = "H:\AntiGravity projects\V1.1.3\MyProjectBooks"
+$projectPath = "f:\AntiGravity projects\PBooksPro"
 Set-Location $projectPath
 
 Write-Host "🚀 Push to GitHub Script" -ForegroundColor Cyan
@@ -58,7 +58,11 @@ if ($LASTEXITCODE -eq 0 -and $ahead -gt 0) {
     $push = Read-Host "Push to GitHub? (y/n)"
     if ($push -eq "y") {
         Write-Host "🚀 Pushing to origin/$currentBranch..." -ForegroundColor Green
-        git push origin $currentBranch
+        if ($currentBranch -eq "staging" -or $currentBranch -eq "main") {
+            git push -u origin $currentBranch
+        } else {
+            git push origin $currentBranch
+        }
         if ($LASTEXITCODE -eq 0) {
             Write-Host ""
             Write-Host "✅ Successfully pushed to GitHub!" -ForegroundColor Green
@@ -73,8 +77,10 @@ if ($LASTEXITCODE -eq 0 -and $ahead -gt 0) {
             Write-Host "   1. Use GitHub Desktop for authentication" -ForegroundColor White
             Write-Host "   2. Use Personal Access Token:" -ForegroundColor White
             Write-Host "      git remote set-url origin https://YOUR_TOKEN@github.com/rafikhanmanyar-star/PBooksPro.git" -ForegroundColor Yellow
+            Write-Host "      git push -u origin staging" -ForegroundColor Yellow
             Write-Host "   3. Use SSH (if configured):" -ForegroundColor White
             Write-Host "      git remote set-url origin git@github.com:rafikhanmanyar-star/PBooksPro.git" -ForegroundColor Yellow
+            Write-Host "      git push -u origin staging" -ForegroundColor Yellow
         }
     }
 } else {

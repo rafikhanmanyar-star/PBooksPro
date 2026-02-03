@@ -26,55 +26,55 @@ const KPIDrilldown: React.FC = () => {
 
         // Single-value KPIs that link to a list
         if (id === 'totalBalance') {
-             headers = [{ key: 'name', label: 'Name' }, { key: 'value', label: 'Value', isNumeric: true }];
-             // Include Cash (isPermanent) in the drilldown if it's not a receivable/payable account
-             items = state.accounts
-                .filter(acc => acc.name !== 'Accounts Receivable' && acc.name !== 'Accounts Payable')
+            headers = [{ key: 'name', label: 'Name' }, { key: 'value', label: 'Value', isNumeric: true }];
+            // Include Bank and Cash accounts (Liquid Assets), exclude Internal Clearing
+            items = state.accounts
+                .filter(acc => (acc.type === AccountType.BANK || acc.type === AccountType.CASH) && acc.name !== 'Internal Clearing')
                 .map(acc => ({ id: acc.id, name: acc.name, value: acc.balance, filter: { name: acc.name } }));
         } else if (id.startsWith('account-balance-')) {
-             const accountId = id.replace('account-balance-', '');
-             
-             headers = [
-                 { key: 'date', label: 'Date' },
-                 { key: 'particulars', label: 'Description' },
-                 { key: 'amount', label: 'Amount', isNumeric: true }
-             ];
+            const accountId = id.replace('account-balance-', '');
 
-             const transactions = state.transactions
+            headers = [
+                { key: 'date', label: 'Date' },
+                { key: 'particulars', label: 'Description' },
+                { key: 'amount', label: 'Amount', isNumeric: true }
+            ];
+
+            const transactions = state.transactions
                 .filter(tx => tx.accountId === accountId || tx.fromAccountId === accountId || tx.toAccountId === accountId)
                 .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-             items = transactions.map(tx => {
-                 let amount = tx.amount;
-                 
-                 // Determine sign based on transaction flow relative to this account
-                 if (tx.type === TransactionType.EXPENSE) {
-                     amount = -amount;
-                 } else if (tx.type === TransactionType.INCOME) {
-                     // Positive
-                 } else if (tx.type === TransactionType.TRANSFER) {
-                     if (tx.fromAccountId === accountId) amount = -amount;
-                     // else if toAccountId, it's positive
-                 } else if (tx.type === TransactionType.LOAN) {
-                    if (tx.subtype === LoanSubtype.REPAY || tx.subtype === LoanSubtype.GIVE) amount = -amount; // We pay out
-                     // else Receive Loan, we get money (positive)
-                 }
+            items = transactions.map(tx => {
+                let amount = tx.amount;
 
-                 return {
-                     id: tx.id,
-                     date: tx.date,
-                     particulars: tx.description || tx.type,
-                     amount: amount,
-                     // Clicking filters by description on the main ledger page
-                     filter: { name: tx.description || '' }
-                 };
-             });
+                // Determine sign based on transaction flow relative to this account
+                if (tx.type === TransactionType.EXPENSE) {
+                    amount = -amount;
+                } else if (tx.type === TransactionType.INCOME) {
+                    // Positive
+                } else if (tx.type === TransactionType.TRANSFER) {
+                    if (tx.fromAccountId === accountId) amount = -amount;
+                    // else if toAccountId, it's positive
+                } else if (tx.type === TransactionType.LOAN) {
+                    if (tx.subtype === LoanSubtype.REPAY || tx.subtype === LoanSubtype.GIVE) amount = -amount; // We pay out
+                    // else Receive Loan, we get money (positive)
+                }
+
+                return {
+                    id: tx.id,
+                    date: tx.date,
+                    particulars: tx.description || tx.type,
+                    amount: amount,
+                    // Clicking filters by description on the main ledger page
+                    filter: { name: tx.description || '' }
+                };
+            });
 
         } else if (id.startsWith('category-expense-') || id.startsWith('category-income-')) {
-             headers = [{ key: 'name', label: 'Name' }, { key: 'value', label: 'Value', isNumeric: true }];
-             const categoryId = id.replace('category-expense-', '').replace('category-income-', '');
-             const category = state.categories.find(c => c.id === categoryId);
-             if(category) items = [{ id: category.id, name: `View all "${category.name}" transactions`, value: 0, filter: { name: category.name } }];
+            headers = [{ key: 'name', label: 'Name' }, { key: 'value', label: 'Value', isNumeric: true }];
+            const categoryId = id.replace('category-expense-', '').replace('category-income-', '');
+            const category = state.categories.find(c => c.id === categoryId);
+            if (category) items = [{ id: category.id, name: `View all "${category.name}" transactions`, value: 0, filter: { name: category.name } }];
         }
         // List-based KPIs that show a table
         else if (id === 'vacantUnits') {
@@ -99,7 +99,7 @@ const KPIDrilldown: React.FC = () => {
                 { key: 'particulars', label: 'Description' },
                 { key: 'amount', label: 'Net Amount', isNumeric: true }
             ];
-            
+
             const secDepId = state.categories.find(c => c.name === 'Security Deposit')?.id;
             const secRefId = state.categories.find(c => c.name === 'Security Deposit Refund')?.id;
             const ownerSecPayId = state.categories.find(c => c.name === 'Owner Security Payout')?.id;
@@ -109,7 +109,7 @@ const KPIDrilldown: React.FC = () => {
                     if (tx.type === TransactionType.INCOME && tx.categoryId === secDepId) return true;
                     if (tx.type === TransactionType.EXPENSE) {
                         if ((secRefId && tx.categoryId === secRefId) || (ownerSecPayId && tx.categoryId === ownerSecPayId)) return true;
-                        
+
                         // Include other deductions
                         const category = state.categories.find(c => c.id === tx.categoryId);
                         const contact = state.contacts.find(c => c.id === tx.contactId);
@@ -118,12 +118,12 @@ const KPIDrilldown: React.FC = () => {
                     return false;
                 })
                 .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-            
+
             items = transactions.map(tx => {
                 let amount = tx.amount;
                 // If expense (Refund/Payout/Deduction), it reduces liability, so show as negative
                 if (tx.type === TransactionType.EXPENSE) amount = -amount;
-                
+
                 return {
                     id: tx.id,
                     date: tx.date,
@@ -169,65 +169,65 @@ const KPIDrilldown: React.FC = () => {
 
             items = unpaidBills;
         } else if (id === 'bmFunds') {
-             headers = [{ key: 'buildingName', label: 'Building' }, { key: 'amount', label: 'Net Funds', isNumeric: true }];
-             
-             const breakdown: Record<string, { name: string, amount: number }> = {};
-             state.buildings.forEach(b => { breakdown[b.id] = { name: b.name, amount: 0 }; });
-             
-             const serviceIncomeCatIds = new Set(state.categories.filter(c => c.type === TransactionType.INCOME && c.name.toLowerCase().includes('service charge')).map(c => c.id));
-             const ownerExpenseCategoryNames = ['Owner Payout', 'Security Deposit Refund', 'Broker Fee'];
-             const isOwnerExpense = (catId?: string) => { const c = state.categories.find(cat => cat.id === catId); return c && ownerExpenseCategoryNames.includes(c.name); };
-             const isTenant = (contactId?: string) => { const c = state.contacts.find(con => con.id === contactId); return c?.type === ContactType.TENANT; };
+            headers = [{ key: 'buildingName', label: 'Building' }, { key: 'amount', label: 'Net Funds', isNumeric: true }];
 
-             state.transactions.forEach(tx => {
-                 let bId = tx.buildingId;
-                 if (!bId && tx.propertyId) bId = state.properties.find(p => p.id === tx.propertyId)?.buildingId;
-                 
-                 if (bId && breakdown[bId]) {
-                     if (tx.type === TransactionType.INCOME && tx.categoryId && serviceIncomeCatIds.has(tx.categoryId)) {
-                         breakdown[bId].amount += tx.amount;
-                     }
-                     if (tx.type === TransactionType.EXPENSE && !tx.billId && !tx.propertyId && !isTenant(tx.contactId) && !isOwnerExpense(tx.categoryId)) {
-                         breakdown[bId].amount -= tx.amount;
-                     }
-                 }
-             });
-             
-             state.bills.forEach(bill => {
-                 if (bill.buildingId && breakdown[bill.buildingId] && !bill.propertyId && !isTenant(bill.contactId) && !isOwnerExpense(bill.categoryId)) {
-                     breakdown[bill.buildingId].amount -= bill.amount;
-                 }
-             });
-             
-             items = Object.values(breakdown).map(b => ({
-                 id: b.name, // No ID needed for simple list
-                 buildingName: b.name,
-                 amount: b.amount,
-                 filter: null // No direct filter link to transaction page easily
-             })).filter(i => Math.abs(i.amount) > 0.01);
+            const breakdown: Record<string, { name: string, amount: number }> = {};
+            state.buildings.forEach(b => { breakdown[b.id] = { name: b.name, amount: 0 }; });
+
+            const serviceIncomeCatIds = new Set(state.categories.filter(c => c.type === TransactionType.INCOME && c.name.toLowerCase().includes('service charge')).map(c => c.id));
+            const ownerExpenseCategoryNames = ['Owner Payout', 'Security Deposit Refund', 'Broker Fee'];
+            const isOwnerExpense = (catId?: string) => { const c = state.categories.find(cat => cat.id === catId); return c && ownerExpenseCategoryNames.includes(c.name); };
+            const isTenant = (contactId?: string) => { const c = state.contacts.find(con => con.id === contactId); return c?.type === ContactType.TENANT; };
+
+            state.transactions.forEach(tx => {
+                let bId = tx.buildingId;
+                if (!bId && tx.propertyId) bId = state.properties.find(p => p.id === tx.propertyId)?.buildingId;
+
+                if (bId && breakdown[bId]) {
+                    if (tx.type === TransactionType.INCOME && tx.categoryId && serviceIncomeCatIds.has(tx.categoryId)) {
+                        breakdown[bId].amount += tx.amount;
+                    }
+                    if (tx.type === TransactionType.EXPENSE && !tx.billId && !tx.propertyId && !isTenant(tx.contactId) && !isOwnerExpense(tx.categoryId)) {
+                        breakdown[bId].amount -= tx.amount;
+                    }
+                }
+            });
+
+            state.bills.forEach(bill => {
+                if (bill.buildingId && breakdown[bill.buildingId] && !bill.propertyId && !isTenant(bill.contactId) && !isOwnerExpense(bill.categoryId)) {
+                    breakdown[bill.buildingId].amount -= bill.amount;
+                }
+            });
+
+            items = Object.values(breakdown).map(b => ({
+                id: b.name, // No ID needed for simple list
+                buildingName: b.name,
+                amount: b.amount,
+                filter: null // No direct filter link to transaction page easily
+            })).filter(i => Math.abs(i.amount) > 0.01);
         } else if (id === 'projectFunds') {
             headers = [{ key: 'projectName', label: 'Project' }, { key: 'amount', label: 'Net Funds', isNumeric: true }];
-            
+
             // Calculate net balance using the same formula as Funds Availability Report
             // netBalance = (income - expense) + (investment - equityOut) + loanNetBalance
-            
+
             const equityCategoryNames = ['Owner Equity', 'Share Capital', 'Investment', 'Capital Injection'];
             const withdrawalCategoryNames = ['Owner Withdrawn', 'Drawings', 'Dividends', 'Profit Share', 'Owner Payout', 'Owner Security Payout', 'Security Deposit Refund'];
-            
+
             const isEquityIncome = (catId?: string) => {
                 if (!catId) return false;
                 const c = state.categories.find(cat => cat.id === catId);
                 return c && equityCategoryNames.includes(c.name);
             };
-            
+
             const isEquityExpense = (catId?: string) => {
                 if (!catId) return false;
                 const c = state.categories.find(cat => cat.id === catId);
                 return c && withdrawalCategoryNames.includes(c.name);
             };
-            
+
             const equityAccountIds = new Set(state.accounts.filter(a => a.type === AccountType.EQUITY).map(a => a.id));
-            
+
             const breakdown: Record<string, { name: string, amount: number }> = {};
             state.projects.forEach(p => {
                 breakdown[p.id] = { name: p.name, amount: 0 };
@@ -239,23 +239,23 @@ const KPIDrilldown: React.FC = () => {
                 let investment = 0;
                 let equityOut = 0;
                 let loanNetBalance = 0;
-                
+
                 state.transactions.forEach(tx => {
                     // Resolve projectId from transaction, bill, or invoice
                     let txProjectId = tx.projectId;
-                    
+
                     if (!txProjectId && tx.billId) {
                         const bill = state.bills.find(b => b.id === tx.billId);
                         if (bill) txProjectId = bill.projectId;
                     }
-                    
+
                     if (!txProjectId && tx.invoiceId) {
                         const invoice = state.invoices.find(i => i.id === tx.invoiceId);
                         if (invoice) txProjectId = invoice.projectId;
                     }
-                    
+
                     if (txProjectId !== project.id) return;
-                    
+
                     if (tx.type === TransactionType.INCOME) {
                         if (isEquityIncome(tx.categoryId)) {
                             investment += tx.amount;
@@ -273,12 +273,12 @@ const KPIDrilldown: React.FC = () => {
                         const isToEquity = tx.toAccountId && equityAccountIds.has(tx.toAccountId);
                         const isMoveIn = tx.description?.toLowerCase().includes('equity move in');
                         const isMoveOut = tx.description?.toLowerCase().includes('equity move out');
-                        
+
                         const fromAccount = state.accounts.find(a => a.id === tx.fromAccountId);
                         const isFromClearing = fromAccount?.name === 'Internal Clearing';
-                        const isPMFeeTransfer = tx.description?.toLowerCase().includes('pm fee') || 
-                                               tx.description?.toLowerCase().includes('pm fee equity');
-                        
+                        const isPMFeeTransfer = tx.description?.toLowerCase().includes('pm fee') ||
+                            tx.description?.toLowerCase().includes('pm fee equity');
+
                         if (isFromEquity || isMoveIn) {
                             investment += tx.amount;
                         } else if (isToEquity || isMoveOut) {
@@ -296,7 +296,7 @@ const KPIDrilldown: React.FC = () => {
                         }
                     }
                 });
-                
+
                 const netBalance = (income - expense) + (investment - equityOut) + loanNetBalance;
                 breakdown[project.id].amount = netBalance;
             });
@@ -311,10 +311,10 @@ const KPIDrilldown: React.FC = () => {
                 }));
         } else if (id === 'buildingFunds') {
             headers = [{ key: 'buildingName', label: 'Building' }, { key: 'amount', label: 'Net Funds', isNumeric: true }];
-            
+
             // Calculate net balance using the same formula as Funds Availability Report for buildings
             // netBalance = (income - expense) + loanNetBalance
-            
+
             const breakdown: Record<string, { name: string, amount: number }> = {};
             state.buildings.forEach(b => {
                 breakdown[b.id] = { name: b.name, amount: 0 };
@@ -324,16 +324,16 @@ const KPIDrilldown: React.FC = () => {
                 let income = 0;
                 let expense = 0;
                 let loanNetBalance = 0;
-                
+
                 state.transactions.forEach(tx => {
                     let txBuildingId = tx.buildingId;
                     if (!txBuildingId && tx.propertyId) {
                         const prop = state.properties.find(p => p.id === tx.propertyId);
                         if (prop) txBuildingId = prop.buildingId;
                     }
-                    
+
                     if (txBuildingId !== building.id) return;
-                    
+
                     if (tx.type === TransactionType.INCOME) {
                         income += tx.amount;
                     } else if (tx.type === TransactionType.EXPENSE) {
@@ -349,7 +349,7 @@ const KPIDrilldown: React.FC = () => {
                         }
                     }
                 });
-                
+
                 const netBalance = (income - expense) + loanNetBalance;
                 breakdown[building.id].amount = netBalance;
             });
@@ -366,7 +366,7 @@ const KPIDrilldown: React.FC = () => {
 
         return { title, headers, items };
     }, [activeDrilldownKpi, state]);
-    
+
     const sortedItems = useMemo(() => {
         if (!sortConfig) return drilldownData.items;
 
@@ -380,7 +380,7 @@ const KPIDrilldown: React.FC = () => {
             return 0;
         });
     }, [drilldownData.items, sortConfig]);
-    
+
     const requestSort = (key: string) => {
         let direction: 'ascending' | 'descending' = 'ascending';
         if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') {
@@ -395,7 +395,7 @@ const KPIDrilldown: React.FC = () => {
         dispatch({ type: 'SET_PAGE', payload: 'transactions' });
         closeDrilldown();
     };
-    
+
     if (!activeDrilldownKpi) return null;
 
     return (
@@ -407,14 +407,14 @@ const KPIDrilldown: React.FC = () => {
                         <div className="w-6 h-6">{ICONS.x}</div>
                     </button>
                 </div>
-                
+
                 <div className="flex-grow overflow-y-auto p-0">
                     <table className="w-full text-sm text-left">
                         <thead className="bg-white text-slate-500 font-semibold border-b border-slate-200 sticky top-0 z-10 shadow-sm">
                             <tr>
                                 {drilldownData.headers.map((header, idx) => (
-                                    <th 
-                                        key={idx} 
+                                    <th
+                                        key={idx}
                                         className={`px-4 py-3 ${header.isNumeric ? 'text-right' : 'text-left'} cursor-pointer hover:bg-slate-50 select-none`}
                                         onClick={() => requestSort(header.key)}
                                     >
@@ -430,14 +430,14 @@ const KPIDrilldown: React.FC = () => {
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {sortedItems.map((item: any, idx: number) => (
-                                <tr 
-                                    key={item.id || idx} 
+                                <tr
+                                    key={item.id || idx}
                                     className={`hover:bg-slate-50 transition-colors ${item.filter ? 'cursor-pointer' : ''}`}
                                     onClick={() => item.filter && handleItemClick(item.filter)}
                                 >
                                     {drilldownData.headers.map((header, hIdx) => (
                                         <td key={hIdx} className={`px-4 py-3 ${header.isNumeric ? 'text-right font-mono' : 'text-slate-700'}`}>
-                                            {header.isNumeric 
+                                            {header.isNumeric
                                                 ? CURRENCY + ' ' + formatCurrency(item[header.key] || 0)
                                                 : (header.key === 'date' ? formatDate(item[header.key]) : item[header.key])
                                             }
@@ -457,8 +457,8 @@ const KPIDrilldown: React.FC = () => {
                 </div>
 
                 <div className="p-4 bg-slate-50 border-t border-slate-200 text-right flex justify-end gap-2">
-                    <button 
-                        onClick={closeDrilldown} 
+                    <button
+                        onClick={closeDrilldown}
                         className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100 font-medium text-sm transition-colors shadow-sm"
                     >
                         Close

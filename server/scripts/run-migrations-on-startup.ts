@@ -14,6 +14,111 @@ const __dirname = dirname(__filename);
 
 dotenv.config();
 
+/**
+ * Check if a migration has already been applied
+ */
+async function isMigrationApplied(pool: Pool, migrationName: string): Promise<boolean> {
+  try {
+    const result = await pool.query(
+      'SELECT 1 FROM schema_migrations WHERE migration_name = $1',
+      [migrationName]
+    );
+    return result.rows.length > 0;
+  } catch (error: any) {
+    // If table doesn't exist yet, migration hasn't been applied
+    if (error.code === '42P01') {
+      return false;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Record that a migration has been applied
+ */
+async function recordMigration(
+  pool: Pool,
+  migrationName: string,
+  executionTimeMs: number,
+  notes?: string
+): Promise<void> {
+  try {
+    await pool.query(
+      `INSERT INTO schema_migrations (migration_name, execution_time_ms, notes)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (migration_name) DO NOTHING`,
+      [migrationName, executionTimeMs, notes || null]
+    );
+  } catch (error: any) {
+    // If table doesn't exist yet, that's okay - it will be created by schema
+    if (error.code === '42P01') {
+      console.warn(`   ⚠️  schema_migrations table not found, skipping migration record`);
+    } else {
+      throw error;
+    }
+  }
+}
+
+/**
+ * Run a migration file if it hasn't been applied yet
+ */
+async function runMigrationIfNeeded(
+  pool: Pool,
+  migrationName: string,
+  migrationPaths: string[],
+  description?: string
+): Promise<boolean> {
+  // Check if already applied
+  if (await isMigrationApplied(pool, migrationName)) {
+    console.log(`   ⏭️  ${migrationName} already applied (skipping)`);
+    return false;
+  }
+
+  // Find migration file
+  let migrationPath: string | null = null;
+  for (const path of migrationPaths) {
+    try {
+      readFileSync(path, 'utf8');
+      migrationPath = path;
+      break;
+    } catch (e) {
+      // Try next path
+    }
+  }
+
+  if (!migrationPath) {
+    console.warn(`   ⚠️  Could not find ${migrationName} migration file`);
+    return false;
+  }
+
+  const startTime = Date.now();
+  try {
+    console.log(`📋 Running ${migrationName}${description ? `: ${description}` : ''}...`);
+    const migrationSQL = readFileSync(migrationPath, 'utf8');
+    await pool.query(migrationSQL);
+    const executionTime = Date.now() - startTime;
+    await recordMigration(pool, migrationName, executionTime);
+    console.log(`✅ ${migrationName} completed (${executionTime}ms)`);
+    return true;
+  } catch (error: any) {
+    const executionTime = Date.now() - startTime;
+    // Handle common "already exists" errors gracefully
+    if (
+      error.code === '42P07' || // table already exists
+      error.code === '42701' || // column already exists
+      error.code === '42710' || // constraint already exists
+      error.message?.includes('already exists')
+    ) {
+      console.log(`   ℹ️  ${migrationName} already applied (skipping)`);
+      await recordMigration(pool, migrationName, executionTime, 'Already existed, marked as applied');
+      return false;
+    } else {
+      console.error(`   ❌ ${migrationName} failed:`, error.message);
+      throw error;
+    }
+  }
+}
+
 async function runMigrations() {
   if (!process.env.DATABASE_URL) {
     console.error('❌ DATABASE_URL environment variable is not set');
@@ -21,10 +126,10 @@ async function runMigrations() {
   }
 
   // Enable SSL for production, staging, and any Render database URLs
-  const shouldUseSSL = process.env.NODE_ENV === 'production' || 
-                       process.env.NODE_ENV === 'staging' ||
-                       (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('.render.com'));
-  
+  const shouldUseSSL = process.env.NODE_ENV === 'production' ||
+    process.env.NODE_ENV === 'staging' ||
+    (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('.render.com'));
+
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: shouldUseSSL ? { rejectUnauthorized: false } : false,
@@ -32,8 +137,8 @@ async function runMigrations() {
 
   try {
     console.log('🔄 Running database migrations...');
-    
-    // Read and execute PostgreSQL schema
+
+    // Read and execute PostgreSQL schema (always run to ensure schema_migrations table exists)
     // Try multiple paths to find the SQL file (works in both dev and production)
     const possiblePaths = [
       join(__dirname, '../migrations/postgresql-schema.sql'),      // dist/scripts -> dist/migrations
@@ -41,7 +146,7 @@ async function runMigrations() {
       join(process.cwd(), 'server/migrations/postgresql-schema.sql'), // From project root
       join(process.cwd(), 'migrations/postgresql-schema.sql'),    // From project root (if in server/)
     ];
-    
+
     let schemaPath: string | null = null;
     for (const path of possiblePaths) {
       try {
@@ -52,17 +157,24 @@ async function runMigrations() {
         // Try next path
       }
     }
-    
+
     if (!schemaPath) {
       throw new Error(`Could not find postgresql-schema.sql. Tried: ${possiblePaths.join(', ')}`);
     }
-    
+
     console.log('📋 Reading schema from:', schemaPath);
     const schemaSQL = readFileSync(schemaPath, 'utf8');
-    
+
     // Execute schema - DROP IF EXISTS and CREATE IF NOT EXISTS ensure idempotency
+    // This must run first to create the schema_migrations table
+    const schemaStartTime = Date.now();
     try {
       await pool.query(schemaSQL);
+      const schemaExecutionTime = Date.now() - schemaStartTime;
+      // Record schema migration (only if not already recorded)
+      if (!(await isMigrationApplied(pool, 'postgresql-schema'))) {
+        await recordMigration(pool, 'postgresql-schema', schemaExecutionTime, 'Main database schema');
+      }
     } catch (error: any) {
       // If it's a policy error, it's likely already exists - that's okay
       if (error.code === '42710' && error.message.includes('policy')) {
@@ -71,648 +183,679 @@ async function runMigrations() {
         throw error;
       }
     }
-    
-    console.log('✅ Database migrations completed successfully');
-    
-    // Run additional migrations
-    console.log('🔄 Running additional migrations...');
+
+    console.log('✅ Database schema verified');
+
+    // Run additional migrations (only if not already applied)
+    console.log('🔄 Checking additional migrations...');
 
     // Migration: Payment tables (payments, payment_webhooks, subscriptions)
-    const paymentTablesPaths = [
-      join(__dirname, '../migrations/add-payment-tables.sql'),
-      join(__dirname, '../../migrations/add-payment-tables.sql'),
-      join(process.cwd(), 'server/migrations/add-payment-tables.sql'),
-      join(process.cwd(), 'migrations/add-payment-tables.sql'),
-    ];
-    let paymentTablesPath: string | null = null;
-    for (const p of paymentTablesPaths) {
-      try { readFileSync(p, 'utf8'); paymentTablesPath = p; break; } catch { /* next */ }
-    }
-    if (paymentTablesPath) {
-      try {
-        console.log('📋 Running payment tables migration from:', paymentTablesPath);
-        await pool.query(readFileSync(paymentTablesPath, 'utf8'));
-        console.log('✅ Payment tables migration completed');
-      } catch (err: any) {
-        if (err.code === '42P07' || err.message?.includes('already exists')) {
-          console.log('   ℹ️  Payment tables already exist (skipping)');
-        } else { console.warn('   ⚠️  Payment tables migration warning:', err.message); }
-      }
-    }
+    await runMigrationIfNeeded(
+      pool,
+      'add-payment-tables',
+      [
+        join(__dirname, '../migrations/add-payment-tables.sql'),
+        join(__dirname, '../../migrations/add-payment-tables.sql'),
+        join(process.cwd(), 'server/migrations/add-payment-tables.sql'),
+        join(process.cwd(), 'migrations/add-payment-tables.sql'),
+      ],
+      'Payment tables'
+    );
 
     // Migration: Bill version column (optimistic locking)
-    const billVersionPaths = [
-      join(__dirname, '../migrations/add-bill-version-column.sql'),
-      join(__dirname, '../../migrations/add-bill-version-column.sql'),
-      join(process.cwd(), 'server/migrations/add-bill-version-column.sql'),
-      join(process.cwd(), 'migrations/add-bill-version-column.sql'),
-    ];
-    let billVersionPath: string | null = null;
-    for (const p of billVersionPaths) {
-      try { readFileSync(p, 'utf8'); billVersionPath = p; break; } catch { /* next */ }
-    }
-    if (billVersionPath) {
-      try {
-        console.log('📋 Running bill version migration from:', billVersionPath);
-        await pool.query(readFileSync(billVersionPath, 'utf8'));
-        console.log('✅ Bill version migration completed');
-      } catch (err: any) {
-        if (err.code === '42701' && err.message?.includes('version')) {
-          console.log('   ℹ️  bills.version already exists (skipping)');
-        } else { console.warn('   ⚠️  Bill version migration warning:', err.message); }
-      }
-    }
+    await runMigrationIfNeeded(
+      pool,
+      'add-bill-version-column',
+      [
+        join(__dirname, '../migrations/add-bill-version-column.sql'),
+        join(__dirname, '../../migrations/add-bill-version-column.sql'),
+        join(process.cwd(), 'server/migrations/add-bill-version-column.sql'),
+        join(process.cwd(), 'migrations/add-bill-version-column.sql'),
+      ],
+      'Bill version column'
+    );
 
     // Migration: P2P system tables and tenant supplier metadata
-    const p2pMigrationPaths = [
-      join(__dirname, '../migrations/add-p2p-tables.sql'),
-      join(__dirname, '../../migrations/add-p2p-tables.sql'),
-      join(process.cwd(), 'server/migrations/add-p2p-tables.sql'),
-      join(process.cwd(), 'migrations/add-p2p-tables.sql'),
-    ];
-
-    let p2pMigrationPath: string | null = null;
-    for (const path of p2pMigrationPaths) {
-      try {
-        readFileSync(path, 'utf8');
-        p2pMigrationPath = path;
-        break;
-      } catch (e) {
-        // Try next path
-      }
-    }
-
-    if (p2pMigrationPath) {
-      try {
-        console.log('📋 Running P2P migration from:', p2pMigrationPath);
-        const p2pMigrationSQL = readFileSync(p2pMigrationPath, 'utf8');
-        await pool.query(p2pMigrationSQL);
-        console.log('✅ P2P migration completed');
-      } catch (error: any) {
-        console.warn('   ⚠️  P2P migration warning:', error.message);
-        // Don't throw - migration might already be applied
-      }
-    } else {
-      console.warn('   ⚠️  Could not find add-p2p-tables.sql migration file');
-    }
+    await runMigrationIfNeeded(
+      pool,
+      'add-p2p-tables',
+      [
+        join(__dirname, '../migrations/add-p2p-tables.sql'),
+        join(__dirname, '../../migrations/add-p2p-tables.sql'),
+        join(process.cwd(), 'server/migrations/add-p2p-tables.sql'),
+        join(process.cwd(), 'migrations/add-p2p-tables.sql'),
+      ],
+      'P2P system tables'
+    );
 
     // Migration: target_delivery_date on purchase_orders (requires P2P)
-    const targetDeliveryPaths = [
-      join(__dirname, '../migrations/add-target-delivery-date.sql'),
-      join(__dirname, '../../migrations/add-target-delivery-date.sql'),
-      join(process.cwd(), 'server/migrations/add-target-delivery-date.sql'),
-      join(process.cwd(), 'migrations/add-target-delivery-date.sql'),
-    ];
-    let targetDeliveryPath: string | null = null;
-    for (const p of targetDeliveryPaths) {
-      try { readFileSync(p, 'utf8'); targetDeliveryPath = p; break; } catch { /* next */ }
-    }
-    if (targetDeliveryPath) {
-      try {
-        console.log('📋 Running target_delivery_date migration from:', targetDeliveryPath);
-        await pool.query(readFileSync(targetDeliveryPath, 'utf8'));
-        console.log('✅ target_delivery_date migration completed');
-      } catch (err: any) {
-        if (err.code === '42701' && err.message?.includes('target_delivery_date')) {
-          console.log('   ℹ️  target_delivery_date already exists (skipping)');
-        } else { console.warn('   ⚠️  target_delivery_date migration warning:', err.message); }
-      }
-    }
-    
-    // Migration: Add user_id to transactions table
-    const userIdMigrationPaths = [
-      join(__dirname, '../migrations/add-user-id-to-transactions.sql'),
-      join(__dirname, '../../migrations/add-user-id-to-transactions.sql'),
-      join(process.cwd(), 'server/migrations/add-user-id-to-transactions.sql'),
-      join(process.cwd(), 'migrations/add-user-id-to-transactions.sql'),
-    ];
-    
-    let userIdMigrationPath: string | null = null;
-    for (const path of userIdMigrationPaths) {
-      try {
-        readFileSync(path, 'utf8');
-        userIdMigrationPath = path;
-        break;
-      } catch (e) {
-        // Try next path
-      }
-    }
-    
-    if (userIdMigrationPath) {
-      try {
-        console.log('📋 Running user_id migration from:', userIdMigrationPath);
-        const userIdMigrationSQL = readFileSync(userIdMigrationPath, 'utf8');
-        await pool.query(userIdMigrationSQL);
-        console.log('✅ user_id migration completed');
-      } catch (error: any) {
-        // If column already exists, that's okay
-        if (error.code === '42701' && error.message.includes('user_id')) {
-          console.log('   ℹ️  user_id column already exists (skipping)');
-        } else if (error.code === '42P07' && error.message.includes('idx_transactions_user_id')) {
-          console.log('   ℹ️  user_id index already exists (skipping)');
-        } else {
-          console.warn('   ⚠️  user_id migration warning:', error.message);
-          // Don't throw - migration might already be applied
-        }
-      }
-    } else {
-      console.warn('   ⚠️  Could not find add-user-id-to-transactions.sql migration file');
-    }
-    
-    // Run additional migrations
-    console.log('🔄 Running additional migrations...');
-    
-    // Migration: Add payment_id column to license_history (if missing)
-    try {
-      const columnCheck = await pool.query(`
-        SELECT column_name 
-        FROM information_schema.columns 
-        WHERE table_name = 'license_history' AND column_name = 'payment_id'
-      `);
-      
-      if (columnCheck.rows.length === 0) {
-        console.log('📋 Adding payment_id column to license_history...');
-        await pool.query('ALTER TABLE license_history ADD COLUMN payment_id TEXT');
-        console.log('✅ Added payment_id column to license_history');
-      }
-    } catch (migrationError: any) {
-      console.warn('   ⚠️  payment_id migration warning:', migrationError.message);
-      // Don't throw - migration might already be applied or table might not exist yet
-    }
-    
-    // Migration: Make transaction_audit_log.user_id nullable
-    const auditLogMigrationPath = join(__dirname, '../migrations/make-audit-log-user-id-nullable.sql');
-    const auditLogMigrationAltPath = join(process.cwd(), 'server/migrations/make-audit-log-user-id-nullable.sql');
-    
-    let auditLogMigrationSQL: string | null = null;
-    try {
-      auditLogMigrationSQL = readFileSync(auditLogMigrationPath, 'utf8');
-    } catch (e) {
-      try {
-        auditLogMigrationSQL = readFileSync(auditLogMigrationAltPath, 'utf8');
-      } catch (e2) {
-        // Migration file not found - that's okay, might not exist yet
-      }
-    }
-    
-    if (auditLogMigrationSQL) {
-      try {
-        await pool.query(auditLogMigrationSQL);
-        console.log('   ✅ Made transaction_audit_log.user_id nullable');
-      } catch (error: any) {
-        // If column is already nullable or doesn't exist, that's okay
-        if (error.code === '42703' || error.message.includes('does not exist') || 
-            error.message.includes('already nullable')) {
-          console.log('   ℹ️  transaction_audit_log.user_id migration already applied (skipping)');
-        } else {
-          console.warn('   ⚠️  transaction_audit_log.user_id migration warning:', error.message);
-          // Don't throw - migration might already be applied
-        }
-      }
-    }
+    await runMigrationIfNeeded(
+      pool,
+      'add-target-delivery-date',
+      [
+        join(__dirname, '../migrations/add-target-delivery-date.sql'),
+        join(__dirname, '../../migrations/add-target-delivery-date.sql'),
+        join(process.cwd(), 'server/migrations/add-target-delivery-date.sql'),
+        join(process.cwd(), 'migrations/add-target-delivery-date.sql'),
+      ],
+      'Target delivery date column'
+    );
 
-    // Migration: Ensure tenant supplier metadata columns exist
-    try {
-      const ensureTenantColumns = async (column: string, sql: string) => {
+    // Migration: project_id on purchase_orders (required for New PO form)
+    await runMigrationIfNeeded(
+      pool,
+      'add-project-id-to-purchase-orders',
+      [
+        join(__dirname, '../migrations/add-project-id-to-purchase-orders.sql'),
+        join(__dirname, '../../migrations/add-project-id-to-purchase-orders.sql'),
+        join(process.cwd(), 'server/migrations/add-project-id-to-purchase-orders.sql'),
+        join(process.cwd(), 'migrations/add-project-id-to-purchase-orders.sql'),
+      ],
+      'Project ID column on purchase_orders'
+    );
+
+    // Migration: PO lock columns (buyer/supplier one-party-edit flow)
+    await runMigrationIfNeeded(
+      pool,
+      'add-po-lock-columns',
+      [
+        join(__dirname, '../migrations/add-po-lock-columns.sql'),
+        join(__dirname, '../../migrations/add-po-lock-columns.sql'),
+        join(process.cwd(), 'server/migrations/add-po-lock-columns.sql'),
+        join(process.cwd(), 'migrations/add-po-lock-columns.sql'),
+      ],
+      'PO lock columns for Biz Planet flow'
+    );
+
+    // Migration: P2P invoice income category (supplier assigns when converting PO to invoice)
+    await runMigrationIfNeeded(
+      pool,
+      'add-p2p-invoice-income-category',
+      [
+        join(__dirname, '../migrations/add-p2p-invoice-income-category.sql'),
+        join(__dirname, '../../migrations/add-p2p-invoice-income-category.sql'),
+        join(process.cwd(), 'server/migrations/add-p2p-invoice-income-category.sql'),
+        join(process.cwd(), 'migrations/add-p2p-invoice-income-category.sql'),
+      ],
+      'Income category on P2P invoices'
+    );
+
+    // Migration: Add document_id to contracts and bills (documents table link for local + cloud)
+    await runMigrationIfNeeded(
+      pool,
+      'add-document-id-to-contracts-bills',
+      [
+        join(__dirname, '../migrations/add-document-id-to-contracts-bills.sql'),
+        join(__dirname, '../../migrations/add-document-id-to-contracts-bills.sql'),
+        join(process.cwd(), 'server/migrations/add-document-id-to-contracts-bills.sql'),
+        join(process.cwd(), 'migrations/add-document-id-to-contracts-bills.sql'),
+      ],
+      'Document ID on contracts and bills'
+    );
+
+    // Migration: Add user_id to transactions table
+    await runMigrationIfNeeded(
+      pool,
+      'add-user-id-to-transactions',
+      [
+        join(__dirname, '../migrations/add-user-id-to-transactions.sql'),
+        join(__dirname, '../../migrations/add-user-id-to-transactions.sql'),
+        join(process.cwd(), 'server/migrations/add-user-id-to-transactions.sql'),
+        join(process.cwd(), 'migrations/add-user-id-to-transactions.sql'),
+      ],
+      'User ID to transactions'
+    );
+
+    // Migration: Add user_id to contracts table
+    await runMigrationIfNeeded(
+      pool,
+      'add-user-id-to-contracts',
+      [
+        join(__dirname, '../migrations/add-user-id-to-contracts.sql'),
+        join(__dirname, '../../migrations/add-user-id-to-contracts.sql'),
+        join(process.cwd(), 'server/migrations/add-user-id-to-contracts.sql'),
+        join(process.cwd(), 'migrations/add-user-id-to-contracts.sql'),
+      ],
+      'User ID to contracts'
+    );
+
+    // Migration: Add user_id to all entities
+    await runMigrationIfNeeded(
+      pool,
+      'add-user-id-to-all-entities',
+      [
+        join(__dirname, '../migrations/add-user-id-to-all-entities.sql'),
+        join(__dirname, '../../migrations/add-user-id-to-all-entities.sql'),
+        join(process.cwd(), 'server/migrations/add-user-id-to-all-entities.sql'),
+        join(process.cwd(), 'migrations/add-user-id-to-all-entities.sql'),
+      ],
+      'User ID to all entities'
+    );
+
+    // Migration: Add payment_id column to license_history (if missing)
+    if (!(await isMigrationApplied(pool, 'add-payment-id-to-license-history'))) {
+      try {
         const columnCheck = await pool.query(`
           SELECT column_name 
           FROM information_schema.columns 
-          WHERE table_name = 'tenants' AND column_name = $1
-        `, [column]);
+          WHERE table_name = 'license_history' AND column_name = 'payment_id'
+        `);
+
+        const startTime = Date.now();
         if (columnCheck.rows.length === 0) {
-          console.log(`📋 Adding tenants.${column} column...`);
-          await pool.query(sql);
-          console.log(`✅ Added tenants.${column} column`);
+          console.log('📋 Adding payment_id column to license_history...');
+          await pool.query('ALTER TABLE license_history ADD COLUMN payment_id TEXT');
+          const executionTime = Date.now() - startTime;
+          await recordMigration(pool, 'add-payment-id-to-license-history', executionTime);
+          console.log('✅ Added payment_id column to license_history');
+        } else {
+          await recordMigration(pool, 'add-payment-id-to-license-history', Date.now() - startTime, 'Already existed');
         }
-      };
-
-      await ensureTenantColumns('tax_id', 'ALTER TABLE tenants ADD COLUMN tax_id TEXT');
-      await ensureTenantColumns('payment_terms', `
-        ALTER TABLE tenants ADD COLUMN payment_terms TEXT;
-        ALTER TABLE tenants ADD CONSTRAINT valid_payment_terms 
-          CHECK (payment_terms IS NULL OR payment_terms IN ('Net 30', 'Net 60', 'Net 90', 'Due on Receipt', 'Custom'));
-      `);
-      await ensureTenantColumns('supplier_category', 'ALTER TABLE tenants ADD COLUMN supplier_category TEXT');
-      await ensureTenantColumns('supplier_status', `
-        ALTER TABLE tenants ADD COLUMN supplier_status TEXT DEFAULT 'Active';
-        ALTER TABLE tenants ADD CONSTRAINT valid_supplier_status 
-          CHECK (supplier_status IS NULL OR supplier_status IN ('Active', 'Inactive'));
-      `);
-    } catch (tenantColumnError: any) {
-      console.warn('   ⚠️  tenant supplier metadata migration warning:', tenantColumnError.message);
-      // Don't throw - migration might already be applied or constraints exist
+      } catch (migrationError: any) {
+        console.warn('   ⚠️  payment_id migration warning:', migrationError.message);
+        // Don't throw - migration might already be applied or table might not exist yet
+      }
     }
-    
+
+    // Migration: Make transaction_audit_log.user_id nullable
+    await runMigrationIfNeeded(
+      pool,
+      'make-audit-log-user-id-nullable',
+      [
+        join(__dirname, '../migrations/make-audit-log-user-id-nullable.sql'),
+        join(__dirname, '../../migrations/make-audit-log-user-id-nullable.sql'),
+        join(process.cwd(), 'server/migrations/make-audit-log-user-id-nullable.sql'),
+        join(process.cwd(), 'migrations/make-audit-log-user-id-nullable.sql'),
+      ],
+      'Make audit log user_id nullable'
+    );
+
+    // Migration: Ensure tenant supplier metadata columns exist
+    if (!(await isMigrationApplied(pool, 'add-tenant-supplier-metadata'))) {
+      try {
+        const startTime = Date.now();
+        const ensureTenantColumns = async (column: string, sql: string) => {
+          const columnCheck = await pool.query(`
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'tenants' AND column_name = $1
+          `, [column]);
+          if (columnCheck.rows.length === 0) {
+            console.log(`📋 Adding tenants.${column} column...`);
+            await pool.query(sql);
+            console.log(`✅ Added tenants.${column} column`);
+          }
+        };
+
+        await ensureTenantColumns('tax_id', 'ALTER TABLE tenants ADD COLUMN tax_id TEXT');
+        await ensureTenantColumns('payment_terms', `
+          ALTER TABLE tenants ADD COLUMN payment_terms TEXT;
+          ALTER TABLE tenants ADD CONSTRAINT valid_payment_terms 
+            CHECK (payment_terms IS NULL OR payment_terms IN ('Net 30', 'Net 60', 'Net 90', 'Due on Receipt', 'Custom'));
+        `);
+        await ensureTenantColumns('supplier_category', 'ALTER TABLE tenants ADD COLUMN supplier_category TEXT');
+        await ensureTenantColumns('supplier_status', `
+          ALTER TABLE tenants ADD COLUMN supplier_status TEXT DEFAULT 'Active';
+          ALTER TABLE tenants ADD CONSTRAINT valid_supplier_status 
+            CHECK (supplier_status IS NULL OR supplier_status IN ('Active', 'Inactive'));
+        `);
+        const executionTime = Date.now() - startTime;
+        await recordMigration(pool, 'add-tenant-supplier-metadata', executionTime);
+        console.log('✅ Tenant supplier metadata migration completed');
+      } catch (tenantColumnError: any) {
+        console.warn('   ⚠️  tenant supplier metadata migration warning:', tenantColumnError.message);
+        // Don't throw - migration might already be applied or constraints exist
+      }
+    }
+
     // Migration: Add org_id to rental_agreements table (MUST run before contact_id)
-    const orgIdMigrationPaths = [
-      join(__dirname, '../migrations/add-org-id-to-rental-agreements.sql'),
-      join(__dirname, '../../migrations/add-org-id-to-rental-agreements.sql'),
-      join(process.cwd(), 'server/migrations/add-org-id-to-rental-agreements.sql'),
-      join(process.cwd(), 'migrations/add-org-id-to-rental-agreements.sql'),
-    ];
+    await runMigrationIfNeeded(
+      pool,
+      'add-org-id-to-rental-agreements',
+      [
+        join(__dirname, '../migrations/add-org-id-to-rental-agreements.sql'),
+        join(__dirname, '../../migrations/add-org-id-to-rental-agreements.sql'),
+        join(process.cwd(), 'server/migrations/add-org-id-to-rental-agreements.sql'),
+        join(process.cwd(), 'migrations/add-org-id-to-rental-agreements.sql'),
+      ],
+      'Org ID to rental agreements'
+    );
 
-    let orgIdMigrationPath: string | null = null;
-    for (const path of orgIdMigrationPaths) {
-      try {
-        readFileSync(path, 'utf8');
-        orgIdMigrationPath = path;
-        break;
-      } catch (e) {
-        // Try next path
-      }
-    }
-
-    if (orgIdMigrationPath) {
-      try {
-        console.log('📋 Running org_id migration from:', orgIdMigrationPath);
-        const orgIdMigrationSQL = readFileSync(orgIdMigrationPath, 'utf8');
-        await pool.query(orgIdMigrationSQL);
-        console.log('✅ org_id migration completed');
-      } catch (error: any) {
-        // If column/constraint already exists, that's okay
-        if (error.code === '42701' && error.message.includes('org_id')) {
-          console.log('   ℹ️  org_id column already exists (skipping)');
-        } else if (error.code === '42P07' && error.message.includes('idx_rental_agreements_org_id')) {
-          console.log('   ℹ️  org_id index already exists (skipping)');
-        } else if (error.code === '42710' && error.message.includes('rental_agreements_org_id_agreement_number_key')) {
-          console.log('   ℹ️  org_id unique constraint already exists (skipping)');
-        } else {
-          console.error('   ❌ org_id migration error:', error.message);
-          console.error('   Error code:', error.code);
-          // Don't throw - but log the error clearly
-        }
-      }
-    } else {
-      console.warn('   ⚠️  Could not find add-org-id-to-rental-agreements.sql migration file');
-    }
-    
     // Migration: Add contact_id to rental_agreements table
-    const contactIdMigrationPaths = [
-      join(__dirname, '../migrations/add-contact-id-to-rental-agreements.sql'),
-      join(__dirname, '../../migrations/add-contact-id-to-rental-agreements.sql'),
-      join(process.cwd(), 'server/migrations/add-contact-id-to-rental-agreements.sql'),
-      join(process.cwd(), 'migrations/add-contact-id-to-rental-agreements.sql'),
-    ];
-    
-    let contactIdMigrationPath: string | null = null;
-    for (const path of contactIdMigrationPaths) {
-      try {
-        readFileSync(path, 'utf8');
-        contactIdMigrationPath = path;
-        break;
-      } catch (e) {
-        // Try next path
-      }
-    }
-    
-    if (contactIdMigrationPath) {
-      try {
-        console.log('📋 Running contact_id migration from:', contactIdMigrationPath);
-        const contactIdMigrationSQL = readFileSync(contactIdMigrationPath, 'utf8');
-        await pool.query(contactIdMigrationSQL);
-        console.log('✅ contact_id migration completed');
-      } catch (error: any) {
-        // If column already exists, that's okay
-        if (error.code === '42701' && error.message.includes('contact_id')) {
-          console.log('   ℹ️  contact_id column already exists (skipping)');
-        } else if (error.code === '42P07' && error.message.includes('idx_rental_agreements_contact_id')) {
-          console.log('   ℹ️  contact_id index already exists (skipping)');
-        } else {
-          console.warn('   ⚠️  contact_id migration warning:', error.message);
-          // Don't throw - migration might already be applied
-        }
-      }
-    } else {
-      console.warn('   ⚠️  Could not find add-contact-id-to-rental-agreements.sql migration file');
-    }
+    await runMigrationIfNeeded(
+      pool,
+      'add-contact-id-to-rental-agreements',
+      [
+        join(__dirname, '../migrations/add-contact-id-to-rental-agreements.sql'),
+        join(__dirname, '../../migrations/add-contact-id-to-rental-agreements.sql'),
+        join(process.cwd(), 'server/migrations/add-contact-id-to-rental-agreements.sql'),
+        join(process.cwd(), 'migrations/add-contact-id-to-rental-agreements.sql'),
+      ],
+      'Contact ID to rental agreements'
+    );
 
-    // Migration: Add Tasks Management Schema
-    const tasksMigrationPaths = [
-      join(__dirname, '../migrations/add-tasks-schema.sql'),
-      join(__dirname, '../../migrations/add-tasks-schema.sql'),
-      join(process.cwd(), 'server/migrations/add-tasks-schema.sql'),
-      join(process.cwd(), 'migrations/add-tasks-schema.sql'),
-    ];
-    
-    let tasksMigrationPath: string | null = null;
-    for (const path of tasksMigrationPaths) {
-      try {
-        readFileSync(path, 'utf8');
-        tasksMigrationPath = path;
-        break;
-      } catch (e) {
-        // Try next path
-      }
-    }
-    
-    if (tasksMigrationPath) {
-      try {
-        console.log('📋 Running tasks schema migration from:', tasksMigrationPath);
-        const tasksMigrationSQL = readFileSync(tasksMigrationPath, 'utf8');
-        await pool.query(tasksMigrationSQL);
-        console.log('✅ Tasks schema migration completed');
-      } catch (error: any) {
-        // If tables/columns already exist, that's okay
-        if (error.code === '42P07' || error.code === '42710' || error.message.includes('already exists')) {
-          console.log('   ℹ️  Tasks schema already exists (skipping)');
-        } else {
-          console.warn('   ⚠️  Tasks schema migration warning:', error.message);
-          // Don't throw - migration might already be applied
-        }
-      }
-    } else {
-      console.warn('   ⚠️  Could not find add-tasks-schema.sql migration file');
-    }
+    // Migration: Add Tasks Management Schema (Core)
+    await runMigrationIfNeeded(
+      pool,
+      'task_management_schema',
+      [
+        join(__dirname, '../migrations/task_management_schema.sql'),
+        join(__dirname, '../../migrations/task_management_schema.sql'),
+        join(process.cwd(), 'server/migrations/task_management_schema.sql'),
+        join(process.cwd(), 'migrations/task_management_schema.sql'),
+      ],
+      'Tasks Management Core'
+    );
 
-    // Migration: Add title, description, etc. to tasks when missing (production legacy schema fix)
-    const fixTasksTitlePaths = [
-      join(__dirname, '../migrations/fix-tasks-missing-title-description.sql'),
-      join(__dirname, '../../migrations/fix-tasks-missing-title-description.sql'),
-      join(process.cwd(), 'server/migrations/fix-tasks-missing-title-description.sql'),
-      join(process.cwd(), 'migrations/fix-tasks-missing-title-description.sql'),
-    ];
-    let fixTasksTitlePath: string | null = null;
-    for (const p of fixTasksTitlePaths) {
-      try { readFileSync(p, 'utf8'); fixTasksTitlePath = p; break; } catch { /* next */ }
-    }
-    if (fixTasksTitlePath) {
-      try {
-        console.log('📋 Running fix-tasks-missing-title-description from:', fixTasksTitlePath);
-        await pool.query(readFileSync(fixTasksTitlePath, 'utf8'));
-        console.log('✅ fix-tasks-missing-title-description completed');
-      } catch (err: any) {
-        console.warn('   ⚠️  fix-tasks-missing-title-description warning:', err.message);
-      }
-    }
+    // Migration: Add Tasks Organization Schema
+    await runMigrationIfNeeded(
+      pool,
+      'task_organization_schema',
+      [
+        join(__dirname, '../migrations/task_organization_schema.sql'),
+        join(__dirname, '../../migrations/task_organization_schema.sql'),
+        join(process.cwd(), 'server/migrations/task_organization_schema.sql'),
+        join(process.cwd(), 'migrations/task_organization_schema.sql'),
+      ],
+      'Tasks Organization'
+    );
 
-    // Migration: Add payslips columns when legacy payslips table exists
-    const payslipsLegacyPaths = [
-      join(__dirname, '../migrations/add-payslips-columns-legacy.sql'),
-      join(__dirname, '../../migrations/add-payslips-columns-legacy.sql'),
-      join(process.cwd(), 'server/migrations/add-payslips-columns-legacy.sql'),
-      join(process.cwd(), 'migrations/add-payslips-columns-legacy.sql'),
-    ];
-    let payslipsLegacyPath: string | null = null;
-    for (const p of payslipsLegacyPaths) {
-      try { readFileSync(p, 'utf8'); payslipsLegacyPath = p; break; } catch { /* next */ }
-    }
-    if (payslipsLegacyPath) {
-      try {
-        console.log('📋 Running add-payslips-columns-legacy from:', payslipsLegacyPath);
-        await pool.query(readFileSync(payslipsLegacyPath, 'utf8'));
-        console.log('✅ add-payslips-columns-legacy completed');
-      } catch (err: any) {
-        console.warn('   ⚠️  add-payslips-columns-legacy warning:', err.message);
-      }
-    }
+    // Migration: Add Tasks Roles Schema
+    await runMigrationIfNeeded(
+      pool,
+      'task_roles_schema',
+      [
+        join(__dirname, '../migrations/task_roles_schema.sql'),
+        join(__dirname, '../../migrations/task_roles_schema.sql'),
+        join(process.cwd(), 'server/migrations/task_roles_schema.sql'),
+        join(process.cwd(), 'migrations/task_roles_schema.sql'),
+      ],
+      'Tasks Roles'
+    );
+
+    // Migration: Add Tasks Workflow Schema
+    await runMigrationIfNeeded(
+      pool,
+      'task_workflow_schema',
+      [
+        join(__dirname, '../migrations/task_workflow_schema.sql'),
+        join(__dirname, '../../migrations/task_workflow_schema.sql'),
+        join(process.cwd(), 'server/migrations/task_workflow_schema.sql'),
+        join(process.cwd(), 'migrations/task_workflow_schema.sql'),
+      ],
+      'Tasks Workflow'
+    );
+
+    // Migration: Add Tasks Assignment Schema
+    await runMigrationIfNeeded(
+      pool,
+      'task_assignment_schema',
+      [
+        join(__dirname, '../migrations/task_assignment_schema.sql'),
+        join(__dirname, '../../migrations/task_assignment_schema.sql'),
+        join(process.cwd(), 'server/migrations/task_assignment_schema.sql'),
+        join(process.cwd(), 'migrations/task_assignment_schema.sql'),
+      ],
+      'Tasks Assignment'
+    );
+
+    // Migration: Add Tasks Execution Schema
+    await runMigrationIfNeeded(
+      pool,
+      'task_execution_schema',
+      [
+        join(__dirname, '../migrations/task_execution_schema.sql'),
+        join(__dirname, '../../migrations/task_execution_schema.sql'),
+        join(process.cwd(), 'server/migrations/task_execution_schema.sql'),
+        join(process.cwd(), 'migrations/task_execution_schema.sql'),
+      ],
+      'Tasks Execution'
+    );
+
+    // Migration: Add Tasks OKR Schema
+    await runMigrationIfNeeded(
+      pool,
+      'task_okr_schema',
+      [
+        join(__dirname, '../migrations/task_okr_schema.sql'),
+        join(__dirname, '../../migrations/task_okr_schema.sql'),
+        join(process.cwd(), 'server/migrations/task_okr_schema.sql'),
+        join(process.cwd(), 'migrations/task_okr_schema.sql'),
+      ],
+      'Tasks OKR'
+    );
+
+    // Migration: Add Tasks Initiatives Schema
+    await runMigrationIfNeeded(
+      pool,
+      'task_initiatives_schema',
+      [
+        join(__dirname, '../migrations/task_initiatives_schema.sql'),
+        join(__dirname, '../../migrations/task_initiatives_schema.sql'),
+        join(process.cwd(), 'server/migrations/task_initiatives_schema.sql'),
+        join(process.cwd(), 'migrations/task_initiatives_schema.sql'),
+      ],
+      'Tasks Initiatives'
+    );
+
+    // Migration: Add Tasks Notifications Schema
+    await runMigrationIfNeeded(
+      pool,
+      'task_notifications_schema',
+      [
+        join(__dirname, '../migrations/task_notifications_schema.sql'),
+        join(__dirname, '../../migrations/task_notifications_schema.sql'),
+        join(process.cwd(), 'server/migrations/task_notifications_schema.sql'),
+        join(process.cwd(), 'migrations/task_notifications_schema.sql'),
+      ],
+      'Tasks Notifications'
+    );
+
+    // Migration: Cleanup Tasks (redundant tables)
+    await runMigrationIfNeeded(
+      pool,
+      'cleanup_tasks',
+      [
+        join(__dirname, '../migrations/cleanup_tasks.sql'),
+        join(__dirname, '../../migrations/cleanup_tasks.sql'),
+        join(process.cwd(), 'server/migrations/cleanup_tasks.sql'),
+        join(process.cwd(), 'migrations/cleanup_tasks.sql'),
+      ],
+      'Tasks Cleanup'
+    );
 
     // Migration: Add is_supplier column to tenants table
-    const isSupplierMigrationPaths = [
-      join(__dirname, '../migrations/add-is-supplier-to-tenants.sql'),
-      join(__dirname, '../../migrations/add-is-supplier-to-tenants.sql'),
-      join(process.cwd(), 'server/migrations/add-is-supplier-to-tenants.sql'),
-      join(process.cwd(), 'migrations/add-is-supplier-to-tenants.sql'),
-    ];
-    
-    let isSupplierMigrationPath: string | null = null;
-    for (const path of isSupplierMigrationPaths) {
-      try {
-        readFileSync(path, 'utf8');
-        isSupplierMigrationPath = path;
-        break;
-      } catch (e) {
-        // Try next path
-      }
-    }
-    
-    if (isSupplierMigrationPath) {
-      try {
-        console.log('📋 Running is_supplier migration from:', isSupplierMigrationPath);
-        const isSupplierMigrationSQL = readFileSync(isSupplierMigrationPath, 'utf8');
-        await pool.query(isSupplierMigrationSQL);
-        console.log('✅ is_supplier migration completed');
-      } catch (error: any) {
-        // If column already exists, that's okay
-        if (error.code === '42710' || error.message.includes('already exists')) {
-          console.log('   ℹ️  is_supplier column already exists (skipping)');
-        } else {
-          console.warn('   ⚠️  is_supplier migration warning:', error.message);
-          // Don't throw - migration might already be applied
-        }
-      }
-    } else {
-      console.warn('   ⚠️  Could not find add-is-supplier-to-tenants.sql migration file');
-    }
-    
+    await runMigrationIfNeeded(
+      pool,
+      'add-is-supplier-to-tenants',
+      [
+        join(__dirname, '../migrations/add-is-supplier-to-tenants.sql'),
+        join(__dirname, '../../migrations/add-is-supplier-to-tenants.sql'),
+        join(process.cwd(), 'server/migrations/add-is-supplier-to-tenants.sql'),
+        join(process.cwd(), 'migrations/add-is-supplier-to-tenants.sql'),
+      ],
+      'Is supplier column'
+    );
+
     // Migration: Add WhatsApp Business API Integration tables
-    const whatsappMigrationPaths = [
-      join(__dirname, '../migrations/add-whatsapp-integration.sql'),
-      join(__dirname, '../../migrations/add-whatsapp-integration.sql'),
-      join(process.cwd(), 'server/migrations/add-whatsapp-integration.sql'),
-      join(process.cwd(), 'migrations/add-whatsapp-integration.sql'),
-    ];
-    
-    let whatsappMigrationPath: string | null = null;
-    for (const path of whatsappMigrationPaths) {
-      try {
-        readFileSync(path, 'utf8');
-        whatsappMigrationPath = path;
-        break;
-      } catch (e) {
-        // Try next path
-      }
-    }
-    
-    if (whatsappMigrationPath) {
-      try {
-        console.log('📋 Running WhatsApp integration migration from:', whatsappMigrationPath);
-        const whatsappMigrationSQL = readFileSync(whatsappMigrationPath, 'utf8');
-        await pool.query(whatsappMigrationSQL);
-        console.log('✅ WhatsApp integration migration completed');
-      } catch (error: any) {
-        // If tables already exist, that's okay
-        if (error.code === '42P07' || error.message.includes('already exists')) {
-          console.log('   ℹ️  WhatsApp tables already exist (skipping)');
-        } else {
-          console.warn('   ⚠️  WhatsApp integration migration warning:', error.message);
-          // Don't throw - migration might already be applied
-        }
-      }
-    } else {
-      console.warn('   ⚠️  Could not find add-whatsapp-integration.sql migration file');
-    }
-    
+    await runMigrationIfNeeded(
+      pool,
+      'add-whatsapp-integration',
+      [
+        join(__dirname, '../migrations/add-whatsapp-integration.sql'),
+        join(__dirname, '../../migrations/add-whatsapp-integration.sql'),
+        join(process.cwd(), 'server/migrations/add-whatsapp-integration.sql'),
+        join(process.cwd(), 'migrations/add-whatsapp-integration.sql'),
+      ],
+      'WhatsApp Integration'
+    );
+
     // Migration: Increase user restriction from 5 to 20 per organization
-    const maxUsersMigrationPaths = [
-      join(__dirname, '../migrations/increase-max-users-to-20.sql'),
-      join(__dirname, '../../migrations/increase-max-users-to-20.sql'),
-      join(process.cwd(), 'server/migrations/increase-max-users-to-20.sql'),
-      join(process.cwd(), 'migrations/increase-max-users-to-20.sql'),
-    ];
-    let maxUsersMigrationPath: string | null = null;
-    for (const path of maxUsersMigrationPaths) {
-      try {
-        readFileSync(path, 'utf8');
-        maxUsersMigrationPath = path;
-        break;
-      } catch {
-        // try next
-      }
-    }
-    if (maxUsersMigrationPath) {
-      try {
-        console.log('📋 Running increase-max-users-to-20 migration from:', maxUsersMigrationPath);
-        const maxUsersMigrationSQL = readFileSync(maxUsersMigrationPath, 'utf8');
-        await pool.query(maxUsersMigrationSQL);
-        console.log('✅ increase-max-users-to-20 migration completed');
-      } catch (error: any) {
-        console.warn('   ⚠️  increase-max-users-to-20 migration warning:', error.message);
-      }
-    }
+    await runMigrationIfNeeded(
+      pool,
+      'increase-max-users-to-20',
+      [
+        join(__dirname, '../migrations/increase-max-users-to-20.sql'),
+        join(__dirname, '../../migrations/increase-max-users-to-20.sql'),
+        join(process.cwd(), 'server/migrations/increase-max-users-to-20.sql'),
+        join(process.cwd(), 'migrations/increase-max-users-to-20.sql'),
+      ],
+      'Increase max users to 20'
+    );
 
     // Migration: Installment plan fields and status (installment_plans)
-    const installmentFieldsPaths = [
-      join(__dirname, '../migrations/add-installment-plan-fields.sql'),
-      join(__dirname, '../../migrations/add-installment-plan-fields.sql'),
-      join(process.cwd(), 'server/migrations/add-installment-plan-fields.sql'),
-      join(process.cwd(), 'migrations/add-installment-plan-fields.sql'),
-    ];
-    let installmentFieldsPath: string | null = null;
-    for (const p of installmentFieldsPaths) {
-      try { readFileSync(p, 'utf8'); installmentFieldsPath = p; break; } catch { /* next */ }
-    }
-    if (installmentFieldsPath) {
-      try {
-        console.log('📋 Running installment-plan-fields migration from:', installmentFieldsPath);
-        await pool.query(readFileSync(installmentFieldsPath, 'utf8'));
-        console.log('✅ installment-plan-fields migration completed');
-      } catch (err: any) {
-        if (err.code === '42701' || err.message?.includes('already exists')) {
-          console.log('   ℹ️  installment-plan-fields already applied (skipping)');
-        } else { console.warn('   ⚠️  installment-plan-fields migration warning:', err.message); }
-      }
-    }
+    await runMigrationIfNeeded(
+      pool,
+      'add-installment-plan-fields',
+      [
+        join(__dirname, '../migrations/add-installment-plan-fields.sql'),
+        join(__dirname, '../../migrations/add-installment-plan-fields.sql'),
+        join(process.cwd(), 'server/migrations/add-installment-plan-fields.sql'),
+        join(process.cwd(), 'migrations/add-installment-plan-fields.sql'),
+      ],
+      'Installment plan fields'
+    );
 
-    // Migration: Installment plan approval workflow (approval_requested_by, etc.) — fixes production GET filter
-    const installmentApprovalPaths = [
-      join(__dirname, '../migrations/add-installment-plan-approval-fields.sql'),
-      join(__dirname, '../../migrations/add-installment-plan-approval-fields.sql'),
-      join(process.cwd(), 'server/migrations/add-installment-plan-approval-fields.sql'),
-      join(process.cwd(), 'migrations/add-installment-plan-approval-fields.sql'),
-    ];
-    let installmentApprovalPath: string | null = null;
-    for (const p of installmentApprovalPaths) {
-      try { readFileSync(p, 'utf8'); installmentApprovalPath = p; break; } catch { /* next */ }
-    }
-    if (installmentApprovalPath) {
-      try {
-        console.log('📋 Running installment-plan-approval-fields from:', installmentApprovalPath);
-        await pool.query(readFileSync(installmentApprovalPath, 'utf8'));
-        console.log('✅ installment-plan-approval-fields completed');
-      } catch (err: any) {
-        if (err.code === '42701' || err.message?.includes('already exists')) {
-          console.log('   ℹ️  installment-plan-approval-fields already applied (skipping)');
-        } else { console.warn('   ⚠️  installment-plan-approval-fields warning:', err.message); }
-      }
-    }
-
-    // Migration: Sale Recognized status (installment_plans) — run after approval-fields
-    const saleRecognizedPaths = [
-      join(__dirname, '../migrations/add-sale-recognized-status.sql'),
-      join(__dirname, '../../migrations/add-sale-recognized-status.sql'),
-      join(process.cwd(), 'server/migrations/add-sale-recognized-status.sql'),
-      join(process.cwd(), 'migrations/add-sale-recognized-status.sql'),
-    ];
-    let saleRecognizedPath: string | null = null;
-    for (const p of saleRecognizedPaths) {
-      try { readFileSync(p, 'utf8'); saleRecognizedPath = p; break; } catch { /* next */ }
-    }
-    if (saleRecognizedPath) {
-      try {
-        console.log('📋 Running sale-recognized-status migration from:', saleRecognizedPath);
-        await pool.query(readFileSync(saleRecognizedPath, 'utf8'));
-        console.log('✅ sale-recognized-status migration completed');
-      } catch (err: any) {
-        if (err.code === '42710' || err.message?.includes('already exists')) {
-          console.log('   ℹ️  sale-recognized-status already applied (skipping)');
-        } else { console.warn('   ⚠️  sale-recognized-status migration warning:', err.message); }
-      }
-    }
-
-    // Migration: plan_amenities table + installment_plans discount/amenity columns (production parity)
-    const planAmenitiesPaths = [
-      join(__dirname, '../migrations/add-plan-amenities-table.sql'),
-      join(__dirname, '../../migrations/add-plan-amenities-table.sql'),
-      join(process.cwd(), 'server/migrations/add-plan-amenities-table.sql'),
-      join(process.cwd(), 'migrations/add-plan-amenities-table.sql'),
-    ];
-    let planAmenitiesPath: string | null = null;
-    for (const p of planAmenitiesPaths) {
-      try { readFileSync(p, 'utf8'); planAmenitiesPath = p; break; } catch { /* next */ }
-    }
-    if (planAmenitiesPath) {
-      try {
-        console.log('📋 Running add-plan-amenities-table from:', planAmenitiesPath);
-        await pool.query(readFileSync(planAmenitiesPath, 'utf8'));
-        console.log('✅ add-plan-amenities-table completed');
-      } catch (err: any) {
-        if (err.code === '42P07' || err.code === '42701' || err.message?.includes('already exists')) {
-          console.log('   ℹ️  plan_amenities / installment_plans columns already exist (skipping)');
-        } else { console.warn('   ⚠️  add-plan-amenities-table warning:', err.message); }
-      }
-    }
+    // Migration: Sale Recognized status (installment_plans) — run after installment-plan-fields
+    await runMigrationIfNeeded(
+      pool,
+      'add-sale-recognized-status',
+      [
+        join(__dirname, '../migrations/add-sale-recognized-status.sql'),
+        join(__dirname, '../../migrations/add-sale-recognized-status.sql'),
+        join(process.cwd(), 'server/migrations/add-sale-recognized-status.sql'),
+        join(process.cwd(), 'migrations/add-sale-recognized-status.sql'),
+      ],
+      'Sale recognized status'
+    );
 
     // Migration: installment_plan column on project_agreements
-    const installmentProjectPaths = [
-      join(__dirname, '../migrations/add-installment-plan-to-project-agreements.sql'),
-      join(__dirname, '../../migrations/add-installment-plan-to-project-agreements.sql'),
-      join(process.cwd(), 'server/migrations/add-installment-plan-to-project-agreements.sql'),
-      join(process.cwd(), 'migrations/add-installment-plan-to-project-agreements.sql'),
-    ];
-    let installmentProjectPath: string | null = null;
-    for (const p of installmentProjectPaths) {
-      try { readFileSync(p, 'utf8'); installmentProjectPath = p; break; } catch { /* next */ }
-    }
-    if (installmentProjectPath) {
-      try {
-        console.log('📋 Running installment-plan-to-project-agreements migration from:', installmentProjectPath);
-        await pool.query(readFileSync(installmentProjectPath, 'utf8'));
-        console.log('✅ installment-plan-to-project-agreements migration completed');
-      } catch (err: any) {
-        if (err.code === '42701' && err.message?.includes('installment_plan')) {
-          console.log('   ℹ️  project_agreements.installment_plan already exists (skipping)');
-        } else { console.warn('   ⚠️  installment-plan-to-project-agreements migration warning:', err.message); }
-      }
-    }
+    await runMigrationIfNeeded(
+      pool,
+      'add-installment-plan-to-project-agreements',
+      [
+        join(__dirname, '../migrations/add-installment-plan-to-project-agreements.sql'),
+        join(__dirname, '../../migrations/add-installment-plan-to-project-agreements.sql'),
+        join(process.cwd(), 'server/migrations/add-installment-plan-to-project-agreements.sql'),
+        join(process.cwd(), 'migrations/add-installment-plan-to-project-agreements.sql'),
+      ],
+      'Installment plan to project agreements'
+    );
 
     // Migration: unit fields (type, area, floor)
-    const unitFieldsPaths = [
-      join(__dirname, '../migrations/add-unit-fields.sql'),
-      join(__dirname, '../../migrations/add-unit-fields.sql'),
-      join(process.cwd(), 'server/migrations/add-unit-fields.sql'),
-      join(process.cwd(), 'migrations/add-unit-fields.sql'),
-    ];
-    let unitFieldsPath: string | null = null;
-    for (const p of unitFieldsPaths) {
-      try { readFileSync(p, 'utf8'); unitFieldsPath = p; break; } catch { /* next */ }
-    }
-    if (unitFieldsPath) {
-      try {
-        console.log('📋 Running unit-fields migration from:', unitFieldsPath);
-        await pool.query(readFileSync(unitFieldsPath, 'utf8'));
-        console.log('✅ unit-fields migration completed');
-      } catch (err: any) {
-        if (err.code === '42701' || err.message?.includes('already exists')) {
-          console.log('   ℹ️  units type/area/floor already exist (skipping)');
-        } else { console.warn('   ⚠️  unit-fields migration warning:', err.message); }
-      }
-    }
-    
+    await runMigrationIfNeeded(
+      pool,
+      'add-unit-fields',
+      [
+        join(__dirname, '../migrations/add-unit-fields.sql'),
+        join(__dirname, '../../migrations/add-unit-fields.sql'),
+        join(process.cwd(), 'server/migrations/add-unit-fields.sql'),
+        join(process.cwd(), 'migrations/add-unit-fields.sql'),
+      ],
+      'Unit fields (type, area, floor)'
+    );
+
+
+    // Migration: Biz Planet Marketplace (marketplace_ads, marketplace_categories)
+    await runMigrationIfNeeded(
+      pool,
+      'add-marketplace-tables',
+      [
+        join(__dirname, '../migrations/add-marketplace-tables.sql'),
+        join(__dirname, '../../migrations/add-marketplace-tables.sql'),
+        join(process.cwd(), 'server/migrations/add-marketplace-tables.sql'),
+        join(process.cwd(), 'migrations/add-marketplace-tables.sql'),
+      ],
+      'Marketplace tables for Biz Planet'
+    );
+
+    // Migration: Marketplace ad images (pictures in DB)
+    await runMigrationIfNeeded(
+      pool,
+      'add-marketplace-ad-images',
+      [
+        join(__dirname, '../migrations/add-marketplace-ad-images.sql'),
+        join(__dirname, '../../migrations/add-marketplace-ad-images.sql'),
+        join(process.cwd(), 'server/migrations/add-marketplace-ad-images.sql'),
+        join(process.cwd(), 'migrations/add-marketplace-ad-images.sql'),
+      ],
+      'Marketplace ad images table'
+    );
+
+    // Migration: Add views column to marketplace ads
+    await runMigrationIfNeeded(
+      pool,
+      'add-views-to-marketplace-ads',
+      [
+        join(__dirname, '../migrations/add-views-to-marketplace-ads.sql'),
+        join(__dirname, '../../migrations/add-views-to-marketplace-ads.sql'),
+        join(process.cwd(), 'server/migrations/add-views-to-marketplace-ads.sql'),
+        join(process.cwd(), 'migrations/add-views-to-marketplace-ads.sql'),
+      ],
+      'Views column to marketplace ads'
+    );
+
+    // Migration: Add likes column to marketplace ads
+    await runMigrationIfNeeded(
+      pool,
+      'add-likes-to-marketplace-ads',
+      [
+        join(__dirname, '../migrations/add-likes-to-marketplace-ads.sql'),
+        join(__dirname, '../../migrations/add-likes-to-marketplace-ads.sql'),
+        join(process.cwd(), 'server/migrations/add-likes-to-marketplace-ads.sql'),
+        join(process.cwd(), 'migrations/add-likes-to-marketplace-ads.sql'),
+      ],
+      'Likes column to marketplace ads'
+    );
+
+    // Migration: Shop/POS tables
+    await runMigrationIfNeeded(
+      pool,
+      'add-shop-pos-tables',
+      [
+        join(__dirname, '../migrations/add-shop-pos-tables.sql'),
+        join(__dirname, '../../migrations/add-shop-pos-tables.sql'),
+        join(process.cwd(), 'server/migrations/add-shop-pos-tables.sql'),
+        join(process.cwd(), 'migrations/add-shop-pos-tables.sql'),
+      ],
+      'Shop/POS tables'
+    );
+
+    // Migration: Shop policies
+    await runMigrationIfNeeded(
+      pool,
+      'add-shop-policies',
+      [
+        join(__dirname, '../migrations/add-shop-policies.sql'),
+        join(__dirname, '../../migrations/add-shop-policies.sql'),
+        join(process.cwd(), 'server/migrations/add-shop-policies.sql'),
+        join(process.cwd(), 'migrations/add-shop-policies.sql'),
+      ],
+      'Shop policies'
+    );
+
+    // Migration: Shop RLS policies
+    await runMigrationIfNeeded(
+      pool,
+      'add-shop-rls-policies',
+      [
+        join(__dirname, '../migrations/add-shop-rls-policies.sql'),
+        join(__dirname, '../../migrations/add-shop-rls-policies.sql'),
+        join(process.cwd(), 'server/migrations/add-shop-rls-policies.sql'),
+        join(process.cwd(), 'migrations/add-shop-rls-policies.sql'),
+      ],
+      'Shop RLS policies'
+    );
+
+    // Migration: Add module_key to payments table
+    await runMigrationIfNeeded(
+      pool,
+      'add-module-key-to-payments',
+      [
+        join(__dirname, '../migrations/add-module-key-to-payments.sql'),
+        join(__dirname, '../../migrations/add-module-key-to-payments.sql'),
+        join(process.cwd(), 'server/migrations/add-module-key-to-payments.sql'),
+        join(process.cwd(), 'migrations/add-module-key-to-payments.sql'),
+      ],
+      'Add module_key to payments'
+    );
+
+    // Migration: Add login_status to users table
+    await runMigrationIfNeeded(
+      pool,
+      'add-login-status-to-users',
+      [
+        join(__dirname, '../migrations/add-login-status-to-users.sql'),
+        join(__dirname, '../../migrations/add-login-status-to-users.sql'),
+        join(process.cwd(), 'server/migrations/add-login-status-to-users.sql'),
+        join(process.cwd(), 'migrations/add-login-status-to-users.sql'),
+      ],
+      'Add login_status to users'
+    );
+
+    // Migration: Add tenant_modules table
+    await runMigrationIfNeeded(
+      pool,
+      'add-tenant-modules-table',
+      [
+        join(__dirname, '../migrations/add-tenant-modules-table.sql'),
+        join(__dirname, '../../migrations/add-tenant-modules-table.sql'),
+        join(process.cwd(), 'server/migrations/add-tenant-modules-table.sql'),
+        join(process.cwd(), 'migrations/add-tenant-modules-table.sql'),
+      ],
+      'Add tenant_modules table'
+    );
+
+    // Migration: Add plan_amenities table
+    await runMigrationIfNeeded(
+      pool,
+      'add-plan-amenities-table',
+      [
+        join(__dirname, '../migrations/add-plan-amenities-table.sql'),
+        join(__dirname, '../../migrations/add-plan-amenities-table.sql'),
+        join(process.cwd(), 'server/migrations/add-plan-amenities-table.sql'),
+        join(process.cwd(), 'migrations/add-plan-amenities-table.sql'),
+      ],
+      'Add plan_amenities table'
+    );
+
+    // Migration: Add payment_tracking_columns to shop_sales
+    await runMigrationIfNeeded(
+      pool,
+      'add-payment-tracking-columns',
+      [
+        join(__dirname, '../migrations/add-payment-tracking-columns.sql'),
+        join(__dirname, '../../migrations/add-payment-tracking-columns.sql'),
+        join(process.cwd(), 'server/migrations/add-payment-tracking-columns.sql'),
+        join(process.cwd(), 'migrations/add-payment-tracking-columns.sql'),
+      ],
+      'Add payment tracking columns to shop_sales'
+    );
+
+    // Migration: Add installment plan approval fields
+    await runMigrationIfNeeded(
+      pool,
+      'add-installment-plan-approval-fields',
+      [
+        join(__dirname, '../migrations/add-installment-plan-approval-fields.sql'),
+        join(__dirname, '../../migrations/add-installment-plan-approval-fields.sql'),
+        join(process.cwd(), 'server/migrations/add-installment-plan-approval-fields.sql'),
+        join(process.cwd(), 'migrations/add-installment-plan-approval-fields.sql'),
+      ],
+      'Add installment plan approval fields'
+    );
+
+    // Migration: Add installment plan discount and category columns
+    await runMigrationIfNeeded(
+      pool,
+      'add-installment-plan-discount-category-columns',
+      [
+        join(__dirname, '../migrations/add-installment-plan-discount-category-columns.sql'),
+        join(__dirname, '../../migrations/add-installment-plan-discount-category-columns.sql'),
+        join(process.cwd(), 'server/migrations/add-installment-plan-discount-category-columns.sql'),
+        join(process.cwd(), 'migrations/add-installment-plan-discount-category-columns.sql'),
+      ],
+      'Add installment plan discount and category columns'
+    );
+
+    // Migration: Fix registered suppliers column names
+    await runMigrationIfNeeded(
+      pool,
+      'fix-registered-suppliers-column-names',
+      [
+        join(__dirname, '../migrations/fix-registered-suppliers-column-names.sql'),
+        join(__dirname, '../../migrations/fix-registered-suppliers-column-names.sql'),
+        join(process.cwd(), 'server/migrations/fix-registered-suppliers-column-names.sql'),
+        join(process.cwd(), 'migrations/fix-registered-suppliers-column-names.sql'),
+      ],
+      'Fix registered suppliers column names'
+    );
+
     // Create default admin user if it doesn't exist
     console.log('👤 Ensuring admin user exists...');
     const bcrypt = await import('bcryptjs');
     const defaultPassword = await bcrypt.default.hash('admin123', 10);
-    
+
     await pool.query(
       `INSERT INTO admin_users (id, username, name, email, password, role)
        VALUES ($1, $2, $3, $4, $5, $6)
@@ -726,10 +869,10 @@ async function runMigrations() {
         'super_admin'
       ]
     );
-    
+
     console.log('✅ Admin user ready (username: Admin, password: admin123)');
     console.log('   ⚠️  Please change the password after first login!');
-    
+
   } catch (error: any) {
     console.error('❌ Migration failed:', error.message);
     // Don't exit - let the server start anyway (schema might already exist)

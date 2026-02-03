@@ -18,9 +18,11 @@ async function ensureDatabaseInitialized(): Promise<void> {
     const unifiedService = getUnifiedDatabaseService();
     await unifiedService.initialize();
     
-    // Initialize local SQLite (enabled for all devices)
-    const dbService = getDatabaseService();
-    await dbService.initialize();
+    // For desktop, also initialize local SQLite
+    if (!isMobileDevice()) {
+        const dbService = getDatabaseService();
+        await dbService.initialize();
+    }
     
     dbInitialized = true;
 }

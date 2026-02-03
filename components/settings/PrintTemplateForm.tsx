@@ -582,6 +582,41 @@ const PrintTemplateForm: React.FC = () => {
                     </div>
                  </div>
             </div>
+
+            <div className="space-y-4 border-t pt-4">
+                <h3 className="text-lg font-semibold text-slate-800">Form print layout (Invoices, POs, Bills)</h3>
+                <p className="text-sm text-slate-500">Optional: font, colors, and page options for printed forms.</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Input label="Tax ID / Registration (Optional)" value={settings.taxId ?? ''} onChange={e => handleChange('taxId', e.target.value)} placeholder="e.g. NTN 123456" />
+                    <Input label="Font family (print-safe)" value={settings.fontFamily ?? ''} onChange={e => handleChange('fontFamily', e.target.value)} placeholder="e.g. Georgia, Times New Roman" />
+                    <Input label="Header font size (px)" type="number" value={settings.headerFontSize ?? ''} onChange={e => handleChange('headerFontSize', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="22" min={10} max={36} />
+                    <Input label="Body font size (px)" type="number" value={settings.bodyFontSize ?? ''} onChange={e => handleChange('bodyFontSize', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="13" min={10} max={24} />
+                    <Input label="Footer font size (px)" type="number" value={settings.footerFontSize ?? ''} onChange={e => handleChange('footerFontSize', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="11" min={9} max={18} />
+                    <Input label="Text color (hex)" value={settings.textColor ?? ''} onChange={e => handleChange('textColor', e.target.value)} placeholder="#1e293b" />
+                    <Input label="Table border color (hex)" value={settings.tableBorderColor ?? ''} onChange={e => handleChange('tableBorderColor', e.target.value)} placeholder="#e2e8f0" />
+                    <Input label="Highlight color (hex)" value={settings.highlightColor ?? ''} onChange={e => handleChange('highlightColor', e.target.value)} placeholder="#f8fafc" />
+                    <Input label="Watermark text (Optional)" value={settings.watermark ?? ''} onChange={e => handleChange('watermark', e.target.value)} placeholder="e.g. DRAFT, COPY" />
+                </div>
+            </div>
+
+            <div className="space-y-4 border-t pt-4">
+                <h3 className="text-lg font-semibold text-slate-800">Print templates</h3>
+                <p className="text-sm text-slate-500">Data-driven templates used when you click Print on a form. Layout and branding come from the settings above.</p>
+                <ul className="space-y-2 text-sm text-slate-700">
+                    <li className="flex items-center gap-2">
+                        <span className="font-mono font-semibold text-indigo-600">POPrintTemplate</span>
+                        <span>— Purchase orders (Buyer Dashboard: open a PO, then Print)</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                        <span className="font-mono font-semibold text-indigo-600">InvoicePrintTemplate</span>
+                        <span>— P2P invoices (used when printing from invoice views)</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                        <span className="font-mono font-semibold text-indigo-600">BillPrintTemplate</span>
+                        <span>— Bills (used when printing from bill views)</span>
+                    </li>
+                </ul>
+            </div>
             
             <div className="space-y-4 border-t pt-4">
                 <div className="flex justify-between items-center">

@@ -12,7 +12,8 @@ import TransactionItem from '../transactions/TransactionItem';
 import { WhatsAppService } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { formatCurrency } from '../../utils/numberUtils';
-import { printFromTemplate } from '../../services/printService';
+import { usePrintContext } from '../../context/PrintContext';
+import type { InvoicePrintData } from '../print/InvoicePrintTemplate';
 
 interface InvoiceDetailViewProps {
   invoice: Invoice;
@@ -64,115 +65,44 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
         }
     };
 
-    const handlePrint = () => {
-        const { printSettings, invoiceHtmlTemplate } = state;
-        if (!invoiceHtmlTemplate) {
-            window.print(); // Fallback
-            return;
-        }
+    const { print: triggerPrint } = usePrintContext();
 
-        // Gather Data
-        const companyName = printSettings.companyName || 'My Company';
-        const companyAddress = printSettings.companyAddress || '';
-        const companyContact = printSettings.companyContact || '';
-        const footerText = printSettings.footerText || 'Thank you for your business!';
-        const headerText = printSettings.headerText || '';
-        const showDatePrinted = printSettings.showDatePrinted || false;
-        const printedDate = showDatePrinted ? new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
-        
-        const logoImg = (printSettings.showLogo && printSettings.logoUrl) 
-            ? `<img src="${printSettings.logoUrl}" alt="Logo" style="max-height:80px;" />` 
-            : '';
-
+    /** Data for print: matches what user sees on screen. */
+    const invoicePrintData = useMemo((): InvoicePrintData => {
         const contactName = contact?.name || 'N/A';
-        const contactPhone = contact?.contactNo || '';
-        const contactAddress = contact?.address || '';
-
-        // Determine Context (Property vs Unit)
-        let contextName = '';
-        let contextSub = '';
-        
-        if (isRental && property) {
-            contextName = property.name;
-            if (building) contextSub = building.name;
-        } else if (project && unit) {
-            contextName = `${project.name} - Unit ${unit.name}`;
-        } else if (project) {
-            contextName = project.name;
-        }
-
-        // Line Items
-        let extraRows = '';
+        const contactAddress = [contact?.address, contact?.contactNo].filter(Boolean).join('\n') || undefined;
+        let items: Array<{ description: string; quantity: number; unitPrice?: number; total: number }> = [];
         if (isRental) {
             const rentVal = amount - (invoice.serviceCharges || 0) - (invoice.securityDepositCharge || 0);
-            extraRows += `<tr><td>Rent</td><td class="amount-col">${CURRENCY} ${formatCurrency(rentVal)}</td></tr>`;
-            if (invoice.serviceCharges) extraRows += `<tr><td>Service Charges</td><td class="amount-col">${CURRENCY} ${formatCurrency(invoice.serviceCharges)}</td></tr>`;
-            if (invoice.securityDepositCharge) extraRows += `<tr><td>Security Deposit</td><td class="amount-col">${CURRENCY} ${formatCurrency(invoice.securityDepositCharge)}</td></tr>`;
+            if (rentVal > 0) items.push({ description: 'Rent', quantity: 1, total: rentVal });
+            if (invoice.serviceCharges) items.push({ description: 'Service Charges', quantity: 1, total: invoice.serviceCharges });
+            if (invoice.securityDepositCharge) items.push({ description: 'Security Deposit', quantity: 1, total: invoice.securityDepositCharge });
         }
-
-        // Status Stamp Logic
-        let statusStamp = '';
-        if (status === 'Paid') {
-             statusStamp = `<div class="status-stamp status-paid">PAID</div>`;
-        } else if (status === 'Overdue') {
-             statusStamp = `<div class="status-stamp">OVERDUE</div>`;
-        }
-
-        // Replace Placeholders
-        let html = invoiceHtmlTemplate;
-        
-        // Build conditional sections
-        const headerTextSection = headerText ? `<div class="header-text">${headerText}</div>` : '';
-        const contactPhoneSection = contactPhone ? `<p>${contactPhone}</p>` : '';
-        const contactAddressSection = contactAddress ? `<p>${contactAddress}</p>` : '';
-        const contextNameSection = contextName ? `<p class="client-name">${contextName}</p>` : '';
-        const contextSubSection = contextSub ? `<p>${contextSub}</p>` : '';
-        const descriptionSection = description ? `<div style="font-size: 12px; color: #64748b; margin-top: 6px;">${description}</div>` : '';
-        const footerTextSection = footerText ? `<p class="footer-text">${footerText}</p>` : '';
-        const printedDateSection = printedDate ? `<p class="printed-date">Printed on ${printedDate}</p>` : '';
-        
-        const replacements: Record<string, string> = {
-            '{companyName}': companyName,
-            '{companyAddress}': companyAddress,
-            '{companyContact}': companyContact,
-            '{logoImg}': logoImg,
-            '{invoiceNumber}': invoiceNumber,
-            '{issueDate}': formatDate(issueDate),
-            '{dueDate}': formatDate(dueDate),
-            '{contactName}': contactName,
-            '{invoiceType}': isRental ? 'Rental Invoice' : 'Project Installment',
-            '{amount}': `${CURRENCY} ${formatCurrency(amount)}`,
-            '{paidAmount}': `${CURRENCY} ${formatCurrency(paidAmount)}`,
-            '{balanceDue}': `${CURRENCY} ${formatCurrency(balance)}`,
-            '{extraRows}': extraRows,
-            '{statusStamp}': statusStamp,
-            '{headerTextSection}': headerTextSection,
-            '{contactPhoneSection}': contactPhoneSection,
-            '{contactAddressSection}': contactAddressSection,
-            '{contextNameSection}': contextNameSection,
-            '{contextSubSection}': contextSubSection,
-            '{descriptionSection}': descriptionSection,
-            '{footerTextSection}': footerTextSection,
-            '{printedDateSection}': printedDateSection
+        return {
+            invoiceNumber,
+            contactName,
+            contactAddress,
+            amount,
+            paidAmount,
+            status: String(status),
+            issueDate,
+            dueDate,
+            description,
+            items: items.length > 0 ? items : undefined,
         };
+    }, [invoice, contact, amount, paidAmount, status, issueDate, dueDate, description, isRental]);
 
-        for (const [key, value] of Object.entries(replacements)) {
-            // Use simple replace all via split/join to avoid regex special char issues
-            html = html.split(key).join(value);
-        }
-
-        // Use centralized print service
-        printFromTemplate(html, printSettings);
+    const onPrint = () => {
+        triggerPrint('INVOICE', invoicePrintData);
     };
 
-    const handleSendWhatsApp = async () => {
+    const handleSendWhatsApp = () => {
         if (!contact?.contactNo) {
-            await showAlert("This contact does not have a phone number saved.");
+            showAlert("This contact does not have a phone number saved.");
             return;
         }
 
         try {
-            const contactName = contact.name;
             let subject = property?.name || project?.name || 'your invoice';
             const unitName = unit?.name || '';
             
@@ -209,25 +139,10 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
                 );
             }
 
-            // Check if WhatsApp API is configured, if yes use chat window, otherwise use wa.me
-            try {
-                const { WhatsAppChatService } = await import('../../services/whatsappChatService');
-                const isConfigured = await WhatsAppChatService.isConfigured();
-                if (isConfigured) {
-                    // Open chat window with pre-filled message
-                    openChat(contact);
-                    // Note: We could pre-fill the message, but for now just open the chat
-                    // The user can see the message history and send the message
-                } else {
-                    // Fallback to wa.me URL scheme
-                    WhatsAppService.sendMessage({ contact, message });
-                }
-            } catch (error) {
-                // Fallback to wa.me URL scheme if API check fails
-                WhatsAppService.sendMessage({ contact, message });
-            }
+            // Open WhatsApp side panel with pre-filled message
+            openChat(contact, contact.contactNo, message);
         } catch (error) {
-            await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
+            showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
         }
     };
     
@@ -408,7 +323,7 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
                         )}
                          <PrintButton
                                 variant="secondary"
-                                onPrint={handlePrint}
+                                onPrint={onPrint}
                                 className="!bg-slate-100 !text-slate-700 hover:!bg-slate-200"
                             />
                     </div>

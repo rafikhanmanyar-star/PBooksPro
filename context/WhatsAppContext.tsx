@@ -1,15 +1,15 @@
 /**
  * WhatsApp Context
  * 
- * Provides global WhatsApp chat window management
+ * Provides global WhatsApp chat side panel management
  */
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { Contact } from '../types';
-import WhatsAppChatWindow from '../components/whatsapp/WhatsAppChatWindow';
+import WhatsAppSidePanel from '../components/whatsapp/WhatsAppSidePanel';
 
 interface WhatsAppContextType {
-  openChat: (contact?: Contact | null, phoneNumber?: string) => void;
+  openChat: (contact?: Contact | null, phoneNumber?: string, initialMessage?: string) => void;
   closeChat: () => void;
   isOpen: boolean;
 }
@@ -20,10 +20,12 @@ export const WhatsAppProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [isOpen, setIsOpen] = useState(false);
   const [contact, setContact] = useState<Contact | null>(null);
   const [phoneNumber, setPhoneNumber] = useState<string>('');
+  const [initialMessage, setInitialMessage] = useState<string>('');
 
-  const openChat = useCallback((contact?: Contact | null, phoneNumber?: string) => {
+  const openChat = useCallback((contact?: Contact | null, phoneNumber?: string, initialMessage?: string) => {
     setContact(contact || null);
     setPhoneNumber(phoneNumber || '');
+    setInitialMessage(initialMessage || '');
     setIsOpen(true);
   }, []);
 
@@ -33,17 +35,19 @@ export const WhatsAppProvider: React.FC<{ children: ReactNode }> = ({ children }
     setTimeout(() => {
       setContact(null);
       setPhoneNumber('');
+      setInitialMessage('');
     }, 300);
   }, []);
 
   return (
     <WhatsAppContext.Provider value={{ openChat, closeChat, isOpen }}>
       {children}
-      <WhatsAppChatWindow
+      <WhatsAppSidePanel
         isOpen={isOpen}
         onClose={closeChat}
         contact={contact}
         phoneNumber={phoneNumber}
+        initialMessage={initialMessage}
       />
     </WhatsAppContext.Provider>
   );

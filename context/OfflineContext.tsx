@@ -162,14 +162,13 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [syncEngine, loadQueueCounts]);
 
   /**
-   * Auto-sync on queue changes while online
+   * Monitor queue changes (but don't auto-sync - sync only on login/reconnection)
    */
   useEffect(() => {
     const handleQueueChange = () => {
       loadQueueCounts();
-      if (monitor.getStatus() === 'online') {
-        startSync();
-      }
+      // Don't auto-sync - just update the UI with queue counts
+      // Sync will happen on login/reconnection only
     };
 
     if (typeof window !== 'undefined') {
@@ -181,31 +180,35 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
         window.removeEventListener('sync-queue:change', handleQueueChange);
       }
     };
-  }, [loadQueueCounts, monitor, startSync]);
+  }, [loadQueueCounts]);
 
   /**
-   * Trigger sync when already online (e.g., after login)
+   * Sync is now handled by SyncManager on login/reconnection only
+   * This effect is kept for UI updates only
    */
   useEffect(() => {
     if (connectionStatus === 'online' && isAuthenticated && user?.tenant?.id) {
-      startSync();
+      // Just update queue counts - sync is handled by SyncManager
+      loadQueueCounts();
     }
-  }, [connectionStatus, isAuthenticated, user?.tenant?.id, startSync]);
+  }, [connectionStatus, isAuthenticated, user?.tenant?.id, loadQueueCounts]);
 
   /**
-   * Heartbeat: check for pending items while online
+   * Heartbeat: Update queue counts periodically (but don't sync)
+   * Sync only happens on login/reconnection
    */
   useEffect(() => {
     if (connectionStatus !== 'online' || !isAuthenticated || !user?.tenant?.id) {
       return;
     }
 
+    // Just update queue counts for UI - don't trigger sync
     const interval = window.setInterval(() => {
-      startSync();
-    }, 15000);
+      loadQueueCounts();
+    }, 60000); // Update counts every minute for UI
 
     return () => clearInterval(interval);
-  }, [connectionStatus, isAuthenticated, user?.tenant?.id, startSync]);
+  }, [connectionStatus, isAuthenticated, user?.tenant?.id, loadQueueCounts]);
 
   /**
    * Pause sync

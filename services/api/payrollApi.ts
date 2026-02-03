@@ -419,6 +419,7 @@ export const payrollApi = {
     accountId: string;
     categoryId?: string;
     projectId?: string;
+    amount?: number;
     description?: string;
   }): Promise<{ success: boolean; payslip?: any; transaction?: any; error?: string }> {
     try {

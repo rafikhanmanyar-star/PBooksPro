@@ -9,7 +9,7 @@ import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import { formatDate } from '../../utils/dateUtils';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface UserStats {
@@ -24,7 +24,7 @@ interface UserStats {
 
 const MarketingActivityReport: React.FC = () => {
     const { state } = useAppContext();
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
     const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
     const [endDate, setEndDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]);
@@ -229,7 +229,7 @@ const MarketingActivityReport: React.FC = () => {
                         endDate={endDate}
                         onDateChange={handleDateChange}
                         onExport={handleExport}
-                        onPrint={handlePrint}
+                        onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                         hideGroup={true}
                         hideSearch={true}
                         showDateFilterPills={true}

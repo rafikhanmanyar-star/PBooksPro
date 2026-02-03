@@ -12,7 +12,7 @@ import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import { formatDate } from '../../utils/dateUtils';
 import PrintButton from '../ui/PrintButton';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface ReportRow {
@@ -35,7 +35,7 @@ interface UnitStatusReportProps {
 
 const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, activeReport }) => {
     const { state } = useAppContext();
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [groupBy, setGroupBy] = useState<string>('');
@@ -254,7 +254,7 @@ const UnitStatusReport: React.FC<UnitStatusReportProps> = ({ onReportChange, act
                             <PrintButton
                                 variant="secondary"
                                 size="sm"
-                                onPrint={handlePrint}
+                                onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                                 className="whitespace-nowrap"
                             />
                         </div>

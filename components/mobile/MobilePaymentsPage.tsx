@@ -124,7 +124,7 @@ const MobilePaymentsPage: React.FC = () => {
                 />
                 
                 {/* Filters */}
-                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="mt-4 grid grid-cols-2 gap-3">
                     <Select 
                         value={statusFilter} 
                         onChange={e => setStatusFilter(e.target.value)}

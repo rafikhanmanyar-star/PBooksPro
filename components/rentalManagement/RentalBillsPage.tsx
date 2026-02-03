@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import InvoiceBillForm from '../invoices/InvoiceBillForm';
 import Button from '../ui/Button';
@@ -7,17 +7,89 @@ import { ICONS, CURRENCY } from '../../constants';
 import Modal from '../ui/Modal';
 import TransactionForm from '../transactions/TransactionForm';
 import { TransactionType, Bill, InvoiceStatus, Transaction } from '../../types';
-import BillTreeView, { BillTreeNode } from '../bills/BillTreeView';
+import { BillTreeNode } from '../bills/BillTreeView';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { formatDate } from '../../utils/dateUtils';
 import { useNotification } from '../../context/NotificationContext';
 import { WhatsAppService } from '../../services/whatsappService';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 import useLocalStorage from '../../hooks/useLocalStorage';
-import ResizeHandle from '../ui/ResizeHandle';
 import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarningModal';
 import { ImportType } from '../../services/importService';
 import BillBulkPaymentModal from '../bills/BillBulkPaymentModal';
+
+/** Premium tree sidebar: Directories, avatars, orange active, chevron (same style as Bills/Project Agreements) */
+const BillTreeSidebar: React.FC<{
+    nodes: BillTreeNode[];
+    selectedId: string | null;
+    selectedParentId: string | null;
+    onSelect: (id: string, type: 'group' | 'vendor', parentId?: string) => void;
+}> = ({ nodes, selectedId, selectedParentId, onSelect }) => {
+    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(nodes.map(n => n.id)));
+
+    const toggleExpanded = (id: string) => {
+        setExpandedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const renderNode = (node: BillTreeNode, level: number, parentId?: string) => {
+        const hasChildren = node.children && node.children.length > 0;
+        const isExpanded = expandedIds.has(node.id);
+        const isSelected = selectedId === node.id && (node.type === 'group' || selectedParentId === parentId);
+        const initials = node.name.slice(0, 2).toUpperCase();
+
+        return (
+            <div key={node.id} className={level > 0 ? 'ml-4 border-l border-slate-200/80 pl-3' : ''}>
+                <div
+                    className={`group flex items-center gap-2 py-1.5 px-2 rounded-lg -mx-0.5 transition-all cursor-pointer ${
+                        isSelected ? 'bg-orange-500/10 text-orange-700' : 'hover:bg-slate-100/80 text-slate-700 hover:text-slate-900'
+                    }`}
+                    onClick={() => onSelect(node.id, node.type, parentId)}
+                >
+                    {hasChildren ? (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); toggleExpanded(node.id); }}
+                            className={`flex-shrink-0 w-5 h-5 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+                        >
+                            <div className="w-3.5 h-3.5">{ICONS.chevronRight}</div>
+                        </button>
+                    ) : (
+                        <span className="w-5 flex-shrink-0" />
+                    )}
+                    <span className="flex-shrink-0 w-6 h-6 rounded-md bg-slate-800 text-slate-200 text-[10px] font-bold flex items-center justify-center">
+                        {initials}
+                    </span>
+                    <span className="flex-1 text-xs font-medium truncate">{node.name}</span>
+                    {node.count > 0 && (
+                        <span className={`text-[10px] font-semibold tabular-nums ${isSelected ? 'text-orange-600' : 'text-slate-500'}`}>
+                            {node.count}
+                        </span>
+                    )}
+                </div>
+                {hasChildren && isExpanded && (
+                    <div className="mt-0.5">
+                        {node.children.map(child => renderNode(child, level + 1, node.id))}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    if (!nodes || nodes.length === 0) {
+        return <div className="text-xs text-slate-400 italic p-2">No directories match your search</div>;
+    }
+
+    return (
+        <div className="space-y-0.5">
+            {nodes.map(node => renderNode(node, 0))}
+        </div>
+    );
+};
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 type SortKey = 'issueDate' | 'entityName' | 'dueDate' | 'amount' | 'status' | 'balance' | 'vendorName' | 'billNumber' | 'contract';
@@ -25,6 +97,7 @@ type SortKey = 'issueDate' | 'entityName' | 'dueDate' | 'amount' | 'status' | 'b
 const RentalBillsPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { showToast, showAlert } = useNotification();
+    const { openChat } = useWhatsApp();
     
     // --- State: Toolbar & Filters ---
     const [searchQuery, setSearchQuery] = useState('');
@@ -51,13 +124,11 @@ const RentalBillsPage: React.FC = () => {
     const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
     const [warningModalState, setWarningModalState] = useState<{ isOpen: boolean; transaction: Transaction | null; action: 'delete' | null }>({ isOpen: false, transaction: null, action: null });
     
-    // Persistent UI State
-    const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('rental_bills_sidebarWidth', 300);
-
-    // Resizing Refs
-    const isResizing = useRef(false);
-    const startX = useRef(0);
-    const startWidth = useRef(0);
+    // Persistent UI State & Sidebar (container-relative resize 150–600px, same as Project Agreements)
+    const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('rental_bills_sidebarWidth', 280);
+    const [treeSearchQuery, setTreeSearchQuery] = useState('');
+    const [isResizing, setIsResizing] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     // --- Computed: Buildings List for Dropdown ---
     const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
@@ -291,34 +362,59 @@ const RentalBillsPage: React.FC = () => {
 
     }, [baseBills, selectedNode, buildingFilter, startDate, endDate, searchQuery, sortConfig, state.buildings, state.properties, state.contacts, state.contracts]);
 
-    // --- Handlers ---
-    const startResizing = useCallback((e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        isResizing.current = true;
-        startX.current = e.clientX;
-        startWidth.current = sidebarWidth;
-        document.addEventListener('mousemove', handleResize);
-        document.addEventListener('mouseup', stopResize);
-        document.body.style.cursor = 'col-resize';
-        document.body.style.userSelect = 'none';
-    }, [sidebarWidth]);
-
-    const handleResize = useCallback((e: MouseEvent) => {
-        if (isResizing.current) {
-            const delta = e.clientX - startX.current;
-            const newWidth = Math.max(200, Math.min(800, startWidth.current + delta));
+    // Sidebar resize: container-relative width (150–600px)
+    const handleMouseMove = useCallback((e: MouseEvent) => {
+        if (!containerRef.current) return;
+        const containerLeft = containerRef.current.getBoundingClientRect().left;
+        const newWidth = e.clientX - containerLeft;
+        if (newWidth > 150 && newWidth < 600) {
             setSidebarWidth(newWidth);
         }
     }, [setSidebarWidth]);
 
-    const stopResize = useCallback(() => {
-        isResizing.current = false;
-        document.removeEventListener('mousemove', handleResize);
-        document.removeEventListener('mouseup', stopResize);
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
+    useEffect(() => {
+        if (!isResizing) return;
+        const handleUp = () => {
+            setIsResizing(false);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        };
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleUp);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        };
+    }, [isResizing, handleMouseMove]);
+
+    const startResizing = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsResizing(true);
     }, []);
+
+    // Filter tree by sidebar search (by name)
+    const filterBillTree = useCallback((nodes: BillTreeNode[], q: string): BillTreeNode[] => {
+        if (!q.trim()) return nodes;
+        const lower = q.toLowerCase();
+        return nodes
+            .map(node => {
+                const nameMatch = node.name.toLowerCase().includes(lower);
+                const filteredChildren = node.children?.length ? filterBillTree(node.children, q) : [];
+                const childMatch = filteredChildren.length > 0;
+                if (nameMatch && !filteredChildren.length) return node;
+                if (childMatch) return { ...node, children: filteredChildren };
+                if (nameMatch) return node;
+                return null;
+            })
+            .filter((n): n is BillTreeNode => n != null);
+    }, []);
+
+    const filteredTreeData = useMemo(() => filterBillTree(treeData, treeSearchQuery), [treeData, treeSearchQuery, filterBillTree]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -444,7 +540,9 @@ const RentalBillsPage: React.FC = () => {
                 bill.billNumber,
                 bill.paidAmount
             );
-            WhatsAppService.sendMessage({ contact: vendor, message });
+
+            // Open WhatsApp side panel with pre-filled message
+            openChat(vendor, vendor.contactNo, message);
         } catch (error) {
             showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
         }
@@ -552,37 +650,62 @@ const RentalBillsPage: React.FC = () => {
                 </div>
             </div>
 
-            {/* Main Content */}
-            <div className="flex-grow flex flex-col md:flex-row gap-4 overflow-hidden min-h-0">
-                
-                {/* Left Tree View */}
-                <div 
-                    className="hidden md:flex flex-col h-full flex-shrink-0"
-                    style={{ width: sidebarWidth }}
+            {/* Main Content: container-relative resize */}
+            <div ref={containerRef} className="flex-grow flex flex-col md:flex-row overflow-hidden min-h-0">
+                {/* Left: Resizable Tree Sidebar */}
+                <aside
+                    className="hidden md:flex flex-col flex-shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
+                    style={{ width: `${sidebarWidth}px` }}
                 >
-                    <div className="font-bold text-slate-700 mb-2 px-1 flex justify-between items-center">
-                        <span>Buildings & Vendors</span>
-                        {selectedNode && (
-                            <button onClick={() => setSelectedNode(null)} className="text-xs text-accent hover:underline">Clear Selection</button>
-                        )}
+                    <div className="flex-shrink-0 p-3 border-b border-slate-100 bg-slate-50/50">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Directories</span>
                     </div>
-                    <BillTreeView 
-                        treeData={treeData} 
-                        selectedNodeId={selectedNode?.id || null} 
-                        selectedParentId={selectedNode?.parentId || null}
-                        onNodeSelect={(id, type, parentId) => setSelectedNode({ id, type, parentId })} 
-                    />
-                </div>
+                    <div className="flex-shrink-0 px-2 pt-2 pb-1 border-b border-slate-100">
+                        <div className="relative">
+                            <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-slate-400">
+                                <div className="w-3.5 h-3.5">{ICONS.search}</div>
+                            </div>
+                            <input
+                                type="text"
+                                placeholder="Search buildings, vendors..."
+                                value={treeSearchQuery}
+                                onChange={(e) => setTreeSearchQuery(e.target.value)}
+                                className="w-full pl-8 pr-6 py-1.5 text-xs border border-slate-200 rounded-lg bg-slate-50/80 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 placeholder:text-slate-400 transition-all"
+                            />
+                            {treeSearchQuery && (
+                                <button
+                                    type="button"
+                                    onClick={() => setTreeSearchQuery('')}
+                                    className="absolute inset-y-0 right-2 flex items-center text-slate-400 hover:text-rose-500"
+                                >
+                                    <div className="w-3.5 h-3.5">{ICONS.x}</div>
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                    <div className="flex-grow overflow-y-auto overflow-x-hidden p-2 min-h-0">
+                        <BillTreeSidebar
+                            nodes={filteredTreeData}
+                            selectedId={selectedNode?.id || null}
+                            selectedParentId={selectedNode?.parentId || null}
+                            onSelect={(id, type, parentId) => setSelectedNode({ id, type, parentId })}
+                        />
+                    </div>
+                </aside>
 
-                {/* Resizer Handle */}
-                <div className="hidden md:block h-full">
-                    <ResizeHandle onMouseDown={startResizing} />
+                {/* Resize Handle */}
+                <div
+                    className="hidden md:flex items-center justify-center flex-shrink-0 w-2 cursor-col-resize select-none touch-none group hover:bg-blue-500/10 transition-colors"
+                    onMouseDown={startResizing}
+                    title="Drag to resize sidebar"
+                >
+                    <div className="w-0.5 h-12 rounded-full bg-slate-200 group-hover:bg-blue-500 group-hover:w-1 transition-all" />
                 </div>
 
                 {/* Right Data Grid */}
-                <div className="flex-grow overflow-hidden flex flex-col bg-white rounded-lg border border-slate-200 shadow-sm">
+                <div className="flex-1 min-w-0 overflow-hidden flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm">
                     <div className="flex-grow overflow-y-auto">
-                        <table className="min-w-full divide-y divide-slate-200 text-sm">
+                        <table className="min-w-full divide-y divide-slate-100 text-sm">
                             <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                                 <tr>
                                     <th className="px-4 py-3 w-10"></th>
@@ -597,8 +720,8 @@ const RentalBillsPage: React.FC = () => {
                                     <th onClick={() => handleSort('balance')} className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Balance <SortIcon column="balance"/></th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200 bg-white">
-                                {filteredBills.length > 0 ? filteredBills.map((bill) => {
+                            <tbody className="divide-y divide-slate-100">
+                                {filteredBills.length > 0 ? filteredBills.map((bill, rowIndex) => {
                                     const balance = bill.amount - bill.paidAmount;
                                     let buildingName = 'General';
                                     if (bill.buildingId) buildingName = state.buildings.find(b => b.id === bill.buildingId)?.name || 'Unknown';
@@ -616,8 +739,8 @@ const RentalBillsPage: React.FC = () => {
 
                                     return (
                                         <React.Fragment key={bill.id}>
-                                            <tr 
-                                                className="hover:bg-slate-50 cursor-pointer transition-colors group"
+                                            <tr
+                                                className={`cursor-pointer transition-colors group ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-slate-100`}
                                                 onClick={() => handleEdit(bill)}
                                             >
                                                 <td className="px-4 py-3 w-10" onClick={(e) => e.stopPropagation()}>
@@ -685,7 +808,7 @@ const RentalBillsPage: React.FC = () => {
                                                 </td>
                                             </tr>
                                             {isExpanded && hasPayments && (
-                                                <tr className="bg-slate-50/50">
+                                                <tr className="!bg-indigo-50/30">
                                                     <td colSpan={10} className="p-0 border-b border-slate-100">
                                                         <div className="border-l-4 border-indigo-200 ml-8 my-2 pl-4 py-2 space-y-1">
                                                             {payments.length > 0 ? payments.map((pay) => (

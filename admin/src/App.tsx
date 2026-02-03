@@ -5,6 +5,7 @@ import AdminLogin from './components/auth/AdminLogin';
 import AdminDashboard from './components/dashboard/AdminDashboard';
 import TenantManagement from './components/tenants/TenantManagement';
 import UserManagement from './components/users/UserManagement';
+import MarketplaceManagement from './components/marketplace/MarketplaceManagement';
 import Layout from './components/layout/Layout';
 import ProtectedRoute from './components/layout/ProtectedRoute';
 
@@ -23,6 +24,7 @@ const AppRoutes: React.FC = () => {
         <Route path="dashboard" element={<AdminDashboard />} />
         <Route path="tenants" element={<TenantManagement />} />
         <Route path="users" element={<UserManagement />} />
+        <Route path="marketplace" element={<MarketplaceManagement />} />
       </Route>
     </Routes>
   );

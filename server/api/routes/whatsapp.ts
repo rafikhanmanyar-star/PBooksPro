@@ -6,6 +6,29 @@ import { getDatabaseService } from '../../services/databaseService.js';
 const router = Router();
 const getDb = () => getDatabaseService();
 
+// Add logging middleware for all WhatsApp routes
+router.use((req, res, next) => {
+  const requestId = `whatsapp_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
+  console.log(`[WhatsApp Router] [${requestId}] ===== REQUEST RECEIVED =====`, {
+    method: req.method,
+    path: req.path,
+    originalUrl: req.originalUrl,
+    url: req.url,
+    hasBody: !!req.body,
+    bodyKeys: req.body ? Object.keys(req.body) : [],
+    query: req.query,
+    params: req.params,
+    headers: {
+      'content-type': req.headers['content-type'],
+      'authorization': req.headers['authorization'] ? 'Bearer ***' : 'missing',
+    },
+    timestamp: new Date().toISOString(),
+  });
+  
+  next();
+});
+
 /**
  * GET /api/whatsapp/config
  * Get current tenant's WhatsApp configuration
@@ -29,17 +52,25 @@ router.get('/config', async (req: TenantRequest, res) => {
 
     if (!config) {
       console.log('[WhatsApp Config] No configuration found for tenant:', req.tenantId);
-      return res.status(404).json({ error: 'WhatsApp API not configured' });
+      // Return 200 with configured: false instead of 404
+      // This is a valid state - tenant simply hasn't configured WhatsApp yet
+      return res.status(200).json({ 
+        configured: false,
+        message: 'WhatsApp API not configured yet'
+      });
     }
 
     // Return config without sensitive data (API key is not included in response)
     res.json({
+      configured: true,
       id: config.id,
       tenantId: config.tenantId,
       phoneNumberId: config.phoneNumberId,
       businessAccountId: config.businessAccountId,
       webhookUrl: config.webhookUrl,
+      verifyToken: config.verifyToken, // Include verify token (non-sensitive, needed for setup)
       isActive: config.isActive,
+      hasApiKey: !!config.apiKey, // Flag to indicate API key exists (don't send actual key)
       createdAt: config.createdAt,
       updatedAt: config.updatedAt,
     });
@@ -72,24 +103,34 @@ router.post('/config', async (req: TenantRequest, res) => {
 
     const { apiKey, apiSecret, phoneNumberId, businessAccountId, verifyToken, webhookUrl } = req.body;
 
+    // Check if updating existing config
+    const whatsappService = getWhatsAppApiService();
+    const existingConfig = await whatsappService.getConfig(req.tenantId);
+
     // Validate required fields
-    if (!apiKey || !phoneNumberId || !verifyToken) {
+    // API key is optional if config already exists (keeps existing key)
+    if (!existingConfig && !apiKey) {
+      console.error('[WhatsApp Config] Missing API key for new configuration');
+      return res.status(400).json({
+        error: 'Missing required fields',
+        message: 'apiKey is required for new configuration',
+      });
+    }
+
+    if (!phoneNumberId || !verifyToken) {
       console.error('[WhatsApp Config] Missing required fields', {
-        hasApiKey: !!apiKey,
         hasPhoneNumberId: !!phoneNumberId,
         hasVerifyToken: !!verifyToken,
       });
       return res.status(400).json({
         error: 'Missing required fields',
-        message: 'apiKey, phoneNumberId, and verifyToken are required',
+        message: 'phoneNumberId and verifyToken are required',
       });
     }
 
-    const whatsappService = getWhatsAppApiService();
-
     // Save configuration
     const config = await whatsappService.saveConfig(req.tenantId!, {
-      apiKey,
+      apiKey: apiKey || undefined, // undefined = keep existing
       apiSecret,
       phoneNumberId,
       businessAccountId,
@@ -104,12 +145,15 @@ router.post('/config', async (req: TenantRequest, res) => {
     });
     
     res.json({
+      configured: true,
       id: config.id,
       tenantId: config.tenantId,
       phoneNumberId: config.phoneNumberId,
       businessAccountId: config.businessAccountId,
       webhookUrl: config.webhookUrl,
+      verifyToken: config.verifyToken,
       isActive: config.isActive,
+      hasApiKey: !!config.apiKey,
       createdAt: config.createdAt,
       updatedAt: config.updatedAt,
     });
@@ -143,17 +187,65 @@ router.delete('/config', async (req: TenantRequest, res) => {
  * Test WhatsApp API connection
  */
 router.post('/test-connection', async (req: TenantRequest, res) => {
+  const requestId = `test_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  const startTime = Date.now();
+  
   try {
+    console.log(`[WhatsApp Test Connection] [${requestId}] Request received`, {
+      tenantId: req.tenantId,
+      timestamp: new Date().toISOString(),
+    });
+
+    if (!req.tenantId) {
+      console.error(`[WhatsApp Test Connection] [${requestId}] Missing tenantId`, {
+        timestamp: new Date().toISOString(),
+      });
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized',
+        message: 'Tenant ID is required',
+      });
+    }
+
     const whatsappService = getWhatsAppApiService();
-    const isConnected = await whatsappService.testConnection(req.tenantId!);
+    console.log(`[WhatsApp Test Connection] [${requestId}] Calling testConnection service`, {
+      tenantId: req.tenantId,
+    });
     
-    if (isConnected) {
+    const result = await whatsappService.testConnection(req.tenantId!);
+    
+    const duration = Date.now() - startTime;
+    
+    if (result.ok) {
+      console.log(`[WhatsApp Test Connection] [${requestId}] Connection test successful`, {
+        tenantId: req.tenantId,
+        duration: `${duration}ms`,
+        timestamp: new Date().toISOString(),
+      });
       res.json({ success: true, message: 'Connection successful' });
     } else {
-      res.status(400).json({ success: false, message: 'Connection failed' });
+      console.error(`[WhatsApp Test Connection] [${requestId}] Connection test failed`, {
+        tenantId: req.tenantId,
+        error: result.error,
+        duration: `${duration}ms`,
+        timestamp: new Date().toISOString(),
+      });
+      res.status(400).json({
+        success: false,
+        message: result.error || 'Connection failed',
+      });
     }
   } catch (error: any) {
-    console.error('Error testing WhatsApp connection:', error);
+    const duration = Date.now() - startTime;
+    console.error(`[WhatsApp Test Connection] [${requestId}] Error testing connection`, {
+      tenantId: req.tenantId,
+      error: error.message,
+      errorStack: error.stack?.substring(0, 500),
+      errorResponse: error.response?.data || null,
+      errorStatus: error.response?.status || null,
+      duration: `${duration}ms`,
+      timestamp: new Date().toISOString(),
+    });
     res.status(500).json({
       error: 'Failed to test connection',
       message: error.message,
@@ -166,17 +258,79 @@ router.post('/test-connection', async (req: TenantRequest, res) => {
  * Send a WhatsApp message
  */
 router.post('/send', async (req: TenantRequest, res) => {
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  const startTime = Date.now();
+  
+  // Log immediately when route handler is called
+  console.log(`[WhatsApp Send] [${requestId}] ===== ROUTE HANDLER CALLED =====`, {
+    method: req.method,
+    path: req.path,
+    url: req.url,
+    tenantId: req.tenantId || 'MISSING',
+    hasBody: !!req.body,
+    bodyKeys: req.body ? Object.keys(req.body) : [],
+    headers: {
+      'content-type': req.headers['content-type'],
+      'authorization': req.headers['authorization'] ? 'Bearer ***' : 'missing',
+      'user-agent': req.headers['user-agent']?.substring(0, 50),
+    },
+    timestamp: new Date().toISOString(),
+  });
+  
   try {
+    // Validate tenant ID first
+    if (!req.tenantId) {
+      console.error(`[WhatsApp Send] [${requestId}] ❌ MISSING TENANT ID - Request blocked`, {
+        hasAuthHeader: !!req.headers['authorization'],
+        timestamp: new Date().toISOString(),
+      });
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Tenant ID is required',
+      });
+    }
+
+    console.log(`[WhatsApp Send] [${requestId}] Request validated - tenant ID present`, {
+      tenantId: req.tenantId,
+      hasPhoneNumber: !!req.body?.phoneNumber,
+      hasMessage: !!req.body?.message,
+      phoneNumber: req.body?.phoneNumber ? req.body.phoneNumber.substring(0, 5) + '***' : 'missing',
+      messageLength: req.body?.message?.length || 0,
+      contactId: req.body?.contactId || null,
+      fullBody: JSON.stringify(req.body).substring(0, 200),
+      timestamp: new Date().toISOString(),
+    });
+
     const { contactId, phoneNumber, message } = req.body;
 
     if (!phoneNumber || !message) {
+      console.error(`[WhatsApp Send] [${requestId}] ❌ Missing required fields`, {
+        hasPhoneNumber: !!phoneNumber,
+        hasMessage: !!message,
+        bodyKeys: Object.keys(req.body || {}),
+        timestamp: new Date().toISOString(),
+      });
       return res.status(400).json({
         error: 'Missing required fields',
         message: 'phoneNumber and message are required',
       });
     }
 
+    console.log(`[WhatsApp Send] [${requestId}] ✅ Fields validated, calling sendTextMessage service`, {
+      tenantId: req.tenantId,
+      phoneNumber: phoneNumber.substring(0, 5) + '***',
+      phoneNumberLength: phoneNumber.length,
+      messageLength: message.length,
+      messagePreview: message.substring(0, 50) + (message.length > 50 ? '...' : ''),
+      contactId: contactId || null,
+      timestamp: new Date().toISOString(),
+    });
+
     const whatsappService = getWhatsAppApiService();
+    console.log(`[WhatsApp Send] [${requestId}] Service instance obtained, calling sendTextMessage`, {
+      timestamp: new Date().toISOString(),
+    });
+    
     const result = await whatsappService.sendTextMessage(
       req.tenantId!,
       phoneNumber,
@@ -184,12 +338,63 @@ router.post('/send', async (req: TenantRequest, res) => {
       contactId
     );
 
+    const duration = Date.now() - startTime;
+    console.log(`[WhatsApp Send] [${requestId}] ✅✅✅ MESSAGE SENT SUCCESSFULLY ✅✅✅`, {
+      messageId: result.messageId,
+      wamId: result.wamId,
+      status: result.status,
+      duration: `${duration}ms`,
+      timestamp: new Date().toISOString(),
+    });
+
+    console.log(`[WhatsApp Send] [${requestId}] Sending success response to client`, {
+      responseData: JSON.stringify(result).substring(0, 200),
+      timestamp: new Date().toISOString(),
+    });
+
     res.json(result);
+    
+    console.log(`[WhatsApp Send] [${requestId}] ✅ Response sent to client`, {
+      timestamp: new Date().toISOString(),
+    });
   } catch (error: any) {
-    console.error('Error sending WhatsApp message:', error);
-    res.status(500).json({
+    const duration = Date.now() - startTime;
+    console.error(`[WhatsApp Send] [${requestId}] ❌❌❌ ERROR SENDING MESSAGE ❌❌❌`, {
+      errorType: error.constructor?.name || typeof error,
+      errorMessage: error.message,
+      errorStack: error.stack?.substring(0, 1000),
+      errorCode: error.code,
+      errorResponse: error.response ? {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: JSON.stringify(error.response.data).substring(0, 1000),
+        headers: error.response.headers ? Object.keys(error.response.headers) : [],
+      } : null,
+      errorRequest: error.config ? {
+        url: error.config.url,
+        method: error.config.method,
+        baseURL: error.config.baseURL,
+        hasData: !!error.config.data,
+        dataPreview: error.config.data ? JSON.stringify(error.config.data).substring(0, 200) : null,
+      } : null,
+      tenantId: req.tenantId || 'MISSING',
+      phoneNumber: req.body?.phoneNumber ? req.body.phoneNumber.substring(0, 5) + '***' : 'missing',
+      duration: `${duration}ms`,
+      timestamp: new Date().toISOString(),
+    });
+    
+    const statusCode = error.response?.status || 500;
+    const errorMessage = error.response?.data?.error?.message || error.message || 'Failed to send message';
+    
+    console.error(`[WhatsApp Send] [${requestId}] Sending error response to client`, {
+      statusCode,
+      errorMessage,
+      timestamp: new Date().toISOString(),
+    });
+    
+    res.status(statusCode).json({
       error: 'Failed to send message',
-      message: error.message,
+      message: errorMessage,
     });
   }
 });
@@ -199,8 +404,19 @@ router.post('/send', async (req: TenantRequest, res) => {
  * Get message history
  */
 router.get('/messages', async (req: TenantRequest, res) => {
+  const requestId = `get_msgs_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  
   try {
     const { contactId, phoneNumber, limit, offset } = req.query;
+
+    console.log(`[WhatsApp Messages] [${requestId}] Getting messages`, {
+      tenantId: req.tenantId,
+      contactId: contactId || null,
+      phoneNumber: phoneNumber ? (phoneNumber as string).substring(0, 5) + '***' : null,
+      limit: limit || 'none',
+      offset: offset || 0,
+      timestamp: new Date().toISOString(),
+    });
 
     const whatsappService = getWhatsAppApiService();
     const messages = await whatsappService.getMessages(req.tenantId!, {
@@ -210,36 +426,177 @@ router.get('/messages', async (req: TenantRequest, res) => {
       offset: offset ? parseInt(offset as string, 10) : undefined,
     });
 
-    res.json(messages);
+    console.log(`[WhatsApp Messages] [${requestId}] ✅ Messages retrieved`, {
+      count: messages.length,
+      hasIncoming: messages.some(m => m.direction === 'incoming'),
+      hasOutgoing: messages.some(m => m.direction === 'outgoing'),
+      timestamp: new Date().toISOString(),
+    });
+
+    // Transform database fields (snake_case) to camelCase for frontend
+    const transformed = messages.map((msg: any) => ({
+      id: msg.id,
+      tenantId: msg.tenant_id || msg.tenantId,
+      contactId: msg.contact_id || msg.contactId,
+      phoneNumber: msg.phone_number || msg.phoneNumber,
+      messageId: msg.message_id || msg.messageId,
+      wamId: msg.wam_id || msg.wamId,
+      direction: msg.direction,
+      status: msg.status,
+      messageText: msg.message_text || msg.messageText,
+      mediaUrl: msg.media_url || msg.mediaUrl,
+      mediaType: msg.media_type || msg.mediaType,
+      mediaCaption: msg.media_caption || msg.mediaCaption,
+      timestamp: msg.timestamp,
+      createdAt: msg.created_at || msg.createdAt,
+      readAt: msg.read_at || msg.readAt,
+    }));
+
+    res.json(transformed);
   } catch (error: any) {
-    console.error('Error getting messages:', error);
+    console.error(`[WhatsApp Messages] [${requestId}] ❌ Error getting messages`, {
+      error: error.message,
+      errorStack: error.stack?.substring(0, 500),
+      tenantId: req.tenantId,
+      timestamp: new Date().toISOString(),
+    });
     res.status(500).json({ error: 'Failed to get messages' });
   }
 });
 
 /**
  * GET /api/whatsapp/messages/:messageId/status
- * Get message status
+ * Get message status from database
  */
 router.get('/messages/:messageId/status', async (req: TenantRequest, res) => {
+  const requestId = `status_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  
   try {
     const { messageId } = req.params;
 
+    console.log(`[WhatsApp Status] [${requestId}] Getting message status`, {
+      messageId,
+      tenantId: req.tenantId,
+      timestamp: new Date().toISOString(),
+    });
+
     const db = getDb();
     const messages = await db.query(
-      `SELECT status, timestamp, read_at FROM whatsapp_messages
+      `SELECT id, status, timestamp, read_at, message_id, wam_id, phone_number, direction, message_text 
+       FROM whatsapp_messages
        WHERE tenant_id = $1 AND id = $2`,
       [req.tenantId, messageId]
     );
 
     if (messages.length === 0) {
+      console.warn(`[WhatsApp Status] [${requestId}] Message not found in database`, {
+        messageId,
+        tenantId: req.tenantId,
+      });
       return res.status(404).json({ error: 'Message not found' });
     }
 
-    res.json(messages[0]);
+    const message = messages[0];
+    console.log(`[WhatsApp Status] [${requestId}] Message status retrieved`, {
+      messageId,
+      status: message.status,
+      wamId: message.wam_id || message.message_id,
+      phoneNumber: message.phone_number?.substring(0, 5) + '***',
+      direction: message.direction,
+      timestamp: message.timestamp,
+      readAt: message.read_at,
+    });
+
+    res.json({
+      id: message.id,
+      status: message.status,
+      timestamp: message.timestamp,
+      readAt: message.read_at,
+      wamId: message.wam_id || message.message_id,
+      phoneNumber: message.phone_number?.substring(0, 5) + '***',
+      direction: message.direction,
+    });
   } catch (error: any) {
-    console.error('Error getting message status:', error);
+    console.error(`[WhatsApp Status] [${requestId}] Error getting message status`, {
+      error: error.message,
+      errorStack: error.stack?.substring(0, 500),
+      messageId: req.params.messageId,
+      tenantId: req.tenantId,
+      timestamp: new Date().toISOString(),
+    });
     res.status(500).json({ error: 'Failed to get message status' });
+  }
+});
+
+/**
+ * GET /api/whatsapp/messages/:messageId/check-meta
+ * Check message status directly from Meta API
+ */
+router.get('/messages/:messageId/check-meta', async (req: TenantRequest, res) => {
+  const requestId = `check_meta_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  
+  try {
+    const { messageId } = req.params;
+
+    console.log(`[WhatsApp Meta Check] [${requestId}] Checking message status from Meta API`, {
+      messageId,
+      tenantId: req.tenantId,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Get message from database to get WAM ID
+    const db = getDb();
+    const messages = await db.query(
+      `SELECT wam_id, message_id, phone_number, status FROM whatsapp_messages
+       WHERE tenant_id = $1 AND id = $2`,
+      [req.tenantId, messageId]
+    );
+
+    if (messages.length === 0) {
+      return res.status(404).json({ error: 'Message not found in database' });
+    }
+
+    const dbMessage = messages[0];
+    const wamId = dbMessage.wam_id || dbMessage.message_id;
+
+    if (!wamId) {
+      return res.status(400).json({ error: 'No WAM ID found for this message' });
+    }
+
+    // Get config and check status from Meta
+    const whatsappService = getWhatsAppApiService();
+    const config = await whatsappService.getConfig(req.tenantId!);
+    
+    if (!config) {
+      return res.status(404).json({ error: 'WhatsApp not configured' });
+    }
+
+    // Note: Meta doesn't have a direct status check endpoint for individual messages
+    // Status updates come via webhooks. We'll return what we know from database.
+    console.log(`[WhatsApp Meta Check] [${requestId}] Message info retrieved`, {
+      wamId,
+      dbStatus: dbMessage.status,
+      phoneNumber: dbMessage.phone_number?.substring(0, 5) + '***',
+      note: 'Meta API doesn\'t provide direct status check. Status updates come via webhooks.',
+    });
+
+    res.json({
+      wamId,
+      databaseStatus: dbMessage.status,
+      phoneNumber: dbMessage.phone_number?.substring(0, 5) + '***',
+      note: 'Meta API doesn\'t provide direct status check endpoint. Status updates are delivered via webhooks. Check Meta Business Suite dashboard for delivery status.',
+      webhookStatus: dbMessage.status,
+      lastUpdated: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error(`[WhatsApp Meta Check] [${requestId}] Error checking Meta status`, {
+      error: error.message,
+      errorStack: error.stack?.substring(0, 500),
+      messageId: req.params.messageId,
+      tenantId: req.tenantId,
+      timestamp: new Date().toISOString(),
+    });
+    res.status(500).json({ error: 'Failed to check message status from Meta' });
   }
 });
 
@@ -267,19 +624,33 @@ router.post('/messages/:messageId/read', async (req: TenantRequest, res) => {
  */
 router.post('/messages/read-all', async (req: TenantRequest, res) => {
   try {
-    const { phoneNumber } = req.body;
+    const { phoneNumber, contactId } = req.body;
 
     if (!phoneNumber) {
       return res.status(400).json({ error: 'phoneNumber is required' });
     }
 
+    if (!req.tenantId) {
+      return res.status(401).json({ error: 'Tenant ID is required' });
+    }
+
+    // Check if WhatsApp is configured before trying to mark as read
     const whatsappService = getWhatsAppApiService();
-    await whatsappService.markAllAsRead(req.tenantId!, phoneNumber);
+    const config = await whatsappService.getConfig(req.tenantId);
+    
+    if (!config) {
+      // WhatsApp not configured - return success silently (not an error)
+      return res.json({ success: true, message: 'WhatsApp not configured' });
+    }
+
+    // Pass contactId if provided to ensure we only mark messages for this specific contact
+    await whatsappService.markAllAsRead(req.tenantId, phoneNumber, contactId);
 
     res.json({ success: true });
   } catch (error: any) {
     console.error('Error marking all messages as read:', error);
-    res.status(500).json({ error: 'Failed to mark messages as read' });
+    // Return success even on error to prevent UI alerts - this is not critical
+    res.json({ success: true, error: error.message });
   }
 });
 
@@ -295,6 +666,76 @@ router.get('/unread-count', async (req: TenantRequest, res) => {
   } catch (error: any) {
     console.error('Error getting unread count:', error);
     res.status(500).json({ error: 'Failed to get unread count' });
+  }
+});
+
+/**
+ * POST /api/whatsapp/send-document
+ * Send a document (PDF/image) via WhatsApp
+ */
+router.post('/send-document', async (req: TenantRequest, res) => {
+  const requestId = `send_doc_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  const startTime = Date.now();
+  
+  try {
+    if (!req.tenantId) {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Tenant ID is required',
+      });
+    }
+
+    const { contactId, phoneNumber, documentUrl, filename, caption } = req.body;
+
+    if (!phoneNumber || !documentUrl || !filename) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        message: 'phoneNumber, documentUrl, and filename are required',
+      });
+    }
+
+    console.log(`[WhatsApp Send Document] [${requestId}] Sending document`, {
+      tenantId: req.tenantId,
+      phoneNumber: phoneNumber.substring(0, 5) + '***',
+      filename,
+      hasCaption: !!caption,
+      timestamp: new Date().toISOString(),
+    });
+
+    const whatsappService = getWhatsAppApiService();
+    const result = await whatsappService.sendDocumentMessage(
+      req.tenantId!,
+      phoneNumber,
+      documentUrl,
+      filename,
+      caption,
+      contactId
+    );
+
+    const duration = Date.now() - startTime;
+    console.log(`[WhatsApp Send Document] [${requestId}] ✅ Document sent successfully`, {
+      messageId: result.messageId,
+      duration: `${duration}ms`,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    const duration = Date.now() - startTime;
+    console.error(`[WhatsApp Send Document] [${requestId}] ❌ Error sending document`, {
+      error: error.message,
+      errorStack: error.stack?.substring(0, 1000),
+      duration: `${duration}ms`,
+      timestamp: new Date().toISOString(),
+    });
+    
+    const statusCode = error.response?.status || 500;
+    const errorMessage = error.response?.data?.error?.message || error.message || 'Failed to send document';
+    
+    res.status(statusCode).json({
+      error: 'Failed to send document',
+      message: errorMessage,
+    });
   }
 });
 

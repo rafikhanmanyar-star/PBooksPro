@@ -13,11 +13,16 @@ import { formatDate } from '../../utils/dateUtils';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import ResizeHandle from '../ui/ResizeHandle';
 import { ImportType } from '../../services/importService';
+import { WhatsAppService } from '../../services/whatsappService';
+import { useNotification } from '../../context/NotificationContext';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 
 type SortKey = 'contractNumber' | 'name' | 'totalAmount' | 'paid' | 'balance' | 'status' | 'startDate';
 
 const ProjectContractsPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
+    const { showToast, showAlert } = useNotification();
+    const { openChat } = useWhatsApp();
     const [searchQuery, setSearchQuery] = useState('');
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -221,6 +226,42 @@ const ProjectContractsPage: React.FC = () => {
             .reduce((sum, tx) => sum + tx.amount, 0);
     };
 
+    const handleWhatsApp = useCallback((contract: Contract, e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent row click
+        
+        const vendor = state.contacts.find(c => c.id === contract.vendorId);
+        if (!vendor?.contactNo) {
+            showAlert("Vendor contact number not found.");
+            return;
+        }
+
+        const project = state.projects.find(p => p.id === contract.projectId);
+        const totalAmount = contract.totalAmount ?? 0;
+        const paid = state.transactions
+            .filter(tx => tx.contractId === contract.id)
+            .reduce((sum, tx) => sum + tx.amount, 0);
+        const balance = totalAmount - paid;
+
+        try {
+            let message = `*Contract Details*\n`;
+            message += `Ref: ${contract.contractNumber}\n`;
+            message += `Title: ${contract.name}\n`;
+            message += `Project: ${project?.name}\n`;
+            if (contract.area && contract.rate) {
+                message += `Area: ${contract.area} sqft @ ${contract.rate}/sqft\n`;
+            }
+            message += `Total Value: ${CURRENCY} ${totalAmount.toLocaleString()}\n`;
+            message += `Paid to Date: ${CURRENCY} ${paid.toLocaleString()}\n`;
+            message += `Balance: ${CURRENCY} ${balance.toLocaleString()}\n\n`;
+            message += `Terms:\n${contract.termsAndConditions}`;
+
+            // Open WhatsApp modal with pre-filled message
+            openChat(vendor, vendor.contactNo, message);
+        } catch (error) {
+            showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
+        }
+    }, [state.contacts, state.projects, state.transactions, showAlert, openChat]);
+
     return (
         <div className="flex flex-col h-full bg-slate-50/50 p-4 sm:p-6 gap-4 sm:gap-6">
             {/* Header Section */}
@@ -278,8 +319,8 @@ const ProjectContractsPage: React.FC = () => {
 
                 {/* Left Tree View */}
                 <div
-                    className="hidden md:flex flex-col h-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
-                    style={{ width: sidebarWidth }}
+                    className="flex flex-col h-64 md:h-full flex-shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
+                    style={{ width: window.innerWidth < 768 ? '100%' : sidebarWidth }}
                 >
                     <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Hierarchy</span>
@@ -334,6 +375,9 @@ const ProjectContractsPage: React.FC = () => {
                                     </th>
                                     <th onClick={() => handleSort('status')} className="px-4 py-2.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200 transition-colors">
                                         Status <SortIcon column="status" />
+                                    </th>
+                                    <th className="px-4 py-2.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                                        Actions
                                     </th>
                                 </tr>
                             </thead>
@@ -393,11 +437,20 @@ const ProjectContractsPage: React.FC = () => {
                                                     {contract.status}
                                                 </span>
                                             </td>
+                                            <td className="px-4 py-2.5 text-center">
+                                                <button
+                                                    onClick={(e) => handleWhatsApp(contract, e)}
+                                                    className="p-1.5 rounded-md text-green-600 hover:bg-green-50 hover:text-green-700 transition-colors"
+                                                    title="Send contract details via WhatsApp"
+                                                >
+                                                    <div className="w-4 h-4">{ICONS.whatsapp}</div>
+                                                </button>
+                                            </td>
                                         </tr>
                                     );
                                 }) : (
                                     <tr>
-                                        <td colSpan={8} className="px-4 py-16 text-center">
+                                        <td colSpan={9} className="px-4 py-16 text-center">
                                             <div className="flex flex-col items-center justify-center text-slate-400 opacity-60">
                                                 <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-3">
                                                     <div className="w-6 h-6">{ICONS.fileText}</div>

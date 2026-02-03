@@ -3,11 +3,19 @@ import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import SearchModal from './SearchModal';
 import HelpModal from './HelpModal';
-import { WhatsAppChatService } from '../../services/whatsappChatService';
+import { WhatsAppChatService, WhatsAppMessage, normalizePhoneForMatch } from '../../services/whatsappChatService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import ConnectionStatusIndicator from '../ui/ConnectionStatusIndicator';
 import SyncStatusIndicator from '../ui/SyncStatusIndicator';
 import { apiClient } from '../../services/api/client';
+import { getWebSocketClient } from '../../services/websocketClient';
+import {
+  BizPlanetNotification,
+  BIZ_PLANET_NOTIFICATIONS_EVENT,
+  dispatchBizPlanetNotificationAction,
+  getBizPlanetNotifications,
+  setPendingBizPlanetAction
+} from '../../utils/bizPlanetNotifications';
 
 interface HeaderProps {
   title: string;
@@ -25,14 +33,41 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [orgUsers, setOrgUsers] = useState<{ id: string; name: string; username: string; role: string }[]>([]);
   const [dismissedNotifications, setDismissedNotifications] = useState<Set<string>>(new Set());
+  const [bizPlanetNotifications, setBizPlanetNotifications] = useState<BizPlanetNotification[]>([]);
+  const [whatsappNotifications, setWhatsappNotifications] = useState<{
+    id: string;
+    messageId?: string;
+    phoneNumber: string;
+    contactId?: string;
+    contactName?: string;
+    messageText: string;
+    timestamp: string;
+  }[]>([]);
   const { openChat } = useWhatsApp();
   const notificationsRef = useRef<HTMLDivElement>(null);
   const usersForNotifications = orgUsers.length > 0 ? orgUsers : state.users;
 
+  type NotificationBadgeTone = 'blue' | 'green' | 'red' | 'orange' | 'slate';
+
+  type NotificationItem = {
+    id: string;
+    title: string;
+    message: string;
+    time: string;
+    badge: {
+      label: string;
+      tone: NotificationBadgeTone;
+    };
+    action:
+    | { type: 'installment_plan'; planId: string }
+    | { type: 'bizPlanet'; target: BizPlanetNotification['target']; focus: BizPlanetNotification['focus'] }
+    | { type: 'whatsapp'; phoneNumber: string; contactId?: string; contactName?: string };
+  };
+
   // Load dismissed notifications from localStorage on mount
   useEffect(() => {
     if (!state.currentUser) return;
-    
+
     try {
       const storageKey = `dismissed_notifications_${state.currentUser.id}`;
       const stored = localStorage.getItem(storageKey);
@@ -47,24 +82,124 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   }, [state.currentUser]);
 
   const dismissNotification = useCallback((notificationId: string) => {
-    if (!state.currentUser) return;
-    
+    if (!state.currentUser) {
+      console.warn('[NOTIFICATIONS] Cannot dismiss notification: no current user');
+      return;
+    }
+
+    console.log('[NOTIFICATIONS] Dismissing notification:', notificationId);
+
+    if (notificationId.startsWith('whatsapp:')) {
+      setWhatsappNotifications(prev => prev.filter(item => item.id !== notificationId));
+    }
+
     setDismissedNotifications(prev => {
+      // Check if already dismissed
+      if (prev.has(notificationId)) {
+        console.log('[NOTIFICATIONS] Notification already dismissed:', notificationId);
+        return prev;
+      }
+
       const updated = new Set(prev);
       updated.add(notificationId);
-      
-      // Save to localStorage
+
+      // Save to localStorage immediately to persist dismissal
       try {
         const storageKey = `dismissed_notifications_${state.currentUser.id}`;
-        localStorage.setItem(storageKey, JSON.stringify(Array.from(updated)));
-        console.log('[NOTIFICATIONS] Dismissed notification:', notificationId);
+        const dismissedArray = Array.from(updated);
+        localStorage.setItem(storageKey, JSON.stringify(dismissedArray));
+        console.log('[NOTIFICATIONS] Saved dismissed notification to localStorage:', notificationId, 'Total dismissed:', dismissedArray.length);
       } catch (error) {
         console.error('[NOTIFICATIONS] Failed to save dismissed notifications:', error);
       }
-      
+
       return updated;
     });
   }, [state.currentUser]);
+
+  const resolveWhatsAppTimestamp = useCallback((value?: string | Date) => {
+    if (!value) return new Date().toISOString();
+    if (value instanceof Date) return value.toISOString();
+    if (typeof value === 'number') {
+      const ms = value < 100000000000 ? value * 1000 : value;
+      return new Date(ms).toISOString();
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      const numeric = Number(trimmed);
+      if (!Number.isNaN(numeric)) {
+        const ms = trimmed.length <= 10 ? numeric * 1000 : numeric;
+        return new Date(ms).toISOString();
+      }
+      const parsed = new Date(trimmed);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toISOString();
+      }
+    }
+    return new Date().toISOString();
+  }, []);
+
+  const findContactByPhone = useCallback((phoneNumber: string) => {
+    if (!phoneNumber) return undefined;
+    const normalized = normalizePhoneForMatch(phoneNumber);
+    const digitsOnly = phoneNumber.replace(/\D/g, '');
+    const lastTen = digitsOnly.length >= 10 ? digitsOnly.slice(-10) : '';
+    if (!normalized && !lastTen) return undefined;
+    return state.contacts.find(contact => {
+      const contactNumber = contact.contactNo || '';
+      if (!contactNumber) return false;
+      const contactNormalized = normalizePhoneForMatch(contactNumber);
+      if (normalized && contactNormalized && normalized === contactNormalized) return true;
+      const contactDigits = contactNumber.replace(/\D/g, '');
+      if (lastTen && contactDigits.length >= 10) {
+        return contactDigits.slice(-10) === lastTen;
+      }
+      return false;
+    });
+  }, [state.contacts]);
+
+  const formatNotificationTime = useCallback((value: string) => {
+    if (!value) return '';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return '';
+    const now = new Date();
+    const isToday = parsed.toDateString() === now.toDateString();
+    if (isToday) {
+      return parsed.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+    return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }, []);
+
+  const addWhatsAppNotification = useCallback((message?: WhatsAppMessage) => {
+    if (!message || message.direction !== 'incoming') return;
+
+    const messageKey = message.messageId || message.wamId || message.id || `${message.phoneNumber}-${message.timestamp}`;
+    const notificationId = `whatsapp:${messageKey}`;
+    if (dismissedNotifications.has(notificationId)) return;
+
+    const contactFromId = message.contactId ? state.contacts.find(contact => contact.id === message.contactId) : undefined;
+    const contactFromPhone = contactFromId || findContactByPhone(message.phoneNumber);
+    const resolvedContactId = contactFromId?.id || contactFromPhone?.id || message.contactId;
+    const resolvedContactName = contactFromId?.name || contactFromPhone?.name;
+    const messageText = message.messageText?.trim()
+      || (message.mediaType ? `Media message (${message.mediaType})` : 'New message');
+
+    setWhatsappNotifications(prev => {
+      if (prev.some(item => item.id === notificationId)) {
+        return prev;
+      }
+      const nextItem = {
+        id: notificationId,
+        messageId: message.messageId || message.wamId || message.id,
+        phoneNumber: message.phoneNumber,
+        contactId: resolvedContactId,
+        contactName: resolvedContactName,
+        messageText,
+        timestamp: resolveWhatsAppTimestamp(message.timestamp),
+      };
+      return [nextItem, ...prev].slice(0, 50);
+    });
+  }, [dismissedNotifications, findContactByPhone, resolveWhatsAppTimestamp, state.contacts]);
 
   const notifications = useMemo(() => {
     if (!state.currentUser) return [];
@@ -97,25 +232,24 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       return matches;
     };
 
-    const items = (state.installmentPlans || []).flatMap(plan => {
+    const items: NotificationItem[] = (state.installmentPlans || []).flatMap(plan => {
       const time = plan.updatedAt || plan.createdAt || '';
       const normalizedStatus = (plan.status || '').toString().toLowerCase().replace(/\s+/g, ' ').trim();
       const isPendingApproval = normalizedStatus === 'pending approval';
       const isApprovedStatus = normalizedStatus === 'approved';
       const isRejectedStatus = normalizedStatus === 'rejected';
       const base = {
-        planId: plan.id,
         time
       };
 
-      const results: Array<{
-        id: string;
-        title: string;
-        message: string;
-        planId: string;
-        time: string;
-        status: 'Pending Approval' | 'Approved' | 'Rejected';
-      }> = [];
+      const results: NotificationItem[] = [];
+
+      const getStatusTone = (status: string): NotificationBadgeTone => {
+        if (status === 'Pending Approval') return 'blue';
+        if (status === 'Approved') return 'green';
+        if (status === 'Rejected') return 'red';
+        return 'slate';
+      };
 
       // 1. You are the approver and someone requested your approval
       const isApprover = isPendingApproval && (plan.approvalRequestedToId === currentUserId || isMatchingCurrentUser(plan.approvalRequestedToId));
@@ -133,7 +267,11 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
           id: `approval:${plan.id}`,
           title: 'Plan approval requested',
           message: requester ? `${planLabel(plan.id)} • Requested by ${requester}` : planLabel(plan.id),
-          status: 'Pending Approval'
+          badge: {
+            label: 'Pending Approval',
+            tone: getStatusTone('Pending Approval')
+          },
+          action: { type: 'installment_plan', planId: plan.id }
         });
       }
 
@@ -150,18 +288,61 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
           id: `decision:${plan.id}:${plan.status}`,
           title: `Plan ${plan.status.toLowerCase()}`,
           message: reviewer ? `${planLabel(plan.id)} • Reviewed by ${reviewer}` : planLabel(plan.id),
-          status: plan.status
+          badge: {
+            label: plan.status,
+            tone: getStatusTone(plan.status)
+          },
+          action: { type: 'installment_plan', planId: plan.id }
         });
       }
 
       return results;
     });
 
-    // Filter out dismissed notifications
-    const activeNotifications = items.filter(item => !dismissedNotifications.has(item.id));
+    const bizPlanetItems: NotificationItem[] = (bizPlanetNotifications || []).map(item => ({
+      id: item.id,
+      title: item.title,
+      message: item.message,
+      time: item.time,
+      badge: {
+        label: item.target === 'supplier' ? 'Supplier Portal' : 'Buyer Dashboard',
+        tone: 'slate'
+      },
+      action: {
+        type: 'bizPlanet',
+        target: item.target,
+        focus: item.focus
+      }
+    }));
+
+    const whatsappItems: NotificationItem[] = (whatsappNotifications || []).map(item => ({
+      id: item.id,
+      title: item.contactName ? `WhatsApp from ${item.contactName}` : `WhatsApp from ${item.phoneNumber}`,
+      message: item.messageText,
+      time: item.timestamp,
+      badge: {
+        label: 'WhatsApp',
+        tone: 'green'
+      },
+      action: {
+        type: 'whatsapp',
+        phoneNumber: item.phoneNumber,
+        contactId: item.contactId,
+        contactName: item.contactName
+      }
+    }));
+
+    // Filter out dismissed notifications - ensure they never reappear
+    const activeNotifications = [...items, ...bizPlanetItems, ...whatsappItems].filter(item => {
+      const isDismissed = dismissedNotifications.has(item.id);
+      if (isDismissed) {
+        console.log('[NOTIFICATIONS] Filtering out dismissed notification:', item.id);
+      }
+      return !isDismissed;
+    });
 
     console.log('[NOTIFICATION DEBUG] Notifications:', {
-      total: items.length,
+      total: items.length + bizPlanetItems.length,
       dismissed: dismissedNotifications.size,
       active: activeNotifications.length,
       currentUserId,
@@ -170,26 +351,51 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     });
 
     return activeNotifications.sort((a, b) => b.time.localeCompare(a.time));
-  }, [state.currentUser, state.installmentPlans, state.contacts, state.projects, state.units, usersForNotifications, dismissedNotifications]);
+  }, [state.currentUser, state.installmentPlans, state.contacts, state.projects, state.units, usersForNotifications, dismissedNotifications, bizPlanetNotifications, whatsappNotifications]);
 
-  const handleNotificationClick = useCallback((notificationId: string, planId: string) => {
-    console.log('[NOTIFICATION CLICK] Opening plan:', planId, 'notification:', notificationId);
-    
-    // Dismiss the notification
-    dismissNotification(notificationId);
-    
+  const handleNotificationClick = useCallback((notification: NotificationItem) => {
+    console.log('[NOTIFICATION CLICK] Opening notification:', notification.id);
+
+    // Dismiss the notification immediately - this will remove it from the bell icon
+    dismissNotification(notification.id);
+
     // Close notification dropdown
     setIsNotificationsOpen(false);
-    
-    // Navigate to marketing page
-    dispatch({ type: 'SET_PAGE', payload: 'marketing' });
-    
-    // Set editing entity after a small delay to ensure page is loaded
+
+    if (notification.action.type === 'installment_plan') {
+      const planId = notification.action.planId;
+      // Navigate to project management page with Marketing tab active
+      dispatch({ type: 'SET_INITIAL_TABS', payload: ['Marketing'] });
+      dispatch({ type: 'SET_PAGE', payload: 'projectManagement' });
+
+      // Set editing entity after a small delay to ensure page is loaded
+      setTimeout(() => {
+        console.log('[NOTIFICATION CLICK] Setting editing entity for plan:', planId);
+        dispatch({ type: 'SET_EDITING_ENTITY', payload: { type: 'INSTALLMENT_PLAN', id: planId } });
+      }, 100);
+      return;
+    }
+
+    if (notification.action.type === 'whatsapp') {
+      const contact =
+        state.contacts.find(item => item.id === notification.action.contactId)
+        || findContactByPhone(notification.action.phoneNumber)
+        || null;
+      setTimeout(() => {
+        openChat(contact, notification.action.phoneNumber);
+      }, 0);
+      return;
+    }
+
+    const action = { target: notification.action.target, focus: notification.action.focus };
+    if (state.currentPage !== 'bizPlanet') {
+      setPendingBizPlanetAction(action);
+    }
+    dispatch({ type: 'SET_PAGE', payload: 'bizPlanet' });
     setTimeout(() => {
-      console.log('[NOTIFICATION CLICK] Setting editing entity for plan:', planId);
-      dispatch({ type: 'SET_EDITING_ENTITY', payload: { type: 'INSTALLMENT_PLAN', id: planId } });
-    }, 100);
-  }, [dispatch, dismissNotification]);
+      dispatchBizPlanetNotificationAction(action);
+    }, 150);
+  }, [dispatch, dismissNotification, state.currentPage, openChat, state.contacts, findContactByPhone]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -202,6 +408,22 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isNotificationsOpen]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const loadNotifications = () => setBizPlanetNotifications(getBizPlanetNotifications());
+    loadNotifications();
+    const handleNotificationsUpdate = (event: Event) => {
+      const detail = (event as CustomEvent).detail as BizPlanetNotification[] | undefined;
+      if (Array.isArray(detail)) {
+        setBizPlanetNotifications(detail);
+      } else {
+        loadNotifications();
+      }
+    };
+    window.addEventListener(BIZ_PLANET_NOTIFICATIONS_EVENT, handleNotificationsUpdate);
+    return () => window.removeEventListener(BIZ_PLANET_NOTIFICATIONS_EVENT, handleNotificationsUpdate);
+  }, []);
 
   useEffect(() => {
     const loadOrgUsers = async () => {
@@ -237,8 +459,22 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     loadUnreadCount();
     // Refresh every 30 seconds
     const interval = setInterval(loadUnreadCount, 30000);
-    return () => clearInterval(interval);
-  }, [isAuthenticated]);
+
+    // Listen for real-time WhatsApp message events to update unread count immediately
+    const wsClient = getWebSocketClient();
+    const handleWhatsAppMessageReceived = (data?: WhatsAppMessage) => {
+      // Refresh unread count when a new message is received
+      loadUnreadCount();
+      addWhatsAppNotification(data);
+    };
+
+    wsClient.on('whatsapp:message:received', handleWhatsAppMessageReceived);
+
+    return () => {
+      clearInterval(interval);
+      wsClient.off('whatsapp:message:received', handleWhatsAppMessageReceived);
+    };
+  }, [isAuthenticated, addWhatsAppNotification]);
 
   const handleWhatsAppNotificationClick = useCallback(() => {
     // Open chat window - if there are unread messages, we could show a list
@@ -311,7 +547,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
             <div className="relative" ref={notificationsRef}>
               <button
                 onClick={() => setIsNotificationsOpen(prev => !prev)}
-                className="p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors relative hidden sm:flex min-w-[44px] min-h-[44px] touch-manipulation items-center justify-center"
+                className="p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors relative flex min-w-[44px] min-h-[44px] touch-manipulation items-center justify-center"
                 title={notifications.length > 0 ? `${notifications.length} notifications` : 'Notifications'}
                 aria-label="Notifications"
               >
@@ -350,22 +586,28 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
                           className="group relative hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
                         >
                           <button
-                            onClick={() => handleNotificationClick(item.id, item.planId)}
+                            onClick={() => handleNotificationClick(item)}
                             className="w-full text-left px-4 py-3"
                           >
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex-1">
                                 <p className="text-sm font-semibold text-slate-800">{item.title}</p>
                                 <p className="text-xs text-slate-500 mt-0.5">{item.message}</p>
+                                {formatNotificationTime(item.time) && (
+                                  <p className="text-[11px] text-slate-400 mt-1">{formatNotificationTime(item.time)}</p>
+                                )}
                               </div>
-                              <span className={`flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                                item.status === 'Pending Approval'
+                              <span className={`flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${item.badge.tone === 'blue'
                                   ? 'bg-blue-100 text-blue-700'
-                                  : item.status === 'Approved'
+                                  : item.badge.tone === 'green'
                                     ? 'bg-green-100 text-green-700'
-                                    : 'bg-rose-100 text-rose-700'
-                              }`}>
-                                {item.status}
+                                    : item.badge.tone === 'orange'
+                                      ? 'bg-orange-100 text-orange-700'
+                                      : item.badge.tone === 'red'
+                                        ? 'bg-rose-100 text-rose-700'
+                                        : 'bg-slate-100 text-slate-700'
+                                }`}>
+                                {item.badge.label}
                               </span>
                             </div>
                           </button>
@@ -390,7 +632,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
 
             <button
               onClick={handleWhatsAppNotificationClick}
-              className="p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors relative group hidden sm:block min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
+              className="p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors relative group min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
               title={whatsappUnreadCount > 0 ? `${whatsappUnreadCount} unread WhatsApp messages` : 'WhatsApp Messages'}
               aria-label="WhatsApp Messages"
             >
@@ -404,14 +646,14 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
 
             <button
               onClick={() => setIsHelpModalOpen(true)}
-              className="p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors hidden sm:block min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
+              className="p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
               title="Help & Support"
               aria-label="Help & Support"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
             </button>
 
-            <div className="h-6 w-px bg-slate-200 mx-1 hidden sm:block"></div>
+            <div className="h-6 w-px bg-slate-200 mx-1 hidden md:block"></div>
 
             <div className="flex items-center gap-2">
               {/* Mobile Search Trigger */}

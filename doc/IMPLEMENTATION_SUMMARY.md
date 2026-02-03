@@ -46,7 +46,7 @@
 ## 📋 File Structure
 
 ```
-MyProjectBooks/
+PBooksPro/
 ├── server/                    # Backend API Server
 │   ├── api/
 │   │   ├── index.ts          # Main server file

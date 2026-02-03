@@ -18,7 +18,7 @@ import ReportFooter from './ReportFooter';
 import { formatCurrency } from '../../utils/numberUtils';
 import { formatDate } from '../../utils/dateUtils';
 import PrintButton from '../ui/PrintButton';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
@@ -41,7 +41,7 @@ type SortKey = 'date' | 'ownerName' | 'propertyName' | 'particulars' | 'rentIn' 
 const OwnerPayoutsReport: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { showToast, showAlert } = useNotification();
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<DateRangeOption>('all');
     const [startDate, setStartDate] = useState('2000-01-01');
     const [endDate, setEndDate] = useState('2100-12-31');
@@ -414,7 +414,7 @@ const OwnerPayoutsReport: React.FC = () => {
                         <PrintButton
                             variant="secondary"
                             size="sm"
-                            onPrint={handlePrint}
+                            onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                             className="whitespace-nowrap"
                         />
                     </div>

@@ -5,9 +5,7 @@
  * Handles authentication, error handling, and request/response transformation.
  */
 
-// Use environment variable with fallback to production for backwards compatibility
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://pbookspro-api.onrender.com/api';
-
+import { getApiBaseUrl } from '../../config/apiUrl';
 import { logger } from '../logger';
 
 export interface ApiError {
@@ -22,7 +20,7 @@ export class ApiClient {
   private tenantId: string | null = null;
   private shouldLog: boolean = false; // Only log during login/transaction operations
 
-  constructor(baseUrl: string = API_BASE_URL) {
+  constructor(baseUrl: string = getApiBaseUrl()) {
     this.baseUrl = baseUrl;
     // Load token and tenantId from localStorage
     this.loadAuth(false); // Don't log during initialization
@@ -549,7 +547,7 @@ let apiClientInstance: ApiClient | null = null;
 export const apiClient = new Proxy({} as ApiClient, {
     get(target, prop) {
         if (!apiClientInstance) {
-            apiClientInstance = new ApiClient();
+            apiClientInstance = new ApiClient(getApiBaseUrl());
         }
         const value = (apiClientInstance as any)[prop];
         if (typeof value === 'function') {

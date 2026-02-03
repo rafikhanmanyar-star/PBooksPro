@@ -33,6 +33,7 @@ const normalizeTransactionForBalance = (tx: any): NormalizedTransaction => ({
   toAccountId: tx?.toAccountId ?? tx?.to_account_id ?? null,
 });
 
+
 const applyAccountBalanceChanges = async (
   client: any,
   tenantId: string,
@@ -59,6 +60,35 @@ const applyAccountBalanceChanges = async (
     const isPositive =
       normalized.subtype === 'Receive Loan' || normalized.subtype === 'Collect Loan';
     addDelta(normalized.accountId, (isPositive ? normalized.amount : -normalized.amount) * factor);
+  } else if (normalized.type === 'Journal') {
+    // Journal entries need to check subtype ('Debit' or 'Credit') and Account Type
+    // But we don't have account type here comfortably.
+    // Alternative: The caller of this function for Journal entries must ensure
+    // that "Income" means Increase Balance and "Expense" means Decrease Balance.
+    // So when creating Journal transactions, we mapped them to Income/Expense based on account logic.
+
+    // However, if we want to store them as type='Journal', we need to look up account type here.
+    // Let's assume we store them as 'Journal' and subtype 'Debit'/'Credit'.
+
+    if (normalized.accountId) {
+      const accRes = await client.query('SELECT type FROM accounts WHERE id = $1', [normalized.accountId]);
+      if (accRes.rows.length > 0) {
+        const accType = accRes.rows[0].type;
+        const isDebit = normalized.subtype === 'Debit';
+        const amount = normalized.amount;
+
+        let change = 0;
+        // Asset, Expense, COGS: Debit +, Credit -
+        if (['Asset', 'Expense', 'COGS'].includes(accType)) {
+          change = isDebit ? amount : -amount;
+        }
+        // Liability, Equity, Income: Credit +, Debit -
+        else {
+          change = isDebit ? -amount : amount;
+        }
+        addDelta(normalized.accountId, change * factor);
+      }
+    }
   }
 
   for (const [accountId, delta] of deltas.entries()) {
@@ -118,7 +148,7 @@ router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const { projectId, startDate, endDate, type, limit, offset } = req.query;
-    
+
     let query = 'SELECT * FROM transactions WHERE tenant_id = $1';
     const params: any[] = [req.tenantId];
     let paramIndex = 2;
@@ -152,7 +182,7 @@ router.get('/', async (req: TenantRequest, res) => {
     }
 
     const transactions = await db.query(query, params);
-    
+
     // Log view action for audit (optional - can be disabled for performance)
     // if (req.user && transactions.length > 0) {
     //   await logTransactionAudit(
@@ -168,7 +198,7 @@ router.get('/', async (req: TenantRequest, res) => {
     //     req
     //   );
     // }
-    
+
     res.json(transactions);
   } catch (error) {
     console.error('Error fetching transactions:', error);
@@ -184,14 +214,78 @@ router.get('/:id', async (req: TenantRequest, res) => {
       'SELECT * FROM transactions WHERE id = $1 AND tenant_id = $2',
       [req.params.id, req.tenantId]
     );
-    
+
     if (transactions.length === 0) {
       return res.status(404).json({ error: 'Transaction not found' });
     }
-    
+
     res.json(transactions[0]);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch transaction' });
+  }
+});
+
+// POST batch journal entry
+router.post('/journal', async (req: TenantRequest, res) => {
+  try {
+    const db = getDb();
+    const entry = req.body; // { date, reference, description, lines: [{ accountId, debit, credit }] }
+
+    // Validation
+    if (!entry.lines || !Array.isArray(entry.lines) || entry.lines.length < 2) {
+      return res.status(400).json({ error: 'Journal entry must have at least 2 lines' });
+    }
+
+    // Verify balance
+    const totalDebit = entry.lines.reduce((sum: number, line: any) => sum + (line.debit || 0), 0);
+    const totalCredit = entry.lines.reduce((sum: number, line: any) => sum + (line.credit || 0), 0);
+
+    if (Math.abs(totalDebit - totalCredit) > 0.01) {
+      return res.status(400).json({ error: `Journal entry is not balanced. Debits: ${totalDebit}, Credits: ${totalCredit}` });
+    }
+
+    const batchId = `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const results: any[] = [];
+
+    await db.transaction(async (client) => {
+      for (const line of entry.lines) {
+        const isDebit = (line.debit || 0) > 0;
+        const amount = isDebit ? line.debit : line.credit;
+        const transactionId = `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+        // Create Transaction
+        const insertRes = await client.query(`
+                INSERT INTO transactions (
+                    id, tenant_id, user_id, type, subtype, amount, date, description, 
+                    account_id, batch_id, is_system, created_at, updated_at
+                ) VALUES ($1, $2, $3, 'Journal', $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+                RETURNING *
+            `, [
+          transactionId,
+          req.tenantId,
+          req.user?.userId || null,
+          isDebit ? 'Debit' : 'Credit',
+          amount,
+          entry.date || new Date().toISOString(),
+          line.memo || entry.description || 'Journal Entry',
+          line.accountId,
+          batchId,
+          false
+        ]);
+
+        const txn = insertRes.rows[0];
+        results.push(txn);
+
+        // Update Balance
+        await applyAccountBalanceChanges(client, req.tenantId!, txn, 1);
+      }
+    });
+
+    res.json({ id: batchId, transactions: results, message: 'Journal entry posted successfully' });
+
+  } catch (error: any) {
+    console.error('Error posting journal entry:', error);
+    res.status(500).json({ error: 'Failed to post journal entry: ' + error.message });
   }
 });
 
@@ -206,57 +300,57 @@ router.post('/', async (req: TenantRequest, res) => {
         amount: req.body.amount
       }
     });
-    
+
     const db = getDb();
     const transaction = req.body;
-    
+
     // Validate required fields
     if (!transaction.type) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Transaction type is required'
       });
     }
     if (!transaction.amount) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Transaction amount is required'
       });
     }
     if (!transaction.date) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Transaction date is required'
       });
     }
     if (!transaction.accountId) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'Account ID is required'
       });
     }
-    
+
     // Generate ID if not provided
     const transactionId = transaction.id || `transaction_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     console.log('📝 POST /transactions - Using transaction ID:', transactionId);
     console.log('📋 POST /transactions - Full transaction data:', JSON.stringify(transaction, null, 2));
-    
+
     // Use transaction for data integrity (upsert behavior)
     let wasUpdate = false;
     let oldValues = null;
     let billLocked = false;
     let invoiceLocked = false;
-    
+
     console.log('🔄 POST /transactions - Starting database transaction');
     const result = await db.transaction(async (client) => {
       console.log('✅ POST /transactions - Transaction client acquired');
-      
+
       // Validate and ensure account exists
       const accountCheck = await client.query(
         'SELECT id FROM accounts WHERE id = $1 AND tenant_id = $2',
         [transaction.accountId, req.tenantId]
       );
-      
+
       if (accountCheck.rows.length === 0) {
         // Check if it's a system account that should be auto-created
         const systemAccount = SYSTEM_ACCOUNTS[transaction.accountId];
@@ -279,14 +373,14 @@ router.post('/', async (req: TenantRequest, res) => {
           };
         }
       }
-      
+
       // Validate from_account_id if provided (for transfers)
       if (transaction.fromAccountId) {
         const fromAccountCheck = await client.query(
           'SELECT id FROM accounts WHERE id = $1 AND tenant_id = $2',
           [transaction.fromAccountId, req.tenantId]
         );
-        
+
         if (fromAccountCheck.rows.length === 0) {
           // Check if it's a system account that should be auto-created
           const systemAccount = SYSTEM_ACCOUNTS[transaction.fromAccountId];
@@ -310,14 +404,14 @@ router.post('/', async (req: TenantRequest, res) => {
           }
         }
       }
-      
+
       // Validate to_account_id if provided (for transfers)
       if (transaction.toAccountId) {
         const toAccountCheck = await client.query(
           'SELECT id FROM accounts WHERE id = $1 AND tenant_id = $2',
           [transaction.toAccountId, req.tenantId]
         );
-        
+
         if (toAccountCheck.rows.length === 0) {
           // Check if it's a system account that should be auto-created
           const systemAccount = SYSTEM_ACCOUNTS[transaction.toAccountId];
@@ -341,7 +435,7 @@ router.post('/', async (req: TenantRequest, res) => {
           }
         }
       }
-      
+
       // If transaction is linked to a bill, lock the bill row first to prevent concurrent payments
       if (transaction.billId && !wasUpdate) {
         try {
@@ -350,17 +444,17 @@ router.post('/', async (req: TenantRequest, res) => {
             'SELECT * FROM bills WHERE id = $1 AND tenant_id = $2 FOR UPDATE NOWAIT',
             [transaction.billId, req.tenantId]
           );
-          
+
           if (billLock.rows.length === 0) {
             throw new Error('Bill not found');
           }
-          
+
           billLocked = true;
           const bill = billLock.rows[0];
           const billAmount = parseFloat(bill.amount);
           const currentPaidAmount = parseFloat(bill.paid_amount || '0');
           const paymentAmount = parseFloat(transaction.amount);
-          
+
           // Validate overpayment: Check if payment would exceed bill amount
           if (currentPaidAmount + paymentAmount > billAmount + 0.01) {
             const overpayment = (currentPaidAmount + paymentAmount) - billAmount;
@@ -370,7 +464,7 @@ router.post('/', async (req: TenantRequest, res) => {
               overpayment: overpayment
             };
           }
-          
+
           console.log('✅ POST /transactions - Bill locked and validated:', {
             billId: transaction.billId,
             currentPaid: currentPaidAmount,
@@ -393,7 +487,7 @@ router.post('/', async (req: TenantRequest, res) => {
           throw lockError;
         }
       }
-      
+
       // If transaction is linked to an invoice, lock the invoice row first
       if (transaction.invoiceId && !wasUpdate) {
         try {
@@ -402,17 +496,17 @@ router.post('/', async (req: TenantRequest, res) => {
             'SELECT * FROM invoices WHERE id = $1 AND tenant_id = $2 FOR UPDATE NOWAIT',
             [transaction.invoiceId, req.tenantId]
           );
-          
+
           if (invoiceLock.rows.length === 0) {
             throw new Error('Invoice not found');
           }
-          
+
           invoiceLocked = true;
           const invoice = invoiceLock.rows[0];
           const invoiceAmount = parseFloat(invoice.amount);
           const currentPaidAmount = parseFloat(invoice.paid_amount || '0');
           const paymentAmount = parseFloat(transaction.amount);
-          
+
           // Validate overpayment for invoice
           if (currentPaidAmount + paymentAmount > invoiceAmount + 0.1) {
             const overpayment = (currentPaidAmount + paymentAmount) - invoiceAmount;
@@ -422,7 +516,7 @@ router.post('/', async (req: TenantRequest, res) => {
               overpayment: overpayment
             };
           }
-          
+
           console.log('✅ POST /transactions - Invoice locked and validated');
         } catch (lockError: any) {
           if (lockError.code === '55P03' || lockError.code === 'LOCK_NOT_AVAILABLE') {
@@ -438,13 +532,13 @@ router.post('/', async (req: TenantRequest, res) => {
           throw lockError;
         }
       }
-      
+
       // Check if transaction with this ID already exists
       const existing = await client.query(
         'SELECT * FROM transactions WHERE id = $1 AND tenant_id = $2',
         [transactionId, req.tenantId]
       );
-      
+
       if (existing.rows.length > 0) {
         // Update existing transaction
         wasUpdate = true;
@@ -500,7 +594,7 @@ router.post('/', async (req: TenantRequest, res) => {
           amount: transaction.amount,
           billId: transaction.billId
         });
-        
+
         const insertResult = await client.query(
           `INSERT INTO transactions (
             id, tenant_id, user_id, type, subtype, amount, date, description, account_id, 
@@ -537,12 +631,12 @@ router.post('/', async (req: TenantRequest, res) => {
           ]
         );
         await applyAccountBalanceChanges(client, req.tenantId!, transaction, 1);
-        
+
         console.log('✅ POST /transactions - Transaction inserted successfully:', {
           id: insertResult.rows[0]?.id,
           rowCount: insertResult.rowCount
         });
-        
+
         // If bill is locked, update it within the same transaction
         if (billLocked && transaction.billId) {
           // Recalculate total paid amount from all transactions for this bill
@@ -551,13 +645,13 @@ router.post('/', async (req: TenantRequest, res) => {
             [transaction.billId, req.tenantId]
           );
           const totalPaid = parseFloat(billTransactions.rows[0]?.total_paid || '0');
-          
+
           // Get bill amount to calculate status
           const billData = await client.query(
             'SELECT amount FROM bills WHERE id = $1 AND tenant_id = $2',
             [transaction.billId, req.tenantId]
           );
-          
+
           if (billData.rows.length > 0) {
             const billAmount = parseFloat(billData.rows[0].amount);
             let newStatus = 'Unpaid';
@@ -566,7 +660,7 @@ router.post('/', async (req: TenantRequest, res) => {
             } else if (totalPaid > 0.01) {
               newStatus = 'Partially Paid';
             }
-            
+
             // Update bill (row is already locked via FOR UPDATE NOWAIT)
             const updatedBill = await client.query(
               `UPDATE bills 
@@ -575,7 +669,7 @@ router.post('/', async (req: TenantRequest, res) => {
                RETURNING *`,
               [totalPaid, newStatus, transaction.billId, req.tenantId]
             );
-            
+
             console.log('✅ POST /transactions - Updated bill within transaction:', {
               billId: transaction.billId,
               totalPaid,
@@ -583,7 +677,7 @@ router.post('/', async (req: TenantRequest, res) => {
             });
           }
         }
-        
+
         // If invoice is locked, update it within the same transaction
         if (invoiceLocked && transaction.invoiceId) {
           const invoiceTransactions = await client.query(
@@ -591,12 +685,12 @@ router.post('/', async (req: TenantRequest, res) => {
             [transaction.invoiceId, req.tenantId]
           );
           const totalPaid = parseFloat(invoiceTransactions.rows[0]?.total_paid || '0');
-          
+
           const invoiceData = await client.query(
             'SELECT amount FROM invoices WHERE id = $1 AND tenant_id = $2',
             [transaction.invoiceId, req.tenantId]
           );
-          
+
           if (invoiceData.rows.length > 0) {
             const invoiceAmount = parseFloat(invoiceData.rows[0].amount);
             let newStatus = 'Unpaid';
@@ -605,16 +699,16 @@ router.post('/', async (req: TenantRequest, res) => {
             } else if (totalPaid > 0.1) {
               newStatus = 'Partially Paid';
             }
-            
+
             await client.query(
               'UPDATE invoices SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4',
               [totalPaid, newStatus, transaction.invoiceId, req.tenantId]
             );
-            
+
             console.log('✅ POST /transactions - Updated invoice within transaction');
           }
         }
-        
+
         const insertedTransaction = insertResult.rows[0];
         console.log('✅ POST /transactions - Returning inserted transaction:', {
           id: insertedTransaction?.id,
@@ -624,18 +718,18 @@ router.post('/', async (req: TenantRequest, res) => {
         return insertedTransaction;
       }
     });
-    
+
     console.log('✅ POST /transactions - Transaction completed, result:', {
       hasResult: !!result,
       resultId: result?.id,
       resultType: result?.type
     });
-    
+
     if (!result) {
       console.error('❌ POST /transactions - Transaction returned no result');
       return res.status(500).json({ error: 'Failed to create/update transaction' });
     }
-    
+
     // Log audit entry
     if (req.user) {
       await logTransactionAudit(
@@ -651,7 +745,7 @@ router.post('/', async (req: TenantRequest, res) => {
         req
       );
     }
-    
+
     // Update bill's paid_amount if this transaction is linked to a bill
     // Note: For new transactions, bill is already updated within the transaction above
     // This section only handles updates to existing transactions or when bill wasn't locked
@@ -663,13 +757,13 @@ router.post('/', async (req: TenantRequest, res) => {
           [result.bill_id, req.tenantId]
         );
         const totalPaid = parseFloat(billTransactions[0]?.total_paid || '0');
-        
+
         // Get bill amount to calculate status
         const billData = await db.query(
           'SELECT amount FROM bills WHERE id = $1 AND tenant_id = $2',
           [result.bill_id, req.tenantId]
         );
-        
+
         if (billData.length > 0) {
           const billAmount = parseFloat(billData[0].amount);
           let newStatus = 'Unpaid';
@@ -678,19 +772,19 @@ router.post('/', async (req: TenantRequest, res) => {
           } else if (totalPaid > 0.01) {
             newStatus = 'Partially Paid';
           }
-          
+
           // Update bill's paid_amount and status
           const updatedBill = await db.query(
             'UPDATE bills SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4 RETURNING *',
             [totalPaid, newStatus, result.bill_id, req.tenantId]
           );
-          
+
           console.log('✅ POST /transactions - Updated bill paid_amount:', {
             billId: result.bill_id,
             totalPaid,
             status: newStatus
           });
-          
+
           // Emit WebSocket event to notify other users of bill update
           if (updatedBill.length > 0) {
             emitToTenant(req.tenantId!, WS_EVENTS.BILL_UPDATED, {
@@ -711,7 +805,7 @@ router.post('/', async (req: TenantRequest, res) => {
           'SELECT * FROM bills WHERE id = $1 AND tenant_id = $2',
           [result.bill_id, req.tenantId]
         );
-        
+
         if (updatedBill.length > 0) {
           emitToTenant(req.tenantId!, WS_EVENTS.BILL_UPDATED, {
             bill: updatedBill[0],
@@ -723,7 +817,7 @@ router.post('/', async (req: TenantRequest, res) => {
         console.error('⚠️ POST /transactions - Failed to fetch updated bill:', error);
       }
     }
-    
+
     // Update invoice's paid_amount if this transaction is linked to an invoice
     if (result.invoice_id) {
       try {
@@ -733,13 +827,13 @@ router.post('/', async (req: TenantRequest, res) => {
           [result.invoice_id, req.tenantId]
         );
         const totalPaid = parseFloat(invoiceTransactions[0]?.total_paid || '0');
-        
+
         // Get invoice amount to calculate status
         const invoiceData = await db.query(
           'SELECT amount FROM invoices WHERE id = $1 AND tenant_id = $2',
           [result.invoice_id, req.tenantId]
         );
-        
+
         if (invoiceData.length > 0) {
           const invoiceAmount = parseFloat(invoiceData[0].amount);
           let newStatus = 'Unpaid';
@@ -748,13 +842,13 @@ router.post('/', async (req: TenantRequest, res) => {
           } else if (totalPaid > 0.1) {
             newStatus = 'Partially Paid';
           }
-          
+
           // Get full invoice data to ensure we have all required fields for upsert
           const fullInvoiceData = await db.query(
             'SELECT * FROM invoices WHERE id = $1 AND tenant_id = $2',
             [result.invoice_id, req.tenantId]
           );
-          
+
           if (fullInvoiceData.length > 0) {
             // Invoice exists - update it
             const invoice = fullInvoiceData[0];
@@ -765,13 +859,13 @@ router.post('/', async (req: TenantRequest, res) => {
                RETURNING *`,
               [totalPaid, newStatus, result.invoice_id, req.tenantId]
             );
-            
+
             console.log('✅ POST /transactions - Updated invoice paid_amount:', {
               invoiceId: result.invoice_id,
               totalPaid,
               status: newStatus
             });
-            
+
             // Emit WebSocket event to notify other users of invoice update
             if (updatedInvoice.length > 0) {
               emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_UPDATED, {
@@ -794,21 +888,21 @@ router.post('/', async (req: TenantRequest, res) => {
         console.error('⚠️ POST /transactions - Failed to update invoice paid_amount:', invoiceUpdateError);
       }
     }
-    
+
     console.log('✅ POST /transactions - Transaction saved successfully:', {
       id: result.id,
       type: result.type,
       amount: result.amount,
       tenantId: req.tenantId
     });
-    
+
     // Emit WebSocket event for real-time sync
     emitToTenant(req.tenantId!, wasUpdate ? WS_EVENTS.TRANSACTION_UPDATED : WS_EVENTS.TRANSACTION_CREATED, {
       transaction: result,
       userId: req.user?.userId,
       username: req.user?.username,
     });
-    
+
     res.status(201).json(result);
   } catch (error: any) {
     console.error('❌ POST /transactions - Error:', {
@@ -818,55 +912,55 @@ router.post('/', async (req: TenantRequest, res) => {
       tenantId: req.tenantId,
       transactionId: req.body?.id
     });
-    
+
     // Handle specific error codes
     if (error.code === '23505') { // Unique violation
-      return res.status(409).json({ 
+      return res.status(409).json({
         error: 'Duplicate transaction',
         message: 'A transaction with this ID already exists'
       });
     }
-    
+
     if (error.code === 'BILL_LOCKED' || error.code === 'INVOICE_LOCKED') {
-      return res.status(409).json({ 
+      return res.status(409).json({
         error: 'Concurrent modification',
         message: error.message,
         code: error.code,
         retryAfter: error.retryAfter
       });
     }
-    
+
     if (error.code === 'PAYMENT_OVERPAYMENT') {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Overpayment detected',
         message: error.message,
         code: error.code,
         overpayment: error.overpayment
       });
     }
-    
+
     if (error.code === 'ACCOUNT_NOT_FOUND') {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Account not found',
         message: error.message,
         code: error.code,
         accountId: error.accountId
       });
     }
-    
+
     if (error.code === 'BILL_VERSION_MISMATCH') {
-      return res.status(409).json({ 
+      return res.status(409).json({
         error: 'Concurrent modification',
         message: error.message,
         code: error.code
       });
     }
-    
+
     // Handle foreign key constraint violations
     if (error.code === '23503') {
       const constraint = error.constraint;
       if (constraint === 'transactions_account_id_fkey') {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: 'Account not found',
           message: `The selected account does not exist. Please select a valid account.`,
           code: 'ACCOUNT_NOT_FOUND',
@@ -874,7 +968,7 @@ router.post('/', async (req: TenantRequest, res) => {
         });
       }
       if (constraint === 'transactions_from_account_id_fkey') {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: 'From account not found',
           message: `The selected "from" account does not exist. Please select a valid account.`,
           code: 'ACCOUNT_NOT_FOUND',
@@ -882,7 +976,7 @@ router.post('/', async (req: TenantRequest, res) => {
         });
       }
       if (constraint === 'transactions_to_account_id_fkey') {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: 'To account not found',
           message: `The selected "to" account does not exist. Please select a valid account.`,
           code: 'ACCOUNT_NOT_FOUND',
@@ -890,17 +984,17 @@ router.post('/', async (req: TenantRequest, res) => {
         });
       }
     }
-    
+
     // Handle PostgreSQL lock errors
     if (error.code === '55P03' || error.message?.includes('could not obtain lock')) {
-      return res.status(409).json({ 
+      return res.status(409).json({
         error: 'Lock timeout',
         message: 'This resource is currently being processed by another user. Please try again in a moment.',
         code: 'LOCK_TIMEOUT'
       });
     }
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       error: 'Failed to create/update transaction',
       message: error.message || 'Internal server error'
     });
@@ -911,17 +1005,17 @@ router.post('/', async (req: TenantRequest, res) => {
 router.put('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
-    
+
     // Get old values for audit log
     const oldTransaction = await db.query(
       'SELECT * FROM transactions WHERE id = $1 AND tenant_id = $2',
       [req.params.id, req.tenantId]
     );
-    
+
     if (oldTransaction.length === 0) {
       return res.status(404).json({ error: 'Transaction not found' });
     }
-    
+
     const transaction = req.body;
     const query = `
       UPDATE transactions 
@@ -966,7 +1060,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
       await applyAccountBalanceChanges(client, req.tenantId!, updatedTransaction, 1);
       return updatedTransaction;
     });
-    
+
     // Log audit entry
     if (req.user) {
       await logTransactionAudit(
@@ -982,7 +1076,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
         req
       );
     }
-    
+
     // Update bill's paid_amount if this transaction is linked to a bill (check both old and new bill_id)
     const billIdToUpdate = result.bill_id || oldTransaction[0].bill_id;
     if (billIdToUpdate) {
@@ -992,12 +1086,12 @@ router.put('/:id', async (req: TenantRequest, res) => {
           [billIdToUpdate, req.tenantId]
         );
         const totalPaid = parseFloat(billTransactions[0]?.total_paid || '0');
-        
+
         const billData = await db.query(
           'SELECT amount FROM bills WHERE id = $1 AND tenant_id = $2',
           [billIdToUpdate, req.tenantId]
         );
-        
+
         if (billData.length > 0) {
           const billAmount = parseFloat(billData[0].amount);
           let newStatus = 'Unpaid';
@@ -1006,12 +1100,12 @@ router.put('/:id', async (req: TenantRequest, res) => {
           } else if (totalPaid > 0.01) {
             newStatus = 'Partially Paid';
           }
-          
+
           const updatedBill = await db.query(
             'UPDATE bills SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4 RETURNING *',
             [totalPaid, newStatus, billIdToUpdate, req.tenantId]
           );
-          
+
           if (updatedBill.length > 0) {
             emitToTenant(req.tenantId!, WS_EVENTS.BILL_UPDATED, {
               bill: updatedBill[0],
@@ -1024,7 +1118,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
         console.error('⚠️ PUT /transactions - Failed to update bill paid_amount:', billUpdateError);
       }
     }
-    
+
     // Update invoice's paid_amount if this transaction is linked to an invoice (check both old and new invoice_id)
     const invoiceIdToUpdate = result.invoice_id || oldTransaction[0].invoice_id;
     if (invoiceIdToUpdate) {
@@ -1034,12 +1128,12 @@ router.put('/:id', async (req: TenantRequest, res) => {
           [invoiceIdToUpdate, req.tenantId]
         );
         const totalPaid = parseFloat(invoiceTransactions[0]?.total_paid || '0');
-        
+
         const invoiceData = await db.query(
           'SELECT amount FROM invoices WHERE id = $1 AND tenant_id = $2',
           [invoiceIdToUpdate, req.tenantId]
         );
-        
+
         if (invoiceData.length > 0) {
           const invoiceAmount = parseFloat(invoiceData[0].amount);
           let newStatus = 'Unpaid';
@@ -1048,19 +1142,19 @@ router.put('/:id', async (req: TenantRequest, res) => {
           } else if (totalPaid > 0.1) {
             newStatus = 'Partially Paid';
           }
-          
+
           // Check if invoice exists before updating
           const fullInvoiceData = await db.query(
             'SELECT * FROM invoices WHERE id = $1 AND tenant_id = $2',
             [invoiceIdToUpdate, req.tenantId]
           );
-          
+
           if (fullInvoiceData.length > 0) {
             const updatedInvoice = await db.query(
               'UPDATE invoices SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4 RETURNING *',
               [totalPaid, newStatus, invoiceIdToUpdate, req.tenantId]
             );
-            
+
             if (updatedInvoice.length > 0) {
               emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_UPDATED, {
                 invoice: updatedInvoice[0],
@@ -1079,14 +1173,14 @@ router.put('/:id', async (req: TenantRequest, res) => {
         console.error('⚠️ PUT /transactions - Failed to update invoice paid_amount:', invoiceUpdateError);
       }
     }
-    
+
     // Emit WebSocket event for real-time sync
     emitToTenant(req.tenantId!, WS_EVENTS.TRANSACTION_UPDATED, {
       transaction: result,
       userId: req.user?.userId,
       username: req.user?.username,
     });
-    
+
     res.json(result);
   } catch (error) {
     console.error('Error updating transaction:', error);
@@ -1098,17 +1192,17 @@ router.put('/:id', async (req: TenantRequest, res) => {
 router.delete('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
-    
+
     // Get transaction data for audit log before deletion
     const oldTransaction = await db.query(
       'SELECT * FROM transactions WHERE id = $1 AND tenant_id = $2',
       [req.params.id, req.tenantId]
     );
-    
+
     if (oldTransaction.length === 0) {
       return res.status(404).json({ error: 'Transaction not found' });
     }
-    
+
     const result = await db.transaction(async (client) => {
       await applyAccountBalanceChanges(client, req.tenantId!, oldTransaction[0], -1);
       const deleteResult = await client.query(
@@ -1117,7 +1211,7 @@ router.delete('/:id', async (req: TenantRequest, res) => {
       );
       return deleteResult.rows[0];
     });
-    
+
     // Update bill's paid_amount if this transaction was linked to a bill
     if (oldTransaction[0].bill_id) {
       try {
@@ -1126,12 +1220,12 @@ router.delete('/:id', async (req: TenantRequest, res) => {
           [oldTransaction[0].bill_id, req.tenantId]
         );
         const totalPaid = parseFloat(billTransactions[0]?.total_paid || '0');
-        
+
         const billData = await db.query(
           'SELECT amount FROM bills WHERE id = $1 AND tenant_id = $2',
           [oldTransaction[0].bill_id, req.tenantId]
         );
-        
+
         if (billData.length > 0) {
           const billAmount = parseFloat(billData[0].amount);
           let newStatus = 'Unpaid';
@@ -1140,12 +1234,12 @@ router.delete('/:id', async (req: TenantRequest, res) => {
           } else if (totalPaid > 0.01) {
             newStatus = 'Partially Paid';
           }
-          
+
           const updatedBill = await db.query(
             'UPDATE bills SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4 RETURNING *',
             [totalPaid, newStatus, oldTransaction[0].bill_id, req.tenantId]
           );
-          
+
           if (updatedBill.length > 0) {
             emitToTenant(req.tenantId!, WS_EVENTS.BILL_UPDATED, {
               bill: updatedBill[0],
@@ -1158,7 +1252,7 @@ router.delete('/:id', async (req: TenantRequest, res) => {
         console.error('⚠️ DELETE /transactions - Failed to update bill paid_amount:', billUpdateError);
       }
     }
-    
+
     // Update invoice's paid_amount if this transaction was linked to an invoice
     if (oldTransaction[0].invoice_id) {
       try {
@@ -1167,12 +1261,12 @@ router.delete('/:id', async (req: TenantRequest, res) => {
           [oldTransaction[0].invoice_id, req.tenantId]
         );
         const totalPaid = parseFloat(invoiceTransactions[0]?.total_paid || '0');
-        
+
         const invoiceData = await db.query(
           'SELECT amount FROM invoices WHERE id = $1 AND tenant_id = $2',
           [oldTransaction[0].invoice_id, req.tenantId]
         );
-        
+
         if (invoiceData.length > 0) {
           const invoiceAmount = parseFloat(invoiceData[0].amount);
           let newStatus = 'Unpaid';
@@ -1181,19 +1275,19 @@ router.delete('/:id', async (req: TenantRequest, res) => {
           } else if (totalPaid > 0.1) {
             newStatus = 'Partially Paid';
           }
-          
+
           // Check if invoice exists before updating
           const fullInvoiceData = await db.query(
             'SELECT * FROM invoices WHERE id = $1 AND tenant_id = $2',
             [oldTransaction[0].invoice_id, req.tenantId]
           );
-          
+
           if (fullInvoiceData.length > 0) {
             const updatedInvoice = await db.query(
               'UPDATE invoices SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4 RETURNING *',
               [totalPaid, newStatus, oldTransaction[0].invoice_id, req.tenantId]
             );
-            
+
             if (updatedInvoice.length > 0) {
               emitToTenant(req.tenantId!, WS_EVENTS.INVOICE_UPDATED, {
                 invoice: updatedInvoice[0],
@@ -1212,7 +1306,7 @@ router.delete('/:id', async (req: TenantRequest, res) => {
         console.error('⚠️ DELETE /transactions - Failed to update invoice paid_amount:', invoiceUpdateError);
       }
     }
-    
+
     // Log audit entry
     if (req.user) {
       await logTransactionAudit(
@@ -1228,14 +1322,14 @@ router.delete('/:id', async (req: TenantRequest, res) => {
         req
       );
     }
-    
+
     // Emit WebSocket event for real-time sync
     emitToTenant(req.tenantId!, WS_EVENTS.TRANSACTION_DELETED, {
       transactionId: req.params.id,
       userId: req.user?.userId,
       username: req.user?.username,
     });
-    
+
     res.json({ success: true, id: result?.id || req.params.id });
   } catch (error) {
     console.error('Error deleting transaction:', error);
@@ -1248,33 +1342,33 @@ router.post('/batch', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const transactions = Array.isArray(req.body) ? req.body : req.body.transactions || [];
-    
+
     if (!transactions || transactions.length === 0) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation error',
         message: 'At least one transaction is required'
       });
     }
-    
+
     const results: Array<{
       transactionId: string;
       success: boolean;
       error?: string;
       transaction?: any;
     }> = [];
-    
+
     // Process each transaction individually with proper locking
     for (const transaction of transactions) {
       try {
         const transactionId = transaction.id || `transaction_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        
+
         const savedTransaction = await db.transaction(async (client) => {
           // Validate and ensure account exists
           const accountCheck = await client.query(
             'SELECT id FROM accounts WHERE id = $1 AND tenant_id = $2',
             [transaction.accountId, req.tenantId]
           );
-          
+
           if (accountCheck.rows.length === 0) {
             // Check if it's a system account that should be auto-created
             const systemAccount = SYSTEM_ACCOUNTS[transaction.accountId];
@@ -1294,14 +1388,14 @@ router.post('/batch', async (req: TenantRequest, res) => {
               };
             }
           }
-          
+
           // Validate from_account_id if provided (for transfers)
           if (transaction.fromAccountId) {
             const fromAccountCheck = await client.query(
               'SELECT id FROM accounts WHERE id = $1 AND tenant_id = $2',
               [transaction.fromAccountId, req.tenantId]
             );
-            
+
             if (fromAccountCheck.rows.length === 0) {
               const systemAccount = SYSTEM_ACCOUNTS[transaction.fromAccountId];
               if (systemAccount) {
@@ -1320,14 +1414,14 @@ router.post('/batch', async (req: TenantRequest, res) => {
               }
             }
           }
-          
+
           // Validate to_account_id if provided (for transfers)
           if (transaction.toAccountId) {
             const toAccountCheck = await client.query(
               'SELECT id FROM accounts WHERE id = $1 AND tenant_id = $2',
               [transaction.toAccountId, req.tenantId]
             );
-            
+
             if (toAccountCheck.rows.length === 0) {
               const systemAccount = SYSTEM_ACCOUNTS[transaction.toAccountId];
               if (systemAccount) {
@@ -1346,7 +1440,7 @@ router.post('/batch', async (req: TenantRequest, res) => {
               }
             }
           }
-          
+
           // Lock bill if transaction is linked to a bill
           if (transaction.billId && !transaction.id) { // Only lock for new transactions
             try {
@@ -1354,16 +1448,16 @@ router.post('/batch', async (req: TenantRequest, res) => {
                 'SELECT * FROM bills WHERE id = $1 AND tenant_id = $2 FOR UPDATE NOWAIT',
                 [transaction.billId, req.tenantId]
               );
-              
+
               if (billLock.rows.length === 0) {
                 throw { code: 'BILL_NOT_FOUND', message: 'Bill not found' };
               }
-              
+
               const bill = billLock.rows[0];
               const billAmount = parseFloat(bill.amount);
               const currentPaidAmount = parseFloat(bill.paid_amount || '0');
               const paymentAmount = parseFloat(transaction.amount);
-              
+
               // Validate overpayment
               if (currentPaidAmount + paymentAmount > billAmount + 0.01) {
                 const overpayment = (currentPaidAmount + paymentAmount) - billAmount;
@@ -1384,13 +1478,13 @@ router.post('/batch', async (req: TenantRequest, res) => {
               throw lockError;
             }
           }
-          
+
           // Check if transaction already exists
           const existing = await client.query(
             'SELECT * FROM transactions WHERE id = $1 AND tenant_id = $2',
             [transactionId, req.tenantId]
           );
-          
+
           let savedTransaction;
           if (existing.rows.length > 0) {
             // Update existing
@@ -1474,7 +1568,7 @@ router.post('/batch', async (req: TenantRequest, res) => {
             );
             savedTransaction = insertResult.rows[0];
             await applyAccountBalanceChanges(client, req.tenantId!, savedTransaction, 1);
-            
+
             // Update bill if linked
             if (transaction.billId && !transaction.id) {
               const billTransactions = await client.query(
@@ -1482,12 +1576,12 @@ router.post('/batch', async (req: TenantRequest, res) => {
                 [transaction.billId, req.tenantId]
               );
               const totalPaid = parseFloat(billTransactions.rows[0]?.total_paid || '0');
-              
+
               const billData = await client.query(
                 'SELECT amount FROM bills WHERE id = $1 AND tenant_id = $2',
                 [transaction.billId, req.tenantId]
               );
-              
+
               if (billData.rows.length > 0) {
                 const billAmount = parseFloat(billData.rows[0].amount);
                 let newStatus = 'Unpaid';
@@ -1496,7 +1590,7 @@ router.post('/batch', async (req: TenantRequest, res) => {
                 } else if (totalPaid > 0.01) {
                   newStatus = 'Partially Paid';
                 }
-                
+
                 // Update bill (row is already locked via FOR UPDATE NOWAIT)
                 const updatedBill = await client.query(
                   `UPDATE bills 
@@ -1505,7 +1599,7 @@ router.post('/batch', async (req: TenantRequest, res) => {
                    RETURNING *`,
                   [totalPaid, newStatus, transaction.billId, req.tenantId]
                 );
-                
+
                 // Emit WebSocket event for bill update
                 if (updatedBill.rows.length > 0) {
                   emitToTenant(req.tenantId!, WS_EVENTS.BILL_UPDATED, {
@@ -1517,32 +1611,32 @@ router.post('/batch', async (req: TenantRequest, res) => {
               }
             }
           }
-          
+
           return savedTransaction;
         });
-        
+
         // Transaction succeeded
         results.push({
           transactionId,
           success: true,
           transaction: savedTransaction
         });
-        
+
         // Emit WebSocket event for transaction
         emitToTenant(req.tenantId!, WS_EVENTS.TRANSACTION_CREATED, {
           transaction: savedTransaction,
           userId: req.user?.userId,
           username: req.user?.username,
         });
-        
+
       } catch (error: any) {
         // Transaction failed
         const transactionId = transaction.id || `transaction_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        
+
         // Handle foreign key constraint violations for accounts
         let errorMessage = error.message || error.code || 'Unknown error';
         let errorCode = error.code;
-        
+
         if (error.code === '23503') {
           const constraint = error.constraint;
           if (constraint === 'transactions_account_id_fkey') {
@@ -1556,7 +1650,7 @@ router.post('/batch', async (req: TenantRequest, res) => {
             errorCode = 'ACCOUNT_NOT_FOUND';
           }
         }
-        
+
         results.push({
           transactionId,
           success: false,
@@ -1567,10 +1661,10 @@ router.post('/batch', async (req: TenantRequest, res) => {
         });
       }
     }
-    
+
     const successCount = results.filter(r => r.success).length;
     const failureCount = results.filter(r => !r.success).length;
-    
+
     res.status(200).json({
       success: failureCount === 0,
       total: transactions.length,
@@ -1578,10 +1672,10 @@ router.post('/batch', async (req: TenantRequest, res) => {
       failed: failureCount,
       results
     });
-    
+
   } catch (error: any) {
     console.error('Error processing batch transactions:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to process batch transactions',
       message: error.message || 'Internal server error'
     });

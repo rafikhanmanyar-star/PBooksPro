@@ -12,7 +12,7 @@ import ReportFooter from './ReportFooter';
 import ProjectTransactionModal from '../dashboard/ProjectTransactionModal';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import { formatDate } from '../../utils/dateUtils';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface CategorySummary {
@@ -75,7 +75,7 @@ type SortKey = 'categoryName' | 'count' | 'amount' | 'percentage';
 
 const ProjectCategoryReport: React.FC<ProjectCategoryReportProps> = ({ type }) => {
     const { state } = useAppContext();
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
     const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
     const [endDate, setEndDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]);
@@ -327,7 +327,7 @@ const ProjectCategoryReport: React.FC<ProjectCategoryReportProps> = ({ type }) =
                         endDate={endDate}
                         onDateChange={handleDateChange}
                         onExport={handleExport}
-                        onPrint={handlePrint}
+                        onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                         hideGroup={true}
                         showDateFilterPills={true}
                         activeDateRange={dateRange}

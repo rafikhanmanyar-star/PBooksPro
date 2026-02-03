@@ -305,7 +305,7 @@ VITE_ADMIN_API_URL=http://localhost:3000/api/admin
 ### Environment Files Location
 
 ```
-MyProjectBooks/
+PBooksPro/
 ├── .env                    # Client app (VITE_API_URL)
 ├── server/
 │   └── .env                # Server (DATABASE_URL, etc.)

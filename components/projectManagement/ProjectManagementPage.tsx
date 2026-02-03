@@ -62,7 +62,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    const [activeView, setActiveView] = useLocalStorage<ProjectView>('projectManagement_activeView', isMobile ? 'Invoices' : 'Agreements');
+    const [activeView, setActiveView] = useLocalStorage<ProjectView>('projectManagement_activeView', 'Agreements');
     
     const [isReportDropdownOpen, setIsReportDropdownOpen] = useState(false);
     const [isPayoutDropdownOpen, setIsPayoutDropdownOpen] = useState(false);
@@ -85,22 +85,6 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
     }, []);
 
     useEffect(() => {
-        switch(initialPage) {
-            case 'projectInvoices': setActiveView('Invoices'); break;
-            case 'bills': setActiveView('Bills'); break;
-            case 'projectManagement': break; // Keep current
-            default: break;
-        }
-    }, [initialPage, setActiveView]);
-
-    // Ensure we don't land on a hidden view on mobile
-    useEffect(() => {
-        if (isMobile && ['Marketing', 'Agreements', 'Contracts'].includes(activeView)) {
-            setActiveView('Invoices');
-        }
-    }, [isMobile, activeView, setActiveView]);
-
-    useEffect(() => {
         if (initialTabs && initialTabs.length > 0) {
             const [mainTab, subTab] = initialTabs;
             if (mainTab === 'Reports' && subTab) {
@@ -109,22 +93,18 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                 else if (subTab === 'PM Cost') setActiveView('PM Cost Report');
                 else setActiveView(subTab as ProjectView);
             } else if (['Marketing', 'Agreements', 'Contracts', 'Invoices', 'Bills', 'Sales Returns'].includes(mainTab)) {
-                if (isMobile && ['Marketing', 'Agreements', 'Contracts'].includes(mainTab)) {
-                    setActiveView('Invoices');
-                } else {
-                    setActiveView(mainTab as ProjectView);
-                }
+                setActiveView(mainTab as ProjectView);
             }
             dispatch({ type: 'CLEAR_INITIAL_TABS' });
         }
-    }, [initialTabs, dispatch, isMobile, setActiveView]);
+    }, [initialTabs, dispatch, setActiveView]);
 
     const renderContent = () => {
         switch(activeView) {
             // Operations
-            case 'Marketing': return !isMobile ? <MarketingPage /> : null;
-            case 'Agreements': return !isMobile ? <ProjectAgreementsPage /> : null;
-            case 'Contracts': return !isMobile ? <ProjectContractsPage /> : null;
+            case 'Marketing': return <MarketingPage />;
+            case 'Agreements': return <ProjectAgreementsPage />;
+            case 'Contracts': return <ProjectContractsPage />;
             case 'Invoices': return <InvoicesPage invoiceTypeFilter={InvoiceType.INSTALLMENT} hideTitleAndGoBack={true} />;
             case 'Bills': return <BillsPage projectContext={true} />;
             case 'Sales Returns': return <SalesReturnsPage />;
@@ -188,10 +168,10 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                 <div className="flex items-center flex-grow min-w-0">
                     {/* Operational Tabs - Scrollable */}
                     <div className="flex items-center gap-1 overflow-x-auto no-scrollbar flex-shrink">
-                        {!isMobile && <NavButton view="Marketing" label="Marketing" />}
-                        {!isMobile && <NavButton view="Agreements" label="Sales Agr." />}
+                        <NavButton view="Marketing" label="Marketing" />
+                        <NavButton view="Agreements" label="Sales Agr." />
                         <NavButton view="Invoices" label="Invoices" />
-                        {!isMobile && <NavButton view="Contracts" label="Contracts" />}
+                        <NavButton view="Contracts" label="Contracts" />
                         <NavButton view="Bills" label="Bills" />
                         <NavButton view="Sales Returns" label="Returns" />
                     </div>

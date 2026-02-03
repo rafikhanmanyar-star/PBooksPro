@@ -49,7 +49,37 @@ Access at: http://localhost:5174
 3. Update `DATABASE_URL` in `server/.env`
 4. Run migration: `cd server && npm run migrate`
 
-## 4. Testing
+## 4. MCP Server Setup (Optional - for AI Assistant Integration)
+
+The MCP (Model Context Protocol) server allows AI assistants in Cursor to query your database and access API information.
+
+```bash
+cd mcp-server
+npm install
+npm run build
+```
+
+**Configure Cursor:**
+1. Open Cursor Settings (Ctrl+, or Cmd+,)
+2. Go to **Features** → **MCP Servers**
+3. Add the following configuration:
+
+```json
+{
+  "mcpServers": {
+    "pbookspro": {
+      "command": "node",
+      "args": ["${workspaceFolder}/mcp-server/dist/index.js"]
+    }
+  }
+}
+```
+
+4. Restart Cursor
+
+The MCP server will automatically use the `DATABASE_URL` from `server/.env`. See `mcp-server/README.md` for more details.
+
+## 5. Testing
 
 1. Start backend: `cd server && npm run dev`
 2. Start admin: `cd admin && npm run dev`
@@ -63,6 +93,7 @@ Access at: http://localhost:5174
 - Deploy to Render using `render.yaml`
 - Change default admin password
 - Set up production environment variables
+- Configure MCP server for AI assistant integration (optional)
 
 See `MIGRATION_GUIDE.md` for detailed instructions.
 

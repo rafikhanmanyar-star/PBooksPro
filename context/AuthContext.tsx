@@ -6,6 +6,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { getApiBaseUrl } from '../config/apiUrl';
 import { apiClient } from '../services/api/client';
 import { logger } from '../services/logger';
 
@@ -38,7 +39,7 @@ interface AuthContextType extends AuthState {
   unifiedLogin: (organizationEmail: string, username: string, password: string) => Promise<void>;
   registerTenant: (data: TenantRegistrationData) => Promise<{ tenantId: string; trialDaysRemaining: number }>;
   logout: () => void;
-  checkLicenseStatus: () => Promise<{ isValid: boolean; daysRemaining?: number; type?: string }>;
+  checkLicenseStatus: () => Promise<{ isValid: boolean; daysRemaining?: number; type?: string; modules?: string[] }>;
 }
 
 export interface TenantRegistrationData {
@@ -70,7 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // Save all data to database before logout
       logger.logCategory('auth', '💾 Saving data before logout...');
-      
+
       // Dispatch event to trigger state save and wait for completion
       const savePromise = new Promise<void>((resolve) => {
         const handleSaveComplete = () => {
@@ -78,10 +79,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           resolve();
         };
         window.addEventListener('state-saved-for-logout', handleSaveComplete);
-        
+
         // Dispatch event to trigger save
         window.dispatchEvent(new CustomEvent('save-state-before-logout'));
-        
+
         // Timeout after 5 seconds to prevent hanging
         setTimeout(() => {
           window.removeEventListener('state-saved-for-logout', handleSaveComplete);
@@ -89,10 +90,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           resolve();
         }, 5000);
       });
-      
+
       await savePromise;
       logger.logCategory('auth', '✅ Data saved, proceeding with logout');
-      
+
       // Call logout API to clear session on server and update login_status = FALSE
       await apiClient.post('/auth/logout', {});
       logger.logCategory('auth', '✅ Logout API call completed, user status updated in cloud DB');
@@ -102,10 +103,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       // Clear local auth
       apiClient.clearAuth();
-      
+
       // Clear user_id from localStorage on logout
       localStorage.removeItem('user_id');
-      
+
+      try {
+        const { getBidirectionalSyncService } = await import('../services/sync/bidirectionalSyncService');
+        getBidirectionalSyncService().stop();
+      } catch (_) { }
       setState({
         isAuthenticated: false,
         user: null,
@@ -162,6 +167,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [state.isAuthenticated]);
 
   /**
+   * Start bi-directional sync when authenticated (connectivity-driven + run once)
+   */
+  useEffect(() => {
+    if (!state.isAuthenticated || !state.tenant?.id) return;
+    (async () => {
+      try {
+        const { isMobileDevice } = await import('../utils/platformDetection');
+        if (isMobileDevice()) return;
+        const { getBidirectionalSyncService } = await import('../services/sync/bidirectionalSyncService');
+        const bidir = getBidirectionalSyncService();
+        bidir.start(state.tenant!.id);
+        await bidir.runSync(state.tenant!.id);
+      } catch (_) { }
+    })();
+  }, [state.isAuthenticated, state.tenant?.id]);
+
+  /**
    * Handle app close/refresh - attempt to logout gracefully
    */
   useEffect(() => {
@@ -174,15 +196,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Use sendBeacon for more reliable delivery during page unload
         const token = apiClient.getToken();
         if (token && typeof navigator !== 'undefined' && navigator.sendBeacon) {
-          // Construct logout URL (API base URL is hardcoded in client)
-          const API_BASE_URL = 'https://pbookspro-api.onrender.com/api';
+          // Construct logout URL (same host as app so works when opened from another PC)
+          const API_BASE_URL = getApiBaseUrl();
           const logoutUrl = `${API_BASE_URL}/auth/logout`;
-          
+
           // Create headers with token
           const headers = new Headers();
           headers.append('Authorization', `Bearer ${token}`);
           headers.append('Content-Type', 'application/json');
-          
+
           // sendBeacon doesn't support custom headers, so we'll use fetch with keepalive
           fetch(logoutUrl, {
             method: 'POST',
@@ -245,17 +267,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Use a ref to prevent multiple simultaneous auth checks
     let isChecking = false;
     let isMounted = true;
-    
+
     // Listen for auth expiration events from API client
     const handleAuthExpired = () => {
       logger.logCategory('auth', 'Auth expired event received, logging out...');
       logout();
     };
-    
+
     if (typeof window !== 'undefined') {
       window.addEventListener('auth:expired', handleAuthExpired);
     }
-    
+
     const checkAuth = async () => {
       // Prevent multiple simultaneous checks
       if (isChecking) {
@@ -305,7 +327,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   name: string;
                   company_name: string;
                 }>('/tenants/me');
-                
+
                 // Try to decode user info from JWT token
                 let userInfo = {
                   id: localStorage.getItem('user_id') || 'current-user',
@@ -314,7 +336,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   role: 'User',
                   tenantId: tenantInfo.id,
                 };
-                
+
                 try {
                   // Decode JWT to get user info
                   const parts = token.split('.');
@@ -331,7 +353,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 } catch (decodeError) {
                   logger.warnCategory('auth', 'Could not decode user info from token:', decodeError);
                 }
-                
+
                 if (isMounted) {
                   setState({
                     isAuthenticated: true,
@@ -370,11 +392,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           } catch (error: any) {
             if (!isMounted) return;
-            
+
             // Token invalid or expired, or network error
             // Don't clear auth on network errors - might be temporary
             const errorMessage = error instanceof Error ? error.message : String(error);
-            
+
             // Check if it's a 401 error (token invalid/expired)
             if (error?.status === 401) {
               // Token is invalid or expired - clear auth silently
@@ -427,7 +449,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     checkAuth();
-    
+
     // Cleanup: remove event listener and mark as unmounted
     return () => {
       isMounted = false;
@@ -493,7 +515,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (response.token && response.user && response.tenant) {
         logger.logCategory('auth', '✅ Login successful, processing response...');
-        
+
         // Store tenant info in localStorage for post-login session management
         localStorage.setItem('last_tenant_id', response.tenant.id);
         localStorage.setItem('last_username', username);
@@ -501,7 +523,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Set authentication
         apiClient.setAuth(response.token, response.tenant.id);
-        
+
         // Verify token is valid by checking it can be decoded
         try {
           const parts = response.token.split('.');
@@ -529,19 +551,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         logger.logCategory('auth', '✅ Login completed successfully');
 
+        // Sync pending operations after successful login
+        try {
+          const { isMobileDevice } = await import('../utils/platformDetection');
+          if (!isMobileDevice()) {
+            logger.logCategory('auth', '🔄 Syncing pending operations after login...');
+            const { getSyncManager } = await import('../services/sync/syncManager');
+            const syncManager = getSyncManager();
+            await syncManager.syncOnLogin();
+          }
+        } catch (syncError) {
+          logger.warnCategory('auth', '⚠️ Failed to sync on login:', syncError);
+        }
+
         // Load settings from cloud database after successful login
         try {
           logger.logCategory('auth', '📥 Loading settings from cloud database...');
           const { settingsSyncService } = await import('../services/settingsSyncService');
           const cloudSettings = await settingsSyncService.syncFromCloud();
-          
+
           // Dispatch settings to AppContext if available
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('load-cloud-settings', {
               detail: cloudSettings
             }));
           }
-          
+
           logger.logCategory('auth', '✅ Settings loaded from cloud database');
         } catch (settingsError) {
           logger.warnCategory('auth', '⚠️ Failed to load settings from cloud, will use local settings:', settingsError);
@@ -574,10 +609,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const unifiedLogin = useCallback(async (organizationEmail: string, username: string, password: string) => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
-    logger.logCategory('auth', '🔐 Starting unified login:', { 
-      orgEmail: organizationEmail.substring(0, 15) + '...', 
-      username: username.substring(0, 10) + '...', 
-      hasPassword: !!password 
+    logger.logCategory('auth', '🔐 Starting unified login:', {
+      orgEmail: organizationEmail.substring(0, 15) + '...',
+      username: username.substring(0, 10) + '...',
+      hasPassword: !!password
     });
 
     try {
@@ -600,7 +635,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (response.token && response.user && response.tenant) {
         logger.logCategory('auth', '✅ Unified login successful, processing response...');
-        
+
         // Store tenant info in localStorage for post-login session management
         localStorage.setItem('last_tenant_id', response.tenant.id);
         localStorage.setItem('last_username', username);
@@ -609,7 +644,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Set authentication
         apiClient.setAuth(response.token, response.tenant.id);
-        
+
         // Verify token is valid by checking it can be decoded
         try {
           const parts = response.token.split('.');
@@ -637,19 +672,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         logger.logCategory('auth', '✅ Unified login completed successfully');
 
+        // Sync pending operations after successful login
+        try {
+          const { isMobileDevice } = await import('../utils/platformDetection');
+          if (!isMobileDevice()) {
+            logger.logCategory('auth', '🔄 Syncing pending operations after login...');
+            const { getSyncManager } = await import('../services/sync/syncManager');
+            const syncManager = getSyncManager();
+            await syncManager.syncOnLogin();
+          }
+        } catch (syncError) {
+          logger.warnCategory('auth', '⚠️ Failed to sync on login:', syncError);
+        }
+
         // Load settings from cloud database after successful login
         try {
           logger.logCategory('auth', '📥 Loading settings from cloud database...');
           const { settingsSyncService } = await import('../services/settingsSyncService');
           const cloudSettings = await settingsSyncService.syncFromCloud();
-          
+
           // Dispatch settings to AppContext if available
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('load-cloud-settings', {
               detail: cloudSettings
             }));
           }
-          
+
           logger.logCategory('auth', '✅ Settings loaded from cloud database');
         } catch (settingsError) {
           logger.warnCategory('auth', '⚠️ Failed to load settings from cloud, will use local settings:', settingsError);
@@ -746,10 +794,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     } catch (error: any) {
       logger.errorCategory('auth', 'registerTenant error:', error);
-      
+
       // Extract error message from various possible formats
       let errorMessage = 'Registration failed';
-      
+
       if (error) {
         if (typeof error === 'string') {
           errorMessage = error;
@@ -765,9 +813,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       }
-      
+
       // Error message set (no log needed)
-      
+
       setState(prev => ({
         ...prev,
         isLoading: false,
@@ -787,12 +835,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         daysRemaining?: number;
         type?: string;
         status?: string;
+        modules?: string[];
       }>('/tenants/license-status');
 
       return response;
     } catch (error: any) {
       logger.errorCategory('auth', 'License check error:', error);
-      return { isValid: false };
+      return { isValid: false, modules: [] };
     }
   }, []);
 
@@ -829,12 +878,12 @@ export const useAuth = (): AuthContextType => {
       tenant: null,
       isLoading: false,
       error: null,
-      login: async () => {},
+      login: async () => { },
       lookupTenants: async () => [],
-      smartLogin: async () => {},
-      unifiedLogin: async () => {},
+      smartLogin: async () => { },
+      unifiedLogin: async () => { },
       registerTenant: async () => ({ tenantId: '', trialDaysRemaining: 0 }),
-      logout: () => {},
+      logout: () => { },
       checkLicenseStatus: async () => ({ isValid: false }),
     };
   }

@@ -124,10 +124,15 @@ async function runTests() {
     log('2. Set TEST_USER_TOKEN environment variable');
     log('3. Run this script again\n');
   } else {
-    // GET config (should return 404 if not configured)
+    // GET config (should return 200 with configured: false if not configured)
     log('\n3.1 GET /api/whatsapp/config', 'blue');
     const getConfig = await testEndpoint('GET', '/api/whatsapp/config', undefined, TEST_USER_TOKEN);
-    log(`Status: ${getConfig.status}`, getConfig.status === 404 ? 'green' : 'yellow');
+    log(`Status: ${getConfig.status}`, getConfig.status === 200 ? 'green' : 'yellow');
+    if (getConfig.data?.configured === false) {
+      log('✓ Not configured (expected)', 'green');
+    } else if (getConfig.data?.configured === true) {
+      log('✓ Already configured', 'green');
+    }
     console.log('Response:', JSON.stringify(getConfig.data, null, 2));
 
     // POST config (create configuration)

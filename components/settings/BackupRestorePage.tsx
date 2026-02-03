@@ -331,13 +331,16 @@ const BackupRestorePage: React.FC = () => {
     };
     
     return (
-        <div className="bg-white rounded-lg border border-slate-300 shadow-sm">
-            <Tabs 
-                tabs={backupTabs} 
-                activeTab={activeTab} 
-                onTabClick={setActiveTab} 
-            />
-            <div className="min-h-[400px] border-t border-slate-300">
+        <div className="flex flex-col">
+            <div className="flex-shrink-0">
+                <Tabs
+                    variant="browser"
+                    tabs={backupTabs}
+                    activeTab={activeTab}
+                    onTabClick={setActiveTab}
+                />
+            </div>
+            <div className="flex-grow min-h-[400px] bg-white rounded-b-lg -mt-px">
                 {renderTabContent()}
             </div>
 

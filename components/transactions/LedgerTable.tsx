@@ -131,7 +131,7 @@ const LedgerTable: React.FC<LedgerTableProps> = ({
                     </td>
 
                     {/* Account Column */}
-                    <td className="hidden lg:table-cell px-3 py-2">
+                    <td className="px-3 py-2">
                         <div className="text-[11px] text-slate-600 font-medium truncate max-w-[150px]" title={tx.type === TransactionType.TRANSFER ? `${getAccountName(tx.fromAccountId)} → ${getAccountName(tx.toAccountId)}` : getAccountName(tx.accountId)}>
                             {tx.type === TransactionType.TRANSFER ? (
                                 <span className="flex items-center gap-1">
@@ -146,21 +146,21 @@ const LedgerTable: React.FC<LedgerTableProps> = ({
                     </td>
 
                     {/* Category Column */}
-                    <td className="hidden sm:table-cell px-3 py-2">
+                    <td className="px-3 py-2">
                         <span className="inline-flex items-center text-[10px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 truncate max-w-[120px]">
                             {getCategoryName(tx.categoryId)}
                         </span>
                     </td>
 
                     {/* Contact Column */}
-                    <td className="hidden md:table-cell px-3 py-2">
+                    <td className="px-3 py-2">
                         <div className="text-[11px] text-slate-600 truncate max-w-[120px]" title={getContactName(tx.contactId)}>
                             {getContactName(tx.contactId)}
                         </div>
                     </td>
 
                     {/* Context Column */}
-                    <td className="hidden xl:table-cell px-3 py-2">
+                    <td className="px-3 py-2">
                         {context ? (
                             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tight truncate max-w-[100px]" title={`${context.type}: ${context.name}`}>
                                 {context.name}
@@ -200,7 +200,7 @@ const LedgerTable: React.FC<LedgerTableProps> = ({
                 {/* Expanded Children */}
                 {isExpanded && hasChildren && (
                     <tr>
-                        <td colSpan={12} className="p-0 bg-slate-50 border-b border-slate-100">
+                        <td colSpan={10} className="p-0 bg-slate-50 border-b border-slate-100">
                             <div className="ml-10 mr-4 my-2 rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                                 <table className="w-full">
                                     <thead className="bg-slate-50 border-b border-slate-100">
@@ -281,81 +281,81 @@ const LedgerTable: React.FC<LedgerTableProps> = ({
         <div ref={tableRef} className="w-full flex flex-col">
             {/* Header */}
             <div className="flex-shrink-0 overflow-x-auto scroll-container-x border-b border-slate-200 bg-white">
-                <table className="w-full table-fixed min-w-[800px] md:min-w-[1200px] border-separate border-spacing-0">
+                <table className="w-full table-fixed min-w-[1200px] border-separate border-spacing-0">
                     <thead>
                         <tr className="bg-slate-50/50">
-                            <th className="bg-slate-100 w-[80px] md:w-[90px] px-2 md:px-3 py-2.5 text-left cursor-pointer hover:bg-slate-200/50 transition-colors border-r border-slate-200" onClick={() => onSort('date')}>
+                            <th className="bg-slate-100 w-[90px] px-3 py-2.5 text-left cursor-pointer hover:bg-slate-200/50 transition-colors border-r border-slate-200" onClick={() => onSort('date')}>
                                 <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                                     <span>Date</span>
                                     <SortIcon column="date" />
                                 </div>
                             </th>
-                            <th className="w-[70px] md:w-[85px] px-2 md:px-3 py-2.5 text-left cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => onSort('type')}>
+                            <th className="w-[85px] px-3 py-2.5 text-left cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => onSort('type')}>
                                 <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                                     <span>Type</span>
                                     <SortIcon column="type" />
                                 </div>
                             </th>
-                            <th className="px-3 py-2.5 text-left cursor-pointer hover:bg-slate-50 transition-colors min-w-[200px] md:min-w-[300px]" onClick={() => onSort('description')}>
+                            <th className="px-3 py-2.5 text-left cursor-pointer hover:bg-slate-50 transition-colors min-w-[300px]" onClick={() => onSort('description')}>
                                 <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                                     <span>Detailed Description</span>
                                     <SortIcon column="description" />
                                 </div>
                             </th>
-                            <th className="hidden lg:table-cell w-40 px-3 py-2.5 text-left cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => onSort('account')}>
+                            <th className="w-40 px-3 py-2.5 text-left cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => onSort('account')}>
                                 <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                                     <span>Account</span>
                                     <SortIcon column="account" />
                                 </div>
                             </th>
-                            <th className="hidden sm:table-cell w-32 px-3 py-2.5 text-left cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => onSort('category')}>
+                            <th className="w-32 px-3 py-2.5 text-left cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => onSort('category')}>
                                 <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                                     <span>Category</span>
                                     <SortIcon column="category" />
                                 </div>
                             </th>
-                            <th className="hidden md:table-cell w-32 px-3 py-2.5 text-left cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => onSort('contact')}>
+                            <th className="w-32 px-3 py-2.5 text-left cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => onSort('contact')}>
                                 <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                                     <span>Contact</span>
                                     <SortIcon column="contact" />
                                 </div>
                             </th>
-                            <th className="hidden xl:table-cell w-28 px-3 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                            <th className="w-28 px-3 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                                 <span>Context</span>
                             </th>
-                            <th className="w-28 md:w-32 px-2 md:px-3 py-2.5 text-right cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => onSort('amount')}>
+                            <th className="w-32 px-3 py-2.5 text-right cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => onSort('amount')}>
                                 <div className="flex items-center justify-end gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                                     <span>Amount</span>
                                     <SortIcon column="amount" />
                                 </div>
                             </th>
-                            <th className="bg-slate-100 w-28 md:w-32 px-2 md:px-3 py-2.5 text-right cursor-pointer hover:bg-slate-200/50 transition-colors border-l border-slate-200" onClick={() => onSort('balance')}>
+                            <th className="bg-slate-100 w-32 px-3 py-2.5 text-right cursor-pointer hover:bg-slate-200/50 transition-colors border-l border-slate-200" onClick={() => onSort('balance')}>
                                 <div className="flex items-center justify-end gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                                     <span>Balance</span>
                                     <SortIcon column="balance" />
                                 </div>
                             </th>
-                            <th className="w-10 md:w-12 px-1 md:px-2 py-2.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-widest">Act</th>
+                            <th className="w-12 px-2 py-2.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-widest">Act</th>
                         </tr>
                     </thead>
                 </table>
             </div>
 
             {/* Body */}
-            <div className="flex-1 overflow-x-auto scroll-container-x min-w-[800px] md:min-w-[1200px]">
+            <div className="flex-1 overflow-x-auto scroll-container-x min-w-[1200px]">
                 <table className="w-full table-fixed border-separate border-spacing-0">
                     <tbody className="divide-y divide-slate-100">
                         {groups.map((group) => (
                             <React.Fragment key={group.key}>
                                 {showGrouping && (
                                     <tr className="bg-slate-50/30">
-                                        <td colSpan={12} className="px-4 py-2 border-y border-slate-100">
+                                        <td colSpan={10} className="px-4 py-2 border-y border-slate-100">
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded uppercase tracking-widest">{group.title}</span>
                                                     <span className="text-[9px] font-bold text-slate-400">{group.transactions.length} RECORDS</span>
                                                 </div>
-                                                <div className="flex items-center gap-2 text-[10px] font-mono font-bold tabular-nums">
+                                                <div className="flex items-center gap-2 text-xs font-bold tabular-nums">
                                                     {(() => {
                                                         const summary = calculateGroupSummary(group.transactions);
                                                         return (

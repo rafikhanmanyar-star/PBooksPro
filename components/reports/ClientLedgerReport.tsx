@@ -13,7 +13,7 @@ import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import { formatDate } from '../../utils/dateUtils';
 import { WhatsAppService } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface LedgerItem {
@@ -43,7 +43,7 @@ interface AgreementSummary {
 const ClientLedgerReport: React.FC = () => {
     const { state } = useAppContext();
     const { showAlert } = useNotification();
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
     const { openChat } = useWhatsApp();
     
     // Date Filter State
@@ -479,7 +479,7 @@ const ClientLedgerReport: React.FC = () => {
                         searchQuery={searchQuery}
                         onSearchChange={setSearchQuery}
                         onExport={handleExport}
-                        onPrint={handlePrint}
+                        onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                         onWhatsApp={handleWhatsApp}
                         disableWhatsApp={selectedOwnerId === 'all'}
                         groupBy={groupBy}

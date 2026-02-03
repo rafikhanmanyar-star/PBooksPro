@@ -8,7 +8,7 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import ReportToolbar from './ReportToolbar';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface LoanReportRow {
@@ -21,7 +21,7 @@ interface LoanReportRow {
 
 const LoanAnalysisReport: React.FC = () => {
     const { state } = useAppContext();
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
     const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
     const [searchQuery, setSearchQuery] = useState('');
@@ -106,7 +106,7 @@ const LoanAnalysisReport: React.FC = () => {
                     searchQuery={searchQuery}
                     onSearchChange={setSearchQuery}
                     onExport={handleExport}
-                    onPrint={handlePrint}
+                    onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                     hideGroup={true}
                 />
             </div>

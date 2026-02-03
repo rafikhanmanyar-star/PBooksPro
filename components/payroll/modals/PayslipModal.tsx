@@ -37,6 +37,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [paymentAmount, setPaymentAmount] = useState<string>('');
 
   // System category ID for Salary Expenses
   const SALARY_EXPENSES_CATEGORY_ID = 'sys-cat-sal-exp';
@@ -114,10 +115,14 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
     return state.projects;
   }, [state.projects]);
 
-  // Fetch accounts from API if AppContext doesn't have them
+  // Fetch accounts from API if AppContext doesn't have them, or refresh when payment form opens
   useEffect(() => {
-    if (isOpen && state.accounts.length === 0 && !isLoadingAccounts) {
-      console.log('🔄 PayslipModal - AppContext has no accounts, fetching from API...');
+    if (isOpen && (state.accounts.length === 0 || showPaymentForm) && !isLoadingAccounts) {
+      console.log('🔄 PayslipModal - Fetching accounts from API...', {
+        hasStateAccounts: state.accounts.length > 0,
+        showPaymentForm,
+        reason: state.accounts.length === 0 ? 'No accounts in state' : 'Payment form opened - refreshing'
+      });
       setIsLoadingAccounts(true);
       
       apiClient.get<Account[]>('/accounts')
@@ -193,9 +198,14 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
       // Auto-select first account if available
       if (paymentAccounts.length > 0) {
         const cashAccount = paymentAccounts.find(a => a.name === 'Cash');
-        const accountToSelect = cashAccount?.id || paymentAccounts[0].id;
-        setSelectedAccountId(accountToSelect);
-        console.log('✅ Auto-selected account:', accountToSelect);
+        const accountToSelect = cashAccount 
+          ? (cashAccount.id || (cashAccount as any)._id || '')
+          : (paymentAccounts[0].id || (paymentAccounts[0] as any)._id || '');
+        const cleanAccountId = String(accountToSelect).trim();
+        if (cleanAccountId) {
+          setSelectedAccountId(cleanAccountId);
+          console.log('✅ Auto-selected account:', { id: cleanAccountId, name: cashAccount?.name || paymentAccounts[0].name });
+        }
       } else if (!isLoadingAccounts) {
         console.warn('⚠️ No payment accounts available to auto-select');
         const totalAccounts = state.accounts.length + fetchedAccounts.length;
@@ -224,6 +234,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
       setSelectedAccountId('');
       setSelectedCategoryId('');
       setSelectedProjectId('');
+      setPaymentAmount('');
       setFetchedAccounts([]);
       setIsLoadingAccounts(false);
     }
@@ -467,7 +478,25 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
             <div className="text-right no-print">
               {!isPaid && !showPaymentForm && (
                 <button
-                  onClick={() => setShowPaymentForm(true)}
+                  onClick={async () => {
+                    // Refresh accounts before opening payment form to ensure we have latest data
+                    if (state.accounts.length === 0 || fetchedAccounts.length === 0) {
+                      setIsLoadingAccounts(true);
+                      try {
+                        const freshAccounts = await apiClient.get<Account[]>('/accounts');
+                        if (freshAccounts && Array.isArray(freshAccounts)) {
+                          setFetchedAccounts(freshAccounts);
+                          console.log('✅ Refreshed accounts before payment:', freshAccounts.length);
+                        }
+                      } catch (error) {
+                        console.error('Failed to refresh accounts:', error);
+                      } finally {
+                        setIsLoadingAccounts(false);
+                      }
+                    }
+                    setPaymentAmount(netPay != null ? String(netPay) : '');
+                    setShowPaymentForm(true);
+                  }}
                   className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-lg flex items-center gap-2 transition-all text-sm"
                 >
                   <Wallet size={16} /> Pay Salary
@@ -508,7 +537,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                 </div>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   {paymentAccounts.length > 0 ? (
                     <ComboBox
@@ -624,7 +653,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                     entityType="category"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">
-                    The project will be charged using this expense category
+                    Default: Salary Expenses. Expense recorded under this category.
                   </p>
                 </div>
                 <div>
@@ -645,11 +674,28 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                     </p>
                   )}
                 </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
+                    Amount <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    placeholder={String(netPay)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-900"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Net pay: PKR {formatCurrency(netPay)} — edit to override
+                  </p>
+                </div>
               </div>
 
               <div className="flex items-center justify-between pt-4 border-t border-blue-200">
                 <div className="text-sm text-slate-600">
-                  Amount to debit: <span className="font-bold text-slate-900">PKR {formatCurrency(netPay)}</span>
+                  Amount to debit: <span className="font-bold text-slate-900">PKR {formatCurrency(parseFloat(paymentAmount) || netPay)}</span>
                 </div>
                 <div className="flex gap-3">
                   <button
@@ -667,6 +713,12 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                       
                       if (!selectedCategoryId) {
                         setPaymentError('Please select an expense category');
+                        return;
+                      }
+                      
+                      const amount = parseFloat(paymentAmount);
+                      if (isNaN(amount) || amount <= 0) {
+                        setPaymentError('Please enter a valid amount greater than zero');
                         return;
                       }
                       
@@ -736,19 +788,39 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                       
                       try {
                         // Use the verified account ID from the found account object
-                        const cleanAccountId = verifiedAccountId;
+                        // Ensure it's a clean string with no whitespace
+                        const cleanAccountId = String(verifiedAccountId).trim();
+                        
+                        // Double-check the account still exists in our list
+                        const finalAccountCheck = paymentAccounts.find(acc => {
+                          const accId = String(acc.id || (acc as any)._id || '').trim();
+                          return accId === cleanAccountId || accId.toLowerCase() === cleanAccountId.toLowerCase();
+                        });
+                        
+                        if (!finalAccountCheck) {
+                          console.error('❌ Account validation failed - account not in list:', {
+                            cleanAccountId,
+                            availableIds: paymentAccounts.map(a => String(a.id || '').trim())
+                          });
+                          setPaymentError('Account validation failed. Please refresh the page and try again.');
+                          setIsPaying(false);
+                          return;
+                        }
                         
                         console.log('📤 Sending payment request:', {
                           payslipId: payslipData.id,
                           accountId: cleanAccountId,
                           accountIdType: typeof cleanAccountId,
                           accountIdLength: cleanAccountId.length,
+                          accountIdJSON: JSON.stringify(cleanAccountId),
                           accountName: selectedAccount.name,
                           accountType: selectedAccount.type,
                           categoryId: selectedCategoryId,
                           projectId: selectedProjectId,
+                          amount,
                           selectedAccount: {
                             id: selectedAccount.id,
+                            idType: typeof selectedAccount.id,
                             name: selectedAccount.name,
                             type: selectedAccount.type
                           }
@@ -758,6 +830,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                           accountId: cleanAccountId,
                           categoryId: selectedCategoryId,
                           projectId: selectedProjectId || undefined,
+                          amount,
                           description: `Salary payment for ${employee.name} - ${run.month} ${run.year}`
                         });
                         
@@ -788,19 +861,25 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                           
                           let errorMsg = `Payment account not found. `;
                           if (availableAccounts && availableAccounts.length > 0) {
-                            errorMsg += `Please select one of the available accounts: ${availableAccounts.map((a: any) => a.name).join(', ')}.`;
+                            errorMsg += `Available accounts for this tenant: ${availableAccounts.map((a: any) => `${a.name} (${a.type})`).join(', ')}. `;
+                            errorMsg += `Please refresh the page and select one of these accounts.`;
                           } else {
-                            errorMsg += `The account may have been deleted or does not belong to this tenant. Please refresh the page and select a different account.`;
+                            errorMsg += `The account may have been deleted or does not belong to this tenant. `;
+                            errorMsg += `Current available accounts: ${paymentAccounts.map(a => `${a.name} (${a.type})`).join(', ')}. `;
+                            errorMsg += `Please refresh the page and try again.`;
                           }
+                          
+                          // Add debugging info in development
+                          if (process.env.NODE_ENV === 'development') {
+                            errorMsg += `\n\nDebug: Account ID sent: "${cleanAccountId}" (type: ${typeof cleanAccountId}, length: ${cleanAccountId.length})`;
+                          }
+                          
                           setPaymentError(errorMsg);
-                        } else if (errorMessage.includes('must be APPROVED') || errorMessage.includes('Cannot pay payslip')) {
-                          setPaymentError(`Cannot pay payslip: The payroll run must be APPROVED before individual payslips can be paid. Please approve the payroll run first.`);
                         }
                       }
                     }}
-                    disabled={isPaying || !selectedAccountId || !selectedCategoryId || run.status !== 'APPROVED' && run.status !== 'PAID'}
+                    disabled={isPaying || !selectedAccountId || !selectedCategoryId || !paymentAmount || isNaN(parseFloat(paymentAmount)) || parseFloat(paymentAmount) <= 0}
                     className="px-6 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
-                    title={run.status !== 'APPROVED' && run.status !== 'PAID' ? 'Payroll run must be APPROVED before paying payslips' : ''}
                   >
                     {isPaying ? (
                       <><Loader2 size={16} className="animate-spin" /> Processing...</>
@@ -808,11 +887,6 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                       <><CheckCircle2 size={16} /> Confirm Payment</>
                     )}
                   </button>
-                  {run.status !== 'APPROVED' && run.status !== 'PAID' && (
-                    <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
-                      <AlertCircle size={12} /> Payroll run must be APPROVED before paying payslips
-                    </p>
-                  )}
                 </div>
               </div>
             </div>

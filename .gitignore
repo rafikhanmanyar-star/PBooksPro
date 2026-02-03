@@ -43,6 +43,7 @@ build/*.pem
 .env.*.local
 server/.env
 admin/.env
+mcp-server/.env
 *.env
 
 # Database files

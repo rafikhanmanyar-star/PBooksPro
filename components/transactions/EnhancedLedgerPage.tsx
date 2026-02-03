@@ -21,6 +21,9 @@ import TransactionForm from './TransactionForm';
 import Modal from '../ui/Modal';
 import { usePaginatedTransactions } from '../../hooks/usePaginatedTransactions';
 import { useLookupMaps } from '../../hooks/useLookupMaps';
+import { usePrintContext } from '../../context/PrintContext';
+import ReportHeader from '../reports/ReportHeader';
+import ReportFooter from '../reports/ReportFooter';
 
 
 const initialFilters: FilterCriteria = {
@@ -42,6 +45,7 @@ const initialFilters: FilterCriteria = {
 const EnhancedLedgerPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const progress = useProgress();
+    const { print: triggerPrint } = usePrintContext();
 
     // State Management
     const [filters, setFilters] = useState<FilterCriteria>(initialFilters);
@@ -454,8 +458,8 @@ const EnhancedLedgerPage: React.FC = () => {
     }, [startFilterTransition]);
 
     const handlePrint = useCallback(() => {
-        window.print();
-    }, []);
+        triggerPrint('REPORT', { elementId: 'printable-area' });
+    }, [triggerPrint]);
 
     const toggleExpandRow = useCallback((id: string) => {
         setExpandedRowIds(prev => {
@@ -483,15 +487,12 @@ const EnhancedLedgerPage: React.FC = () => {
 
     return (
         <div className="flex flex-col min-h-full bg-slate-50/50 gap-2 sm:gap-4">
-            {/* Header Section */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0">
-                <div>
-                    <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Financial Ledger</h1>
-                    <p className="text-xs sm:text-sm text-slate-500 mt-1">Track and manage all financial transactions across your organization.</p>
-                </div>
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                    {!filters.startDate && !filters.endDate && (
-                        <div className="flex bg-slate-200/50 p-1 rounded-xl shadow-inner mr-2">
+            {/* Control Bar - All options in one row: period, type, search, filters, actions */}
+            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center gap-3 flex-shrink-0">
+                {/* Period: Monthly / All Time + Month picker */}
+                {!filters.startDate && !filters.endDate && (
+                    <>
+                        <div className="flex bg-slate-100/80 p-1 rounded-xl flex-shrink-0">
                             <button
                                 onClick={() => setViewMode('month')}
                                 className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${viewMode === 'month' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
@@ -505,81 +506,116 @@ const EnhancedLedgerPage: React.FC = () => {
                                 All Time
                             </button>
                         </div>
-                    )}
-                    {viewMode === 'month' && !filters.startDate && !filters.endDate && (
-                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex items-center h-9">
-                            <MonthNavigator currentDate={currentDate} onDateChange={setCurrentDate} />
-                        </div>
+                        {viewMode === 'month' && (
+                            <div className="bg-slate-50 rounded-lg border border-slate-200 overflow-hidden flex items-center h-8 flex-shrink-0">
+                                <MonthNavigator currentDate={currentDate} onDateChange={setCurrentDate} />
+                            </div>
+                        )}
+                        <div className="w-px h-6 bg-slate-200 flex-shrink-0 hidden sm:block"></div>
+                    </>
+                )}
+
+                {/* Type filter buttons */}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Type:</span>
+                    <div className="flex flex-wrap gap-1.5 p-1 bg-slate-100/80 rounded-xl">
+                        {[
+                            { value: '', label: 'All' },
+                            { value: 'Income', label: 'Income' },
+                            { value: 'Expense', label: 'Expense' },
+                            { value: 'Transfer', label: 'Transfer' },
+                            { value: 'Loan', label: 'Loan' },
+                        ].map(({ value, label }) => (
+                            <button
+                                key={value || 'all'}
+                                onClick={() => startFilterTransition(() => setFilters(prev => ({ ...prev, type: value, categoryId: '' })))}
+                                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                                    (filters.type || '') === value
+                                        ? value === 'Income'
+                                            ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/30'
+                                            : value === 'Expense'
+                                            ? 'bg-rose-500 text-white shadow-sm shadow-rose-500/30'
+                                            : value === 'Transfer'
+                                            ? 'bg-indigo-500 text-white shadow-sm shadow-indigo-500/30'
+                                            : value === 'Loan'
+                                            ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/30'
+                                            : 'bg-slate-700 text-white shadow-sm'
+                                        : 'text-slate-600 hover:bg-white hover:text-slate-800 hover:shadow-sm'
+                                }`}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="w-px h-6 bg-slate-200 flex-shrink-0 hidden sm:block"></div>
+
+                {/* Search */}
+                <div className="relative flex-1 min-w-[160px] max-w-xs">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <div className="w-4 h-4">{ICONS.search}</div>
+                    </div>
+                    <input
+                        type="text"
+                        placeholder="Filter by reference or name..."
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
+                        className="pl-9 pr-8 py-1.5 w-full text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:text-slate-400"
+                    />
+                    {searchInput && (
+                        <button onClick={() => setSearchInput('')} className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-rose-500">
+                            <div className="w-4 h-4">{ICONS.x}</div>
+                        </button>
                     )}
                 </div>
-            </div>
 
-            {/* Top Control Bar */}
-            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between flex-shrink-0">
-                <div className="flex items-center gap-3 flex-1 w-full md:w-auto">
-                    {/* Search */}
-                    <div className="relative flex-1 md:max-w-xs">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                            <div className="w-4 h-4">{ICONS.search}</div>
-                        </div>
-                        <input
-                            type="text"
-                            placeholder="Find description, ref, amount..."
-                            value={searchInput}
-                            onChange={(e) => setSearchInput(e.target.value)}
-                            className="pl-9 pr-8 py-1.5 w-full text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:text-slate-400"
-                        />
-                        {searchInput && (
-                            <button onClick={() => setSearchInput('')} className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-rose-500">
-                                <div className="w-4 h-4">{ICONS.x}</div>
-                            </button>
-                        )}
-                    </div>
+                {/* Filter Button */}
+                <button
+                    onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
+                    className={`relative px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 border flex-shrink-0 ${activeFiltersCount > 0
+                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm font-bold'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300'
+                        }`}
+                >
+                    <div className="w-4 h-4 opacity-70">{ICONS.filter}</div>
+                    <span>Filters</span>
+                    {activeFiltersCount > 0 && (
+                        <span className="bg-indigo-600 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center animate-pulse">
+                            {activeFiltersCount}
+                        </span>
+                    )}
+                </button>
 
-                    <div className="w-px h-6 bg-slate-200 hidden md:block"></div>
+                <div className="w-px h-6 bg-slate-200 flex-shrink-0 hidden sm:block"></div>
 
-                    {/* Filter Button */}
+                {/* Action icons: Print, Export, Import + New Transaction - right-aligned on wide screens */}
+                <div className="flex gap-2 items-center ml-auto flex-shrink-0">
+                <div className="flex gap-1 items-center bg-slate-100/50 p-1 rounded-lg">
+                    <button onClick={handlePrint} className="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-white rounded-md transition-all" title="Print Ledger">
+                        <div className="w-4 h-4">{ICONS.fileText}</div>
+                    </button>
+                    <button onClick={handleExport} className="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-white rounded-md transition-all" title="Export to Excel">
+                        <div className="w-4 h-4">{ICONS.download}</div>
+                    </button>
                     <button
-                        onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
-                        className={`relative px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 border ${activeFiltersCount > 0
-                            ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm font-bold'
-                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300'
-                            }`}
+                        onClick={() => {
+                            dispatch({ type: 'SET_INITIAL_IMPORT_TYPE', payload: ImportType.PAYMENTS });
+                            dispatch({ type: 'SET_PAGE', payload: 'import' });
+                        }}
+                        className="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-white rounded-md transition-all" title="Import Data"
                     >
-                        <div className="w-4 h-4 opacity-70">{ICONS.filter}</div>
-                        <span>Filters</span>
-                        {activeFiltersCount > 0 && (
-                            <span className="bg-indigo-600 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center animate-pulse">
-                                {activeFiltersCount}
-                            </span>
-                        )}
+                        <div className="w-4 h-4">{ICONS.upload}</div>
                     </button>
                 </div>
 
-                <div className="flex items-center gap-2 w-full md:w-auto border-t md:border-t-0 md:border-l border-slate-100 pt-3 md:pt-0 pl-0 md:pl-3">
-                    <div className="flex gap-1 items-center bg-slate-100/50 p-1 rounded-lg">
-                        <button onClick={handlePrint} className="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-white rounded-md transition-all" title="Print Ledger">
-                            <div className="w-4 h-4">{ICONS.fileText}</div>
-                        </button>
-                        <button onClick={handleExport} className="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-white rounded-md transition-all" title="Export to Excel">
-                            <div className="w-4 h-4">{ICONS.download}</div>
-                        </button>
-                        <button
-                            onClick={() => {
-                                dispatch({ type: 'SET_INITIAL_IMPORT_TYPE', payload: ImportType.PAYMENTS });
-                                dispatch({ type: 'SET_PAGE', payload: 'import' });
-                            }}
-                            className="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-white rounded-md transition-all" title="Import Data"
-                        >
-                            <div className="w-4 h-4">{ICONS.upload}</div>
-                        </button>
-                    </div>
-                    <Button
-                        onClick={() => { setSelectedTransaction(null); setIsAddModalOpen(true); }}
-                        className="!px-4 !py-2 !rounded-xl !text-sm !bg-indigo-600 hover:!bg-indigo-700 !text-white transition-all shadow-md shadow-indigo-500/20"
-                    >
-                        <div className="w-4 h-4 mr-2">{ICONS.plus}</div> New Transaction
-                    </Button>
+                {/* New Transaction */}
+                <Button
+                    onClick={() => { setSelectedTransaction(null); setIsAddModalOpen(true); }}
+                    className="!px-4 !py-2 !rounded-xl !text-sm !bg-indigo-600 hover:!bg-indigo-700 !text-white transition-all shadow-md shadow-indigo-500/20"
+                >
+                    <div className="w-4 h-4 mr-2">{ICONS.plus}</div> New Transaction
+                </Button>
                 </div>
             </div>
 
@@ -599,16 +635,19 @@ const EnhancedLedgerPage: React.FC = () => {
                 </div>
             )}
 
-            {/* Summary Area */}
-            <div className="flex-shrink-0 bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-3 opacity-[0.03] pointer-events-none">
-                    <div className="w-24 h-24">{ICONS.barChart}</div>
+            {/* Printable content - Summary + Table (unified print service) */}
+            <div className="flex flex-col gap-2 sm:gap-4 flex-grow min-h-0 printable-area" id="printable-area">
+                <ReportHeader />
+                {/* Summary Area */}
+                <div className="flex-shrink-0 p-4 rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/60 shadow-lg relative overflow-hidden printable-area">
+                    <div className="absolute top-0 right-0 p-3 opacity-[0.06] pointer-events-none text-white">
+                        <div className="w-24 h-24">{ICONS.barChart}</div>
+                    </div>
+                    <LedgerSummary transactions={transactionsWithBalance} />
                 </div>
-                <LedgerSummary transactions={transactionsWithBalance} />
-            </div>
 
-            {/* Main Table Area */}
-            <div className="min-h-[400px] md:min-h-[500px] bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col relative">
+                {/* Main Table Area */}
+                <div className="min-h-[400px] md:min-h-[500px] bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col relative printable-area">
                 {isLoadingTransactions && paginatedTransactions.length === 0 ? (
                     <div className="flex-1 flex flex-col items-center justify-center bg-slate-50/10">
                         <div className="relative w-12 h-12 mb-4">
@@ -674,6 +713,8 @@ const EnhancedLedgerPage: React.FC = () => {
                         <span>V1.1.2</span>
                     </div>
                 </div>
+            </div>
+                <ReportFooter />
             </div>
 
             {/* Transaction Detail Drawer */}

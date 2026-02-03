@@ -10,6 +10,7 @@ import DatePicker from '../ui/DatePicker';
 import { useNotification } from '../../context/NotificationContext';
 import { CURRENCY } from '../../constants';
 import { WhatsAppService } from '../../services/whatsappService';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 
@@ -25,6 +26,7 @@ type CostCenterType = 'project' | 'building' | 'general';
 const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionToEdit, transactionTypeForNew, onShowDeleteWarning }) => {
     const { state, dispatch } = useAppContext();
     const { showAlert, showConfirm } = useNotification();
+    const { openChat } = useWhatsApp();
     const entityFormModal = useEntityFormModal();
 
     const [type, setType] = useState<TransactionType>(transactionToEdit?.type || transactionTypeForNew || TransactionType.EXPENSE);
@@ -297,7 +299,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                             subject,
                             unitName
                         );
-                        WhatsAppService.sendMessage({ contact, message });
+
+                        // Open WhatsApp side panel with pre-filled message
+                        openChat(contact, contact.contactNo, message);
                     } catch (error) {
                         await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
                     }
@@ -349,7 +353,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
             )}
 
             {/* Top Row: Type & Date */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4">
                 {!isPayingBill && (
                     <Select 
                         id="transaction-type"

@@ -128,6 +128,7 @@ router.post('/flip-from-po/:poId', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const { poId } = req.params;
+    const { incomeCategoryId } = req.body || {};
 
     // Get PO
     const poResult = await db.query(
@@ -159,12 +160,12 @@ router.post('/flip-from-po/:poId', async (req: TenantRequest, res) => {
     // Parse PO items (stored as JSON string in database)
     const items = typeof po.items === 'string' ? JSON.parse(po.items) : po.items;
 
-    // Create invoice from PO items
+    // Create invoice from PO items (optional incomeCategoryId for supplier income category)
     const invoiceResult = await db.query(
       `INSERT INTO p2p_invoices (
         id, invoice_number, po_id, buyer_tenant_id, supplier_tenant_id, amount,
-        status, items, tenant_id, user_id, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        status, items, income_category_id, tenant_id, user_id, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING 
         id,
         invoice_number as "invoiceNumber",
@@ -190,6 +191,7 @@ router.post('/flip-from-po/:poId', async (req: TenantRequest, res) => {
         po.total_amount,
         'PENDING',
         JSON.stringify(items),
+        incomeCategoryId || null,
         req.tenantId,
         req.user?.userId || null,
         now,

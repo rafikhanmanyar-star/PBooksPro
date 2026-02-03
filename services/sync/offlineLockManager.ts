@@ -52,6 +52,11 @@ class OfflineLockManager {
    * Handle going offline
    */
   private handleOffline(): void {
+    // Mobile: No offline support, so no locking needed
+    if (isMobileDevice()) {
+      return;
+    }
+
     if (!this.currentUserId || !this.currentTenantId) {
       console.warn('[OfflineLockManager] No user context set, cannot acquire offline lock');
       return;
@@ -95,6 +100,11 @@ class OfflineLockManager {
    * Handle coming back online
    */
   private handleOnline(): void {
+    // Mobile: No offline support, so no locking needed
+    if (isMobileDevice()) {
+      return;
+    }
+
     if (!this.currentTenantId) {
       return;
     }
@@ -116,6 +126,11 @@ class OfflineLockManager {
    * Check if current user has offline write access
    */
   hasOfflineWriteAccess(): boolean {
+    // Mobile: No offline support
+    if (isMobileDevice()) {
+      return false;
+    }
+
     // If online, always have write access
     if (this.connectionMonitor.isOnline()) {
       return true;
@@ -141,6 +156,11 @@ class OfflineLockManager {
    * Check if another user has offline write access
    */
   getOfflineLockOwner(): { userId: string; userName: string } | null {
+    // Mobile: No offline support
+    if (isMobileDevice()) {
+      return null;
+    }
+
     // If online, no offline lock owner
     if (this.connectionMonitor.isOnline()) {
       return null;

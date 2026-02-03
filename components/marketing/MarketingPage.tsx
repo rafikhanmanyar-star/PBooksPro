@@ -24,7 +24,7 @@ import Card from '../ui/Card';
 import { ICONS } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
 import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import PrintButton from '../ui/PrintButton';
 import ReportHeader from '../reports/ReportHeader';
@@ -256,7 +256,7 @@ const MarketingPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { showToast, showAlert, showConfirm } = useNotification();
     const entityFormModal = useEntityFormModal();
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
     
     const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
     const [showForm, setShowForm] = useState(false);
@@ -885,6 +885,167 @@ const MarketingPage: React.FC = () => {
         );
     };
 
+    // Send Installment Plan via WhatsApp
+    const handleSendWhatsApp = async (plan: InstallmentPlan) => {
+        try {
+            const lead = state.contacts.find(l => l.id === plan.leadId);
+            if (!lead?.contactNo) {
+                await showAlert('This lead does not have a phone number saved.');
+                return;
+            }
+
+            // Show loading message
+            showToast('Generating plan image...');
+
+            // Generate image from the plan HTML
+            // First, we need to render the plan in a hidden div, capture it, then send
+            // For now, let's create a simplified approach: generate the plan HTML and convert to image
+            const project = state.projects.find(p => p.id === plan.projectId);
+            const unit = state.units.find(u => u.id === plan.unitId);
+            
+            // Create a temporary element to render the plan
+            const tempDiv = document.createElement('div');
+            tempDiv.style.position = 'absolute';
+            tempDiv.style.left = '-9999px';
+            tempDiv.style.width = '800px';
+            tempDiv.className = 'printable-area';
+            document.body.appendChild(tempDiv);
+
+            // Render the plan HTML (simplified version for image generation)
+            const planHtml = `
+                <div style="padding: 20px; font-family: Arial, sans-serif;">
+                    <h2 style="text-align: center; margin-bottom: 20px;">Installment Plan</h2>
+                    <div style="margin-bottom: 15px;">
+                        <strong>Lead:</strong> ${lead.name}<br>
+                        <strong>Project:</strong> ${project?.name || 'N/A'}<br>
+                        <strong>Unit:</strong> ${unit?.name || 'N/A'}<br>
+                        <strong>Net Value:</strong> Rs. ${plan.netValue?.toLocaleString() || '0'}<br>
+                        <strong>Down Payment:</strong> Rs. ${plan.downPaymentAmount?.toLocaleString() || '0'}<br>
+                        <strong>Installment Amount:</strong> Rs. ${plan.installmentAmount?.toLocaleString() || '0'}<br>
+                        <strong>Frequency:</strong> ${plan.frequency}<br>
+                        <strong>Duration:</strong> ${plan.durationYears} Years
+                    </div>
+                </div>
+            `;
+            tempDiv.innerHTML = planHtml;
+
+            // Use html2canvas to capture the image
+            // Note: html2canvas needs to be installed: npm install html2canvas
+            const html2canvas = (window as any).html2canvas;
+            if (!html2canvas) {
+                // Fallback: use a simpler approach - generate PDF-like image server-side
+                // For now, let's upload the plan data and generate on server
+                document.body.removeChild(tempDiv);
+                
+                // Create a document with plan data
+                const planJson = JSON.stringify({
+                    plan: plan,
+                    lead: lead,
+                    project: project,
+                    unit: unit
+                });
+                const base64Data = btoa(planJson);
+                // Calculate file size from base64: base64 is ~4/3 the size of the original
+                const fileSize = Math.ceil(base64Data.length * 0.75);
+                
+                const documentData = {
+                    name: `Installment Plan - ${lead.name}`,
+                    type: 'installment_plan',
+                    entityId: plan.id,
+                    entityType: 'installment_plan',
+                    fileData: base64Data,
+                    fileName: `plan-${plan.id}.json`,
+                    fileSize: fileSize,
+                    mimeType: 'application/json'
+                };
+
+                // Upload document
+                const docResponse = await apiClient.post('/documents', documentData);
+                const docId = docResponse.data.id;
+
+                        // Get public URL (including tenant ID for access)
+                        const baseUrl = window.location.origin;
+                        const tenantId = apiClient.getTenantId() || localStorage.getItem('tenant_id') || '';
+                        const documentUrl = `${baseUrl}/api/documents/${docId}/file?tenantId=${tenantId}`;
+
+                // Send via WhatsApp
+                await apiClient.post('/whatsapp/send-document', {
+                    contactId: lead.id,
+                    phoneNumber: lead.contactNo,
+                    documentUrl: documentUrl,
+                    filename: `Installment-Plan-${lead.name.replace(/\s+/g, '-')}.pdf`,
+                    caption: `Installment Plan for ${project?.name || 'Project'} - Unit ${unit?.name || 'N/A'}`
+                });
+
+                showToast('Plan sent via WhatsApp!');
+                return;
+            }
+
+            // Use html2canvas to generate image
+            const canvas = await html2canvas(tempDiv, {
+                scale: 2,
+                useCORS: true,
+                logging: false
+            });
+
+            document.body.removeChild(tempDiv);
+
+            // Convert canvas to blob
+            canvas.toBlob(async (blob: Blob | null) => {
+                if (!blob) {
+                    await showAlert('Failed to generate plan image.');
+                    return;
+                }
+
+                // Convert blob to base64
+                const reader = new FileReader();
+                reader.onloadend = async () => {
+                    const base64Data = (reader.result as string).split(',')[1];
+                    
+                    // Upload to documents API
+                    const documentData = {
+                        name: `Installment Plan - ${lead.name}`,
+                        type: 'installment_plan_image',
+                        entityId: plan.id,
+                        entityType: 'installment_plan',
+                        fileData: base64Data,
+                        fileName: `plan-${plan.id}-${Date.now()}.png`,
+                        fileSize: blob.size,
+                        mimeType: 'image/png'
+                    };
+
+                    try {
+                        const docResponse = await apiClient.post('/documents', documentData);
+                        const docId = docResponse.data.id;
+
+                        // Get public URL (including tenant ID for access)
+                        const baseUrl = window.location.origin;
+                        const tenantId = apiClient.getTenantId() || localStorage.getItem('tenant_id') || '';
+                        const documentUrl = `${baseUrl}/api/documents/${docId}/file?tenantId=${tenantId}`;
+
+                        // Send via WhatsApp
+                        await apiClient.post('/whatsapp/send-document', {
+                            contactId: lead.id,
+                            phoneNumber: lead.contactNo,
+                            documentUrl: documentUrl,
+                            filename: `Installment-Plan-${lead.name.replace(/\s+/g, '-')}.png`,
+                            caption: `Installment Plan for ${project?.name || 'Project'} - Unit ${unit?.name || 'N/A'}\n\nNet Value: Rs. ${plan.netValue?.toLocaleString()}\nDown Payment: Rs. ${plan.downPaymentAmount?.toLocaleString()}\nMonthly Installment: Rs. ${plan.installmentAmount?.toLocaleString()}`
+                        });
+
+                        showToast('Plan sent via WhatsApp!');
+                    } catch (error: any) {
+                        console.error('Error sending plan via WhatsApp:', error);
+                        await showAlert(`Failed to send plan: ${error.message || 'Unknown error'}`);
+                    }
+                };
+                reader.readAsDataURL(blob);
+            }, 'image/png');
+        } catch (error: any) {
+            console.error('Error in handleSendWhatsApp:', error);
+            await showAlert(`Failed to send plan via WhatsApp: ${error.message || 'Unknown error'}`);
+        }
+    };
+
     // Convert Installment Plan to Agreement
     const handleConvertToAgreement = async (plan: InstallmentPlan) => {
         try {
@@ -1445,7 +1606,7 @@ const MarketingPage: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2">
                     <PrintButton
-                        onPrint={handlePrint}
+                        onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                         disabled={!showForm}
                         label="Print Plan"
                         className="print:hidden"
@@ -2366,6 +2527,24 @@ const MarketingPage: React.FC = () => {
                                                         <div className="w-3.5 h-3.5">{ICONS.history}</div>
                                                         History
                                                     </Button>
+                                                    
+                                                    {lead?.contactNo && (
+                                                        <Button
+                                                            variant="secondary"
+                                                            size="sm"
+                                                            className="py-1.5 px-3 text-[10px] font-bold text-emerald-600 hover:bg-emerald-50"
+                                                            onClick={(e) => { 
+                                                                e.stopPropagation(); 
+                                                                handleSendWhatsApp(plan); 
+                                                            }}
+                                                            title="Send Plan via WhatsApp"
+                                                        >
+                                                            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                                                                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982a.96.96 0 01-.9-.26l-.833-.833a.96.96 0 01-.26-.9l.982-3.742-.214-.361a9.87 9.87 0 01-1.378-5.031c0-5.4 4.366-9.765 9.765-9.765s9.765 4.365 9.765 9.765c0 5.4-4.365 9.765-9.765 9.765m0-18.53c-4.833 0-8.765 3.932-8.765 8.765 0 1.842.57 3.55 1.544 4.953l-1.01 3.85 3.85-1.01a8.7 8.7 0 004.952 1.544c4.833 0 8.765-3.932 8.765-8.765S16.884 3.255 12.051 3.255"/>
+                                                            </svg>
+                                                            WhatsApp
+                                                        </Button>
+                                                    )}
                                                     
                                                     {!isLocked && (
                                                         <Button 

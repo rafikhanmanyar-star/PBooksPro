@@ -5,6 +5,7 @@ import { ICONS, APP_LOGO } from '../../constants';
 import LicenseManagement from '../license/LicenseManagement';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
+import { useLicense } from '../../context/LicenseContext';
 import { apiClient } from '../../services/api/client';
 import packageJson from '../../package.json';
 import ChatModal from '../chat/ChatModal';
@@ -12,6 +13,7 @@ import { getWebSocketClient } from '../../services/websocketClient';
 import { ChatMessagesRepository } from '../../services/database/repositories';
 import { getDatabaseService } from '../../services/database/databaseService';
 import Modal from '../ui/Modal';
+import useLocalStorage from '../../hooks/useLocalStorage';
 
 interface SidebarProps {
     currentPage: Page;
@@ -21,6 +23,7 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const { state, dispatch } = useAppContext();
     const { logout, tenant, user } = useAuth();
+    const { hasModule } = useLicense();
     const { currentUser } = state;
     const [isLicenseModalOpen, setIsLicenseModalOpen] = useState(false);
     const [onlineUsers, setOnlineUsers] = useState<number | null>(null);
@@ -32,14 +35,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
         daysRemaining: number;
         isExpired: boolean;
     } | null>(null);
-    
+
     // Get user name - prefer AuthContext user (cloud auth) over AppContext currentUser (local)
     // Fallback order: name -> username -> 'User'
     const userName = user?.name || currentUser?.name || user?.username || currentUser?.username || 'User';
     const userRole = user?.role || currentUser?.role || '';
     const organizationName = tenant?.companyName || tenant?.name || '';
     const currentUserId = user?.id || currentUser?.id || '';
-    
+
     const chatRepo = new ChatMessagesRepository();
     const wsClient = getWebSocketClient();
 
@@ -66,7 +69,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
         // Only fetch if user is authenticated
         if (user || currentUser) {
             fetchLicenseStatus();
-            
+
             // Refresh license status every 5 minutes
             const interval = setInterval(fetchLicenseStatus, 300000);
             return () => clearInterval(interval);
@@ -96,7 +99,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
         // Only fetch if user is authenticated
         if (user || currentUser) {
             fetchOnlineUsers();
-            
+
             // Refresh online users count every 30 seconds to keep it updated
             const interval = setInterval(fetchOnlineUsers, 30000);
             return () => clearInterval(interval);
@@ -113,7 +116,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                     // Database not ready yet, skip check (will be retried by interval)
                     return;
                 }
-                
+
                 const count = chatRepo.getUnreadCount(currentUserId);
                 setUnreadMessageCount(count);
             } catch (error) {
@@ -170,7 +173,18 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
 
     // Determine allowed pages based on role
     const isAccountsOnly = currentUser?.role === 'Accounts';
+
     const isAdmin = userRole === 'Admin' || currentUser?.role === 'Admin';
+
+    // Persisted state for collapsible groups
+    const [collapsedGroups, setCollapsedGroups] = useLocalStorage<Record<string, boolean>>('sidebar_collapsed_groups', {});
+
+    const handleToggleGroup = useCallback((title: string) => {
+        setCollapsedGroups(prev => ({
+            ...prev,
+            [title]: !prev[title]
+        }));
+    }, [setCollapsedGroups]);
 
     // Navigation groups - defined as a stable constant to prevent re-render issues
     // Payroll and other core modules are always visible regardless of auth state
@@ -196,34 +210,50 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                     { page: 'projectManagement', label: 'Projects', icon: ICONS.archive },
                     { page: 'rentalManagement', label: 'Rentals', icon: ICONS.building },
                     { page: 'vendorDirectory', label: 'Vendors', icon: ICONS.briefcase },
-                    { page: 'inventory', label: 'My Biz Transaction', icon: ICONS.package },
                     ...(isAdmin ? [{ page: 'investmentManagement', label: 'Inv. Cycle', icon: ICONS.dollarSign }] : []),
                     { page: 'pmConfig', label: 'PM Cycle', icon: ICONS.filter },
                 ]
             },
             {
-                title: 'Tasks',
+                title: 'People',
                 items: [
-                    { page: 'tasks', label: 'My Tasks', icon: ICONS.checkSquare },
-                    { page: 'tasksCalendar', label: 'Calendar', icon: ICONS.calendar },
-                    ...(isAdmin ? [{ page: 'teamRanking', label: 'Team Ranking', icon: ICONS.trophy }] : []),
+                    { page: 'payroll', label: 'Payroll', icon: ICONS.users },
                 ]
             },
             {
-                title: 'People',
+                title: 'Tasks',
                 items: [
-                    { page: 'contacts', label: 'Contacts', icon: ICONS.addressBook },
-                    { page: 'payroll', label: 'Payroll', icon: ICONS.users },
+                    { page: 'tasks', label: 'Overview', icon: ICONS.home },
+                    { page: 'taskOKR', label: 'OKRs & Strategy', icon: ICONS.target },
+                    { page: 'taskInitiatives', label: 'Initiatives', icon: ICONS.briefcase },
+                    { page: 'taskManagement', label: 'Tasks', icon: ICONS.checkSquare },
+                    { page: 'taskAssignment', label: 'Assignments', icon: ICONS.users },
+                    { page: 'taskWorkflow', label: 'Workflow', icon: ICONS.trendingUp },
+                    { page: 'taskExecution', label: 'Execution', icon: ICONS.activity },
+                    { page: 'taskKPIs', label: 'KPIs & Progress', icon: ICONS.barChart },
+                    { page: 'taskNotifications', label: 'Notifications', icon: ICONS.bell },
+                    { page: 'taskRoles', label: 'Roles & Access', icon: ICONS.shield },
                 ]
             },
             {
                 title: 'B2B',
                 items: [
-            { page: 'bizPlanet', label: 'Biz Planet', icon: ICONS.globe },
-            { page: 'marketing', label: 'Marketing', icon: ICONS.trendingUp },
-        ]
-    }
-];
+                    { page: 'bizPlanet', label: 'Biz Planet', icon: ICONS.globe },
+                ]
+            },
+            {
+                title: 'My Shop',
+                items: [
+                    { page: 'posSales', label: 'POS Sales', icon: ICONS.shoppingCart },
+                    { page: 'inventory', label: 'Inventory', icon: ICONS.package },
+                    { page: 'procurement', label: 'Procurement', icon: ICONS.archive },
+                    { page: 'accounting', label: 'Accounting', icon: ICONS.fileText },
+                    { page: 'loyalty', label: 'Loyalty', icon: ICONS.heart },
+                    { page: 'multiStore', label: 'Multi-store', icon: ICONS.grid },
+                    { page: 'biDashboards', label: 'BI Dashboards', icon: ICONS.barChart },
+                ]
+            }
+        ];
 
         // Add Settings for non-Accounts users
         if (!isAccountsOnly) {
@@ -234,9 +264,35 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 ]
             });
         }
-        
-        return groups;
-    }, [isAdmin, isAccountsOnly]);
+
+        // Filter groups based on modules
+        return groups.filter(group => {
+            if (group.title === 'Operations') {
+                // Keep Real Estate / Rental modules if enabled
+                const hasRealEstate = hasModule('real_estate');
+                const hasRental = hasModule('rental');
+
+                // If neither, we might still show basic operations like Vendor Directory
+                // But the user requested these to be optional
+                group.items = group.items.filter(item => {
+                    if (item.page === 'projectManagement' || item.page === 'pmConfig' || item.page === 'investmentManagement') return hasRealEstate;
+                    if (item.page === 'rentalManagement') return hasRental;
+                    return true; // Always show Vendor Directory (Basic)
+                });
+                return group.items.length > 0;
+            }
+            if (group.title === 'Tasks') {
+                return hasModule('tasks');
+            }
+            if (group.title === 'B2B') {
+                return hasModule('biz_planet');
+            }
+            if (group.title === 'My Shop') {
+                return hasModule('shop');
+            }
+            return true; // Always show Overview, Financials, People, System
+        });
+    }, [isAdmin, isAccountsOnly, hasModule]);
 
     const isCurrent = (itemPage: Page) => {
         if (currentPage === itemPage) return true;
@@ -284,14 +340,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
             {isMobileMenuOpen && (
                 <>
                     {/* Backdrop overlay */}
-                    <div 
+                    <div
                         className="fixed inset-0 bg-black/50 z-40 md:hidden animate-fade-in"
                         onClick={() => setIsMobileMenuOpen(false)}
                     />
-                    
+
                     {/* Mobile drawer */}
                     <aside className="fixed left-0 top-0 h-full w-64 bg-slate-900 border-r border-slate-800 z-50 md:hidden flex flex-col text-slate-300 animate-slide-in-left">
-                        
+
                         {/* Brand Header */}
                         <div className="h-14 flex items-center justify-between px-5 border-b border-slate-800/50 bg-slate-900/50 backdrop-blur-sm">
                             <div className="flex items-center gap-3">
@@ -320,37 +376,52 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                         </div>
 
                         {/* Navigation Menu */}
-                        <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
-                            {navGroups.map((group, idx) => (
-                                <div key={idx}>
-                                    <h3 className="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 opacity-80">{group.title}</h3>
-                                    <div className="space-y-0.5">
-                                        {group.items.map((item) => {
-                                            const active = isCurrent(item.page as Page);
-                                            return (
-                                                <button
-                                                    key={item.page}
-                                                    onClick={() => {
-                                                        setCurrentPage(item.page as Page);
-                                                        setIsMobileMenuOpen(false); // Close menu after navigation
-                                                    }}
-                                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-200 group touch-manipulation
-                                            ${active
-                                                            ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/30'
-                                                            : 'text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700'
-                                                        }`}
-                                                >
-                                                    <div className={`transition-colors ${active ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`}>
-                                                        {React.cloneElement(item.icon as any, { width: 18, height: 18 })}
-                                                    </div>
-                                                    <span className="truncate">{item.label}</span>
-                                                    {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/50"></div>}
-                                                </button>
-                                            );
-                                        })}
+                        <nav className="flex-1 px-3 py-4 space-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                            {navGroups.map((group, idx) => {
+                                const isCollapsed = collapsedGroups[group.title] || false;
+                                return (
+                                    <div key={idx} className="space-y-1">
+                                        <button
+                                            onClick={() => handleToggleGroup(group.title)}
+                                            className="w-full flex items-center justify-between px-3 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider hover:text-slate-300 transition-colors group/header"
+                                        >
+                                            <span className="opacity-80 group-hover/header:opacity-100">{group.title}</span>
+                                            <div className="text-slate-600 group-hover/header:text-slate-400">
+                                                {isCollapsed ?
+                                                    React.cloneElement(ICONS.chevronRight as any, { width: 14, height: 14 }) :
+                                                    React.cloneElement(ICONS.chevronDown as any, { width: 14, height: 14 })
+                                                }
+                                            </div>
+                                        </button>
+
+                                        <div className={`space-y-0.5 overflow-hidden transition-all duration-200 ${isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'}`}>
+                                            {group.items.map((item) => {
+                                                const active = isCurrent(item.page as Page);
+                                                return (
+                                                    <button
+                                                        key={item.page}
+                                                        onClick={() => {
+                                                            setCurrentPage(item.page as Page);
+                                                            setIsMobileMenuOpen(false); // Close menu after navigation
+                                                        }}
+                                                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all duration-200 group touch-manipulation
+                                                ${active
+                                                                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/30'
+                                                                : 'text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700'
+                                                            }`}
+                                                    >
+                                                        <div className={`transition-colors ${active ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`}>
+                                                            {React.cloneElement(item.icon as any, { width: 18, height: 18 })}
+                                                        </div>
+                                                        <span className="truncate">{item.label}</span>
+                                                        {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white/50"></div>}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </nav>
 
                         {/* Mobile Footer - Simplified */}
@@ -362,11 +433,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                         setIsLicenseModalOpen(true);
                                         setIsMobileMenuOpen(false);
                                     }}
-                                    className={`w-full mb-3 text-white p-2.5 rounded-lg shadow-lg relative overflow-hidden group ${
-                                        licenseInfo.isExpired 
-                                            ? 'bg-gradient-to-r from-rose-500 to-red-600' 
-                                            : 'bg-gradient-to-r from-amber-500 to-orange-600'
-                                    }`}
+                                    className={`w-full mb-3 text-white p-2.5 rounded-lg shadow-lg relative overflow-hidden group ${licenseInfo.isExpired
+                                        ? 'bg-gradient-to-r from-rose-500 to-red-600'
+                                        : 'bg-gradient-to-r from-amber-500 to-orange-600'
+                                        }`}
                                 >
                                     <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
                                     <div className="relative flex items-center justify-between">
@@ -421,9 +491,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                         setIsChatModalOpen(true);
                                         setIsMobileMenuOpen(false);
                                     }}
-                                    className={`w-full mt-2 px-3 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-sm font-medium transition-colors flex items-center justify-center gap-2 relative touch-manipulation ${
-                                        unreadMessageCount > 0 ? 'animate-pulse' : ''
-                                    }`}
+                                    className={`w-full mt-2 px-3 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-sm font-medium transition-colors flex items-center justify-center gap-2 relative touch-manipulation ${unreadMessageCount > 0 ? 'animate-pulse' : ''
+                                        }`}
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
@@ -463,35 +532,51 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 </div>
 
                 {/* Navigation Menu */}
-                <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
-                    {navGroups.map((group, idx) => (
-                        <div key={idx}>
-                            <h3 className="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 opacity-80">{group.title}</h3>
-                            <div className="space-y-0.5">
-                                {group.items.map((item) => {
-                                    const active = isCurrent(item.page as Page);
-                                    return (
-                                        <button
-                                            key={item.page}
-                                            onClick={() => setCurrentPage(item.page as Page)}
-                                            className={`w-full flex items-center gap-3 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 group
-                                    ${active
-                                                    ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/30'
-                                                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                                                }`}
-                                        >
-                                            <div className={`transition-colors ${active ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`}>
-                                                {/* Clone element to force size if needed, though usually controlled by SVG props */}
-                                                {React.cloneElement(item.icon as any, { width: 16, height: 16 })}
-                                            </div>
-                                            <span className="truncate">{item.label}</span>
-                                            {active && <div className="ml-auto w-1 h-1 rounded-full bg-white/50"></div>}
-                                        </button>
-                                    );
-                                })}
+                <nav className="flex-1 px-3 py-4 space-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                    {navGroups.map((group, idx) => {
+                        const isCollapsed = collapsedGroups[group.title] || false;
+
+                        return (
+                            <div key={idx} className="space-y-1">
+                                <button
+                                    onClick={() => handleToggleGroup(group.title)}
+                                    className="w-full flex items-center justify-between px-3 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider hover:text-slate-300 transition-colors group/header"
+                                >
+                                    <span className="opacity-80 group-hover/header:opacity-100">{group.title}</span>
+                                    <div className="text-slate-600 group-hover/header:text-slate-400">
+                                        {isCollapsed ?
+                                            React.cloneElement(ICONS.chevronRight as any, { width: 14, height: 14 }) :
+                                            React.cloneElement(ICONS.chevronDown as any, { width: 14, height: 14 })
+                                        }
+                                    </div>
+                                </button>
+
+                                <div className={`space-y-0.5 overflow-hidden transition-all duration-200 ${isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'}`}>
+                                    {group.items.map((item) => {
+                                        const active = isCurrent(item.page as Page);
+                                        return (
+                                            <button
+                                                key={item.page}
+                                                onClick={() => setCurrentPage(item.page as Page)}
+                                                className={`w-full flex items-center gap-3 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 group
+                                        ${active
+                                                        ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/30'
+                                                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                                                    }`}
+                                            >
+                                                <div className={`transition-colors ${active ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`}>
+                                                    {/* Clone element to force size if needed, though usually controlled by SVG props */}
+                                                    {React.cloneElement(item.icon as any, { width: 16, height: 16 })}
+                                                </div>
+                                                <span className="truncate">{item.label}</span>
+                                                {active && <div className="ml-auto w-1 h-1 rounded-full bg-white/50"></div>}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </nav>
 
                 {/* Footer / User Profile */}
@@ -501,11 +586,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                     {licenseInfo && (licenseInfo.isExpired || licenseInfo.daysRemaining <= 30) && (
                         <button
                             onClick={() => setIsLicenseModalOpen(true)}
-                            className={`w-full mb-3 text-white p-2.5 rounded-lg shadow-lg relative overflow-hidden group ${
-                                licenseInfo.isExpired 
-                                    ? 'bg-gradient-to-r from-rose-500 to-red-600' 
-                                    : 'bg-gradient-to-r from-amber-500 to-orange-600'
-                            }`}
+                            className={`w-full mb-3 text-white p-2.5 rounded-lg shadow-lg relative overflow-hidden group ${licenseInfo.isExpired
+                                ? 'bg-gradient-to-r from-rose-500 to-red-600'
+                                : 'bg-gradient-to-r from-amber-500 to-orange-600'
+                                }`}
                         >
                             <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
                             <div className="relative flex items-center justify-between">
@@ -571,9 +655,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                 </div>
                                 <button
                                     onClick={() => setIsChatModalOpen(true)}
-                                    className={`w-full px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition-colors flex items-center justify-center gap-2 relative ${
-                                        unreadMessageCount > 0 ? 'animate-pulse' : ''
-                                    }`}
+                                    className={`w-full px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition-colors flex items-center justify-center gap-2 relative ${unreadMessageCount > 0 ? 'animate-pulse' : ''
+                                        }`}
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
@@ -602,10 +685,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                     <LicenseManagement />
                 </Modal>
             )}
-            
-            <ChatModal 
-                isOpen={isChatModalOpen} 
-                onClose={() => setIsChatModalOpen(false)} 
+
+            <ChatModal
+                isOpen={isChatModalOpen}
+                onClose={() => setIsChatModalOpen(false)}
                 onlineUsers={onlineUsersList}
             />
         </>

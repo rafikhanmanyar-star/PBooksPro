@@ -9,15 +9,19 @@ import { AppState, Bill, Unit, Building, Property, RentalAgreement, ProjectAgree
 import { getDatabaseService } from '../databaseService';
 import { objectToDbFormat } from '../columnMapper';
 import { migrateBudgetsToNewStructure, migrateBudgetsArray } from '../budgetMigration';
-import { 
+import {
     UsersRepository, AccountsRepository, ContactsRepository, CategoriesRepository,
     ProjectsRepository, BuildingsRepository, PropertiesRepository, UnitsRepository,
     TransactionsRepository, InvoicesRepository, BillsRepository, BudgetsRepository,
     RentalAgreementsRepository, ProjectAgreementsRepository, ContractsRepository,
-    InstallmentPlansRepository, PlanAmenitiesRepository, RecurringTemplatesRepository, TransactionLogRepository, ErrorLogRepository, 
-    AppSettingsRepository, QuotationsRepository, DocumentsRepository, PMCycleAllocationsRepository
+    InstallmentPlansRepository, PlanAmenitiesRepository, RecurringTemplatesRepository, TransactionLogRepository, ErrorLogRepository,
+    QuotationsRepository, DocumentsRepository, PMCycleAllocationsRepository, AppSettingsRepository,
+    SalesReturnsRepository
 } from './index';
+
 import { migrateTenantColumns } from '../tenantMigration';
+import { BaseRepository } from './baseRepository';
+import { getSyncManager } from '../../sync/syncManager';
 
 export class AppStateRepository {
     private db = getDatabaseService();
@@ -48,6 +52,8 @@ export class AppStateRepository {
     private documentsRepo = new DocumentsRepository();
     private pmCycleAllocationsRepo = new PMCycleAllocationsRepository();
     private appSettingsRepo = new AppSettingsRepository();
+    private salesReturnsRepo = new SalesReturnsRepository();
+
 
     /**
      * Load complete application state from database
@@ -61,7 +67,7 @@ export class AppStateRepository {
                 throw new Error(`Failed to initialize database: ${error instanceof Error ? error.message : String(error)}`);
             }
         }
-        
+
         // CRITICAL: Ensure all schema columns exist BEFORE loading data
         // This prevents data loss when columns are missing (e.g., after restore)
         this.db.ensureAllTablesExist();
@@ -72,7 +78,7 @@ export class AppStateRepository {
         } catch (err) {
             console.warn('⚠️ Tenant column migration failed during loadState (continuing):', err);
         }
-        
+
         // Run rental_agreements tenant_id → contact_id migration if needed
         try {
             const { runRentalTenantIdToContactIdMigration } = await import('../migrations/migrate-rental-tenant-id-to-contact-id');
@@ -83,7 +89,7 @@ export class AppStateRepository {
         } catch (migrationError) {
             console.warn('⚠️ Rental agreements migration failed during loadState (continuing):', migrationError);
         }
-        
+
         // Run budget migration if needed (handles old backups with monthly budgets)
         try {
             const migrationResult = migrateBudgetsToNewStructure();
@@ -93,7 +99,7 @@ export class AppStateRepository {
         } catch (migrationError) {
             console.error('⚠️ Budget migration failed, continuing anyway:', migrationError);
         }
-        
+
         // Load all entities
         const users = this.usersRepo.findAll();
         const accounts = this.accountsRepo.findAll();
@@ -118,6 +124,8 @@ export class AppStateRepository {
         const pmCycleAllocations = this.pmCycleAllocationsRepo.findAll();
         const installmentPlans = this.installmentPlansRepo.findAll();
         const planAmenities = this.planAmenitiesRepo.findAll();
+        const salesReturns = this.salesReturnsRepo.findAll();
+
 
         // Load settings - try cloud first, then fallback to local
         let settings: any = {};
@@ -182,7 +190,7 @@ export class AppStateRepository {
                         return typeof charge === 'number' ? charge : parseFloat(String(charge));
                     })()
                 };
-                
+
                 // Debug: Log properties that seem to be missing critical data
                 if (!normalizedProperty.name || !normalizedProperty.ownerId || !normalizedProperty.buildingId) {
                     console.warn('⚠️ Property normalization warning - missing critical fields:', {
@@ -193,7 +201,7 @@ export class AppStateRepository {
                         rawProperty: p
                     });
                 }
-                
+
                 return normalizedProperty;
             }),
             units: units.map(u => {
@@ -220,7 +228,7 @@ export class AppStateRepository {
                     })(),
                     floor: (u.floor) || undefined
                 };
-                
+
                 // Debug: Log units that seem to be missing critical data
                 if (!normalizedUnit.name || !normalizedUnit.projectId) {
                     console.warn('⚠️ Unit normalization warning - missing critical fields:', {
@@ -232,7 +240,7 @@ export class AppStateRepository {
                         rawUnit: u
                     });
                 }
-                
+
                 return normalizedUnit;
             }),
             transactions,
@@ -261,6 +269,7 @@ export class AppStateRepository {
                     contractId: (b.contractId ?? b.contract_id) || undefined,
                     staffId: (b.staffId ?? b.staff_id) || undefined,
                     documentPath: (b.documentPath ?? b.document_path) || undefined,
+                    documentId: (b.documentId ?? b.document_id) || undefined,
                     expenseCategoryItems: (() => {
                         // Handle expenseCategoryItems - check both camelCase and snake_case
                         const items = b.expenseCategoryItems ?? b.expense_category_items;
@@ -276,7 +285,7 @@ export class AppStateRepository {
                         return undefined;
                     })()
                 };
-                
+
                 // Debug: Log bills that seem to be missing critical data
                 if (!normalizedBill.billNumber || !normalizedBill.contactId) {
                     console.warn('⚠️ Bill normalization warning - missing critical fields:', {
@@ -287,7 +296,7 @@ export class AppStateRepository {
                         rawBill: b
                     });
                 }
-                
+
                 return normalizedBill;
             }),
             quotations: quotations.map(q => ({
@@ -297,7 +306,7 @@ export class AppStateRepository {
             documents,
             pmCycleAllocations: pmCycleAllocations.map(pm => ({
                 ...pm,
-                excludedCategoryIds: pm.excludedCategoryIds 
+                excludedCategoryIds: pm.excludedCategoryIds
                     ? (typeof pm.excludedCategoryIds === 'string' ? JSON.parse(pm.excludedCategoryIds) : pm.excludedCategoryIds)
                     : (pm.excluded_category_ids ? (typeof pm.excluded_category_ids === 'string' ? JSON.parse(pm.excluded_category_ids) : pm.excluded_category_ids) : [])
             })),
@@ -339,7 +348,7 @@ export class AppStateRepository {
                         : (ra.broker_fee !== undefined && ra.broker_fee !== null ? (typeof ra.broker_fee === 'number' ? ra.broker_fee : parseFloat(String(ra.broker_fee))) : undefined),
                     ownerId: (ra.ownerId ?? ra.owner_id) || undefined
                 };
-                
+
                 // Debug: Log rental agreements that seem to be missing critical data
                 if (!normalizedAgreement.agreementNumber || !normalizedAgreement.contactId || !normalizedAgreement.propertyId) {
                     console.warn('⚠️ Rental agreement normalization warning - missing critical fields:', {
@@ -350,7 +359,7 @@ export class AppStateRepository {
                         rawAgreement: ra
                     });
                 }
-                
+
                 return normalizedAgreement;
             }),
             projectAgreements: projectAgreements.map(pa => {
@@ -442,7 +451,7 @@ export class AppStateRepository {
                     sellingPriceCategoryId: (pa.sellingPriceCategoryId ?? pa.selling_price_category_id) || undefined,
                     rebateCategoryId: (pa.rebateCategoryId ?? pa.rebate_category_id) || undefined
                 };
-                
+
                 // Debug: Log agreements that seem to be missing critical data
                 if (!normalizedAgreement.agreementNumber || !normalizedAgreement.clientId || !normalizedAgreement.projectId) {
                     console.warn('⚠️ Project Agreement normalization warning - missing critical fields:', {
@@ -453,12 +462,13 @@ export class AppStateRepository {
                         rawAgreement: pa
                     });
                 }
-                
+
                 return normalizedAgreement;
             }),
             contracts: contracts.map(c => ({
                 ...c,
-                expenseCategoryItems: c.expenseCategoryItems 
+                documentId: (c as any).documentId ?? (c as any).document_id ?? undefined,
+                expenseCategoryItems: c.expenseCategoryItems
                     ? (typeof c.expenseCategoryItems === 'string' ? JSON.parse(c.expenseCategoryItems) : c.expenseCategoryItems)
                     : undefined
             })),
@@ -554,10 +564,12 @@ export class AppStateRepository {
             enableBeepOnSave: settings.enableBeepOnSave ?? false,
             pmCostPercentage: settings.pmCostPercentage ?? 0,
             defaultProjectId: settings.defaultProjectId || undefined,
-            documentStoragePath: settings.documentStoragePath || undefined,
             lastServiceChargeRun: settings.lastServiceChargeRun,
+            salesReturns,
+
             transactionLog,
             errorLog,
+            enableDatePreservation: settings.enableDatePreservation ?? false,
             currentPage: (settings.currentPage as any) || 'dashboard',
             editingEntity: null,
             initialTransactionType: null,
@@ -570,15 +582,17 @@ export class AppStateRepository {
 
     /**
      * Save complete application state to database (serialized to avoid overlapping transactions)
+     * @param state - The application state to save
+     * @param disableSyncQueueing - If true, disables sync queueing (used when syncing FROM cloud TO local)
      */
-    async saveState(state: AppState): Promise<void> {
+    async saveState(state: AppState, disableSyncQueueing: boolean = false): Promise<void> {
         AppStateRepository.saveQueue = AppStateRepository.saveQueue.then(async () => {
             try {
                 // Ensure database is initialized
                 if (!this.db.isReady()) {
                     await this.db.initialize();
                 }
-                
+
                 // Ensure all tables exist (safety check for existing databases)
                 // This will create any missing tables like 'quotations' if they don't exist
                 try {
@@ -586,14 +600,14 @@ export class AppStateRepository {
                 } catch (tableCheckError) {
                     console.warn('⚠️ Could not verify tables exist, continuing anyway:', tableCheckError);
                 }
-                
+
                 // Ensure tenant_id columns exist before saving (idempotent)
                 try {
                     migrateTenantColumns();
                 } catch (tenantError) {
                     console.warn('⚠️ Tenant column migration failed during saveState (continuing):', tenantError);
                 }
-                
+
                 // Migrate budgets if they're in old format (for in-memory data being saved)
                 try {
                     state.budgets = migrateBudgetsArray(state.budgets);
@@ -609,13 +623,64 @@ export class AppStateRepository {
                     quotations: state.quotations.length
                 });
 
+                // Disable sync queueing if requested (when syncing FROM cloud TO local)
+                if (disableSyncQueueing) {
+                    BaseRepository.disableSyncQueueing();
+                    console.log('[AppStateRepository] Sync queueing disabled - syncing from cloud to local');
+                }
+
                 console.log('🔄 Starting database transaction...');
                 try {
+                    // Post-commit callback to queue sync operations
+                    const onCommit = () => {
+                        try {
+                            // Check if sync queueing is disabled (check actual flag state, not just parameter)
+                            const isSyncQueueingDisabled = BaseRepository.isSyncQueueingDisabled();
+
+                            // Flush pending operations (this clears the tracker)
+                            const pendingOps = BaseRepository.flushPendingSyncOperations();
+
+                            // Only queue sync operations if sync queueing is enabled
+                            if (isSyncQueueingDisabled || disableSyncQueueing) {
+                                if (pendingOps.length > 0) {
+                                    console.log(`[AppStateRepository] Skipping sync queue for ${pendingOps.length} operations (syncing from cloud/migration)`);
+                                }
+                                // Clear the operations without queueing them
+                                return;
+                            }
+
+                            if (pendingOps.length > 0) {
+                                console.log(`📦 Queueing ${pendingOps.length} sync operations after transaction commit...`);
+                                const syncManager = getSyncManager();
+
+                                // Queue each operation
+                                pendingOps.forEach(op => {
+                                    try {
+                                        syncManager.queueOperation(op.type, op.tableName, op.entityId, op.data || {});
+                                    } catch (syncError) {
+                                        console.error(`❌ Failed to queue sync for ${op.tableName}:${op.entityId}:`, syncError);
+                                    }
+                                });
+
+                                console.log(`✅ Queued ${pendingOps.length} sync operations`);
+                            }
+                        } catch (error) {
+                            console.error('❌ Error queueing sync operations after commit:', error);
+                            // Don't fail the transaction if sync queueing fails
+                        } finally {
+                            // Re-enable sync queueing if it was disabled
+                            if (disableSyncQueueing && BaseRepository.isSyncQueueingDisabled()) {
+                                BaseRepository.enableSyncQueueing();
+                                console.log('[AppStateRepository] Sync queueing re-enabled');
+                            }
+                        }
+                    };
+
                     this.db.transaction([
                         () => {
                             // Save all entities with individual error handling
                             console.log('💾 Starting to save entities...');
-                            
+
                             try {
                                 this.usersRepo.saveAll(state.users);
                                 console.log(`✅ Saved ${state.users.length} users`);
@@ -623,7 +688,7 @@ export class AppStateRepository {
                                 console.error('❌ Failed to save users:', e);
                                 throw e;
                             }
-                            
+
                             try {
                                 this.accountsRepo.saveAll(state.accounts);
                                 console.log(`✅ Saved ${state.accounts.length} accounts`);
@@ -631,7 +696,7 @@ export class AppStateRepository {
                                 console.error('❌ Failed to save accounts:', e);
                                 throw e;
                             }
-                            
+
                             try {
                                 console.log(`💾 Saving ${state.contacts.length} contacts...`);
                                 if (state.contacts.length > 0) {
@@ -650,156 +715,142 @@ export class AppStateRepository {
                                 }
                                 throw e;
                             }
-                        
-                        try {
-                            this.categoriesRepo.saveAll(state.categories);
-                            console.log(`✅ Saved ${state.categories.length} categories`);
-                        } catch (e) {
-                            console.error('❌ Failed to save categories:', e);
-                            throw e;
-                        }
-                        
-                        try {
-                            this.projectsRepo.saveAll(state.projects);
-                            this.buildingsRepo.saveAll(state.buildings);
-                            this.propertiesRepo.saveAll(state.properties);
-                            this.unitsRepo.saveAll(state.units);
-                            this.transactionsRepo.saveAll(state.transactions);
-                            this.invoicesRepo.saveAll(state.invoices);
-                            // Save bills with expenseCategoryItems serialized as JSON
-                            // Ensure all fields are explicitly included to prevent data loss
-                            this.billsRepo.saveAll(state.bills.map(b => {
-                                const billToSave: any = {
-                                    id: b.id,
-                                    billNumber: b.billNumber || `BILL-${b.id}`,
-                                    contactId: b.contactId || '',
-                                    amount: b.amount || 0,
-                                    paidAmount: b.paidAmount || 0,
-                                    status: b.status || 'Unpaid',
-                                    issueDate: b.issueDate || new Date().toISOString().split('T')[0],
-                                };
-                                // Only include optional fields if they have values (to avoid skipping in objectToDbFormat)
-                                if (b.dueDate) billToSave.dueDate = b.dueDate;
-                                if (b.description) billToSave.description = b.description;
-                                if (b.categoryId) billToSave.categoryId = b.categoryId;
-                                if (b.projectId) billToSave.projectId = b.projectId;
-                                if (b.buildingId) billToSave.buildingId = b.buildingId;
-                                if (b.propertyId) billToSave.propertyId = b.propertyId;
-                                if (b.projectAgreementId) billToSave.projectAgreementId = b.projectAgreementId;
-                                if (b.contractId) billToSave.contractId = b.contractId;
-                                if (b.staffId) billToSave.staffId = b.staffId;
-                                if (b.documentPath) billToSave.documentPath = b.documentPath;
-                                if (b.expenseCategoryItems) {
-                                    billToSave.expenseCategoryItems = typeof b.expenseCategoryItems === 'string' 
-                                        ? b.expenseCategoryItems 
-                                        : JSON.stringify(b.expenseCategoryItems);
-                                }
-                                return billToSave;
-                            }));
-                        } catch (e) {
-                            console.error('❌ Failed to save projects/buildings/properties/units/transactions/invoices/bills:', e);
-                            throw e;
-                        }
-                        
-                        // Save quotations with items serialized as JSON
-                        try {
-                            this.quotationsRepo.saveAll(state.quotations.map(q => ({
-                                ...q,
-                                items: typeof q.items === 'string' ? q.items : JSON.stringify(q.items)
-                            })));
-                        } catch (e) {
-                            console.error('❌ Failed to save quotations:', e);
-                            throw e;
-                        }
-                        
-                        try {
-                            this.documentsRepo.saveAll(state.documents);
-                            this.pmCycleAllocationsRepo.saveAll((state.pmCycleAllocations || []).map(pm => ({
-                                ...pm,
-                                excludedCategoryIds: pm.excludedCategoryIds 
-                                    ? (typeof pm.excludedCategoryIds === 'string' ? pm.excludedCategoryIds : JSON.stringify(pm.excludedCategoryIds))
-                                    : undefined
-                            })));
-                            this.budgetsRepo.saveAll(state.budgets);
-                            this.planAmenitiesRepo.saveAll(state.planAmenities || []);
-                            this.installmentPlansRepo.saveAll((state.installmentPlans || []).map(p => ({
-                                ...p,
-                                discounts: typeof p.discounts === 'string' ? p.discounts : JSON.stringify(p.discounts || []),
-                                selectedAmenities: typeof p.selectedAmenities === 'string' ? p.selectedAmenities : JSON.stringify(p.selectedAmenities || [])
-                            })));
-                            this.rentalAgreementsRepo.saveAll(state.rentalAgreements);
-                            this.projectAgreementsRepo.saveAll(state.projectAgreements);
-                            // Save contracts with expenseCategoryItems serialized as JSON
-                            this.contractsRepo.saveAll((state.contracts || []).map(c => ({
-                                ...c,
-                                expenseCategoryItems: c.expenseCategoryItems 
-                                    ? (typeof c.expenseCategoryItems === 'string' ? c.expenseCategoryItems : JSON.stringify(c.expenseCategoryItems))
-                                    : undefined
-                            })));
-                            this.recurringTemplatesRepo.saveAll(state.recurringInvoiceTemplates);
-                        } catch (e) {
-                            console.error('❌ Failed to save documents/budgets/agreements/contracts:', e);
-                            throw e;
-                        }
-                        
-                        try {
-                            this.transactionLogRepo.saveAll(state.transactionLog);
-                        } catch (e) {
-                            console.error('❌ Failed to save transaction log:', e);
-                            throw e;
-                        }
 
-                        // Ensure error_log rows have required fields (timestamp is NOT NULL)
-                        try {
-                            const normalizedErrors = (state.errorLog || []).map(err => ({
-                                ...err,
-                                timestamp: err.timestamp || new Date().toISOString()
-                            }));
-                            this.errorLogRepo.saveAll(normalizedErrors as any);
-                        } catch (e) {
-                            console.error('❌ Failed to save error log:', e);
-                            throw e;
-                        }
+                            try {
+                                this.categoriesRepo.saveAll(state.categories);
+                                console.log(`✅ Saved ${state.categories.length} categories`);
+                            } catch (e) {
+                                console.error('❌ Failed to save categories:', e);
+                                throw e;
+                            }
 
-                        // Save settings
-                        try {
-                            this.appSettingsRepo.saveAllSettings({
-                                current_user_id: state.currentUser?.id,
-                                agreementSettings: state.agreementSettings,
-                                projectAgreementSettings: state.projectAgreementSettings,
-                                rentalInvoiceSettings: state.rentalInvoiceSettings,
-                                projectInvoiceSettings: state.projectInvoiceSettings,
-                                printSettings: state.printSettings,
-                                whatsAppTemplates: state.whatsAppTemplates,
-                                dashboardConfig: state.dashboardConfig,
-                                installmentPlans: state.installmentPlans || [],
-                                invoiceHtmlTemplate: state.invoiceHtmlTemplate,
-                                showSystemTransactions: state.showSystemTransactions,
-                                enableColorCoding: state.enableColorCoding,
-                                enableBeepOnSave: state.enableBeepOnSave,
-                                pmCostPercentage: state.pmCostPercentage,
-                                defaultProjectId: state.defaultProjectId,
-                                documentStoragePath: state.documentStoragePath,
-                                lastServiceChargeRun: state.lastServiceChargeRun,
-                                currentPage: state.currentPage
-                            });
-                        } catch (e) {
-                            console.error('❌ Failed to save settings:', e);
-                            throw e;
+                            try {
+                                this.projectsRepo.saveAll(state.projects);
+                                this.buildingsRepo.saveAll(state.buildings);
+                                this.propertiesRepo.saveAll(state.properties);
+                                this.unitsRepo.saveAll(state.units);
+                                this.transactionsRepo.saveAll(state.transactions);
+                                this.invoicesRepo.saveAll(state.invoices);
+                                // Save bills with expenseCategoryItems serialized as JSON
+                                // Ensure all fields are explicitly included to prevent data loss
+                                this.billsRepo.saveAll(state.bills.map(b => {
+                                    const billToSave: any = {
+                                        id: b.id,
+                                        billNumber: b.billNumber || `BILL-${b.id}`,
+                                        contactId: b.contactId || '',
+                                        amount: b.amount || 0,
+                                        paidAmount: b.paidAmount || 0,
+                                        status: b.status || 'Unpaid',
+                                        issueDate: b.issueDate || new Date().toISOString().split('T')[0],
+                                    };
+                                    // Only include optional fields if they have values (to avoid skipping in objectToDbFormat)
+                                    if (b.dueDate) billToSave.dueDate = b.dueDate;
+                                    if (b.description) billToSave.description = b.description;
+                                    if (b.categoryId) billToSave.categoryId = b.categoryId;
+                                    if (b.projectId) billToSave.projectId = b.projectId;
+                                    if (b.buildingId) billToSave.buildingId = b.buildingId;
+                                    if (b.propertyId) billToSave.propertyId = b.propertyId;
+                                    if (b.projectAgreementId) billToSave.projectAgreementId = b.projectAgreementId;
+                                    if (b.contractId) billToSave.contractId = b.contractId;
+                                    if (b.staffId) billToSave.staffId = b.staffId;
+                                    if (b.documentPath) billToSave.documentPath = b.documentPath;
+                                    if (b.documentId) billToSave.documentId = b.documentId;
+                                    if (b.expenseCategoryItems) {
+                                        billToSave.expenseCategoryItems = typeof b.expenseCategoryItems === 'string'
+                                            ? b.expenseCategoryItems
+                                            : JSON.stringify(b.expenseCategoryItems);
+                                    }
+                                    return billToSave;
+                                }));
+                            } catch (e) {
+                                console.error('❌ Failed to save projects/buildings/properties/units/transactions/invoices/bills:', e);
+                                throw e;
+                            }
+
+                            // Save quotations with items serialized as JSON
+                            try {
+                                this.quotationsRepo.saveAll(state.quotations.map(q => ({
+                                    ...q,
+                                    items: typeof q.items === 'string' ? q.items : JSON.stringify(q.items)
+                                })));
+                            } catch (e) {
+                                console.error('❌ Failed to save quotations:', e);
+                                throw e;
+                            }
+
+                            try {
+                                this.documentsRepo.saveAll(state.documents);
+                                this.pmCycleAllocationsRepo.saveAll((state.pmCycleAllocations || []).map(pm => ({
+                                    ...pm,
+                                    excludedCategoryIds: pm.excludedCategoryIds
+                                        ? (typeof pm.excludedCategoryIds === 'string' ? pm.excludedCategoryIds : JSON.stringify(pm.excludedCategoryIds))
+                                        : undefined
+                                })));
+                                this.budgetsRepo.saveAll(state.budgets);
+                                this.salesReturnsRepo.saveAll(state.salesReturns || []);
+
+                            } catch (e) {
+                                console.error('❌ Failed to save documents/budgets/agreements/contracts:', e);
+                                throw e;
+                            }
+
+                            try {
+                                this.transactionLogRepo.saveAll(state.transactionLog);
+                            } catch (e) {
+                                console.error('❌ Failed to save transaction log:', e);
+                                throw e;
+                            }
+
+                            // Ensure error_log rows have required fields (timestamp is NOT NULL)
+                            try {
+                                const normalizedErrors = (state.errorLog || []).map(err => ({
+                                    ...err,
+                                    timestamp: err.timestamp || new Date().toISOString()
+                                }));
+                                this.errorLogRepo.saveAll(normalizedErrors as any);
+                            } catch (e) {
+                                console.error('❌ Failed to save error log:', e);
+                                throw e;
+                            }
+
+                            // Save settings
+                            try {
+                                this.appSettingsRepo.saveAllSettings({
+                                    current_user_id: state.currentUser?.id,
+                                    agreementSettings: state.agreementSettings,
+                                    projectAgreementSettings: state.projectAgreementSettings,
+                                    rentalInvoiceSettings: state.rentalInvoiceSettings,
+                                    projectInvoiceSettings: state.projectInvoiceSettings,
+                                    printSettings: state.printSettings,
+                                    whatsAppTemplates: state.whatsAppTemplates,
+                                    dashboardConfig: state.dashboardConfig,
+                                    installmentPlans: state.installmentPlans || [],
+                                    invoiceHtmlTemplate: state.invoiceHtmlTemplate,
+                                    showSystemTransactions: state.showSystemTransactions,
+                                    enableColorCoding: state.enableColorCoding,
+                                    enableBeepOnSave: state.enableBeepOnSave,
+                                    pmCostPercentage: state.pmCostPercentage,
+                                    defaultProjectId: state.defaultProjectId,
+                                    lastServiceChargeRun: state.lastServiceChargeRun,
+                                    currentPage: state.currentPage
+                                });
+                            } catch (e) {
+                                console.error('❌ Failed to save settings:', e);
+                                throw e;
+                            }
                         }
+                    ], onCommit);
+                    console.log('✅ Database transaction completed successfully');
+
+                    // Verify contacts IMMEDIATELY after transaction (before persistence)
+                    const contactsAfterTransaction = this.contactsRepo.findAll();
+                    console.log(`🔍 Contacts in database immediately after transaction: ${contactsAfterTransaction.length} (expected ${state.contacts.length})`);
+                    if (contactsAfterTransaction.length !== state.contacts.length) {
+                        console.error(`❌ CRITICAL: Contact count mismatch AFTER transaction but BEFORE persistence!`);
+                        console.error('Expected:', state.contacts.map(c => ({ id: c.id, name: c.name })));
+                        console.error('Found:', contactsAfterTransaction.map((c: any) => ({ id: c.id, name: c.name })));
                     }
-                ]);
-                console.log('✅ Database transaction completed successfully');
-                
-                // Verify contacts IMMEDIATELY after transaction (before persistence)
-                const contactsAfterTransaction = this.contactsRepo.findAll();
-                console.log(`🔍 Contacts in database immediately after transaction: ${contactsAfterTransaction.length} (expected ${state.contacts.length})`);
-                if (contactsAfterTransaction.length !== state.contacts.length) {
-                    console.error(`❌ CRITICAL: Contact count mismatch AFTER transaction but BEFORE persistence!`);
-                    console.error('Expected:', state.contacts.map(c => ({ id: c.id, name: c.name })));
-                    console.error('Found:', contactsAfterTransaction.map((c: any) => ({ id: c.id, name: c.name })));
-                }
-                
+
                 } catch (transactionError) {
                     console.error('❌ Database transaction failed:', transactionError);
                     // Check what's in the database even after transaction failure
@@ -817,17 +868,17 @@ export class AppStateRepository {
                 console.log('💾 Persisting database to storage...');
                 await this.db.saveAsync();
                 console.log('✅ Database persisted to storage');
-                
+
                 // Verify contacts were saved (after persistence completes)
                 const savedContacts = this.contactsRepo.findAll();
                 console.log('✅ State saved successfully to database');
                 console.log(`📊 Verification: ${savedContacts.length} contacts in database (expected ${state.contacts.length})`);
-                
+
                 if (savedContacts.length !== state.contacts.length) {
                     console.error(`❌ Contact count mismatch! Expected ${state.contacts.length}, found ${savedContacts.length}`);
                     console.error('Expected contacts:', state.contacts.map(c => ({ id: c.id, name: c.name })));
                     console.error('Saved contacts:', savedContacts.map((c: any) => ({ id: c.id, name: c.name })));
-                    
+
                     // Check if there's a column mapping issue
                     if (state.contacts.length > 0 && savedContacts.length === 0) {
                         console.error('⚠️ No contacts were saved. This suggests a column mapping or insert issue.');
@@ -842,12 +893,76 @@ export class AppStateRepository {
                 } else {
                     console.log('✅ Contact count matches! All contacts saved successfully.');
                 }
-        } catch (error) {
-            console.error('❌ Error saving state to database:', error);
-            throw error; // Re-throw so caller knows save failed
-        }
+            } catch (error) {
+                console.error('❌ Error saving state to database:', error);
+                throw error; // Re-throw so caller knows save failed
+            } finally {
+                // Always re-enable sync queueing if it was disabled, even on error
+                if (disableSyncQueueing && BaseRepository.isSyncQueueingDisabled()) {
+                    BaseRepository.enableSyncQueueing();
+                    console.log('[AppStateRepository] Sync queueing re-enabled (after error)');
+                }
+            }
         });
 
         return AppStateRepository.saveQueue;
+    }
+
+    /**
+     * Get a single entity by type and id (for conflict resolution in bi-directional sync).
+     */
+    getEntityById(entityKey: string, id: string): Record<string, unknown> | null {
+        const repo = this.getRepoByEntityKey(entityKey);
+        if (!repo) return null;
+        try {
+            const found = (repo as any).findById(id);
+            return found ? (found as Record<string, unknown>) : null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Upsert a single entity (create or update) for bi-directional sync.
+     */
+    upsertEntity(entityKey: string, data: Record<string, unknown>): void {
+        const repo = this.getRepoByEntityKey(entityKey);
+        if (!repo) return;
+        const id = (data.id as string) ?? '';
+        const r = repo as any;
+        const existing = r.findById ? r.findById(id) : null;
+        if (existing) {
+            r.update(id, data);
+        } else {
+            r.create(data);
+        }
+    }
+
+    private getRepoByEntityKey(entityKey: string): BaseRepository<unknown> | null {
+        const map: Record<string, BaseRepository<unknown>> = {
+            accounts: this.accountsRepo,
+            contacts: this.contactsRepo,
+            categories: this.categoriesRepo,
+            projects: this.projectsRepo,
+            buildings: this.buildingsRepo,
+            properties: this.propertiesRepo,
+            units: this.unitsRepo,
+            transactions: this.transactionsRepo,
+            invoices: this.invoicesRepo,
+            bills: this.billsRepo,
+            budgets: this.budgetsRepo,
+            plan_amenities: this.planAmenitiesRepo,
+            contracts: this.contractsRepo,
+            sales_returns: this.salesReturnsRepo,
+            quotations: this.quotationsRepo,
+            documents: this.documentsRepo,
+            recurring_invoice_templates: this.recurringTemplatesRepo,
+            pm_cycle_allocations: this.pmCycleAllocationsRepo,
+            rental_agreements: this.rentalAgreementsRepo,
+            project_agreements: this.projectAgreementsRepo,
+            installment_plans: this.installmentPlansRepo,
+
+        };
+        return map[entityKey] ?? null;
     }
 }

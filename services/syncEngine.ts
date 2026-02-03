@@ -9,12 +9,16 @@ import { SyncQueueItem, SyncProgress, SyncEngineStatus } from '../types/sync';
 import { getSyncQueue } from './syncQueue';
 import { getAppStateApiService } from './api/appStateApi';
 import { logger } from './logger';
+import { apiClient } from './api/client';
 
 type SyncProgressListener = (progress: SyncProgress) => void;
 type SyncCompleteListener = (success: boolean, progress: SyncProgress) => void;
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000; // 2 seconds base delay
+const SYNC_TIMEOUT_MS = 30000; // 30 seconds timeout per item
+const BATCH_SIZE = 5; // Process 5 items in parallel
+const BATCH_DELAY_MS = 100; // Small delay between batches to avoid overwhelming the API
 
 class SyncEngine {
   private isRunning = false;
@@ -88,7 +92,7 @@ class SyncEngine {
   }
 
   /**
-   * Process all pending items in the sync queue
+   * Process all pending items in the sync queue with parallel batch processing
    */
   private async processSyncQueue(tenantId: string): Promise<void> {
     const pendingItems = await this.syncQueue.getPendingItems(tenantId);
@@ -99,7 +103,7 @@ class SyncEngine {
       return;
     }
 
-    console.log(`📦 Found ${pendingItems.length} pending items to sync`);
+    console.log(`📦 Found ${pendingItems.length} pending items to sync (processing in batches of ${BATCH_SIZE})`);
 
     const progress: SyncProgress = {
       total: pendingItems.length,
@@ -107,7 +111,8 @@ class SyncEngine {
       failed: 0
     };
 
-    for (let i = 0; i < pendingItems.length; i++) {
+    // Process items in batches for parallel execution
+    for (let i = 0; i < pendingItems.length; i += BATCH_SIZE) {
       if (!this.isRunning) {
         console.log('⏹️ Sync stopped by user');
         break;
@@ -118,30 +123,20 @@ class SyncEngine {
         await this.sleep(500);
       }
 
-      const item = pendingItems[i];
-      progress.current = item;
-      this.notifyProgress(progress);
+      // Get batch of items to process
+      const batch = pendingItems.slice(i, i + BATCH_SIZE);
+      console.log(`🔄 Processing batch ${Math.floor(i / BATCH_SIZE) + 1} (${batch.length} items)`);
 
-      try {
-        await this.syncItem(item);
-        progress.completed++;
-        await this.syncQueue.updateStatus(item.id, 'completed');
-      } catch (error: any) {
-        console.error(`❌ Failed to sync item ${item.id}:`, error);
-        progress.failed++;
+      // Process batch in parallel
+      const batchPromises = batch.map(item => this.processSyncItem(item, progress));
+      await Promise.allSettled(batchPromises);
 
-        // Update with error and retry count
-        if (item.retryCount < MAX_RETRIES) {
-          // Mark as pending for retry
-          await this.syncQueue.updateStatus(item.id, 'pending', error.message);
-          console.log(`🔄 Will retry item ${item.id} (attempt ${item.retryCount + 1}/${MAX_RETRIES})`);
-        } else {
-          // Max retries reached, mark as failed
-          await this.syncQueue.updateStatus(item.id, 'failed', error.message);
-          console.error(`❌ Max retries reached for item ${item.id}`);
-        }
+      // Small delay between batches to avoid overwhelming the API
+      if (i + BATCH_SIZE < pendingItems.length) {
+        await this.sleep(BATCH_DELAY_MS);
       }
 
+      // Update progress after each batch
       this.notifyProgress(progress);
     }
 
@@ -150,15 +145,63 @@ class SyncEngine {
 
     const success = progress.failed === 0;
     console.log(`${success ? '✅' : '⚠️'} Sync complete: ${progress.completed} succeeded, ${progress.failed} failed`);
-    
+
     this.notifyComplete(success, progress);
+  }
+
+  /**
+   * Process a single sync item with timeout and error handling
+   */
+  private async processSyncItem(item: SyncQueueItem, progress: SyncProgress): Promise<void> {
+    progress.current = item;
+    this.notifyProgress(progress);
+
+    try {
+      // Wrap sync operation with timeout
+      await this.syncItemWithTimeout(item);
+      progress.completed++;
+      await this.syncQueue.updateStatus(item.id, 'completed');
+      console.log(`✅ Successfully synced ${item.action} ${item.type}: ${item.id}`);
+    } catch (error: any) {
+      const errorMessage = error?.message || error?.error || 'Unknown error';
+      console.error(`❌ Failed to sync item ${item.id} (${item.type}/${item.action}):`, errorMessage);
+      progress.failed++;
+
+      // Update with error and retry count
+      if (item.retryCount < MAX_RETRIES) {
+        // Increment retry count
+        item.retryCount += 1;
+        // Mark as pending for retry
+        await this.syncQueue.updateStatus(item.id, 'pending', errorMessage);
+        console.log(`🔄 Will retry item ${item.id} (attempt ${item.retryCount}/${MAX_RETRIES}): ${errorMessage}`);
+      } else {
+        // Max retries reached, mark as failed
+        await this.syncQueue.updateStatus(item.id, 'failed', errorMessage);
+        console.error(`❌ Max retries reached for item ${item.id}: ${errorMessage}`);
+      }
+    }
+
+    this.notifyProgress(progress);
+  }
+
+  /**
+   * Sync item with timeout protection
+   */
+  private async syncItemWithTimeout(item: SyncQueueItem): Promise<void> {
+    return Promise.race([
+      this.syncItem(item),
+      new Promise<void>((_, reject) =>
+        setTimeout(() => reject(new Error(`Sync timeout after ${SYNC_TIMEOUT_MS}ms`)), SYNC_TIMEOUT_MS)
+      )
+    ]);
   }
 
   /**
    * Sync a single queue item
    */
   private async syncItem(item: SyncQueueItem): Promise<void> {
-    console.log(`🔄 Syncing ${item.action} ${item.type}:`, item.id);
+    const startTime = Date.now();
+    console.log(`🔄 Syncing ${item.action} ${item.type}: ${item.id} (retry ${item.retryCount}/${MAX_RETRIES})`);
 
     // Add exponential backoff for retries
     if (item.retryCount > 0) {
@@ -169,6 +212,31 @@ class SyncEngine {
 
     // Update status to syncing
     await this.syncQueue.updateStatus(item.id, 'syncing');
+
+    // Skip system users (sys-admin) - they shouldn't be synced
+    if (item.type === 'user' || item.type === 'users') {
+      const userId = item.data?.id || item.id;
+      if (userId === 'sys-admin' || userId?.startsWith('sys-')) {
+        console.log(`[SyncEngine] ⏭️ Skipping sync of system user: ${userId}`);
+        await this.syncQueue.updateStatus(item.id, 'completed');
+        return; // Skip system users
+      }
+
+      // Validate required fields for user sync
+      if (item.action === 'create' || item.action === 'update') {
+        const user = item.data;
+        if (!user || !user.username || !user.name || !user.password) {
+          console.warn(`[SyncEngine] ⚠️ Skipping user sync - missing required fields:`, {
+            hasUsername: !!user?.username,
+            hasName: !!user?.name,
+            hasPassword: !!user?.password,
+            userId: user?.id
+          });
+          await this.syncQueue.updateStatus(item.id, 'completed'); // Mark as completed to avoid retries
+          return; // Skip users with missing required fields
+        }
+      }
+    }
 
     // Route to appropriate API based on type and action
     switch (item.type) {
@@ -226,11 +294,27 @@ class SyncEngine {
       case 'document':
         await this.syncDocument(item);
         break;
+      case 'user':
+      case 'users':
+        // Users are handled by the validation check above
+        // If we reach here, it means it's a valid user (not system user, has required fields)
+        // Use generic API client to sync user
+        switch (item.action) {
+          case 'create':
+          case 'update':
+            await apiClient.post('/users', item.data);
+            break;
+          case 'delete':
+            await apiClient.delete(`/users/${(item.data as any)?.id || item.id}`);
+            break;
+        }
+        break;
       default:
         throw new Error(`Unknown sync type: ${item.type}`);
     }
 
-    logger.logCategory('sync', `✅ Successfully synced ${item.action} ${item.type}:`, item.id);
+    const duration = Date.now() - startTime;
+    logger.logCategory('sync', `✅ Successfully synced ${item.action} ${item.type}: ${item.id} (${duration}ms)`);
   }
 
   // Sync methods for each entity type

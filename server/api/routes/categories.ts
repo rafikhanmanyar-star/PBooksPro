@@ -67,6 +67,20 @@ router.post('/', async (req: TenantRequest, res) => {
     const db = getDb();
     const category = req.body;
     
+    // Validate required fields
+    if (!category.name || !category.type) {
+      console.error('❌ POST /categories - Validation failed: missing required fields', {
+        hasName: !!category.name,
+        hasType: !!category.type,
+        categoryData: JSON.stringify(category).substring(0, 200),
+        tenantId: req.tenantId
+      });
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Category name and type are required fields'
+      });
+    }
+    
     // Generate ID if not provided
     const categoryId = category.id || `category_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     console.log('📝 POST /categories - Using category ID:', categoryId);
@@ -85,7 +99,10 @@ router.post('/', async (req: TenantRequest, res) => {
       if (existing.rows.length > 0) {
         // Check if this is a system category (is_permanent = true)
         if (existing.rows[0].is_permanent === true) {
-          throw new Error('Cannot update system category');
+          // System categories are read-only - return the existing category instead of error
+          // This allows sync to succeed without trying to update system categories
+          console.log('ℹ️ POST /categories - Skipping update of system category:', categoryId);
+          return existing.rows[0];
         }
         
         // Update existing category
@@ -110,7 +127,9 @@ router.post('/', async (req: TenantRequest, res) => {
         );
         
         if (updateResult.rows.length === 0) {
-          throw new Error('Cannot update system category');
+          // This shouldn't happen, but if it does, return existing category
+          console.warn('⚠️ POST /categories - Update returned 0 rows, returning existing category:', categoryId);
+          return existing.rows[0];
         }
         
         return updateResult.rows[0];
@@ -157,18 +176,56 @@ router.post('/', async (req: TenantRequest, res) => {
 
     res.status(201).json(result);
   } catch (error: any) {
-    console.error('❌ POST /categories - Error:', {
-      error: error,
+    // Enhanced error logging with full details
+    console.error('❌ POST /categories - Error Details:', {
       errorMessage: error.message,
       errorCode: error.code,
+      errorName: error.name,
+      errorStack: error.stack?.substring(0, 500),
+      constraint: error.constraint,
+      detail: error.detail,
+      table: error.table,
+      column: error.column,
       tenantId: req.tenantId,
-      categoryId: req.body?.id
+      categoryId: req.body?.id,
+      categoryName: req.body?.name,
+      categoryType: req.body?.type,
+      requestBody: JSON.stringify(req.body).substring(0, 300)
     });
     
+    // Handle specific database errors
     if (error.code === '23505') { // Unique violation
+      console.error('❌ POST /categories - Unique constraint violation:', {
+        constraint: error.constraint,
+        detail: error.detail,
+        categoryId: req.body?.id
+      });
       return res.status(409).json({ 
         error: 'Duplicate category',
         message: 'A category with this ID already exists'
+      });
+    }
+    
+    if (error.code === '23502') { // NOT NULL violation
+      console.error('❌ POST /categories - NOT NULL constraint violation:', {
+        column: error.column,
+        detail: error.detail,
+        categoryData: JSON.stringify(req.body).substring(0, 200)
+      });
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: `Required field '${error.column}' is missing`
+      });
+    }
+    
+    if (error.code === '23503') { // Foreign key violation
+      console.error('❌ POST /categories - Foreign key constraint violation:', {
+        constraint: error.constraint,
+        detail: error.detail
+      });
+      return res.status(400).json({ 
+        error: 'Validation error',
+        message: 'Invalid reference to related entity'
       });
     }
     

@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 
 interface PWAContextType {
   installPrompt: any;
@@ -17,6 +17,7 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isInstalled, setIsInstalled] = useState(false);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
+  const isUserInitiatedUpdate = useRef(false);
 
   useEffect(() => {
     const handler = (e: any) => {
@@ -77,14 +78,11 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           setRegistration(null);
         });
 
-      // Reload when the new worker takes control
-      let refreshing = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (!refreshing) {
-            refreshing = true;
-            window.location.reload();
-        }
-      });
+      // REMOVED: Automatic reload on controllerchange
+      // Only reload when user explicitly requests update via applyUpdate()
+      // The controllerchange event will still fire, but we won't auto-reload
+      // This allows the update notification to show and wait for user consent
+      // The service worker will wait in "waiting" state until user clicks "Update Now"
     }
 
     return () => {
@@ -119,6 +117,9 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const applyUpdate = () => {
       if (registration && registration.waiting) {
+          // Mark that this is a user-initiated update
+          isUserInitiatedUpdate.current = true;
+          
           // Send message to service worker to skip waiting
           registration.waiting.postMessage({ type: 'SKIP_WAITING' });
           

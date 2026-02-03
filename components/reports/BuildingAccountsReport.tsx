@@ -13,7 +13,7 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import { formatDate } from '../../utils/dateUtils';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
@@ -268,7 +268,7 @@ const BuildingAccountsReport: React.FC = () => {
         exportJsonToExcel(data, 'building-analysis-report.xlsx', 'Analysis');
     };
 
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
 
     const SortIcon = ({ column }: { column: SortKey }) => (
         <span className="ml-1 text-[10px] text-slate-400">
@@ -350,7 +350,7 @@ const BuildingAccountsReport: React.FC = () => {
                         <PrintButton
                             variant="secondary"
                             size="sm"
-                            onPrint={handlePrint}
+                            onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                             className="whitespace-nowrap"
                         />
                     </div>

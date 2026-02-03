@@ -28,7 +28,13 @@ class SchemaSyncService {
       return;
     }
 
-    // Initialize schema sync (enabled for all devices)
+    // Mobile: No local database, so no schema sync needed
+    if (isMobileDevice()) {
+      console.log('[SchemaSync] Mobile device - skipping schema sync initialization');
+      this.isInitialized = true;
+      return;
+    }
+
     try {
       // Load local schema version
       await this.loadLocalSchemaVersion();

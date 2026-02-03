@@ -5,7 +5,7 @@
  * This is used when the app is in cloud mode (authenticated with tenant).
  */
 
-import { AppState } from '../../types';
+import { AppState, InvoiceStatus, ProjectAgreementStatus, ContractStatus, SalesReturnStatus, SalesReturnReason, PMCycleAllocation, Quotation, Document } from '../../types';
 import { AccountsApiRepository } from './repositories/accountsApi';
 import { ContactsApiRepository } from './repositories/contactsApi';
 import { TransactionsApiRepository } from './repositories/transactionsApi';
@@ -29,7 +29,15 @@ import { RecurringInvoiceTemplatesApiRepository } from './repositories/recurring
 import { AppSettingsApiRepository } from './repositories/appSettingsApi';
 import { PMCycleAllocationsApiRepository } from './repositories/pmCycleAllocationsApi';
 import { TransactionLogApiRepository } from './repositories/transactionLogApi';
+import { apiClient } from './client';
 import { logger } from '../logger';
+
+/** Response from GET /api/state/changes?since=ISO8601 (incremental sync) */
+export interface StateChangesResponse {
+  since: string;
+  updatedAt: string;
+  entities: Record<string, unknown[]>;
+}
 
 export class AppStateApiService {
   private accountsRepo: AccountsApiRepository;
@@ -83,6 +91,16 @@ export class AppStateApiService {
   }
 
   /**
+   * Load incremental state changes from API (for bi-directional sync).
+   * Returns only entities updated after the given timestamp.
+   */
+  async loadStateChanges(since: string): Promise<StateChangesResponse> {
+    const endpoint = `/state/changes?since=${encodeURIComponent(since)}`;
+    const data = await apiClient.get<StateChangesResponse>(endpoint);
+    return data;
+  }
+
+  /**
    * Load complete application state from API
    * Loads all entities that have API endpoints
    */
@@ -113,7 +131,7 @@ export class AppStateApiService {
         documents,
         recurringInvoiceTemplates,
         pmCycleAllocations,
-        transactionLog
+        transactionLog,
       ] = await Promise.all([
         this.accountsRepo.findAll().catch(err => {
           logger.errorCategory('sync', 'Error loading accounts from API:', err);
@@ -259,7 +277,7 @@ export class AppStateApiService {
             return typeof charge === 'number' ? charge : parseFloat(String(charge));
           })()
         };
-        
+
         // Debug: Log properties that seem to be missing critical data
         if (!normalizedProperty.name || !normalizedProperty.ownerId || !normalizedProperty.buildingId) {
           console.warn('⚠️ Property normalization warning - missing critical fields:', {
@@ -270,7 +288,7 @@ export class AppStateApiService {
             rawProperty: p
           });
         }
-        
+
         return normalizedProperty;
       });
 
@@ -400,6 +418,7 @@ export class AppStateApiService {
         contractId: b.contract_id || b.contractId || undefined,
         staffId: b.staff_id || b.staffId || undefined,
         documentPath: b.document_path || b.documentPath || undefined,
+        documentId: b.document_id || b.documentId || undefined,
         expenseCategoryItems: (() => {
           const items = b.expense_category_items || b.expenseCategoryItems;
           if (!items) return undefined;
@@ -472,7 +491,7 @@ export class AppStateApiService {
         projectId: c.project_id || c.projectId || '',
         vendorId: c.vendor_id || c.vendorId || '',
         totalAmount: typeof c.total_amount === 'number' ? c.total_amount : (typeof c.totalAmount === 'number' ? c.totalAmount : parseFloat(c.total_amount || c.totalAmount || '0')),
-        area: c.area !== undefined && c.area !== null 
+        area: c.area !== undefined && c.area !== null
           ? (typeof c.area === 'number' ? c.area : parseFloat(c.area || '0'))
           : undefined,
         rate: c.rate !== undefined && c.rate !== null
@@ -510,7 +529,8 @@ export class AppStateApiService {
         termsAndConditions: c.terms_and_conditions || c.termsAndConditions || undefined,
         paymentTerms: c.payment_terms || c.paymentTerms || undefined,
         description: c.description || undefined,
-        documentPath: c.document_path || c.documentPath || undefined
+        documentPath: c.document_path || c.documentPath || undefined,
+        documentId: c.document_id || c.documentId || undefined
       }));
 
       // Normalize transactions from API (transform snake_case to camelCase)
@@ -533,7 +553,6 @@ export class AppStateApiService {
         unitId: t.unit_id || t.unitId || undefined,
         invoiceId: t.invoice_id || t.invoiceId || undefined,
         billId: t.bill_id || t.billId || undefined,
-        payslipId: t.payslip_id || t.payslipId || undefined,
         contractId: t.contract_id || t.contractId || undefined,
         agreementId: t.agreement_id || t.agreementId || undefined,
         batchId: t.batch_id || t.batchId || undefined,
@@ -675,6 +694,7 @@ export class AppStateApiService {
       // Normalize rental agreements from API (transform snake_case to camelCase)
       const normalizedRentalAgreements = rentalAgreements.map((ra: any) => this.normalizeRentalAgreement(ra));
 
+
       // Return partial state with API-loaded data
       // Other entities will remain from initial state or be loaded separately
       return {
@@ -696,7 +716,19 @@ export class AppStateApiService {
         contracts: normalizedContracts,
         salesReturns: normalizedSalesReturns,
         quotations: quotations || [],
-        documents: documents || [],
+        documents: (documents || []).map((d: any) => ({
+          id: d.id,
+          name: d.name,
+          type: d.type,
+          entityId: d.entity_id ?? d.entityId,
+          entityType: d.entity_type ?? d.entityType,
+          fileData: d.file_data ?? d.fileData,
+          fileName: d.file_name ?? d.fileName,
+          fileSize: d.file_size ?? d.fileSize,
+          mimeType: d.mime_type ?? d.mimeType,
+          uploadedAt: d.uploaded_at ?? d.uploadedAt,
+          uploadedBy: d.uploaded_by ?? d.uploadedBy ?? d.user_id ?? d.userId,
+        })),
         recurringInvoiceTemplates: recurringInvoiceTemplates || [],
         pmCycleAllocations: pmCycleAllocations || [],
         transactionLog: transactionLog || [],
@@ -732,7 +764,7 @@ export class AppStateApiService {
     };
     logger.logCategory('sync', `💾 Syncing account (POST upsert): ${accountWithId.id} - ${accountWithId.name}`);
     const saved = await this.accountsRepo.create(accountWithId);
-    
+
     // Normalize the response (server returns snake_case, client expects camelCase)
     return {
       id: saved.id,
@@ -762,7 +794,7 @@ export class AppStateApiService {
       type: contact.type,
       isUpdate: !!contact.id
     });
-    
+
     // Validate required fields
     if (!contact.name) {
       const error = new Error('Contact name is required');
@@ -774,18 +806,26 @@ export class AppStateApiService {
       logger.errorCategory('sync', '❌ AppStateApiService.saveContact validation failed: type missing');
       throw error;
     }
-    
+
     try {
-      // Ensure contact has an ID
-      const contactWithId = {
-        ...contact,
-        id: contact.id || `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      };
-      
-      // Always use POST endpoint for contacts - it handles upserts automatically
-      logger.logCategory('sync', `💾 Syncing contact (POST upsert): ${contactWithId.id} - ${contactWithId.name}`);
-      const saved = await this.contactsRepo.create(contactWithId);
-      
+      let saved: any;
+
+      if (contact.id) {
+        // Use PUT endpoint for updates
+        logger.logCategory('sync', `💾 Updating contact (PUT): ${contact.id} - ${contact.name}`);
+        saved = await this.contactsRepo.update(contact.id, contact);
+        logger.logCategory('sync', `✅ Contact updated successfully: ${saved.name} (${saved.id})`);
+      } else {
+        // Use POST endpoint for new contacts
+        const contactWithId = {
+          ...contact,
+          id: `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+        };
+        logger.logCategory('sync', `💾 Creating contact (POST): ${contactWithId.id} - ${contactWithId.name}`);
+        saved = await this.contactsRepo.create(contactWithId);
+        logger.logCategory('sync', `✅ Contact created successfully: ${saved.name} (${saved.id})`);
+      }
+
       // Normalize the response
       const normalized = {
         id: saved.id,
@@ -800,13 +840,6 @@ export class AppStateApiService {
         updatedAt: (saved as any).updated_at || saved.updatedAt || undefined
       };
 
-      // Log whether it was created or updated based on whether we had an existing ID
-      if (contact.id) {
-        logger.logCategory('sync', `✅ Contact synced (upsert) successfully: ${normalized.name} (${normalized.id})`);
-      } else {
-        logger.logCategory('sync', `✅ Contact created successfully: ${normalized.name} (${normalized.id})`);
-      }
-      
       return normalized;
     } catch (error: any) {
       logger.errorCategory('sync', '❌ AppStateApiService.saveContact failed:', {
@@ -841,7 +874,7 @@ export class AppStateApiService {
     };
     logger.logCategory('sync', `💾 Syncing transaction (POST upsert): ${transactionWithId.id}`);
     const saved = await this.transactionsRepo.create(transactionWithId);
-    
+
     // Normalize the response (server returns snake_case, client expects camelCase)
     return {
       id: saved.id,
@@ -861,7 +894,6 @@ export class AppStateApiService {
       unitId: (saved as any).unit_id || saved.unitId || undefined,
       invoiceId: (saved as any).invoice_id || saved.invoiceId || undefined,
       billId: (saved as any).bill_id || saved.billId || undefined,
-      payslipId: (saved as any).payslip_id || saved.payslipId || undefined,
       contractId: (saved as any).contract_id || saved.contractId || undefined,
       agreementId: (saved as any).agreement_id || saved.agreementId || undefined,
       batchId: (saved as any).batch_id || saved.batchId || undefined,
@@ -888,7 +920,7 @@ export class AppStateApiService {
     };
     logger.logCategory('sync', `💾 Syncing category (POST upsert): ${categoryWithId.id} - ${categoryWithId.name}`);
     const saved = await this.categoriesRepo.create(categoryWithId);
-    
+
     // Normalize the response
     return {
       id: saved.id,
@@ -919,7 +951,7 @@ export class AppStateApiService {
     };
     logger.logCategory('sync', `💾 Syncing project (POST upsert): ${projectWithId.id} - ${projectWithId.name}`);
     const saved = await this.projectsRepo.create(projectWithId);
-    
+
     // Normalize the response
     return {
       id: saved.id,
@@ -972,7 +1004,7 @@ export class AppStateApiService {
     };
     logger.logCategory('sync', `💾 Syncing building (POST upsert): ${buildingWithId.id} - ${buildingWithId.name}`);
     const saved = await this.buildingsRepo.create(buildingWithId);
-    
+
     // Normalize the response
     return {
       id: saved.id,
@@ -1000,7 +1032,7 @@ export class AppStateApiService {
     };
     logger.logCategory('sync', `💾 Syncing property (POST upsert): ${propertyWithId.id} - ${propertyWithId.name}`);
     const saved = await this.propertiesRepo.create(propertyWithId);
-    
+
     // Normalize the response (server returns snake_case, client expects camelCase)
     return {
       id: saved.id,
@@ -1034,7 +1066,7 @@ export class AppStateApiService {
     };
     logger.logCategory('sync', `💾 Syncing unit (POST upsert): ${unitWithId.id} - ${unitWithId.name}`);
     const saved = await this.unitsRepo.create(unitWithId);
-    
+
     // Normalize the response (server returns snake_case, client expects camelCase)
     return {
       id: saved.id,
@@ -1083,6 +1115,7 @@ export class AppStateApiService {
     return this.planAmenitiesRepo.delete(id);
   }
 
+
   /**
    * Save installment plan to API
    */
@@ -1094,7 +1127,7 @@ export class AppStateApiService {
     };
     logger.logCategory('sync', `💾 Syncing installment plan (POST upsert): ${planWithId.id}`);
     const saved = await this.installmentPlansRepo.create(planWithId);
-    
+
     // Normalize the response (server returns snake_case, client expects camelCase)
     return {
       id: saved.id,
@@ -1162,7 +1195,7 @@ export class AppStateApiService {
     };
     logger.logCategory('sync', `💾 Syncing invoice (POST upsert): ${invoiceWithId.id} - ${invoiceWithId.invoiceNumber}`);
     const saved = await this.invoicesRepo.create(invoiceWithId);
-    
+
     // Normalize the response (server returns snake_case, client expects camelCase)
     return {
       id: saved.id,
@@ -1170,7 +1203,7 @@ export class AppStateApiService {
       contactId: (saved as any).contact_id || saved.contactId || '',
       amount: typeof saved.amount === 'number' ? saved.amount : parseFloat(saved.amount || '0'),
       paidAmount: typeof (saved as any).paid_amount === 'number' ? (saved as any).paid_amount : (typeof saved.paidAmount === 'number' ? saved.paidAmount : parseFloat((saved as any).paid_amount || saved.paidAmount || '0')),
-      status: (saved as any).status || saved.status || 'Unpaid',
+      status: (saved as any).status || saved.status || InvoiceStatus.UNPAID,
       issueDate: (saved as any).issue_date || saved.issueDate || new Date().toISOString().split('T')[0],
       dueDate: (saved as any).due_date || saved.dueDate || undefined,
       invoiceType: (saved as any).invoice_type || saved.invoiceType || 'Rental',
@@ -1209,7 +1242,7 @@ export class AppStateApiService {
     };
     logger.logCategory('sync', `💾 Syncing bill (POST upsert): ${billWithId.id} - ${billWithId.billNumber}`);
     const saved = await this.billsRepo.create(billWithId);
-    
+
     // Normalize the response (server returns snake_case, client expects camelCase)
     return {
       id: saved.id,
@@ -1217,7 +1250,7 @@ export class AppStateApiService {
       contactId: (saved as any).contact_id || saved.contactId,
       amount: typeof saved.amount === 'number' ? saved.amount : parseFloat(saved.amount || '0'),
       paidAmount: typeof (saved as any).paid_amount === 'number' ? (saved as any).paid_amount : (typeof saved.paidAmount === 'number' ? saved.paidAmount : parseFloat((saved as any).paid_amount || saved.paidAmount || '0')),
-      status: saved.status || 'Unpaid',
+      status: (saved as any).status || saved.status || InvoiceStatus.UNPAID,
       issueDate: (saved as any).issue_date || saved.issueDate,
       dueDate: (saved as any).due_date || saved.dueDate || undefined,
       description: saved.description || undefined,
@@ -1263,7 +1296,7 @@ export class AppStateApiService {
     };
     logger.logCategory('sync', `💾 Syncing budget (POST upsert): ${budgetWithId.id} - Category: ${budgetWithId.categoryId}`);
     const saved = await this.budgetsRepo.create(budgetWithId);
-    
+
     // Normalize the response
     return {
       id: saved.id,
@@ -1340,7 +1373,7 @@ export class AppStateApiService {
     };
     logger.logCategory('sync', `💾 Syncing project agreement (POST upsert): ${agreementWithId.id} - ${agreementWithId.agreementNumber}`);
     const saved = await this.projectAgreementsRepo.create(agreementWithId);
-    
+
     // Normalize the response (server returns snake_case, client expects camelCase)
     return {
       id: saved.id,
@@ -1374,7 +1407,7 @@ export class AppStateApiService {
       rebateBrokerId: (saved as any).rebate_broker_id || saved.rebateBrokerId || undefined,
       issueDate: (saved as any).issue_date || saved.issueDate || new Date().toISOString().split('T')[0],
       description: saved.description || undefined,
-      status: saved.status || 'Active',
+      status: (saved as any).status || saved.status || ProjectAgreementStatus.ACTIVE,
       cancellationDetails: (() => {
         const details = (saved as any).cancellation_details || saved.cancellationDetails;
         if (!details) return undefined;
@@ -1416,7 +1449,7 @@ export class AppStateApiService {
     };
     logger.logCategory('sync', `💾 Syncing contract (POST upsert): ${contractWithId.id} - ${contractWithId.contractNumber}`);
     const saved = await this.contractsRepo.create(contractWithId);
-    
+
     // Normalize the response (server returns snake_case, client expects camelCase)
     return {
       id: saved.id,
@@ -1425,9 +1458,9 @@ export class AppStateApiService {
       projectId: (saved as any).project_id || saved.projectId || '',
       vendorId: (saved as any).vendor_id || saved.vendorId || '',
       totalAmount: typeof saved.totalAmount === 'number' ? saved.totalAmount : parseFloat((saved as any).total_amount || saved.totalAmount || '0'),
-      area: (saved as any).area !== undefined && (saved as any).area !== null 
+      area: (saved as any).area !== undefined && (saved as any).area !== null
         ? (typeof (saved as any).area === 'number' ? (saved as any).area : parseFloat((saved as any).area || '0'))
-        : (saved.area !== undefined && saved.area !== null 
+        : (saved.area !== undefined && saved.area !== null
           ? (typeof saved.area === 'number' ? saved.area : parseFloat(saved.area || '0'))
           : undefined),
       rate: (saved as any).rate !== undefined && (saved as any).rate !== null
@@ -1437,7 +1470,7 @@ export class AppStateApiService {
           : undefined),
       startDate: (saved as any).start_date || saved.startDate,
       endDate: (saved as any).end_date || saved.endDate,
-      status: saved.status || 'Active',
+      status: (saved as any).status || saved.status || ContractStatus.ACTIVE,
       categoryIds: (() => {
         const ids = (saved as any).category_ids || saved.categoryIds;
         if (!ids) return [];
@@ -1479,6 +1512,46 @@ export class AppStateApiService {
   }
 
   /**
+   * Save quotation to API
+   */
+  async saveQuotation(quotation: Partial<Quotation>): Promise<Quotation> {
+    // Always use POST endpoint - it handles upserts automatically
+    const quotationWithId = {
+      ...quotation,
+      id: quotation.id || `quotation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    } as Quotation;
+    logger.logCategory('sync', `💾 Syncing quotation (POST upsert): ${quotationWithId.id} - ${quotationWithId.name}`);
+    return this.quotationsRepo.create(quotationWithId);
+  }
+
+  /**
+   * Delete quotation from API
+   */
+  async deleteQuotation(id: string): Promise<void> {
+    return this.quotationsRepo.delete(id);
+  }
+
+  /**
+   * Save document to API
+   */
+  async saveDocument(document: Partial<Document>): Promise<Document> {
+    // Always use POST endpoint - it handles upserts automatically
+    const documentWithId = {
+      ...document,
+      id: document.id || `doc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    } as Document;
+    logger.logCategory('sync', `💾 Syncing document (POST upsert): ${documentWithId.id} - ${documentWithId.name}`);
+    return this.documentsRepo.create(documentWithId);
+  }
+
+  /**
+   * Delete document from API
+   */
+  async deleteDocument(id: string): Promise<void> {
+    return this.documentsRepo.delete(id);
+  }
+
+  /**
    * Save sales return to API
    */
   async saveSalesReturn(salesReturn: Partial<AppState['salesReturns'][0]>): Promise<AppState['salesReturns'][0]> {
@@ -1489,19 +1562,19 @@ export class AppStateApiService {
     };
     logger.logCategory('sync', `💾 Syncing sales return (POST upsert): ${salesReturnWithId.id} - ${salesReturnWithId.returnNumber}`);
     const saved = await this.salesReturnsRepo.create(salesReturnWithId);
-    
+
     // Normalize the response (server returns snake_case, client expects camelCase)
     return {
       id: saved.id,
       returnNumber: (saved as any).return_number || saved.returnNumber || '',
       agreementId: (saved as any).agreement_id || saved.agreementId || '',
       returnDate: (saved as any).return_date || saved.returnDate || new Date().toISOString().split('T')[0],
-      reason: saved.reason || '',
+      reason: (saved as any).reason || saved.reason || SalesReturnReason.CUSTOMER_REQUEST,
       reasonNotes: (saved as any).reason_notes || saved.reasonNotes || undefined,
       penaltyPercentage: typeof saved.penaltyPercentage === 'number' ? saved.penaltyPercentage : parseFloat((saved as any).penalty_percentage || saved.penaltyPercentage || '0'),
       penaltyAmount: typeof saved.penaltyAmount === 'number' ? saved.penaltyAmount : parseFloat((saved as any).penalty_amount || saved.penaltyAmount || '0'),
       refundAmount: typeof saved.refundAmount === 'number' ? saved.refundAmount : parseFloat((saved as any).refund_amount || saved.refundAmount || '0'),
-      status: saved.status || 'Pending',
+      status: (saved as any).status || saved.status || SalesReturnStatus.PENDING,
       processedDate: (saved as any).processed_date || saved.processedDate || undefined,
       refundedDate: (saved as any).refunded_date || saved.refundedDate || undefined,
       refundBillId: (saved as any).refund_bill_id || saved.refundBillId || undefined,
@@ -1520,12 +1593,12 @@ export class AppStateApiService {
   /**
    * Save PM cycle allocation to API
    */
-  async savePMCycleAllocation(allocation: Partial<any>): Promise<any> {
+  async savePMCycleAllocation(allocation: Partial<PMCycleAllocation>): Promise<PMCycleAllocation> {
     // Always use POST endpoint - it handles upserts automatically
     const allocationWithId = {
       ...allocation,
       id: allocation.id || `pm_alloc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    };
+    } as PMCycleAllocation;
     logger.logCategory('sync', `💾 Syncing PM cycle allocation (POST upsert): ${allocationWithId.id} - Project: ${allocationWithId.projectId}, Cycle: ${allocationWithId.cycleId}`);
     return this.pmCycleAllocationsRepo.create(allocationWithId);
   }

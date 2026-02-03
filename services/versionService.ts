@@ -1,3 +1,4 @@
+import { getApiBaseUrl } from '../config/apiUrl';
 import { ApiClient } from './api/client';
 
 export interface VersionInfo {
@@ -63,22 +64,12 @@ class VersionService {
   }
 
   /**
-   * Get the API base URL
-   */
-  private getApiBaseUrl(): string {
-    // Use the same logic as ApiClient - get from environment or use default
-    const envUrl = (import.meta.env.VITE_API_URL as string) || 'https://pbookspro-api.onrender.com/api';
-    // Remove /api suffix if present for the app-info endpoint
-    return envUrl.replace(/\/api$/, '');
-  }
-
-  /**
    * Check if a new version is available
    */
   async checkForUpdate(): Promise<{ available: boolean; serverVersion?: string; clientVersion: string }> {
     try {
-      const baseUrl = this.getApiBaseUrl();
-      const response = await fetch(`${baseUrl}/api/app-info/version`);
+      const baseUrl = getApiBaseUrl();
+      const response = await fetch(`${baseUrl}/app-info/version`);
       if (!response.ok) {
         throw new Error('Failed to fetch version');
       }

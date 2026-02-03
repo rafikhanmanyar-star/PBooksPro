@@ -110,6 +110,13 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
     useEffect(() => {
         const handleChatMessage = async (data: ChatMessage) => {
             console.log(`📝 [ChatModal] WebSocket message received:`, data);
+            
+            // Ignore WhatsApp messages (they have different structure)
+            if (data.phoneNumber || data.direction || !data.senderId) {
+                console.log(`📝 [ChatModal] Message appears to be WhatsApp message, ignoring (ChatModal is for internal chat only)`);
+                return;
+            }
+            
             // Only process messages for current user
             if (data.recipientId === currentUserId || data.senderId === currentUserId) {
                 try {

@@ -9,7 +9,7 @@
 ### Step 2: Navigate to Admin Folder
 
 ```powershell
-cd "H:\AntiGravity projects\V1.1.3\MyProjectBooks\admin"
+cd "H:\AntiGravity projects\V1.1.3\PBooksPro\admin"
 ```
 
 ### Step 3: Install Dependencies (First Time Only)
@@ -121,11 +121,11 @@ npm install
 
 ```powershell
 # Terminal 1: Backend Server
-cd "H:\AntiGravity projects\V1.1.3\MyProjectBooks\server"
+cd "H:\AntiGravity projects\V1.1.3\PBooksPro\server"
 npm run dev
 
 # Terminal 2: Admin Portal
-cd "H:\AntiGravity projects\V1.1.3\MyProjectBooks\admin"
+cd "H:\AntiGravity projects\V1.1.3\PBooksPro\admin"
 npm run dev
 ```
 

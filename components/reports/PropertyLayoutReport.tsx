@@ -8,7 +8,7 @@ import ReportFooter from './ReportFooter';
 import PrintButton from '../ui/PrintButton';
 import ComboBox from '../ui/ComboBox';
 import PropertyHistoryModal from './PropertyHistoryModal';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface UnitBoxData {
@@ -68,7 +68,7 @@ interface ProjectLayoutData {
 
 const PropertyLayoutReport: React.FC = () => {
     const { state } = useAppContext();
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [selectedProperty, setSelectedProperty] = useState<{ id: string, name: string } | null>(null);
 
@@ -648,7 +648,7 @@ const PropertyLayoutReport: React.FC = () => {
                         <PrintButton
                             variant="secondary"
                             size="sm"
-                            onPrint={handlePrint}
+                            onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                             className="whitespace-nowrap"
                             label="Print Layout"
                         />

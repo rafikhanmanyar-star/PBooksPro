@@ -4,7 +4,7 @@ This guide shows how to set up Git in your existing project folder without GitHu
 
 ## 🎯 Goal
 
-Use your existing project folder (`MyProjectBooks`) as the Git repository directly, instead of having GitHub create a new folder.
+Use your existing project folder (`PBooksPro`) as the Git repository directly, instead of having GitHub create a new folder.
 
 ## ✅ Method 1: Command Line (Recommended)
 
@@ -14,7 +14,7 @@ Open PowerShell in your project root:
 
 ```powershell
 # Navigate to your project folder (if not already there)
-cd "H:\AntiGravity projects\V1.1.3\MyProjectBooks"
+cd "f:\AntiGravity projects\PBooksPro"
 
 # Initialize Git repository
 git init
@@ -29,7 +29,7 @@ git commit -m "Initial commit - Monorepo setup for Render deployment"
 ### Step 2: Create Repository on GitHub
 
 1. Go to https://github.com/new
-2. **Repository name**: `MyProjectBooks` (or your preferred name)
+2. **Repository name**: `PBooksPro` (or your preferred name)
 3. **DO NOT** initialize with README, .gitignore, or license
 4. Click "Create repository"
 
@@ -38,8 +38,7 @@ git commit -m "Initial commit - Monorepo setup for Render deployment"
 GitHub will show you commands. Use these:
 
 ```powershell
-# Add GitHub as remote (replace YOUR_USERNAME with your GitHub username)
-git remote add origin https://github.com/YOUR_USERNAME/MyProjectBooks.git
+git remote add origin https://github.com/rafikhanmanyar-star/PBooksPro.git
 
 # Rename branch to main (if needed)
 git branch -M main
@@ -58,7 +57,7 @@ git push -u origin main
 
 ```powershell
 # Navigate to your project folder
-cd "H:\AntiGravity projects\V1.1.3\MyProjectBooks"
+cd "H:\AntiGravity projects\V1.1.3\PBooksPro"
 
 # Initialize Git
 git init
@@ -73,13 +72,13 @@ git commit -m "Initial commit"
 1. Open GitHub Desktop
 2. Click **File** → **Add Local Repository**
 3. Click **Choose...**
-4. Navigate to: `H:\AntiGravity projects\V1.1.3\MyProjectBooks`
+4. Navigate to: `f:\AntiGravity projects\PBooksPro`
 5. Click **Add Repository**
 
 ### Step 3: Publish to GitHub
 
 1. In GitHub Desktop, click **Publish repository**
-2. **Name**: `MyProjectBooks`
+2. **Name**: `PBooksPro`
 3. **Description**: (optional)
 4. **Keep this code private**: (your choice)
 5. Click **Publish Repository**
@@ -95,7 +94,7 @@ If you already created a repository on GitHub:
 ### Step 1: Initialize Git in Your Folder
 
 ```powershell
-cd "H:\AntiGravity projects\V1.1.3\MyProjectBooks"
+cd "H:\AntiGravity projects\V1.1.3\PBooksPro"
 git init
 git add .
 git commit -m "Initial commit"
@@ -104,8 +103,7 @@ git commit -m "Initial commit"
 ### Step 2: Connect to Existing GitHub Repository
 
 ```powershell
-# Add remote (replace with your repository URL)
-git remote add origin https://github.com/YOUR_USERNAME/MyProjectBooks.git
+git remote add origin https://github.com/rafikhanmanyar-star/PBooksPro.git
 
 # Push to GitHub
 git branch -M main
@@ -126,8 +124,8 @@ git status
 git remote -v
 
 # Should show:
-# origin  https://github.com/YOUR_USERNAME/MyProjectBooks.git (fetch)
-# origin  https://github.com/YOUR_USERNAME/MyProjectBooks.git (push)
+# origin  https://github.com/rafikhanmanyar-star/PBooksPro.git (fetch)
+# origin  https://github.com/rafikhanmanyar-star/PBooksPro.git (push)
 ```
 
 ---
@@ -196,7 +194,7 @@ If you see this error:
 git remote remove origin
 
 # Add it again with correct URL
-git remote add origin https://github.com/YOUR_USERNAME/MyProjectBooks.git
+git remote add origin https://github.com/rafikhanmanyar-star/PBooksPro.git
 ```
 
 ### "Nothing to commit"

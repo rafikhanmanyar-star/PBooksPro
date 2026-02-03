@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { Transaction, TransactionType } from '../../types';
-import { ICONS, CURRENCY } from '../../constants';
+import { CURRENCY } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
 import Button from '../ui/Button';
 import PrintButton from '../ui/PrintButton';
 import TransactionForm from './TransactionForm';
 import Modal from '../ui/Modal';
 import LinkedTransactionWarningModal from './LinkedTransactionWarningModal';
-import { usePrint } from '../../hooks/usePrint';
-import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import { usePrintContext } from '../../context/PrintContext';
+import ReportHeader from '../reports/ReportHeader';
+import ReportFooter from '../reports/ReportFooter';
 
 interface TransactionDetailDrawerProps {
     isOpen: boolean;
@@ -25,7 +26,7 @@ const TransactionDetailDrawer: React.FC<TransactionDetailDrawerProps> = ({
     onTransactionUpdated
 }) => {
     const { state, dispatch } = useAppContext();
-    const { handlePrint } = usePrint({ elementId: 'transaction-detail-printable-area' });
+    const { print: triggerPrint } = usePrintContext();
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [showDeleteWarning, setShowDeleteWarning] = useState(false);
 
@@ -85,9 +86,12 @@ const TransactionDetailDrawer: React.FC<TransactionDetailDrawerProps> = ({
 
     const hasChildren = transaction.children && transaction.children.length > 0;
 
+    const handlePrint = () => {
+        triggerPrint('REPORT', { elementId: 'transaction-detail-printable-area' });
+    };
+
     return (
         <>
-            <style>{STANDARD_PRINT_STYLES}</style>
             {/* Overlay */}
             <div
                 className={`fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity duration-300 ${
@@ -128,6 +132,7 @@ const TransactionDetailDrawer: React.FC<TransactionDetailDrawerProps> = ({
 
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto px-6 py-6 printable-area" id="transaction-detail-printable-area">
+                    <ReportHeader />
                     {/* Amount Card */}
                     <div className={`${config.bgColor} ${config.borderColor} border-2 rounded-xl p-6 mb-6 shadow-sm`}>
                         <div className="text-center">
@@ -305,6 +310,7 @@ const TransactionDetailDrawer: React.FC<TransactionDetailDrawerProps> = ({
                             </div>
                         </div>
                     )}
+                    <ReportFooter />
                 </div>
 
                 {/* Footer Actions */}

@@ -24,6 +24,7 @@ const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label, id, nam
     const wrapperRef = useRef<HTMLDivElement>(null);
     const calendarRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+    const mouseDownOnInputRef = useRef(false);
 
     // Positioning state
     const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -103,10 +104,12 @@ const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label, id, nam
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             const target = event.target as Node;
-            // Check if click is outside both the input wrapper AND the portal calendar
+            // Close when click is outside both the input wrapper and the portaled calendar.
+            // Use (!calendarRef.current || !calendarRef.current.contains(target)) so we still
+            // close if the calendar hasn't mounted yet (e.g. right after opening).
             if (
                 wrapperRef.current && !wrapperRef.current.contains(target) &&
-                calendarRef.current && !calendarRef.current.contains(target)
+                (!calendarRef.current || !calendarRef.current.contains(target))
             ) {
                 setIsOpen(false);
             }
@@ -154,10 +157,13 @@ const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label, id, nam
     };
 
     const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-        // Select all text when input receives focus so typing immediately replaces it
-        e.target.select();
-        if (!disabled) {
-            setIsOpen(true);
+        // Only select-all and open when focus came from keyboard (tab). When focus came from mouse
+        // (e.g. right-to-left text selection), don't select/open to avoid overwriting selection and crashes.
+        if (!mouseDownOnInputRef.current) {
+            e.target.select();
+            if (!disabled) {
+                setIsOpen(true);
+            }
         }
     };
 
@@ -202,8 +208,10 @@ const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label, id, nam
                     type="text"
                     value={inputValue}
                     onChange={handleInputChange}
+                    onMouseDown={() => { mouseDownOnInputRef.current = true; }}
+                    onMouseUp={() => { mouseDownOnInputRef.current = false; }}
                     onFocus={handleInputFocus}
-                    onClick={() => !disabled && setIsOpen(true)}
+                    onClick={() => { mouseDownOnInputRef.current = false; if (!disabled) setIsOpen(true); }}
                     className={inputClassName}
                     disabled={disabled}
                     required={required}

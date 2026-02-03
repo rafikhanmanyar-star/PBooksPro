@@ -330,6 +330,76 @@ class SyncQueueService {
     const items = await this.getAllItems(tenantId);
     return items.filter(item => item.status === 'failed').length;
   }
+
+  /**
+   * Get all failed items for a tenant
+   */
+  async getFailedItems(tenantId: string): Promise<SyncQueueItem[]> {
+    const items = await this.getAllItems(tenantId);
+    return items.filter(item => item.status === 'failed');
+  }
+
+  /**
+   * Get all syncing items for a tenant
+   */
+  async getSyncingItems(tenantId: string): Promise<SyncQueueItem[]> {
+    const items = await this.getAllItems(tenantId);
+    return items.filter(item => item.status === 'syncing');
+  }
+
+  /**
+   * Reset failed item to pending for retry
+   */
+  async retryFailedItem(id: string): Promise<void> {
+    const item = await this.getItem(id);
+    if (!item) {
+      throw new Error(`Item not found: ${id}`);
+    }
+    if (item.status !== 'failed') {
+      throw new Error(`Item ${id} is not in failed status`);
+    }
+    
+    // Reset to pending and clear error
+    item.status = 'pending';
+    item.error = undefined;
+    item.retryCount = 0; // Reset retry count for manual retry
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([STORE_NAME], 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.put(item);
+
+      request.onsuccess = () => {
+        console.log(`🔄 Reset failed item ${id} to pending for retry`);
+        resolve();
+      };
+
+      request.onerror = () => {
+        console.error('Failed to retry item:', request.error);
+        reject(new Error('Failed to retry item'));
+      };
+    });
+  }
+
+  /**
+   * Get sync statistics for a tenant
+   */
+  async getSyncStats(tenantId: string): Promise<{
+    total: number;
+    pending: number;
+    syncing: number;
+    completed: number;
+    failed: number;
+  }> {
+    const items = await this.getAllItems(tenantId);
+    return {
+      total: items.length,
+      pending: items.filter(i => i.status === 'pending').length,
+      syncing: items.filter(i => i.status === 'syncing').length,
+      completed: items.filter(i => i.status === 'completed').length,
+      failed: items.filter(i => i.status === 'failed').length,
+    };
+  }
 }
 
 // Singleton instance

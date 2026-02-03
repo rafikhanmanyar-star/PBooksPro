@@ -26,5 +26,6 @@ export { RecurringInvoiceTemplatesApiRepository } from './recurringInvoiceTempla
 export { AppSettingsApiRepository } from './appSettingsApi';
 export { PMCycleAllocationsApiRepository } from './pmCycleAllocationsApi';
 export { TransactionLogApiRepository } from './transactionLogApi';
-export { TasksApiRepository } from './tasksApi';
+export { tasksApi } from './tasksApi';
+
 

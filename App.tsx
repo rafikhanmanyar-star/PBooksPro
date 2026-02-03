@@ -36,10 +36,12 @@ import { useProgress } from './context/ProgressContext';
 import { usePagePreloader } from './hooks/usePagePreloader';
 import Loading from './components/ui/Loading';
 import { OfflineProvider } from './context/OfflineContext';
-import SyncNotification from './components/ui/SyncNotification';
+// import SyncNotification from './components/ui/SyncNotification'; // Removed per user request
 import MobileOfflineWarning from './components/ui/MobileOfflineWarning';
-import WebSocketDebugPanel from './components/ui/WebSocketDebugPanel';
+import { PrintController } from './components/print/PrintController';
+// import WebSocketDebugPanel from './components/ui/WebSocketDebugPanel'; // Removed per user request
 import { lazyWithRetry } from './utils/lazyWithRetry';
+import { ContactsApiRepository } from './services/api/repositories/contactsApi';
 
 
 // Lazy Load Components
@@ -56,12 +58,21 @@ const VendorDirectoryPage = lazyWithRetry(() => import('./components/vendors/Ven
 const ContactsPage = lazyWithRetry(() => import('./components/contacts/ContactsPage'));
 const BudgetManagement = lazyWithRetry(() => import('./components/settings/BudgetManagement'));
 const MobilePaymentsPage = lazyWithRetry(() => import('./components/mobile/MobilePaymentsPage'));
-const TasksPage = lazyWithRetry(() => import('./components/tasks/TasksPage'));
-const TasksCalendarView = lazyWithRetry(() => import('./components/tasks/TasksCalendarView'));
-const TeamRankingPage = lazyWithRetry(() => import('./components/tasks/TeamRankingPage'));
+
 const BizPlanetPage = lazyWithRetry(() => import('./components/bizPlanet/BizPlanetPage'));
 const PayrollHub = lazyWithRetry(() => import('./components/payroll/PayrollHub'));
-const InventoryPage = lazyWithRetry(() => import('./components/inventory/InventoryPage'));
+
+// Task Management Modules
+const TaskModuleRouter = lazyWithRetry(() => import('./components/tasks/TaskModuleRouter'));
+
+// Shop Modules
+const POSSalesPage = lazyWithRetry(() => import('./components/shop/POSSalesPage'));
+const InventoryPage = lazyWithRetry(() => import('./components/shop/InventoryPage'));
+const AccountingPage = lazyWithRetry(() => import('./components/shop/AccountingPage'));
+const LoyaltyPage = lazyWithRetry(() => import('./components/shop/LoyaltyPage'));
+const MultiStorePage = lazyWithRetry(() => import('./components/shop/MultiStorePage'));
+const BIDashboardsPage = lazyWithRetry(() => import('./components/shop/BIDashboardsPage'));
+const ProcurementPage = lazyWithRetry(() => import('./components/shop/ProcurementPage'));
 
 // Define page groups to determine which component instance handles which routes
 const PAGE_GROUPS = {
@@ -76,12 +87,25 @@ const PAGE_GROUPS = {
   PROJECT: ['projectManagement', 'projectInvoices', 'bills'],
   INVESTMENT: ['investmentManagement'],
   PM_CONFIG: ['pmConfig'],
-  TASKS: ['tasks', 'tasksCalendar', 'teamRanking'],
+  TASKS: [
+    'tasks', 'tasksCalendar', 'teamRanking',
+    'taskCreation', 'taskAssignment', 'taskWorkflow', 'taskExecution',
+    'taskDashboards', 'taskKPIs', 'taskNotifications', 'taskAutomation',
+    'taskReports', 'taskConfiguration', 'taskAudit',
+    'taskOKR', 'taskInitiatives', 'taskRoles', 'taskManagement'
+  ],
+
   SETTINGS: ['settings'],
   IMPORT: ['import'],
   BIZ_PLANET: ['bizPlanet'],
   PAYROLL: ['payroll'],
+  POS_SALES: ['posSales'],
   INVENTORY: ['inventory'],
+  SHOP_ACCOUNTING: ['accounting'],
+  LOYALTY: ['loyalty'],
+  MULTI_STORE: ['multiStore'],
+  PROCUREMENT: ['procurement'],
+  BI_DASHBOARDS: ['biDashboards'],
 };
 
 const App: React.FC = () => {
@@ -107,7 +131,7 @@ const App: React.FC = () => {
   // Check for payment success page URL - MUST be before any early returns
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
   const [showPaddleCheckout, setShowPaddleCheckout] = useState(false);
-  
+
   useEffect(() => {
     // Check if current URL path matches payment success route
     const pathname = window.location.pathname;
@@ -117,16 +141,16 @@ const App: React.FC = () => {
       searchParams.has('payment_status') ||
       searchParams.has('status') ||
       searchParams.has('_ptxn');
-    
+
     if (pathname === '/license/paddle-checkout' || pathname.endsWith('/license/paddle-checkout')) {
       setShowPaddleCheckout(true);
       setShowPaymentSuccess(false);
       return;
     }
 
-    if (pathname === '/license/payment-success' || 
-        pathname.endsWith('/license/payment-success') ||
-        (pathname === '/' && hasPaymentParams)) {
+    if (pathname === '/license/payment-success' ||
+      pathname.endsWith('/license/payment-success') ||
+      (pathname === '/' && hasPaymentParams)) {
       setShowPaymentSuccess(true);
       setShowPaddleCheckout(false);
     } else {
@@ -188,10 +212,10 @@ const App: React.FC = () => {
     const initializeServices = async () => {
       try {
         console.log('[App] Initializing database services...');
-        
+
         // Initialize unified database service (platform-aware)
         await getUnifiedDatabaseService().initialize();
-        
+
         if (!isMounted) return;
         console.log('[App] ✅ Unified database service initialized');
 
@@ -202,24 +226,17 @@ const App: React.FC = () => {
             console.log(`[App] Connection status changed: ${status}`);
           },
           onOnline: () => {
-            console.log('[App] ✅ Online - starting auto-sync');
-            const syncManager = getSyncManager();
-            syncManager.startAutoSync();
+            console.log('[App] ✅ Online - will sync on reconnection');
+            // Sync is handled by SyncManager's onOnline callback
           },
           onOffline: () => {
-            console.log('[App] ⚠️ Offline - pausing sync');
-            const syncManager = getSyncManager();
-            syncManager.stopAutoSync();
+            console.log('[App] ⚠️ Offline - sync paused');
+            // Sync is paused automatically
           },
         });
 
-        // Check initial connection status and start sync if online
-        const initialStatus = await connectionMonitor.checkStatus();
-        if (initialStatus === 'online') {
-          const syncManager = getSyncManager();
-          syncManager.startAutoSync();
-          console.log('[App] ✅ Started auto-sync (already online)');
-        }
+        // Don't auto-sync on app startup - only sync on login/reconnection
+        console.log('[App] ✅ Connection monitoring started (sync will occur on login/reconnection only)');
 
         // Initialize lock manager
         const lockManager = getLockManager();
@@ -309,7 +326,7 @@ const App: React.FC = () => {
         console.warn('[App] ⚠️ WebSocket not connected - missing token or tenant ID');
       }
       console.log('[App] ✅ WebSocket client connecting (authenticated)');
-      
+
       // Set dispatch callback and current user ID for real-time sync handler
       // Setting the user ID is critical to prevent duplicate records when the creator
       // receives their own WebSocket event back
@@ -317,7 +334,7 @@ const App: React.FC = () => {
       realtimeSyncHandler.setDispatch(dispatch);
       realtimeSyncHandler.setCurrentUserId(user?.id || null);
       console.log('[App] ✅ Real-time sync handler connected to AppContext dispatch');
-      
+
       return () => {
         wsClient.disconnect();
         realtimeSyncHandler.setDispatch(null);
@@ -325,6 +342,29 @@ const App: React.FC = () => {
       };
     }
   }, [isAuthenticated, dispatch, user?.id]);
+
+  // Load contacts from API when authenticated
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      const loadContacts = async () => {
+        try {
+          console.log('[App] 📥 Loading contacts from API...');
+          const contactsApi = new ContactsApiRepository();
+          const contacts = await contactsApi.findAll();
+          console.log(`[App] ✅ Loaded ${contacts.length} contacts from API`);
+
+          // Dispatch each contact to AppContext to avoid duplicates
+          contacts.forEach(contact => {
+            dispatch({ type: 'ADD_CONTACT', payload: contact });
+          });
+        } catch (error) {
+          console.error('[App] ❌ Failed to load contacts:', error);
+        }
+      };
+
+      loadContacts();
+    }
+  }, [isAuthenticated, user, dispatch]);
 
   // Optimized navigation handler - uses startTransition for non-blocking updates
   const handleSetPage = useCallback((page: Page) => {
@@ -426,12 +466,37 @@ const App: React.FC = () => {
       case 'vendorDirectory': return 'Vendor Directory';
       case 'contacts': return 'Contacts';
       case 'budgets': return 'Budget Planner';
+
+      case 'bizPlanet': return 'Biz Planet';
+      case 'payroll': return 'Payroll Management';
+      case 'posSales': return 'POS Sales Screen';
+      case 'inventory': return 'Inventory Management';
+      case 'accounting': return 'Shop Accounting';
+      case 'loyalty': return 'Loyalty Program';
+      case 'multiStore': return 'Multi-store Management';
+      case 'biDashboards': return 'BI Dashboards';
+      case 'procurement': return 'Procurement & Purchasing';
+
+      // Task Modules
       case 'tasks': return 'My Tasks';
       case 'tasksCalendar': return 'Task Calendar';
       case 'teamRanking': return 'Team Ranking';
-      case 'bizPlanet': return 'Biz Planet';
-      case 'payroll': return 'Payroll Management';
-      case 'inventory': return 'Inventory';
+      case 'taskCreation': return 'Create Task';
+      case 'taskAssignment': return 'Task Assignment';
+      case 'taskWorkflow': return 'Workflow & Status';
+      case 'taskExecution': return 'Task Execution';
+      case 'taskDashboards': return 'Task Dashboards';
+      case 'taskKPIs': return 'Task KPIs & SLAs';
+      case 'taskNotifications': return 'Notifications';
+      case 'taskAutomation': return 'Automation Rules';
+      case 'taskReports': return 'Task Reports';
+      case 'taskConfiguration': return 'Task Configuration';
+      case 'taskAudit': return 'Task Audit Trail';
+      case 'taskOKR': return 'OKRs & Strategy';
+      case 'taskInitiatives': return 'Initiatives';
+      case 'taskRoles': return 'Roles & Access';
+      case 'taskManagement': return 'Tasks';
+
       default: return 'PBooks Pro';
     }
   };
@@ -528,6 +593,7 @@ const App: React.FC = () => {
 
   return (
     <OfflineProvider>
+      <PrintController />
       <div
         className="flex h-screen bg-white overflow-hidden font-sans text-gray-900 overscroll-none"
         onContextMenu={(e) => e.preventDefault()}
@@ -541,7 +607,7 @@ const App: React.FC = () => {
           style={{ marginRight: 'var(--right-sidebar-width, 0px)' }}
         >
           <Header title={getPageTitle(currentPage)} isNavigating={isPending} />
-          
+
           {/* Mobile Offline Warning Banner */}
           <MobileOfflineWarning />
 
@@ -558,24 +624,17 @@ const App: React.FC = () => {
               {renderPersistentPage('PROJECT', <ProjectManagementPage initialPage={currentPage} />)}
               {renderPersistentPage('INVESTMENT', <InvestmentManagementPage />)}
               {renderPersistentPage('PM_CONFIG', <PMConfigPage />)}
+              {renderPersistentPage('TASKS', <TaskModuleRouter currentPage={currentPage} />)}
               {renderPersistentPage('BIZ_PLANET', <BizPlanetPage />)}
               {renderPersistentPage('PAYROLL', <PayrollHub />)}
+              {renderPersistentPage('POS_SALES', <POSSalesPage />)}
               {renderPersistentPage('INVENTORY', <InventoryPage />)}
-              {currentPage === 'tasks' && (
-                <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-center"><div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-2"></div><p className="text-sm text-gray-600">Loading...</p></div></div>}>
-                  <TasksPage />
-                </Suspense>
-              )}
-              {currentPage === 'tasksCalendar' && (
-                <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-center"><div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-2"></div><p className="text-sm text-gray-600">Loading...</p></div></div>}>
-                  <TasksCalendarView />
-                </Suspense>
-              )}
-              {currentPage === 'teamRanking' && (
-                <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-center"><div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-2"></div><p className="text-sm text-gray-600">Loading...</p></div></div>}>
-                  <TeamRankingPage />
-                </Suspense>
-              )}
+              {renderPersistentPage('SHOP_ACCOUNTING', <AccountingPage />)}
+              {renderPersistentPage('LOYALTY', <LoyaltyPage />)}
+              {renderPersistentPage('MULTI_STORE', <MultiStorePage />)}
+              {renderPersistentPage('BI_DASHBOARDS', <BIDashboardsPage />)}
+              {renderPersistentPage('PROCUREMENT', <ProcurementPage />)}
+
               {renderPersistentPage('SETTINGS', <SettingsPage />)}
               {renderPersistentPage('IMPORT', <ImportExportWizard />)}
             </ErrorBoundary>
@@ -614,9 +673,9 @@ const App: React.FC = () => {
         <KPIDrilldown />
         <ProgressDisplay />
 
-        {/* Sync Notification */}
-        <SyncNotification />
-        <WebSocketDebugPanel />
+        {/* Sync Notification - Removed per user request */}
+        {/* <SyncNotification /> */}
+        {/* <WebSocketDebugPanel /> - Removed per user request */}
 
         <UpdateNotification />
         <VersionUpdateNotification onUpdateRequested={() => {

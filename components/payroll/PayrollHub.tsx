@@ -6,9 +6,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { 
-  CreditCard, 
-  Settings2, 
+import {
+  CreditCard,
+  Settings2,
   History,
   Users,
   BarChart3,
@@ -33,13 +33,14 @@ import { PayrollEmployee, GradeLevel, Department, EarningType, DeductionType } f
 import { storageService } from './services/storageService';
 import { payrollApi } from '../../services/api/payrollApi';
 import { useAuth } from '../../context/AuthContext';
-import { usePayrollContext, PayrollSubTab } from '../../context/PayrollContext';
+import { usePayrollContext } from '../../context/PayrollContext';
+import Tabs from '../ui/Tabs';
 import { formatCurrency } from './utils/formatters';
 
 const PayrollHub: React.FC = () => {
   // Use AuthContext for tenant and user info
   const { user, tenant } = useAuth();
-  
+
   // Use PayrollContext for preserving state across navigation
   const {
     activeSubTab,
@@ -49,12 +50,12 @@ const PayrollHub: React.FC = () => {
     isAddingEmployee,
     setIsAddingEmployee,
   } = usePayrollContext();
-  
+
   const [earningTypes, setEarningTypes] = useState<EarningType[]>([]);
   const [deductionTypes, setDeductionTypes] = useState<DeductionType[]>([]);
   const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
-  
+
   // Modal states for salary structure configuration
   const [isEarningModalOpen, setIsEarningModalOpen] = useState(false);
   const [isDeductionModalOpen, setIsDeductionModalOpen] = useState(false);
@@ -64,7 +65,7 @@ const PayrollHub: React.FC = () => {
   const [editingDeduction, setEditingDeduction] = useState<DeductionType | null>(null);
   const [editingGrade, setEditingGrade] = useState<GradeLevel | null>(null);
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
-  
+
 
   // Get tenant ID from auth context
   const tenantId = tenant?.id || '';
@@ -82,7 +83,7 @@ const PayrollHub: React.FC = () => {
 
   const refreshData = async () => {
     if (!tenantId) return;
-    
+
     try {
       // Fetch from cloud API first, fallback to localStorage
       const [apiEarnings, apiDeductions, apiGrades, apiDepartments] = await Promise.all([
@@ -91,26 +92,26 @@ const PayrollHub: React.FC = () => {
         payrollApi.getGradeLevels(),
         payrollApi.getDepartments()
       ]);
-      
+
       // Use API data if available, otherwise fallback to localStorage
       if (apiEarnings.length > 0) {
         setEarningTypes(apiEarnings);
       } else {
         setEarningTypes(storageService.getEarningTypes(tenantId));
       }
-      
+
       if (apiDeductions.length > 0) {
         setDeductionTypes(apiDeductions);
       } else {
         setDeductionTypes(storageService.getDeductionTypes(tenantId));
       }
-      
+
       if (apiGrades.length > 0) {
         setGradeLevels(apiGrades);
       } else {
         setGradeLevels(storageService.getGradeLevels(tenantId));
       }
-      
+
       if (apiDepartments.length > 0) {
         setDepartments(apiDepartments);
       } else {
@@ -125,7 +126,7 @@ const PayrollHub: React.FC = () => {
     }
   };
 
-  // Navigation tabs
+  // Navigation tabs (labels for browser-style Tabs; id for content routing)
   const hrTabs = [
     { id: 'workforce' as const, label: 'Workforce', icon: Users },
     { id: 'cycles' as const, label: 'Payroll Cycles', icon: CreditCard },
@@ -133,6 +134,9 @@ const PayrollHub: React.FC = () => {
     { id: 'structure' as const, label: 'Salary Structure', icon: Settings2 },
     { id: 'history' as const, label: 'Payment History', icon: History },
   ];
+  const payrollTabLabels = hrTabs.map((t) => t.label);
+  const labelToId = Object.fromEntries(hrTabs.map((t) => [t.label, t.id])) as Record<string, typeof hrTabs[0]['id']>;
+  const activeTabLabel = hrTabs.find((t) => t.id === activeSubTab)?.label ?? payrollTabLabels[0];
 
   // If no tenant, show loading or error
   if (!tenantId) {
@@ -147,16 +151,16 @@ const PayrollHub: React.FC = () => {
   if (isEmployeeRole) {
     const employees = storageService.getEmployees(tenantId);
     const selfEmployee = employees.find(e => e.email === user?.username) || employees[0];
-    
+
     if (selfEmployee) {
       return (
-        <EmployeeProfile 
-          employee={selfEmployee} 
-          onBack={() => {}} 
+        <EmployeeProfile
+          employee={selfEmployee}
+          onBack={() => { }}
         />
       );
     }
-    
+
     return (
       <div className="flex items-center justify-center py-20">
         <p className="text-slate-400 font-bold">Initializing your secure profile...</p>
@@ -165,59 +169,48 @@ const PayrollHub: React.FC = () => {
   }
 
   return (
-    <div className="absolute inset-0 flex flex-col -m-2 sm:-m-3 md:-m-4 lg:-m-6 xl:-m-8">
-      {/* Sub-navigation tabs - Fixed at top of payroll section */}
-      <div className="flex-shrink-0 bg-white/95 backdrop-blur-md border-b border-slate-200 px-2 sm:px-4 lg:px-8 z-30 shadow-sm no-print">
-        <div className="flex overflow-x-auto no-scrollbar gap-1 sm:gap-8">
-          {hrTabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                // Only switch tab - don't reset employee state to preserve view when returning
-                setActiveSubTab(tab.id);
-              }}
-              className={`flex items-center gap-1.5 sm:gap-2 py-3 sm:pt-[39px] sm:pb-[39px] px-2 sm:px-0 sm:my-[15px] sm:mx-[3px] border-b-2 font-black text-[10px] sm:text-[11px] uppercase tracking-wider sm:tracking-[0.15em] transition-all relative whitespace-nowrap ${
-                activeSubTab === tab.id 
-                  ? 'border-blue-600 text-blue-600' 
-                  : 'border-transparent text-slate-400 hover:text-slate-700'
-              }`}
-            >
-              <tab.icon size={14} className="sm:w-4 sm:h-4" />
-              <span className="hidden sm:inline">{tab.label}</span>
-              <span className="sm:hidden">{tab.label.split(' ')[0]}</span>
-            </button>
-          ))}
-        </div>
+    <div className="flex flex-col h-full -mx-2 -mb-2 sm:-mx-3 sm:-mb-3 md:-mx-4 md:-mb-4 lg:-mx-6 lg:-mb-6 xl:-mx-8 xl:-mb-8">
+      {/* Sub-navigation tabs - browser style (same as rental-payout, settings, etc.) */}
+      <div className="flex-shrink-0 no-print">
+        <Tabs
+          variant="browser"
+          tabs={payrollTabLabels}
+          activeTab={activeTabLabel}
+          onTabClick={(label) => {
+            const id = labelToId[label];
+            if (id) setActiveSubTab(id);
+          }}
+        />
       </div>
 
-      {/* Tab content - scrollable area below fixed navigation */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-3 md:p-4 lg:p-6 xl:p-8 pb-20 sm:pb-24 md:pb-6 animate-in fade-in duration-500">
+      {/* Tab content - scrollable area below tabs, seamless with active tab */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden bg-white rounded-b-lg -mt-px p-2 sm:p-3 md:p-4 lg:p-6 xl:p-8 pb-20 sm:pb-24 md:pb-6 animate-in fade-in duration-500">
         {activeSubTab === 'workforce' && (
           selectedEmployee ? (
-            <EmployeeProfile 
-              employee={selectedEmployee} 
-              onBack={() => setSelectedEmployee(null)} 
+            <EmployeeProfile
+              employee={selectedEmployee}
+              onBack={() => setSelectedEmployee(null)}
             />
           ) : isAddingEmployee ? (
-            <EmployeeForm 
-              onBack={() => setIsAddingEmployee(false)} 
-              onSave={() => { 
-                setIsAddingEmployee(false); 
-                refreshData(); 
-              }} 
+            <EmployeeForm
+              onBack={() => setIsAddingEmployee(false)}
+              onSave={() => {
+                setIsAddingEmployee(false);
+                refreshData();
+              }}
             />
           ) : (
-            <EmployeeList 
-              onSelect={setSelectedEmployee} 
-              onAdd={() => setIsAddingEmployee(true)} 
+            <EmployeeList
+              onSelect={setSelectedEmployee}
+              onAdd={() => setIsAddingEmployee(true)}
             />
           )
         )}
-        
+
         {activeSubTab === 'cycles' && <PayrollRunScreen />}
-        
+
         {activeSubTab === 'report' && <PayrollReport />}
-        
+
         {activeSubTab === 'structure' && (
           <div className="space-y-4">
             {/* Header */}
@@ -236,7 +229,7 @@ const PayrollHub: React.FC = () => {
                   <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Earning Components</h3>
                   <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded">{earningTypes.length}</span>
                 </div>
-                <button 
+                <button
                   onClick={() => { setEditingEarning(null); setIsEarningModalOpen(true); }}
                   className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 text-white rounded-lg text-[10px] font-bold hover:bg-emerald-700 transition-colors"
                 >
@@ -265,7 +258,7 @@ const PayrollHub: React.FC = () => {
                           <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${e.is_percentage ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'}`}>
                             {e.is_percentage ? '%' : 'Fixed'}
                           </span>
-                          <button 
+                          <button
                             onClick={() => { setEditingEarning(e); setIsEarningModalOpen(true); }}
                             className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-200 rounded transition-colors"
                           >
@@ -287,7 +280,7 @@ const PayrollHub: React.FC = () => {
                   <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Deduction Components</h3>
                   <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded">{deductionTypes.length}</span>
                 </div>
-                <button 
+                <button
                   onClick={() => { setEditingDeduction(null); setIsDeductionModalOpen(true); }}
                   className="flex items-center gap-1 px-2.5 py-1 bg-red-600 text-white rounded-lg text-[10px] font-bold hover:bg-red-700 transition-colors"
                 >
@@ -316,7 +309,7 @@ const PayrollHub: React.FC = () => {
                           <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${d.is_percentage ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'}`}>
                             {d.is_percentage ? '%' : 'Fixed'}
                           </span>
-                          <button 
+                          <button
                             onClick={() => { setEditingDeduction(d); setIsDeductionModalOpen(true); }}
                             className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-200 rounded transition-colors"
                           >
@@ -338,7 +331,7 @@ const PayrollHub: React.FC = () => {
                   <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Grade Levels</h3>
                   <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded">{gradeLevels.length}</span>
                 </div>
-                <button 
+                <button
                   onClick={() => { setEditingGrade(null); setIsGradeModalOpen(true); }}
                   className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 text-white rounded-lg text-[10px] font-bold hover:bg-blue-700 transition-colors"
                 >
@@ -369,7 +362,7 @@ const PayrollHub: React.FC = () => {
                               {g.description}
                             </span>
                           )}
-                          <button 
+                          <button
                             onClick={() => { setEditingGrade(g); setIsGradeModalOpen(true); }}
                             className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-200 rounded transition-colors"
                           >
@@ -391,7 +384,7 @@ const PayrollHub: React.FC = () => {
                   <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Departments</h3>
                   <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-bold rounded">{departments.length}</span>
                 </div>
-                <button 
+                <button
                   onClick={() => { setEditingDepartment(null); setIsDepartmentModalOpen(true); }}
                   className="flex items-center gap-1 px-2.5 py-1 bg-purple-600 text-white rounded-lg text-[10px] font-bold hover:bg-purple-700 transition-colors"
                 >
@@ -420,7 +413,7 @@ const PayrollHub: React.FC = () => {
                           <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${d.is_active ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-200 text-slate-500'}`}>
                             {d.is_active ? 'Active' : 'Off'}
                           </span>
-                          <button 
+                          <button
                             onClick={() => { setEditingDepartment(d); setIsDepartmentModalOpen(true); }}
                             className="p-1 text-slate-400 hover:text-purple-600 hover:bg-purple-200 rounded transition-colors"
                           >
@@ -435,27 +428,27 @@ const PayrollHub: React.FC = () => {
             </div>
 
             {/* Configuration Modals */}
-            <SalaryConfigModal 
+            <SalaryConfigModal
               isOpen={isEarningModalOpen}
               onClose={() => { setIsEarningModalOpen(false); setEditingEarning(null); }}
               type="earning"
               initialData={editingEarning}
               onSave={() => refreshData()}
             />
-            <SalaryConfigModal 
+            <SalaryConfigModal
               isOpen={isDeductionModalOpen}
               onClose={() => { setIsDeductionModalOpen(false); setEditingDeduction(null); }}
               type="deduction"
               initialData={editingDeduction}
               onSave={() => refreshData()}
             />
-            <GradeConfigModal 
+            <GradeConfigModal
               isOpen={isGradeModalOpen}
               onClose={() => { setIsGradeModalOpen(false); setEditingGrade(null); }}
               initialData={editingGrade}
               onSave={() => refreshData()}
             />
-            <DepartmentConfigModal 
+            <DepartmentConfigModal
               isOpen={isDepartmentModalOpen}
               onClose={() => { setIsDepartmentModalOpen(false); setEditingDepartment(null); }}
               initialData={editingDepartment}
@@ -463,7 +456,7 @@ const PayrollHub: React.FC = () => {
             />
           </div>
         )}
-        
+
         {activeSubTab === 'history' && <PaymentHistory />}
       </div>
     </div>

@@ -5,7 +5,7 @@
  * Only organization data should be synchronized across users in the same tenant.
  */
 
-import { AppState, AppAction } from '../types';
+import { AppState, AppAction } from '../../types';
 
 /**
  * User-specific fields that should NOT be synchronized
@@ -18,12 +18,11 @@ export const USER_SPECIFIC_FIELDS = [
     'enableDatePreservation',
     'lastPreservedDate',
     'showSystemTransactions',
-    
+
     // User-specific settings
     'defaultProjectId',
-    'documentStoragePath',
     'dashboardConfig', // User's visible KPIs configuration
-    
+
     // UI State (should never be synced)
     'currentPage',
     'editingEntity',
@@ -31,7 +30,7 @@ export const USER_SPECIFIC_FIELDS = [
     'initialTransactionFilter',
     'initialTabs',
     'initialImportType',
-    
+
     // User data
     'currentUser',
 ] as const;
@@ -47,7 +46,7 @@ export const USER_SPECIFIC_ACTIONS = [
     'TOGGLE_SYSTEM_TRANSACTIONS',
     'UPDATE_DEFAULT_PROJECT',
     'UPDATE_DASHBOARD_CONFIG',
-    
+
     // UI Navigation (already excluded, but listed for clarity)
     'SET_PAGE',
     'SET_EDITING_ENTITY',
@@ -59,7 +58,7 @@ export const USER_SPECIFIC_ACTIONS = [
     'SET_INITIAL_TRANSACTION_FILTER',
     'SET_INITIAL_IMPORT_TYPE',
     'CLEAR_INITIAL_IMPORT_TYPE',
-    
+
     // User management (handled separately via API)
     'LOGIN',
     'LOGOUT',
@@ -76,13 +75,13 @@ export const ORGANIZATION_DATA_FIELDS = [
     'contacts',
     'categories',
     'users', // User list (but not currentUser)
-    
+
     // Projects & Properties
     'projects',
     'buildings',
     'properties',
     'units',
-    
+
     // Financial data
     'transactions',
     'invoices',
@@ -92,13 +91,13 @@ export const ORGANIZATION_DATA_FIELDS = [
     'budgets',
     'planAmenities',
     'installmentPlans',
-    
+
     // Agreements & Contracts
     'rentalAgreements',
     'projectAgreements',
     'salesReturns',
     'contracts',
-    
+
     // Templates & Settings (organization-wide)
     'recurringInvoiceTemplates',
     'agreementSettings',
@@ -109,7 +108,7 @@ export const ORGANIZATION_DATA_FIELDS = [
     'whatsAppTemplates',
     'invoiceHtmlTemplate',
     'pmCostPercentage',
-    
+
     // Logs (organization-wide)
     'transactionLog',
     'errorLog',
@@ -124,12 +123,12 @@ export function shouldSyncAction(action: AppAction): boolean {
     if ((action as any)._isRemote) {
         return false;
     }
-    
+
     // Skip user-specific actions
     if (USER_SPECIFIC_ACTIONS.includes(action.type as any)) {
         return false;
     }
-    
+
     // All other actions should sync (they're organization data)
     return true;
 }
@@ -140,19 +139,19 @@ export function shouldSyncAction(action: AppAction): boolean {
  */
 export function getOrganizationData(state: AppState): Partial<AppState> {
     const orgData: Partial<AppState> = {};
-    
+
     // Copy only organization data fields
     for (const field of ORGANIZATION_DATA_FIELDS) {
         if (field in state) {
             (orgData as any)[field] = (state as any)[field];
         }
     }
-    
+
     // Include version for state management
     if (state.version !== undefined) {
         orgData.version = state.version;
     }
-    
+
     return orgData;
 }
 

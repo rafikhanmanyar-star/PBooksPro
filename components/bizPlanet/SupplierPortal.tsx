@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { apiClient } from '../../services/api/client';
 import { PurchaseOrder, P2PInvoice, POStatus, P2PInvoiceStatus, SupplierRegistrationRequest, SupplierRegistrationStatus } from '../../types';
@@ -8,8 +8,9 @@ import Input from '../ui/Input';
 import ComboBox from '../ui/ComboBox';
 import Modal from '../ui/Modal';
 import { useNotification } from '../../context/NotificationContext';
-import { ICONS, CURRENCY } from '../../constants';
+import { CURRENCY } from '../../constants';
 import { getWebSocketClient } from '../../services/websocketClient';
+import { BIZ_PLANET_NOTIFICATION_ACTION_EVENT, updateBizPlanetNotifications } from '../../utils/bizPlanetNotifications';
 
 // Notification type for activity messages
 interface ActivityNotification {
@@ -20,7 +21,6 @@ interface ActivityNotification {
     timestamp: Date;
     itemId?: string;
     itemType?: 'registration' | 'po' | 'invoice';
-    read: boolean;
 }
 
 const SupplierPortal: React.FC = () => {
@@ -31,20 +31,12 @@ const SupplierPortal: React.FC = () => {
     const [myRegistrationRequests, setMyRegistrationRequests] = useState<SupplierRegistrationRequest[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
-    
-    // Notification dropdown state
-    const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+    const [poDetailLoading, setPoDetailLoading] = useState(false);
+    const [poReadOnly, setPoReadOnly] = useState(false);
+    const [selectedApprovedRegistration, setSelectedApprovedRegistration] = useState<SupplierRegistrationRequest | null>(null);
+
     const [notifications, setNotifications] = useState<ActivityNotification[]>([]);
-    const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(() => {
-        // Load read notifications from localStorage
-        try {
-            const stored = localStorage.getItem('supplier_portal_read_notifications');
-            return stored ? new Set(JSON.parse(stored)) : new Set();
-        } catch {
-            return new Set();
-        }
-    });
-    const notificationRef = useRef<HTMLDivElement>(null);
+    const [pendingFocus, setPendingFocus] = useState<{ type: 'registration' | 'po' | 'invoice'; id?: string } | null>(null);
     
     // Mobile responsive state
     const [activePanel, setActivePanel] = useState<'left' | 'right'>('left');
@@ -61,22 +53,6 @@ const SupplierPortal: React.FC = () => {
     const [regSupplierContactNo, setRegSupplierContactNo] = useState('');
     const [regSupplierAddress, setRegSupplierAddress] = useState('');
     const [regSupplierDescription, setRegSupplierDescription] = useState('');
-
-    // Save read notifications to localStorage
-    useEffect(() => {
-        localStorage.setItem('supplier_portal_read_notifications', JSON.stringify([...readNotificationIds]));
-    }, [readNotificationIds]);
-
-    // Close notification dropdown when clicking outside
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
-                setIsNotificationOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
 
     useEffect(() => {
         loadData();
@@ -96,7 +72,7 @@ const SupplierPortal: React.FC = () => {
     // Build notifications from data
     useEffect(() => {
         buildNotifications();
-    }, [myRegistrationRequests, receivedPOs, myInvoices, readNotificationIds]);
+    }, [myRegistrationRequests, receivedPOs, myInvoices]);
 
     const buildNotifications = () => {
         const newNotifications: ActivityNotification[] = [];
@@ -113,7 +89,7 @@ const SupplierPortal: React.FC = () => {
                     timestamp: new Date(req.reviewedAt || req.requestedAt),
                     itemId: req.id,
                     itemType: 'registration',
-                    read: readNotificationIds.has(id)
+                    
                 });
             } else if (req.status === SupplierRegistrationStatus.REJECTED) {
                 const id = `reg-rejected-${req.id}`;
@@ -125,7 +101,7 @@ const SupplierPortal: React.FC = () => {
                     timestamp: new Date(req.reviewedAt || req.requestedAt),
                     itemId: req.id,
                     itemType: 'registration',
-                    read: readNotificationIds.has(id)
+                    
                 });
             }
         });
@@ -141,7 +117,7 @@ const SupplierPortal: React.FC = () => {
                 timestamp: new Date(po.sentAt || po.createdAt || Date.now()),
                 itemId: po.id,
                 itemType: 'po',
-                read: readNotificationIds.has(id)
+                
             });
         });
 
@@ -157,7 +133,7 @@ const SupplierPortal: React.FC = () => {
                     timestamp: new Date(inv.approvedAt || inv.createdAt || Date.now()),
                     itemId: inv.id,
                     itemType: 'invoice',
-                    read: readNotificationIds.has(id)
+                    
                 });
             } else if (inv.status === P2PInvoiceStatus.REJECTED) {
                 const id = `inv-rejected-${inv.id}`;
@@ -169,7 +145,7 @@ const SupplierPortal: React.FC = () => {
                     timestamp: new Date(inv.rejectedAt || inv.createdAt || Date.now()),
                     itemId: inv.id,
                     itemType: 'invoice',
-                    read: readNotificationIds.has(id)
+                    
                 });
             }
         });
@@ -179,25 +155,91 @@ const SupplierPortal: React.FC = () => {
         setNotifications(newNotifications);
     };
 
-    // Count unread notifications
-    const unreadCount = useMemo(() => {
-        return notifications.filter(n => !n.read).length;
+    useEffect(() => {
+        if (!Array.isArray(notifications)) return;
+        updateBizPlanetNotifications('supplier', notifications.map(notification => ({
+            id: `bizplanet:supplier:${notification.id}`,
+            title: notification.title,
+            message: notification.message,
+            time: notification.timestamp.toISOString(),
+            target: 'supplier',
+            focus: {
+                type: notification.itemType || 'registration',
+                id: notification.itemId
+            }
+        })));
     }, [notifications]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const handleAction = (event: Event) => {
+            const detail = (event as CustomEvent).detail as { target?: string; focus?: { type: 'registration' | 'po' | 'invoice'; id?: string } } | undefined;
+            if (!detail || detail.target !== 'supplier' || !detail.focus) return;
+            setPendingFocus(detail.focus);
+        };
+        window.addEventListener(BIZ_PLANET_NOTIFICATION_ACTION_EVENT, handleAction);
+        return () => window.removeEventListener(BIZ_PLANET_NOTIFICATION_ACTION_EVENT, handleAction);
+    }, []);
+
+    useEffect(() => {
+        if (!pendingFocus || loading) return;
+        const scrollTo = (selector: string) => {
+            const element = document.querySelector(selector);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                return true;
+            }
+            return false;
+        };
+        const highlightRow = (selector: string) => {
+            const row = document.querySelector(selector);
+            if (!row) return false;
+            row.classList.add('ring-2', 'ring-indigo-500', 'ring-offset-2');
+            setTimeout(() => row.classList.remove('ring-2', 'ring-indigo-500', 'ring-offset-2'), 2000);
+            return true;
+        };
+
+        setTimeout(() => {
+            if (pendingFocus.type === 'registration') {
+                setActivePanel('right');
+                scrollTo('[data-section="my-registrations"]');
+                if (pendingFocus.id) {
+                    highlightRow(`[data-registration-id="${pendingFocus.id}"]`);
+                }
+            } else if (pendingFocus.type === 'po') {
+                setActivePanel('left');
+                scrollTo('[data-section="received-pos"]');
+                if (pendingFocus.id) {
+                    const po = receivedPOs.find(item => item.id === pendingFocus.id);
+                    if (po) {
+                        openPODetail(po);
+                    }
+                    highlightRow(`[data-po-id="${pendingFocus.id}"]`);
+                }
+            } else if (pendingFocus.type === 'invoice') {
+                setActivePanel('left');
+                scrollTo('[data-section="my-invoices"]');
+                if (pendingFocus.id) {
+                    highlightRow(`[data-invoice-id="${pendingFocus.id}"]`);
+                }
+            }
+            setPendingFocus(null);
+        }, 120);
+    }, [pendingFocus, loading, receivedPOs]);
 
     // WebSocket listener for registration status updates, new purchase orders, and invoice updates
     useEffect(() => {
         const wsClient = getWebSocketClient();
         
         const handleDataUpdate = (data: any) => {
-            if (data.type === 'SUPPLIER_REGISTRATION_APPROVED' || data.type === 'SUPPLIER_REGISTRATION_REJECTED') {
-                // Reload registration requests when status changes
+            if (data.type === 'SUPPLIER_REGISTRATION_APPROVED' || data.type === 'SUPPLIER_REGISTRATION_REJECTED' || data.type === 'SUPPLIER_REGISTRATION_REVOKED') {
                 loadMyRegistrationRequests();
-                
-                // Show success notification for approval
                 if (data.type === 'SUPPLIER_REGISTRATION_APPROVED') {
                     showToast('Registration approved! You are now registered with the buyer organization.', 'success');
                 } else if (data.type === 'SUPPLIER_REGISTRATION_REJECTED') {
                     showToast('Registration request was rejected by the buyer organization.', 'info');
+                } else if (data.type === 'SUPPLIER_REGISTRATION_REVOKED') {
+                    showToast('Registration with this buyer has been removed.', 'info');
                 }
             } else if (data.type === 'PURCHASE_ORDER_RECEIVED') {
                 // Reload purchase orders when new PO is received
@@ -269,6 +311,18 @@ const SupplierPortal: React.FC = () => {
         }
     };
 
+    const handleUnregisterFromBuyer = async (buyerTenantId: string) => {
+        try {
+            await apiClient.put(`/supplier-registrations/my-registrations/${buyerTenantId}/unregister`);
+            showToast('Unregistered from buyer');
+            setSelectedApprovedRegistration(null);
+            await loadMyRegistrationRequests();
+        } catch (error: any) {
+            const errorMessage = error?.response?.data?.error || error?.message || 'Failed to unregister';
+            showAlert(errorMessage);
+        }
+    };
+
     const checkRegistrationStatus = async (buyerEmail: string): Promise<{ approved: boolean; pending: boolean }> => {
         try {
             // Check if any of our registration requests are approved for this buyer
@@ -286,6 +340,35 @@ const SupplierPortal: React.FC = () => {
             console.error('Error checking registration status:', error);
             return { approved: false, pending: false };
         }
+    };
+
+    const openPODetail = async (po: PurchaseOrder) => {
+        setPoDetailLoading(true);
+        setPoReadOnly(false);
+        try {
+            const res = await apiClient.post<PurchaseOrder>(`/purchase-orders/${po.id}/lock`);
+            setSelectedPO(res);
+        } catch (err: any) {
+            if (err.response?.status === 423) {
+                setSelectedPO(po);
+                setPoReadOnly(true);
+            } else {
+                setSelectedPO(po);
+                if (err.response?.data?.error) showAlert(err.response.data.error);
+            }
+        } finally {
+            setPoDetailLoading(false);
+        }
+    };
+
+    const closePODetail = async () => {
+        if (selectedPO && tenant?.id && selectedPO.lockedByTenantId === tenant.id) {
+            try {
+                await apiClient.post(`/purchase-orders/${selectedPO.id}/unlock`);
+            } catch (_) { /* ignore */ }
+        }
+        setSelectedPO(null);
+        setPoReadOnly(false);
     };
 
     const handleFlipToInvoice = async (poId: string) => {
@@ -394,94 +477,6 @@ const SupplierPortal: React.FC = () => {
         return status;
     };
 
-    const getNotificationIcon = (type: ActivityNotification['type']) => {
-        switch (type) {
-            case 'registration_approved':
-                return <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
-            case 'registration_rejected':
-                return <svg className="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
-            case 'new_po':
-                return <svg className="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>;
-            case 'invoice_approved':
-                return <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
-            case 'invoice_rejected':
-                return <svg className="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
-            default:
-                return <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
-        }
-    };
-
-    const markAsRead = (notificationId: string) => {
-        setReadNotificationIds(prev => {
-            const newSet = new Set(prev);
-            newSet.add(notificationId);
-            return newSet;
-        });
-    };
-
-    const markAllAsRead = () => {
-        setReadNotificationIds(prev => {
-            const newSet = new Set(prev);
-            notifications.forEach(n => newSet.add(n.id));
-            return newSet;
-        });
-    };
-
-    const handleNotificationClick = (notification: ActivityNotification) => {
-        // Mark notification as read
-        markAsRead(notification.id);
-        setIsNotificationOpen(false);
-        
-        // On mobile, switch to appropriate panel
-        if (notification.itemType === 'registration') {
-            setActivePanel('right');
-        } else {
-            setActivePanel('left');
-        }
-        
-        // Scroll to the appropriate section based on notification type
-        setTimeout(() => {
-            if (notification.itemType === 'registration') {
-                const element = document.querySelector('[data-section="my-registrations"]');
-                if (element) {
-                    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    // Highlight the specific row
-                    setTimeout(() => {
-                        const row = document.querySelector(`[data-registration-id="${notification.itemId}"]`);
-                        if (row) {
-                            row.classList.add('ring-2', 'ring-indigo-500', 'ring-offset-2');
-                            setTimeout(() => row.classList.remove('ring-2', 'ring-indigo-500', 'ring-offset-2'), 2000);
-                        }
-                    }, 300);
-                }
-            } else if (notification.itemType === 'po') {
-                const element = document.querySelector('[data-section="received-pos"]');
-                if (element) {
-                    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    setTimeout(() => {
-                        const row = document.querySelector(`[data-po-id="${notification.itemId}"]`);
-                        if (row) {
-                            row.classList.add('ring-2', 'ring-indigo-500', 'ring-offset-2');
-                            setTimeout(() => row.classList.remove('ring-2', 'ring-indigo-500', 'ring-offset-2'), 2000);
-                        }
-                    }, 300);
-                }
-            } else if (notification.itemType === 'invoice') {
-                const element = document.querySelector('[data-section="my-invoices"]');
-                if (element) {
-                    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    setTimeout(() => {
-                        const row = document.querySelector(`[data-invoice-id="${notification.itemId}"]`);
-                        if (row) {
-                            row.classList.add('ring-2', 'ring-indigo-500', 'ring-offset-2');
-                            setTimeout(() => row.classList.remove('ring-2', 'ring-indigo-500', 'ring-offset-2'), 2000);
-                        }
-                    }, 300);
-                }
-            }
-        }, 100);
-    };
-
     // Count invoices by status
     const invoiceCounts = {
         pending: myInvoices.filter(inv => inv.status === P2PInvoiceStatus.PENDING).length,
@@ -490,7 +485,9 @@ const SupplierPortal: React.FC = () => {
     };
 
     // Get approved registrations for the right panel
-    const approvedRegistrations = Array.isArray(myRegistrationRequests) ? myRegistrationRequests.filter(r => r.status === SupplierRegistrationStatus.APPROVED) : [];
+    const approvedRegistrations = Array.isArray(myRegistrationRequests)
+        ? myRegistrationRequests.filter(r => r.status === SupplierRegistrationStatus.APPROVED && r.isRegistrationActive !== false)
+        : [];
 
     if (loading) {
         return (
@@ -513,79 +510,6 @@ const SupplierPortal: React.FC = () => {
                         <p className="text-[10px] sm:text-xs text-slate-500 hidden sm:block">Manage purchase orders and invoices</p>
                     </div>
                     <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-                        {/* Notification Bell Icon with Dropdown */}
-                        <div className="relative" ref={notificationRef}>
-                            <button
-                                type="button"
-                                onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-                                className="p-1.5 sm:p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors relative min-w-[36px] sm:min-w-[40px] min-h-[36px] sm:min-h-[40px] flex items-center justify-center"
-                                title={`${unreadCount} unread notification${unreadCount !== 1 ? 's' : ''}`}
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="sm:w-5 sm:h-5">
-                                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                                    <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-                                </svg>
-                                {unreadCount > 0 && (
-                                    <span className="absolute -top-0.5 -right-0.5 min-w-[16px] sm:min-w-[18px] h-[16px] sm:h-[18px] px-1 bg-red-500 text-white text-[9px] sm:text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center">
-                                        {unreadCount > 99 ? '99+' : unreadCount}
-                                    </span>
-                                )}
-                            </button>
-                            
-                            {/* Notification Dropdown */}
-                            {isNotificationOpen && (
-                                <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-white rounded-lg shadow-xl border border-slate-200 z-50 max-h-[70vh] sm:max-h-96 overflow-hidden">
-                                    <div className="px-3 sm:px-4 py-2 sm:py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                                        <h3 className="text-xs sm:text-sm font-semibold text-slate-900">
-                                            Notifications {unreadCount > 0 && <span className="text-slate-500">({unreadCount} unread)</span>}
-                                        </h3>
-                                        {unreadCount > 0 && (
-                                            <button
-                                                type="button"
-                                                onClick={markAllAsRead}
-                                                className="text-[10px] sm:text-xs text-indigo-600 hover:text-indigo-800 font-medium"
-                                            >
-                                                Mark all read
-                                            </button>
-                                        )}
-                                    </div>
-                                    <div className="max-h-60 sm:max-h-72 overflow-y-auto">
-                                        {!Array.isArray(notifications) || notifications.length === 0 ? (
-                                            <div className="px-4 py-8 text-center text-slate-500 text-xs sm:text-sm">
-                                                No notifications
-                                            </div>
-                                        ) : (
-                                            notifications.map(notification => (
-                                                <button
-                                                    key={notification.id}
-                                                    type="button"
-                                                    onClick={() => handleNotificationClick(notification)}
-                                                    className={`w-full px-3 sm:px-4 py-2 sm:py-3 flex items-start gap-2 sm:gap-3 hover:bg-slate-50 transition-colors text-left border-b border-slate-100 last:border-0 ${
-                                                        !notification.read ? 'bg-blue-50/50' : ''
-                                                    }`}
-                                                >
-                                                    <div className="flex-shrink-0 mt-0.5">
-                                                        {getNotificationIcon(notification.type)}
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-center gap-2">
-                                                            <p className="text-xs sm:text-sm font-medium text-slate-900">{notification.title}</p>
-                                                            {!notification.read && (
-                                                                <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></span>
-                                                            )}
-                                                        </div>
-                                                        <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5 line-clamp-2">{notification.message}</p>
-                                                        <p className="text-[9px] sm:text-[10px] text-slate-400 mt-1">
-                                                            {notification.timestamp.toLocaleDateString()} {notification.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                        </p>
-                                                    </div>
-                                                </button>
-                                            ))
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
                         <Button
                             onClick={() => setIsRegistrationFormOpen(!isRegistrationFormOpen)}
                             className="bg-slate-900 text-white hover:bg-slate-800 text-[10px] sm:text-sm py-1 sm:py-1.5 px-2 sm:px-3"
@@ -792,7 +716,7 @@ const SupplierPortal: React.FC = () => {
                                                 <div className="flex gap-1">
                                                     <button
                                                         type="button"
-                                                        onClick={() => setSelectedPO(po)}
+                                                        onClick={() => openPODetail(po)}
                                                         className="p-1.5 rounded text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
                                                         title="View PO Details"
                                                     >
@@ -854,7 +778,7 @@ const SupplierPortal: React.FC = () => {
                                                     <div className="flex gap-1">
                                                         <button
                                                             type="button"
-                                                            onClick={() => setSelectedPO(po)}
+                                                            onClick={() => openPODetail(po)}
                                                             className="p-1 rounded text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
                                                             title="View PO Details"
                                                         >
@@ -976,9 +900,9 @@ const SupplierPortal: React.FC = () => {
                             ) : (
                                 <div className="divide-y divide-slate-100">
                                     {approvedRegistrations.map(reg => (
-                                        <div 
-                                            key={reg.id} 
-                                            data-registration-id={reg.id}
+                                        <div
+                                            key={reg.id}
+                                            onClick={() => setSelectedApprovedRegistration(reg)}
                                             className="px-2 sm:px-3 py-2 sm:py-2.5 hover:bg-slate-50 transition-all cursor-pointer"
                                         >
                                             <div className="flex items-start gap-2">
@@ -1057,11 +981,23 @@ const SupplierPortal: React.FC = () => {
             {selectedPO && (
                 <Modal
                     isOpen={!!selectedPO}
-                    onClose={() => setSelectedPO(null)}
+                    onClose={closePODetail}
                     title={`PO: ${selectedPO.poNumber}`}
                     size="lg"
                 >
                     <div className="space-y-4">
+                        {poDetailLoading && (
+                            <div className="flex items-center justify-center py-4">
+                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-slate-600" />
+                            </div>
+                        )}
+                        {!poDetailLoading && poReadOnly && (
+                            <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-amber-800 text-xs sm:text-sm">
+                                This PO is locked by the buyer. You can view it in read-only mode.
+                            </div>
+                        )}
+                        {!poDetailLoading && (
+                        <>
                         <div className="grid grid-cols-2 gap-3">
                             <div>
                                 <p className="text-xs text-slate-500 mb-1">PO Number</p>
@@ -1136,14 +1072,58 @@ const SupplierPortal: React.FC = () => {
                                 variant="primary"
                                 onClick={() => {
                                     handleFlipToInvoice(selectedPO.id);
-                                    setSelectedPO(null);
+                                    closePODetail();
                                 }}
                                 className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
-                                disabled={selectedPO.status !== POStatus.SENT && selectedPO.status !== POStatus.RECEIVED}
+                                disabled={(selectedPO.status !== POStatus.SENT && selectedPO.status !== POStatus.RECEIVED) || poReadOnly}
                             >
                                 Create Invoice
                             </Button>
-                            <Button variant="secondary" onClick={() => setSelectedPO(null)}>Close</Button>
+                            <Button variant="secondary" onClick={closePODetail}>Close</Button>
+                        </div>
+                        </>
+                        )}
+                    </div>
+                </Modal>
+            )}
+
+            {/* Approved Registration Detail Modal - open on click, Unregister */}
+            {selectedApprovedRegistration && (
+                <Modal
+                    isOpen={!!selectedApprovedRegistration}
+                    onClose={() => setSelectedApprovedRegistration(null)}
+                    title="Registered Organization"
+                >
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-1 gap-3">
+                            <div>
+                                <p className="text-xs text-slate-500 mb-1">Company</p>
+                                <p className="font-semibold text-slate-900 text-sm">{selectedApprovedRegistration.buyerCompanyName || selectedApprovedRegistration.buyerName || 'Organization'}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-slate-500 mb-1">Email</p>
+                                <p className="text-sm text-slate-900">{selectedApprovedRegistration.buyerOrganizationEmail || '-'}</p>
+                            </div>
+                            {selectedApprovedRegistration.reviewedAt && (
+                                <div>
+                                    <p className="text-xs text-slate-500 mb-1">Approved</p>
+                                    <p className="text-sm text-slate-900">{new Date(selectedApprovedRegistration.reviewedAt).toLocaleDateString()}</p>
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex justify-between pt-3 border-t border-slate-200">
+                            <Button variant="secondary" onClick={() => setSelectedApprovedRegistration(null)}>Close</Button>
+                            <Button
+                                variant="primary"
+                                className="bg-amber-600 hover:bg-amber-700"
+                                onClick={() => {
+                                    if (window.confirm('Unregister from this buyer? You will be removed from their registered suppliers list.')) {
+                                        handleUnregisterFromBuyer(selectedApprovedRegistration.buyerTenantId);
+                                    }
+                                }}
+                            >
+                                Unregister
+                            </Button>
                         </div>
                     </div>
                 </Modal>

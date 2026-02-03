@@ -13,7 +13,7 @@ import UnitForm from './UnitForm';
 import { useNotification } from '../../context/NotificationContext';
 
 interface SettingsDetailPageProps {
-  goBack: () => void;
+    goBack: () => void;
 }
 
 const SettingsDetailPage: React.FC<SettingsDetailPageProps> = ({ goBack: propGoBack }) => {
@@ -42,9 +42,9 @@ const SettingsDetailPage: React.FC<SettingsDetailPageProps> = ({ goBack: propGoB
 
     const itemToEdit = useMemo(() => {
         if (!isEditing || !id || !entityType) return undefined;
-        
+
         let stateArray: any[] | undefined;
-        switch(entityType) {
+        switch (entityType) {
             case 'ACCOUNT': stateArray = state.accounts; break;
             case 'CONTACT': stateArray = state.contacts; break;
             case 'PROJECT': stateArray = state.projects; break;
@@ -59,14 +59,16 @@ const SettingsDetailPage: React.FC<SettingsDetailPageProps> = ({ goBack: propGoB
 
     const handleFormSubmit = (data: any) => {
         if (!entityType) return;
+
         const actionType = isEditing ? `UPDATE_${entityType}` : `ADD_${entityType}`;
         const payload = isEditing ? { ...itemToEdit, ...data } : { id: Date.now().toString(), ...data };
-        
+
         if (entityType === 'ACCOUNT' && !isEditing) {
-             payload.balance = data.initialBalance || 0;
-             delete payload.initialBalance;
+            payload.balance = data.initialBalance || 0;
+            delete payload.initialBalance;
         }
 
+        console.log('🔍 Form Submit:', { entityType, actionType, payload });
         dispatch({ type: actionType as any, payload });
         goBack();
     };
@@ -78,22 +80,23 @@ const SettingsDetailPage: React.FC<SettingsDetailPageProps> = ({ goBack: propGoB
             'ACCOUNT': `Are you sure you want to delete account "${itemToEdit.name}"? This may affect existing transactions.`,
             'DEFAULT': `Are you sure you want to delete "${itemToEdit.name}"? This cannot be undone.`
         };
-        
+
         const message = messageMap[entityType] || messageMap['DEFAULT'].replace('"{itemToEdit.name}"', `this item`);
 
         const confirmed = await showConfirm(message, { title: 'Confirm Deletion', confirmLabel: 'Delete', cancelLabel: 'Cancel' });
         if (confirmed) {
+            console.log('🗑️ Deleting:', { entityType, actionType: `DELETE_${entityType}`, id });
             dispatch({ type: `DELETE_${entityType}` as any, payload: id });
             goBack();
         }
     };
-    
+
     const getTitle = () => {
         if (!editingEntity) return '';
         const action = isEditing ? 'Edit' : 'Add New';
         let entityName = entityType ? entityType.charAt(0) + entityType.slice(1).toLowerCase() : '';
-        
-        if(entityType === "CONTACT" && subType) {
+
+        if (entityType === "CONTACT" && subType) {
             entityName = subType.charAt(0) + subType.slice(1).toLowerCase();
         } else if (entityType === "CATEGORY" && subType) {
             entityName = `${subType.charAt(0) + subType.slice(1).toLowerCase()} Category`;
@@ -121,7 +124,7 @@ const SettingsDetailPage: React.FC<SettingsDetailPageProps> = ({ goBack: propGoB
             case 'PROJECT':
                 return <ProjectForm onCancel={goBack} onSubmit={handleFormSubmit} projectToEdit={itemToEdit} onDelete={handleDelete} />;
             case 'BUILDING':
-                 return <BuildingForm onCancel={goBack} onSubmit={handleFormSubmit} buildingToEdit={itemToEdit} onDelete={handleDelete} />;
+                return <BuildingForm onCancel={goBack} onSubmit={handleFormSubmit} buildingToEdit={itemToEdit} onDelete={handleDelete} />;
             case 'PROPERTY':
                 return <PropertyForm onCancel={goBack} onSubmit={handleFormSubmit} propertyToEdit={itemToEdit} onDelete={handleDelete} contacts={state.contacts} buildings={state.buildings} properties={state.properties} />;
             case 'UNIT':

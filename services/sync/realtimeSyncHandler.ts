@@ -64,6 +64,9 @@ const EVENT_MAP: Record<string, { entity: string; action: 'create' | 'update' | 
   'installment_plan:created': { entity: 'installment_plan', action: 'create' },
   'installment_plan:updated': { entity: 'installment_plan', action: 'update' },
   'installment_plan:deleted': { entity: 'installment_plan', action: 'delete' },
+  'warehouse:created': { entity: 'warehouse', action: 'create' },
+  'warehouse:updated': { entity: 'warehouse', action: 'update' },
+  'warehouse:deleted': { entity: 'warehouse', action: 'delete' },
 };
 
 // Action type mapping: entity + action -> AppAction type
@@ -116,6 +119,9 @@ const ACTION_TYPE_MAP: Record<string, AppAction['type']> = {
   'installment_plan:create': 'ADD_INSTALLMENT_PLAN',
   'installment_plan:update': 'UPDATE_INSTALLMENT_PLAN',
   'installment_plan:delete': 'DELETE_INSTALLMENT_PLAN',
+  'warehouse:create': 'ADD_WAREHOUSE',
+  'warehouse:update': 'UPDATE_WAREHOUSE',
+  'warehouse:delete': 'DELETE_WAREHOUSE',
 };
 
 // ============================================================================
@@ -210,7 +216,9 @@ function normalizeContact(data: any): any {
     id: data.id,
     name: data.name || '',
     type: data.type,
+    description: data.description ?? undefined,
     contactNo: data.contact_no ?? data.contactNo ?? undefined,
+    companyName: data.company_name ?? data.companyName ?? undefined,
     email: data.email ?? undefined,
     address: data.address ?? undefined,
     notes: data.notes ?? undefined,
@@ -570,6 +578,47 @@ function normalizeInstallmentPlan(data: any): any {
 }
 
 /**
+ * Normalize warehouse data from API/WebSocket (snake_case) to client format (camelCase)
+ */
+function normalizeWarehouse(data: any): any {
+  if (!data) return data;
+  return {
+    id: data.id,
+    name: data.name || '',
+    address: data.address ?? undefined,
+    userId: data.user_id ?? data.userId ?? undefined,
+    createdAt: data.created_at ?? data.createdAt ?? undefined,
+    updatedAt: data.updated_at ?? data.updatedAt ?? undefined,
+  };
+}
+
+/**
+ * Normalize purchase bill data from API/WebSocket (snake_case) to client format (camelCase)
+ */
+function normalizePurchaseBill(data: any): any {
+  if (!data) return data;
+  return {
+    id: data.id,
+    tenantId: data.tenant_id ?? data.tenantId ?? undefined,
+    userId: data.user_id ?? data.userId ?? undefined,
+    billNumber: data.bill_number ?? data.billNumber ?? '',
+    vendorId: data.vendor_id ?? data.vendorId ?? '',
+    billDate: data.bill_date ?? data.billDate ?? '',
+    dueDate: data.due_date ?? data.dueDate ?? undefined,
+    description: data.description ?? undefined,
+    totalAmount: typeof data.total_amount === 'number' ? data.total_amount : (typeof data.totalAmount === 'number' ? data.totalAmount : parseFloat(String(data.total_amount ?? data.totalAmount ?? '0'))),
+    paidAmount: typeof data.paid_amount === 'number' ? data.paid_amount : (typeof data.paidAmount === 'number' ? data.paidAmount : parseFloat(String(data.paid_amount ?? data.paidAmount ?? '0'))),
+    status: data.status ?? 'Unpaid',
+    itemsReceived: Boolean(data.items_received ?? data.itemsReceived ?? false),
+    itemsReceivedDate: data.items_received_date ?? data.itemsReceivedDate ?? undefined,
+    warehouseId: data.warehouse_id ?? data.warehouseId ?? undefined,
+    projectId: data.project_id ?? data.projectId ?? undefined,
+    createdAt: data.created_at ?? data.createdAt ?? undefined,
+    updatedAt: data.updated_at ?? data.updatedAt ?? undefined,
+  };
+}
+
+/**
  * Get the appropriate normalizer function for an entity type
  */
 function getEntityNormalizer(entity: string): ((data: any) => any) | null {
@@ -590,6 +639,7 @@ function getEntityNormalizer(entity: string): ((data: any) => any) | null {
     case 'contract': return normalizeContract;
     case 'plan_amenity': return normalizePlanAmenity;
     case 'installment_plan': return normalizeInstallmentPlan;
+    case 'warehouse': return normalizeWarehouse;
     default: return null;
   }
 }
@@ -801,17 +851,19 @@ class RealtimeSyncHandler {
         console.log(`[RealtimeSyncHandler] ✅ Dispatched ${actionType} for ${entity}:${entityId}`);
       }
 
-      // Also update local database (enabled for all devices)
-      try {
-        if (action === 'create' || action === 'update') {
-          await this.updateLocalDatabase(entity, entityId, entityData, action);
-        } else if (action === 'delete') {
-          await this.deleteFromLocalDatabase(entity, entityId);
+      // Also update local database (desktop only)
+      if (!isMobileDevice()) {
+        try {
+          if (action === 'create' || action === 'update') {
+            await this.updateLocalDatabase(entity, entityId, entityData, action);
+          } else if (action === 'delete') {
+            await this.deleteFromLocalDatabase(entity, entityId);
+          }
+          console.log(`[RealtimeSyncHandler] ✅ Updated local database for ${entity}:${entityId}`);
+        } catch (error) {
+          console.error(`[RealtimeSyncHandler] ❌ Failed to update local database for ${entity}:${entityId}`, error);
+          // Don't throw - state update is more important than local DB update
         }
-        console.log(`[RealtimeSyncHandler] ✅ Updated local database for ${entity}:${entityId}`);
-      } catch (error) {
-        console.error(`[RealtimeSyncHandler] ❌ Failed to update local database for ${entity}:${entityId}`, error);
-        // Don't throw - state update is more important than local DB update
       }
     } catch (error) {
       console.error(`[RealtimeSyncHandler] ❌ Failed to handle event ${eventName}:`, error);

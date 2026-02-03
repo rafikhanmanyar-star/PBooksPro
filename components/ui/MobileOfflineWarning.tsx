@@ -1,8 +1,8 @@
 /**
  * Mobile Offline Warning Component
  * 
- * Displays a warning banner when mobile device is offline.
- * Mobile devices now support local database caching and offline operations.
+ * Displays a warning banner when mobile device is offline
+ * Mobile devices require internet connection to use the app
  */
 
 import React from 'react';
@@ -42,10 +42,10 @@ const MobileOfflineWarning: React.FC = () => {
           {/* Message */}
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-red-900">
-              Offline Mode Active
+              Internet connection required
             </p>
             <p className="text-xs text-red-700 mt-0.5">
-              You are currently offline. Changes will be saved locally and synced when you're back online.
+              This app requires an active internet connection on mobile devices. Please check your connection.
             </p>
           </div>
         </div>

@@ -13,7 +13,7 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import PrintButton from '../ui/PrintButton';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface ProjectSummary {
@@ -83,7 +83,7 @@ const ProjectPieChart = React.memo(({ data, title }: { data: any[], title: strin
 
 const ProjectSummaryReport: React.FC = () => {
     const { state } = useAppContext();
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [viewMode, setViewMode] = useState<'month' | 'range'>('month');
     const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
@@ -220,7 +220,7 @@ const ProjectSummaryReport: React.FC = () => {
                         )}
                         <div className="flex gap-2">
                              <Button onClick={handleExport} variant="secondary">Export</Button>
-                             <PrintButton onPrint={handlePrint} />
+                             <PrintButton onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })} />
                         </div>
                     </div>
                 </Card>

@@ -8,6 +8,7 @@ import Input from '../ui/Input';
 import Select from '../ui/Select';
 import { useNotification } from '../../context/NotificationContext';
 import { WhatsAppService } from '../../services/whatsappService';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 
 interface VendorBillsProps {
     vendorId: string;
@@ -19,6 +20,7 @@ type SortKey = 'issueDate' | 'billNumber' | 'amount' | 'paidAmount' | 'status' |
 const VendorBills: React.FC<VendorBillsProps> = ({ vendorId, onEditBill }) => {
     const { state } = useAppContext();
     const { showAlert } = useNotification();
+    const { openChat } = useWhatsApp();
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<string>('All');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'issueDate', direction: 'desc' });
@@ -80,7 +82,9 @@ const VendorBills: React.FC<VendorBillsProps> = ({ vendorId, onEditBill }) => {
                 bill.billNumber,
                 bill.paidAmount
             );
-            WhatsAppService.sendMessage({ contact: vendor, message });
+
+            // Open WhatsApp side panel with pre-filled message
+            openChat(vendor, vendor.contactNo, message);
         } catch (error) {
             showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
         }

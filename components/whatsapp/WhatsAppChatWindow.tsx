@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Contact } from '../../types';
-import { WhatsAppChatService, WhatsAppMessage } from '../../services/whatsappChatService';
+import { WhatsAppChatService, WhatsAppMessage, normalizePhoneForMatch } from '../../services/whatsappChatService';
 import { useNotification } from '../../context/NotificationContext';
 import { useAppContext } from '../../context/AppContext';
+import { getWebSocketClient } from '../../services/websocketClient';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { ICONS } from '../../constants';
@@ -29,6 +30,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
   const [isConfigured, setIsConfigured] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const wsClient = getWebSocketClient();
 
   // Get phone number from contact or prop
   const phoneNumber = contact?.contactNo || propPhoneNumber || '';
@@ -54,7 +56,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
     checkConfiguration();
   }, [isOpen, showAlert]);
 
-  // Load messages when window opens
+  // Load messages when window opens or contact changes
   useEffect(() => {
     const loadMessages = async () => {
       if (!isOpen || !phoneNumber || !isConfigured) {
@@ -64,12 +66,34 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
 
       setIsLoading(true);
       try {
-        const loadedMessages = await WhatsAppChatService.getMessages(phoneNumber, 50, 0);
+        console.log('[WhatsAppChatWindow] Loading messages', {
+          phoneNumber: phoneNumber.substring(0, 5) + '***',
+          contactId: contact?.id || null,
+          contactName: contact?.name || null,
+        });
+        
+        // Pass both contactId and phoneNumber to ensure messages are filtered correctly
+        // This prevents showing messages from other contacts with the same phone number
+        // in different organizations (tenant_id is handled by API automatically)
+        const loadedMessages = await WhatsAppChatService.getMessages(phoneNumber, 50, 0, contact?.id);
+        
+        console.log('[WhatsAppChatWindow] Messages loaded', {
+          count: loadedMessages.length,
+          hasIncoming: loadedMessages.some(m => m.direction === 'incoming'),
+          hasOutgoing: loadedMessages.some(m => m.direction === 'outgoing'),
+        });
+        
         setMessages(loadedMessages.reverse()); // Reverse to show oldest first
-        // Mark messages as read when opening chat
-        await WhatsAppChatService.markAllAsRead(phoneNumber);
+        
+        // Mark messages as read when opening chat (also pass contactId for proper filtering)
+        try {
+          await WhatsAppChatService.markAllAsRead(phoneNumber, contact?.id);
+        } catch (readError) {
+          // Non-critical error, just log it
+          console.warn('[WhatsAppChatWindow] Error marking messages as read:', readError);
+        }
       } catch (error: any) {
-        console.error('Error loading messages:', error);
+        console.error('[WhatsAppChatWindow] Error loading messages:', error);
         await showAlert(error.message || 'Failed to load messages');
       } finally {
         setIsLoading(false);
@@ -77,12 +101,169 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
     };
 
     loadMessages();
-  }, [isOpen, phoneNumber, isConfigured, showAlert]);
+  }, [isOpen, phoneNumber, contact?.id, isConfigured, showAlert]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Listen for real-time WhatsApp messages via WebSocket
+  useEffect(() => {
+    if (!isOpen || !phoneNumber) return;
+
+    const handleWhatsAppMessageSent = (data: WhatsAppMessage) => {
+      console.log('[WhatsAppChatWindow] WebSocket: Message sent received', {
+        messageId: data.id,
+        phoneNumber: data.phoneNumber,
+        currentPhoneNumber: phoneNumber,
+        direction: data.direction,
+      });
+
+      const dataNorm = normalizePhoneForMatch(data.phoneNumber || '');
+      const currentNorm = normalizePhoneForMatch(phoneNumber);
+      if (dataNorm && currentNorm && dataNorm === currentNorm && data.direction === 'outgoing') {
+        // Update or add message to the list
+        setMessages((prev) => {
+          // Check if message already exists (optimistic update)
+          const existingIndex = prev.findIndex((msg) => msg.id === data.id);
+          if (existingIndex >= 0) {
+            // Update existing message
+            const updated = [...prev];
+            updated[existingIndex] = {
+              ...updated[existingIndex],
+              ...data,
+              timestamp: typeof data.timestamp === 'string' ? new Date(data.timestamp) : data.timestamp,
+              createdAt: typeof data.createdAt === 'string' ? new Date(data.createdAt) : data.createdAt,
+            };
+            return updated;
+          } else {
+            // Add new message
+            return [
+              ...prev,
+              {
+                ...data,
+                timestamp: typeof data.timestamp === 'string' ? new Date(data.timestamp) : data.timestamp,
+                createdAt: typeof data.createdAt === 'string' ? new Date(data.createdAt) : data.createdAt,
+              },
+            ];
+          }
+        });
+      }
+    };
+
+    const handleWhatsAppMessageReceived = (data: WhatsAppMessage) => {
+      console.log('[WhatsAppChatWindow] WebSocket: Message received', {
+        messageId: data.id,
+        phoneNumber: data.phoneNumber,
+        currentPhoneNumber: phoneNumber,
+        direction: data.direction,
+        contactId: data.contactId,
+        currentContactId: contact?.id || null,
+      });
+
+      const dataNorm = normalizePhoneForMatch(data.phoneNumber || '');
+      const currentNorm = normalizePhoneForMatch(phoneNumber);
+      
+      // Check if message matches current phone number
+      const phoneMatches = dataNorm && currentNorm && dataNorm === currentNorm;
+      
+      // Check if message matches current contact (if contact is specified)
+      const contactMatches = !contact?.id || !data.contactId || data.contactId === contact.id;
+      
+      if (phoneMatches && contactMatches && data.direction === 'incoming') {
+        console.log('[WhatsAppChatWindow] Adding incoming message to UI', {
+          messageId: data.id,
+          phoneNumber: data.phoneNumber.substring(0, 5) + '***',
+        });
+        
+        setMessages((prev) => {
+          // Check if message already exists (by id or messageId/wamId)
+          const existingIndex = prev.findIndex(
+            (msg) => msg.id === data.id || 
+                     (data.messageId && msg.messageId === data.messageId) ||
+                     (data.wamId && msg.wamId === data.wamId)
+          );
+          
+          if (existingIndex >= 0) {
+            // Update existing message
+            console.log('[WhatsAppChatWindow] Updating existing message in UI', {
+              existingIndex,
+              messageId: data.id,
+            });
+            const updated = [...prev];
+            updated[existingIndex] = {
+              ...updated[existingIndex],
+              ...data,
+              timestamp: typeof data.timestamp === 'string' ? new Date(data.timestamp) : data.timestamp,
+              createdAt: typeof data.createdAt === 'string' ? new Date(data.createdAt) : data.createdAt,
+            };
+            return updated;
+          } else {
+            // Add new message (insert in chronological order)
+            console.log('[WhatsAppChatWindow] Adding new message to UI', {
+              messageId: data.id,
+              currentMessageCount: prev.length,
+            });
+            const newMessage = {
+              ...data,
+              timestamp: typeof data.timestamp === 'string' ? new Date(data.timestamp) : data.timestamp,
+              createdAt: typeof data.createdAt === 'string' ? new Date(data.createdAt) : data.createdAt,
+            };
+            
+            // Insert in chronological order
+            const newMessages = [...prev, newMessage];
+            newMessages.sort((a, b) => {
+              const timeA = typeof a.timestamp === 'string' ? new Date(a.timestamp).getTime() : (a.timestamp as Date).getTime();
+              const timeB = typeof b.timestamp === 'string' ? new Date(b.timestamp).getTime() : (b.timestamp as Date).getTime();
+              return timeA - timeB;
+            });
+            
+            return newMessages;
+          }
+        });
+      } else {
+        console.log('[WhatsAppChatWindow] Message not for current conversation, ignoring', {
+          phoneMatches,
+          contactMatches,
+          dataContactId: data.contactId,
+          currentContactId: contact?.id || null,
+        });
+      }
+    };
+
+    const handleWhatsAppMessageStatus = (data: { messageId: string; status: string; timestamp?: Date }) => {
+      console.log('[WhatsAppChatWindow] WebSocket: Status update received', {
+        messageId: data.messageId,
+        status: data.status,
+      });
+
+      // Update message status if it exists
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.messageId === data.messageId || msg.wamId === data.messageId) {
+            return {
+              ...msg,
+              status: data.status as WhatsAppMessage['status'],
+            };
+          }
+          return msg;
+        })
+      );
+    };
+
+    // Register WebSocket listeners
+    wsClient.on('whatsapp:message:sent', handleWhatsAppMessageSent);
+    wsClient.on('whatsapp:message:received', handleWhatsAppMessageReceived);
+    wsClient.on('whatsapp:message:status', handleWhatsAppMessageStatus);
+
+    return () => {
+      // Cleanup: remove listeners
+      wsClient.off('whatsapp:message:sent', handleWhatsAppMessageSent);
+      wsClient.off('whatsapp:message:received', handleWhatsAppMessageReceived);
+      wsClient.off('whatsapp:message:status', handleWhatsAppMessageStatus);
+    };
+  }, [isOpen, phoneNumber, contact?.id, wsClient]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

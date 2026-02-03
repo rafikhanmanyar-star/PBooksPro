@@ -1032,10 +1032,12 @@ router.put('/deduction-types', async (req: TenantRequest, res) => {
 
 // POST /payroll/payslips/:id/pay - Pay individual payslip and create transaction
 router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
+  const tenantId = req.tenantId;
+  const userId = req.userId;
+  const { id } = req.params;
+  let accountId: string | undefined;
+  
   try {
-    const tenantId = req.tenantId;
-    const userId = req.userId;
-    const { id } = req.params;
 
     console.log('💰 Payslip payment request:', { 
       payslipId: id, 
@@ -1050,232 +1052,12 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Authentication required' });
     }
     
-    // Debug: Check what tenant_id values exist in accounts table
-    const allTenantsCheck = await getDb().query(
-      'SELECT DISTINCT tenant_id, COUNT(*) as account_count FROM accounts GROUP BY tenant_id ORDER BY tenant_id'
-    );
-    console.log('🔍 All tenant_ids in accounts table:', allTenantsCheck);
-    
-    // Debug: Check accounts for this specific tenant
-    const tenantAccountsCheck = await getDb().query(
-      'SELECT id, name, type, tenant_id FROM accounts WHERE tenant_id = $1',
-      [tenantId]
-    );
-    console.log('🔍 Accounts for tenant_id:', {
-      tenantId,
-      tenantIdType: typeof tenantId,
-      tenantIdStringified: JSON.stringify(tenantId),
-      accountCount: tenantAccountsCheck.length,
-      accounts: tenantAccountsCheck.map((a: any) => ({
-        id: a.id,
-        name: a.name,
-        type: a.type,
-        tenant_id: a.tenant_id,
-        tenant_idType: typeof a.tenant_id
-      }))
-    });
+    const { categoryId, projectId, description, amount: requestAmount } = req.body;
+    accountId = req.body.accountId;
 
-    let { accountId, categoryId, projectId, description } = req.body;
-
-    // Normalize accountId - ensure it's a string and trim whitespace
-    if (accountId) {
-      accountId = String(accountId).trim();
-    }
-
-    if (!accountId || accountId === '') {
+    if (!accountId) {
       return res.status(400).json({ error: 'Account ID is required' });
     }
-
-    console.log('🔍 Verifying account:', { 
-      accountId, 
-      accountIdType: typeof accountId,
-      accountIdLength: accountId?.length,
-      accountIdStringified: JSON.stringify(accountId),
-      tenantId, 
-      tenantIdType: typeof tenantId,
-      requestBody: req.body,
-      requestBodyAccountId: req.body.accountId,
-      requestBodyAccountIdType: typeof req.body.accountId
-    });
-
-    // First, check if account exists at all (for debugging)
-    const allAccountsCheck = await getDb().query(
-      'SELECT id, name, type, tenant_id FROM accounts WHERE id = $1',
-      [accountId]
-    );
-    
-    if (allAccountsCheck.length > 0) {
-      const foundAccount = allAccountsCheck[0];
-      console.log('📋 Account found but tenant mismatch:', {
-        accountId,
-        accountName: foundAccount.name,
-        accountTenantId: foundAccount.tenant_id,
-        requestTenantId: tenantId,
-        tenantMatch: foundAccount.tenant_id === tenantId
-      });
-    } else {
-      console.log('❌ Account not found in database at all:', { accountId });
-    }
-
-    // Verify account exists and belongs to tenant
-    // First, try exact match
-    let accountCheck = await getDb().query(
-      `SELECT id, name, type, balance, tenant_id 
-       FROM accounts 
-       WHERE id = $1 AND tenant_id = $2`,
-      [accountId, tenantId]
-    );
-    
-    // If not found, try with trimmed tenant_id (in case of whitespace issues)
-    if (accountCheck.length === 0) {
-      console.log('⚠️ Account not found with exact tenant_id match, trying trimmed comparison...');
-      accountCheck = await getDb().query(
-        `SELECT id, name, type, balance, tenant_id 
-         FROM accounts 
-         WHERE id = $1 AND TRIM(tenant_id) = $2`,
-        [accountId, String(tenantId).trim()]
-      );
-    }
-    
-    // If still not found, check if account exists at all (for debugging)
-    if (accountCheck.length === 0) {
-      const accountExistsAnywhere = await getDb().query(
-        'SELECT id, name, type, tenant_id FROM accounts WHERE id = $1',
-        [accountId]
-      );
-      
-      if (accountExistsAnywhere.length > 0) {
-        const foundAccount = accountExistsAnywhere[0];
-        console.error('❌ Account exists but tenant_id mismatch:', {
-          accountId,
-          accountTenantId: foundAccount.tenant_id,
-          accountTenantIdType: typeof foundAccount.tenant_id,
-          requestTenantId: tenantId,
-          requestTenantIdType: typeof tenantId,
-          tenantIdsMatch: String(foundAccount.tenant_id).trim() === String(tenantId).trim(),
-          accountName: foundAccount.name
-        });
-      }
-    }
-    
-    console.log('🔍 Account check query result:', {
-      accountId,
-      tenantId,
-      accountCheckLength: accountCheck.length,
-      accountCheckResult: accountCheck.length > 0 ? accountCheck[0] : null
-    });
-
-    if (accountCheck.length === 0) {
-      // Get list of available accounts for this tenant for debugging
-      // Try multiple query variations to catch any tenant_id format issues
-      const availableAccounts = await getDb().query(
-        'SELECT id, name, type, tenant_id FROM accounts WHERE tenant_id = $1 ORDER BY name LIMIT 20',
-        [tenantId]
-      );
-      
-      // Also try with trimmed tenant_id (in case of whitespace)
-      const availableAccountsTrimmed = await getDb().query(
-        'SELECT id, name, type, tenant_id FROM accounts WHERE TRIM(tenant_id) = $1 ORDER BY name LIMIT 20',
-        [String(tenantId).trim()]
-      );
-      
-      console.log('🔍 Available accounts queries:', {
-        tenantId,
-        tenantIdTrimmed: String(tenantId).trim(),
-        standardQueryCount: availableAccounts.length,
-        trimmedQueryCount: availableAccountsTrimmed.length,
-        standardQueryResults: availableAccounts.map((a: any) => ({
-          id: a.id,
-          name: a.name,
-          tenant_id: a.tenant_id,
-          tenant_idType: typeof a.tenant_id
-        })),
-        trimmedQueryResults: availableAccountsTrimmed.map((a: any) => ({
-          id: a.id,
-          name: a.name,
-          tenant_id: a.tenant_id,
-          tenant_idType: typeof a.tenant_id
-        }))
-      });
-      
-      // Use the query that found accounts (if any)
-      const accountsToReturn = availableAccountsTrimmed.length > 0 ? availableAccountsTrimmed : availableAccounts;
-      
-      // Also check if account exists with different tenant (for debugging)
-      const accountExists = await getDb().query(
-        'SELECT id, name, type, tenant_id FROM accounts WHERE id = $1',
-        [accountId]
-      );
-      
-      console.error('❌ Account not found for tenant:', { 
-        accountId, 
-        accountIdLength: accountId?.length,
-        accountIdType: typeof accountId,
-        tenantId,
-        tenantIdType: typeof tenantId,
-        tenantIdLength: tenantId?.length,
-        tenantIdStringified: JSON.stringify(tenantId),
-        availableAccountCount: accountsToReturn.length,
-        availableAccounts: accountsToReturn.map((a: any) => ({ 
-          id: a.id, 
-          name: a.name, 
-          type: a.type,
-          tenant_id: a.tenant_id,
-          tenant_idType: typeof a.tenant_id
-        })),
-        accountExists: accountExists.length > 0 ? {
-          found: true,
-          accountTenantId: accountExists[0].tenant_id,
-          accountTenantIdType: typeof accountExists[0].tenant_id,
-          accountName: accountExists[0].name,
-          tenantIdsMatch: String(accountExists[0].tenant_id).trim() === String(tenantId).trim()
-        } : { found: false }
-      });
-      
-      // Provide more helpful error message
-      let errorDetails = `Account ID "${accountId}" does not exist or does not belong to this tenant.`;
-      if (accountExists.length > 0) {
-        const accountTenantId = accountExists[0].tenant_id;
-        const requestTenantId = tenantId;
-        errorDetails += ` The account exists but belongs to a different tenant. `;
-        errorDetails += `Account tenant_id: "${accountTenantId}" (type: ${typeof accountTenantId}), `;
-        errorDetails += `Request tenant_id: "${requestTenantId}" (type: ${typeof requestTenantId}).`;
-        errorDetails += ` They ${String(accountTenantId).trim() === String(requestTenantId).trim() ? 'MATCH' : 'DO NOT MATCH'} when compared.`;
-      } else if (accountsToReturn.length === 0) {
-        errorDetails += ` No accounts found for this tenant (tenant_id: "${tenantId}"). Please create a Bank or Cash account first.`;
-      } else {
-        errorDetails += ` Available accounts for this tenant: ${accountsToReturn.map((a: any) => `${a.name} (ID: ${a.id})`).join(', ')}`;
-      }
-      
-      // Log detailed comparison for debugging
-      console.error('🔍 Account ID Comparison:', {
-        requestedAccountId: accountId,
-        requestedAccountIdLength: accountId?.length,
-        requestedAccountIdType: typeof accountId,
-        requestTenantId: tenantId,
-        requestTenantIdType: typeof tenantId,
-        availableAccountIds: accountsToReturn.map((a: any) => ({
-          id: a.id,
-          idLength: a.id?.length,
-          idType: typeof a.id,
-          name: a.name,
-          tenant_id: a.tenant_id,
-          tenant_idType: typeof a.tenant_id,
-          matches: String(a.id).trim() === String(accountId).trim()
-        }))
-      });
-      
-      return res.status(404).json({ 
-        error: 'Payment account not found',
-        details: errorDetails,
-        requestedAccountId: accountId,
-        requestTenantId: tenantId,
-        availableAccounts: accountsToReturn.map((a: any) => ({ id: a.id, name: a.name, type: a.type, tenant_id: a.tenant_id }))
-      });
-    }
-
-    const account = accountCheck[0];
-    console.log('✅ Account verified:', { id: account.id, name: account.name, type: account.type, balance: account.balance });
 
     // System category ID for Salary Expenses - used by default for salary payments
     const SALARY_EXPENSES_CATEGORY_ID = 'sys-cat-sal-exp';
@@ -1310,13 +1092,15 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'Payslip is already paid' });
     }
 
-    // Require APPROVED status before paying payslips
-    if (payslip.run_status !== 'APPROVED' && payslip.run_status !== 'PAID') {
-      return res.status(400).json({ 
-        error: `Cannot pay payslip: Payroll run must be APPROVED first. Current status: ${payslip.run_status}`,
-        runStatus: payslip.run_status,
-        runId: payslip.run_id
-      });
+    // Use request amount if provided and valid; otherwise use payslip net pay
+    const netPay = parseFloat(payslip.net_pay || '0');
+    let paymentAmount = netPay;
+    if (requestAmount !== undefined && requestAmount !== null && requestAmount !== '') {
+      const parsed = parseFloat(String(requestAmount));
+      if (isNaN(parsed) || parsed <= 0) {
+        return res.status(400).json({ error: 'Payment amount must be a positive number' });
+      }
+      paymentAmount = parsed;
     }
 
     // Determine project from employee's project allocation (first one with highest allocation)
@@ -1334,48 +1118,116 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
 
     const txnDescription = description || `Salary payment for ${payslip.employee_name} - ${payslip.month} ${payslip.year}`;
 
-    // Generate transaction ID
-    const transactionId = `payslip-pay-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // System accounts that can be auto-created if missing (same as transactions route)
+    const SYSTEM_ACCOUNTS: { [key: string]: { name: string; type: string; description: string } } = {
+      'sys-acc-cash': { name: 'Cash', type: 'Bank', description: 'Default cash account' },
+      'sys-acc-ar': { name: 'Accounts Receivable', type: 'Asset', description: 'System account for unpaid invoices' },
+      'sys-acc-ap': { name: 'Accounts Payable', type: 'Liability', description: 'System account for unpaid bills and salaries' },
+      'sys-acc-equity': { name: 'Owner Equity', type: 'Equity', description: 'System account for owner capital and equity' },
+      'sys-acc-clearing': { name: 'Internal Clearing', type: 'Bank', description: 'System account for internal transfers and equity clearing' }
+    };
 
-    console.log('💳 Creating transaction:', {
-      id: transactionId,
-      type: 'Expense',
-      amount: payslip.net_pay,
-      accountId,
-      categoryId: effectiveCategoryId,
-      projectId: effectiveProjectId
+    // Process payment atomically within a transaction (same approach as bill payment)
+    const db = getDb();
+    const result = await db.transaction(async (client) => {
+      // Validate and ensure account exists (same approach as transactions route - inside transaction)
+      const accountCheck = await client.query(
+        'SELECT id, name, type, balance FROM accounts WHERE id = $1 AND tenant_id = $2',
+        [accountId, tenantId]
+      );
+
+      if (accountCheck.rows.length === 0) {
+        // Check if it's a system account that should be auto-created
+        if (!accountId) {
+          throw {
+            code: 'ACCOUNT_NOT_FOUND',
+            message: 'Account ID is required',
+            accountId: accountId
+          };
+        }
+        const systemAccount = SYSTEM_ACCOUNTS[accountId];
+        if (systemAccount) {
+          // Auto-create system account
+          console.log(`🔧 POST /payroll/payslips/:id/pay - Auto-creating missing system account: ${accountId}`);
+          await client.query(
+            `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, 0, TRUE, $5, NOW(), NOW())
+             ON CONFLICT (id) DO NOTHING`,
+            [accountId, tenantId, systemAccount.name, systemAccount.type, systemAccount.description]
+          );
+          console.log(`✅ POST /payroll/payslips/:id/pay - System account created: ${accountId}`);
+          
+          // Re-query to get the newly created account
+          const newAccountCheck = await client.query(
+            'SELECT id, name, type, balance FROM accounts WHERE id = $1 AND tenant_id = $2',
+            [accountId, tenantId]
+          );
+          if (newAccountCheck.rows.length > 0) {
+            accountCheck.rows.push(newAccountCheck.rows[0]);
+          }
+        }
+        
+        // If still not found, throw error (same as transactions route)
+        if (accountCheck.rows.length === 0) {
+          throw {
+            code: 'ACCOUNT_NOT_FOUND',
+            message: `Account with ID "${accountId}" does not exist or does not belong to this tenant. Please select a valid account.`,
+            accountId: accountId
+          };
+        }
+      }
+
+      const account = accountCheck.rows[0];
+      console.log('✅ Account verified:', { id: account.id, name: account.name, type: account.type, balance: account.balance });
+
+      // Generate transaction ID
+      const transactionId = `payslip-pay-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      console.log('💳 Creating transaction:', {
+        id: transactionId,
+        type: 'Expense',
+        amount: paymentAmount,
+        accountId,
+        categoryId: effectiveCategoryId,
+        projectId: effectiveProjectId
+      });
+
+      // Create expense transaction for salary payment
+      const transactionResult = await client.query(
+        `INSERT INTO transactions 
+         (id, tenant_id, type, amount, date, description, account_id, category_id, project_id, user_id, payslip_id)
+         VALUES ($1, $2, 'Expense', $3, CURRENT_DATE, $4, $5, $6, $7, $8, $9)
+         RETURNING *`,
+        [transactionId, tenantId, paymentAmount, txnDescription, accountId, effectiveCategoryId, effectiveProjectId || null, userId, id]
+      );
+
+      const transaction = transactionResult.rows[0];
+      console.log('✅ Transaction created:', transaction.id);
+
+      // Update account balance
+      await client.query(
+        `UPDATE accounts SET balance = balance - $1 WHERE id = $2 AND tenant_id = $3`,
+        [paymentAmount, accountId, tenantId]
+      );
+      console.log('✅ Account balance updated');
+
+      // Mark payslip as paid
+      const updateResult = await client.query(
+        `UPDATE payslips SET 
+          is_paid = true,
+          paid_at = CURRENT_TIMESTAMP,
+          transaction_id = $1
+         WHERE id = $2 AND tenant_id = $3
+         RETURNING *`,
+        [transaction.id, id, tenantId]
+      );
+      console.log('✅ Payslip marked as paid');
+
+      return {
+        transaction: transaction,
+        payslip: updateResult.rows[0]
+      };
     });
-
-    // Create expense transaction for salary payment
-    const transactionResult = await getDb().query(
-      `INSERT INTO transactions 
-       (id, tenant_id, type, amount, date, description, account_id, category_id, project_id, user_id, payslip_id)
-       VALUES ($1, $2, 'Expense', $3, CURRENT_DATE, $4, $5, $6, $7, $8, $9)
-       RETURNING *`,
-      [transactionId, tenantId, payslip.net_pay, txnDescription, accountId, effectiveCategoryId, effectiveProjectId || null, userId, id]
-    );
-
-    const transaction = transactionResult[0];
-    console.log('✅ Transaction created:', transaction.id);
-
-    // Update account balance
-    await getDb().query(
-      `UPDATE accounts SET balance = balance - $1 WHERE id = $2 AND tenant_id = $3`,
-      [payslip.net_pay, accountId, tenantId]
-    );
-    console.log('✅ Account balance updated');
-
-    // Mark payslip as paid
-    const updateResult = await getDb().query(
-      `UPDATE payslips SET 
-        is_paid = true,
-        paid_at = CURRENT_TIMESTAMP,
-        transaction_id = $1
-       WHERE id = $2 AND tenant_id = $3
-       RETURNING *`,
-      [transaction.id, id, tenantId]
-    );
-    console.log('✅ Payslip marked as paid');
 
     // NOTE: Auto-paid feature removed - users must manually mark run as PAID after all payslips are paid
     // Check payslip status for information only (not for auto-update)
@@ -1393,7 +1245,7 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     // Emit WebSocket event
     emitToTenant(tenantId, 'payslip_paid', { 
       payslipId: id, 
-      transactionId: transaction.id,
+      transactionId: result.transaction.id,
       employeeId: payslip.employee_id,
       runId: payslip.run_id,
       paidCount: paidPayslips,
@@ -1403,8 +1255,8 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     console.log('✅ Payment completed successfully');
     res.json({
       success: true,
-      payslip: updateResult[0],
-      transaction: transaction,
+      payslip: result.payslip,
+      transaction: result.transaction,
       paymentSummary: {
         paidPayslips,
         totalPayslips,
@@ -1413,11 +1265,22 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     });
   } catch (error: any) {
     console.error('❌ Error paying payslip:', error);
-    console.error('Error details:', {
-      message: error.message,
-      stack: error.stack,
-      code: error.code
-    });
+    
+    // Handle specific error codes (same as transactions route)
+    if (error.code === 'ACCOUNT_NOT_FOUND') {
+      // Get available accounts for better error message
+      const availableAccounts = await getDb().query(
+        'SELECT id, name, type FROM accounts WHERE tenant_id = $1 ORDER BY name LIMIT 20',
+        [tenantId]
+      );
+      
+      return res.status(404).json({ 
+        error: 'Payment account not found',
+        message: error.message || `Account with ID "${accountId}" does not exist or does not belong to this tenant. Please select a valid account.`,
+        accountId: accountId,
+        availableAccounts: availableAccounts.map((a: any) => ({ id: a.id, name: a.name, type: a.type }))
+      });
+    }
     
     // Provide more specific error messages
     let errorMessage = 'Failed to pay payslip';

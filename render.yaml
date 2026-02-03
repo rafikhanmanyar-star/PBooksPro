@@ -8,13 +8,13 @@ databases:
     user: pbookspro_user      # Update with your actual production DB user
 
 services:
-  # Backend API Server
+  # Backend API Server - PRODUCTION (deploys from main branch only)
   - type: web
     name: pbookspro-api
     env: node
     plan: starter
-    branch: main
-    buildCommand: cd server && npm install --include=dev && npm run build
+    branch: main  # PRODUCTION: Only deploys when main branch is pushed
+    buildCommand: cd server && npm install && npm run build
     startCommand: cd server && npm start
     envVars:
       # DATABASE_URL should be set manually in Render Dashboard with External Database URL
@@ -90,13 +90,13 @@ services:
     buildCommand: echo "No build needed for static site"
     staticPublishPath: ./website/Website
 
-  # Staging API Server
+  # Staging API Server - STAGING (deploys from staging branch only)
   - type: web
     name: pbookspro-api-staging
     env: node
     plan: starter
-    branch: staging
-    buildCommand: cd server && npm install --include=dev && npm run build
+    branch: staging  # STAGING: Only deploys when staging branch is pushed
+    buildCommand: cd server && npm install && npm run build
     startCommand: cd server && npm start
     envVars:
       # DATABASE_URL should be set manually in Render Dashboard with External Database URL

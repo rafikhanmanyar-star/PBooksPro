@@ -11,7 +11,7 @@ Follow these steps to deploy your application to Render cloud.
 2. **Create New Blueprint** (if using render.yaml)
    - Click "New +" → "Blueprint"
    - Connect your GitHub account
-   - Select your repository: `MyProjectBooks` (or your repo name)
+   - Select your repository: `PBooksPro` (or your repo name)
    - Render will detect `render.yaml` automatically
    - Click "Apply"
 

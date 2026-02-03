@@ -6,7 +6,7 @@
  * data model.
  */
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const CREATE_SCHEMA_SQL = `
 -- Enable foreign keys
@@ -232,6 +232,7 @@ CREATE TABLE IF NOT EXISTS bills (
     staff_id TEXT,
     expense_category_items TEXT,
     document_path TEXT,
+    document_id TEXT REFERENCES documents(id) ON DELETE SET NULL,
     tenant_id TEXT,
     user_id TEXT,
     version INTEGER NOT NULL DEFAULT 1,
@@ -421,6 +422,35 @@ CREATE TABLE IF NOT EXISTS project_agreement_units (
     FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE CASCADE
 );
 
+-- Sales Returns table (Project Sales Returns)
+CREATE TABLE IF NOT EXISTS sales_returns (
+    id TEXT PRIMARY KEY,
+    return_number TEXT NOT NULL,
+    agreement_id TEXT NOT NULL,
+    return_date TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    reason_notes TEXT,
+    penalty_percentage REAL NOT NULL DEFAULT 0,
+    penalty_amount REAL NOT NULL DEFAULT 0,
+    refund_amount REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL,
+    processed_date TEXT,
+    refunded_date TEXT,
+    refund_bill_id TEXT,
+    created_by TEXT,
+    notes TEXT,
+    tenant_id TEXT,
+    user_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (agreement_id) REFERENCES project_agreements(id) ON DELETE RESTRICT,
+    FOREIGN KEY (refund_bill_id) REFERENCES bills(id) ON DELETE SET NULL,
+    UNIQUE(tenant_id, return_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sales_returns_tenant_id ON sales_returns(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_sales_returns_agreement_id ON sales_returns(agreement_id);
+
 -- Contracts table
 CREATE TABLE IF NOT EXISTS contracts (
     id TEXT PRIMARY KEY,
@@ -439,6 +469,7 @@ CREATE TABLE IF NOT EXISTS contracts (
     expense_category_items TEXT,
     description TEXT,
     document_path TEXT,
+    document_id TEXT REFERENCES documents(id) ON DELETE SET NULL,
     tenant_id TEXT,
     user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -860,6 +891,11 @@ CREATE INDEX IF NOT EXISTS idx_registered_suppliers_supplier ON registered_suppl
 CREATE INDEX IF NOT EXISTS idx_registered_suppliers_status ON registered_suppliers(status);
 CREATE INDEX IF NOT EXISTS idx_registered_suppliers_tenant_id ON registered_suppliers(tenant_id);
 
+
+
+
+
+
 -- =====================================================
 -- PAYROLL MODULE TABLES
 -- =====================================================
@@ -1009,4 +1045,33 @@ CREATE TABLE IF NOT EXISTS payroll_salary_components (
 
 CREATE INDEX IF NOT EXISTS idx_payroll_components_tenant ON payroll_salary_components(tenant_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_payroll_components_unique ON payroll_salary_components(tenant_id, name, type);
+
+-- Sync outbox: persistent change log for offline writes (source of truth for upstream sync)
+CREATE TABLE IF NOT EXISTS sync_outbox (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    user_id TEXT,
+    entity_type TEXT NOT NULL,
+    action TEXT NOT NULL CHECK (action IN ('create', 'update', 'delete')),
+    entity_id TEXT NOT NULL,
+    payload_json TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    synced_at TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'syncing', 'synced', 'failed')),
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    error_message TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sync_outbox_tenant_status ON sync_outbox(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_sync_outbox_created ON sync_outbox(created_at);
+
+-- Sync metadata: last_synced_at per tenant for incremental downstream sync
+CREATE TABLE IF NOT EXISTS sync_metadata (
+    tenant_id TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    last_synced_at TEXT NOT NULL,
+    last_pull_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (tenant_id, entity_type)
+);
 `;

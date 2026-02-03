@@ -96,11 +96,33 @@ router.post('/', async (req: Request, res: Response) => {
     let tenantId: string | null = null;
 
     if (payload && payload.entry && Array.isArray(payload.entry)) {
+      console.log('[WhatsApp Webhook] Processing entries', {
+        entryCount: payload.entry.length,
+      });
+
       for (const entry of payload.entry) {
+        console.log('[WhatsApp Webhook] Processing entry', {
+          id: entry.id,
+          hasChanges: !!(entry.changes && Array.isArray(entry.changes)),
+          changeCount: entry.changes?.length || 0,
+        });
+
         if (entry.changes && Array.isArray(entry.changes)) {
           for (const change of entry.changes) {
+            console.log('[WhatsApp Webhook] Processing change', {
+              field: change.field,
+              hasValue: !!change.value,
+              hasMetadata: !!(change.value && change.value.metadata),
+              hasMessages: !!(change.value && change.value.messages),
+              hasStatuses: !!(change.value && change.value.statuses),
+            });
+
             if (change.value && change.value.metadata) {
               const phoneNumberId = change.value.metadata.phone_number_id;
+              
+              console.log('[WhatsApp Webhook] Found phone number ID in metadata', {
+                phoneNumberId,
+              });
               
               // Find tenant by phone number ID
               const db = getDb();
@@ -109,10 +131,43 @@ router.post('/', async (req: Request, res: Response) => {
                 [phoneNumberId]
               );
 
+              console.log('[WhatsApp Webhook] Config lookup result', {
+                phoneNumberId,
+                configCount: configs.length,
+                tenantId: configs.length > 0 ? configs[0].tenant_id : null,
+              });
+
               if (configs.length > 0) {
                 tenantId = configs[0].tenant_id;
+                console.log('[WhatsApp Webhook] Tenant ID found', {
+                  tenantId,
+                });
                 break;
               }
+            }
+
+            // Log status updates if present
+            if (change.value && change.value.statuses && Array.isArray(change.value.statuses)) {
+              console.log('[WhatsApp Webhook] Found status updates', {
+                statusCount: change.value.statuses.length,
+                statuses: change.value.statuses.map((s: any) => ({
+                  id: s.id,
+                  status: s.status,
+                  recipientId: s.recipient_id ? s.recipient_id.substring(0, 5) + '***' : null,
+                })),
+              });
+            }
+
+            // Log incoming messages if present
+            if (change.value && change.value.messages && Array.isArray(change.value.messages)) {
+              console.log('[WhatsApp Webhook] Found incoming messages', {
+                messageCount: change.value.messages.length,
+                messages: change.value.messages.map((m: any) => ({
+                  id: m.id,
+                  from: m.from ? m.from.substring(0, 5) + '***' : null,
+                  type: m.type,
+                })),
+              });
             }
           }
           if (tenantId) break;
@@ -127,13 +182,36 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(200).json({ received: true });
     }
 
-    console.log('[WhatsApp Webhook] Processing for tenant:', tenantId);
+    console.log('[WhatsApp Webhook] Processing for tenant:', tenantId, {
+      payloadSummary: {
+        entryCount: payload?.entry?.length || 0,
+        hasMessages: !!(payload?.entry?.[0]?.changes?.[0]?.value?.messages),
+        hasStatuses: !!(payload?.entry?.[0]?.changes?.[0]?.value?.statuses),
+      },
+    });
 
     // Process webhook
     const whatsappService = getWhatsAppApiService();
-    await whatsappService.processWebhook(tenantId, payload);
-
-    console.log('[WhatsApp Webhook] Processed successfully for tenant:', tenantId);
+    const processStartTime = Date.now();
+    
+    try {
+      await whatsappService.processWebhook(tenantId, payload);
+      const processDuration = Date.now() - processStartTime;
+      
+      console.log('[WhatsApp Webhook] Processed successfully for tenant:', tenantId, {
+        duration: `${processDuration}ms`,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (processError: any) {
+      const processDuration = Date.now() - processStartTime;
+      console.error('[WhatsApp Webhook] Error processing webhook for tenant:', tenantId, {
+        error: processError.message,
+        errorStack: processError.stack?.substring(0, 500),
+        duration: `${processDuration}ms`,
+        timestamp: new Date().toISOString(),
+      });
+      throw processError;
+    }
     // Return 200 OK to acknowledge receipt
     res.status(200).json({ received: true });
   } catch (error: any) {

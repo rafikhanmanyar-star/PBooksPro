@@ -4,7 +4,7 @@
  * Types for offline sync queue and connection monitoring
  */
 
-export type SyncOperationType = 
+export type SyncOperationType =
   | 'transaction'
   | 'contact'
   | 'invoice'
@@ -24,7 +24,9 @@ export type SyncOperationType =
   | 'category'
   | 'recurring_invoice_template'
   | 'plan_amenity'
-  | 'pm_cycle_allocation';
+  | 'pm_cycle_allocation'
+  | 'user'
+  | 'users';
 
 export type SyncAction = 'create' | 'update' | 'delete';
 

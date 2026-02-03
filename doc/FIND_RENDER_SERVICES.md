@@ -28,7 +28,7 @@
    - Look through the list for your API service
    - It might be named:
      - `pbookspro-api`
-     - `MyProjectBooks-api`
+     - `PBooksPro-api`
      - Or whatever name you used
 
 3. **Click to Open**
@@ -62,7 +62,7 @@ If you deployed using Blueprint:
 ## 📍 What You're Looking For
 
 Your API service will typically show:
-- **Name**: Something like `pbookspro-api` or `MyProjectBooks-api`
+- **Name**: Something like `pbookspro-api`
 - **Type**: Web Service
 - **Status**: Running, Building, or Failed
 - **URL**: Something like `https://pbookspro-api.onrender.com`

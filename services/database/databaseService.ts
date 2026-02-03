@@ -99,112 +99,112 @@ class DatabaseService {
 
     constructor(config: DatabaseConfig = {}) {
         this.config = {
-                autoSave: config.autoSave ?? true,
-                saveInterval: config.saveInterval ?? 10000, // 10 seconds default - reduced IPC overhead
-            };
-        }
+            autoSave: config.autoSave ?? true,
+            saveInterval: config.saveInterval ?? 10000, // 10 seconds default - reduced IPC overhead
+        };
+    }
 
-        /**
-         * Initialize the database
-         */
-        async initialize(): Promise<void> {
-            // Return existing promise if already initializing
-            if (this.initializationPromise) {
-                return this.initializationPromise;
-            }
-
-            if (this.isInitialized && this.db) {
-                return;
-            }
-
-            // If we have an error, don't retry immediately
-            if (this.initializationError) {
-                throw this.initializationError;
-            }
-
-            this.initializationPromise = this._doInitialize();
+    /**
+     * Initialize the database
+     */
+    async initialize(): Promise<void> {
+        // Return existing promise if already initializing
+        if (this.initializationPromise) {
             return this.initializationPromise;
         }
 
-        private async _doInitialize(): Promise<void> {
-            try {
-                logger.logCategory('database', '🔄 Initializing SQL database...');
-                
-                // Load sql.js using the loader
-                if (!this.sqlJsModule) {
+        if (this.isInitialized && this.db) {
+            return;
+        }
+
+        // If we have an error, don't retry immediately
+        if (this.initializationError) {
+            throw this.initializationError;
+        }
+
+        this.initializationPromise = this._doInitialize();
+        return this.initializationPromise;
+    }
+
+    private async _doInitialize(): Promise<void> {
+        try {
+            logger.logCategory('database', '🔄 Initializing SQL database...');
+
+            // Load sql.js using the loader
+            if (!this.sqlJsModule) {
+                try {
+                    this.sqlJsModule = await loadSqlJs();
+                    console.log('✅ sql.js loaded successfully');
+                } catch (loadError) {
+                    const errorMsg = loadError instanceof Error ? loadError.message : String(loadError);
+                    console.error('❌ Failed to load sql.js:', errorMsg);
+                    throw new Error(`Failed to load sql.js: ${errorMsg}`);
+                }
+            }
+
+            const initFunction = this.sqlJsModule;
+
+            if (typeof initFunction !== 'function') {
+                throw new Error('initSqlJs is not a function. sql.js module may not be loaded correctly.');
+            }
+
+            // Load sql.js with timeout
+            const initPromise = initFunction({
+                locateFile: (file: string) => {
+                    // In browser, try local first, then CDN
                     try {
-                        this.sqlJsModule = await loadSqlJs();
-                        console.log('✅ sql.js loaded successfully');
-                    } catch (loadError) {
-                        const errorMsg = loadError instanceof Error ? loadError.message : String(loadError);
-                        console.error('❌ Failed to load sql.js:', errorMsg);
-                        throw new Error(`Failed to load sql.js: ${errorMsg}`);
+                        // Try to use local file from node_modules (for dev) or dist (for build)
+                        const localPath = new URL(`../../node_modules/sql.js/dist/${file}`, import.meta.url).href;
+                        return localPath;
+                    } catch {
+                        // Fallback to CDN
+                        return `https://sql.js.org/dist/${file}`;
+                    }
+                },
+            });
+
+            // Add timeout to prevent hanging
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new Error('SQL.js initialization timeout after 15 seconds')), 15000);
+            });
+
+            const SQL = await Promise.race([initPromise, timeoutPromise]);
+            this.sqlJs = SQL;
+            console.log('✅ SQL.js loaded successfully');
+
+            // Priority order: OPFS > localStorage
+            let loadedData: Uint8Array | null = null;
+
+            // 1. Try OPFS first
+            if (!this.db) {
+                const opfsData = await this.opfs.load();
+                if (opfsData) {
+                    try {
+                        this.db = new SQL.Database(opfsData);
+                        this.storageMode = 'opfs';
+                        logger.logCategory('database', '✅ Loaded existing database from OPFS');
+                        loadedData = opfsData;
+                    } catch (parseError) {
+                        logger.warnCategory('database', '⚠️ Failed to parse OPFS database, trying localStorage:', parseError);
                     }
                 }
-                
-                const initFunction = this.sqlJsModule;
-                
-                if (typeof initFunction !== 'function') {
-                    throw new Error('initSqlJs is not a function. sql.js module may not be loaded correctly.');
-                }
-                
-                // Load sql.js with timeout
-                const initPromise = initFunction({
-                    locateFile: (file: string) => {
-                        // In browser, try local first, then CDN
-                        try {
-                            // Try to use local file from node_modules (for dev) or dist (for build)
-                            const localPath = new URL(`../../node_modules/sql.js/dist/${file}`, import.meta.url).href;
-                            return localPath;
-                        } catch {
-                            // Fallback to CDN
-                            return `https://sql.js.org/dist/${file}`;
-                        }
-                    },
-                });
+            }
 
-                // Add timeout to prevent hanging
-                const timeoutPromise = new Promise<never>((_, reject) => {
-                    setTimeout(() => reject(new Error('SQL.js initialization timeout after 15 seconds')), 15000);
-                });
-
-                const SQL = await Promise.race([initPromise, timeoutPromise]);
-                this.sqlJs = SQL;
-                console.log('✅ SQL.js loaded successfully');
-
-                // Priority order: OPFS > localStorage
-                let loadedData: Uint8Array | null = null;
-                
-                // 1. Try OPFS first
-                if (!this.db) {
-                    const opfsData = await this.opfs.load();
-                    if (opfsData) {
-                        try {
-                            this.db = new SQL.Database(opfsData);
-                            this.storageMode = 'opfs';
-                            logger.logCategory('database', '✅ Loaded existing database from OPFS');
-                            loadedData = opfsData;
-                        } catch (parseError) {
-                            logger.warnCategory('database', '⚠️ Failed to parse OPFS database, trying localStorage:', parseError);
-                        }
+            // 2. Fallback to localStorage
+            if (!this.db) {
+                const savedDb = localStorage.getItem('finance_db');
+                if (typeof savedDb === 'string') {
+                    try {
+                        const buffer = Uint8Array.from(JSON.parse(savedDb));
+                        this.db = new SQL.Database(buffer);
+                        this.storageMode = 'localStorage';
+                        logger.logCategory('database', '✅ Loaded existing database from localStorage');
+                        loadedData = buffer;
+                    } catch (parseError) {
+                        logger.warnCategory('database', '⚠️ Failed to parse saved database, creating new one:', parseError);
                     }
                 }
-
-                // 2. Fallback to localStorage
-                if (!this.db) {
-                    const savedDb = localStorage.getItem('finance_db');
-                    if (typeof savedDb === 'string') {
-                        try {
-                            const buffer = Uint8Array.from(JSON.parse(savedDb));
-                            this.db = new SQL.Database(buffer);
-                            this.storageMode = 'localStorage';
-                            logger.logCategory('database', '✅ Loaded existing database from localStorage');
-                            loadedData = buffer;
-                        } catch (parseError) {
-                            logger.warnCategory('database', '⚠️ Failed to parse saved database, creating new one:', parseError);
-                        }
-                    }
-                }
+            }
 
             if (!this.db) {
                 // Create new database
@@ -214,7 +214,7 @@ class DatabaseService {
                 try {
                     this.db.exec(CREATE_SCHEMA_SQL);
                     // Set schema version directly (bypass isReady check during init)
-                    this.db.run('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime("now"))', 
+                    this.db.run('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime("now"))',
                         ['schema_version', SCHEMA_VERSION.toString()]);
                     logger.logCategory('database', '✅ Database schema created');
                 } catch (schemaError) {
@@ -239,14 +239,14 @@ class DatabaseService {
                             needsRecreate = true;
                         }
                     }
-                    
+
                     if (needsRecreate) {
                         throw new Error('Old database format detected');
                     }
-                    
+
                     // Database exists with tenant_id - check schema version and migrate if needed
                     await this.checkAndMigrateSchema();
-                    
+
                     // IMPORTANT: Add tenant_id columns BEFORE ensureAllTablesExist
                     // because ensureAllTablesExist runs CREATE_SCHEMA_SQL which includes indexes on tenant_id
                     // Ensure tenant columns are present even if schema version is current (idempotent)
@@ -256,7 +256,7 @@ class DatabaseService {
                     } catch (tenantError) {
                         // Silent - not critical
                     }
-                    
+
                     // Ensure all tables are present (for existing databases)
                     // Safe to create indexes now because tenant_id columns already exist
                     this.ensureAllTablesExist();
@@ -269,14 +269,14 @@ class DatabaseService {
                     try {
                         this.db.exec(CREATE_SCHEMA_SQL);
                         // Set schema version directly (bypass isReady check during init)
-                        this.db.run('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime("now"))', 
+                        this.db.run('INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime("now"))',
                             ['schema_version', SCHEMA_VERSION.toString()]);
                         logger.logCategory('database', '✅ Database recreated with new schema');
                     } catch (recreateError) {
                         logger.errorCategory('database', '❌ Failed to recreate database:', recreateError);
                         throw recreateError;
                     }
-                    
+
                     // Clear old storage
                     try {
                         localStorage.removeItem('finance_db');
@@ -312,6 +312,10 @@ class DatabaseService {
             this.isInitialized = true;
             this.initializationError = null;
 
+            // Ensure all required tables exist (creates missing tables in existing databases)
+            // This is critical for adding new tables like my_shop_sales_returns
+            this.ensureAllTablesExist();
+
             // Start auto-save if enabled
             if (this.config.autoSave) {
                 this.startAutoSave();
@@ -322,7 +326,7 @@ class DatabaseService {
             logger.errorCategory('database', '❌ Failed to initialize database:', error);
             this.initializationError = error instanceof Error ? error : new Error(String(error));
             this.isInitialized = false;
-            
+
             // Log error
             try {
                 const { getErrorLogger } = await import('../errorLogger');
@@ -332,7 +336,7 @@ class DatabaseService {
             } catch (logError) {
                 console.error('Failed to log database initialization error:', logError);
             }
-            
+
             throw this.initializationError;
         } finally {
             this.initializationPromise = null;
@@ -419,14 +423,14 @@ class DatabaseService {
             console.error(`Params:`, params);
             console.error(`Error message: ${errorMsg}`);
             console.error(`Error stack:`, error?.stack);
-            
+
             // Check if this is a constraint violation or other SQL error that would cause rollback
             const lowerMsg = errorMsg.toLowerCase();
-            if (lowerMsg.includes('constraint') || lowerMsg.includes('unique') || 
+            if (lowerMsg.includes('constraint') || lowerMsg.includes('unique') ||
                 lowerMsg.includes('not null') || lowerMsg.includes('foreign key')) {
                 console.error(`⚠️ This appears to be a constraint violation that may cause transaction rollback!`);
             }
-            
+
             throw error;
         }
     }
@@ -434,7 +438,7 @@ class DatabaseService {
     /**
      * Execute multiple statements in a transaction
      */
-    transaction(operations: (() => void)[]): void {
+    transaction(operations: (() => void)[], onCommit?: () => void): void {
         if (!Array.isArray(operations)) {
             throw new Error('transaction() expects an array of operations');
         }
@@ -461,7 +465,7 @@ class DatabaseService {
         try {
             console.log(`🔄 Executing ${operations.length} operations in transaction...`);
             let operationError: any = null;
-            
+
             // Execute all operations, catching any errors
             operations.forEach((op, index) => {
                 if (operationError) {
@@ -478,10 +482,18 @@ class DatabaseService {
                     // Don't continue executing operations if one fails
                 }
             });
-            
+
             // If any operation failed, rollback and throw
             if (operationError) {
                 console.error('❌ One or more operations failed, rolling back transaction...');
+                // Clear pending sync operations on rollback
+                try {
+                    // Use require for synchronous access (BaseRepository is already loaded)
+                    const { BaseRepository } = require('./repositories/baseRepository');
+                    BaseRepository.clearPendingSyncOperations();
+                } catch (e) {
+                    // Ignore if BaseRepository not available (may cause circular dependency warning)
+                }
                 if (begun) {
                     try {
                         // Check if transaction is still active before rolling back
@@ -498,7 +510,7 @@ class DatabaseService {
                 }
                 throw operationError;
             }
-            
+
             // All operations succeeded, check if transaction is still active before committing
             console.log('✅ All operations completed, checking transaction state...');
             let transactionStillActive = false;
@@ -520,7 +532,7 @@ class DatabaseService {
                     console.log('⚠️ Could not verify transaction state, assuming it is active');
                 }
             }
-            
+
             if (!transactionStillActive) {
                 console.error('❌ CRITICAL: Transaction was rolled back during operations! All changes are lost.');
                 console.error('This usually means an SQL error occurred that caused sql.js to auto-rollback.');
@@ -528,13 +540,23 @@ class DatabaseService {
                 committed = false;
                 throw new Error('Transaction was auto-rolled back by sql.js - check for SQL errors in the logs above');
             }
-            
+
             // Transaction is still active, commit it
             console.log('🔄 Committing transaction...');
             try {
                 db.run('COMMIT');
                 committed = true;
                 console.log('✅ Transaction committed successfully');
+
+                // Call post-commit callback if provided (before clearing inTransaction flag)
+                if (onCommit) {
+                    try {
+                        onCommit();
+                    } catch (callbackError) {
+                        console.error('❌ Error in post-commit callback:', callbackError);
+                        // Don't fail the transaction if callback errors
+                    }
+                }
             } catch (commitError: any) {
                 // If commit fails, attempt rollback; handle "no transaction" case
                 const msg = (commitError?.message || String(commitError)).toLowerCase();
@@ -559,6 +581,14 @@ class DatabaseService {
         } catch (error) {
             console.error('❌ Error during transaction operations:', error);
             if (!committed) {
+                // Clear pending sync operations on rollback
+                try {
+                    // Use require for synchronous access (BaseRepository is already loaded)
+                    const { BaseRepository } = require('./repositories/baseRepository');
+                    BaseRepository.clearPendingSyncOperations();
+                } catch (e) {
+                    // Ignore if BaseRepository not available (may cause circular dependency warning)
+                }
                 console.log('🔄 Attempting to rollback transaction due to error...');
                 if (begun) {
                     try {
@@ -591,7 +621,7 @@ class DatabaseService {
             console.error('Failed to persist database:', error);
         });
     }
-    
+
     /**
      * Save database to persistent storage and wait for completion
      */
@@ -606,7 +636,7 @@ class DatabaseService {
      */
     export(): Uint8Array {
         const db = this.getDatabase();
-        
+
         // CRITICAL: Wait for any active transaction to complete before exporting
         // Exporting during a transaction can cause database corruption
         if (this.inTransaction) {
@@ -614,15 +644,15 @@ class DatabaseService {
             // Wait a bit for transaction to complete (not ideal, but safer than corrupting)
             // In practice, this should not happen if save is called after transactions complete
         }
-        
+
         try {
             const data = db.export();
-            
+
             // Validate exported data is not empty
             if (!data || data.length === 0) {
                 throw new Error('Exported database is empty - this indicates corruption');
             }
-            
+
             // Basic validation: SQLite files should start with SQLite header
             // SQLite header is "SQLite format 3\000" (16 bytes)
             const header = new Uint8Array(data.slice(0, 16));
@@ -630,7 +660,7 @@ class DatabaseService {
             if (headerStr !== 'SQLite format') {
                 throw new Error('Exported database does not have valid SQLite header - corruption detected');
             }
-            
+
             return data;
         } catch (error) {
             console.error('❌ Database export failed:', error);
@@ -683,7 +713,7 @@ class DatabaseService {
         try {
             // Disable foreign keys temporarily
             db.run('PRAGMA foreign_keys = OFF');
-            
+
             // Clear transaction-related tables (including accounts)
             transactionTables.forEach(table => {
                 try {
@@ -705,10 +735,10 @@ class DatabaseService {
 
             // Re-enable foreign keys
             db.run('PRAGMA foreign_keys = ON');
-            
+
             db.run('COMMIT');
             this.save();
-            
+
             console.log('✅ Successfully cleared all transaction data from local database');
             console.log('ℹ️  Accounts will be reloaded from cloud on next sync');
         } catch (error) {
@@ -735,7 +765,7 @@ class DatabaseService {
         try {
             // Disable foreign keys temporarily
             db.run('PRAGMA foreign_keys = OFF');
-            
+
             tables.forEach(table => {
                 db.run(`DELETE FROM ${table}`);
             });
@@ -745,7 +775,7 @@ class DatabaseService {
 
             // Re-enable foreign keys
             db.run('PRAGMA foreign_keys = ON');
-            
+
             db.run('COMMIT');
             this.save();
         } catch (error) {
@@ -856,7 +886,7 @@ class DatabaseService {
             if (currentVersion < latestVersion) {
                 console.log(`🔄 Schema migration needed: ${currentVersion} -> ${latestVersion}`);
                 console.log('⚠️ Running schema migration...');
-                
+
                 // IMPORTANT: Add tenant_id columns FIRST before running ensureAllTablesExist
                 // because ensureAllTablesExist runs CREATE_SCHEMA_SQL which includes indexes on tenant_id
                 // If we create indexes before the columns exist, SQLite will error
@@ -866,14 +896,15 @@ class DatabaseService {
                 } catch (migrationError) {
                     console.warn('⚠️ Tenant migration failed, continuing anyway:', migrationError);
                 }
-                
+
                 // Ensure all tables exist (this will create any missing tables AND indexes)
                 // Now safe because tenant_id columns already exist
                 this.ensureAllTablesExist();
-                
+
                 // Ensure contract and bill columns exist (for expense_category_items)
                 this.ensureContractColumnsExist();
-                
+
+
                 // Run version-specific migrations
                 if (currentVersion < 3) {
                     // Migration from v2 to v3: Add document_path to bills table
@@ -884,13 +915,13 @@ class DatabaseService {
                         console.warn('⚠️ document_path migration failed, continuing anyway:', migrationError);
                     }
                 }
-                
+
                 // Update schema version
                 this.setMetadata('schema_version', latestVersion.toString());
-                
+
                 // Save immediately after migration
                 await this.persistToStorage();
-                
+
                 console.log('✅ Schema migration completed successfully');
             } else if (currentVersion > latestVersion) {
                 console.warn(`⚠️ Database schema version (${currentVersion}) is newer than app version (${latestVersion}). This may cause issues.`);
@@ -909,30 +940,30 @@ class DatabaseService {
      */
     ensureContractColumnsExist(): void {
         if (!this.db || !this.isInitialized) return;
-        
+
         try {
             // Check if contracts table exists
             const contractsTableExists = this.query<{ name: string }>(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='contracts'"
             ).length > 0;
-            
+
             if (contractsTableExists) {
                 // Check existing columns
                 const contractColumns = this.query<{ name: string }>('PRAGMA table_info(contracts)');
                 const contractColumnNames = new Set(contractColumns.map(col => col.name));
-                
+
                 // Add expense_category_items column if missing
                 if (!contractColumnNames.has('expense_category_items')) {
                     console.log('🔄 Adding expense_category_items column to contracts table...');
                     this.execute('ALTER TABLE contracts ADD COLUMN expense_category_items TEXT');
                 }
-                
+
                 // Add payment_terms column if missing
                 if (!contractColumnNames.has('payment_terms')) {
                     console.log('🔄 Adding payment_terms column to contracts table...');
                     this.execute('ALTER TABLE contracts ADD COLUMN payment_terms TEXT');
                 }
-                
+
                 // Add status column if missing (required for old backups)
                 if (!contractColumnNames.has('status')) {
                     console.log('🔄 Adding status column to contracts table...');
@@ -941,23 +972,23 @@ class DatabaseService {
                     this.execute('UPDATE contracts SET status = \'Active\' WHERE status IS NULL');
                 }
             }
-            
+
             // Check if bills table exists
             const billsTableExists = this.query<{ name: string }>(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='bills'"
             ).length > 0;
-            
+
             if (billsTableExists) {
                 // Check existing columns
                 const billColumns = this.query<{ name: string }>('PRAGMA table_info(bills)');
                 const billColumnNames = new Set(billColumns.map(col => col.name));
-                
+
                 // Add expense_category_items column if missing
                 if (!billColumnNames.has('expense_category_items')) {
                     console.log('🔄 Adding expense_category_items column to bills table...');
                     this.execute('ALTER TABLE bills ADD COLUMN expense_category_items TEXT');
                 }
-                
+
                 // Add status column if missing (required for old backups)
                 if (!billColumnNames.has('status')) {
                     console.log('🔄 Adding status column to bills table...');
@@ -971,7 +1002,7 @@ class DatabaseService {
                         ELSE 'Unpaid'
                     END WHERE status IS NULL`);
                 }
-                
+
                 // Note: The global UNIQUE constraint on bill_number cannot be easily removed in SQLite
                 // We use INSERT OR REPLACE in saveAll to handle duplicates gracefully
                 // Tenant_id column is added by tenantMigration.ts
@@ -982,40 +1013,87 @@ class DatabaseService {
     }
 
     /**
+     * Ensure sync_outbox and sync_metadata exist (run first so no "no such table" during schema split)
+     */
+    private ensureSyncTablesExist(): void {
+        if (!this.db) return;
+        try {
+            this.db.exec(`
+                CREATE TABLE IF NOT EXISTS sync_outbox (
+                    id TEXT PRIMARY KEY,
+                    tenant_id TEXT NOT NULL,
+                    user_id TEXT,
+                    entity_type TEXT NOT NULL,
+                    action TEXT NOT NULL CHECK (action IN ('create', 'update', 'delete')),
+                    entity_id TEXT NOT NULL,
+                    payload_json TEXT,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    synced_at TEXT,
+                    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'syncing', 'synced', 'failed')),
+                    retry_count INTEGER NOT NULL DEFAULT 0,
+                    error_message TEXT
+                );
+            `);
+            this.db.exec(`CREATE INDEX IF NOT EXISTS idx_sync_outbox_tenant_status ON sync_outbox(tenant_id, status);`);
+            this.db.exec(`CREATE INDEX IF NOT EXISTS idx_sync_outbox_created ON sync_outbox(created_at);`);
+            this.db.exec(`
+                CREATE TABLE IF NOT EXISTS sync_metadata (
+                    tenant_id TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    last_synced_at TEXT NOT NULL,
+                    last_pull_at TEXT,
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    PRIMARY KEY (tenant_id, entity_type)
+                );
+            `);
+        } catch (err) {
+            logger.warnCategory('database', 'ensureSyncTablesExist:', err);
+        }
+    }
+
+    /**
      * Ensure all required tables exist (for existing databases that might be missing newer tables)
      */
     ensureAllTablesExist(): void {
         if (!this.db || !this.isInitialized) return;
-        
+
+        // Create sync tables first so they exist before executeSchemaStatements runs (avoids "no such table: sync_outbox")
+        this.ensureSyncTablesExist();
+
         try {
             // Get list of existing tables
             const existingTables = this.query<{ name: string }>(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
             ).map(row => row.name.toLowerCase());
-            
+
             // List of required tables from schema
             const requiredTables = [
                 'metadata', 'users', 'accounts', 'contacts', 'categories', 'projects', 'buildings',
                 'properties', 'units', 'transactions', 'invoices', 'bills', 'budgets',
                 'quotations', 'documents', 'rental_agreements', 'project_agreements',
-                'project_agreement_units', 'contracts', 'contract_categories',
+                'project_agreement_units', 'sales_returns', 'contracts', 'contract_categories',
                 'recurring_invoice_templates',
                 'transaction_log', 'error_log', 'app_settings', 'license_settings',
                 'chat_messages',
+                // Task Management
+                'tasks', 'task_updates', 'task_performance_scores', 'task_performance_config',
                 // Marketing / installment plans
-                'plan_amenities', 'installment_plans'
+                'plan_amenities', 'installment_plans',
+                // Bi-directional sync
+                'sync_outbox', 'sync_metadata'
             ];
-            
+
             // Check for missing tables
             const missingTables = requiredTables.filter(table => !existingTables.includes(table.toLowerCase()));
-            
+
             if (missingTables.length > 0) {
                 console.log(`⚠️ Found ${missingTables.length} missing tables, creating them...`, missingTables);
                 // Re-run schema creation (CREATE TABLE IF NOT EXISTS will only create missing tables)
                 // Execute each statement separately to handle index creation failures gracefully
                 this.executeSchemaStatements(CREATE_SCHEMA_SQL);
                 console.log('✅ Missing tables created successfully');
-                
+
                 // Verify tables were created
                 const verifyResult = this.db.exec(`SELECT name FROM sqlite_master WHERE type='table'`);
                 const createdTables = verifyResult[0]?.values.flat() || [];
@@ -1036,19 +1114,19 @@ class DatabaseService {
             }
         }
     }
-    
+
     /**
      * Execute SQL schema statements one by one, handling index creation failures gracefully
      * This allows table creation to succeed even if some indexes fail due to missing columns
      */
     private executeSchemaStatements(sql: string): void {
         if (!this.db) return;
-        
+
         // Split by semicolon and filter out empty statements
         const statements = sql.split(';')
             .map(s => s.trim())
             .filter(s => s.length > 0 && !s.startsWith('--'));
-        
+
         for (const statement of statements) {
             try {
                 this.db.exec(statement + ';');
@@ -1082,12 +1160,12 @@ class DatabaseService {
         // This adds missing columns like expense_category_items
         this.ensureAllTablesExist();
         this.ensureContractColumnsExist();
-        
+
         // Clear repository column caches so they pick up the new columns
         // This is critical - otherwise repositories will filter out new columns when saving
         await this.clearRepositoryColumnCaches();
     }
-    
+
     /**
      * Clear column caches in all repositories after schema changes
      */
@@ -1097,7 +1175,7 @@ class DatabaseService {
             const { ContractsRepository, BillsRepository } = await import('./repositories/index');
             const contractsRepo = new ContractsRepository();
             const billsRepo = new BillsRepository();
-            
+
             // Clear caches if the method exists
             if (typeof contractsRepo.clearColumnCache === 'function') {
                 contractsRepo.clearColumnCache();
@@ -1116,16 +1194,16 @@ class DatabaseService {
      */
     private async persistToStorage(): Promise<void> {
         if (!this.db || !this.isInitialized) return;
-        
+
         // Wait for any previous save to complete (prevent concurrent saves)
         await this.saveLock;
-        
+
         // Create new lock for this save operation
         let resolveLock: () => void;
         this.saveLock = new Promise((resolve) => {
             resolveLock = resolve;
         });
-        
+
         try {
             // CRITICAL: Wait for any active transaction to complete
             // Exporting during a transaction will cause corruption
@@ -1135,14 +1213,14 @@ class DatabaseService {
                 await new Promise(resolve => setTimeout(resolve, 100));
                 waitCount++;
             }
-            
+
             if (this.inTransaction) {
                 throw new Error('Cannot save database: transaction is still active after timeout');
             }
-            
+
             // Export database (with validation)
             const data = this.export();
-            
+
             // Additional validation: try to parse the exported data to ensure it's valid
             if (this.sqlJs) {
                 try {

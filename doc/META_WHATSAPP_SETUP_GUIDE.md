@@ -119,7 +119,7 @@ Meta offers two verification methods:
 ### Step 4: Configure App Details
 
 1. Fill in the required information:
-   - **App Name**: Choose a name for your app (e.g., "MyProjectBooks WhatsApp")
+   - **App Name**: Choose a name for your app (e.g., "PBooksPro WhatsApp")
    - **App Contact Email**: Your business email
    - **Business Account**: Select your Meta Business Account (created in Part 1)
 2. Click **"Create App"**

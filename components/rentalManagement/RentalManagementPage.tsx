@@ -46,7 +46,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    const [activeView, setActiveView] = useLocalStorage<RentalView>('rentalManagement_activeView', isMobile ? 'Invoices' : 'Agreements');
+    const [activeView, setActiveView] = useLocalStorage<RentalView>('rentalManagement_activeView', 'Agreements');
     const [isReportDropdownOpen, setIsReportDropdownOpen] = useState(false);
     const reportDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -61,13 +61,6 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Ensure activeView is valid for mobile
-    useEffect(() => {
-        if (isMobile && activeView === 'Agreements') {
-            setActiveView('Invoices');
-        }
-    }, [isMobile, activeView, setActiveView]);
-
     useEffect(() => {
         // This hook handles the initial page load based on the footer navigation.
         switch(initialPage) {
@@ -75,7 +68,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                 setActiveView('Invoices');
                 break;
             case 'rentalAgreements':
-                if (!isMobile) setActiveView('Agreements');
+                setActiveView('Agreements');
                 break;
             case 'ownerPayouts':
                 setActiveView('Payouts');
@@ -87,7 +80,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                 // Do nothing
                 break;
         }
-    }, [initialPage, isMobile, setActiveView]);
+    }, [initialPage, setActiveView]);
 
     useEffect(() => {
         // This hook specifically handles deep-linking from favorite reports,
@@ -98,21 +91,17 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
             if (mainTab === 'Reports' && subTab) {
                 setActiveView(subTab as RentalView);
             } else if (['Agreements', 'Invoices', 'Bills', 'Payment', 'Payouts'].includes(mainTab)) {
-                if (isMobile && mainTab === 'Agreements') {
-                    setActiveView('Invoices');
-                } else {
-                    setActiveView(mainTab as RentalView);
-                }
+                setActiveView(mainTab as RentalView);
             }
             // Clear global state immediately to prevent re-render loops in children
             dispatch({ type: 'CLEAR_INITIAL_TABS' });
         }
-    }, [initialTabs, dispatch, isMobile, setActiveView]);
+    }, [initialTabs, dispatch, setActiveView]);
 
     const renderContent = () => {
         switch(activeView) {
             // Operations
-            case 'Agreements': return !isMobile ? <RentalAgreementsPage /> : null;
+            case 'Agreements': return <RentalAgreementsPage />;
             case 'Invoices': return <RentalInvoicesPage />;
             case 'Bills': return <RentalBillsPage />;
             case 'Payment': return <RentalPaymentSearch />;
@@ -165,7 +154,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                 <div className="flex items-center flex-grow min-w-0">
                     {/* Operational Tabs - Scrollable */}
                     <div className="flex items-center gap-1 overflow-x-auto no-scrollbar flex-shrink">
-                        {!isMobile && <NavButton view="Agreements" label="Agreements" />}
+                        <NavButton view="Agreements" label="Agreements" />
                         <NavButton view="Invoices" label="Invoices" />
                         <NavButton view="Bills" label="Bills" />
                         <NavButton view="Payment" label="Payment" />

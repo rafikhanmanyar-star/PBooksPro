@@ -9,7 +9,7 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import ReportToolbar from './ReportToolbar';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface ReportRow {
@@ -25,7 +25,7 @@ interface ReportRow {
 
 const ProjectUnitReport: React.FC = () => {
     const { state } = useAppContext();
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
     const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || 'all');
     const [searchQuery, setSearchQuery] = useState('');
     const [groupBy, setGroupBy] = useState('');
@@ -168,7 +168,7 @@ const ProjectUnitReport: React.FC = () => {
                         searchQuery={searchQuery}
                         onSearchChange={setSearchQuery}
                         onExport={handleExport}
-                        onPrint={handlePrint}
+                        onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                         groupBy={groupBy}
                         onGroupByChange={setGroupBy}
                         groupByOptions={[

@@ -1,23 +1,22 @@
 # Update Git Remote URL
 
-Your remote URL currently has placeholders. Update it with your actual Codeberg details.
+Your remote URL currently has placeholders. Update it with your actual GitHub details.
 
 ## Quick Fix
 
 Replace `USERNAME` and `REPO_NAME` with your actual values:
 
 ```powershell
-# Replace USERNAME with your Codeberg username
-# Replace REPO_NAME with your repository name
-git remote set-url origin https://codeberg.org/YOUR_USERNAME/YOUR_REPO_NAME.git
+# Update to GitHub URL
+git remote set-url origin https://github.com/rafikhanmanyar-star/PBooksPro.git
 ```
 
 ## Example
 
-If your username is `john` and repo is `MyProjectBooks`:
+If your username is `rafikhanmanyar-star` and repo is `PBooksPro`:
 
 ```powershell
-git remote set-url origin https://codeberg.org/john/MyProjectBooks.git
+git remote set-url origin https://github.com/rafikhanmanyar-star/PBooksPro.git
 ```
 
 ## Then Push
@@ -40,15 +39,13 @@ Should show your actual username and repo name.
 
 ## If You Don't Know Your Repo Name
 
-1. Go to Codeberg: https://codeberg.org
+1. Go to GitHub: https://github.com
 2. Check your repositories
 3. Or create a new repository if you haven't yet
-4. Copy the repository URL from Codeberg
+4. Copy the repository URL from GitHub
 
-## Create Repository on Codeberg (If Needed)
-
-1. Go to: https://codeberg.org/repos/new
-2. Repository name: `MyProjectBooks` (or your preferred name)
+1. Go to: https://github.com/new
+2. Repository name: `PBooksPro` (or your preferred name)
 3. **DO NOT** initialize with README, .gitignore, or license
 4. Click "Create Repository"
 5. Copy the repository URL

@@ -1,921 +1,635 @@
 import { Router } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
-import { adminOnlyMiddleware } from '../../middleware/adminOnlyMiddleware.js';
-import { getWebSocketService } from '../../services/websocketService.js';
-import { WS_EVENTS } from '../../services/websocketHelper.js';
-import { getTaskNotificationService } from '../../services/taskNotificationService.js';
-import { getTaskPerformanceService } from '../../services/taskPerformanceService.js';
+import { emitToTenant, WS_EVENTS } from '../../services/websocketHelper.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
 
-// Helper function to generate unique ID
-function generateId(): string {
-  return `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-}
+// ==========================================
+// 1. Task Items
+// ==========================================
 
-const isAdminRole = (role: string) => role.trim().toLowerCase() === 'admin';
-
-// Helper function to check if user can edit task
-async function canEditTask(
-  taskId: string,
-  userId: string,
-  userRole: string,
-  tenantId: string,
-  db: any
-): Promise<{ allowed: boolean; reason?: string }> {
-  const tasks = await db.query(
-    'SELECT type, assigned_to_id, created_by_id, assigned_by_id FROM tasks WHERE id = $1 AND tenant_id = $2',
-    [taskId, tenantId]
-  );
-
-  if (tasks.length === 0) {
-    return { allowed: false, reason: 'Task not found' };
-  }
-
-  const task = tasks[0];
-
-  // Admin can always edit
-  if (isAdminRole(userRole)) {
-    return { allowed: true };
-  }
-
-  // For assigned tasks, employees can only update progress (not edit details)
-  if (task.type === 'Assigned' && task.assigned_to_id === userId) {
-    return { allowed: false, reason: 'Cannot edit assigned task details. Use check-in to update progress.' };
-  }
-
-  // For personal tasks, creator can edit
-  if (task.type === 'Personal' && task.created_by_id === userId) {
-    return { allowed: true };
-  }
-
-  return { allowed: false, reason: 'You do not have permission to edit this task' };
-}
-
-// Helper function to check if user can delete task
-async function canDeleteTask(
-  taskId: string,
-  userId: string,
-  userRole: string,
-  tenantId: string,
-  db: any
-): Promise<{ allowed: boolean; reason?: string }> {
-  const tasks = await db.query(
-    'SELECT type, created_by_id FROM tasks WHERE id = $1 AND tenant_id = $2',
-    [taskId, tenantId]
-  );
-
-  if (tasks.length === 0) {
-    return { allowed: false, reason: 'Task not found' };
-  }
-
-  const task = tasks[0];
-
-  // Admin can always delete
-  if (isAdminRole(userRole)) {
-    return { allowed: true };
-  }
-
-  // Creator can delete personal tasks
-  if (task.type === 'Personal' && task.created_by_id === userId) {
-    return { allowed: true };
-  }
-
-  return { allowed: false, reason: 'You do not have permission to delete this task' };
-}
-
-// Get all tasks (filtered by user role)
+// GET all tasks
 router.get('/', async (req: TenantRequest, res) => {
-  try {
-    const db = getDb();
-    const tenantId = req.tenantId!;
-    const userId = req.userId!;
-    const userRole = req.userRole || '';
-    const isAdmin = isAdminRole(userRole);
-
-    let query = '';
-    let params: any[] = [tenantId];
-
-    if (isAdmin) {
-      // Admin sees all tasks in tenant
-      query = `
-        SELECT t.*, 
-               u1.name as assigned_by_name,
-               u2.name as assigned_to_name,
-               u3.name as created_by_name
-        FROM tasks t
-        LEFT JOIN users u1 ON t.assigned_by_id = u1.id AND u1.tenant_id = $1
-        LEFT JOIN users u2 ON t.assigned_to_id = u2.id AND u2.tenant_id = $1
-        LEFT JOIN users u3 ON t.created_by_id = u3.id AND u3.tenant_id = $1
-        WHERE t.tenant_id = $1
-        ORDER BY t.created_at DESC
-      `;
-    } else {
-      // Employee sees personal tasks + assigned tasks
-      query = `
-        SELECT t.*, 
-               u1.name as assigned_by_name,
-               u2.name as assigned_to_name,
-               u3.name as created_by_name
-        FROM tasks t
-        LEFT JOIN users u1 ON t.assigned_by_id = u1.id AND u1.tenant_id = $1
-        LEFT JOIN users u2 ON t.assigned_to_id = u2.id AND u2.tenant_id = $1
-        LEFT JOIN users u3 ON t.created_by_id = u3.id AND u3.tenant_id = $1
-        WHERE t.tenant_id = $1 
-          AND (t.type = 'Personal' AND t.created_by_id = $2 OR t.type = 'Assigned' AND t.assigned_to_id = $2)
-        ORDER BY t.created_at DESC
-      `;
-      params.push(userId);
+    try {
+        const db = getDb();
+        const tasks = await db.query(
+            'SELECT t.*, u.full_name as owner_name, i.title as initiative_name FROM task_items t ' +
+            'LEFT JOIN users u ON t.owner_id = u.id ' +
+            'LEFT JOIN task_initiatives i ON t.initiative_id = i.id ' +
+            'WHERE t.tenant_id = $1 ORDER BY t.due_date ASC',
+            [req.tenantId]
+        );
+        res.json(tasks);
+    } catch (error) {
+        console.error('Error fetching tasks:', error);
+        res.status(500).json({ error: 'Failed to fetch tasks' });
     }
-
-    const tasks = await db.query(query, params);
-    res.json(tasks);
-  } catch (error) {
-    console.error('Error fetching tasks:', error);
-    res.status(500).json({ error: 'Failed to fetch tasks' });
-  }
 });
 
-// Get task by ID with update history
+// GET task by ID
 router.get('/:id', async (req: TenantRequest, res) => {
-  try {
-    const db = getDb();
-    const tenantId = req.tenantId!;
-    const userId = req.userId!;
-    const userRole = req.userRole || '';
-    const isAdmin = isAdminRole(userRole);
-    const taskId = req.params.id;
+    try {
+        const db = getDb();
+        const tasks = await db.query(
+            'SELECT t.*, u.full_name as owner_name, i.title as initiative_name FROM task_items t ' +
+            'LEFT JOIN users u ON t.owner_id = u.id ' +
+            'LEFT JOIN task_initiatives i ON t.initiative_id = i.id ' +
+            'WHERE t.id = $1 AND t.tenant_id = $2',
+            [req.params.id, req.tenantId]
+        );
 
-    // Get task
-    const tasks = await db.query(
-      `SELECT t.*, 
-              u1.name as assigned_by_name,
-              u2.name as assigned_to_name,
-              u3.name as created_by_name
-       FROM tasks t
-       LEFT JOIN users u1 ON t.assigned_by_id = u1.id AND u1.tenant_id = $2
-       LEFT JOIN users u2 ON t.assigned_to_id = u2.id AND u2.tenant_id = $2
-       LEFT JOIN users u3 ON t.created_by_id = u3.id AND u3.tenant_id = $2
-       WHERE t.id = $1 AND t.tenant_id = $2`,
-      [taskId, tenantId]
-    );
+        if (tasks.length === 0) {
+            return res.status(404).json({ error: 'Task not found' });
+        }
 
-    if (tasks.length === 0) {
-      return res.status(404).json({ error: 'Task not found' });
+        res.json(tasks[0]);
+    } catch (error) {
+        console.error('Error fetching task:', error);
+        res.status(500).json({ error: 'Failed to fetch task' });
     }
-
-    const task = tasks[0];
-
-    // Check access permission
-    if (!isAdmin) {
-      if (task.type === 'Personal' && task.created_by_id !== userId) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-      if (task.type === 'Assigned' && task.assigned_to_id !== userId) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-    }
-
-    // Get update history
-    const updates = await db.query(
-      `SELECT tu.*, u.name as user_name
-       FROM task_updates tu
-       LEFT JOIN users u ON tu.user_id = u.id AND u.tenant_id = $2
-       WHERE tu.task_id = $1 AND tu.tenant_id = $2
-       ORDER BY tu.created_at DESC`,
-      [taskId, tenantId]
-    );
-
-    res.json({ ...task, updates });
-  } catch (error) {
-    console.error('Error fetching task:', error);
-    res.status(500).json({ error: 'Failed to fetch task' });
-  }
 });
 
-// Create new task
+// POST create task
 router.post('/', async (req: TenantRequest, res) => {
-  try {
-    const db = getDb();
-    const tenantId = req.tenantId!;
-    const userId = req.userId!;
-    const userRole = req.userRole || '';
-    const isAdmin = isAdminRole(userRole);
-    const {
-      title,
-      description,
-      type,
-      category,
-      status,
-      start_date,
-      hard_deadline,
-      kpi_goal,
-      kpi_target_value,
-      kpi_unit,
-      assigned_to_id,
-    } = req.body;
+    try {
+        const db = getDb();
+        const task = req.body;
+        const result = await db.query(
+            `INSERT INTO task_items (
+                tenant_id, title, description, initiative_id, owner_id, 
+                status, priority, start_date, due_date, estimated_hours, created_by
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING *`,
+            [
+                req.tenantId,
+                task.title,
+                task.description || null,
+                task.initiative_id || null,
+                task.owner_id || null,
+                task.status || 'Not Started',
+                task.priority || 'Medium',
+                task.start_date || null,
+                task.due_date,
+                task.estimated_hours || 0,
+                req.user?.userId || null
+            ]
+        );
 
-    // Validation
-    if (!title || !type || !category || !status || !start_date || !hard_deadline) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    // Validate deadline
-    if (new Date(hard_deadline) < new Date(start_date)) {
-      return res.status(400).json({ error: 'Deadline must be after start date' });
-    }
-
-    // Employees can only create personal tasks
-    if (!isAdmin && type === 'Assigned') {
-      return res.status(403).json({ error: 'Only admins can create assigned tasks' });
-    }
-
-    // If assigned task, validate assigned_to_id
-    if (type === 'Assigned') {
-      if (!assigned_to_id) {
-        return res.status(400).json({ error: 'assigned_to_id is required for assigned tasks' });
-      }
-      // Verify user exists in tenant
-      const users = await db.query(
-        'SELECT id FROM users WHERE id = $1 AND tenant_id = $2',
-        [assigned_to_id, tenantId]
-      );
-      if (users.length === 0) {
-        return res.status(400).json({ error: 'Invalid assigned_to_id' });
-      }
-    }
-
-    const taskId = generateId();
-    const now = new Date().toISOString();
-
-    // Calculate initial KPI progress
-    let kpi_progress_percentage = 0;
-    if (kpi_target_value && kpi_target_value > 0) {
-      kpi_progress_percentage = 0; // Start at 0%
-    }
-
-    await db.query(
-      `INSERT INTO tasks (
-        id, tenant_id, title, description, type, category, status,
-        start_date, hard_deadline, kpi_goal, kpi_target_value, kpi_current_value,
-        kpi_unit, kpi_progress_percentage, assigned_by_id, assigned_to_id,
-        created_by_id, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
-      [
-        taskId,
-        tenantId,
-        title,
-        description || null,
-        type,
-        category,
-        status || 'Not Started',
-        start_date,
-        hard_deadline,
-        kpi_goal || null,
-        kpi_target_value || null,
-        0, // kpi_current_value
-        kpi_unit || null,
-        kpi_progress_percentage,
-        type === 'Assigned' ? userId : null, // assigned_by_id
-        type === 'Assigned' ? assigned_to_id : null, // assigned_to_id
-        userId, // created_by_id
-        now,
-        now,
-      ]
-    );
-
-    // Create initial update record
-    const updateId = generateId().replace('task_', 'update_');
-    await db.query(
-      `INSERT INTO task_updates (
-        id, tenant_id, task_id, user_id, update_type, status_after, comment, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [
-        updateId,
-        tenantId,
-        taskId,
-        userId,
-        'Check-in',
-        status || 'Not Started',
-        'Task created',
-        now,
-      ]
-    );
-
-    // If assigned task, send notification
-    if (type === 'Assigned' && assigned_to_id) {
-      const notificationService = getTaskNotificationService();
-      await notificationService.notifyTaskAssigned(taskId, tenantId, assigned_to_id, userId);
-    }
-
-    // Fetch created task with user names
-    const createdTasks = await db.query(
-      `SELECT t.*, 
-              u1.name as assigned_by_name,
-              u2.name as assigned_to_name,
-              u3.name as created_by_name
-       FROM tasks t
-       LEFT JOIN users u1 ON t.assigned_by_id = u1.id AND u1.tenant_id = $2
-       LEFT JOIN users u2 ON t.assigned_to_id = u2.id AND u2.tenant_id = $2
-       LEFT JOIN users u3 ON t.created_by_id = u3.id AND u3.tenant_id = $2
-       WHERE t.id = $1 AND t.tenant_id = $2`,
-      [taskId, tenantId]
-    );
-
-    res.status(201).json(createdTasks[0]);
-  } catch (error: any) {
-    const msg = error?.message || String(error);
-    const code = error?.code;
-    const detail = error?.detail;
-    console.error('Error creating task:', { message: msg, code, detail, stack: error?.stack });
-    const payload: { error: string; message?: string; code?: string } = { error: 'Failed to create task' };
-    if (msg && (process.env.NODE_ENV !== 'production' || process.env.DEBUG_TASKS === '1')) {
-      payload.message = msg;
-      if (code) payload.code = code;
-    }
-    res.status(500).json(payload);
-  }
-});
-
-// Update task
-router.put('/:id', async (req: TenantRequest, res) => {
-  try {
-    const db = getDb();
-    const tenantId = req.tenantId!;
-    const userId = req.userId!;
-    const userRole = req.userRole || '';
-    const isAdmin = isAdminRole(userRole);
-    const taskId = req.params.id;
-
-    // Check permissions
-    const editCheck = await canEditTask(taskId, userId, userRole, tenantId, db);
-    if (!editCheck.allowed) {
-      return res.status(403).json({ error: editCheck.reason });
-    }
-
-    const {
-      title,
-      description,
-      category,
-      status,
-      start_date,
-      hard_deadline,
-      kpi_goal,
-      kpi_target_value,
-      kpi_unit,
-      assigned_to_id,
-    } = req.body;
-
-    // Get current task
-    const currentTasks = await db.query(
-      'SELECT * FROM tasks WHERE id = $1 AND tenant_id = $2',
-      [taskId, tenantId]
-    );
-    if (currentTasks.length === 0) {
-      return res.status(404).json({ error: 'Task not found' });
-    }
-    const currentTask = currentTasks[0];
-
-    // Employees can only update progress on assigned tasks (via check-in endpoint)
-    if (!isAdmin && currentTask.type === 'Assigned') {
-      return res.status(403).json({ error: 'Use check-in endpoint to update assigned task progress' });
-    }
-
-    // Validate deadline if provided
-    const finalStartDate = start_date || currentTask.start_date;
-    const finalDeadline = hard_deadline || currentTask.hard_deadline;
-    if (new Date(finalDeadline) < new Date(finalStartDate)) {
-      return res.status(400).json({ error: 'Deadline must be after start date' });
-    }
-
-    // If updating assigned_to_id, verify user exists
-    if (assigned_to_id && assigned_to_id !== currentTask.assigned_to_id) {
-      const users = await db.query(
-        'SELECT id FROM users WHERE id = $1 AND tenant_id = $2',
-        [assigned_to_id, tenantId]
-      );
-      if (users.length === 0) {
-        return res.status(400).json({ error: 'Invalid assigned_to_id' });
-      }
-    }
-
-    // Calculate KPI progress if values changed
-    let kpi_progress_percentage = currentTask.kpi_progress_percentage;
-    if (kpi_target_value !== undefined && kpi_target_value > 0) {
-      const currentValue = currentTask.kpi_current_value || 0;
-      kpi_progress_percentage = Math.min(100, Math.max(0, (currentValue / kpi_target_value) * 100));
-    }
-
-    await db.query(
-      `UPDATE tasks SET
-        title = COALESCE($1, title),
-        description = COALESCE($2, description),
-        category = COALESCE($3, category),
-        status = COALESCE($4, status),
-        start_date = COALESCE($5, start_date),
-        hard_deadline = COALESCE($6, hard_deadline),
-        kpi_goal = COALESCE($7, kpi_goal),
-        kpi_target_value = COALESCE($8, kpi_target_value),
-        kpi_unit = COALESCE($9, kpi_unit),
-        kpi_progress_percentage = $10,
-        assigned_to_id = CASE WHEN $11 IS NOT NULL THEN $11 ELSE assigned_to_id END,
-        updated_at = NOW()
-      WHERE id = $12 AND tenant_id = $13`,
-      [
-        title,
-        description,
-        category,
-        status,
-        start_date,
-        hard_deadline,
-        kpi_goal,
-        kpi_target_value,
-        kpi_unit,
-        kpi_progress_percentage,
-        assigned_to_id,
-        taskId,
-        tenantId,
-      ]
-    );
-
-    // Create update record if status changed
-    if (status && status !== currentTask.status) {
-      const updateId = generateId().replace('task_', 'update_');
-      await db.query(
-        `INSERT INTO task_updates (
-          id, tenant_id, task_id, user_id, update_type, status_before, status_after, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-        [
-          updateId,
-          tenantId,
-          taskId,
-          userId,
-          'Status Change',
-          currentTask.status,
-          status,
-        ]
-      );
-
-      // If task completed, recalculate performance score
-      if (status === 'Completed' && currentTask.status !== 'Completed') {
-        const performanceService = getTaskPerformanceService();
-        await performanceService.onTaskCompleted(taskId, tenantId).catch((err) => {
-          console.error('Error recalculating performance score:', err);
+        emitToTenant(req.tenantId!, WS_EVENTS.TASK_CREATED, {
+            task: result[0],
+            userId: req.user?.userId
         });
-      }
-    }
 
-    // If assigned_to_id changed, send notification
-    if (assigned_to_id && assigned_to_id !== currentTask.assigned_to_id) {
-      const notificationService = getTaskNotificationService();
-      await notificationService.notifyTaskAssigned(taskId, tenantId, assigned_to_id, userId);
-    }
-
-    // Fetch updated task
-    const updatedTasks = await db.query(
-      `SELECT t.*, 
-              u1.name as assigned_by_name,
-              u2.name as assigned_to_name,
-              u3.name as created_by_name
-       FROM tasks t
-       LEFT JOIN users u1 ON t.assigned_by_id = u1.id AND u1.tenant_id = $2
-       LEFT JOIN users u2 ON t.assigned_to_id = u2.id AND u2.tenant_id = $2
-       LEFT JOIN users u3 ON t.created_by_id = u3.id AND u3.tenant_id = $2
-       WHERE t.id = $1 AND t.tenant_id = $2`,
-      [taskId, tenantId]
-    );
-
-    res.json(updatedTasks[0]);
-  } catch (error) {
-    console.error('Error updating task:', error);
-    res.status(500).json({ error: 'Failed to update task' });
-  }
-});
-
-// Check-in to task (update progress)
-router.post('/:id/check-in', async (req: TenantRequest, res) => {
-  try {
-    const db = getDb();
-    const tenantId = req.tenantId!;
-    const userId = req.userId!;
-    const userRole = req.userRole || '';
-    const isAdmin = isAdminRole(userRole);
-    const taskId = req.params.id;
-    const { status, kpi_current_value, comment } = req.body;
-
-    // Get task
-    const tasks = await db.query(
-      'SELECT * FROM tasks WHERE id = $1 AND tenant_id = $2',
-      [taskId, tenantId]
-    );
-    if (tasks.length === 0) {
-      return res.status(404).json({ error: 'Task not found' });
-    }
-    const task = tasks[0];
-
-    // Check access
-    if (!isAdmin) {
-      if (task.type === 'Personal' && task.created_by_id !== userId) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-      if (task.type === 'Assigned' && task.assigned_to_id !== userId) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-    }
-
-    const updateId = generateId().replace('task_', 'update_');
-    const now = new Date().toISOString();
-
-    // Update KPI progress if provided
-    let kpi_progress_percentage = task.kpi_progress_percentage;
-    let kpi_value_before = task.kpi_current_value;
-    let kpi_value_after = task.kpi_current_value;
-
-    if (kpi_current_value !== undefined) {
-      kpi_value_after = kpi_current_value;
-      if (task.kpi_target_value && task.kpi_target_value > 0) {
-        kpi_progress_percentage = Math.min(100, Math.max(0, (kpi_current_value / task.kpi_target_value) * 100));
-      }
-    }
-
-    // Update task
-    await db.query(
-      `UPDATE tasks SET
-        status = COALESCE($1, status),
-        kpi_current_value = COALESCE($2, kpi_current_value),
-        kpi_progress_percentage = $3,
-        updated_at = NOW()
-      WHERE id = $4 AND tenant_id = $5`,
-      [status, kpi_current_value, kpi_progress_percentage, taskId, tenantId]
-    );
-
-    // Create update record
-    await db.query(
-      `INSERT INTO task_updates (
-        id, tenant_id, task_id, user_id, update_type,
-        status_before, status_after,
-        kpi_value_before, kpi_value_after,
-        comment, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-      [
-        updateId,
-        tenantId,
-        taskId,
-        userId,
-        'Check-in',
-        task.status,
-        status || task.status,
-        kpi_value_before,
-        kpi_value_after,
-        comment || null,
-        now,
-      ]
-    );
-
-    // If task completed, recalculate performance score
-    if (status === 'Completed' && task.status !== 'Completed') {
-      const performanceService = getTaskPerformanceService();
-      await performanceService.onTaskCompleted(taskId, tenantId).catch((err) => {
-        console.error('Error recalculating performance score:', err);
-      });
-    }
-
-    // Fetch updated task
-    const updatedTasks = await db.query(
-      `SELECT t.*, 
-              u1.name as assigned_by_name,
-              u2.name as assigned_to_name,
-              u3.name as created_by_name
-       FROM tasks t
-       LEFT JOIN users u1 ON t.assigned_by_id = u1.id AND u1.tenant_id = $2
-       LEFT JOIN users u2 ON t.assigned_to_id = u2.id AND u2.tenant_id = $2
-       LEFT JOIN users u3 ON t.created_by_id = u3.id AND u3.tenant_id = $2
-       WHERE t.id = $1 AND t.tenant_id = $2`,
-      [taskId, tenantId]
-    );
-
-    res.json(updatedTasks[0]);
-  } catch (error) {
-    console.error('Error checking in to task:', error);
-    res.status(500).json({ error: 'Failed to check in to task' });
-  }
-});
-
-// Delete task
-router.delete('/:id', async (req: TenantRequest, res) => {
-  try {
-    const db = getDb();
-    const tenantId = req.tenantId!;
-    const userId = req.userId!;
-    const userRole = req.userRole || '';
-    const taskId = req.params.id;
-
-    // Check permissions
-    const deleteCheck = await canDeleteTask(taskId, userId, userRole, tenantId, db);
-    if (!deleteCheck.allowed) {
-      return res.status(403).json({ error: deleteCheck.reason });
-    }
-
-    await db.query('DELETE FROM tasks WHERE id = $1 AND tenant_id = $2', [taskId, tenantId]);
-
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Error deleting task:', error);
-    res.status(500).json({ error: 'Failed to delete task' });
-  }
-});
-
-// Get tasks for calendar view
-router.get('/calendar/events', async (req: TenantRequest, res) => {
-  try {
-    const db = getDb();
-    const tenantId = req.tenantId!;
-    const userId = req.userId!;
-    const userRole = req.userRole || '';
-    const isAdmin = isAdminRole(userRole);
-    const { start_date, end_date } = req.query;
-
-    if (!start_date || !end_date) {
-      return res.status(400).json({ error: 'start_date and end_date query parameters are required' });
-    }
-
-    // Convert date strings to proper format (handle DD/MM/YYYY or YYYY-MM-DD)
-    let startDate = decodeURIComponent(start_date as string).trim();
-    let endDate = decodeURIComponent(end_date as string).trim();
-    
-    // Helper function to convert date to YYYY-MM-DD format
-    const normalizeDate = (dateStr: string): string => {
-      // If already in YYYY-MM-DD format, return as is
-      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-        return dateStr;
-      }
-      
-      // If in DD/MM/YYYY format, convert to YYYY-MM-DD
-      if (dateStr.includes('/')) {
-        const parts = dateStr.split('/');
-        if (parts.length === 3) {
-          const [d, m, y] = parts;
-          return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
-        }
-      }
-      
-      // Try to parse as Date and format
-      try {
-        const date = new Date(dateStr);
-        if (!isNaN(date.getTime())) {
-          const year = date.getFullYear();
-          const month = String(date.getMonth() + 1).padStart(2, '0');
-          const day = String(date.getDate()).padStart(2, '0');
-          return `${year}-${month}-${day}`;
-        }
-      } catch (e) {
-        // Ignore parse errors
-      }
-      
-      throw new Error(`Invalid date format: ${dateStr}`);
-    };
-    
-    try {
-      startDate = normalizeDate(startDate);
-      endDate = normalizeDate(endDate);
+        res.status(201).json(result[0]);
     } catch (error: any) {
-      return res.status(400).json({ 
-        error: 'Invalid date format', 
-        message: error.message || 'Dates must be in YYYY-MM-DD or DD/MM/YYYY format',
-        received: { start_date: start_date, end_date: end_date }
-      });
+        console.error('Error creating task:', error);
+        res.status(500).json({ error: 'Failed to create task', message: error.message });
     }
-
-    let query = '';
-    let params: any[] = [tenantId, startDate, endDate];
-
-    if (isAdmin) {
-      query = `
-        SELECT id, title, type, status, start_date, hard_deadline, category
-        FROM tasks
-        WHERE tenant_id = $1
-          AND (start_date <= $3::date AND hard_deadline >= $2::date)
-        ORDER BY start_date ASC
-      `;
-    } else {
-      query = `
-        SELECT id, title, type, status, start_date, hard_deadline, category
-        FROM tasks
-        WHERE tenant_id = $1
-          AND ((type = 'Personal' AND created_by_id = $4) OR (type = 'Assigned' AND assigned_to_id = $4))
-          AND (start_date <= $3::date AND hard_deadline >= $2::date)
-        ORDER BY start_date ASC
-      `;
-      params.push(userId);
-    }
-
-    console.log('Calendar query:', { 
-      isAdmin, 
-      userRole, 
-      startDate, 
-      endDate, 
-      userId, 
-      tenantId,
-      paramCount: params.length 
-    });
-    
-    const tasks = await db.query(query, params);
-    console.log('Calendar tasks found:', tasks.length);
-    res.json(tasks);
-  } catch (error: any) {
-    console.error('Error fetching calendar tasks:', error);
-    console.error('Error details:', {
-      message: error.message,
-      code: error.code,
-      detail: error.detail,
-      hint: error.hint,
-      stack: error.stack
-    });
-    res.status(500).json({ 
-      error: 'Failed to fetch calendar tasks',
-      message: error.message || 'Unknown error',
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
-  }
 });
 
-// Get team ranking/leaderboard (Admin only)
-router.get('/performance/leaderboard', adminOnlyMiddleware(), async (req: TenantRequest, res) => {
-  try {
-    const db = getDb();
-    const tenantId = req.tenantId!;
-    const { period_start, period_end } = req.query;
-
-    if (!period_start || !period_end) {
-      return res.status(400).json({ error: 'period_start and period_end query parameters are required' });
-    }
-
-    // Convert date strings to proper format (handle DD/MM/YYYY or YYYY-MM-DD)
-    const normalizeDate = (dateStr: string): string => {
-      const decoded = decodeURIComponent(dateStr).trim();
-      
-      // If already in YYYY-MM-DD format, return as is
-      if (/^\d{4}-\d{2}-\d{2}$/.test(decoded)) {
-        return decoded;
-      }
-      
-      // If in DD/MM/YYYY format, convert to YYYY-MM-DD
-      if (decoded.includes('/')) {
-        const parts = decoded.split('/');
-        if (parts.length === 3) {
-          const [d, m, y] = parts;
-          return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
-        }
-      }
-      
-      // Try to parse as Date and format
-      try {
-        const date = new Date(decoded);
-        if (!isNaN(date.getTime())) {
-          const year = date.getFullYear();
-          const month = String(date.getMonth() + 1).padStart(2, '0');
-          const day = String(date.getDate()).padStart(2, '0');
-          return `${year}-${month}-${day}`;
-        }
-      } catch (e) {
-        // Ignore parse errors
-      }
-      
-      throw new Error(`Invalid date format: ${decoded}`);
-    };
-
-    let normalizedPeriodStart: string;
-    let normalizedPeriodEnd: string;
-    
+// PUT update task
+router.put('/:id', async (req: TenantRequest, res) => {
     try {
-      normalizedPeriodStart = normalizeDate(period_start as string);
-      normalizedPeriodEnd = normalizeDate(period_end as string);
+        const db = getDb();
+        const task = req.body;
+        const result = await db.query(
+            `UPDATE task_items SET 
+                title = $1, description = $2, initiative_id = $3, owner_id = $4,
+                status = $5, priority = $6, start_date = $7, due_date = $8,
+                estimated_hours = $9, actual_hours = $10, progress_percentage = $11,
+                updated_at = NOW()
+            WHERE id = $12 AND tenant_id = $13
+            RETURNING *`,
+            [
+                task.title,
+                task.description || null,
+                task.initiative_id || null,
+                task.owner_id || null,
+                task.status,
+                task.priority,
+                task.start_date || null,
+                task.due_date,
+                task.estimated_hours || 0,
+                task.actual_hours || 0,
+                task.progress_percentage || 0,
+                req.params.id,
+                req.tenantId
+            ]
+        );
+
+        if (result.length === 0) {
+            return res.status(404).json({ error: 'Task not found' });
+        }
+
+        emitToTenant(req.tenantId!, WS_EVENTS.TASK_UPDATED, {
+            task: result[0],
+            userId: req.user?.userId
+        });
+
+        res.json(result[0]);
     } catch (error: any) {
-      return res.status(400).json({ 
-        error: 'Invalid date format', 
-        message: error.message || 'Dates must be in YYYY-MM-DD or DD/MM/YYYY format',
-        received: { period_start, period_end }
-      });
+        console.error('Error updating task:', error);
+        res.status(500).json({ error: 'Failed to update task', message: error.message });
     }
-
-    console.log('Leaderboard query:', { 
-      tenantId, 
-      period_start: normalizedPeriodStart, 
-      period_end: normalizedPeriodEnd 
-    });
-
-    const scores = await db.query(
-      `SELECT tps.*, u.name as user_name, u.username
-       FROM task_performance_scores tps
-       JOIN users u ON tps.user_id = u.id AND u.tenant_id = $1
-       WHERE tps.tenant_id = $1
-         AND tps.period_start = $2::date
-         AND tps.period_end = $3::date
-       ORDER BY tps.performance_score DESC`,
-      [tenantId, normalizedPeriodStart, normalizedPeriodEnd]
-    );
-
-    console.log('Leaderboard scores found:', scores.length);
-    
-    // If no scores exist for this period, return empty array (scores are calculated when tasks are completed)
-    // In the future, we could trigger calculation on-demand here if needed
-    res.json(scores || []);
-  } catch (error: any) {
-    console.error('Error fetching leaderboard:', error);
-    console.error('Error details:', {
-      message: error.message,
-      code: error.code,
-      detail: error.detail,
-      hint: error.hint,
-      stack: error.stack
-    });
-    res.status(500).json({ 
-      error: 'Failed to fetch leaderboard',
-      message: error.message || 'Unknown error',
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
-  }
 });
 
-// Get performance config (Admin only)
-router.get('/performance/config', adminOnlyMiddleware(), async (req: TenantRequest, res) => {
-  try {
-    const db = getDb();
-    const tenantId = req.tenantId!;
+// ==========================================
+// 2. Initiatives
+// ==========================================
 
-    const configs = await db.query(
-      'SELECT * FROM task_performance_config WHERE tenant_id = $1',
-      [tenantId]
-    );
-
-    if (configs.length === 0) {
-      // Return default config
-      return res.json({
-        id: 'default',
-        tenant_id: tenantId,
-        completion_rate_weight: 0.33,
-        deadline_adherence_weight: 0.33,
-        kpi_achievement_weight: 0.34,
-        updated_at: new Date().toISOString(),
-      });
+// GET all initiatives
+router.get('/initiatives/list', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const initiatives = await db.query(
+            'SELECT i.*, u.full_name as owner_name FROM task_initiatives i ' +
+            'LEFT JOIN users u ON i.owner_id = u.id ' +
+            'WHERE i.tenant_id = $1 ORDER BY i.created_at DESC',
+            [req.tenantId]
+        );
+        res.json(initiatives);
+    } catch (error) {
+        console.error('Error fetching initiatives:', error);
+        res.status(500).json({ error: 'Failed to fetch initiatives' });
     }
-
-    res.json(configs[0]);
-  } catch (error) {
-    console.error('Error fetching performance config:', error);
-    res.status(500).json({ error: 'Failed to fetch performance config' });
-  }
 });
 
-// Update performance config (Admin only)
-router.put('/performance/config', adminOnlyMiddleware(), async (req: TenantRequest, res) => {
-  try {
-    const db = getDb();
-    const tenantId = req.tenantId!;
-    const { completion_rate_weight, deadline_adherence_weight, kpi_achievement_weight } = req.body;
+// ==========================================
+// 3. OKRs / Objectives
+// ==========================================
 
-    // Validate weights sum to 1.0
-    const sum = (completion_rate_weight || 0) + (deadline_adherence_weight || 0) + (kpi_achievement_weight || 0);
-    if (Math.abs(sum - 1.0) > 0.01) {
-      return res.status(400).json({ error: 'Weights must sum to 1.0' });
+// GET objective by ID (includes Key Results)
+router.get('/objectives/:id', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const objectives = await db.query(
+            'SELECT o.*, u.full_name as owner_name FROM task_objectives o ' +
+            'LEFT JOIN users u ON o.owner_id = u.id ' +
+            'WHERE o.id = $1 AND o.tenant_id = $2',
+            [req.params.id, req.tenantId]
+        );
+
+        if (objectives.length === 0) {
+            return res.status(404).json({ error: 'Objective not found' });
+        }
+
+        const objective = objectives[0];
+
+        // Fetch Key Results for this objective
+        const keyResults = await db.query(
+            'SELECT kr.*, u.full_name as owner_name FROM task_key_results kr ' +
+            'LEFT JOIN users u ON kr.owner_id = u.id ' +
+            'WHERE kr.objective_id = $1 AND kr.tenant_id = $2 ORDER BY kr.created_at ASC',
+            [objective.id, req.tenantId]
+        );
+
+        objective.key_results = keyResults;
+        res.json(objective);
+    } catch (error) {
+        console.error('Error fetching objective:', error);
+        res.status(500).json({ error: 'Failed to fetch objective' });
     }
+});
 
-    // Check if config exists
-    const existing = await db.query(
-      'SELECT id FROM task_performance_config WHERE tenant_id = $1',
-      [tenantId]
-    );
+// POST create objective
+router.post('/objectives', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const obj = req.body;
+        const result = await db.query(
+            `INSERT INTO task_objectives (
+                tenant_id, title, description, owner_id, parent_objective_id,
+                type, level, status, visibility, confidence_score, created_by
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING *`,
+            [
+                req.tenantId,
+                obj.title,
+                obj.description || null,
+                obj.owner_id || null,
+                obj.parent_objective_id || null,
+                obj.type || 'Operational',
+                obj.level || 'Company',
+                obj.status || 'Not Started',
+                obj.visibility || 'Public',
+                obj.confidence_score || 70,
+                req.user?.userId || null
+            ]
+        );
 
-    if (existing.length === 0) {
-      // Create new config
-      const configId = generateId().replace('task_', 'config_');
-      await db.query(
-        `INSERT INTO task_performance_config (
-          id, tenant_id, completion_rate_weight, deadline_adherence_weight,
-          kpi_achievement_weight, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, NOW())`,
-        [configId, tenantId, completion_rate_weight, deadline_adherence_weight, kpi_achievement_weight]
-      );
-      res.json({ success: true, id: configId });
-    } else {
-      // Update existing config
-      await db.query(
-        `UPDATE task_performance_config SET
-          completion_rate_weight = $1,
-          deadline_adherence_weight = $2,
-          kpi_achievement_weight = $3,
-          updated_at = NOW()
-        WHERE tenant_id = $4`,
-        [completion_rate_weight, deadline_adherence_weight, kpi_achievement_weight, tenantId]
-      );
-      res.json({ success: true });
+        emitToTenant(req.tenantId!, WS_EVENTS.OBJECTIVE_CREATED, {
+            objective: result[0],
+            userId: req.user?.userId
+        });
+
+        res.status(201).json(result[0]);
+    } catch (error: any) {
+        console.error('Error creating objective:', error);
+        res.status(500).json({ error: 'Failed to create objective', message: error.message });
     }
-  } catch (error) {
-    console.error('Error updating performance config:', error);
-    res.status(500).json({ error: 'Failed to update performance config' });
-  }
+});
+
+// POST create key result
+router.post('/key-results', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const kr = req.body;
+        const result = await db.query(
+            `INSERT INTO task_key_results (
+                tenant_id, objective_id, title, owner_id, metric_type,
+                start_value, target_value, current_value, weight, status, due_date, created_by
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            RETURNING *`,
+            [
+                req.tenantId,
+                kr.objective_id,
+                kr.title,
+                kr.owner_id || null,
+                kr.metric_type || 'Number',
+                kr.start_value || 0,
+                kr.target_value,
+                kr.current_value || 0,
+                kr.weight || 1,
+                kr.status || 'Not Started',
+                kr.due_date || null,
+                req.user?.userId || null
+            ]
+        );
+
+        // Recalculate objective progress when KR is added
+        // (In a real app, this could be a trigger or a separate service call)
+
+        res.status(201).json(result[0]);
+    } catch (error: any) {
+        console.error('Error creating key result:', error);
+        res.status(500).json({ error: 'Failed to create key result', message: error.message });
+    }
+});
+
+// PUT update key result (Check-in)
+router.put('/key-results/:id', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const kr = req.body;
+        const oldKrQuery = await db.query('SELECT * FROM task_key_results WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenantId]);
+        if (oldKrQuery.length === 0) return res.status(404).json({ error: 'Key result not found' });
+        const oldKr = oldKrQuery[0];
+
+        // Calculate progress percentage
+        let progress = 0;
+        const target = parseFloat(kr.target_value || oldKr.target_value);
+        const start = parseFloat(kr.start_value || oldKr.start_value);
+        const current = parseFloat(kr.current_value);
+
+        if (target !== start) {
+            progress = ((current - start) / (target - start)) * 100;
+        }
+        progress = Math.min(Math.max(progress, 0), 100);
+
+        const result = await db.query(
+            `UPDATE task_key_results SET 
+                current_value = $1, progress_percentage = $2, status = $3, 
+                confidence_score = $4, updated_at = NOW()
+            WHERE id = $5 AND tenant_id = $6
+            RETURNING *`,
+            [
+                current,
+                progress,
+                kr.status || oldKr.status,
+                kr.confidence_score !== undefined ? kr.confidence_score : oldKr.confidence_score,
+                req.params.id,
+                req.tenantId
+            ]
+        );
+
+        // Log the update
+        await db.query(
+            `INSERT INTO task_okr_updates (
+                tenant_id, entity_type, entity_id, previous_value, new_value,
+                previous_progress, new_progress, comment, updated_by
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [
+                req.tenantId,
+                'KeyResult',
+                req.params.id,
+                oldKr.current_value,
+                current,
+                oldKr.progress_percentage,
+                progress,
+                kr.comment || 'Progress update',
+                req.user?.userId || null
+            ]
+        );
+
+        // Update parent objective progress
+        const objective_id = oldKr.objective_id;
+        const allKrs = await db.query('SELECT progress_percentage, weight FROM task_key_results WHERE objective_id = $1', [objective_id]);
+        let totalWeight = 0;
+        let weightedProgress = 0;
+        allKrs.forEach((k: any) => {
+            const w = k.weight || 1;
+            totalWeight += w;
+            weightedProgress += (k.progress_percentage || 0) * w;
+        });
+        const objProgress = totalWeight > 0 ? weightedProgress / totalWeight : 0;
+
+        await db.query(
+            'UPDATE task_objectives SET progress_percentage = $1, updated_at = NOW() WHERE id = $2',
+            [objProgress, objective_id]
+        );
+
+        emitToTenant(req.tenantId!, WS_EVENTS.OBJECTIVE_UPDATED, {
+            objectiveId: objective_id,
+            userId: req.user?.userId
+        });
+
+        res.json(result[0]);
+    } catch (error: any) {
+        console.error('Error updating key result:', error);
+        res.status(500).json({ error: 'Failed to update key result', message: error.message });
+    }
+});
+
+// ==========================================
+// 4. Reports
+// ==========================================
+
+router.get('/reports/team-summary', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const tenantId = req.tenantId;
+
+        // 1. Overall Stats
+        const stats = await db.query(
+            `SELECT 
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE status = 'Completed') as completed,
+                COUNT(*) FILTER (WHERE status = 'In Progress') as in_progress,
+                COUNT(*) FILTER (WHERE status = 'Blocked') as blocked,
+                COUNT(*) FILTER (WHERE due_date < NOW() AND status != 'Completed') as overdue
+            FROM task_items WHERE tenant_id = $1`,
+            [tenantId]
+        );
+
+        // 2. Productivity by User
+        const teamProductivity = await db.query(
+            `SELECT 
+                u.id as user_id,
+                u.full_name as name,
+                COUNT(t.id) as total_tasks,
+                COUNT(t.id) FILTER (WHERE t.status = 'Completed') as completed_tasks
+            FROM users u
+            JOIN task_items t ON u.id = t.owner_id
+            WHERE t.tenant_id = $1
+            GROUP BY u.id, u.full_name
+            ORDER BY completed_tasks DESC`,
+            [tenantId]
+        );
+
+        // 3. Status Distribution
+        const statusDistribution = await db.query(
+            `SELECT status as name, COUNT(*) as value
+            FROM task_items
+            WHERE tenant_id = $1
+            GROUP BY status`,
+            [tenantId]
+        );
+
+        // 4. Completion Trend (Last 7 days)
+        const trend = await db.query(
+            `SELECT 
+                TO_CHAR(updated_at, 'YYYY-MM-DD') as date,
+                COUNT(*) as count
+            FROM task_items
+            WHERE tenant_id = $1 AND status = 'Completed' 
+            AND updated_at >= NOW() - INTERVAL '7 days'
+            GROUP BY TO_CHAR(updated_at, 'YYYY-MM-DD')
+            ORDER BY date ASC`,
+            [tenantId]
+        );
+
+        res.json({
+            summary: stats[0],
+            teamProductivity,
+            statusDistribution,
+            trend
+        });
+    } catch (error) {
+        console.error('Error fetching team report:', error);
+        res.status(500).json({ error: 'Failed to fetch team report' });
+    }
+});
+
+// ==========================================
+// 5. Task Roles & Permissions
+// ==========================================
+
+// GET all task roles
+router.get('/roles/list', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const roles = await db.query(
+            `SELECT r.*, COUNT(ur.user_id) as users_count 
+             FROM task_roles r 
+             LEFT JOIN task_user_roles ur ON r.id = ur.role_id 
+             WHERE r.tenant_id = $1 
+             GROUP BY r.id 
+             ORDER BY r.name ASC`,
+            [req.tenantId]
+        );
+        res.json(roles);
+    } catch (error) {
+        console.error('Error fetching task roles:', error);
+        res.status(500).json({ error: 'Failed to fetch task roles' });
+    }
+});
+
+// POST create task role
+router.post('/roles', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const { name, description, is_system, parent_role_id, permission_ids } = req.body;
+
+        const role = await db.transaction(async (client) => {
+            const result = await client.query(
+                `INSERT INTO task_roles (tenant_id, name, description, is_system, parent_role_id)
+                 VALUES ($1, $2, $3, $4, $5)
+                 RETURNING *`,
+                [req.tenantId, name, description, is_system || false, parent_role_id || null]
+            );
+            const newRole = result.rows[0];
+
+            if (permission_ids && permission_ids.length > 0) {
+                const values = permission_ids.map((pId: string) => `('${newRole.id}', '${pId}')`).join(',');
+                await client.query(`INSERT INTO task_role_permissions (role_id, permission_id) VALUES ${values}`);
+            }
+
+            return newRole;
+        });
+
+        res.status(201).json(role);
+    } catch (error: any) {
+        console.error('Error creating task role:', error);
+        res.status(500).json({ error: 'Failed to create task role', message: error.message });
+    }
+});
+
+// PUT update task role
+router.put('/roles/:id', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const { name, description, permission_ids } = req.body;
+
+        await db.transaction(async (client) => {
+            // Update role info
+            await client.query(
+                `UPDATE task_roles SET name = $1, description = $2, updated_at = NOW()
+                 WHERE id = $3 AND tenant_id = $4`,
+                [name, description, req.params.id, req.tenantId]
+            );
+
+            // Update permissions if provided
+            if (permission_ids) {
+                await client.query(
+                    'DELETE FROM task_role_permissions WHERE role_id = $1',
+                    [req.params.id]
+                );
+
+                if (permission_ids.length > 0) {
+                    const values = permission_ids.map((pId: string) => `('${req.params.id}', '${pId}')`).join(',');
+                    await client.query(`INSERT INTO task_role_permissions (role_id, permission_id) VALUES ${values}`);
+                }
+            }
+        });
+
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error('Error updating task role:', error);
+        res.status(500).json({ error: 'Failed to update task role', message: error.message });
+    }
+});
+
+// DELETE task role
+router.delete('/roles/:id', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const result = await db.query(
+            'DELETE FROM task_roles WHERE id = $1 AND tenant_id = $2 AND is_system = FALSE RETURNING *',
+            [req.params.id, req.tenantId]
+        );
+
+        if (result.length === 0) {
+            return res.status(404).json({ error: 'Role not found or is a system role' });
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error deleting task role:', error);
+        res.status(500).json({ error: 'Failed to delete task role' });
+    }
+});
+
+// GET all permissions
+router.get('/permissions/list', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const permissions = await db.query('SELECT * FROM task_permissions ORDER BY module, action');
+        res.json(permissions);
+    } catch (error) {
+        console.error('Error fetching permissions:', error);
+        res.status(500).json({ error: 'Failed to fetch permissions' });
+    }
+});
+
+// GET roles for a user
+router.get('/user-roles/:userId', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const roles = await db.query(
+            `SELECT r.* FROM task_roles r
+             JOIN task_user_roles ur ON r.id = ur.role_id
+             WHERE ur.user_id = $1 AND ur.tenant_id = $2`,
+            [req.params.userId, req.tenantId]
+        );
+        res.json(roles);
+    } catch (error) {
+        console.error('Error fetching user roles:', error);
+        res.status(500).json({ error: 'Failed to fetch user roles' });
+    }
+});
+
+// POST update user roles
+router.post('/user-roles/:userId', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const { role_ids } = req.body; // Array of role IDs
+
+        await db.transaction(async (client) => {
+            // Remove existing assignments
+            await client.query(
+                'DELETE FROM task_user_roles WHERE user_id = $1 AND tenant_id = $2',
+                [req.params.userId, req.tenantId]
+            );
+
+            // Add new assignments
+            if (role_ids && role_ids.length > 0) {
+                const values = role_ids.map((rId: string) => `('${req.params.userId}', '${rId}', '${req.tenantId}')`).join(',');
+                await client.query(`INSERT INTO task_user_roles (user_id, role_id, tenant_id) VALUES ${values}`);
+            }
+        });
+
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error('Error updating user roles:', error);
+        res.status(500).json({ error: 'Failed to update user roles', message: error.message });
+    }
+});
+
+// GET permissions for a role
+router.get('/roles/:id/permissions', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const permissions = await db.query(
+            `SELECT p.* FROM task_permissions p
+             JOIN task_role_permissions rp ON p.id = rp.permission_id
+             JOIN task_roles r ON rp.role_id = r.id
+             WHERE r.id = $1 AND r.tenant_id = $2`,
+            [req.params.id, req.tenantId]
+        );
+        res.json(permissions);
+    } catch (error) {
+        console.error('Error fetching role permissions:', error);
+        res.status(500).json({ error: 'Failed to fetch role permissions' });
+    }
+});
+
+// POST update role permissions
+router.post('/roles/:id/permissions', async (req: TenantRequest, res) => {
+    try {
+        const db = getDb();
+        const { permission_ids } = req.body; // Array of permission IDs
+
+        await db.transaction(async (client) => {
+            // Remove existing permissions
+            await client.query(
+                'DELETE FROM task_role_permissions WHERE role_id = $1',
+                [req.params.id]
+            );
+
+            // Add new permissions
+            if (permission_ids && permission_ids.length > 0) {
+                const values = permission_ids.map((pId: string) => `('${req.params.id}', '${pId}')`).join(',');
+                await client.query(`INSERT INTO task_role_permissions (role_id, permission_id) VALUES ${values}`);
+            }
+        });
+
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error('Error updating role permissions:', error);
+        res.status(500).json({ error: 'Failed to update role permissions', message: error.message });
+    }
 });
 
 export default router;

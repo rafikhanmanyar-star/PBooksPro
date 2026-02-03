@@ -22,10 +22,32 @@ export type Page =
   | 'tasks'
   | 'tasksCalendar'
   | 'teamRanking'
+  | 'taskCreation'
+  | 'taskAssignment'
+  | 'taskWorkflow'
+  | 'taskExecution'
+  | 'taskDashboards'
+  | 'taskKPIs'
+  | 'taskNotifications'
+  | 'taskAutomation'
+  | 'taskReports'
+  | 'taskConfiguration'
+  | 'taskAudit'
+  | 'taskOKR'
+  | 'taskInitiatives'
+  | 'taskRoles'
+  | 'taskManagement'
+
   | 'bizPlanet'
   | 'marketing'
   | 'payroll'
-  | 'inventory';
+  | 'posSales'
+  | 'inventory'
+  | 'accounting'
+  | 'loyalty'
+  | 'multiStore'
+  | 'procurement'
+  | 'biDashboards';
 
 export enum TransactionType {
   INCOME = 'Income',
@@ -161,7 +183,19 @@ export enum ImportType {
 
 
 
-export type UserRole = 'Admin' | 'Manager' | 'Accounts';
+export type UserRole =
+  // Administrative Roles
+  | 'Admin'
+  | 'Manager'
+  | 'Accounts'
+  // POS & Shop Roles  
+  | 'Store Manager'
+  | 'Cashier'
+  | 'Inventory Manager'
+  // Task & Performance Roles
+  | 'Project Manager'
+  | 'Team Lead'
+  | 'Task Contributor';
 
 export interface User {
   id: string;
@@ -398,7 +432,8 @@ export interface Bill {
   contractId?: string;
   staffId?: string;
   expenseCategoryItems?: ContractExpenseCategoryItem[]; // New: expense category tracking with units and prices
-  documentPath?: string; // Path to uploaded document file
+  documentPath?: string; // Path to uploaded document file (legacy/local)
+  documentId?: string; // Reference to documents table (local + cloud)
   version?: number; // Version for optimistic locking (default: 1)
 }
 
@@ -537,7 +572,8 @@ export interface Contract {
   termsAndConditions?: string;
   paymentTerms?: string; // New: payment terms field
   description?: string;
-  documentPath?: string; // Path to uploaded document file
+  documentPath?: string; // Path to uploaded document file (legacy/local)
+  documentId?: string; // Reference to documents table (local + cloud)
 }
 
 export interface Budget {
@@ -580,6 +616,7 @@ export interface InvoiceSettings {
   padding: number;
 }
 
+/** Print template configuration from Settings - used by PrintLayout and form templates */
 export interface PrintSettings {
   companyName: string;
   companyAddress: string;
@@ -589,6 +626,31 @@ export interface PrintSettings {
   headerText?: string;
   footerText?: string;
   showDatePrinted: boolean;
+  /** Optional: tax ID or registration number shown in header */
+  taxId?: string;
+  /** Font family for printed documents (print-safe, e.g. Georgia, 'Times New Roman') */
+  fontFamily?: string;
+  /** Font sizes in px */
+  headerFontSize?: number;
+  bodyFontSize?: number;
+  footerFontSize?: number;
+  /** Hex or CSS color for body text */
+  textColor?: string;
+  /** Table border color */
+  tableBorderColor?: string;
+  /** Highlight color for headers/totals */
+  highlightColor?: string;
+  /** Page background color */
+  backgroundColor?: string;
+  /** Optional watermark text (e.g. 'DRAFT', 'COPY') */
+  watermark?: string;
+  /** Page size - A4 default */
+  pageSize?: 'A4' | 'Letter';
+  /** Margins in mm */
+  marginTop?: number;
+  marginBottom?: number;
+  marginLeft?: number;
+  marginRight?: number;
 }
 
 export interface WhatsAppTemplates {
@@ -661,11 +723,8 @@ export interface AppState {
   recurringInvoiceTemplates: RecurringInvoiceTemplate[];
   pmCycleAllocations: PMCycleAllocation[];
 
-  // Task Management
-  tasks: Task[];
-  taskUpdates: TaskUpdate[];
-  taskPerformanceScores: TaskPerformanceScore[];
-  taskPerformanceConfig?: TaskPerformanceConfig;
+
+
 
   agreementSettings: AgreementSettings;
   projectAgreementSettings: AgreementSettings;
@@ -685,7 +744,6 @@ export interface AppState {
   lastPreservedDate?: string; // Last date entered in any form (ISO date string)
   pmCostPercentage: number;
   defaultProjectId?: string; // Default project to use in all forms and reports
-  documentStoragePath?: string; // Path to folder where documents are stored
 
   lastServiceChargeRun?: string;
 
@@ -806,136 +864,10 @@ export type AppAction =
   | { type: 'SET_INITIAL_TABS'; payload: string[] }
   | { type: 'CLEAR_INITIAL_TABS' }
   | { type: 'SET_UPDATE_AVAILABLE'; payload: boolean }
-  // Task Management Actions
-  | { type: 'ADD_TASK'; payload: Task }
-  | { type: 'UPDATE_TASK'; payload: Task }
-  | { type: 'DELETE_TASK'; payload: string }
-  | { type: 'ADD_TASK_UPDATE'; payload: TaskUpdate }
-  | { type: 'UPDATE_TASK_PERFORMANCE_CONFIG'; payload: TaskPerformanceConfig };
+
 
 // ==================== TASK MANAGEMENT TYPES ====================
 
-export type TaskType = 'Personal' | 'Assigned';
-export type TaskStatus = 'Not Started' | 'In Progress' | 'Review' | 'Completed';
-export type TaskCategory = 'Development' | 'Admin' | 'Sales' | 'Personal Growth';
-export type TaskUpdateType = 'Status Change' | 'KPI Update' | 'Comment' | 'Check-in';
-
-export interface Task {
-  id: string;
-  tenant_id?: string;
-  title: string;
-  description?: string;
-  type: TaskType;
-  category: TaskCategory | string; // Allow custom categories
-  status: TaskStatus;
-  start_date: string; // ISO date string
-  hard_deadline: string; // ISO date string
-  kpi_goal?: string;
-  kpi_target_value?: number;
-  kpi_current_value: number;
-  kpi_unit?: string;
-  kpi_progress_percentage: number; // 0-100
-  assigned_by_id?: string;
-  assigned_to_id?: string;
-  created_by_id: string;
-  user_id?: string; // For local SQLite compatibility
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface TaskUpdate {
-  id: string;
-  tenant_id?: string;
-  task_id: string;
-  user_id: string;
-  update_type: TaskUpdateType;
-  status_before?: TaskStatus;
-  status_after?: TaskStatus;
-  kpi_value_before?: number;
-  kpi_value_after?: number;
-  comment?: string;
-  created_at?: string;
-}
-
-export interface TaskPerformanceScore {
-  id: string;
-  tenant_id?: string;
-  user_id: string;
-  period_start: string; // ISO date string
-  period_end: string; // ISO date string
-  total_tasks: number;
-  completed_tasks: number;
-  on_time_completions: number;
-  overdue_tasks: number;
-  average_kpi_achievement: number;
-  completion_rate: number; // 0-100
-  deadline_adherence_rate: number; // 0-100
-  performance_score: number;
-  calculated_at?: string;
-}
-
-export interface TaskPerformanceConfig {
-  id: string;
-  tenant_id: string;
-  completion_rate_weight: number; // 0-1
-  deadline_adherence_weight: number; // 0-1
-  kpi_achievement_weight: number; // 0-1
-  updated_at?: string;
-}
-
-// ============================================================================
-// SHOP/INVENTORY MANAGEMENT TYPES
-// ============================================================================
-
-export enum ShopBillStatus {
-  UNPAID = 'Unpaid',
-  PARTIALLY_PAID = 'Partially Paid',
-  PAID = 'Paid',
-}
-
-export interface ShopBillItem {
-  id: string;
-  categoryId: string;       // Links to expense category (inventory item type)
-  itemName: string;         // Display name for the item
-  quantity: number;
-  pricePerItem: number;
-  totalCost: number;        // quantity * pricePerItem
-}
-
-export interface ShopPurchaseBill {
-  id: string;
-  billNumber: string;
-  vendorId: string;         // Links to Contact (Vendor type)
-  billDate: string;         // ISO date string
-  dueDate?: string;         // Optional due date
-  items: ShopBillItem[];
-  totalAmount: number;      // Sum of all items
-  paidAmount: number;
-  status: ShopBillStatus;
-  description?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ShopInventoryItem {
-  id: string;
-  categoryId: string;       // Links to expense category
-  itemName: string;
-  currentStock: number;
-  averageCost: number;      // Weighted average cost
-  lastPurchaseDate?: string;
-  lastPurchasePrice?: number;
-}
-
-export interface ShopPayment {
-  id: string;
-  billId: string;
-  accountId: string;        // Links to Account for payment
-  amount: number;
-  paymentDate: string;
-  transactionId?: string;   // Links to Transaction if created
-  description?: string;
-}
 
 // ============================================================================
 // P2P (PROCUREMENT-TO-PAY) SYSTEM TYPES
@@ -1011,6 +943,10 @@ export interface PurchaseOrder {
   userId?: string;
   createdAt: string;
   updatedAt: string;
+  /** Lock: only one party (buyer or supplier) can edit at a time */
+  lockedByTenantId?: string;
+  lockedByUserId?: string;
+  lockedAt?: string;
 }
 
 // P2P Invoice
@@ -1084,6 +1020,8 @@ export interface SupplierRegistrationRequest {
   supplierCompanyName?: string;
   buyerName?: string;
   buyerCompanyName?: string;
+  /** True when there is an active row in registered_suppliers; false after unregister */
+  isRegistrationActive?: boolean;
 }
 
 export interface KpiDefinition {

@@ -2,6 +2,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
+import { usePrintContext } from '../../context/PrintContext';
+import type { BillPrintData } from '../print/BillPrintTemplate';
 import { Invoice, Bill, InvoiceStatus, Contact, Property, InvoiceType, ContactType, RentalAgreement, Project, TransactionType, Category, Unit, ProjectAgreement, Building, RecurringInvoiceTemplate, ProjectAgreementStatus, ContractStatus, ContractExpenseCategoryItem } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -13,6 +15,7 @@ import Select from '../ui/Select';
 import DatePicker from '../ui/DatePicker';
 import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
 import { getFormBackgroundColorStyle } from '../../utils/formColorUtils';
+import { uploadEntityDocument, openDocumentById } from '../../services/documentUploadService';
 
 interface InvoiceBillFormProps {
   onClose: () => void;
@@ -33,6 +36,7 @@ type RootBillType = 'project' | 'building' | 'staff';
 const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemToEdit, invoiceTypeForNew, agreementForInvoice, initialContactId, rentalContext, onDuplicate, initialData, projectContext = false }) => {
   const { state, dispatch } = useAppContext();
   const { showToast, showAlert, showConfirm } = useNotification();
+  const { print: triggerPrint } = usePrintContext();
   const { rentalInvoiceSettings, projectInvoiceSettings } = state;
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [newItemName, setNewItemName] = useState('');
@@ -200,6 +204,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
               setAmount(bill.amount.toString());
           }
           setDocumentPath(bill.documentPath || '');
+          setDocumentId(bill.documentId || '');
           
           // Restore tenant information if this is a tenant-allocated bill
           // First, check if projectAgreementId is a rental agreement ID
@@ -384,6 +389,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   const [expenseCategoryItems, setExpenseCategoryItems] = useState<ContractExpenseCategoryItem[]>(initialExpenseCategoryItems);
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [documentPath, setDocumentPath] = useState((defaults as Bill)?.documentPath || '');
+  const [documentId, setDocumentId] = useState((defaults as Bill)?.documentId || '');
   
   const { amountAlreadyInvoiced, agreementBalance } = useMemo(() => {
     if (!agreementForInvoice) return { amountAlreadyInvoiced: 0, agreementBalance: 0 };
@@ -403,6 +409,37 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       }
       return {};
   }, [projectId, buildingId, state]);
+
+  /** Bill print data for context-based print (when type === 'bill') */
+  const billPrintData = useMemo((): BillPrintData | null => {
+    if (type !== 'bill') return null;
+    const contact = state.contacts.find(c => c.id === contactId);
+    const contactAddress = [contact?.address, contact?.contactNo].filter(Boolean).join('\n') || undefined;
+    const amountNum = parseFloat(amount) || 0;
+    const items = expenseCategoryItems.length > 0
+      ? expenseCategoryItems.map(item => {
+          const cat = state.categories.find(c => c.id === item.categoryId);
+          return {
+            description: cat?.name || 'Item',
+            quantity: item.quantity ?? 1,
+            pricePerUnit: item.pricePerUnit,
+            total: item.netValue,
+          };
+        })
+      : undefined;
+    return {
+      billNumber: number.trim() || '—',
+      contactName: contact?.name,
+      contactAddress,
+      amount: amountNum,
+      paidAmount: itemToEdit ? (itemToEdit as Bill).paidAmount : 0,
+      status: itemToEdit ? (itemToEdit as Bill).status : 'Unpaid',
+      issueDate,
+      dueDate,
+      description: description?.trim() || undefined,
+      items,
+    };
+  }, [type, number, contactId, amount, issueDate, dueDate, description, expenseCategoryItems, itemToEdit, state.contacts, state.categories]);
 
   // Mark dirty on changes
   useEffect(() => {
@@ -856,55 +893,16 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         return;
     }
 
-    // Handle document upload for bills
-    let finalDocumentPath = documentPath;
-    if (type === 'bill' && documentFile && state.documentStoragePath) {
-        try {
-            // Convert file to base64
-            const reader = new FileReader();
-            const base64Data = await new Promise<string>((resolve, reject) => {
-                reader.onload = () => {
-                    const result = reader.result as string;
-                    const base64 = result.split(',')[1] || result;
-                    resolve(base64);
-                };
-                reader.onerror = reject;
-                reader.readAsDataURL(documentFile);
-            });
-
-            // Generate file path
-            const fileExtension = documentFile.name.split('.').pop() || 'pdf';
-            const billNumber = (number || '').trim().replace(/[^a-zA-Z0-9]/g, '_');
-            const fileName = `BILL-${billNumber}-${Date.now()}.${fileExtension}`;
-            const filePath = `${state.documentStoragePath}/${fileName}`;
-
-            // Save file via IPC
-            if (window.electronAPI && window.electronAPI.saveDocumentFile) {
-                const saveResult = await window.electronAPI.saveDocumentFile({
-                    filePath,
-                    fileData: base64Data,
-                    fileName: documentFile.name
-                });
-
-                if (saveResult.success) {
-                    finalDocumentPath = filePath;
-                } else {
-                    await showAlert(`Failed to save document: ${saveResult.error}`);
-                    return;
-                }
-            } else {
-                await showAlert('File system access not available. Please set document storage folder in settings.');
-                return;
-            }
-        } catch (error) {
-            await showAlert(`Error uploading document: ${error instanceof Error ? error.message : String(error)}`);
-            return;
-        }
-    } else if (type === 'bill' && documentFile && !state.documentStoragePath) {
-        // Document is optional - clear it and continue without blocking submission
-        await showAlert('Document storage folder is not set. The document will not be saved. You can set the storage folder in Settings > My Preferences and upload the document later.', { title: 'Document Not Saved' });
-        setDocumentFile(null);
-        // Continue without document - finalDocumentPath remains as existing documentPath
+    const finalDocumentPath = documentPath;
+    const billId = itemToEdit?.id || Date.now().toString();
+    let finalDocumentId = documentId || undefined;
+    if (type === 'bill' && documentFile) {
+      try {
+        finalDocumentId = await uploadEntityDocument(documentFile, 'bill', billId, dispatch, state.currentUser?.id);
+      } catch (err) {
+        await showAlert(err instanceof Error ? err.message : 'Failed to upload document.');
+        return;
+      }
     }
 
     const formData = getFormData();
@@ -933,12 +931,11 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         } else {
             // Ensure all bill fields are preserved when updating
             const updatedBill: Bill = { 
-                ...(itemToEdit as Bill), // Preserve existing fields (id, paidAmount, status, etc.)
-                ...formData, // Update with form data
-                // Explicitly set all bill-specific fields to ensure nothing is lost
+                ...(itemToEdit as Bill),
+                ...formData,
                 projectAgreementId: agreementId || undefined,
                 documentPath: type === 'bill' ? (finalDocumentPath || (itemToEdit as Bill).documentPath || undefined) : undefined,
-                // Ensure expenseCategoryItems is properly set
+                documentId: type === 'bill' ? (finalDocumentId ?? (itemToEdit as Bill).documentId) : undefined,
                 expenseCategoryItems: (type === 'bill' && expenseCategoryItems.length > 0) ? expenseCategoryItems : ((itemToEdit as Bill).expenseCategoryItems || undefined),
             };
             dispatch({ type: 'UPDATE_BILL', payload: updatedBill });
@@ -997,7 +994,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             const newBill: Bill = { 
                 ...newData, 
                 projectAgreementId: agreementId || undefined,
-                documentPath: type === 'bill' ? (finalDocumentPath || undefined) : undefined
+                documentPath: type === 'bill' ? (finalDocumentPath || undefined) : undefined,
+                documentId: type === 'bill' ? finalDocumentId : undefined
             };
             dispatch({ type: 'ADD_BILL', payload: newBill });
             showToast("Bill created successfully");
@@ -1700,7 +1698,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           <label className="block text-sm font-medium text-gray-700 mb-1">Bill Document</label>
           <p className="text-xs text-gray-500 mb-2">Upload a scanned copy of the bill document.</p>
           
-          {documentPath && !documentFile && (
+          {(documentId || (documentPath && !documentFile)) && (
             <div className="mb-3 p-3 bg-white border border-gray-200 rounded-lg flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 bg-indigo-100 rounded flex items-center justify-center">
@@ -1708,7 +1706,9 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-800">Document attached</p>
-                  <p className="text-xs text-gray-500">{documentPath.split('/').pop()}</p>
+                  <p className="text-xs text-gray-500">
+                    {documentId ? (state.documents?.find(d => d.id === documentId)?.fileName || 'Document') : documentPath.split('/').pop()}
+                  </p>
                 </div>
               </div>
               <div className="flex gap-2">
@@ -1717,14 +1717,14 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                   variant="secondary"
                   size="sm"
                   onClick={async () => {
-                    if (window.electronAPI && window.electronAPI.openDocumentFile) {
+                    if (documentId) {
+                      await openDocumentById(documentId, state.documents, url => window.open(url, '_blank'), showAlert);
+                    } else if (documentPath && (window as any).electronAPI?.openDocumentFile) {
                       try {
-                        const result = await window.electronAPI.openDocumentFile({ filePath: documentPath });
-                        if (!result.success) {
-                          await showAlert(`Failed to open document: ${result.error}`);
-                        }
+                        const result = await (window as any).electronAPI.openDocumentFile({ filePath: documentPath });
+                        if (!result?.success) await showAlert(`Failed to open: ${result?.error || 'Unknown'}`);
                       } catch (error) {
-                        await showAlert(`Error opening document: ${error instanceof Error ? error.message : String(error)}`);
+                        await showAlert(error instanceof Error ? error.message : 'Error opening document');
                       }
                     } else {
                       await showAlert('File system access not available');
@@ -1739,6 +1739,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                   size="sm"
                   onClick={() => {
                     setDocumentPath('');
+                    setDocumentId('');
                     setDocumentFile(null);
                   }}
                 >
@@ -1757,7 +1758,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                   const file = e.target.files?.[0];
                   if (file) {
                     setDocumentFile(file);
-                    setDocumentPath(''); // Clear old path when new file is selected
+                    setDocumentPath('');
+                    setDocumentId('');
                   }
                 }}
                 className="hidden"
@@ -1782,11 +1784,6 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
               </Button>
             )}
           </div>
-          {!state.documentStoragePath && (
-            <p className="text-xs text-amber-600 mt-2">
-              ⚠️ Please set document storage folder in Settings &gt; My Preferences
-            </p>
-          )}
         </div>
       )}
       
@@ -1830,6 +1827,12 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             {itemToEdit && type === 'bill' && onDuplicate && (
                 <Button type="button" variant="secondary" onClick={handleDuplicateClick} className="text-indigo-600 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 w-full sm:w-auto text-sm py-2">
                     Duplicate Bill
+                </Button>
+            )}
+            {type === 'bill' && billPrintData && (
+                <Button type="button" variant="secondary" onClick={() => triggerPrint('BILL', billPrintData)} className="w-full sm:w-auto text-sm py-2 flex items-center gap-1">
+                    {ICONS.print && <span className="w-4 h-4 inline-block [&>svg]:w-full [&>svg]:h-full">{ICONS.print}</span>}
+                    Print
                 </Button>
             )}
             <Button type="button" variant="secondary" onClick={onClose} className="w-full sm:w-auto text-sm py-2">Cancel</Button>

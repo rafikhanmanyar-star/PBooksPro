@@ -13,7 +13,7 @@ import { formatDate } from '../../utils/dateUtils';
 import { useNotification } from '../../context/NotificationContext';
 import InvestorHistoryModal from './InvestorHistoryModal';
 import { WhatsAppService } from '../../services/whatsappService';
-import { usePrint } from '../../hooks/usePrint';
+import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface InvestorRow {
@@ -29,7 +29,7 @@ interface InvestorRow {
 const ProjectInvestorReport: React.FC = () => {
     const { state } = useAppContext();
     const { showAlert } = useNotification();
-    const { handlePrint } = usePrint();
+    const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('all');
     const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]); // Not used for calculation but for UI state
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
@@ -242,7 +242,7 @@ const ProjectInvestorReport: React.FC = () => {
                     endDate={endDate}
                     onDateChange={(_, end) => { setEndDate(end); setDateRange('custom'); }}
                     onExport={handleExport}
-                    onPrint={handlePrint}
+                    onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                     onWhatsApp={handleWhatsApp}
                     disableWhatsApp={selectedInvestorId === 'all'}
                     hideGroup={true}

@@ -1,13 +1,11 @@
 import React, { useMemo, useRef, useCallback, useState, useEffect } from 'react';
-import * as ReactWindow from 'react-window';
+import { List } from 'react-window';
 import { useAppContext } from '../../context/AppContext';
 import { useLookupMaps } from '../../hooks/useLookupMaps';
 import { Transaction, TransactionType, LedgerSortKey as SortKey, SortDirection } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
 import Button from '../ui/Button';
-
-const VList = (ReactWindow as any).VariableSizeList || (ReactWindow as any).List;
 
 interface VirtualizedLedgerTableProps {
     groups: {
@@ -99,12 +97,8 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
         return rows;
     }, [groups, expandedRowIds, showGrouping]);
 
-    // Recalculate row heights when flatRows changes
-    useEffect(() => {
-        if (listRef.current) {
-            listRef.current.resetAfterIndex(0);
-        }
-    }, [flatRows]);
+    // Note: With react-window v2, dynamic row heights are handled automatically
+    // when using a function for rowHeight prop
 
     useEffect(() => {
         const updateDimensions = () => {
@@ -129,8 +123,8 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
     }, []);
 
     // Handle Infinite Scroll
-    const handleItemsRendered = useCallback(({ visibleStopIndex }: { visibleStopIndex: number }) => {
-        if (onLoadMore && hasMore && !isLoading && visibleStopIndex >= flatRows.length - 10) {
+    const handleRowsRendered = useCallback(({ stopIndex }: { startIndex: number; stopIndex: number }) => {
+        if (onLoadMore && hasMore && !isLoading && stopIndex >= flatRows.length - 10) {
             onLoadMore();
         }
     }, [onLoadMore, hasMore, isLoading, flatRows.length]);
@@ -153,7 +147,7 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
         );
     };
 
-    const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => {
+    const Row = ({ index, style, ariaAttributes }: { index: number; style: React.CSSProperties; ariaAttributes?: any }) => {
         const row = flatRows[index];
         if (!row) return null;
 
@@ -176,7 +170,7 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
                             {row.totalInGroup} RECORDS
                         </span>
                     </div>
-                    <div className="flex items-center gap-4 text-[10px] font-mono font-bold tabular-nums">
+                    <div className="flex items-center gap-4 text-xs font-bold tabular-nums">
                         <div className="flex flex-col items-end">
                             <span className="text-[8px] text-slate-400 leading-none mb-0.5 uppercase">IN</span>
                             <span className="text-emerald-600">+{CURRENCY}{summary.in.toLocaleString()}</span>
@@ -306,17 +300,16 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
             </div>
 
             <div className="flex-1 min-w-[1000px]">
-                <VList
-                    ref={listRef as any}
-                    height={dimensions.height}
-                    itemCount={flatRows.length}
-                    itemSize={(index: number) => flatRows[index].type === 'group-header' ? GROUP_HEADER_HEIGHT : ROW_HEIGHT}
-                    width={dimensions.width}
+                <List
+                    listRef={listRef as any}
+                    defaultHeight={dimensions.height}
+                    rowCount={flatRows.length}
+                    rowHeight={(index: number) => flatRows[index]?.type === 'group-header' ? GROUP_HEADER_HEIGHT : ROW_HEIGHT}
+                    rowComponent={Row}
+                    style={{ height: dimensions.height, width: dimensions.width }}
                     className="scrollbar-thin scrollbar-thumb-slate-200 hover:scrollbar-thumb-slate-300 scrollbar-track-transparent"
-                    onItemsRendered={handleItemsRendered}
-                >
-                    {({ index, style }: any) => <Row index={index} style={style} />}
-                </VList>
+                    onRowsRendered={handleRowsRendered}
+                />
 
                 {/* Footer Loading Indicator */}
                 {isLoading && (

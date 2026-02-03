@@ -5,7 +5,7 @@ Your repository is now configured for monorepo deployment to Render!
 ## 📁 Repository Structure
 
 ```
-MyProjectBooks/                    ← Single repository (monorepo)
+PBooksPro/                    ← Single repository (monorepo)
 ├── render.yaml                    ← ✅ Deployment config (handles all 4 services)
 ├── package.json                   ← Client app
 ├── .gitignore                     ← ✅ Excludes secrets
@@ -107,7 +107,7 @@ git push origin main
 2. **Create Blueprint**
    - Click "New +" → "Blueprint"
    - Connect GitHub (if not connected)
-   - Select repository: `MyProjectBooks`
+   - Select repository: `PBooksPro`
    - Render will detect `render.yaml`
    - Click "Apply"
 

@@ -33,6 +33,9 @@ import ClearTransactionsModal from './ClearTransactionsModal';
 import { dataManagementApi } from '../../services/api/repositories/dataManagementApi';
 import { getDatabaseService } from '../../services/database/databaseService';
 import { apiClient } from '../../services/api/client';
+import ContactsManagement from './ContactsManagement';
+import AssetsManagement from './AssetsManagement';
+import TaskRolesPage from '../tasks/TaskRolesPage';
 
 interface TableRowData {
     id: string;
@@ -65,11 +68,7 @@ const SettingsPage: React.FC = () => {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    const [activeCategory, setActiveCategory] = useState(isMobile ? 'data' : 'preferences');
-
-    useEffect(() => {
-        if (isMobile && activeCategory !== 'data') setActiveCategory('data');
-    }, [isMobile]);
+    const [activeCategory, setActiveCategory] = useState('preferences');
 
     // Custom Event Listeners
     useEffect(() => {
@@ -91,7 +90,7 @@ const SettingsPage: React.FC = () => {
             try {
                 setIsCheckingSupplierStatus(true);
                 const tenantInfo = await apiClient.get<{ is_supplier?: boolean }>('/tenants/me');
-                const supplierStatus = tenantInfo.is_supplier === true || tenantInfo.is_supplier === 'true';
+                const supplierStatus = !!tenantInfo.is_supplier;
                 setIsSupplier(supplierStatus);
             } catch (error) {
                 console.error('Error fetching supplier status:', error);
@@ -134,10 +133,19 @@ const SettingsPage: React.FC = () => {
             items: [
                 { id: 'preferences', label: 'Preferences', icon: ICONS.settings },
                 { id: 'license', label: 'License & Subscription', icon: ICONS.lock || '🔒' },
-                ...(isAdmin && !isMobile ? [{ id: 'users', label: 'Users & Access', icon: ICONS.users }] : []),
+                ...(isAdmin ? [
+                    { id: 'users', label: 'Users & Access', icon: ICONS.users },
+                    { id: 'taskRoles', label: 'Task Roles', icon: ICONS.userCheck || '✅' }
+                ] : []),
                 { id: 'backup', label: 'Backup & Restore', icon: ICONS.download },
                 { id: 'data', label: 'Data Management', icon: ICONS.trash }, // Changed Icon
                 { id: 'help', label: 'Help & Guide', icon: ICONS.fileText },
+            ]
+        },
+        {
+            title: 'Operations',
+            items: [
+                { id: 'projects', label: 'Projects & Tasks', icon: ICONS.briefcase },
             ]
         },
         {
@@ -147,22 +155,15 @@ const SettingsPage: React.FC = () => {
             ]
         },
         {
-            title: 'Entities',
+            title: 'Assets',
             items: [
-                { id: 'projects', label: 'Projects', icon: ICONS.archive },
-                { id: 'buildings', label: 'Buildings', icon: ICONS.building },
-                { id: 'properties', label: 'Properties', icon: ICONS.home },
-                { id: 'units', label: 'Units', icon: ICONS.layers },
+                { id: 'assets', label: 'Assets', icon: ICONS.archive },
             ]
         },
         {
             title: 'Contacts',
             items: [
-                { id: 'owners', label: 'Owners', icon: ICONS.briefcase },
-                { id: 'tenants', label: 'Tenants', icon: ICONS.users },
-                { id: 'brokers', label: 'Brokers', icon: ICONS.users },
-                { id: 'friends', label: 'Friends & Family', icon: ICONS.users },
-                { id: 'leads', label: 'Leads', icon: ICONS.target || ICONS.users },
+                { id: 'contacts', label: 'Contacts', icon: ICONS.addressBook },
             ]
         }
     ];
@@ -170,9 +171,8 @@ const SettingsPage: React.FC = () => {
     const flatCategories = categoryGroups.flatMap(g => g.items);
 
     const settingCategories = useMemo(() => {
-        if (isMobile) return flatCategories.filter(c => c.id === 'data');
         return flatCategories;
-    }, [isMobile, isAdmin, flatCategories]);
+    }, [isAdmin, flatCategories]);
 
     // --- Data Preparation Logic (Preserved) ---
     const columnConfig: Record<string, ColumnDef[]> = {
@@ -189,11 +189,6 @@ const SettingsPage: React.FC = () => {
             { key: 'isSystem', label: 'System', render: (val) => val ? 'Yes' : 'No' },
             { key: 'balance', label: 'Balance', isNumeric: true }
         ],
-        owners: [{ key: 'name', label: 'Name' }, { key: 'type', label: 'Type' }, { key: 'contactNo', label: 'Phone' }, { key: 'balance', label: 'Balance', isNumeric: true }],
-        tenants: [{ key: 'name', label: 'Name' }, { key: 'type', label: 'Type' }, { key: 'contactNo', label: 'Phone' }, { key: 'balance', label: 'Balance', isNumeric: true }],
-        brokers: [{ key: 'name', label: 'Name' }, { key: 'type', label: 'Type' }, { key: 'contactNo', label: 'Phone' }, { key: 'balance', label: 'Balance', isNumeric: true }],
-        friends: [{ key: 'name', label: 'Name' }, { key: 'contactNo', label: 'Phone' }, { key: 'balance', label: 'Balance', isNumeric: true }],
-        leads: [{ key: 'name', label: 'Name' }, { key: 'contactNo', label: 'Phone' }, { key: 'address', label: 'Address' }, { key: 'description', label: 'Description' }],
         projects: [
             {
                 key: 'name', label: 'Name', render: (val, row) => (
@@ -315,21 +310,13 @@ const SettingsPage: React.FC = () => {
                 });
             }
             return finalData;
-        } else {
+        }
+
+
+        // Other entities
+        else {
             let data: TableRowData[] = [];
-            if (['owners', 'tenants', 'brokers', 'friends', 'leads'].includes(activeCategory)) {
-                let contacts = state.contacts;
-                if (activeCategory === 'owners') contacts = contacts.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
-                else if (activeCategory === 'tenants') contacts = contacts.filter(c => c.type === ContactType.TENANT);
-                else if (activeCategory === 'brokers') contacts = contacts.filter(c => c.type === ContactType.BROKER || c.type === ContactType.DEALER);
-                else if (activeCategory === 'friends') contacts = contacts.filter(c => c.type === ContactType.FRIEND_FAMILY);
-                else if (activeCategory === 'leads') contacts = contacts.filter(c => c.type === ContactType.LEAD);
-                data = contacts.map(contact => ({
-                    id: contact.id, name: contact.name, type: contact.type, contactNo: contact.contactNo || '-',
-                    address: contact.address || '-', description: contact.description || '-',
-                    balance: balances.get(contact.id) || 0, originalItem: contact
-                }));
-            } else if (activeCategory === 'projects') {
+            if (activeCategory === 'projects') {
                 data = state.projects.map(p => ({
                     id: p.id, name: p.name, description: p.description || '-', installmentPlan: p.installmentConfig ? 'Yes' : 'No',
                     balance: balances.get(p.id) || 0, originalItem: p
@@ -376,11 +363,6 @@ const SettingsPage: React.FC = () => {
         if (!type) {
             switch (activeCategory) {
                 case 'accounts': type = 'ACCOUNT'; break;
-                case 'owners': type = 'CONTACT_OWNER'; break;
-                case 'tenants': type = 'CONTACT_TENANT'; break;
-                case 'brokers': type = 'CONTACT_BROKER'; break;
-                case 'friends': type = 'CONTACT_FRIEND'; break;
-                case 'leads': type = 'CONTACT_LEAD'; break;
                 case 'projects': type = 'PROJECT'; break;
                 case 'buildings': type = 'BUILDING'; break;
                 case 'properties': type = 'PROPERTY'; break;
@@ -398,11 +380,6 @@ const SettingsPage: React.FC = () => {
         let type = '';
         switch (activeCategory) {
             case 'accounts': type = item.entityKind === 'CATEGORY' ? 'CATEGORY' : 'ACCOUNT'; break;
-            case 'owners': type = 'CONTACT_OWNER'; break;
-            case 'tenants': type = 'CONTACT_TENANT'; break;
-            case 'brokers': type = 'CONTACT_BROKER'; break;
-            case 'friends': type = 'CONTACT_FRIEND'; break;
-            case 'leads': type = 'CONTACT_LEAD'; break;
             case 'projects': type = 'PROJECT'; break;
             case 'buildings': type = 'BUILDING'; break;
             case 'properties': type = 'PROPERTY'; break;
@@ -420,7 +397,6 @@ const SettingsPage: React.FC = () => {
     const handleRowClick = (item: TableRowData) => {
         let entityType: any = null;
         if (activeCategory === 'accounts') entityType = item.entityKind === 'CATEGORY' ? 'category' : 'account';
-        else if (['owners', 'tenants', 'brokers', 'friends', 'leads'].includes(activeCategory)) entityType = 'contact';
         else if (activeCategory === 'projects') entityType = 'project';
         else if (activeCategory === 'buildings') entityType = 'building';
         else if (activeCategory === 'properties') entityType = 'property';
@@ -438,7 +414,7 @@ const SettingsPage: React.FC = () => {
     const handleClearTransactions = async () => {
         try {
             console.log('🗑️ Starting clear transactions process...');
-            
+
             // Step 1: Clear from cloud database (server)
             console.log('📡 Clearing transactions from cloud database...');
             const result = await dataManagementApi.clearTransactions();
@@ -465,7 +441,7 @@ const SettingsPage: React.FC = () => {
             console.error('❌ Error clearing transactions:', error);
             showAlert(
                 error?.message || 'Failed to clear transactions. Please try again.',
-                'error'
+                { title: 'Error' }
             );
             throw error; // Re-throw so modal knows operation failed
         }
@@ -577,7 +553,7 @@ const SettingsPage: React.FC = () => {
                     <Input id={`${idPrefix}-next-num`} name={`${idPrefix}-next-num`} label="Next #" type="number" value={localSettings.nextNumber.toString()} onChange={e => handleChange('nextNumber', e.target.value)} className="text-sm" />
                     <Input id={`${idPrefix}-padding`} name={`${idPrefix}-padding`} label="Padding" type="number" value={localSettings.padding.toString()} onChange={e => handleChange('padding', e.target.value)} className="text-sm" />
                 </div>
-                <Button fullWidth size="sm" variant="secondary" onClick={handleSave} className="mt-1">Update Sequence</Button>
+                <Button variant="secondary" onClick={handleSave} className="mt-1 w-full">Update Sequence</Button>
             </div>
         );
     };
@@ -617,30 +593,6 @@ const SettingsPage: React.FC = () => {
                 />
             </div>
 
-            <div className="p-5 bg-white rounded-xl border border-slate-200 shadow-sm">
-                <h4 className="font-semibold text-slate-800 mb-2">Document Storage</h4>
-                <p className="text-sm text-slate-500 mb-4">Folder where uploaded contract and bill documents will be stored.</p>
-                <div className="flex gap-3">
-                    <Input label="" value={state.documentStoragePath || ''} onChange={() => { }} placeholder="No folder selected" readOnly className="flex-1" />
-                    <Button variant="secondary" onClick={async () => {
-                        try {
-                            const electronAPI = (window as any).electronAPI;
-                            if (!electronAPI?.selectDocumentFolder) {
-                                await showAlert('Feature unavailable in web version.');
-                                return;
-                            }
-                            const result = await electronAPI.selectDocumentFolder();
-                            if (result?.success && result.folderPath) {
-                                dispatch({ type: 'UPDATE_DOCUMENT_STORAGE_PATH', payload: result.folderPath });
-                                showToast('Document storage folder updated', 'success');
-                            }
-                        } catch (e) {
-                            console.error(e);
-                        }
-                    }}>Browse...</Button>
-                </div>
-            </div>
-
             {!isSupplier && (
                 <div className="p-5 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border-2 border-indigo-200 shadow-sm">
                     <div className="flex items-start justify-between gap-4">
@@ -651,8 +603,8 @@ const SettingsPage: React.FC = () => {
                             </p>
                         </div>
                     </div>
-                    <Button 
-                        variant="primary" 
+                    <Button
+                        variant="primary"
                         onClick={handleUpgradeToSupplier}
                         disabled={isUpgradingToSupplier || isOffline}
                         className="w-full"
@@ -716,21 +668,11 @@ const SettingsPage: React.FC = () => {
     );
 
     const renderPreferences = () => (
-        <div className="space-y-6">
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-1">
-                <div className="flex p-1 gap-1 overflow-x-auto">
-                    {preferenceTabs.map(tab => (
-                        <button
-                            key={tab}
-                            onClick={() => setActivePreferenceTab(tab)}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activePreferenceTab === tab ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
-                        >
-                            {tab}
-                        </button>
-                    ))}
-                </div>
+        <div className="flex flex-col">
+            <div className="flex-shrink-0">
+                <Tabs variant="browser" tabs={preferenceTabs} activeTab={activePreferenceTab} onTabClick={setActivePreferenceTab} />
             </div>
-            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="bg-white rounded-b-lg -mt-px animate-in fade-in slide-in-from-bottom-2 duration-300 p-6">
                 {activePreferenceTab === 'General' && renderGeneralSettings()}
                 {activePreferenceTab === 'ID Sequences' && renderIDSequences()}
                 {activePreferenceTab === 'Communication' && renderCommunicationBranding()}
@@ -748,7 +690,7 @@ const SettingsPage: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
                     <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                        <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><div className="w-5 h-5">{ICONS.activity}</div></div>
+                        <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><div className="w-5 h-5">{ICONS.trendingUp}</div></div>
                         Database Health
                     </h4>
                     <DatabaseAnalyzer />
@@ -811,28 +753,30 @@ const SettingsPage: React.FC = () => {
     }
 
     return (
-        <div className="flex h-full bg-slate-50 overflow-hidden font-sans">
-            {/* NEW SIDEBAR */}
-            <div className={`w-64 bg-white border-r border-slate-200 flex flex-col flex-shrink-0 z-20 transition-all duration-300 ${isMobile ? 'absolute inset-y-0 left-0 shadow-xl transform' : ''} ${isMobile && activeCategory === 'data' ? '-translate-x-full' : ''}`}>
-                <div className="p-6 border-b border-slate-100">
-                    <h1 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600 tracking-tight">Settings</h1>
-                    <p className="text-xs text-slate-400 font-medium mt-1 uppercase tracking-wider">Control Panel</p>
+        <div className="flex flex-col md:flex-row h-full bg-slate-50 overflow-hidden font-sans">
+            {/* SIDEBAR */}
+            <div className={`w-full md:w-64 bg-white border-b md:border-b-0 md:border-r border-slate-200 flex flex-col flex-shrink-0 z-20 transition-all duration-300`}>
+                <div className="p-4 md:p-6 border-b border-slate-100 flex items-center justify-between md:block">
+                    <div>
+                        <h1 className="text-xl md:text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600 tracking-tight">Settings</h1>
+                        <p className="text-[10px] md:text-xs text-slate-400 font-medium mt-1 uppercase tracking-wider">Control Panel</p>
+                    </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-8">
+                <div className="flex-1 overflow-y-auto md:overflow-y-auto p-2 md:p-4 flex flex-row md:flex-col gap-2 md:space-y-8 overflow-x-auto no-scrollbar">
                     {categoryGroups.map((group, groupIdx) => {
                         const visibleItems = group.items.filter(item => settingCategories.some(cat => cat.id === item.id));
                         if (visibleItems.length === 0) return null;
 
                         return (
-                            <div key={groupIdx}>
-                                <h3 className="px-3 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{group.title}</h3>
-                                <div className="space-y-1">
+                            <div key={groupIdx} className="flex flex-row md:flex-col gap-1 md:gap-0">
+                                <h3 className="hidden md:block px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">{group.title}</h3>
+                                <div className="flex flex-row md:flex-col gap-1">
                                     {visibleItems.map(item => (
                                         <button
                                             key={item.id}
-                                            onClick={() => { setActiveCategory(item.id); setSearchQuery(''); setIsMobile(false); }}
-                                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group ${activeCategory === item.id ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}
+                                            onClick={() => { setActiveCategory(item.id); setSearchQuery(''); }}
+                                            className={`whitespace-nowrap flex items-center gap-2 md:gap-3 px-3 py-2 md:py-2.5 rounded-lg text-xs md:text-sm font-medium transition-all duration-200 group ${activeCategory === item.id ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}
                                         >
                                             <div className={`transition-transform duration-200 ${activeCategory === item.id ? 'scale-110' : 'group-hover:scale-110'}`}>{item.icon}</div>
                                             {item.label}
@@ -867,16 +811,19 @@ const SettingsPage: React.FC = () => {
                         </div>
                     </div>
                 )}
-                
+
                 {/* Header */}
-                <div className="px-8 py-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-0 bg-slate-50/95 backdrop-blur z-30">
-                    <div>
-                        <h2 className="text-3xl font-bold text-slate-800 tracking-tight">{flatCategories.find(c => c.id === activeCategory)?.label}</h2>
-                        <p className="text-slate-500 text-sm mt-1">Manage your {flatCategories.find(c => c.id === activeCategory)?.label.toLowerCase()} preferences and data.</p>
-                    </div>
+                <div className={`px-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-0 bg-slate-50/95 backdrop-blur z-30 ${activeCategory === 'contacts' || activeCategory === 'assets' ? 'py-2' : 'py-6'}`}>
+                    {activeCategory !== 'contacts' && activeCategory !== 'assets' && (
+                        <div>
+                            <h2 className="text-3xl font-bold text-slate-800 tracking-tight">{flatCategories.find(c => c.id === activeCategory)?.label}</h2>
+                            <p className="text-slate-500 text-sm mt-1">Manage your {flatCategories.find(c => c.id === activeCategory)?.label.toLowerCase()} preferences and data.</p>
+                        </div>
+                    )}
+                    {(activeCategory === 'contacts' || activeCategory === 'assets') && <div></div>}
 
                     <div className="flex items-center gap-3">
-                        {isTableViewCategory && (
+                        {isTableViewCategory && activeCategory !== 'contacts' && (
                             <>
                                 <div className="relative group">
                                     <Input
@@ -892,8 +839,8 @@ const SettingsPage: React.FC = () => {
                                 </div>
                                 {activeCategory === 'accounts' ? (
                                     <div className="relative">
-                                        <Button 
-                                            onClick={() => setIsAddNewMenuOpen(!isAddNewMenuOpen)} 
+                                        <Button
+                                            onClick={() => setIsAddNewMenuOpen(!isAddNewMenuOpen)}
                                             disabled={isOffline}
                                             className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 border-0 rounded-lg px-4 py-2.5 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
@@ -903,8 +850,8 @@ const SettingsPage: React.FC = () => {
                                         </Button>
                                         {isAddNewMenuOpen && (
                                             <>
-                                                <div 
-                                                    className="fixed inset-0 z-40" 
+                                                <div
+                                                    className="fixed inset-0 z-40"
                                                     onClick={() => setIsAddNewMenuOpen(false)}
                                                 />
                                                 <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-slate-200 z-50 py-1">
@@ -945,10 +892,11 @@ const SettingsPage: React.FC = () => {
                 </div>
 
                 {/* Content Body */}
-                <div className="flex-1 overflow-y-auto px-8 pb-10">
-                    <div className="w-full max-w-7xl mx-auto animate-in fade-in duration-500">
+                <div className={`flex-1 ${activeCategory === 'contacts' || activeCategory === 'assets' ? 'overflow-hidden' : 'overflow-y-auto'} px-8 ${activeCategory === 'contacts' || activeCategory === 'assets' ? 'pb-0' : 'pb-10'}`}>
+                    <div className={`w-full ${activeCategory === 'contacts' || activeCategory === 'assets' ? 'h-full' : 'max-w-7xl'} mx-auto animate-in fade-in duration-500`}>
                         {isTableViewCategory ? renderTable() : null}
                         {activeCategory === 'users' && <UserManagement />}
+                        {activeCategory === 'taskRoles' && <TaskRolesPage />}
                         {activeCategory === 'preferences' && renderPreferences()}
                         {activeCategory === 'license' && (
                             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -962,6 +910,8 @@ const SettingsPage: React.FC = () => {
                                 <HelpSection />
                             </div>
                         )}
+                        {activeCategory === 'contacts' && <ContactsManagement />}
+                        {activeCategory === 'assets' && <AssetsManagement />}
                     </div>
                 </div>
             </div>

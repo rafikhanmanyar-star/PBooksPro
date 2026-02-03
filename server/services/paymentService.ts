@@ -9,6 +9,7 @@ export interface PaymentSessionRequest {
   tenantId: string;
   licenseType: 'monthly' | 'yearly';
   currency?: 'PKR' | 'USD';
+  moduleKey?: string;
   returnUrl?: string;
   cancelUrl?: string;
 }
@@ -32,6 +33,7 @@ export interface PaymentRecord {
   status: string;
   gateway: string;
   license_type: string;
+  module_key?: string;
   created_at: Date;
 }
 
@@ -63,26 +65,33 @@ export class PaymentService {
     const tenant = tenants[0];
     const currency = request.currency || 'PKR';
     const subscriptionTier = tenant.subscription_tier || 'free';
+    const moduleKey = request.moduleKey;
 
     // Calculate amount
-    const amount = getPricing(subscriptionTier, request.licenseType, currency);
+    const amount = getPricing(subscriptionTier, request.licenseType, currency, moduleKey);
     const durationMonths = getLicenseDurationMonths(request.licenseType);
+
+    // Get module name for description if applicable
+    const moduleName = moduleKey ? moduleKey.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : null;
+    const description = moduleKey
+      ? `Module Activation - ${moduleName} (${request.licenseType})`
+      : `License Renewal - ${request.licenseType} (${durationMonths} month${durationMonths > 1 ? 's' : ''})`;
 
     // Generate payment ID
     const paymentId = `payment_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
 
     // Get server URL for gateway (needed for mock gateway to construct full URLs)
     // On Render, RENDER_EXTERNAL_URL is automatically available
-    const serverUrl = process.env.API_URL || 
-                     process.env.SERVER_URL || 
-                     process.env.RENDER_EXTERNAL_URL ||
-                     process.env.API_BASE_URL || 
-                     'http://localhost:3000';
+    const serverUrl = process.env.API_URL ||
+      process.env.SERVER_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      process.env.API_BASE_URL ||
+      'http://localhost:3000';
 
     // Get Paddle Price ID from environment variables (if configured)
     // Format: PADDLE_PRICE_ID_MONTHLY and PADDLE_PRICE_ID_YEARLY
-    const priceIdEnvVar = request.licenseType === 'monthly' 
-      ? 'PADDLE_PRICE_ID_MONTHLY' 
+    const priceIdEnvVar = request.licenseType === 'monthly'
+      ? 'PADDLE_PRICE_ID_MONTHLY'
       : 'PADDLE_PRICE_ID_YEARLY';
     const priceId = process.env[priceIdEnvVar] || undefined;
 
@@ -90,13 +99,14 @@ export class PaymentService {
     const session = await this.gateway.createPaymentSession({
       amount,
       currency,
-      description: `License Renewal - ${request.licenseType} (${durationMonths} month${durationMonths > 1 ? 's' : ''})`,
+      description,
       returnUrl: request.returnUrl,
       cancelUrl: request.cancelUrl,
       metadata: {
         paymentId,
         tenantId: request.tenantId,
         licenseType: request.licenseType,
+        moduleKey: request.moduleKey,
         customerName: tenant.name,
         customerEmail: tenant.email,
         priceId, // Pass price ID if available
@@ -109,8 +119,8 @@ export class PaymentService {
     await this.db.query(
       `INSERT INTO payments (
         id, tenant_id, payment_intent_id, amount, currency, status,
-        gateway, license_type, license_duration_months, metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        gateway, license_type, module_key, license_duration_months, metadata
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [
         paymentId,
         request.tenantId,
@@ -120,6 +130,7 @@ export class PaymentService {
         'pending',
         this.gateway.getName(),
         request.licenseType,
+        request.moduleKey || null,
         durationMonths,
         JSON.stringify(session.metadata || {}),
       ]
@@ -166,18 +177,30 @@ export class PaymentService {
       [paymentId]
     );
 
-    // Renew license with payment tracking
-    const success = await this.licenseService.renewLicenseWithPayment(
-      payment.tenant_id,
-      payment.license_type as 'monthly' | 'yearly',
-      paymentId
-    );
-
-    if (!success) {
-      throw new Error('License renewal failed');
+    // Renew license or module with payment tracking
+    let success = false;
+    if (payment.module_key) {
+      await this.licenseService.updateTenantModule(
+        payment.tenant_id,
+        payment.module_key,
+        'active',
+        // Calculate expiration for module
+        new Date(new Date().setMonth(new Date().getMonth() + (payment.license_duration_months || 1)))
+      );
+      success = true;
+    } else {
+      success = await this.licenseService.renewLicenseWithPayment(
+        payment.tenant_id,
+        payment.license_type as 'monthly' | 'yearly',
+        paymentId
+      );
     }
 
-    console.log(`Payment ${paymentId} processed successfully, license renewed for tenant ${payment.tenant_id}`);
+    if (!success) {
+      throw new Error('License/Module update failed');
+    }
+
+    console.log(`Payment ${paymentId} processed successfully, update completed for tenant ${payment.tenant_id}`);
   }
 
   /**

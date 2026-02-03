@@ -78,7 +78,7 @@ cd admin && npm install && npm run build
 ### 6. File Structure Verification
 
 ```
-MyProjectBooks/
+PBooksPro/
 ├── render.yaml                    ✅ Root deployment config
 ├── package.json                    ✅ Client app config
 ├── .gitignore                      ✅ Excludes secrets
@@ -121,7 +121,7 @@ git push origin main
 2. **Create Blueprint**
    - Click "New +" → "Blueprint"
    - Connect GitHub account (if not connected)
-   - Select repository: `MyProjectBooks`
+   - Select repository: `PBooksPro`
    - Render will detect `render.yaml`
    - Click "Apply"
 

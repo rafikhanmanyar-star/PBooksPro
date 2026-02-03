@@ -16,11 +16,11 @@ router.get('/me', async (req: TenantRequest, res) => {
       'SELECT id, name, company_name, email, license_type, license_status, license_expiry_date, trial_start_date, is_supplier FROM tenants WHERE id = $1',
       [req.tenantId]
     );
-    
+
     if (tenants.length === 0) {
       return res.status(404).json({ error: 'Tenant not found' });
     }
-    
+
     res.json(tenants[0]);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch tenant info' });
@@ -32,28 +32,28 @@ router.put('/me', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const { isSupplier } = req.body;
-    
+
     // Only allow updating is_supplier flag for self-service
     if (isSupplier === undefined) {
       return res.status(400).json({ error: 'isSupplier field is required' });
     }
-    
+
     // Update tenant's is_supplier flag
     const result = await db.query(
       'UPDATE tenants SET is_supplier = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
       [isSupplier === true || isSupplier === 'true', req.tenantId]
     );
-    
+
     if (result.length === 0) {
       return res.status(404).json({ error: 'Tenant not found' });
     }
-    
+
     // Emit WebSocket event
     emitToTenant(req.tenantId!, WS_EVENTS.SUPPLIER_PROMOTED, {
       tenantId: result[0].id,
       isSupplier: result[0].is_supplier
     });
-    
+
     res.json(result[0]);
   } catch (error: any) {
     console.error('Error updating tenant:', error);
@@ -68,7 +68,12 @@ router.get('/license-status', async (req: TenantRequest, res) => {
     const db = getDb();
     const licenseService = new LicenseService(db);
     const licenseInfo = await licenseService.checkLicenseStatus(tenantId);
-    res.json(licenseInfo);
+    const modules = await licenseService.getTenantModules(tenantId);
+
+    res.json({
+      ...licenseInfo,
+      modules
+    });
   } catch (error) {
     console.error('License status check error:', error);
     res.status(500).json({ error: 'Failed to check license status' });
@@ -81,7 +86,7 @@ router.get('/should-enable-sync', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const tenantId = req.tenantId!;
-    
+
     // Count active users (is_active = TRUE) for this tenant
     // Real-time sync only makes sense when there are multiple users to sync with
     const result = await db.query(
@@ -90,11 +95,11 @@ router.get('/should-enable-sync', async (req: TenantRequest, res) => {
        WHERE tenant_id = $1 AND is_active = TRUE`,
       [tenantId]
     );
-    
+
     const activeUserCount = parseInt(result[0]?.count || '0', 10);
     const shouldEnableSync = activeUserCount >= 2;
-    
-    res.json({ 
+
+    res.json({
       shouldEnableSync,
       userCount: activeUserCount
     });
@@ -109,7 +114,7 @@ router.get('/online-users-count', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const tenantId = req.tenantId!;
-    
+
     // Count users with login_status = true for this tenant
     // A user is considered online if their login_status flag is true
     const result = await db.query(
@@ -118,9 +123,9 @@ router.get('/online-users-count', async (req: TenantRequest, res) => {
        WHERE tenant_id = $1 AND login_status = TRUE AND is_active = TRUE`,
       [tenantId]
     );
-    
+
     const onlineUsers = parseInt(result[0]?.count || '0', 10);
-    
+
     res.json({ onlineUsers });
   } catch (error) {
     console.error('Error fetching online users count:', error);
@@ -133,7 +138,7 @@ router.get('/online-users', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const tenantId = req.tenantId!;
-    
+
     // Get users with login_status = true for this tenant
     // A user is considered online if their login_status flag is true
     const users = await db.query(
@@ -143,7 +148,7 @@ router.get('/online-users', async (req: TenantRequest, res) => {
        ORDER BY u.name`,
       [tenantId]
     );
-    
+
     res.json(users);
   } catch (error) {
     console.error('Error fetching online users:', error);
@@ -189,7 +194,7 @@ router.post('/chat/send', async (req: TenantRequest, res) => {
     const random1 = Math.random().toString(36).substring(2, 11);
     const random2 = Math.random().toString(36).substring(2, 11);
     const messageId = `chat_${timestamp}_${random1}_${random2}`;
-    
+
     const messageData = {
       id: messageId,
       senderId: senderId,

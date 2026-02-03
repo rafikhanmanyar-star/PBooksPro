@@ -1,6 +1,6 @@
-
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { usePrintContext } from '../../context/PrintContext';
 import { TransactionType } from '../../types';
 import Select from '../ui/Select';
 import { CURRENCY } from '../../constants';
@@ -11,6 +11,7 @@ type SortKey = 'categoryName' | 'budgeted' | 'totalSpent' | 'variance' | 'percen
 
 const ProjectBudgetReport: React.FC = () => {
     const { state } = useAppContext();
+    const { print: triggerPrint } = usePrintContext();
     const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || '');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'budgeted', direction: 'desc' });
     
@@ -278,9 +279,6 @@ const ProjectBudgetReport: React.FC = () => {
         return monthlyData.map(m => m.month).sort();
     }, [monthlyData]);
     
-    const handlePrint = () => {
-        window.print();
-    };
     
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -342,14 +340,14 @@ const ProjectBudgetReport: React.FC = () => {
                             ))}
                         </Select>
                     </div>
-                    <Button onClick={handlePrint} variant="outline" size="sm">
+                    <Button onClick={() => triggerPrint('REPORT', { elementId: 'printable-area' })} variant="outline" size="sm">
                         Print Report
                     </Button>
                 </div>
             </div>
             
             {/* Report Content */}
-            <Card>
+            <Card id="printable-area" className="printable-area">
                 {/* Print-only title */}
                 <div className="hidden print:block text-center border-b border-slate-200 pb-2 mb-2">
                     <h1 className="text-lg font-bold text-slate-800">Budget vs Actual Spending Report</h1>

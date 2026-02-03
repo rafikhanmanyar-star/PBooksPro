@@ -128,7 +128,7 @@ fetch('/api/whatsapp/config', {
 ```
 
 **Expected Response:**
-- `{ error: 'WhatsApp API not configured' }` = Route works, no config yet ✅
+- `{ configured: false, message: 'WhatsApp API not configured yet' }` = Route works, no config yet ✅
 - `404` or network error = Route not found ❌
 
 ## Server-Side Verification

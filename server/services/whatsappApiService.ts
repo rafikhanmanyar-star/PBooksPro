@@ -74,7 +74,7 @@ export class WhatsAppApiService {
         return null;
       }
 
-      const config = configs[0] as any; // Database returns snake_case, map to camelCase
+      const config = configs[0] as any; // Database returns snake_case
 
       // Decrypt API key
       const decryptedApiKey = encryptionService.decrypt(config.api_key);
@@ -83,9 +83,17 @@ export class WhatsAppApiService {
         : undefined;
 
       return {
-        ...config,
+        id: config.id,
+        tenantId: config.tenant_id,
         apiKey: decryptedApiKey,
         apiSecret: decryptedApiSecret,
+        phoneNumberId: config.phone_number_id,
+        businessAccountId: config.business_account_id || undefined,
+        verifyToken: config.verify_token,
+        webhookUrl: config.webhook_url || undefined,
+        isActive: config.is_active,
+        createdAt: config.created_at,
+        updatedAt: config.updated_at,
       };
     } catch (error) {
       console.error('Error getting WhatsApp config:', error);
@@ -99,7 +107,7 @@ export class WhatsAppApiService {
   async saveConfig(
     tenantId: string,
     configData: {
-      apiKey: string;
+      apiKey?: string; // Optional when updating existing config
       apiSecret?: string;
       phoneNumberId: string;
       businessAccountId?: string;
@@ -108,21 +116,30 @@ export class WhatsAppApiService {
     }
   ): Promise<WhatsAppConfig> {
     try {
-      // Encrypt API credentials
-      const encryptedApiKey = encryptionService.encrypt(configData.apiKey);
-      const encryptedApiSecret = configData.apiSecret
-        ? encryptionService.encrypt(configData.apiSecret)
-        : null;
-
       // Check if config exists
       const existing = await this.db.query(
-        'SELECT id FROM whatsapp_configs WHERE tenant_id = $1',
+        'SELECT id, api_key, api_secret FROM whatsapp_configs WHERE tenant_id = $1',
         [tenantId]
       );
 
       const configId = existing.length > 0
         ? existing[0].id
         : `whatsapp_config_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+
+      // Use existing keys if not provided (for updates)
+      const apiKeyToUse = configData.apiKey || (existing.length > 0 ? existing[0].api_key : null);
+      const apiSecretToUse = configData.apiSecret !== undefined 
+        ? (configData.apiSecret ? encryptionService.encrypt(configData.apiSecret) : null)
+        : (existing.length > 0 ? existing[0].api_secret : null);
+
+      if (!apiKeyToUse) {
+        throw new Error('API key is required for new configuration');
+      }
+
+      // Encrypt API key if it's a new one (not from existing config)
+      const encryptedApiKey = configData.apiKey 
+        ? encryptionService.encrypt(configData.apiKey)
+        : apiKeyToUse;
 
       if (existing.length > 0) {
         // Update existing config
@@ -139,7 +156,7 @@ export class WhatsAppApiService {
            WHERE tenant_id = $7`,
           [
             encryptedApiKey,
-            encryptedApiSecret,
+            apiSecretToUse,
             configData.phoneNumberId,
             configData.businessAccountId || null,
             configData.verifyToken,
@@ -158,7 +175,7 @@ export class WhatsAppApiService {
             configId,
             tenantId,
             encryptedApiKey,
-            encryptedApiSecret,
+            apiSecretToUse,
             configData.phoneNumberId,
             configData.businessAccountId || null,
             configData.verifyToken,
@@ -217,19 +234,57 @@ export class WhatsAppApiService {
     message: string,
     contactId?: string
   ): Promise<SendMessageResponse> {
+    const requestId = `send_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const startTime = Date.now();
+    
+    console.log(`[WhatsApp API Service] [${requestId}] ===== sendTextMessage CALLED =====`, {
+      tenantId: tenantId || 'MISSING',
+      phoneNumber: phoneNumber ? phoneNumber.substring(0, 5) + '***' : 'MISSING',
+      phoneNumberLength: phoneNumber?.length || 0,
+      messageLength: message?.length || 0,
+      messagePreview: message ? message.substring(0, 50) + (message.length > 50 ? '...' : '') : 'MISSING',
+      contactId: contactId || null,
+      timestamp: new Date().toISOString(),
+    });
+
+    console.log(`[WhatsApp API Service] [${requestId}] Fetching configuration from database`, {
+      tenantId,
+      timestamp: new Date().toISOString(),
+    });
+    
     const config = await this.getConfig(tenantId);
     if (!config) {
+      console.error(`[WhatsApp API Service] [${requestId}] ❌ NO CONFIGURATION FOUND FOR TENANT`, {
+        tenantId,
+        timestamp: new Date().toISOString(),
+      });
       throw new Error('WhatsApp API not configured for this tenant');
     }
+
+    console.log(`[WhatsApp API Service] [${requestId}] ✅ Configuration loaded successfully`, {
+      tenantId,
+      phoneNumberId: config.phoneNumberId || 'MISSING',
+      businessAccountId: config.businessAccountId || null,
+      hasApiKey: !!config.apiKey,
+      apiKeyLength: config.apiKey?.length || 0,
+      apiKeyPrefix: config.apiKey ? config.apiKey.substring(0, 15) + '...' : 'MISSING',
+      apiBaseUrl: `${this.apiBaseUrl}/${this.apiVersion}`,
+      isActive: config.isActive,
+      timestamp: new Date().toISOString(),
+    });
 
     try {
       // Format phone number (remove non-numeric, add country code if needed)
       const formattedPhone = this.formatPhoneNumber(phoneNumber);
+      console.log(`[WhatsApp API Service] [${requestId}] Phone number formatted`, {
+        original: phoneNumber.substring(0, 5) + '***',
+        formatted: formattedPhone.substring(0, 5) + '***',
+        formattedLength: formattedPhone.length,
+      });
 
       const apiClient = this.createApiClient(config);
-
-      // Send message via Meta API
-      const response = await apiClient.post(`/${config.phoneNumberId}/messages`, {
+      const apiUrl = `/${config.phoneNumberId}/messages`;
+      const requestPayload = {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
         to: formattedPhone,
@@ -238,12 +293,118 @@ export class WhatsAppApiService {
           preview_url: false,
           body: message,
         },
+      };
+
+      const fullUrl = `${this.apiBaseUrl}/${this.apiVersion}${apiUrl}`;
+      console.log(`[WhatsApp API Service] [${requestId}] ===== CALLING META API =====`, {
+        method: 'POST',
+        url: fullUrl,
+        phoneNumberId: config.phoneNumberId,
+        recipient: formattedPhone.substring(0, 5) + '***',
+        recipientLength: formattedPhone.length,
+        messageLength: message.length,
+        payloadKeys: Object.keys(requestPayload),
+        payloadPreview: JSON.stringify(requestPayload).substring(0, 300),
+        timestamp: new Date().toISOString(),
       });
 
+      // Send message via Meta API
+      console.log(`[WhatsApp API Service] [${requestId}] Making HTTP POST request to Meta...`, {
+        timestamp: new Date().toISOString(),
+      });
+      
+      const response = await apiClient.post(apiUrl, requestPayload);
+      
+      console.log(`[WhatsApp API Service] [${requestId}] ✅ HTTP Response received from Meta`, {
+        timestamp: new Date().toISOString(),
+      });
+
+      const apiDuration = Date.now() - startTime;
+      const fullResponseData = JSON.stringify(response.data);
+      
+      console.log(`[WhatsApp API Service] [${requestId}] ===== META API RESPONSE DETAILS =====`, {
+        status: response.status,
+        statusText: response.statusText,
+        statusCode: response.status,
+        hasData: !!response.data,
+        hasMessages: !!(response.data && response.data.messages),
+        messageCount: response.data?.messages?.length || 0,
+        responseKeys: response.data ? Object.keys(response.data) : [],
+        fullResponse: fullResponseData,
+        duration: `${apiDuration}ms`,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Check for warnings or errors in Meta response
+      if (response.data?.error) {
+        console.error(`[WhatsApp API Service] [${requestId}] ⚠️ META API RETURNED ERROR IN RESPONSE`, {
+          errorCode: response.data.error.code,
+          errorType: response.data.error.type,
+          errorMessage: response.data.error.message,
+          errorSubcode: response.data.error.error_subcode,
+          fullError: JSON.stringify(response.data.error),
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // Check for contact information (indicates if phone number is valid)
+      if (response.data?.contacts) {
+        console.log(`[WhatsApp API Service] [${requestId}] ✅ META CONFIRMED CONTACT RECEIVED MESSAGE`, {
+          contactCount: response.data.contacts.length,
+          contacts: response.data.contacts.map((c: any) => ({
+            input: c.input?.substring(0, 5) + '***',
+            wa_id: c.wa_id?.substring(0, 5) + '***',
+          })),
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        console.warn(`[WhatsApp API Service] [${requestId}] ⚠️ NO CONTACT INFO IN META RESPONSE`, {
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      if (!response.data || !response.data.messages || response.data.messages.length === 0) {
+        console.error(`[WhatsApp API Service] [${requestId}] ❌ INVALID RESPONSE FROM META API`, {
+          hasData: !!response.data,
+          hasMessages: !!(response.data && response.data.messages),
+          messageCount: response.data?.messages?.length || 0,
+          responseData: fullResponseData,
+          timestamp: new Date().toISOString(),
+        });
+        throw new Error('Invalid response from Meta API: no message ID returned');
+      }
+
       const messageId = response.data.messages[0].id;
+      const messageStatus = response.data.messages[0].message_status || 'unknown';
+      
+      console.log(`[WhatsApp API Service] [${requestId}] ✅ MESSAGE ID EXTRACTED FROM META RESPONSE`, {
+        messageId,
+        wamId: messageId,
+        messageStatus,
+        hasContactInfo: !!response.data.contacts,
+        contactWaId: response.data.contacts?.[0]?.wa_id?.substring(0, 5) + '***' || null,
+        fullResponse: fullResponseData,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Log important note about message delivery
+      console.log(`[WhatsApp API Service] [${requestId}] 📱 IMPORTANT: Message accepted by Meta`, {
+        note: 'Message ID received means Meta accepted the message. Delivery status will come via webhook.',
+        wamId: messageId,
+        expectedWebhook: 'Status updates (sent/delivered/read) will arrive via webhook',
+        checkMetaDashboard: 'Verify message status in Meta Business Suite',
+        timestamp: new Date().toISOString(),
+      });
 
       // Save message to database
       const dbMessageId = `msg_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+      console.log(`[WhatsApp API Service] [${requestId}] Saving message to database`, {
+        dbMessageId,
+        messageId,
+        tenantId,
+        formattedPhone: formattedPhone.substring(0, 5) + '***',
+      });
+
       await this.db.query(
         `INSERT INTO whatsapp_messages (
           id, tenant_id, contact_id, phone_number, message_id, wam_id,
@@ -260,17 +421,31 @@ export class WhatsAppApiService {
         ]
       );
 
-      // Emit WebSocket event
-      emitToTenant(tenantId, WS_EVENTS.CHAT_MESSAGE, {
+      console.log(`[WhatsApp API Service] [${requestId}] Message saved to database`, {
+        dbMessageId,
+      });
+
+      // Emit WebSocket event for WhatsApp message sent
+      emitToTenant(tenantId, WS_EVENTS.WHATSAPP_MESSAGE_SENT, {
         id: dbMessageId,
         tenantId,
         contactId,
         phoneNumber: formattedPhone,
         messageId,
+        wamId: messageId,
         direction: 'outgoing',
         status: 'sent',
         messageText: message,
         timestamp: new Date(),
+      });
+
+      const totalDuration = Date.now() - startTime;
+      console.log(`[WhatsApp API Service] [${requestId}] Message sent successfully`, {
+        dbMessageId,
+        messageId,
+        wamId: messageId,
+        totalDuration: `${totalDuration}ms`,
+        timestamp: new Date().toISOString(),
       });
 
       return {
@@ -279,46 +454,210 @@ export class WhatsAppApiService {
         status: 'sent',
       };
     } catch (error: any) {
-      console.error('Error sending WhatsApp message:', error);
+      const totalDuration = Date.now() - startTime;
+      console.error(`[WhatsApp API Service] [${requestId}] Error sending WhatsApp message`, {
+        error: error.message,
+        errorCode: error.code,
+        errorStack: error.stack?.substring(0, 500),
+        errorResponse: error.response ? {
+          status: error.response.status,
+          statusText: error.response.statusText,
+          data: JSON.stringify(error.response.data).substring(0, 1000),
+          headers: error.response.headers ? Object.keys(error.response.headers) : [],
+        } : null,
+        errorRequest: error.config ? {
+          url: error.config.url,
+          method: error.config.method,
+          baseURL: error.config.baseURL,
+          hasData: !!error.config.data,
+        } : null,
+        totalDuration: `${totalDuration}ms`,
+        timestamp: new Date().toISOString(),
+      });
       
       // Save failed message to database
       const dbMessageId = `msg_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
       try {
+        const formattedPhone = this.formatPhoneNumber(phoneNumber);
         await this.db.query(
           `INSERT INTO whatsapp_messages (
             id, tenant_id, contact_id, phone_number,
             direction, status, message_text, timestamp
           ) VALUES ($1, $2, $3, $4, 'outgoing', 'failed', $5, NOW())`,
-          [dbMessageId, tenantId, contactId || null, this.formatPhoneNumber(phoneNumber), message]
+          [dbMessageId, tenantId, contactId || null, formattedPhone, message]
         );
-      } catch (dbError) {
-        console.error('Error saving failed message:', dbError);
+        console.log(`[WhatsApp API Service] [${requestId}] Failed message saved to database`, {
+          dbMessageId,
+        });
+      } catch (dbError: any) {
+        console.error(`[WhatsApp API Service] [${requestId}] Error saving failed message to database`, {
+          dbError: dbError.message,
+          dbErrorStack: dbError.stack?.substring(0, 500),
+        });
       }
 
-      throw new Error(
-        error.response?.data?.error?.message || error.message || 'Failed to send WhatsApp message'
-      );
+      const errorMessage = error.response?.data?.error?.message || error.message || 'Failed to send WhatsApp message';
+      throw new Error(errorMessage);
     }
   }
 
   /**
-   * Format phone number for WhatsApp API
+   * Send a document (PDF/image) message via WhatsApp API
+   */
+  async sendDocumentMessage(
+    tenantId: string,
+    phoneNumber: string,
+    documentUrl: string,
+    filename: string,
+    caption?: string,
+    contactId?: string
+  ): Promise<SendMessageResponse> {
+    const requestId = `send_doc_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const startTime = Date.now();
+    
+    console.log(`[WhatsApp API Service] [${requestId}] ===== sendDocumentMessage CALLED =====`, {
+      tenantId: tenantId || 'MISSING',
+      phoneNumber: phoneNumber ? phoneNumber.substring(0, 5) + '***' : 'MISSING',
+      documentUrl: documentUrl ? documentUrl.substring(0, 50) + '...' : 'MISSING',
+      filename,
+      hasCaption: !!caption,
+      captionLength: caption?.length || 0,
+      contactId: contactId || null,
+      timestamp: new Date().toISOString(),
+    });
+
+    const config = await this.getConfig(tenantId);
+    if (!config) {
+      console.error(`[WhatsApp API Service] [${requestId}] ❌ NO CONFIGURATION FOUND FOR TENANT`, {
+        tenantId,
+        timestamp: new Date().toISOString(),
+      });
+      throw new Error('WhatsApp API not configured for this tenant');
+    }
+
+    try {
+      const formattedPhone = this.formatPhoneNumber(phoneNumber);
+      const apiClient = this.createApiClient(config);
+      const apiUrl = `/${config.phoneNumberId}/messages`;
+      
+      const requestPayload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: formattedPhone,
+        type: 'document',
+        document: {
+          link: documentUrl,
+          filename: filename,
+          caption: caption || undefined,
+        },
+      };
+
+      const fullUrl = `${this.apiBaseUrl}/${this.apiVersion}${apiUrl}`;
+      console.log(`[WhatsApp API Service] [${requestId}] ===== CALLING META API FOR DOCUMENT =====`, {
+        method: 'POST',
+        url: fullUrl,
+        phoneNumberId: config.phoneNumberId,
+        recipient: formattedPhone.substring(0, 5) + '***',
+        filename,
+        timestamp: new Date().toISOString(),
+      });
+
+      const response = await apiClient.post(apiUrl, requestPayload);
+
+      const apiDuration = Date.now() - startTime;
+      console.log(`[WhatsApp API Service] [${requestId}] ✅ HTTP Response received from Meta`, {
+        status: response.status,
+        hasData: !!response.data,
+        hasMessages: !!(response.data && response.data.messages),
+        duration: `${apiDuration}ms`,
+        timestamp: new Date().toISOString(),
+      });
+
+      if (!response.data || !response.data.messages || response.data.messages.length === 0) {
+        throw new Error('Invalid response from Meta API: no message ID returned');
+      }
+
+      const messageId = response.data.messages[0].id;
+      
+      // Save message to database
+      const dbMessageId = `msg_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+      await this.db.query(
+        `INSERT INTO whatsapp_messages (
+          id, tenant_id, contact_id, phone_number, message_id, wam_id,
+          direction, status, message_text, media_url, media_type, media_caption, timestamp
+        ) VALUES ($1, $2, $3, $4, $5, $6, 'outgoing', 'sent', $7, $8, 'document', $9, NOW())`,
+        [
+          dbMessageId,
+          tenantId,
+          contactId || null,
+          formattedPhone,
+          messageId,
+          messageId,
+          caption || '',
+          documentUrl,
+          caption || null,
+        ]
+      );
+
+      const duration = Date.now() - startTime;
+      console.log(`[WhatsApp API Service] [${requestId}] ✅✅✅ DOCUMENT MESSAGE SENT SUCCESSFULLY ✅✅✅`, {
+        messageId,
+        wamId: messageId,
+        duration: `${duration}ms`,
+        timestamp: new Date().toISOString(),
+      });
+
+      return {
+        messageId,
+        wamId: messageId,
+        status: 'sent',
+      };
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      console.error(`[WhatsApp API Service] [${requestId}] ❌❌❌ ERROR SENDING DOCUMENT MESSAGE ❌❌❌`, {
+        error: error.message,
+        errorStack: error.stack?.substring(0, 1000),
+        errorResponse: error.response?.data || null,
+        duration: `${duration}ms`,
+        timestamp: new Date().toISOString(),
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Format phone number for WhatsApp API (same as normalizePhoneForWhatsApp).
+   * Kept for backward compatibility with send flow.
    */
   private formatPhoneNumber(phoneNumber: string): string {
-    // Remove all non-numeric characters
-    let cleaned = phoneNumber.replace(/[^0-9]/g, '');
+    return this.normalizePhoneForWhatsApp(phoneNumber);
+  }
 
-    // Remove leading zero if present
-    if (cleaned.startsWith('0')) {
-      cleaned = cleaned.substring(1);
+  /**
+   * Normalize phone to canonical form for storage and lookup.
+   * Meta uses full international (e.g. 919876543210). We store the same so
+   * incoming (message.from) and outgoing (recipient) match when querying.
+   * - Strips non-numeric, removes leading 0.
+   * - If 10 digits, prepends defaultCountryCode (91) so it matches Meta's from.
+   */
+  private normalizePhoneForWhatsApp(phoneNumber: string, defaultCountryCode = '91'): string {
+    let cleaned = (phoneNumber || '').replace(/[^0-9]/g, '');
+    if (cleaned.startsWith('0')) cleaned = cleaned.substring(1);
+    if (cleaned.length < 10) throw new Error('Invalid phone number format');
+    if (cleaned.length === 10 && defaultCountryCode && !cleaned.startsWith(defaultCountryCode)) {
+      cleaned = defaultCountryCode + cleaned;
     }
-
-    // Ensure it's at least 10 digits
-    if (cleaned.length < 10) {
-      throw new Error('Invalid phone number format');
-    }
-
     return cleaned;
+  }
+
+  /** Digits-only form (no country prefix). Used for backward-compat lookup. */
+  private digitsOnlyPhone(phoneNumber: string, defaultCountryCode = '91'): string {
+    let cleaned = (phoneNumber || '').replace(/[^0-9]/g, '');
+    if (cleaned.startsWith('0')) cleaned = cleaned.substring(1);
+    if (cleaned.length >= 12 && cleaned.startsWith(defaultCountryCode)) {
+      cleaned = cleaned.substring(defaultCountryCode.length);
+    }
+    return cleaned.length >= 10 ? cleaned : '';
   }
 
   /**
@@ -342,34 +681,126 @@ export class WhatsAppApiService {
    * Process incoming webhook event
    */
   async processWebhook(tenantId: string, payload: any): Promise<void> {
+    const webhookId = `webhook_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const startTime = Date.now();
+    
     try {
+      console.log(`[WhatsApp API Service] [${webhookId}] Processing webhook`, {
+        tenantId,
+        hasEntry: !!(payload && payload.entry),
+        entryCount: payload?.entry?.length || 0,
+        timestamp: new Date().toISOString(),
+      });
+
       // Verify webhook signature (if provided)
       // Meta sends X-Hub-Signature-256 header
 
       // Process webhook entries
       if (payload.entry && Array.isArray(payload.entry)) {
+        let messageCount = 0;
+        let statusCount = 0;
+
         for (const entry of payload.entry) {
+          console.log(`[WhatsApp API Service] [${webhookId}] Processing entry`, {
+            entryId: entry.id,
+            hasChanges: !!(entry.changes && Array.isArray(entry.changes)),
+            changeCount: entry.changes?.length || 0,
+          });
+
           if (entry.changes && Array.isArray(entry.changes)) {
             for (const change of entry.changes) {
+              console.log(`[WhatsApp API Service] [${webhookId}] Processing change`, {
+                field: change.field,
+                hasMessages: !!(change.value && change.value.messages),
+                hasStatuses: !!(change.value && change.value.statuses),
+                messageCount: change.value?.messages?.length || 0,
+                statusCount: change.value?.statuses?.length || 0,
+              });
+
               if (change.value && change.value.messages) {
                 // Process incoming messages
-                for (const message of change.value.messages) {
-                  await this.processIncomingMessage(tenantId, message, change.value);
+                const messages = Array.isArray(change.value.messages) ? change.value.messages : [change.value.messages];
+                console.log(`[WhatsApp API Service] [${webhookId}] 📨📨📨 INCOMING MESSAGES DETECTED 📨📨📨`, {
+                  messageCount: messages.length,
+                  phoneNumberId: change.value.metadata?.phone_number_id || null,
+                  timestamp: new Date().toISOString(),
+                });
+                
+                for (let i = 0; i < messages.length; i++) {
+                  const message = messages[i];
+                  console.log(`[WhatsApp API Service] [${webhookId}] Processing incoming message ${i + 1}/${messages.length}`, {
+                    from: message.from ? message.from.substring(0, 5) + '***' : 'MISSING',
+                    messageId: message.id || 'MISSING',
+                    hasText: !!message.text,
+                    hasMedia: !!(message.image || message.video || message.document || message.audio || message.sticker),
+                    timestamp: new Date().toISOString(),
+                  });
+                  
+                  try {
+                    await this.processIncomingMessage(tenantId, message, change.value);
+                    messageCount++;
+                    
+                    console.log(`[WhatsApp API Service] [${webhookId}] ✅ Completed processing message ${i + 1}/${messages.length}`, {
+                      timestamp: new Date().toISOString(),
+                    });
+                  } catch (messageError: any) {
+                    // Log error but continue processing other messages
+                    console.error(`[WhatsApp API Service] [${webhookId}] ❌ Error processing message ${i + 1}/${messages.length}`, {
+                      error: messageError.message,
+                      errorCode: messageError.code,
+                      messageId: message.id || 'MISSING',
+                      from: message.from ? message.from.substring(0, 5) + '***' : 'MISSING',
+                      errorStack: messageError.stack?.substring(0, 500),
+                      timestamp: new Date().toISOString(),
+                      note: 'Continuing to process remaining messages...',
+                    });
+                    // Don't increment messageCount for failed messages
+                    // Continue processing other messages
+                  }
                 }
+                
+                console.log(`[WhatsApp API Service] [${webhookId}] ✅✅✅ ALL ${messages.length} INCOMING MESSAGE(S) PROCESSED ✅✅✅`, {
+                  timestamp: new Date().toISOString(),
+                });
               }
 
               if (change.value && change.value.statuses) {
                 // Process message status updates
-                for (const status of change.value.statuses) {
+                const statuses = Array.isArray(change.value.statuses) ? change.value.statuses : [change.value.statuses];
+                console.log(`[WhatsApp API Service] [${webhookId}] Processing ${statuses.length} status update(s)`);
+                
+                for (const status of statuses) {
                   await this.processMessageStatus(tenantId, status);
+                  statusCount++;
                 }
               }
             }
           }
         }
+
+        const duration = Date.now() - startTime;
+        console.log(`[WhatsApp API Service] [${webhookId}] Webhook processing completed`, {
+          tenantId,
+          messageCount,
+          statusCount,
+          duration: `${duration}ms`,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        console.warn(`[WhatsApp API Service] [${webhookId}] No entries found in webhook payload`, {
+          tenantId,
+          payloadKeys: payload ? Object.keys(payload) : [],
+        });
       }
-    } catch (error) {
-      console.error('Error processing webhook:', error);
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      console.error(`[WhatsApp API Service] [${webhookId}] Error processing webhook`, {
+        tenantId,
+        error: error.message,
+        errorStack: error.stack?.substring(0, 500),
+        duration: `${duration}ms`,
+        timestamp: new Date().toISOString(),
+      });
       throw error;
     }
   }
@@ -382,18 +813,83 @@ export class WhatsAppApiService {
     message: any,
     metadata: any
   ): Promise<void> {
+    const messageId = `incoming_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const startTime = Date.now();
+    
     try {
-      const phoneNumber = message.from;
-      const messageId = message.id;
+      console.log(`[WhatsApp API Service] [${messageId}] ===== PROCESSING INCOMING MESSAGE =====`, {
+        tenantId,
+        fullMessage: JSON.stringify(message),
+        fullMetadata: JSON.stringify(metadata),
+        timestamp: new Date().toISOString(),
+      });
+
+      const rawFrom = message.from;
+      const phoneNumber = this.normalizePhoneForWhatsApp(rawFrom);
+      const metaMessageId = message.id;
       const messageText = message.text?.body || message.caption || '';
       const timestamp = new Date(parseInt(message.timestamp) * 1000);
 
-      // Find contact by phone number
-      const contacts = await this.db.query(
-        'SELECT id FROM contacts WHERE tenant_id = $1 AND contact_no = $2',
+      console.log(`[WhatsApp API Service] [${messageId}] Message details extracted`, {
+        rawFrom: rawFrom ? rawFrom.substring(0, 5) + '***' : 'MISSING',
+        normalizedPhone: phoneNumber ? phoneNumber.substring(0, 5) + '***' : 'MISSING',
+        metaMessageId,
+        messageTextLength: messageText.length,
+        messageTextPreview: messageText.substring(0, 100) + (messageText.length > 100 ? '...' : ''),
+        timestamp: timestamp.toISOString(),
+        hasText: !!message.text,
+        hasImage: !!message.image,
+        hasVideo: !!message.video,
+        hasDocument: !!message.document,
+        hasAudio: !!message.audio,
+        hasSticker: !!message.sticker,
+      });
+
+      // Find contact by phone number (exact or normalized match)
+      let contactId: string | null = null;
+      let contactName: string | null = null;
+      const exactMatch = await this.db.query<{ id: string; name: string }>(
+        'SELECT id, name FROM contacts WHERE tenant_id = $1 AND contact_no = $2',
         [tenantId, phoneNumber]
       );
-      const contactId = contacts.length > 0 ? contacts[0].id : null;
+      if (exactMatch.length > 0) {
+        contactId = exactMatch[0].id;
+        contactName = exactMatch[0].name;
+      } else if (rawFrom && rawFrom !== phoneNumber) {
+        const rawMatch = await this.db.query<{ id: string; name: string }>(
+          'SELECT id, name FROM contacts WHERE tenant_id = $1 AND contact_no = $2',
+          [tenantId, rawFrom]
+        );
+        if (rawMatch.length > 0) {
+          contactId = rawMatch[0].id;
+          contactName = rawMatch[0].name;
+        }
+      }
+      if (!contactId && !contactName) {
+        const allContacts = await this.db.query<{ id: string; name: string; contact_no: string | null }>(
+          'SELECT id, name, contact_no FROM contacts WHERE tenant_id = $1',
+          [tenantId]
+        );
+        for (const c of allContacts) {
+          if (!c.contact_no) continue;
+          try {
+            if (this.normalizePhoneForWhatsApp(c.contact_no) === phoneNumber) {
+              contactId = c.id;
+              contactName = c.name;
+              break;
+            }
+          } catch {
+            /* skip invalid */
+          }
+        }
+      }
+
+      console.log(`[WhatsApp API Service] [${messageId}] Contact lookup completed`, {
+        normalizedPhone: phoneNumber.substring(0, 5) + '***',
+        contactFound: !!contactId,
+        contactId: contactId || null,
+        contactName: contactName || null,
+      });
 
       // Save message to database
       const dbMessageId = `msg_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
@@ -405,48 +901,129 @@ export class WhatsAppApiService {
       if (message.image) {
         mediaUrl = message.image.id;
         mediaType = 'image';
+        console.log(`[WhatsApp API Service] [${messageId}] 📷 Image message detected`, {
+          imageId: mediaUrl,
+          caption: message.image.caption || null,
+        });
       } else if (message.video) {
         mediaUrl = message.video.id;
         mediaType = 'video';
+        console.log(`[WhatsApp API Service] [${messageId}] 🎥 Video message detected`, {
+          videoId: mediaUrl,
+          caption: message.video.caption || null,
+        });
       } else if (message.document) {
         mediaUrl = message.document.id;
         mediaType = 'document';
+        console.log(`[WhatsApp API Service] [${messageId}] 📄 Document message detected`, {
+          documentId: mediaUrl,
+          filename: message.document.filename || null,
+          caption: message.document.caption || null,
+        });
       } else if (message.audio) {
         mediaUrl = message.audio.id;
         mediaType = 'audio';
+        console.log(`[WhatsApp API Service] [${messageId}] 🎵 Audio message detected`, {
+          audioId: mediaUrl,
+        });
       } else if (message.sticker) {
         mediaUrl = message.sticker.id;
         mediaType = 'sticker';
+        console.log(`[WhatsApp API Service] [${messageId}] 😀 Sticker message detected`, {
+          stickerId: mediaUrl,
+        });
       }
 
-      await this.db.query(
-        `INSERT INTO whatsapp_messages (
-          id, tenant_id, contact_id, phone_number, message_id, wam_id,
-          direction, status, message_text, media_url, media_type,
-          media_caption, timestamp
-        ) VALUES ($1, $2, $3, $4, $5, $6, 'incoming', 'received', $7, $8, $9, $10, $11)`,
-        [
-          dbMessageId,
-          tenantId,
-          contactId,
-          phoneNumber,
-          messageId,
-          messageId,
-          messageText,
-          mediaUrl,
-          mediaType,
-          messageText, // Use message text as caption if media
-          timestamp,
-        ]
+      console.log(`[WhatsApp API Service] [${messageId}] Checking for duplicate message`, {
+        metaMessageId,
+        phoneNumber: phoneNumber.substring(0, 5) + '***',
+        timestamp: new Date().toISOString(),
+      });
+
+      // Check if message already exists (duplicate check)
+      const existingMessage = await this.db.query<{ id: string }>(
+        `SELECT id FROM whatsapp_messages 
+         WHERE tenant_id = $1 AND message_id = $2`,
+        [tenantId, metaMessageId]
       );
 
-      // Emit WebSocket event
-      emitToTenant(tenantId, WS_EVENTS.CHAT_MESSAGE, {
+      if (existingMessage.length > 0) {
+        console.log(`[WhatsApp API Service] [${messageId}] ⚠️ Duplicate message detected, skipping insert`, {
+          metaMessageId,
+          existingDbId: existingMessage[0].id,
+          phoneNumber: phoneNumber.substring(0, 5) + '***',
+          timestamp: new Date().toISOString(),
+          note: 'Message already exists in database, likely duplicate webhook from Meta',
+        });
+        // Message already exists, return early (don't throw error)
+        return;
+      }
+
+      console.log(`[WhatsApp API Service] [${messageId}] Saving message to database`, {
+        dbMessageId,
+        phoneNumber: phoneNumber.substring(0, 5) + '***',
+        hasMedia: !!mediaUrl,
+        mediaType: mediaType || null,
+      });
+
+      try {
+        await this.db.query(
+          `INSERT INTO whatsapp_messages (
+            id, tenant_id, contact_id, phone_number, message_id, wam_id,
+            direction, status, message_text, media_url, media_type,
+            media_caption, timestamp
+          ) VALUES ($1, $2, $3, $4, $5, $6, 'incoming', 'received', $7, $8, $9, $10, $11)`,
+          [
+            dbMessageId,
+            tenantId,
+            contactId,
+            phoneNumber,
+            metaMessageId,
+            metaMessageId,
+            messageText,
+            mediaUrl,
+            mediaType,
+            messageText, // Use message text as caption if media
+            timestamp,
+          ]
+        );
+      } catch (dbError: any) {
+        // Handle unique constraint violation (duplicate message_id)
+        if (dbError.code === '23505' || dbError.message?.includes('UNIQUE constraint') || dbError.message?.includes('duplicate key')) {
+          console.log(`[WhatsApp API Service] [${messageId}] ⚠️ Duplicate message detected (database constraint), skipping`, {
+            metaMessageId,
+            phoneNumber: phoneNumber.substring(0, 5) + '***',
+            errorCode: dbError.code,
+            timestamp: new Date().toISOString(),
+            note: 'Message already exists in database, likely duplicate webhook from Meta',
+          });
+          // Message already exists, return early (don't throw error)
+          return;
+        }
+        // Re-throw other database errors
+        throw dbError;
+      }
+
+      const duration = Date.now() - startTime;
+      console.log(`[WhatsApp API Service] [${messageId}] ✅✅✅ INCOMING MESSAGE SAVED TO DATABASE ✅✅✅`, {
+        dbMessageId,
+        phoneNumber: phoneNumber.substring(0, 5) + '***',
+        contactName: contactName || 'Unknown',
+        messageTextPreview: messageText.substring(0, 50) + (messageText.length > 50 ? '...' : ''),
+        hasMedia: !!mediaUrl,
+        mediaType: mediaType || null,
+        duration: `${duration}ms`,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Emit WebSocket event for WhatsApp message received
+      emitToTenant(tenantId, WS_EVENTS.WHATSAPP_MESSAGE_RECEIVED, {
         id: dbMessageId,
         tenantId,
         contactId,
         phoneNumber,
-        messageId,
+        messageId: metaMessageId,
+        wamId: metaMessageId,
         direction: 'incoming',
         status: 'received',
         messageText,
@@ -454,8 +1031,22 @@ export class WhatsAppApiService {
         mediaType,
         timestamp,
       });
-    } catch (error) {
-      console.error('Error processing incoming message:', error);
+
+      console.log(`[WhatsApp API Service] [${messageId}] WebSocket event emitted`, {
+        dbMessageId,
+        event: WS_EVENTS.WHATSAPP_MESSAGE_RECEIVED,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      console.error(`[WhatsApp API Service] [${messageId}] ❌❌❌ ERROR PROCESSING INCOMING MESSAGE ❌❌❌`, {
+        error: error.message,
+        errorStack: error.stack?.substring(0, 1000),
+        tenantId,
+        messageData: JSON.stringify(message).substring(0, 500),
+        duration: `${duration}ms`,
+        timestamp: new Date().toISOString(),
+      });
       throw error;
     }
   }
@@ -464,9 +1055,34 @@ export class WhatsAppApiService {
    * Process message status update
    */
   private async processMessageStatus(tenantId: string, status: any): Promise<void> {
+    const statusId = `status_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    
     try {
-      const messageId = status.id;
+      console.log(`[WhatsApp API Service] [${statusId}] ===== PROCESSING MESSAGE STATUS UPDATE =====`, {
+        tenantId,
+        fullStatusData: JSON.stringify(status),
+        timestamp: new Date().toISOString(),
+      });
+
+      const messageId = status.id; // This is the WAM ID from Meta
       const statusValue = status.status; // sent, delivered, read, failed
+      const recipientId = status.recipient_id;
+      const timestamp = status.timestamp;
+      const error = status.errors?.[0]; // Error details if status is failed
+
+      console.log(`[WhatsApp API Service] [${statusId}] Status details extracted`, {
+        wamId: messageId,
+        statusValue,
+        recipientId: recipientId ? recipientId.substring(0, 5) + '***' : null,
+        timestamp,
+        hasError: !!error,
+        errorDetails: error ? {
+          code: error.code,
+          title: error.title,
+          message: error.message,
+          errorData: error.error_data,
+        } : null,
+      });
 
       // Map Meta status to our status
       let mappedStatus: 'sent' | 'delivered' | 'read' | 'failed' = 'sent';
@@ -478,22 +1094,95 @@ export class WhatsAppApiService {
         mappedStatus = 'failed';
       }
 
+      console.log(`[WhatsApp API Service] [${statusId}] Status mapped`, {
+        originalStatus: statusValue,
+        mappedStatus,
+      });
+
+      // Check if message exists in database
+      const existingMessages = await this.db.query(
+        `SELECT id, status, phone_number FROM whatsapp_messages
+         WHERE tenant_id = $1 AND message_id = $2`,
+        [tenantId, messageId]
+      );
+
+      if (existingMessages.length === 0) {
+        console.warn(`[WhatsApp API Service] [${statusId}] Message not found in database for status update`, {
+          tenantId,
+          messageId,
+          statusValue,
+        });
+        return;
+      }
+
+      console.log(`[WhatsApp API Service] [${statusId}] Message found in database`, {
+        dbMessageId: existingMessages[0].id,
+        currentStatus: existingMessages[0].status,
+        phoneNumber: existingMessages[0].phone_number ? existingMessages[0].phone_number.substring(0, 5) + '***' : null,
+      });
+
       // Update message status in database
-      await this.db.query(
+      const updateResult = await this.db.query(
         `UPDATE whatsapp_messages
          SET status = $1, updated_at = NOW()
-         WHERE tenant_id = $2 AND message_id = $3`,
+         WHERE tenant_id = $2 AND message_id = $3
+         RETURNING id, phone_number`,
         [mappedStatus, tenantId, messageId]
       );
 
+      console.log(`[WhatsApp API Service] [${statusId}] ✅✅✅ MESSAGE STATUS UPDATED IN DATABASE ✅✅✅`, {
+        dbMessageId: updateResult[0]?.id,
+        wamId: messageId,
+        oldStatus: existingMessages[0].status,
+        newStatus: mappedStatus,
+        rowsUpdated: updateResult.length,
+        phoneNumber: existingMessages[0].phone_number?.substring(0, 5) + '***',
+        timestamp: new Date().toISOString(),
+      });
+
+      // Log delivery status interpretation
+      if (mappedStatus === 'delivered') {
+        console.log(`[WhatsApp API Service] [${statusId}] 📱 MESSAGE DELIVERED TO RECIPIENT`, {
+          wamId: messageId,
+          note: 'Message was successfully delivered to recipient\'s device',
+          timestamp: new Date().toISOString(),
+        });
+      } else if (mappedStatus === 'read') {
+        console.log(`[WhatsApp API Service] [${statusId}] 👁️ MESSAGE READ BY RECIPIENT`, {
+          wamId: messageId,
+          note: 'Recipient has opened and read the message',
+          timestamp: new Date().toISOString(),
+        });
+      } else if (mappedStatus === 'failed') {
+        console.error(`[WhatsApp API Service] [${statusId}] ❌ MESSAGE DELIVERY FAILED`, {
+          wamId: messageId,
+          error: error || 'Unknown error',
+          note: 'Message failed to deliver. Check error details above.',
+          timestamp: new Date().toISOString(),
+        });
+      }
+
       // Emit WebSocket event for status update
-      emitToTenant(tenantId, 'whatsapp:message:status', {
+      emitToTenant(tenantId, WS_EVENTS.WHATSAPP_MESSAGE_STATUS, {
         messageId,
+        wamId: messageId,
         status: mappedStatus,
         timestamp: new Date(),
       });
-    } catch (error) {
-      console.error('Error processing message status:', error);
+
+      console.log(`[WhatsApp API Service] [${statusId}] Status update processed successfully`, {
+        wamId: messageId,
+        status: mappedStatus,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      console.error(`[WhatsApp API Service] [${statusId}] Error processing message status`, {
+        error: error.message,
+        errorStack: error.stack?.substring(0, 500),
+        tenantId,
+        statusData: JSON.stringify(status).substring(0, 500),
+        timestamp: new Date().toISOString(),
+      });
       // Don't throw - status updates are non-critical
     }
   }
@@ -511,18 +1200,46 @@ export class WhatsAppApiService {
     }
   ): Promise<WhatsAppMessage[]> {
     try {
+      // Always filter by tenant_id first (required for multi-tenant isolation)
       let query = 'SELECT * FROM whatsapp_messages WHERE tenant_id = $1';
       const params: any[] = [tenantId];
       let paramIndex = 2;
 
+      // If contactId is provided, filter by it (most specific)
       if (options.contactId) {
         query += ` AND contact_id = $${paramIndex}`;
         params.push(options.contactId);
         paramIndex++;
+        
+        // Also filter by phone number if provided to ensure we only get messages
+        // for this specific contact's phone number (in case contact has multiple numbers)
+        if (options.phoneNumber) {
+          const canonical = this.normalizePhoneForWhatsApp(options.phoneNumber);
+          const digitsOnly = this.digitsOnlyPhone(options.phoneNumber);
+          if (digitsOnly && digitsOnly !== canonical) {
+            query += ` AND (phone_number = $${paramIndex} OR phone_number = $${paramIndex + 1})`;
+            params.push(canonical, digitsOnly);
+            paramIndex += 2;
+          } else {
+            query += ` AND phone_number = $${paramIndex}`;
+            params.push(canonical);
+            paramIndex++;
+          }
+        }
       } else if (options.phoneNumber) {
-        query += ` AND phone_number = $${paramIndex}`;
-        params.push(options.phoneNumber);
-        paramIndex++;
+        // If no contactId but phoneNumber is provided, filter by phone number only
+        // This ensures messages are isolated by tenant_id + phone_number
+        const canonical = this.normalizePhoneForWhatsApp(options.phoneNumber);
+        const digitsOnly = this.digitsOnlyPhone(options.phoneNumber);
+        if (digitsOnly && digitsOnly !== canonical) {
+          query += ` AND (phone_number = $${paramIndex} OR phone_number = $${paramIndex + 1})`;
+          params.push(canonical, digitsOnly);
+          paramIndex += 2;
+        } else {
+          query += ` AND phone_number = $${paramIndex}`;
+          params.push(canonical);
+          paramIndex++;
+        }
       }
 
       query += ' ORDER BY timestamp DESC';
@@ -584,15 +1301,39 @@ export class WhatsAppApiService {
 
   /**
    * Mark all messages from a phone number as read
+   * @param tenantId - Tenant ID (required for multi-tenant isolation)
+   * @param phoneNumber - Phone number to mark messages as read for
+   * @param contactId - Optional contact ID to only mark messages for this specific contact
    */
-  async markAllAsRead(tenantId: string, phoneNumber: string): Promise<void> {
+  async markAllAsRead(tenantId: string, phoneNumber: string, contactId?: string): Promise<void> {
     try {
-      await this.db.query(
-        `UPDATE whatsapp_messages
-         SET read_at = NOW(), updated_at = NOW()
-         WHERE tenant_id = $1 AND phone_number = $2 AND direction = 'incoming' AND read_at IS NULL`,
-        [tenantId, phoneNumber]
-      );
+      const canonical = this.normalizePhoneForWhatsApp(phoneNumber);
+      const digitsOnly = this.digitsOnlyPhone(phoneNumber);
+      
+      // Build query with tenant_id filter (always required)
+      let query = `UPDATE whatsapp_messages
+           SET read_at = NOW(), updated_at = NOW()
+           WHERE tenant_id = $1 AND direction = 'incoming' AND read_at IS NULL`;
+      const params: any[] = [tenantId];
+      let paramIndex = 2;
+      
+      // If contactId is provided, filter by it to ensure we only mark messages for this contact
+      if (contactId) {
+        query += ` AND contact_id = $${paramIndex}`;
+        params.push(contactId);
+        paramIndex++;
+      }
+      
+      // Filter by phone number (normalized)
+      if (digitsOnly && digitsOnly !== canonical) {
+        query += ` AND (phone_number = $${paramIndex} OR phone_number = $${paramIndex + 1})`;
+        params.push(canonical, digitsOnly);
+      } else {
+        query += ` AND phone_number = $${paramIndex}`;
+        params.push(canonical);
+      }
+      
+      await this.db.query(query, params);
     } catch (error) {
       console.error('Error marking all messages as read:', error);
       throw error;
@@ -602,22 +1343,102 @@ export class WhatsAppApiService {
   /**
    * Test API connection
    */
-  async testConnection(tenantId: string): Promise<boolean> {
+  async testConnection(
+    tenantId: string
+  ): Promise<{ ok: boolean; error?: string }> {
+    const testId = `test_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const startTime = Date.now();
+    
     try {
+      console.log(`[WhatsApp API Service] [${testId}] testConnection called`, {
+        tenantId,
+        timestamp: new Date().toISOString(),
+      });
+
       const config = await this.getConfig(tenantId);
       if (!config) {
-        return false;
+        console.error(`[WhatsApp API Service] [${testId}] No configuration found`, {
+          tenantId,
+          timestamp: new Date().toISOString(),
+        });
+        return { ok: false, error: 'WhatsApp API not configured for this tenant' };
       }
 
+      console.log(`[WhatsApp API Service] [${testId}] Configuration loaded`, {
+        tenantId,
+        phoneNumberId: config.phoneNumberId,
+        businessAccountId: config.businessAccountId || null,
+        hasApiKey: !!config.apiKey,
+        apiKeyLength: config.apiKey?.length || 0,
+        apiKeyPrefix: config.apiKey ? config.apiKey.substring(0, 10) + '...' : 'missing',
+        apiBaseUrl: `${this.apiBaseUrl}/${this.apiVersion}`,
+        timestamp: new Date().toISOString(),
+      });
+
       const apiClient = this.createApiClient(config);
-      
+      const testUrl = `/${config.phoneNumberId}`;
+      const fullUrl = `${this.apiBaseUrl}/${this.apiVersion}${testUrl}`;
+
+      console.log(`[WhatsApp API Service] [${testId}] Making test API call to Meta`, {
+        url: fullUrl,
+        phoneNumberId: config.phoneNumberId,
+        method: 'GET',
+        timestamp: new Date().toISOString(),
+      });
+
       // Try to get phone number info (lightweight API call)
-      await apiClient.get(`/${config.phoneNumberId}`);
-      
-      return true;
-    } catch (error) {
-      console.error('WhatsApp API connection test failed:', error);
-      return false;
+      const response = await apiClient.get(testUrl);
+
+      const duration = Date.now() - startTime;
+      console.log(`[WhatsApp API Service] [${testId}] Meta API response received`, {
+        status: response.status,
+        statusText: response.statusText,
+        hasData: !!response.data,
+        responseKeys: response.data ? Object.keys(response.data) : [],
+        responseData: JSON.stringify(response.data).substring(0, 500),
+        duration: `${duration}ms`,
+        timestamp: new Date().toISOString(),
+      });
+
+      console.log(`[WhatsApp API Service] [${testId}] Connection test successful`, {
+        tenantId,
+        phoneNumberId: config.phoneNumberId,
+        totalDuration: `${duration}ms`,
+        timestamp: new Date().toISOString(),
+      });
+
+      return { ok: true };
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      const apiErrorMessage =
+        error?.response?.data?.error?.message ||
+        error?.response?.data?.error?.type ||
+        error?.response?.data?.error?.code ||
+        error?.message;
+
+      console.error(`[WhatsApp API Service] [${testId}] Connection test failed`, {
+        tenantId,
+        error: error.message,
+        errorCode: error.code,
+        errorStack: error.stack?.substring(0, 500),
+        apiErrorMessage,
+        errorResponse: error.response ? {
+          status: error.response.status,
+          statusText: error.response.statusText,
+          data: JSON.stringify(error.response.data).substring(0, 1000),
+          headers: error.response.headers ? Object.keys(error.response.headers) : [],
+        } : null,
+        errorRequest: error.config ? {
+          url: error.config.url,
+          method: error.config.method,
+          baseURL: error.config.baseURL,
+          hasData: !!error.config.data,
+        } : null,
+        duration: `${duration}ms`,
+        timestamp: new Date().toISOString(),
+      });
+
+      return { ok: false, error: apiErrorMessage || 'Connection failed' };
     }
   }
 }
