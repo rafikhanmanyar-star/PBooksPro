@@ -193,29 +193,25 @@ console.log('🌐 CORS Origins:', corsOrigins);
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps, curl, or browser direct requests)
-    if (!origin) {
-      console.log('✅ CORS: Allowing request with no origin');
-      return callback(null, true);
-    }
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
 
-    // Check if origin is in allowed list or wildcard is used
-    const isAllowed = corsOrigins.includes('*') || corsOrigins.includes(origin);
+    // Check if origin is allowed
+    const isAllowed = corsOrigins.includes('*') ||
+      corsOrigins.includes(origin) ||
+      origin.includes('onrender.com') || // Extra safety for staging/prod
+      origin.includes('localhost');
 
     if (isAllowed) {
-      console.log(`✅ CORS: Allowing origin: ${origin}`);
       callback(null, true);
     } else {
-      // For health checks and version endpoints, be more permissive
-      // But still log for security awareness
-      console.log(`⚠️ CORS: Origin ${origin} not in allowed list (${corsOrigins.join(', ')})`);
-      // Allow anyway for health checks and public endpoints
-      callback(null, true);
+      console.warn(`⚠️ CORS blocked origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID', 'Accept'],
   exposedHeaders: ['Content-Type', 'Authorization'],
   maxAge: 86400 // 24 hours
 }));
