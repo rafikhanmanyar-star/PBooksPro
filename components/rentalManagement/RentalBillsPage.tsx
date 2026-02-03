@@ -26,7 +26,51 @@ const BillTreeSidebar: React.FC<{
     selectedParentId: string | null;
     onSelect: (id: string, type: 'group' | 'vendor', parentId?: string) => void;
 }> = ({ nodes, selectedId, selectedParentId, onSelect }) => {
+    const [sortConfig, setSortConfig] = useState<{ key: 'name' | 'balance'; direction: 'asc' | 'desc' }>({ key: 'balance', direction: 'desc' });
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(nodes.map(n => n.id)));
+
+    useEffect(() => {
+        setExpandedIds(prev => {
+            const next = new Set(prev);
+            nodes.forEach(n => next.add(n.id));
+            return next;
+        });
+    }, [nodes]);
+
+    const handleSort = (key: 'name' | 'balance') => {
+        setSortConfig(current => ({
+            key,
+            direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+        }));
+    };
+
+    const sortNodes = useCallback((items: BillTreeNode[]): BillTreeNode[] => {
+        const sorted = [...items].sort((a, b) => {
+            let aVal: any = a[sortConfig.key];
+            let bVal: any = b[sortConfig.key];
+
+            if (sortConfig.key === 'name') {
+                aVal = aVal.toLowerCase();
+                bVal = bVal.toLowerCase();
+            }
+
+            if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        return sorted.map(node => ({
+            ...node,
+            children: node.children ? sortNodes(node.children) : []
+        }));
+    }, [sortConfig]);
+
+    const sortedNodes = useMemo(() => sortNodes(nodes), [nodes, sortNodes]);
+
+    const SortIcon = ({ column }: { column: 'name' | 'balance' }) => {
+        if (sortConfig.key !== column) return <span className="text-slate-300 opacity-50 ml-1 text-[10px]">↕</span>;
+        return <span className="text-orange-600 ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
+    };
 
     const toggleExpanded = (id: string) => {
         setExpandedIds(prev => {
@@ -41,7 +85,6 @@ const BillTreeSidebar: React.FC<{
         const hasChildren = node.children && node.children.length > 0;
         const isExpanded = expandedIds.has(node.id);
         const isSelected = selectedId === node.id && (node.type === 'group' || selectedParentId === parentId);
-        const initials = node.name.slice(0, 2).toUpperCase();
 
         return (
             <div key={node.id} className={level > 0 ? 'ml-4 border-l border-slate-200/80 pl-3' : ''}>
@@ -81,8 +124,26 @@ const BillTreeSidebar: React.FC<{
     }
 
     return (
-        <div className="space-y-0.5">
-            {nodes.map(node => renderNode(node, 0))}
+        <div className="flex flex-col h-full">
+            {/* Sort Header */}
+            <div className="flex items-center justify-between px-2 py-1.5 border-b border-slate-100 mb-1 bg-slate-50/50 rounded-md">
+                <button
+                    onClick={() => handleSort('name')}
+                    className="flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-wider hover:text-slate-900 transition-colors"
+                >
+                    Entity <SortIcon column="name" />
+                </button>
+                <button
+                    onClick={() => handleSort('balance')}
+                    className="flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-wider hover:text-slate-900 transition-colors"
+                >
+                    Payable <SortIcon column="balance" />
+                </button>
+            </div>
+
+            <div className="space-y-0.5">
+                {sortedNodes.map(node => renderNode(node, 0))}
+            </div>
         </div>
     );
 };
