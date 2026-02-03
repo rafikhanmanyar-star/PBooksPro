@@ -306,6 +306,32 @@ async function runMigrations() {
       'User ID to transactions'
     );
 
+    // Migration: Add user_id to contracts table
+    await runMigrationIfNeeded(
+      pool,
+      'add-user-id-to-contracts',
+      [
+        join(__dirname, '../migrations/add-user-id-to-contracts.sql'),
+        join(__dirname, '../../migrations/add-user-id-to-contracts.sql'),
+        join(process.cwd(), 'server/migrations/add-user-id-to-contracts.sql'),
+        join(process.cwd(), 'migrations/add-user-id-to-contracts.sql'),
+      ],
+      'User ID to contracts'
+    );
+
+    // Migration: Add user_id to all entities
+    await runMigrationIfNeeded(
+      pool,
+      'add-user-id-to-all-entities',
+      [
+        join(__dirname, '../migrations/add-user-id-to-all-entities.sql'),
+        join(__dirname, '../../migrations/add-user-id-to-all-entities.sql'),
+        join(process.cwd(), 'server/migrations/add-user-id-to-all-entities.sql'),
+        join(process.cwd(), 'migrations/add-user-id-to-all-entities.sql'),
+      ],
+      'User ID to all entities'
+    );
+
     // Migration: Add payment_id column to license_history (if missing)
     if (!(await isMigrationApplied(pool, 'add-payment-id-to-license-history'))) {
       try {
@@ -408,17 +434,134 @@ async function runMigrations() {
       'Contact ID to rental agreements'
     );
 
-    // Migration: Add Tasks Management Schema
+    // Migration: Add Tasks Management Schema (Core)
     await runMigrationIfNeeded(
       pool,
-      'add-tasks-schema',
+      'task_management_schema',
       [
-        join(__dirname, '../migrations/add-tasks-schema.sql'),
-        join(__dirname, '../../migrations/add-tasks-schema.sql'),
-        join(process.cwd(), 'server/migrations/add-tasks-schema.sql'),
-        join(process.cwd(), 'migrations/add-tasks-schema.sql'),
+        join(__dirname, '../migrations/task_management_schema.sql'),
+        join(__dirname, '../../migrations/task_management_schema.sql'),
+        join(process.cwd(), 'server/migrations/task_management_schema.sql'),
+        join(process.cwd(), 'migrations/task_management_schema.sql'),
       ],
-      'Tasks Management Schema'
+      'Tasks Management Core'
+    );
+
+    // Migration: Add Tasks Organization Schema
+    await runMigrationIfNeeded(
+      pool,
+      'task_organization_schema',
+      [
+        join(__dirname, '../migrations/task_organization_schema.sql'),
+        join(__dirname, '../../migrations/task_organization_schema.sql'),
+        join(process.cwd(), 'server/migrations/task_organization_schema.sql'),
+        join(process.cwd(), 'migrations/task_organization_schema.sql'),
+      ],
+      'Tasks Organization'
+    );
+
+    // Migration: Add Tasks Roles Schema
+    await runMigrationIfNeeded(
+      pool,
+      'task_roles_schema',
+      [
+        join(__dirname, '../migrations/task_roles_schema.sql'),
+        join(__dirname, '../../migrations/task_roles_schema.sql'),
+        join(process.cwd(), 'server/migrations/task_roles_schema.sql'),
+        join(process.cwd(), 'migrations/task_roles_schema.sql'),
+      ],
+      'Tasks Roles'
+    );
+
+    // Migration: Add Tasks Workflow Schema
+    await runMigrationIfNeeded(
+      pool,
+      'task_workflow_schema',
+      [
+        join(__dirname, '../migrations/task_workflow_schema.sql'),
+        join(__dirname, '../../migrations/task_workflow_schema.sql'),
+        join(process.cwd(), 'server/migrations/task_workflow_schema.sql'),
+        join(process.cwd(), 'migrations/task_workflow_schema.sql'),
+      ],
+      'Tasks Workflow'
+    );
+
+    // Migration: Add Tasks Assignment Schema
+    await runMigrationIfNeeded(
+      pool,
+      'task_assignment_schema',
+      [
+        join(__dirname, '../migrations/task_assignment_schema.sql'),
+        join(__dirname, '../../migrations/task_assignment_schema.sql'),
+        join(process.cwd(), 'server/migrations/task_assignment_schema.sql'),
+        join(process.cwd(), 'migrations/task_assignment_schema.sql'),
+      ],
+      'Tasks Assignment'
+    );
+
+    // Migration: Add Tasks Execution Schema
+    await runMigrationIfNeeded(
+      pool,
+      'task_execution_schema',
+      [
+        join(__dirname, '../migrations/task_execution_schema.sql'),
+        join(__dirname, '../../migrations/task_execution_schema.sql'),
+        join(process.cwd(), 'server/migrations/task_execution_schema.sql'),
+        join(process.cwd(), 'migrations/task_execution_schema.sql'),
+      ],
+      'Tasks Execution'
+    );
+
+    // Migration: Add Tasks OKR Schema
+    await runMigrationIfNeeded(
+      pool,
+      'task_okr_schema',
+      [
+        join(__dirname, '../migrations/task_okr_schema.sql'),
+        join(__dirname, '../../migrations/task_okr_schema.sql'),
+        join(process.cwd(), 'server/migrations/task_okr_schema.sql'),
+        join(process.cwd(), 'migrations/task_okr_schema.sql'),
+      ],
+      'Tasks OKR'
+    );
+
+    // Migration: Add Tasks Initiatives Schema
+    await runMigrationIfNeeded(
+      pool,
+      'task_initiatives_schema',
+      [
+        join(__dirname, '../migrations/task_initiatives_schema.sql'),
+        join(__dirname, '../../migrations/task_initiatives_schema.sql'),
+        join(process.cwd(), 'server/migrations/task_initiatives_schema.sql'),
+        join(process.cwd(), 'migrations/task_initiatives_schema.sql'),
+      ],
+      'Tasks Initiatives'
+    );
+
+    // Migration: Add Tasks Notifications Schema
+    await runMigrationIfNeeded(
+      pool,
+      'task_notifications_schema',
+      [
+        join(__dirname, '../migrations/task_notifications_schema.sql'),
+        join(__dirname, '../../migrations/task_notifications_schema.sql'),
+        join(process.cwd(), 'server/migrations/task_notifications_schema.sql'),
+        join(process.cwd(), 'migrations/task_notifications_schema.sql'),
+      ],
+      'Tasks Notifications'
+    );
+
+    // Migration: Cleanup Tasks (redundant tables)
+    await runMigrationIfNeeded(
+      pool,
+      'cleanup_tasks',
+      [
+        join(__dirname, '../migrations/cleanup_tasks.sql'),
+        join(__dirname, '../../migrations/cleanup_tasks.sql'),
+        join(process.cwd(), 'server/migrations/cleanup_tasks.sql'),
+        join(process.cwd(), 'migrations/cleanup_tasks.sql'),
+      ],
+      'Tasks Cleanup'
     );
 
     // Migration: Add is_supplier column to tenants table
@@ -602,6 +745,110 @@ async function runMigrations() {
         join(process.cwd(), 'migrations/add-shop-rls-policies.sql'),
       ],
       'Shop RLS policies'
+    );
+
+    // Migration: Add module_key to payments table
+    await runMigrationIfNeeded(
+      pool,
+      'add-module-key-to-payments',
+      [
+        join(__dirname, '../migrations/add-module-key-to-payments.sql'),
+        join(__dirname, '../../migrations/add-module-key-to-payments.sql'),
+        join(process.cwd(), 'server/migrations/add-module-key-to-payments.sql'),
+        join(process.cwd(), 'migrations/add-module-key-to-payments.sql'),
+      ],
+      'Add module_key to payments'
+    );
+
+    // Migration: Add login_status to users table
+    await runMigrationIfNeeded(
+      pool,
+      'add-login-status-to-users',
+      [
+        join(__dirname, '../migrations/add-login-status-to-users.sql'),
+        join(__dirname, '../../migrations/add-login-status-to-users.sql'),
+        join(process.cwd(), 'server/migrations/add-login-status-to-users.sql'),
+        join(process.cwd(), 'migrations/add-login-status-to-users.sql'),
+      ],
+      'Add login_status to users'
+    );
+
+    // Migration: Add tenant_modules table
+    await runMigrationIfNeeded(
+      pool,
+      'add-tenant-modules-table',
+      [
+        join(__dirname, '../migrations/add-tenant-modules-table.sql'),
+        join(__dirname, '../../migrations/add-tenant-modules-table.sql'),
+        join(process.cwd(), 'server/migrations/add-tenant-modules-table.sql'),
+        join(process.cwd(), 'migrations/add-tenant-modules-table.sql'),
+      ],
+      'Add tenant_modules table'
+    );
+
+    // Migration: Add plan_amenities table
+    await runMigrationIfNeeded(
+      pool,
+      'add-plan-amenities-table',
+      [
+        join(__dirname, '../migrations/add-plan-amenities-table.sql'),
+        join(__dirname, '../../migrations/add-plan-amenities-table.sql'),
+        join(process.cwd(), 'server/migrations/add-plan-amenities-table.sql'),
+        join(process.cwd(), 'migrations/add-plan-amenities-table.sql'),
+      ],
+      'Add plan_amenities table'
+    );
+
+    // Migration: Add payment_tracking_columns to shop_sales
+    await runMigrationIfNeeded(
+      pool,
+      'add-payment-tracking-columns',
+      [
+        join(__dirname, '../migrations/add-payment-tracking-columns.sql'),
+        join(__dirname, '../../migrations/add-payment-tracking-columns.sql'),
+        join(process.cwd(), 'server/migrations/add-payment-tracking-columns.sql'),
+        join(process.cwd(), 'migrations/add-payment-tracking-columns.sql'),
+      ],
+      'Add payment tracking columns to shop_sales'
+    );
+
+    // Migration: Add installment plan approval fields
+    await runMigrationIfNeeded(
+      pool,
+      'add-installment-plan-approval-fields',
+      [
+        join(__dirname, '../migrations/add-installment-plan-approval-fields.sql'),
+        join(__dirname, '../../migrations/add-installment-plan-approval-fields.sql'),
+        join(process.cwd(), 'server/migrations/add-installment-plan-approval-fields.sql'),
+        join(process.cwd(), 'migrations/add-installment-plan-approval-fields.sql'),
+      ],
+      'Add installment plan approval fields'
+    );
+
+    // Migration: Add installment plan discount and category columns
+    await runMigrationIfNeeded(
+      pool,
+      'add-installment-plan-discount-category-columns',
+      [
+        join(__dirname, '../migrations/add-installment-plan-discount-category-columns.sql'),
+        join(__dirname, '../../migrations/add-installment-plan-discount-category-columns.sql'),
+        join(process.cwd(), 'server/migrations/add-installment-plan-discount-category-columns.sql'),
+        join(process.cwd(), 'migrations/add-installment-plan-discount-category-columns.sql'),
+      ],
+      'Add installment plan discount and category columns'
+    );
+
+    // Migration: Fix registered suppliers column names
+    await runMigrationIfNeeded(
+      pool,
+      'fix-registered-suppliers-column-names',
+      [
+        join(__dirname, '../migrations/fix-registered-suppliers-column-names.sql'),
+        join(__dirname, '../../migrations/fix-registered-suppliers-column-names.sql'),
+        join(process.cwd(), 'server/migrations/fix-registered-suppliers-column-names.sql'),
+        join(process.cwd(), 'migrations/fix-registered-suppliers-column-names.sql'),
+      ],
+      'Fix registered suppliers column names'
     );
 
     // Create default admin user if it doesn't exist
