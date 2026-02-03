@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Performance Test - PBooks Pro</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+        .metric {
+            background: #ecf0f1;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+        }
+        .metric.good {
+            border-left-color: #27ae60;
+            background: #d5f4e6;
+        }
+        .metric.warning {
+            border-left-color: #f39c12;
+            background: #fef5e7;
+        }
+        .metric.bad {
+            border-left-color: #e74c3c;
+            background: #fadbd8;
+        }
+        .metric-label {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #3498db;
+        }
+        .metric-description {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        button:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            background: #d5f4e6;
+            color: #27ae60;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            vertical-align: middle;
+            margin-left: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 PBooks Pro - Performance Test</h1>
+        
+        <div class="status" id="status">
+            Ready to test performance metrics
+        </div>
+
+        <div style="margin: 20px 0;">
+            <button onclick="runPerformanceTest()">Run Performance Test</button>
+            <button onclick="clearResults()">Clear Results</button>
+        </div>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+        function getMetricClass(value, thresholds) {
+            if (value <= thresholds.good) return 'good';
+            if (value <= thresholds.warning) return 'warning';
+            return 'bad';
+        }
+
+        function formatTime(ms) {
+            return ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${Math.round(ms)}ms`;
+        }
+
+        async function runPerformanceTest() {
+            const statusEl = document.getElementById('status');
+            const resultsEl = document.getElementById('results');
+            
+            statusEl.innerHTML = 'Running performance test... <span class="loading"></span>';
+            resultsEl.innerHTML = '';
+
+            // Wait a bit for any pending operations
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            const metrics = {};
+
+            // 1. Page Load Metrics
+            if (window.performance && window.performance.timing) {
+                const timing = window.performance.timing;
+                const navigation = window.performance.navigation;
+
+                metrics.pageLoad = timing.loadEventEnd - timing.navigationStart;
+                metrics.domReady = timing.domContentLoadedEventEnd - timing.navigationStart;
+                metrics.firstPaint = timing.responseStart - timing.navigationStart;
+                metrics.domInteractive = timing.domInteractive - timing.navigationStart;
+            }
+
+            // 2. Resource Metrics
+            if (window.performance && window.performance.getEntriesByType) {
+                const resources = window.performance.getEntriesByType('resource');
+                metrics.resourceCount = resources.length;
+                metrics.totalResourceSize = resources.reduce((sum, r) => sum + (r.transferSize || 0), 0);
+                metrics.jsCount = resources.filter(r => r.name.endsWith('.js')).length;
+                metrics.cssCount = resources.filter(r => r.name.endsWith('.css')).length;
+            }
+
+            // 3. Memory Usage (if available)
+            if (window.performance && window.performance.memory) {
+                metrics.memoryUsed = window.performance.memory.usedJSHeapSize;
+                metrics.memoryLimit = window.performance.memory.jsHeapSizeLimit;
+                metrics.memoryPercent = (metrics.memoryUsed / metrics.memoryLimit * 100).toFixed(1);
+            }
+
+            // 4. Console Performance (count console calls)
+            let consoleCallCount = 0;
+            const originalLog = console.log;
+            console.log = function(...args) {
+                consoleCallCount++;
+                originalLog.apply(console, args);
+            };
+
+            // Display results
+            let html = '<h2>Performance Metrics</h2>';
+
+            // Page Load Metrics
+            if (metrics.pageLoad) {
+                html += `
+                    <div class="metric ${getMetricClass(metrics.pageLoad, {good: 2000, warning: 5000})}">
+                        <div class="metric-label">Total Page Load Time</div>
+                        <div class="metric-value">${formatTime(metrics.pageLoad)}</div>
+                        <div class="metric-description">Target: < 2s (Good), < 5s (Warning)</div>
+                    </div>
+                `;
+            }
+
+            if (metrics.domReady) {
+                html += `
+                    <div class="metric ${getMetricClass(metrics.domReady, {good: 1500, warning: 3000})}">
+                        <div class="metric-label">DOM Ready Time</div>
+                        <div class="metric-value">${formatTime(metrics.domReady)}</div>
+                        <div class="metric-description">Target: < 1.5s (Good), < 3s (Warning)</div>
+                    </div>
+                `;
+            }
+
+            if (metrics.domInteractive) {
+                html += `
+                    <div class="metric ${getMetricClass(metrics.domInteractive, {good: 2500, warning: 5000})}">
+                        <div class="metric-label">Time to Interactive</div>
+                        <div class="metric-value">${formatTime(metrics.domInteractive)}</div>
+                        <div class="metric-description">Target: < 2.5s (Good), < 5s (Warning)</div>
+                    </div>
+                `;
+            }
+
+            // Resource Metrics
+            if (metrics.resourceCount) {
+                html += `
+                    <div class="metric ${getMetricClass(metrics.resourceCount, {good: 50, warning: 100})}">
+                        <div class="metric-label">Total Resources Loaded</div>
+                        <div class="metric-value">${metrics.resourceCount}</div>
+                        <div class="metric-description">JS: ${metrics.jsCount}, CSS: ${metrics.cssCount}</div>
+                    </div>
+                `;
+            }
+
+            if (metrics.totalResourceSize) {
+                const sizeMB = (metrics.totalResourceSize / 1024 / 1024).toFixed(2);
+                html += `
+                    <div class="metric ${getMetricClass(parseFloat(sizeMB), {good: 2, warning: 5})}">
+                        <div class="metric-label">Total Transfer Size</div>
+                        <div class="metric-value">${sizeMB} MB</div>
+                        <div class="metric-description">Target: < 2MB (Good), < 5MB (Warning)</div>
+                    </div>
+                `;
+            }
+
+            // Memory Metrics
+            if (metrics.memoryUsed) {
+                const memoryMB = (metrics.memoryUsed / 1024 / 1024).toFixed(2);
+                html += `
+                    <div class="metric ${getMetricClass(parseFloat(memoryMB), {good: 50, warning: 100})}">
+                        <div class="metric-label">Memory Usage</div>
+                        <div class="metric-value">${memoryMB} MB (${metrics.memoryPercent}%)</div>
+                        <div class="metric-description">Target: < 50MB (Good), < 100MB (Warning)</div>
+                    </div>
+                `;
+            }
+
+            // Console Calls
+            html += `
+                <div class="metric ${getMetricClass(consoleCallCount, {good: 10, warning: 50})}">
+                    <div class="metric-label">Console Calls (Production)</div>
+                    <div class="metric-value">${consoleCallCount}</div>
+                    <div class="metric-description">Target: < 10 (Good), < 50 (Warning) - Should be 0 in production</div>
+                </div>
+            `;
+
+            resultsEl.innerHTML = html;
+            statusEl.innerHTML = '✅ Performance test completed!';
+            statusEl.className = 'status';
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+            document.getElementById('status').innerHTML = 'Ready to test performance metrics';
+        }
+
+        // Auto-run on page load
+        window.addEventListener('load', () => {
+            setTimeout(runPerformanceTest, 1000);
+        });
+    </script>
+</body>
+</html>

@@ -47,7 +47,7 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['sql.js'], // Exclude sql.js from pre-bundling
     include: ['react', 'react-dom', 'socket.io-client'], // Ensure React and socket.io-client are pre-bundled
-      esbuildOptions: {
+    esbuildOptions: {
       define: {
         global: 'globalThis',
       },
@@ -58,14 +58,14 @@ export default defineConfig({
     // Node.js modules (fs, path, crypto) are externalized by sql.js internally
     dedupe: ['react', 'react-dom'], // Ensure single React instance
   },
-    // Handle CommonJS modules
-    build: {
-      cssCodeSplit: false,
-      commonjsOptions: {
-        include: [/sql\.js/, /socket\.io-client/, /node_modules/],
-        transformMixedEsModules: true,
-        esmExternals: true
-      },
+  // Handle CommonJS modules
+  build: {
+    cssCodeSplit: false,
+    commonjsOptions: {
+      include: [/sql\.js/, /socket\.io-client/, /node_modules/],
+      transformMixedEsModules: true,
+      esmExternals: true
+    },
     // Copy icon.ico to dist folder after build
     rollupOptions: {
       onwarn(warning, warn) {
@@ -74,8 +74,67 @@ export default defineConfig({
         warn(warning)
       },
       output: {
-        // Use Vite/Rollup defaults for chunking to avoid any custom split edge cases
-        manualChunks: undefined
+        // PERFORMANCE OPTIMIZATION: Manual chunk splitting for better caching and parallel loading
+        manualChunks: (id) => {
+          // Vendor chunks - separate large dependencies
+          if (id.includes('node_modules')) {
+            // React core
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'vendor-react';
+            }
+            // Charts and visualization
+            if (id.includes('recharts') || id.includes('d3-')) {
+              return 'vendor-charts';
+            }
+            // Socket.io for real-time features
+            if (id.includes('socket.io')) {
+              return 'vendor-socket';
+            }
+            // Database (sql.js)
+            if (id.includes('sql.js')) {
+              return 'vendor-db';
+            }
+            // Everything else
+            return 'vendor-other';
+          }
+
+          // Context providers - lazy load non-critical ones
+          if (id.includes('/context/')) {
+            // Core contexts (always needed)
+            if (id.includes('AppContext') || id.includes('AuthContext')) {
+              return 'contexts-core';
+            }
+            // Shop-related contexts (lazy load)
+            if (id.includes('POSContext') || id.includes('InventoryContext') ||
+              id.includes('AccountingContext') || id.includes('LoyaltyContext')) {
+              return 'contexts-shop';
+            }
+            // Other contexts
+            return 'contexts-other';
+          }
+
+          // Components - split by feature
+          if (id.includes('/components/')) {
+            // Dashboard and core UI
+            if (id.includes('dashboard') || id.includes('layout')) {
+              return 'components-core';
+            }
+            // Shop components
+            if (id.includes('shop/')) {
+              return 'components-shop';
+            }
+            // Rental and project management
+            if (id.includes('rentalManagement') || id.includes('projectManagement')) {
+              return 'components-pm';
+            }
+            // Other components
+            return 'components-other';
+          }
+        },
+        // Optimize chunk size warnings
+        chunkFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]'
       }
     },
     // Increase chunk size warning limit if needed (optional)
@@ -83,7 +142,7 @@ export default defineConfig({
   },
   // Plugin to copy icon.ico to dist after build
   plugins: [
-    react(), 
+    react(),
     suppressSqlJsWarnings(),
     {
       name: 'remove-external-resources',
@@ -106,7 +165,7 @@ export default defineConfig({
           { source: join(process.cwd(), 'icon.svg'), dest: join(process.cwd(), 'dist', 'icon.svg') },
           { source: join(process.cwd(), 'sw.js'), dest: join(process.cwd(), 'dist', 'sw.js') }
         ];
-        
+
         filesToCopy.forEach(({ source, dest }) => {
           if (existsSync(source)) {
             try {

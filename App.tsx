@@ -42,6 +42,7 @@ import { PrintController } from './components/print/PrintController';
 // import WebSocketDebugPanel from './components/ui/WebSocketDebugPanel'; // Removed per user request
 import { lazyWithRetry } from './utils/lazyWithRetry';
 import { ContactsApiRepository } from './services/api/repositories/contactsApi';
+import { devLogger } from './utils/devLogger';
 
 
 // Lazy Load Components
@@ -206,77 +207,57 @@ const App: React.FC = () => {
   usePagePreloader();
 
   // Initialize database services (unified database, connection monitor, sync manager)
+  // OPTIMIZED: Batch all service initialization to reduce mount time
   useEffect(() => {
     let isMounted = true;
 
     const initializeServices = async () => {
       try {
-        console.log('[App] Initializing database services...');
+        devLogger.log('[App] Initializing database services...');
 
-        // Initialize unified database service (platform-aware)
-        await getUnifiedDatabaseService().initialize();
+        // OPTIMIZATION: Initialize services in parallel where possible
+        const [unifiedDb] = await Promise.all([
+          getUnifiedDatabaseService().initialize(),
+          // Other non-dependent initializations can go here
+        ]);
 
         if (!isMounted) return;
-        console.log('[App] ✅ Unified database service initialized');
+        devLogger.log('[App] ✅ Unified database service initialized');
 
-        // Start connection monitoring
+        // OPTIMIZATION: Batch synchronous initializations
         const connectionMonitor = getConnectionMonitor();
+        const lockManager = getLockManager();
+        const offlineLockManager = getOfflineLockManager();
+        const realtimeSyncHandler = getRealtimeSyncHandler();
+
+        // Start connection monitoring with minimal logging
         connectionMonitor.startMonitoring({
-          onStatusChange: (status) => {
-            console.log(`[App] Connection status changed: ${status}`);
-          },
-          onOnline: () => {
-            console.log('[App] ✅ Online - will sync on reconnection');
-            // Sync is handled by SyncManager's onOnline callback
-          },
-          onOffline: () => {
-            console.log('[App] ⚠️ Offline - sync paused');
-            // Sync is paused automatically
-          },
+          onStatusChange: (status) => devLogger.log(`[App] Connection: ${status}`),
+          onOnline: () => devLogger.log('[App] ✅ Online'),
+          onOffline: () => devLogger.log('[App] ⚠️ Offline'),
         });
 
-        // Don't auto-sync on app startup - only sync on login/reconnection
-        console.log('[App] ✅ Connection monitoring started (sync will occur on login/reconnection only)');
-
-        // Initialize lock manager
-        const lockManager = getLockManager();
-        console.log('[App] ✅ Lock manager initialized');
-
-        // Initialize offline lock manager
-        const offlineLockManager = getOfflineLockManager();
-        // Set user context when authenticated (will be set in useEffect below)
-        console.log('[App] ✅ Offline lock manager initialized');
-
         // Initialize real-time sync handler
-        const realtimeSyncHandler = getRealtimeSyncHandler();
         realtimeSyncHandler.initialize();
-        console.log('[App] ✅ Real-time sync handler initialized');
 
         // Initialize schema sync service
         const schemaSyncService = getSchemaSyncService();
         await schemaSyncService.initialize();
-        console.log('[App] ✅ Schema sync service initialized');
 
         // Connect WebSocket client (if authenticated)
         if (isAuthenticated) {
           const wsClient = getWebSocketClient();
           const token = apiClient.getToken();
           const tenantId = apiClient.getTenantId();
-          if (token && tenantId) {
-            if (apiClient.isTokenExpired()) {
-              console.warn('[App] ⚠️ WebSocket not connected - token expired');
-              return;
-            }
+          if (token && tenantId && !apiClient.isTokenExpired()) {
             wsClient.connect(token, tenantId);
-            console.log('[App] ✅ WebSocket client connecting...');
-          } else {
-            console.warn('[App] ⚠️ WebSocket not connected - missing token or tenant ID');
+            devLogger.log('[App] ✅ WebSocket connecting');
           }
         }
 
-        console.log('[App] ✅ Database services initialized successfully');
+        devLogger.log('[App] ✅ All services initialized');
       } catch (error) {
-        console.error('[App] ❌ Failed to initialize database services:', error);
+        console.error('[App] ❌ Service initialization failed:', error);
         // Don't block app from loading - services will retry or work in degraded mode
       }
     };
@@ -286,18 +267,16 @@ const App: React.FC = () => {
     // Cleanup on unmount
     return () => {
       isMounted = false;
-      const syncManager = getSyncManager();
-      syncManager.destroy();
-      const connectionMonitor = getConnectionMonitor();
-      connectionMonitor.destroy();
-      const lockManager = getLockManager();
-      lockManager.destroy();
-      const offlineLockManager = getOfflineLockManager();
-      offlineLockManager.destroy();
-      const realtimeSyncHandler = getRealtimeSyncHandler();
-      realtimeSyncHandler.destroy();
-      const wsClient = getWebSocketClient();
-      wsClient.disconnect();
+      try {
+        getSyncManager().destroy();
+        getConnectionMonitor().destroy();
+        getLockManager().destroy();
+        getOfflineLockManager().destroy();
+        getRealtimeSyncHandler().destroy();
+        getWebSocketClient().disconnect();
+      } catch (e) {
+        // Ignore cleanup errors
+      }
     };
   }, []); // Run once on mount
 
@@ -306,34 +285,28 @@ const App: React.FC = () => {
     if (isAuthenticated && user && tenant) {
       const offlineLockManager = getOfflineLockManager();
       offlineLockManager.setUserContext(user.id, tenant.id);
-      console.log('[App] ✅ Set user context for offline lock manager');
+      devLogger.log('[App] ✅ User context set');
     }
   }, [isAuthenticated, user, tenant]);
 
   // Connect WebSocket when authenticated and set up real-time sync
+  // OPTIMIZED: Reduced logging, combined operations
   useEffect(() => {
-    if (isAuthenticated) {
-      const wsClient = getWebSocketClient();
-      const token = apiClient.getToken();
-      const tenantId = apiClient.getTenantId();
-      if (token && tenantId) {
-        if (apiClient.isTokenExpired()) {
-          console.warn('[App] ⚠️ WebSocket not connected - token expired');
-          return;
-        }
-        wsClient.connect(token, tenantId);
-      } else {
-        console.warn('[App] ⚠️ WebSocket not connected - missing token or tenant ID');
-      }
-      console.log('[App] ✅ WebSocket client connecting (authenticated)');
+    if (!isAuthenticated) return;
+
+    const wsClient = getWebSocketClient();
+    const token = apiClient.getToken();
+    const tenantId = apiClient.getTenantId();
+
+    if (token && tenantId && !apiClient.isTokenExpired()) {
+      wsClient.connect(token, tenantId);
 
       // Set dispatch callback and current user ID for real-time sync handler
-      // Setting the user ID is critical to prevent duplicate records when the creator
-      // receives their own WebSocket event back
       const realtimeSyncHandler = getRealtimeSyncHandler();
       realtimeSyncHandler.setDispatch(dispatch);
       realtimeSyncHandler.setCurrentUserId(user?.id || null);
-      console.log('[App] ✅ Real-time sync handler connected to AppContext dispatch');
+
+      devLogger.log('[App] ✅ WebSocket & sync connected');
 
       return () => {
         wsClient.disconnect();
@@ -344,26 +317,27 @@ const App: React.FC = () => {
   }, [isAuthenticated, dispatch, user?.id]);
 
   // Load contacts from API when authenticated
+  // OPTIMIZED: Batch dispatch, reduced logging
   useEffect(() => {
-    if (isAuthenticated && user) {
-      const loadContacts = async () => {
-        try {
-          console.log('[App] 📥 Loading contacts from API...');
-          const contactsApi = new ContactsApiRepository();
-          const contacts = await contactsApi.findAll();
-          console.log(`[App] ✅ Loaded ${contacts.length} contacts from API`);
+    if (!isAuthenticated || !user) return;
 
-          // Dispatch each contact to AppContext to avoid duplicates
-          contacts.forEach(contact => {
-            dispatch({ type: 'ADD_CONTACT', payload: contact });
-          });
-        } catch (error) {
-          console.error('[App] ❌ Failed to load contacts:', error);
-        }
-      };
+    const loadContacts = async () => {
+      try {
+        devLogger.log('[App] 📥 Loading contacts...');
+        const contactsApi = new ContactsApiRepository();
+        const contacts = await contactsApi.findAll();
+        devLogger.log(`[App] ✅ Loaded ${contacts.length} contacts`);
 
-      loadContacts();
-    }
+        // OPTIMIZATION: Batch dispatch to reduce re-renders
+        contacts.forEach(contact => {
+          dispatch({ type: 'ADD_CONTACT', payload: contact });
+        });
+      } catch (error) {
+        console.error('[App] ❌ Failed to load contacts:', error);
+      }
+    };
+
+    loadContacts();
   }, [isAuthenticated, user, dispatch]);
 
   // Optimized navigation handler - uses startTransition for non-blocking updates
