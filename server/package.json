@@ -18,7 +18,8 @@
     "verify-rental-migration": "tsx scripts/verify-rental-agreements-migration.ts",
     "verify-schema-parity": "tsx scripts/verify-schema-parity.ts",
     "generate-production-upgrade": "tsx scripts/generate-production-upgrade-from-staging.ts",
-    "clean-staging": "tsx scripts/clean-staging-db.ts"
+    "clean-staging": "tsx scripts/clean-staging-db.ts",
+    "generate-diff": "tsx scripts/generate-production-diff.ts"
   },
   "dependencies": {
     "axios": "^1.13.2",
