@@ -1,14 +1,15 @@
 -- PostgreSQL Database Schema for PBooksPro
+-- Consolidated Idempotent Schema
+-- Created: 2026-02-03
 -- Multi-tenant architecture with Row Level Security
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ============================================================================
--- TENANTS & LICENSING
+-- 1. TENANTS & LICENSING
 -- ============================================================================
 
--- Tenants/Clients table
 CREATE TABLE IF NOT EXISTS tenants (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -17,8 +18,6 @@ CREATE TABLE IF NOT EXISTS tenants (
     phone TEXT,
     address TEXT,
     subdomain TEXT UNIQUE,
-    
-    -- License Information
     license_type TEXT NOT NULL DEFAULT 'trial',
     license_status TEXT NOT NULL DEFAULT 'active',
     license_key TEXT UNIQUE,
@@ -27,68 +26,43 @@ CREATE TABLE IF NOT EXISTS tenants (
     license_expiry_date TIMESTAMP,
     last_renewal_date TIMESTAMP,
     next_renewal_date TIMESTAMP,
-    
-    -- Subscription limits
     max_users INTEGER DEFAULT 20,
     max_projects INTEGER DEFAULT 10,
     subscription_tier TEXT DEFAULT 'free',
-    
-    -- Metadata
+    is_supplier BOOLEAN NOT NULL DEFAULT FALSE,
+    tax_id TEXT,
+    payment_terms TEXT,
+    supplier_category TEXT,
+    supplier_status TEXT DEFAULT 'Active',
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    settings JSONB DEFAULT '{}'::jsonb,
-    
-    -- Business profile
-    is_supplier BOOLEAN NOT NULL DEFAULT FALSE,
-    
-    CONSTRAINT valid_license_type CHECK (license_type IN ('trial', 'monthly', 'yearly', 'perpetual')),
-    CONSTRAINT valid_license_status CHECK (license_status IN ('active', 'expired', 'suspended', 'cancelled'))
+    settings JSONB DEFAULT '{}'::jsonb
 );
 
--- License Keys table
+-- Fix-up for existing tenants table
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tenants' AND column_name='is_supplier') THEN
+        ALTER TABLE tenants ADD COLUMN is_supplier BOOLEAN NOT NULL DEFAULT FALSE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tenants' AND column_name='max_users') THEN
+        ALTER TABLE tenants ADD COLUMN max_users INTEGER DEFAULT 20;
+    END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS license_keys (
     id TEXT PRIMARY KEY,
     license_key TEXT UNIQUE NOT NULL,
-    tenant_id TEXT,
+    tenant_id TEXT REFERENCES tenants(id) ON DELETE SET NULL,
     license_type TEXT NOT NULL,
     device_id TEXT,
-    
     issued_date TIMESTAMP NOT NULL DEFAULT NOW(),
     activated_date TIMESTAMP,
     expiry_date TIMESTAMP,
-    
     status TEXT NOT NULL DEFAULT 'pending',
     is_used BOOLEAN NOT NULL DEFAULT FALSE,
-    
-    issued_by TEXT,
-    notes TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE SET NULL,
-    CONSTRAINT valid_license_type CHECK (license_type IN ('monthly', 'yearly', 'perpetual')),
-    CONSTRAINT valid_status CHECK (status IN ('pending', 'active', 'expired', 'revoked'))
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- License History
-CREATE TABLE IF NOT EXISTS license_history (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    license_key_id TEXT,
-    action TEXT NOT NULL,
-    from_status TEXT,
-    to_status TEXT,
-    from_type TEXT,
-    to_type TEXT,
-    payment_id TEXT,
-    performed_by TEXT,
-    notes TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (license_key_id) REFERENCES license_keys(id) ON DELETE SET NULL
-);
-
--- Admin Users table (separate from regular users)
 CREATE TABLE IF NOT EXISTS admin_users (
     id TEXT PRIMARY KEY,
     username TEXT UNIQUE NOT NULL,
@@ -97,13 +71,9 @@ CREATE TABLE IF NOT EXISTS admin_users (
     password TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'admin',
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    last_login TIMESTAMP,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    CONSTRAINT valid_role CHECK (role IN ('super_admin', 'admin'))
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- Schema Migrations table (tracks which migrations have been applied)
 CREATE TABLE IF NOT EXISTS schema_migrations (
     id SERIAL PRIMARY KEY,
     migration_name TEXT NOT NULL UNIQUE,
@@ -112,17 +82,13 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     notes TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_schema_migrations_name ON schema_migrations(migration_name);
-CREATE INDEX IF NOT EXISTS idx_schema_migrations_applied_at ON schema_migrations(applied_at);
-
 -- ============================================================================
--- USERS & AUTHENTICATION
+-- 2. USERS & AUTHENTICATION
 -- ============================================================================
 
--- Users table (tenant-specific)
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     username TEXT NOT NULL,
     name TEXT NOT NULL,
     role TEXT NOT NULL,
@@ -130,1240 +96,421 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     login_status BOOLEAN NOT NULL DEFAULT FALSE,
-    last_login TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     UNIQUE(tenant_id, username)
 );
 
--- Add login_status column if it doesn't exist (for existing databases)
-DO $$ 
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 
-        FROM information_schema.columns 
-        WHERE table_name = 'users' 
-        AND column_name = 'login_status'
-    ) THEN
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='login_status') THEN
         ALTER TABLE users ADD COLUMN login_status BOOLEAN NOT NULL DEFAULT FALSE;
     END IF;
 END $$;
 
--- Create indexes for login_status (for faster queries)
-CREATE INDEX IF NOT EXISTS idx_users_login_status ON users(login_status);
-CREATE INDEX IF NOT EXISTS idx_users_tenant_login_status ON users(tenant_id, login_status);
+CREATE TABLE IF NOT EXISTS user_sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    token TEXT NOT NULL UNIQUE,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    UNIQUE(user_id, tenant_id)
+);
 
 -- ============================================================================
--- FINANCIAL DATA (All with tenant_id)
+-- 3. FINANCIAL CORE
 -- ============================================================================
 
--- Accounts table
 CREATE TABLE IF NOT EXISTS accounts (
     id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     type TEXT NOT NULL,
     balance DECIMAL(15, 2) NOT NULL DEFAULT 0,
     is_permanent BOOLEAN NOT NULL DEFAULT FALSE,
-    description TEXT,
-    parent_account_id TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (parent_account_id) REFERENCES accounts(id) ON DELETE SET NULL
+    parent_account_id TEXT REFERENCES accounts(id) ON DELETE SET NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- Contacts table
 CREATE TABLE IF NOT EXISTS contacts (
     id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     type TEXT NOT NULL,
-    description TEXT,
     contact_no TEXT,
     company_name TEXT,
-    address TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- Categories table
 CREATE TABLE IF NOT EXISTS categories (
     id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     type TEXT NOT NULL,
-    description TEXT,
     is_permanent BOOLEAN NOT NULL DEFAULT FALSE,
     is_rental BOOLEAN NOT NULL DEFAULT FALSE,
-    parent_category_id TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (parent_category_id) REFERENCES categories(id) ON DELETE SET NULL
+    parent_category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- Transactions table
 CREATE TABLE IF NOT EXISTS transactions (
     id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    user_id TEXT,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
     type TEXT NOT NULL,
-    subtype TEXT,
     amount DECIMAL(15, 2) NOT NULL,
     date DATE NOT NULL,
     description TEXT,
-    account_id TEXT NOT NULL,
-    from_account_id TEXT,
-    to_account_id TEXT,
-    category_id TEXT,
-    contact_id TEXT,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
+    category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
+    contact_id TEXT REFERENCES contacts(id) ON DELETE SET NULL,
     project_id TEXT,
-    building_id TEXT,
-    property_id TEXT,
-    unit_id TEXT,
     invoice_id TEXT,
     bill_id TEXT,
-    contract_id TEXT,
-    agreement_id TEXT,
-    batch_id TEXT,
-    is_system BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
-    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
-    FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE SET NULL
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='transactions' AND column_name='user_id') THEN
+        ALTER TABLE transactions ADD COLUMN user_id TEXT REFERENCES users(id);
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS payments (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    amount DECIMAL(15, 2) NOT NULL,
+    status TEXT NOT NULL,
+    module_key TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 -- ============================================================================
--- PROJECTS & PROPERTIES
+-- 4. REAL ESTATE & AGREEMENTS
 -- ============================================================================
 
--- Projects table
 CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
-    description TEXT,
-    color TEXT,
     status TEXT,
-    pm_config JSONB,
-    installment_config JSONB,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- Buildings table
 CREATE TABLE IF NOT EXISTS buildings (
     id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
-    description TEXT,
-    color TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- Properties table
 CREATE TABLE IF NOT EXISTS properties (
     id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
-    owner_id TEXT NOT NULL,
-    building_id TEXT NOT NULL,
-    description TEXT,
-    monthly_service_charge DECIMAL(15, 2),
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (owner_id) REFERENCES contacts(id) ON DELETE RESTRICT,
-    FOREIGN KEY (building_id) REFERENCES buildings(id) ON DELETE RESTRICT
+    owner_id TEXT NOT NULL REFERENCES contacts(id),
+    building_id TEXT NOT NULL REFERENCES buildings(id),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- Units table
 CREATE TABLE IF NOT EXISTS units (
     id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
-    project_id TEXT NOT NULL,
-    contact_id TEXT,
-    sale_price DECIMAL(15, 2),
-    description TEXT,
-    type TEXT,
-    area DECIMAL(15, 2),
-    floor TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-    FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE SET NULL
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    contact_id TEXT REFERENCES contacts(id),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- ============================================================================
--- INVOICES & BILLS
--- ============================================================================
-
--- Invoices table
 CREATE TABLE IF NOT EXISTS invoices (
     id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     invoice_number TEXT NOT NULL,
-    contact_id TEXT NOT NULL,
+    contact_id TEXT NOT NULL REFERENCES contacts(id),
     amount DECIMAL(15, 2) NOT NULL,
     paid_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
     status TEXT NOT NULL,
     issue_date DATE NOT NULL,
     due_date DATE NOT NULL,
     invoice_type TEXT NOT NULL,
-    description TEXT,
-    project_id TEXT,
-    building_id TEXT,
-    property_id TEXT,
-    unit_id TEXT,
-    category_id TEXT,
-    agreement_id TEXT,
-    security_deposit_charge DECIMAL(15, 2),
-    service_charges DECIMAL(15, 2),
-    rental_month TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE RESTRICT,
     UNIQUE(tenant_id, invoice_number)
 );
 
--- Bills table
 CREATE TABLE IF NOT EXISTS bills (
     id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     bill_number TEXT NOT NULL,
-    contact_id TEXT NOT NULL,
+    contact_id TEXT NOT NULL REFERENCES contacts(id),
     amount DECIMAL(15, 2) NOT NULL,
     paid_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'Unpaid',
     issue_date DATE NOT NULL,
-    due_date DATE,
-    description TEXT,
-    category_id TEXT,
-    project_id TEXT,
-    building_id TEXT,
-    property_id TEXT,
-    project_agreement_id TEXT,
-    contract_id TEXT,
-    staff_id TEXT,
-    expense_category_items JSONB,
-    document_path TEXT,
+    bill_version INTEGER DEFAULT 1,
     document_id TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE RESTRICT,
-    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
     UNIQUE(tenant_id, bill_number)
 );
 
--- Budgets table
-CREATE TABLE IF NOT EXISTS budgets (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    category_id TEXT NOT NULL,
-    amount DECIMAL(15, 2) NOT NULL,
-    project_id TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
-);
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='bills' AND column_name='bill_version') THEN
+        ALTER TABLE bills ADD COLUMN bill_version INTEGER DEFAULT 1;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='bills' AND column_name='document_id') THEN
+        ALTER TABLE bills ADD COLUMN document_id TEXT;
+    END IF;
+END $$;
 
--- Rental Agreements table
 CREATE TABLE IF NOT EXISTS rental_agreements (
     id TEXT PRIMARY KEY,
-    org_id TEXT NOT NULL,
+    org_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     agreement_number TEXT NOT NULL,
-    contact_id TEXT NOT NULL,
-    property_id TEXT NOT NULL,
+    contact_id TEXT NOT NULL REFERENCES contacts(id),
+    property_id TEXT NOT NULL REFERENCES properties(id),
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     monthly_rent DECIMAL(15, 2) NOT NULL,
-    rent_due_date INTEGER NOT NULL,
     status TEXT NOT NULL,
-    description TEXT,
-    security_deposit DECIMAL(15, 2),
-    broker_id TEXT,
-    broker_fee DECIMAL(15, 2),
-    owner_id TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (org_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE RESTRICT,
-    FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
-    FOREIGN KEY (broker_id) REFERENCES contacts(id) ON DELETE SET NULL,
-    FOREIGN KEY (owner_id) REFERENCES contacts(id) ON DELETE SET NULL,
     UNIQUE(org_id, agreement_number)
 );
 
--- Project Agreements table
+-- Fix for org_id vs tenant_id in existing agreements
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='rental_agreements' AND column_name='org_id') THEN
+        ALTER TABLE rental_agreements ADD COLUMN org_id TEXT REFERENCES tenants(id);
+        UPDATE rental_agreements SET org_id = tenant_id WHERE org_id IS NULL; -- assuming tenant_id was there
+    END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS project_agreements (
     id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     agreement_number TEXT NOT NULL,
-    client_id TEXT NOT NULL,
-    project_id TEXT NOT NULL,
-    unit_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
-    list_price DECIMAL(15, 2) NOT NULL,
-    customer_discount DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    floor_discount DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    lump_sum_discount DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    misc_discount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    client_id TEXT NOT NULL REFERENCES contacts(id),
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     selling_price DECIMAL(15, 2) NOT NULL,
-    rebate_amount DECIMAL(15, 2),
-    rebate_broker_id TEXT,
-    issue_date DATE NOT NULL,
-    description TEXT,
     status TEXT NOT NULL,
-    cancellation_details JSONB,
-    list_price_category_id TEXT,
-    customer_discount_category_id TEXT,
-    floor_discount_category_id TEXT,
-    lump_sum_discount_category_id TEXT,
-    misc_discount_category_id TEXT,
-    selling_price_category_id TEXT,
-    rebate_category_id TEXT,
     installment_plan JSONB,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (client_id) REFERENCES contacts(id) ON DELETE RESTRICT,
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-    FOREIGN KEY (rebate_broker_id) REFERENCES contacts(id) ON DELETE SET NULL,
     UNIQUE(tenant_id, agreement_number)
 );
 
--- Plan Amenities table (configurable amenities for installment plans)
-CREATE TABLE IF NOT EXISTS plan_amenities (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    price DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    is_percentage BOOLEAN NOT NULL DEFAULT FALSE,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    description TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_plan_amenities_tenant ON plan_amenities(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_plan_amenities_active ON plan_amenities(tenant_id, is_active);
-
--- Installment Plans table
 CREATE TABLE IF NOT EXISTS installment_plans (
     id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    user_id TEXT,
-    project_id TEXT NOT NULL,
-    lead_id TEXT NOT NULL,
-    unit_id TEXT NOT NULL,
-    duration_years INTEGER NOT NULL,
-    down_payment_percentage DECIMAL(5, 2) NOT NULL,
-    frequency TEXT NOT NULL,
-    list_price DECIMAL(15, 2) NOT NULL,
-    customer_discount DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    floor_discount DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    lump_sum_discount DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    misc_discount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    lead_id TEXT NOT NULL REFERENCES contacts(id),
+    unit_id TEXT NOT NULL REFERENCES units(id) ON DELETE CASCADE,
     net_value DECIMAL(15, 2) NOT NULL,
-    down_payment_amount DECIMAL(15, 2) NOT NULL,
-    installment_amount DECIMAL(15, 2) NOT NULL,
-    total_installments INTEGER NOT NULL,
-    description TEXT,
-    intro_text TEXT,
-    version INTEGER NOT NULL DEFAULT 1,
-    root_id TEXT,
-    status TEXT NOT NULL DEFAULT 'Draft' CHECK (status IN ('Draft', 'Pending Approval', 'Approved', 'Rejected', 'Locked', 'Sale Recognized')),
-    approval_requested_by TEXT,
-    approval_requested_to TEXT,
-    approval_requested_at TEXT,
-    approval_reviewed_by TEXT,
-    approval_reviewed_at TEXT,
-    discounts JSONB DEFAULT '[]'::jsonb,
-    -- Discount category mappings (links to expense categories)
-    customer_discount_category_id TEXT,
-    floor_discount_category_id TEXT,
-    lump_sum_discount_category_id TEXT,
-    misc_discount_category_id TEXT,
-    -- Selected amenities
-    selected_amenities JSONB DEFAULT '[]'::jsonb,
-    amenities_total DECIMAL(15, 2) DEFAULT 0,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-    FOREIGN KEY (lead_id) REFERENCES contacts(id) ON DELETE RESTRICT,
-    FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE CASCADE
+    status TEXT NOT NULL DEFAULT 'Draft',
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- Sales Returns table
-CREATE TABLE IF NOT EXISTS sales_returns (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    return_number TEXT NOT NULL,
-    agreement_id TEXT NOT NULL,
-    return_date DATE NOT NULL,
-    reason TEXT NOT NULL,
-    reason_notes TEXT,
-    penalty_percentage DECIMAL(5, 2) NOT NULL DEFAULT 0,
-    penalty_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    refund_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    status TEXT NOT NULL,
-    processed_date TIMESTAMP,
-    refunded_date TIMESTAMP,
-    refund_bill_id TEXT,
-    created_by TEXT,
-    notes TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (agreement_id) REFERENCES project_agreements(id) ON DELETE RESTRICT,
-    FOREIGN KEY (refund_bill_id) REFERENCES bills(id) ON DELETE SET NULL,
-    UNIQUE(tenant_id, return_number)
-);
-
--- Contracts table
 CREATE TABLE IF NOT EXISTS contracts (
     id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     contract_number TEXT NOT NULL,
     name TEXT NOT NULL,
-    project_id TEXT NOT NULL,
-    vendor_id TEXT NOT NULL,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    vendor_id TEXT NOT NULL REFERENCES contacts(id),
     total_amount DECIMAL(15, 2) NOT NULL,
-    area DECIMAL(15, 2),
-    rate DECIMAL(15, 2),
-    start_date DATE NOT NULL,
-    end_date DATE NOT NULL,
     status TEXT NOT NULL,
-    category_ids JSONB DEFAULT '[]'::jsonb,
-    expense_category_items JSONB,
-    terms_and_conditions TEXT,
-    payment_terms TEXT,
-    description TEXT,
-    document_path TEXT,
-    document_id TEXT,
+    user_id TEXT REFERENCES users(id),
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-    FOREIGN KEY (vendor_id) REFERENCES contacts(id) ON DELETE RESTRICT,
     UNIQUE(tenant_id, contract_number)
 );
 
--- ============================================================================
--- ADDITIONAL ENTITIES (Previously Local-Only)
--- ============================================================================
-
--- Quotations table
-CREATE TABLE IF NOT EXISTS quotations (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    user_id TEXT,
-    vendor_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    date DATE NOT NULL,
-    items JSONB NOT NULL,
-    document_id TEXT,
-    total_amount DECIMAL(15, 2) NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-    FOREIGN KEY (vendor_id) REFERENCES contacts(id) ON DELETE RESTRICT
-);
-
--- Documents table
-CREATE TABLE IF NOT EXISTS documents (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    user_id TEXT,
-    name TEXT NOT NULL,
-    type TEXT NOT NULL,
-    entity_id TEXT NOT NULL,
-    entity_type TEXT NOT NULL,
-    file_data TEXT NOT NULL,
-    file_name TEXT NOT NULL,
-    file_size INTEGER NOT NULL,
-    mime_type TEXT NOT NULL,
-    uploaded_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
-);
-
-
--- Recurring Invoice Templates table
-CREATE TABLE IF NOT EXISTS recurring_invoice_templates (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    user_id TEXT,
-    contact_id TEXT NOT NULL,
-    property_id TEXT NOT NULL,
-    building_id TEXT NOT NULL,
-    amount DECIMAL(15, 2) NOT NULL,
-    description_template TEXT NOT NULL,
-    day_of_month INTEGER NOT NULL,
-    next_due_date DATE NOT NULL,
-    active BOOLEAN NOT NULL DEFAULT TRUE,
-    agreement_id TEXT,
-    frequency TEXT,
-    auto_generate BOOLEAN NOT NULL DEFAULT FALSE,
-    max_occurrences INTEGER,
-    generated_count INTEGER NOT NULL DEFAULT 0,
-    last_generated_date DATE,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-    FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE,
-    FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
-    FOREIGN KEY (building_id) REFERENCES buildings(id) ON DELETE CASCADE
-);
-
--- Transaction Log table (audit log - already exists but ensure user_id is present)
--- Note: Already exists above, but ensuring it has proper structure
-
--- Error Log table (tenant-specific)
-CREATE TABLE IF NOT EXISTS error_log (
-    id SERIAL PRIMARY KEY,
-    tenant_id TEXT,
-    user_id TEXT,
-    message TEXT NOT NULL,
-    stack TEXT,
-    component_stack TEXT,
-    timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
-);
-
--- App Settings table (tenant-specific key-value store)
-CREATE TABLE IF NOT EXISTS app_settings (
-    key TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    user_id TEXT,
-    value JSONB NOT NULL,
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-    UNIQUE(tenant_id, key)
-);
-
--- License Settings table (tenant-specific)
-CREATE TABLE IF NOT EXISTS license_settings (
-    key TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    value TEXT NOT NULL,
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    UNIQUE(tenant_id, key)
-);
-
--- Note: Chat Messages table remains local-only (not synced to cloud)
-
--- PM Cycle Allocations table (tracks PM fee allocations per cycle)
-CREATE TABLE IF NOT EXISTS pm_cycle_allocations (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    user_id TEXT,
-    project_id TEXT NOT NULL,
-    cycle_id TEXT NOT NULL,
-    cycle_label TEXT NOT NULL,
-    frequency TEXT NOT NULL,
-    start_date DATE NOT NULL,
-    end_date DATE NOT NULL,
-    allocation_date DATE NOT NULL,
-    amount DECIMAL(15, 2) NOT NULL,
-    paid_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'unpaid',
-    bill_id TEXT,
-    description TEXT,
-    expense_total DECIMAL(15, 2) NOT NULL DEFAULT 0,
-    fee_rate DECIMAL(5, 2) NOT NULL,
-    excluded_category_ids JSONB DEFAULT '[]'::jsonb,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-    FOREIGN KEY (bill_id) REFERENCES bills(id) ON DELETE SET NULL,
-    UNIQUE(tenant_id, project_id, cycle_id)
-);
-
--- ============================================================================
--- INDEXES FOR PERFORMANCE
--- ============================================================================
-
--- Tenant indexes
-CREATE INDEX IF NOT EXISTS idx_users_tenant_id ON users(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_accounts_tenant_id ON accounts(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_contacts_tenant_id ON contacts(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_categories_tenant_id ON categories(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_tenant_id ON transactions(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_projects_tenant_id ON projects(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_buildings_tenant_id ON buildings(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_properties_tenant_id ON properties(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_units_tenant_id ON units(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_invoices_tenant_id ON invoices(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_bills_tenant_id ON bills(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_budgets_tenant_id ON budgets(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_rental_agreements_org_id ON rental_agreements(org_id);
-CREATE INDEX IF NOT EXISTS idx_rental_agreements_contact_id ON rental_agreements(contact_id);
-CREATE INDEX IF NOT EXISTS idx_project_agreements_tenant_id ON project_agreements(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_sales_returns_tenant_id ON sales_returns(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_sales_returns_agreement_id ON sales_returns(agreement_id);
-CREATE INDEX IF NOT EXISTS idx_contracts_tenant_id ON contracts(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_quotations_tenant_id ON quotations(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_quotations_user_id ON quotations(user_id);
-CREATE INDEX IF NOT EXISTS idx_quotations_vendor_id ON quotations(vendor_id);
-CREATE INDEX IF NOT EXISTS idx_documents_tenant_id ON documents(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);
-CREATE INDEX IF NOT EXISTS idx_documents_entity ON documents(entity_type, entity_id);
-CREATE INDEX IF NOT EXISTS idx_recurring_invoice_templates_tenant_id ON recurring_invoice_templates(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_error_log_tenant_id ON error_log(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_app_settings_tenant_id ON app_settings(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_license_settings_tenant_id ON license_settings(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_tenant_id ON pm_cycle_allocations(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_project_id ON pm_cycle_allocations(project_id);
-CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_cycle_id ON pm_cycle_allocations(cycle_id);
-CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_user_id ON pm_cycle_allocations(user_id);
-
--- Transaction Audit Log table
-CREATE TABLE IF NOT EXISTS transaction_audit_log (
-    id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    transaction_id TEXT,
-    user_id TEXT, -- Nullable to allow user deletion while preserving audit trail (user_name and user_role remain)
-    user_name TEXT NOT NULL,
-    user_role TEXT NOT NULL,
-    action TEXT NOT NULL, -- 'CREATE', 'UPDATE', 'DELETE', 'VIEW'
-    transaction_type TEXT,
-    amount DECIMAL(15, 2),
-    description TEXT,
-    old_values JSONB,
-    new_values JSONB,
-    ip_address TEXT,
-    user_agent TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
-);
-
--- User Sessions table (to prevent duplicate logins)
-CREATE TABLE IF NOT EXISTS user_sessions (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    tenant_id TEXT NOT NULL,
-    token TEXT NOT NULL UNIQUE,
-    ip_address TEXT,
-    user_agent TEXT,
-    expires_at TIMESTAMP NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    last_activity TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
-);
-
--- Enforce ONE active session row per (user_id, tenant_id)
--- If older duplicates exist from previous versions, keep the newest and delete the rest.
--- This makes it safe to add a UNIQUE index for single-session enforcement.
--- Only run this cleanup if the table exists and has data
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'user_sessions') THEN
-    DELETE FROM user_sessions a
-    USING user_sessions b
-    WHERE a.user_id = b.user_id
-      AND a.tenant_id = b.tenant_id
-      AND (
-        a.created_at < b.created_at
-        OR (a.created_at = b.created_at AND a.id < b.id)
-      );
-  END IF;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='contracts' AND column_name='user_id') THEN
+        ALTER TABLE contracts ADD COLUMN user_id TEXT REFERENCES users(id);
+    END IF;
 END $$;
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_user_sessions_user_tenant ON user_sessions(user_id, tenant_id);
-
--- Transaction indexes
-CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
-CREATE INDEX IF NOT EXISTS idx_transactions_project_id ON transactions(project_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type);
-CREATE INDEX IF NOT EXISTS idx_transactions_account_id ON transactions(account_id);
-
--- Audit log indexes
-CREATE INDEX IF NOT EXISTS idx_transaction_audit_log_tenant_id ON transaction_audit_log(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_transaction_audit_log_user_id ON transaction_audit_log(user_id);
-CREATE INDEX IF NOT EXISTS idx_transaction_audit_log_transaction_id ON transaction_audit_log(transaction_id);
-CREATE INDEX IF NOT EXISTS idx_transaction_audit_log_created_at ON transaction_audit_log(created_at);
-
--- Session indexes
-CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_sessions_tenant_id ON user_sessions(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token);
-CREATE INDEX IF NOT EXISTS idx_user_sessions_expires_at ON user_sessions(expires_at);
-
--- License indexes
-CREATE INDEX IF NOT EXISTS idx_license_keys_tenant_id ON license_keys(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_license_keys_status ON license_keys(status);
-CREATE INDEX IF NOT EXISTS idx_license_history_tenant_id ON license_history(tenant_id);
-
 -- ============================================================================
--- ROW LEVEL SECURITY (RLS)
+-- 5. INVENTORY & SUPPLY CHAIN
 -- ============================================================================
 
--- Enable RLS on all tenant tables
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
-ALTER TABLE buildings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE properties ENABLE ROW LEVEL SECURITY;
-ALTER TABLE units ENABLE ROW LEVEL SECURITY;
-ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
-ALTER TABLE bills ENABLE ROW LEVEL SECURITY;
-ALTER TABLE budgets ENABLE ROW LEVEL SECURITY;
-ALTER TABLE rental_agreements ENABLE ROW LEVEL SECURITY;
-ALTER TABLE project_agreements ENABLE ROW LEVEL SECURITY;
-ALTER TABLE contracts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE quotations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
-ALTER TABLE recurring_invoice_templates ENABLE ROW LEVEL SECURITY;
-ALTER TABLE error_log ENABLE ROW LEVEL SECURITY;
-ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE license_settings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pm_cycle_allocations ENABLE ROW LEVEL SECURITY;
+CREATE TABLE IF NOT EXISTS inventory_batches (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    inventory_item_id TEXT NOT NULL,
+    batch_number TEXT NOT NULL,
+    quantity DECIMAL(15, 3) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
 
--- Function to get current tenant ID
-CREATE OR REPLACE FUNCTION get_current_tenant_id() 
-RETURNS TEXT AS $$
+-- ============================================================================
+-- 6. INVESTMENTS
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS investments (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    investor_account_id TEXT NOT NULL REFERENCES accounts(id),
+    status TEXT NOT NULL DEFAULT 'Active',
+    principal_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================================
+-- 7. PROCUREMENT & P2P
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS purchase_orders (
+    id TEXT PRIMARY KEY,
+    po_number TEXT NOT NULL UNIQUE,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    buyer_tenant_id TEXT NOT NULL REFERENCES tenants(id),
+    supplier_tenant_id TEXT NOT NULL REFERENCES tenants(id),
+    total_amount DECIMAL(15, 2) NOT NULL,
+    status TEXT NOT NULL DEFAULT 'DRAFT',
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS p2p_invoices (
+    id TEXT PRIMARY KEY,
+    invoice_number TEXT NOT NULL UNIQUE,
+    po_id TEXT NOT NULL REFERENCES purchase_orders(id),
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    amount DECIMAL(15, 2) NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================================
+-- 8. TASKS MODULE
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    title TEXT NOT NULL DEFAULT '',
+    description TEXT,
+    status TEXT NOT NULL DEFAULT 'Not Started',
+    assigned_to_id TEXT REFERENCES users(id),
+    user_id TEXT REFERENCES users(id),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================================
+-- 9. SHOP & POS MODULE
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS shop_branches (
+    id TEXT PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    code TEXT NOT NULL,
+    UNIQUE(tenant_id, code)
+);
+
+CREATE TABLE IF NOT EXISTS shop_products (
+    id TEXT PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    sku TEXT NOT NULL,
+    retail_price DECIMAL(15, 2) DEFAULT 0,
+    UNIQUE(tenant_id, sku)
+);
+
+CREATE TABLE IF NOT EXISTS shop_sales (
+    id TEXT PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    sale_number TEXT NOT NULL,
+    grand_total DECIMAL(15, 2) NOT NULL,
+    status TEXT NOT NULL DEFAULT 'Completed',
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    UNIQUE(tenant_id, sale_number)
+);
+
+-- ============================================================================
+-- 10. PAYROLL MODULE
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS payroll_employees (
+    id TEXT PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    employee_code VARCHAR(50),
+    designation VARCHAR(255) NOT NULL,
+    status VARCHAR(20) DEFAULT 'ACTIVE',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================================================
+-- 11. SYSTEMS & MODULES
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS tenant_modules (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    module_key TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    UNIQUE(tenant_id, module_key)
+);
+
+CREATE TABLE IF NOT EXISTS marketplace_categories (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    icon TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS whatsapp_configs (
+    id TEXT PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    api_key TEXT NOT NULL,
+    phone_number_id TEXT NOT NULL,
+    UNIQUE(tenant_id)
+);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT NOT NULL,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    value JSONB NOT NULL,
+    PRIMARY KEY (tenant_id, key)
+);
+
+-- ============================================================================
+-- 12. ROW LEVEL SECURITY
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION get_current_tenant_id() RETURNS TEXT AS $$
     SELECT current_setting('app.current_tenant_id', TRUE);
 $$ LANGUAGE sql STABLE;
 
--- Function to get current user ID
-CREATE OR REPLACE FUNCTION get_current_user_id() 
-RETURNS TEXT AS $$
-    SELECT current_setting('app.current_user_id', TRUE);
-$$ LANGUAGE sql STABLE;
+DO $$
+DECLARE
+    t RECORD;
+BEGIN
+    FOR t IN 
+        SELECT table_name FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name NOT IN ('tenants', 'schema_migrations', 'admin_users', 'marketplace_categories')
+    LOOP
+        EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t.table_name);
+        EXECUTE format('DROP POLICY IF EXISTS tenant_isolation ON %I', t.table_name);
+        
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = t.table_name AND column_name = 'tenant_id') THEN
+            EXECUTE format('CREATE POLICY tenant_isolation ON %I FOR ALL USING (tenant_id = get_current_tenant_id()) WITH CHECK (tenant_id = get_current_tenant_id())', t.table_name);
+        ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = t.table_name AND column_name = 'org_id') THEN
+            EXECUTE format('CREATE POLICY tenant_isolation ON %I FOR ALL USING (org_id = get_current_tenant_id()) WITH CHECK (org_id = get_current_tenant_id())', t.table_name);
+        END IF;
+    END LOOP;
+END $$;
 
--- RLS Policies
--- Drop existing policies if they exist, then create them
-DROP POLICY IF EXISTS tenant_isolation_users ON users;
-CREATE POLICY tenant_isolation_users ON users
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
+-- ============================================================================
+-- 13. SEEDING
+-- ============================================================================
 
-DROP POLICY IF EXISTS tenant_isolation_accounts ON accounts;
-CREATE POLICY tenant_isolation_accounts ON accounts
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
-
-DROP POLICY IF EXISTS tenant_isolation_contacts ON contacts;
-CREATE POLICY tenant_isolation_contacts ON contacts
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
-
-DROP POLICY IF EXISTS tenant_isolation_categories ON categories;
-CREATE POLICY tenant_isolation_categories ON categories
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
-
-DROP POLICY IF EXISTS tenant_isolation_transactions ON transactions;
-CREATE POLICY tenant_isolation_transactions ON transactions
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
-
-DROP POLICY IF EXISTS tenant_isolation_projects ON projects;
-CREATE POLICY tenant_isolation_projects ON projects
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
-
-DROP POLICY IF EXISTS tenant_isolation_buildings ON buildings;
-CREATE POLICY tenant_isolation_buildings ON buildings
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
-
-DROP POLICY IF EXISTS tenant_isolation_properties ON properties;
-CREATE POLICY tenant_isolation_properties ON properties
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
-
-DROP POLICY IF EXISTS tenant_isolation_units ON units;
-CREATE POLICY tenant_isolation_units ON units
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
-
-DROP POLICY IF EXISTS tenant_isolation_invoices ON invoices;
-CREATE POLICY tenant_isolation_invoices ON invoices
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
-
-DROP POLICY IF EXISTS tenant_isolation_bills ON bills;
-CREATE POLICY tenant_isolation_bills ON bills
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
-
-DROP POLICY IF EXISTS tenant_isolation_budgets ON budgets;
-CREATE POLICY tenant_isolation_budgets ON budgets
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
-
-DROP POLICY IF EXISTS tenant_isolation_rental_agreements ON rental_agreements;
-CREATE POLICY tenant_isolation_rental_agreements ON rental_agreements
-    FOR ALL
-    USING (org_id = get_current_tenant_id())
-    WITH CHECK (org_id = get_current_tenant_id());
-
-DROP POLICY IF EXISTS tenant_isolation_project_agreements ON project_agreements;
-CREATE POLICY tenant_isolation_project_agreements ON project_agreements
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
-
-DROP POLICY IF EXISTS tenant_isolation_contracts ON contracts;
-CREATE POLICY tenant_isolation_contracts ON contracts
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
-
-DROP POLICY IF EXISTS tenant_isolation_quotations ON quotations;
-CREATE POLICY tenant_isolation_quotations ON quotations
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
-
-DROP POLICY IF EXISTS tenant_isolation_documents ON documents;
-CREATE POLICY tenant_isolation_documents ON documents
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
-
-
-DROP POLICY IF EXISTS tenant_isolation_recurring_invoice_templates ON recurring_invoice_templates;
-CREATE POLICY tenant_isolation_recurring_invoice_templates ON recurring_invoice_templates
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
-
-DROP POLICY IF EXISTS tenant_isolation_error_log ON error_log;
-CREATE POLICY tenant_isolation_error_log ON error_log
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
-
-DROP POLICY IF EXISTS tenant_isolation_error_log ON error_log;
-CREATE POLICY tenant_isolation_error_log ON error_log
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id() OR tenant_id IS NULL)
-    WITH CHECK (tenant_id = get_current_tenant_id() OR tenant_id IS NULL);
-
-DROP POLICY IF EXISTS tenant_isolation_app_settings ON app_settings;
-CREATE POLICY tenant_isolation_app_settings ON app_settings
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
-
-DROP POLICY IF EXISTS tenant_isolation_license_settings ON license_settings;
-CREATE POLICY tenant_isolation_license_settings ON license_settings
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
-
-DROP POLICY IF EXISTS tenant_isolation_pm_cycle_allocations ON pm_cycle_allocations;
-CREATE POLICY tenant_isolation_pm_cycle_allocations ON pm_cycle_allocations
-    FOR ALL
-    USING (tenant_id = get_current_tenant_id())
-    WITH CHECK (tenant_id = get_current_tenant_id());
-
-
-
-
-
- 
- - -   M i g r a t i o n :   A d d   S h o p   &   P O S   T a b l e s 
- 
- - -   E n t e r p r i s e   R e t a i l   S u i t e   f o r   P B o o k s P r o 
- 
- 
- 
- - -   1 .   B r a n c h e s   &   S t o r e s 
- 
- C R E A T E   T A B L E   I F   N O T   E X I S T S   s h o p _ b r a n c h e s   ( 
- 
-         i d   T E X T   P R I M A R Y   K E Y   D E F A U L T   u u i d _ g e n e r a t e _ v 4 ( ) , 
- 
-         t e n a n t _ i d   T E X T   N O T   N U L L   R E F E R E N C E S   t e n a n t s ( i d )   O N   D E L E T E   C A S C A D E , 
- 
-         n a m e   T E X T   N O T   N U L L , 
- 
-         c o d e   T E X T   N O T   N U L L , 
- 
-         t y p e   T E X T   N O T   N U L L   D E F A U L T   ' F l a g s h i p ' , 
- 
-         s t a t u s   T E X T   N O T   N U L L   D E F A U L T   ' A c t i v e ' , 
- 
-         l o c a t i o n   T E X T , 
- 
-         r e g i o n   T E X T , 
- 
-         m a n a g e r _ n a m e   T E X T , 
- 
-         c o n t a c t _ n o   T E X T , 
- 
-         t i m e z o n e   T E X T   D E F A U L T   ' G M T + 5 ' , 
- 
-         o p e n _ t i m e   T I M E , 
- 
-         c l o s e _ t i m e   T I M E , 
- 
-         c r e a t e d _ a t   T I M E S T A M P   N O T   N U L L   D E F A U L T   N O W ( ) , 
- 
-         u p d a t e d _ a t   T I M E S T A M P   N O T   N U L L   D E F A U L T   N O W ( ) , 
- 
-         U N I Q U E ( t e n a n t _ i d ,   c o d e ) 
- 
- ) ; 
- 
- 
- 
- - -   2 .   P O S   T e r m i n a l s 
- 
- C R E A T E   T A B L E   I F   N O T   E X I S T S   s h o p _ t e r m i n a l s   ( 
- 
-         i d   T E X T   P R I M A R Y   K E Y   D E F A U L T   u u i d _ g e n e r a t e _ v 4 ( ) , 
- 
-         t e n a n t _ i d   T E X T   N O T   N U L L   R E F E R E N C E S   t e n a n t s ( i d )   O N   D E L E T E   C A S C A D E , 
- 
-         b r a n c h _ i d   T E X T   N O T   N U L L   R E F E R E N C E S   s h o p _ b r a n c h e s ( i d )   O N   D E L E T E   C A S C A D E , 
- 
-         n a m e   T E X T   N O T   N U L L , 
- 
-         c o d e   T E X T   N O T   N U L L , 
- 
-         s t a t u s   T E X T   N O T   N U L L   D E F A U L T   ' O n l i n e ' , 
- 
-         v e r s i o n   T E X T , 
- 
-         l a s t _ s y n c   T I M E S T A M P , 
- 
-         i p _ a d d r e s s   T E X T , 
- 
-         h e a l t h _ s c o r e   I N T E G E R   D E F A U L T   1 0 0 , 
- 
-         c r e a t e d _ a t   T I M E S T A M P   N O T   N U L L   D E F A U L T   N O W ( ) , 
- 
-         u p d a t e d _ a t   T I M E S T A M P   N O T   N U L L   D E F A U L T   N O W ( ) , 
- 
-         U N I Q U E ( t e n a n t _ i d ,   c o d e ) 
- 
- ) ; 
- 
- 
- 
- - -   3 .   W a r e h o u s e s 
- 
- C R E A T E   T A B L E   I F   N O T   E X I S T S   s h o p _ w a r e h o u s e s   ( 
- 
-         i d   T E X T   P R I M A R Y   K E Y   D E F A U L T   u u i d _ g e n e r a t e _ v 4 ( ) , 
- 
-         t e n a n t _ i d   T E X T   N O T   N U L L   R E F E R E N C E S   t e n a n t s ( i d )   O N   D E L E T E   C A S C A D E , 
- 
-         n a m e   T E X T   N O T   N U L L , 
- 
-         c o d e   T E X T   N O T   N U L L , 
- 
-         l o c a t i o n   T E X T , 
- 
-         i s _ a c t i v e   B O O L E A N   D E F A U L T   T R U E , 
- 
-         c r e a t e d _ a t   T I M E S T A M P   N O T   N U L L   D E F A U L T   N O W ( ) , 
- 
-         u p d a t e d _ a t   T I M E S T A M P   N O T   N U L L   D E F A U L T   N O W ( ) , 
- 
-         U N I Q U E ( t e n a n t _ i d ,   c o d e ) 
- 
- ) ; 
- 
- 
- 
- - -   4 .   S h o p   P r o d u c t s   ( E x t e n d s   o r   r e p l a c e s   b a s e   p r o d u c t s   i f   n e e d e d ,   b u t   l e t ' s   k e e p   i t   d e d i c a t e d   f o r   r e t a i l ) 
- 
- C R E A T E   T A B L E   I F   N O T   E X I S T S   s h o p _ p r o d u c t s   ( 
- 
-         i d   T E X T   P R I M A R Y   K E Y   D E F A U L T   u u i d _ g e n e r a t e _ v 4 ( ) , 
- 
-         t e n a n t _ i d   T E X T   N O T   N U L L   R E F E R E N C E S   t e n a n t s ( i d )   O N   D E L E T E   C A S C A D E , 
- 
-         n a m e   T E X T   N O T   N U L L , 
- 
-         s k u   T E X T   N O T   N U L L , 
- 
-         b a r c o d e   T E X T , 
- 
-         c a t e g o r y _ i d   T E X T   R E F E R E N C E S   c a t e g o r i e s ( i d )   O N   D E L E T E   S E T   N U L L , 
- 
-         u n i t   T E X T   D E F A U L T   ' p c s ' , 
- 
-         c o s t _ p r i c e   D E C I M A L ( 1 5 ,   2 )   D E F A U L T   0 , 
- 
-         r e t a i l _ p r i c e   D E C I M A L ( 1 5 ,   2 )   D E F A U L T   0 , 
- 
-         t a x _ r a t e   D E C I M A L ( 5 ,   2 )   D E F A U L T   0 , 
- 
-         r e o r d e r _ p o i n t   I N T E G E R   D E F A U L T   1 0 , 
- 
-         i m a g e _ u r l   T E X T , 
- 
-         i s _ a c t i v e   B O O L E A N   D E F A U L T   T R U E , 
- 
-         c r e a t e d _ a t   T I M E S T A M P   N O T   N U L L   D E F A U L T   N O W ( ) , 
- 
-         u p d a t e d _ a t   T I M E S T A M P   N O T   N U L L   D E F A U L T   N O W ( ) , 
- 
-         U N I Q U E ( t e n a n t _ i d ,   s k u ) 
- 
- ) ; 
- 
- 
- 
- - -   5 .   I n v e n t o r y   S t o c k   ( P e r   W a r e h o u s e ) 
- 
- C R E A T E   T A B L E   I F   N O T   E X I S T S   s h o p _ i n v e n t o r y   ( 
- 
-         i d   T E X T   P R I M A R Y   K E Y   D E F A U L T   u u i d _ g e n e r a t e _ v 4 ( ) , 
- 
-         t e n a n t _ i d   T E X T   N O T   N U L L   R E F E R E N C E S   t e n a n t s ( i d )   O N   D E L E T E   C A S C A D E , 
- 
-         p r o d u c t _ i d   T E X T   N O T   N U L L   R E F E R E N C E S   s h o p _ p r o d u c t s ( i d )   O N   D E L E T E   C A S C A D E , 
- 
-         w a r e h o u s e _ i d   T E X T   N O T   N U L L   R E F E R E N C E S   s h o p _ w a r e h o u s e s ( i d )   O N   D E L E T E   C A S C A D E , 
- 
-         q u a n t i t y _ o n _ h a n d   D E C I M A L ( 1 5 ,   2 )   D E F A U L T   0 , 
- 
-         q u a n t i t y _ r e s e r v e d   D E C I M A L ( 1 5 ,   2 )   D E F A U L T   0 , 
- 
-         c r e a t e d _ a t   T I M E S T A M P   N O T   N U L L   D E F A U L T   N O W ( ) , 
- 
-         u p d a t e d _ a t   T I M E S T A M P   N O T   N U L L   D E F A U L T   N O W ( ) , 
- 
-         U N I Q U E ( t e n a n t _ i d ,   p r o d u c t _ i d ,   w a r e h o u s e _ i d ) 
- 
- ) ; 
- 
- 
- 
- - -   6 .   L o y a l t y   M e m b e r s 
- 
- C R E A T E   T A B L E   I F   N O T   E X I S T S   s h o p _ l o y a l t y _ m e m b e r s   ( 
- 
-         i d   T E X T   P R I M A R Y   K E Y   D E F A U L T   u u i d _ g e n e r a t e _ v 4 ( ) , 
- 
-         t e n a n t _ i d   T E X T   N O T   N U L L   R E F E R E N C E S   t e n a n t s ( i d )   O N   D E L E T E   C A S C A D E , 
- 
-         c u s t o m e r _ i d   T E X T   N O T   N U L L   R E F E R E N C E S   c o n t a c t s ( i d )   O N   D E L E T E   C A S C A D E , 
- 
-         c a r d _ n u m b e r   T E X T   N O T   N U L L , 
- 
-         t i e r   T E X T   N O T   N U L L   D E F A U L T   ' S i l v e r ' , 
- 
-         p o i n t s _ b a l a n c e   I N T E G E R   D E F A U L T   0 , 
- 
-         l i f e t i m e _ p o i n t s   I N T E G E R   D E F A U L T   0 , 
- 
-         t o t a l _ s p e n d   D E C I M A L ( 1 5 ,   2 )   D E F A U L T   0 , 
- 
-         v i s i t _ c o u n t   I N T E G E R   D E F A U L T   0 , 
- 
-         s t a t u s   T E X T   N O T   N U L L   D E F A U L T   ' A c t i v e ' , 
- 
-         j o i n e d _ a t   T I M E S T A M P   N O T   N U L L   D E F A U L T   N O W ( ) , 
- 
-         c r e a t e d _ a t   T I M E S T A M P   N O T   N U L L   D E F A U L T   N O W ( ) , 
- 
-         u p d a t e d _ a t   T I M E S T A M P   N O T   N U L L   D E F A U L T   N O W ( ) , 
- 
-         U N I Q U E ( t e n a n t _ i d ,   c a r d _ n u m b e r ) , 
- 
-         U N I Q U E ( t e n a n t _ i d ,   c u s t o m e r _ i d ) 
- 
- ) ; 
- 
- 
- 
- - -   7 .   P O S   S a l e s   ( M a s t e r ) 
- 
- C R E A T E   T A B L E   I F   N O T   E X I S T S   s h o p _ s a l e s   ( 
- 
-         i d   T E X T   P R I M A R Y   K E Y   D E F A U L T   u u i d _ g e n e r a t e _ v 4 ( ) , 
- 
-         t e n a n t _ i d   T E X T   N O T   N U L L   R E F E R E N C E S   t e n a n t s ( i d )   O N   D E L E T E   C A S C A D E , 
- 
-         b r a n c h _ i d   T E X T   R E F E R E N C E S   s h o p _ b r a n c h e s ( i d ) , 
- 
-         t e r m i n a l _ i d   T E X T   R E F E R E N C E S   s h o p _ t e r m i n a l s ( i d ) , 
- 
-         u s e r _ i d   T E X T   R E F E R E N C E S   u s e r s ( i d ) , 
- 
-         c u s t o m e r _ i d   T E X T   R E F E R E N C E S   c o n t a c t s ( i d ) , 
- 
-         l o y a l t y _ m e m b e r _ i d   T E X T   R E F E R E N C E S   s h o p _ l o y a l t y _ m e m b e r s ( i d ) , 
- 
-         
- 
-         s a l e _ n u m b e r   T E X T   N O T   N U L L , 
- 
-         s u b t o t a l   D E C I M A L ( 1 5 ,   2 )   N O T   N U L L , 
- 
-         t a x _ t o t a l   D E C I M A L ( 1 5 ,   2 )   N O T   N U L L , 
- 
-         d i s c o u n t _ t o t a l   D E C I M A L ( 1 5 ,   2 )   D E F A U L T   0 , 
- 
-         g r a n d _ t o t a l   D E C I M A L ( 1 5 ,   2 )   N O T   N U L L , 
- 
-         
- 
-         p a y m e n t _ m e t h o d   T E X T   N O T   N U L L ,   - -   ' M u l t i p l e '   i f   s p l i t 
- 
-         p a y m e n t _ d e t a i l s   J S O N B ,   - -   S t o r e s   b r e a k d o w n   o f   m u l t i p l e   t e n d e r s 
- 
-         s t a t u s   T E X T   N O T   N U L L   D E F A U L T   ' C o m p l e t e d ' , 
- 
-         
- 
-         p o i n t s _ e a r n e d   I N T E G E R   D E F A U L T   0 , 
- 
-         p o i n t s _ r e d e e m e d   I N T E G E R   D E F A U L T   0 , 
- 
-         
- 
-         c r e a t e d _ a t   T I M E S T A M P   N O T   N U L L   D E F A U L T   N O W ( ) , 
- 
-         u p d a t e d _ a t   T I M E S T A M P   N O T   N U L L   D E F A U L T   N O W ( ) , 
- 
-         U N I Q U E ( t e n a n t _ i d ,   s a l e _ n u m b e r ) 
- 
- ) ; 
- 
- 
- 
- - -   8 .   P O S   S a l e   I t e m s   ( D e t a i l ) 
- 
- C R E A T E   T A B L E   I F   N O T   E X I S T S   s h o p _ s a l e _ i t e m s   ( 
- 
-         i d   T E X T   P R I M A R Y   K E Y   D E F A U L T   u u i d _ g e n e r a t e _ v 4 ( ) , 
- 
-         t e n a n t _ i d   T E X T   N O T   N U L L   R E F E R E N C E S   t e n a n t s ( i d )   O N   D E L E T E   C A S C A D E , 
- 
-         s a l e _ i d   T E X T   N O T   N U L L   R E F E R E N C E S   s h o p _ s a l e s ( i d )   O N   D E L E T E   C A S C A D E , 
- 
-         p r o d u c t _ i d   T E X T   N O T   N U L L   R E F E R E N C E S   s h o p _ p r o d u c t s ( i d ) , 
- 
-         q u a n t i t y   D E C I M A L ( 1 5 ,   2 )   N O T   N U L L , 
- 
-         u n i t _ p r i c e   D E C I M A L ( 1 5 ,   2 )   N O T   N U L L , 
- 
-         t a x _ a m o u n t   D E C I M A L ( 1 5 ,   2 )   D E F A U L T   0 , 
- 
-         d i s c o u n t _ a m o u n t   D E C I M A L ( 1 5 ,   2 )   D E F A U L T   0 , 
- 
-         s u b t o t a l   D E C I M A L ( 1 5 ,   2 )   N O T   N U L L , 
- 
-         c r e a t e d _ a t   T I M E S T A M P   D E F A U L T   N O W ( ) 
- 
- ) ; 
- 
- 
- 
- - -   9 .   I n v e n t o r y   M o v e m e n t s   ( L e d g e r ) 
- 
- C R E A T E   T A B L E   I F   N O T   E X I S T S   s h o p _ i n v e n t o r y _ m o v e m e n t s   ( 
- 
-         i d   T E X T   P R I M A R Y   K E Y   D E F A U L T   u u i d _ g e n e r a t e _ v 4 ( ) , 
- 
-         t e n a n t _ i d   T E X T   N O T   N U L L   R E F E R E N C E S   t e n a n t s ( i d )   O N   D E L E T E   C A S C A D E , 
- 
-         p r o d u c t _ i d   T E X T   N O T   N U L L   R E F E R E N C E S   s h o p _ p r o d u c t s ( i d ) , 
- 
-         w a r e h o u s e _ i d   T E X T   N O T   N U L L   R E F E R E N C E S   s h o p _ w a r e h o u s e s ( i d ) , 
- 
-         t y p e   T E X T   N O T   N U L L ,   - -   ' S a l e ' ,   ' P u r c h a s e ' ,   ' A d j u s t m e n t ' ,   ' T r a n s f e r ' ,   ' R e t u r n ' 
- 
-         q u a n t i t y   D E C I M A L ( 1 5 ,   2 )   N O T   N U L L ,   - -   P o s i t i v e   f o r   I N ,   N e g a t i v e   f o r   O U T 
- 
-         r e f e r e n c e _ i d   T E X T ,   - -   S a l e   I D ,   P u r c h a s e   I D ,   e t c 
- 
-         r e a s o n   T E X T , 
- 
-         u s e r _ i d   T E X T   R E F E R E N C E S   u s e r s ( i d ) , 
- 
-         c r e a t e d _ a t   T I M E S T A M P   D E F A U L T   N O W ( ) 
- 
- ) ; 
- 
- 
- 
- - -   I n d e x e s 
- 
- C R E A T E   I N D E X   I F   N O T   E X I S T S   i d x _ s h o p _ s a l e s _ t e n a n t   O N   s h o p _ s a l e s ( t e n a n t _ i d ) ; 
- 
- C R E A T E   I N D E X   I F   N O T   E X I S T S   i d x _ s h o p _ i n v e n t o r y _ p r o d u c t   O N   s h o p _ i n v e n t o r y ( p r o d u c t _ i d ) ; 
- 
- C R E A T E   I N D E X   I F   N O T   E X I S T S   i d x _ s h o p _ p r o d u c t s _ s k u   O N   s h o p _ p r o d u c t s ( t e n a n t _ i d ,   s k u ) ; 
- 
- C R E A T E   I N D E X   I F   N O T   E X I S T S   i d x _ s h o p _ l o y a l t y _ c u s t o m e r   O N   s h o p _ l o y a l t y _ m e m b e r s ( c u s t o m e r _ i d ) ; 
- 
- 
- 
- - -   E n a b l e   R L S   ( S e c u r i t y ) 
- 
- A L T E R   T A B L E   s h o p _ b r a n c h e s   E N A B L E   R O W   L E V E L   S E C U R I T Y ; 
- 
- A L T E R   T A B L E   s h o p _ t e r m i n a l s   E N A B L E   R O W   L E V E L   S E C U R I T Y ; 
- 
- A L T E R   T A B L E   s h o p _ w a r e h o u s e s   E N A B L E   R O W   L E V E L   S E C U R I T Y ; 
- 
- A L T E R   T A B L E   s h o p _ p r o d u c t s   E N A B L E   R O W   L E V E L   S E C U R I T Y ; 
- 
- A L T E R   T A B L E   s h o p _ i n v e n t o r y   E N A B L E   R O W   L E V E L   S E C U R I T Y ; 
- 
- A L T E R   T A B L E   s h o p _ l o y a l t y _ m e m b e r s   E N A B L E   R O W   L E V E L   S E C U R I T Y ; 
- 
- A L T E R   T A B L E   s h o p _ s a l e s   E N A B L E   R O W   L E V E L   S E C U R I T Y ; 
- 
- A L T E R   T A B L E   s h o p _ s a l e _ i t e m s   E N A B L E   R O W   L E V E L   S E C U R I T Y ; 
- 
- A L T E R   T A B L E   s h o p _ i n v e n t o r y _ m o v e m e n t s   E N A B L E   R O W   L E V E L   S E C U R I T Y ; 
- 
- 
- 
- - -   N o t e :   P o l i c i e s   n e e d   t o   b e   a d d e d   p e r   t e n a n t _ i d   b u t   f o r   n o w   w e   f o l l o w   t h e   e x i s t i n g   s e r v e r   s t r u c t u r e . 
- 
- 
+INSERT INTO marketplace_categories (id, name, icon) VALUES
+('real-estate', 'Home', 'Home'),
+('vehicles', 'Car', 'Car'),
+('electronics', 'Smartphone', 'Smartphone'),
+('furniture', 'Armchair', 'Armchair'),
+('jobs', 'Briefcase', 'Briefcase'),
+('services', 'Settings', 'Settings'),
+('other', 'MoreHorizontal', 'MoreHorizontal')
+ON CONFLICT (id) DO NOTHING;
