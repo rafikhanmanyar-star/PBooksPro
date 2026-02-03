@@ -429,15 +429,147 @@ CREATE TABLE IF NOT EXISTS shop_sales (
 -- 10. PAYROLL MODULE
 -- ============================================================================
 
+-- Payroll Departments table
+CREATE TABLE IF NOT EXISTS payroll_departments (
+    id TEXT PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    code TEXT,
+    description TEXT,
+    parent_department_id TEXT REFERENCES payroll_departments(id) ON DELETE SET NULL,
+    head_employee_id TEXT,
+    cost_center_code TEXT,
+    budget_allocation DECIMAL(15, 2) DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by TEXT,
+    updated_by TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_payroll_departments_tenant ON payroll_departments(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_departments_parent ON payroll_departments(parent_department_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_departments_active ON payroll_departments(tenant_id, is_active);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payroll_departments_name_unique ON payroll_departments(tenant_id, name);
+
+-- Payroll Grade Levels table
+CREATE TABLE IF NOT EXISTS payroll_grades (
+    id TEXT PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    description TEXT,
+    min_salary DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    max_salary DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    created_by TEXT,
+    updated_by TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_payroll_grades_tenant ON payroll_grades(tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payroll_grades_name_unique ON payroll_grades(tenant_id, name);
+
+-- Payroll Employees table
 CREATE TABLE IF NOT EXISTS payroll_employees (
     id TEXT PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    name VARCHAR(255) NOT NULL,
-    employee_code VARCHAR(50),
-    designation VARCHAR(255) NOT NULL,
-    status VARCHAR(20) DEFAULT 'ACTIVE',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    user_id TEXT,
+    name TEXT NOT NULL,
+    email TEXT,
+    phone TEXT,
+    address TEXT,
+    photo TEXT,
+    employee_code TEXT,
+    designation TEXT NOT NULL,
+    department TEXT NOT NULL,
+    department_id TEXT REFERENCES payroll_departments(id) ON DELETE SET NULL,
+    grade TEXT,
+    status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'RESIGNED', 'TERMINATED', 'ON_LEAVE')),
+    joining_date DATE NOT NULL,
+    termination_date DATE,
+    salary JSONB NOT NULL DEFAULT '{"basic": 0, "allowances": [], "deductions": []}'::jsonb,
+    adjustments JSONB DEFAULT '[]'::jsonb,
+    projects JSONB DEFAULT '[]'::jsonb,
+    created_by TEXT NOT NULL,
+    updated_by TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_payroll_employees_tenant ON payroll_employees(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_employees_status ON payroll_employees(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_payroll_employees_department ON payroll_employees(tenant_id, department);
+CREATE INDEX IF NOT EXISTS idx_payroll_employees_department_id ON payroll_employees(department_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_employees_code ON payroll_employees(tenant_id, employee_code);
+
+-- Payroll Runs table
+CREATE TABLE IF NOT EXISTS payroll_runs (
+    id TEXT PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    month TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    period_start DATE,
+    period_end DATE,
+    status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PROCESSING', 'APPROVED', 'PAID', 'CANCELLED')),
+    total_amount DECIMAL(15, 2) DEFAULT 0,
+    employee_count INTEGER DEFAULT 0,
+    created_by TEXT NOT NULL,
+    updated_by TEXT,
+    approved_by TEXT,
+    approved_at TIMESTAMP,
+    paid_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_payroll_runs_tenant ON payroll_runs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_runs_status ON payroll_runs(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_payroll_runs_period ON payroll_runs(tenant_id, year, month);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payroll_runs_unique ON payroll_runs(tenant_id, month, year);
+
+-- Payslips table
+CREATE TABLE IF NOT EXISTS payslips (
+    id TEXT PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    payroll_run_id TEXT NOT NULL REFERENCES payroll_runs(id) ON DELETE CASCADE,
+    employee_id TEXT NOT NULL REFERENCES payroll_employees(id) ON DELETE CASCADE,
+    basic_pay DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    total_allowances DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    total_deductions DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    total_adjustments DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    gross_pay DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    net_pay DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    allowance_details JSONB DEFAULT '[]'::jsonb,
+    deduction_details JSONB DEFAULT '[]'::jsonb,
+    adjustment_details JSONB DEFAULT '[]'::jsonb,
+    is_paid BOOLEAN DEFAULT FALSE,
+    paid_at TIMESTAMP,
+    transaction_id TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_payslips_tenant ON payslips(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_payslips_run ON payslips(payroll_run_id);
+CREATE INDEX IF NOT EXISTS idx_payslips_employee ON payslips(employee_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payslips_unique ON payslips(payroll_run_id, employee_id);
+
+-- Payroll Salary Components table
+CREATE TABLE IF NOT EXISTS payroll_salary_components (
+    id TEXT PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('ALLOWANCE', 'DEDUCTION')),
+    is_percentage BOOLEAN DEFAULT FALSE,
+    default_value DECIMAL(15, 2) DEFAULT 0,
+    is_taxable BOOLEAN DEFAULT TRUE,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_payroll_components_tenant ON payroll_salary_components(tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payroll_components_unique ON payroll_salary_components(tenant_id, name, type);
 
 -- ============================================================================
 -- 11. SYSTEMS & MODULES
