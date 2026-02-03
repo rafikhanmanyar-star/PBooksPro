@@ -23,6 +23,7 @@ import VendorLedgerReport from '../reports/VendorLedgerReport';
 import OwnerSecurityDepositReport from '../reports/OwnerSecurityDepositReport';
 import BrokerFeeReport from '../reports/BrokerFeeReport';
 import InvoicePaymentAnalysisReport from '../reports/InvoicePaymentAnalysisReport';
+import OwnerIncomeSummaryReport from '../reports/OwnerIncomeSummaryReport';
 
 interface RentalManagementPageProps {
     initialPage: Page;
@@ -33,7 +34,7 @@ type RentalView =
     | 'Agreements' | 'Invoices' | 'Bills' | 'Payment' | 'Payouts'
     | 'Visual Layout' | 'Tabular Layout'
     | 'Agreement Expiry' | 'Building Analysis' | 'BM Analysis' | 'Invoice & Payment Analysis'
-    | 'Owner Income'
+    | 'Owner Income' | 'Owner Income Summary'
     | 'Service Charges Deduction' | 'Tenant Ledger' | 'Vendor Ledger'
     | 'Owner Security Deposit' | 'Broker Fees';
 
@@ -120,6 +121,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
             case 'BM Analysis': return <BMAnalysisReport />;
             case 'Invoice & Payment Analysis': return <InvoicePaymentAnalysisReport />;
             case 'Owner Income': return <OwnerPayoutsReport />;
+            case 'Owner Income Summary': return <OwnerIncomeSummaryReport />;
             case 'Service Charges Deduction': return <ServiceChargesDeductionReport />;
             case 'Tenant Ledger': return <TenantLedgerReport />;
             case 'Vendor Ledger': return <VendorLedgerReport context="Rental" />;
@@ -131,7 +133,8 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
     };
 
     const isReportActive = [
-        'Agreement Expiry', 'Building Analysis', 'BM Analysis', 'Invoice & Payment Analysis', 'Owner Income',
+        'Agreement Expiry', 'Building Analysis', 'BM Analysis', 'Invoice & Payment Analysis',
+        'Owner Income', 'Owner Income Summary',
         'Service Charges Deduction', 'Tenant Ledger', 'Vendor Ledger',
         'Owner Security Deposit', 'Broker Fees'
     ].includes(activeView);
@@ -140,8 +143,8 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         <button
             onClick={() => setActiveView(view)}
             className={`whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors ${activeView === view
-                    ? 'bg-indigo-50 text-accent ring-1 ring-indigo-100'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                ? 'bg-indigo-50 text-accent ring-1 ring-indigo-100'
+                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
         >
             {label}
@@ -172,8 +175,8 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                         <button
                             onClick={() => setIsReportDropdownOpen(!isReportDropdownOpen)}
                             className={`whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors ${isReportActive || isReportDropdownOpen
-                                    ? 'bg-indigo-50 text-accent ring-1 ring-indigo-100'
-                                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                ? 'bg-indigo-50 text-accent ring-1 ring-indigo-100'
+                                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                                 }`}
                         >
                             Reports
@@ -206,6 +209,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                                     <div className="bg-slate-50 px-4 py-1 text-xs font-semibold text-slate-500 border-b border-slate-200">LEDGERS</div>
                                     {[
                                         'Owner Income',
+                                        'Owner Income Summary',
                                         'Service Charges Deduction',
                                         'Tenant Ledger',
                                         'Vendor Ledger',
@@ -235,8 +239,8 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                     <button
                         onClick={() => setActiveView('Visual Layout')}
                         className={`px-4 py-1.5 text-xs sm:text-sm font-medium rounded-full transition-all duration-200 ${activeView === 'Visual Layout'
-                                ? 'bg-slate-200 text-slate-800 shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]'
-                                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                            ? 'bg-slate-200 text-slate-800 shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]'
+                            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
                             }`}
                     >
                         Visual Layout
@@ -244,8 +248,8 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                     <button
                         onClick={() => setActiveView('Tabular Layout')}
                         className={`px-4 py-1.5 text-xs sm:text-sm font-medium rounded-full transition-all duration-200 ${activeView === 'Tabular Layout'
-                                ? 'bg-slate-200 text-slate-800 shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]'
-                                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                            ? 'bg-slate-200 text-slate-800 shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]'
+                            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
                             }`}
                     >
                         Tabular Layout
