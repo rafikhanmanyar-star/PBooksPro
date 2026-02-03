@@ -61,7 +61,7 @@ router.get('/sales-trend', async (req: TenantRequest, res) => {
         `, [req.tenantId]);
 
         // Fill missing hours
-        const trends = [];
+        const trends: any[] = [];
         for (let i = 8; i <= 22; i += 2) {
             const found = sales.find((s: any) => parseInt(s.hour) === i) || { revenue: 0, orders: 0 };
             trends.push({

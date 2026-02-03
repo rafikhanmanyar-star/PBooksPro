@@ -318,7 +318,7 @@ router.put('/:id/approve', async (req: TenantRequest, res) => {
     };
 
     // Create a bill in the buyer's bills table with UNPAID status
-    let createdBill = null;
+    let createdBill: any = null;
     try {
       // Get supplier information from registered_suppliers table (created during registration approval)
       const registeredSupplierResult = await db.query(
@@ -326,26 +326,26 @@ router.put('/:id/approve', async (req: TenantRequest, res) => {
          WHERE buyer_tenant_id = $1 AND supplier_tenant_id = $2 AND status = 'ACTIVE'`,
         [req.tenantId, invoice.supplier_tenant_id]
       );
-      
-      const registeredSupplier = registeredSupplierResult && registeredSupplierResult.length > 0 
-        ? registeredSupplierResult[0] 
+
+      const registeredSupplier = registeredSupplierResult && registeredSupplierResult.length > 0
+        ? registeredSupplierResult[0]
         : null;
-      
+
       // Get supplier name and company from registered_suppliers or fallback to PO/tenant info
       const supplierCompany = registeredSupplier?.supplier_company || po?.supplier_company_name || 'Supplier';
       const supplierName = registeredSupplier?.supplier_name || po?.supplier_name || supplierCompany;
       const supplierContactNo = registeredSupplier?.supplier_contact_no || '';
       const supplierAddress = registeredSupplier?.supplier_address || '';
-      
+
       // Find existing contact in vendor directory by matching company name or supplier tenant ID
       let contactId = null;
-      
+
       // First try to find by company name (exact match first)
       let existingContact = await db.query(
         `SELECT id FROM contacts WHERE tenant_id = $1 AND contact_type = 'Vendor' AND company_name = $2 LIMIT 1`,
         [req.tenantId, supplierCompany]
       );
-      
+
       // If not found, try partial match
       if (!existingContact || existingContact.length === 0) {
         existingContact = await db.query(
@@ -353,7 +353,7 @@ router.put('/:id/approve', async (req: TenantRequest, res) => {
           [req.tenantId, `%${supplierCompany}%`]
         );
       }
-      
+
       if (existingContact && existingContact.length > 0) {
         contactId = existingContact[0].id;
       } else {
@@ -364,14 +364,14 @@ router.put('/:id/approve', async (req: TenantRequest, res) => {
            VALUES ($1, $2, $3, $4, $5, 'Vendor', $6, NOW(), NOW())`,
           [newContactId, supplierName, supplierCompany, supplierContactNo, supplierAddress, req.tenantId]
         );
-        contactId = newContactId;
+        contactId = newContactId as any;
         console.log(`Created new vendor contact for supplier: ${supplierCompany} (${newContactId})`);
       }
 
       // Generate bill number
       const billNumber = `BILL-${invoice.invoice_number}`;
       const billId = `bill_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
+
       // Calculate due date (Net 30 from approval date by default)
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + 30);
@@ -413,7 +413,7 @@ router.put('/:id/approve', async (req: TenantRequest, res) => {
       if (billResult && billResult.length > 0) {
         createdBill = billResult[0];
         console.log(`Bill created from approved invoice: ${billNumber}, Project: ${po?.project_id || 'None'}, Vendor: ${supplierCompany}`);
-        
+
         // Emit WebSocket event for the new bill
         emitToTenant(req.tenantId!, WS_EVENTS.BILL_CREATED, {
           bill: createdBill,
