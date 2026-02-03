@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { getDatabaseService } from '../services/databaseService.js';
 
-export interface AdminRequest extends Request {
+export interface AdminRequest extends Record<string, any> {
   adminId?: string;
   adminRole?: 'super_admin' | 'admin';
 }
@@ -12,13 +12,13 @@ export function adminAuthMiddleware() {
     try {
       const db = getDatabaseService();
       const token = req.headers.authorization?.replace('Bearer ', '');
-      
+
       if (!token) {
         return res.status(401).json({ error: 'No authentication token' });
       }
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
-      
+
       // Verify admin user exists and is active
       const admins = await db.query(
         'SELECT * FROM admin_users WHERE id = $1 AND is_active = TRUE',

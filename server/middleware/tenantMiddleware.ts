@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { Pool } from 'pg';
 
-export interface TenantRequest extends Request {
+export interface TenantRequest extends Record<string, any> {
   tenantId?: string;
   userId?: string;
   userRole?: string;
@@ -18,7 +18,7 @@ export function tenantMiddleware(pool: Pool) {
     try {
       // Extract token from Authorization header
       const token = req.headers.authorization?.replace('Bearer ', '');
-      
+
       if (!token) {
         return res.status(401).json({ error: 'No authentication token' });
       }
@@ -26,7 +26,7 @@ export function tenantMiddleware(pool: Pool) {
       // Check if JWT_SECRET is configured
       if (!process.env.JWT_SECRET) {
         console.error('❌ JWT_SECRET is not configured in environment variables!');
-        return res.status(500).json({ 
+        return res.status(500).json({
           error: 'Server configuration error',
           message: 'JWT_SECRET is not configured. Please contact administrator.',
           code: 'JWT_SECRET_MISSING'
@@ -56,7 +56,7 @@ export function tenantMiddleware(pool: Pool) {
         // Check if it's a token expiration error
         if (jwtError.name === 'TokenExpiredError') {
           console.error('Token expired at:', jwtError.expiredAt);
-          return res.status(401).json({ 
+          return res.status(401).json({
             error: 'Token expired',
             message: 'Your session has expired. Please login again.',
             code: 'TOKEN_EXPIRED',
@@ -69,14 +69,14 @@ export function tenantMiddleware(pool: Pool) {
           // Check if it's a signature mismatch (JWT_SECRET issue)
           if (jwtError.message.includes('signature') || jwtError.message.includes('invalid signature')) {
             console.error('⚠️ Token signature mismatch - JWT_SECRET may be incorrect!');
-            return res.status(401).json({ 
+            return res.status(401).json({
               error: 'Invalid token',
               message: 'Token signature is invalid. This may indicate a server configuration issue. Please login again.',
               code: 'INVALID_TOKEN_SIGNATURE',
               details: 'JWT_SECRET mismatch detected'
             });
           }
-          return res.status(401).json({ 
+          return res.status(401).json({
             error: 'Invalid token',
             message: 'Authentication token is invalid. Please login again.',
             code: 'INVALID_TOKEN',
@@ -85,7 +85,7 @@ export function tenantMiddleware(pool: Pool) {
         }
         // Other JWT errors
         console.error('JWT verification error:', jwtError);
-        return res.status(401).json({ 
+        return res.status(401).json({
           error: 'Invalid token',
           message: 'Token verification failed. Please login again.',
           code: 'TOKEN_VERIFICATION_FAILED',
@@ -96,7 +96,7 @@ export function tenantMiddleware(pool: Pool) {
       req.tenantId = decoded.tenantId;
       req.userId = decoded.userId;
       req.userRole = decoded.role;
-      
+
       // Set user info for audit logging
       req.user = {
         userId: decoded.userId,
@@ -112,7 +112,7 @@ export function tenantMiddleware(pool: Pool) {
           path: req.path,
           method: req.method
         });
-        return res.status(401).json({ 
+        return res.status(401).json({
           error: 'Invalid token',
           message: 'Token does not contain tenant information. Please login again.',
           code: 'NO_TENANT_CONTEXT'
@@ -124,25 +124,25 @@ export function tenantMiddleware(pool: Pool) {
       try {
         const { getDatabaseService } = await import('../services/databaseService.js');
         const db = getDatabaseService();
-        
+
         const userCheck = await db.query(
           'SELECT id, tenant_id FROM users WHERE id = $1',
           [decoded.userId]
         );
-        
+
         if (userCheck.length === 0) {
           console.error(`❌ Security: User ${decoded.userId} not found in database`);
-          return res.status(401).json({ 
+          return res.status(401).json({
             error: 'Invalid token',
             message: 'User associated with token does not exist. Please login again.',
             code: 'USER_NOT_FOUND'
           });
         }
-        
+
         const userTenantId = userCheck[0].tenant_id;
         if (userTenantId !== decoded.tenantId) {
           console.error(`❌ SECURITY VIOLATION: User ${decoded.userId} belongs to tenant ${userTenantId} but token claims tenant ${decoded.tenantId}`);
-          return res.status(403).json({ 
+          return res.status(403).json({
             error: 'Forbidden',
             message: 'User does not belong to the organization specified in token. Please login again.',
             code: 'TENANT_MISMATCH'
@@ -230,13 +230,13 @@ export function tenantMiddleware(pool: Pool) {
             );
 
             console.log('✅ Session recovered successfully');
-            
+
             // Re-fetch the session to continue with normal flow
             const recoveredSessions = await db.query(
               'SELECT user_id, tenant_id, expires_at, last_activity FROM user_sessions WHERE token = $1',
               [token]
             );
-            
+
             if (recoveredSessions.length === 0) {
               // Still no session after recovery attempt - something is wrong
               console.error('❌ Failed to recover session after insert attempt');
@@ -246,7 +246,7 @@ export function tenantMiddleware(pool: Pool) {
                 code: 'SESSION_INVALID'
               });
             }
-            
+
             // Use the recovered session
             const session = recoveredSessions[0] as any;
             const expiresAtCheck = new Date(session.expires_at);
@@ -265,13 +265,13 @@ export function tenantMiddleware(pool: Pool) {
               'UPDATE user_sessions SET last_activity = NOW() WHERE token = $1',
               [token]
             );
-            
+
             // Re-fetch session for validation
             const refreshedSessions = await db.query(
               'SELECT user_id, tenant_id, expires_at, last_activity FROM user_sessions WHERE token = $1',
               [token]
             );
-            
+
             if (refreshedSessions.length === 0) {
               console.error('❌ Session disappeared after recovery');
               return res.status(401).json({
@@ -280,7 +280,7 @@ export function tenantMiddleware(pool: Pool) {
                 code: 'SESSION_INVALID'
               });
             }
-            
+
             // Use refreshed session for validation
             sessions.length = 0;
             sessions.push(refreshedSessions[0]);
@@ -336,7 +336,7 @@ export function tenantMiddleware(pool: Pool) {
             path: req.path,
             method: req.method
           });
-          
+
           try {
             // Refresh the session by updating last_activity
             await db.query(
@@ -354,7 +354,7 @@ export function tenantMiddleware(pool: Pool) {
             // If refresh fails, still allow the request to proceed
             // The session exists and is valid, just inactive
           }
-          
+
           // Continue with the request - session is now refreshed
         }
 
@@ -392,7 +392,7 @@ export function tenantMiddleware(pool: Pool) {
         // Tenant doesn't exist - this is an authentication issue, not authorization
         // Return 401 to indicate the token is invalid (tenant no longer exists)
         console.error(`❌ Tenant not found in database: ${req.tenantId}. Token is invalid.`);
-        return res.status(401).json({ 
+        return res.status(401).json({
           error: 'Invalid token',
           message: 'The tenant associated with your token no longer exists. Please login again.',
           code: 'TENANT_NOT_FOUND'
