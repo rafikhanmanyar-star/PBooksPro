@@ -78,15 +78,15 @@ export default defineConfig({
         manualChunks: (id) => {
           // Vendor chunks - separate large dependencies
           if (id.includes('node_modules')) {
-            // React core
-            if (id.includes('react') || id.includes('react-dom')) {
+            // React core - Keep these together to avoid "Children of undefined" errors
+            if (id.includes('react') || id.includes('react-dom') || id.includes('react-is')) {
               return 'vendor-react';
             }
             // Charts and visualization
             if (id.includes('recharts') || id.includes('d3-')) {
               return 'vendor-charts';
             }
-            // Socket.io for real-time features
+            // Real-time and communication
             if (id.includes('socket.io')) {
               return 'vendor-socket';
             }
@@ -94,41 +94,24 @@ export default defineConfig({
             if (id.includes('sql.js')) {
               return 'vendor-db';
             }
+            // Utilities
+            if (id.includes('lucide-react') || id.includes('date-fns') || id.includes('xlsx')) {
+              return 'vendor-utils';
+            }
             // Everything else
             return 'vendor-other';
           }
 
-          // Context providers - lazy load non-critical ones
+          // Context providers - group to avoid circular dependencies
           if (id.includes('/context/')) {
-            // Core contexts (always needed)
-            if (id.includes('AppContext') || id.includes('AuthContext')) {
-              return 'contexts-core';
-            }
-            // Shop-related contexts (lazy load)
-            if (id.includes('POSContext') || id.includes('InventoryContext') ||
-              id.includes('AccountingContext') || id.includes('LoyaltyContext')) {
-              return 'contexts-shop';
-            }
-            // Other contexts
-            return 'contexts-other';
+            return 'app-context';
           }
 
-          // Components - split by feature
+          // Components - split by major feature
           if (id.includes('/components/')) {
-            // Dashboard and core UI
-            if (id.includes('dashboard') || id.includes('layout')) {
-              return 'components-core';
-            }
-            // Shop components
-            if (id.includes('shop/')) {
-              return 'components-shop';
-            }
-            // Rental and project management
-            if (id.includes('rentalManagement') || id.includes('projectManagement')) {
-              return 'components-pm';
-            }
-            // Other components
-            return 'components-other';
+            if (id.includes('shop/')) return 'comp-shop';
+            if (id.includes('rentalManagement/') || id.includes('projectManagement/')) return 'comp-pm';
+            return 'comp-ui';
           }
         },
         // Optimize chunk size warnings
