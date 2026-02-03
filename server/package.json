@@ -17,6 +17,7 @@
     "test-whatsapp": "tsx scripts/test-whatsapp-api.ts",
     "verify-rental-migration": "tsx scripts/verify-rental-agreements-migration.ts",
     "verify-schema-parity": "tsx scripts/verify-schema-parity.ts",
+    "generate-production-upgrade": "tsx scripts/generate-production-upgrade-from-staging.ts",
     "clean-staging": "tsx scripts/clean-staging-db.ts"
   },
   "dependencies": {

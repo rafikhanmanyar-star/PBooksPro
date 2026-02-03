@@ -171,9 +171,12 @@ export const WS_EVENTS = {
   TASK_CREATED: 'task:created',
   TASK_UPDATED: 'task:updated',
   TASK_DELETED: 'task:deleted',
+  TASK_ASSIGNED: 'task:assigned',
+  TASK_DEADLINE_WARNING: 'task:deadline_warning',
   INITIATIVE_CREATED: 'initiative:created',
   INITIATIVE_UPDATED: 'initiative:updated',
   OBJECTIVE_CREATED: 'objective:created',
   OBJECTIVE_UPDATED: 'objective:updated',
 } as const;
+
 
