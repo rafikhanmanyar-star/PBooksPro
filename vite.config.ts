@@ -76,42 +76,13 @@ export default defineConfig({
       output: {
         // PERFORMANCE OPTIMIZATION: Manual chunk splitting for better caching and parallel loading
         manualChunks: (id) => {
-          // Vendor chunks - separate large dependencies
+          // Large vendors
           if (id.includes('node_modules')) {
-            // React core - Keep these together to avoid "Children of undefined" errors
-            if (id.includes('react') || id.includes('react-dom') || id.includes('react-is')) {
-              return 'vendor-react';
-            }
-            // Charts and visualization
-            if (id.includes('recharts') || id.includes('d3-')) {
-              return 'vendor-charts';
-            }
-            // Real-time and communication
-            if (id.includes('socket.io')) {
-              return 'vendor-socket';
-            }
-            // Database (sql.js)
-            if (id.includes('sql.js')) {
-              return 'vendor-db';
-            }
-            // Utilities
-            if (id.includes('lucide-react') || id.includes('date-fns') || id.includes('xlsx')) {
-              return 'vendor-utils';
-            }
-            // Everything else
-            return 'vendor-other';
-          }
-
-          // Context providers - group to avoid circular dependencies
-          if (id.includes('/context/')) {
-            return 'app-context';
-          }
-
-          // Components - split by major feature
-          if (id.includes('/components/')) {
-            if (id.includes('shop/')) return 'comp-shop';
-            if (id.includes('rentalManagement/') || id.includes('projectManagement/')) return 'comp-pm';
-            return 'comp-ui';
+            if (id.includes('recharts') || id.includes('d3-')) return 'vendor-charts';
+            if (id.includes('sql.js')) return 'vendor-db';
+            if (id.includes('xlsx')) return 'vendor-xlsx';
+            if (id.includes('google/genai')) return 'vendor-ai';
+            return 'vendor-base';
           }
         },
         // Optimize chunk size warnings
