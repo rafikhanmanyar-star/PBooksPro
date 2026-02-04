@@ -276,10 +276,39 @@ app.get('/health', async (req, res) => {
 app.get('/api/app-info/db-check', async (req, res) => {
   try {
     const db = getDatabaseService();
-    const result = await db.query('SELECT current_database(), current_user, version()');
+    const info = await db.query('SELECT current_database(), current_user, version()');
+
+    // Check tables
+    const tables = await db.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+      LIMIT 20
+    `);
+
+    // Check some counts
+    const counts = {
+      tenants: 0,
+      users: 0,
+      admin_users: 0
+    };
+
+    try {
+      const t = await db.query('SELECT count(*) FROM tenants');
+      counts.tenants = parseInt(t[0].count);
+      const u = await db.query('SELECT count(*) FROM users');
+      counts.users = parseInt(u[0].count);
+      const a = await db.query('SELECT count(*) FROM admin_users');
+      counts.admin_users = parseInt(a[0].count);
+    } catch (e) {
+      // Some tables might not exist yet
+    }
+
     res.json({
       success: true,
-      info: result[0],
+      info: info[0],
+      tables: tables.map(t => t.table_name),
+      counts,
       timestamp: new Date().toISOString()
     });
   } catch (error: any) {
