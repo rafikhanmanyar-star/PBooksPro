@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { Contact, ContactType, TransactionType, LoanSubtype } from '../../types';
+import { Contact, Vendor, ContactType, TransactionType, LoanSubtype } from '../../types';
 import ContactForm from '../settings/ContactForm';
 import Button from '../ui/Button';
 import Modal from '../ui/Modal';
@@ -126,7 +126,7 @@ const ContactsPage: React.FC = () => {
     const [ledgerModal, setLedgerModal] = useState<{ isOpen: boolean; contact: Contact | null }>({ isOpen: false, contact: null });
     const isSubmittingRef = useRef(false);
 
-    const TABS = ['All', 'Owners', 'Tenants', 'Brokers', 'Friends & Family'];
+    const TABS = ['All', 'Owners', 'Tenants', 'Brokers', 'Vendors', 'Friends & Family'];
 
     // Sync activeTab when tree type is selected
     useEffect(() => {
@@ -165,7 +165,8 @@ const ContactsPage: React.FC = () => {
             { id: 'Brokers', label: 'Brokers', filter: c => c.type === ContactType.BROKER || c.type === ContactType.DEALER },
             { id: 'Friends & Family', label: 'Friends & Family', filter: c => c.type === ContactType.FRIEND_FAMILY },
         ];
-        return typeConfig.map(({ id, label, filter }) => {
+
+        const nodes = typeConfig.map(({ id, label, filter }) => {
             const childrenContacts = baseContacts.filter(filter);
             return {
                 id,
@@ -176,8 +177,23 @@ const ContactsPage: React.FC = () => {
                     .sort((a, b) => a.name.localeCompare(b.name))
                     .map(c => ({ id: c.id, label: c.name, type: 'contact' as const, children: [], value: undefined })),
             };
-        }).filter(node => node.value! > 0);
-    }, [state.contacts]);
+        });
+
+        // Add Vendors Node
+        if (state.vendors && state.vendors.length > 0) {
+            nodes.push({
+                id: 'Vendors',
+                label: 'Vendors',
+                type: 'type',
+                value: state.vendors.length,
+                children: state.vendors
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map(v => ({ id: v.id, label: v.name, type: 'contact', children: [], value: undefined }))
+            });
+        }
+
+        return nodes.filter(node => node.value! > 0);
+    }, [state.contacts, state.vendors]);
 
     const filterContactTree = useCallback((nodes: ContactTreeNode[], q: string): ContactTreeNode[] => {
         if (!q.trim()) return nodes;
@@ -234,12 +250,22 @@ const ContactsPage: React.FC = () => {
         let filtered = state.contacts.filter(c => c.type !== ContactType.STAFF);
 
         if (selectedTreeType === 'contact' && selectedTreeId) {
-            filtered = filtered.filter(c => c.id === selectedTreeId);
+            // Check both contacts and vendors for selection
+            const vendor = state.vendors?.find(v => v.id === selectedTreeId);
+            if (vendor) {
+                filtered = [vendor as unknown as Contact];
+            } else {
+                filtered = filtered.filter(c => c.id === selectedTreeId);
+            }
         } else if (activeTab !== 'All') {
             if (activeTab === 'Owners') filtered = filtered.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
             else if (activeTab === 'Tenants') filtered = filtered.filter(c => c.type === ContactType.TENANT);
             else if (activeTab === 'Brokers') filtered = filtered.filter(c => c.type === ContactType.BROKER || c.type === ContactType.DEALER);
             else if (activeTab === 'Friends & Family') filtered = filtered.filter(c => c.type === ContactType.FRIEND_FAMILY);
+            else if (activeTab === 'Vendors') filtered = (state.vendors || []) as unknown as Contact[];
+        } else {
+            // All tab: include vendors
+            filtered = [...filtered, ...((state.vendors || []) as unknown as Contact[])];
         }
 
         if (searchQuery) {
@@ -268,7 +294,7 @@ const ContactsPage: React.FC = () => {
             if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [state.contacts, activeTab, searchQuery, sortConfig, contactBalances, selectedTreeType, selectedTreeId]);
+    }, [state.contacts, state.vendors, activeTab, searchQuery, sortConfig, contactBalances, selectedTreeType, selectedTreeId]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -292,11 +318,20 @@ const ContactsPage: React.FC = () => {
 
         try {
             if (contactToEdit) {
-                dispatch({ type: 'UPDATE_CONTACT', payload: { ...contactToEdit, ...contactData } });
+                if (contactToEdit.type === ContactType.VENDOR) {
+                    dispatch({ type: 'UPDATE_VENDOR', payload: { ...contactToEdit, ...contactData } as Vendor });
+                } else {
+                    dispatch({ type: 'UPDATE_CONTACT', payload: { ...contactToEdit, ...contactData } });
+                }
             } else {
-                // Generate a unique ID that includes timestamp and random component
-                const contactId = `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                dispatch({ type: 'ADD_CONTACT', payload: { ...contactData, id: contactId } });
+                if (activeTab === 'Vendors' || (contactData as any).type === ContactType.VENDOR) {
+                    const vendorId = `vendor_${Date.now()}`; // Use vendor ID format
+                    dispatch({ type: 'ADD_VENDOR', payload: { ...contactData, id: vendorId, type: ContactType.VENDOR } as Vendor });
+                } else {
+                    // Generate a unique ID that includes timestamp and random component
+                    const contactId = `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    dispatch({ type: 'ADD_CONTACT', payload: { ...contactData, id: contactId } });
+                }
             }
             setIsModalOpen(false);
             setContactToEdit(null);
@@ -312,7 +347,11 @@ const ContactsPage: React.FC = () => {
         if (!contactToEdit) return;
         const confirmed = await showConfirm(`Are you sure you want to delete "${contactToEdit.name}"? This cannot be undone.`);
         if (confirmed) {
-            dispatch({ type: 'DELETE_CONTACT', payload: contactToEdit.id });
+            if (contactToEdit.type === ContactType.VENDOR) {
+                dispatch({ type: 'DELETE_VENDOR', payload: contactToEdit.id });
+            } else {
+                dispatch({ type: 'DELETE_CONTACT', payload: contactToEdit.id });
+            }
             handleCloseModal();
         }
     };
@@ -379,6 +418,7 @@ const ContactsPage: React.FC = () => {
             case 'Owners': return ContactType.OWNER;
             case 'Tenants': return ContactType.TENANT;
             case 'Brokers': return ContactType.BROKER;
+            case 'Vendors': return ContactType.VENDOR;
             case 'Friends & Family': return ContactType.FRIEND_FAMILY;
             default: return undefined;
         }
@@ -386,7 +426,8 @@ const ContactsPage: React.FC = () => {
 
     const allowedTypes = [
         ContactType.OWNER, ContactType.TENANT, ContactType.CLIENT,
-        ContactType.BROKER, ContactType.DEALER, ContactType.FRIEND_FAMILY
+        ContactType.BROKER, ContactType.DEALER, ContactType.FRIEND_FAMILY,
+        ContactType.VENDOR
     ];
 
     return (
@@ -602,6 +643,7 @@ const ContactsPage: React.FC = () => {
                     existingContacts={state.contacts}
                     fixedTypeForNew={contactToEdit ? undefined : getDefaultType()}
                     allowedTypesForNew={allowedTypes}
+                    isVendorForm={contactToEdit?.type === ContactType.VENDOR || activeTab === 'Vendors'}
                 />
             </Modal>
 

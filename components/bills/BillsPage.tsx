@@ -346,7 +346,8 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                 // Find or create Vendor node
                 let vendorNode = group.children.find(c => c.id === bill.contactId);
                 if (!vendorNode) {
-                    const vendor = state.contacts.find(c => c.id === bill.contactId);
+                    // Search in vendors first, then contacts fallback
+                    const vendor = state.vendors?.find(v => v.id === bill.contactId) || state.contacts.find(c => c.id === bill.contactId);
                     vendorNode = {
                         id: bill.contactId,
                         name: vendor?.name || 'Unknown Vendor',
@@ -378,7 +379,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         if (typeFilter === 'All' || typeFilter === 'Bills') {
             baseBills.forEach(bill => {
                 const project = state.projects.find(p => p.id === bill.projectId);
-                const vendor = state.contacts.find(c => c.id === bill.contactId);
+                const vendor = state.vendors?.find(v => v.id === bill.contactId) || state.contacts.find(c => c.id === bill.contactId);
                 const contract = state.contracts.find(c => c.id === bill.contractId);
                 const balance = bill.amount - bill.paidAmount;
 
@@ -408,7 +409,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                     if (!bill || !baseBills.includes(bill)) return; // Only include payments for bills in our base list
 
                     const project = state.projects.find(p => p.id === payment.projectId || bill.projectId);
-                    const vendor = state.contacts.find(c => c.id === payment.contactId || bill.contactId);
+                    const vendor = state.vendors?.find(v => v.id === payment.contactId || bill.contactId) || state.contacts.find(c => c.id === payment.contactId || bill.contactId);
                     const contract = state.contracts.find(c => c.id === payment.contractId || bill.contractId);
 
                     rows.push({
@@ -630,7 +631,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
 
     const handleSendWhatsApp = (e: React.MouseEvent, bill: Bill) => {
         e.stopPropagation();
-        const vendor = state.contacts.find(c => c.id === bill.contactId);
+        const vendor = state.vendors?.find(v => v.id === bill.contactId) || state.contacts.find(c => c.id === bill.contactId);
         if (!vendor?.contactNo) {
             showAlert("This vendor does not have a phone number saved.");
             return;
