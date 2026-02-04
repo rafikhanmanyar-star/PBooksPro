@@ -308,7 +308,7 @@ app.get('/api/app-info/db-check', async (req, res) => {
 
       // Get some users from the first tenant to verify they exist and are correctly shaped
       if (t.length > 0) {
-        usersDetails = await db.query('SELECT id, tenant_id, username, role, is_active FROM users WHERE tenant_id = $1 LIMIT 5', [t[0].id]);
+        usersDetails = await db.query('SELECT id, tenant_id, username, role, is_active, login_status FROM users WHERE tenant_id = $1 LIMIT 10', [t[0].id]);
       }
     } catch (e: any) {
       console.error('db-check error:', e.message);
