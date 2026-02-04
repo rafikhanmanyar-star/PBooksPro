@@ -104,6 +104,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                 // Allowed views in Selling Mode
                 const allowedSellingViews = [
                     'Marketing', 'Agreements', 'Invoices', 'Broker Payouts',
+                    'Visual Layout', 'Tabular View',
                     'Project Summary', 'Marketing Activity', 'Revenue Analysis',
                     'Owner Ledger', 'Broker Report', 'Income by Category', 'Expense by Category'
                 ];
@@ -115,14 +116,13 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                 // Construction Mode Defaults & Allowed Views
                 const allowedConstructionViews = [
                     'Contracts', 'Bills', 'Sales Returns', 'PM Payouts',
-                    'Visual Layout', 'Tabular View',
                     'Project Summary', 'Budget vs Actual', 'Contract Report',
                     'PM Cost Report', 'Material Report', 'Vendor Ledger',
                     'Owner Ledger', 'Income by Category', 'Expense by Category'
                 ];
 
                 if (!allowedConstructionViews.includes(activeView as string)) {
-                    setActiveView('Visual Layout');
+                    setActiveView('Contracts');
                 }
             }
         }
@@ -219,7 +219,6 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                     {/* Fixed Dropdowns (Outside Scroll) */}
                     <div className="flex items-center gap-1 flex-shrink-0">
 
-                        {/* Payouts Dropdown */}
                         <div className="relative" ref={payoutDropdownRef}>
                             <button
                                 onClick={() => setIsPayoutDropdownOpen(!isPayoutDropdownOpen)}
@@ -234,18 +233,20 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                             {isPayoutDropdownOpen && (
                                 <div className="absolute left-0 mt-2 w-48 bg-white border border-slate-200 rounded-lg shadow-xl z-[100] animate-fade-in-fast overflow-hidden">
                                     <div className="py-1">
+                                        {/* Broker Payouts - ONLY visible in Selling Mode */}
                                         {isSellingMode && (
                                             <button
                                                 onClick={() => {
                                                     setActiveView('Broker Payouts');
                                                     setIsPayoutDropdownOpen(false);
                                                 }}
-                                                className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors border-b border-slate-50 ${activeView === 'Broker Payouts' ? 'text-accent font-medium bg-indigo-50/50' : 'text-slate-700'
+                                                className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors ${activeView === 'Broker Payouts' ? 'text-accent font-medium bg-indigo-50/50' : 'text-slate-700'
                                                     }`}
                                             >
                                                 Brokers
                                             </button>
                                         )}
+                                        {/* PM Fee Payouts - ONLY visible in Construction Mode */}
                                         {!isSellingMode && (
                                             <button
                                                 onClick={() => {
@@ -347,8 +348,8 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                     </div>
                 </div>
 
-                {/* Right Side: Segmented Control for Views - HIDE for Selling Mode if not relevant */}
-                {!isSellingMode && (
+                {/* Right Side: Segmented Control for Views - SHOW for Selling Mode only (Moved from Construction) */}
+                {isSellingMode && (
                     <div className="flex items-center bg-slate-100 rounded-full p-1 flex-shrink-0 self-start md:self-center">
                         <button
                             onClick={() => setActiveView('Visual Layout')}

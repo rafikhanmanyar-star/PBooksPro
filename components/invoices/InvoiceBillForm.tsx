@@ -1034,12 +1034,23 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     }
   };
 
+  /* Updated to use state.vendors for bills */
   const { contactLabel, filteredContacts, fixedContactTypeForNew } = useMemo(() => {
-    if (type === 'bill') return { contactLabel: 'Supplier', filteredContacts: state.contacts.filter(c => c.type === ContactType.VENDOR), fixedContactTypeForNew: ContactType.VENDOR };
+    // If it's a bill, we should ideally be looking at vendors. 
+    // However, the ComboBox expects items with {id, name}. 
+    // If filteredContacts is typed as Contact[], we need to cast or unify types.
+    // Fortunately, Vendor and Contact both have id and name.
+    if (type === 'bill') {
+      return {
+        contactLabel: 'Vendor / Supplier',
+        filteredContacts: state.vendors || [],
+        fixedContactTypeForNew: ContactType.VENDOR
+      };
+    }
     if (invoiceType === InvoiceType.RENTAL) return { contactLabel: 'Tenant', filteredContacts: state.contacts.filter(c => c.type === ContactType.TENANT), fixedContactTypeForNew: ContactType.TENANT };
     const owners = state.contacts.filter(c => c.type === ContactType.CLIENT || c.type === ContactType.OWNER);
     return { contactLabel: 'Owner', filteredContacts: owners, fixedContactTypeForNew: ContactType.OWNER };
-  }, [type, invoiceType, state.contacts]);
+  }, [type, invoiceType, state.contacts, state.vendors]);
 
   const agreementItems = useMemo(() => tenantAgreements.map(a => ({ id: a.id, name: `${a.agreementNumber} - ${state.properties.find(p => p.id === a.propertyId)?.name}` })), [tenantAgreements, state.properties]);
 
@@ -1208,9 +1219,15 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                 disabled={isContactLockedByUnit || !!agreementForInvoice || isAgreementCancelled}
                 entityType="contact"
                 onAddNew={(entityType, name) => {
-                  entityFormModal.openForm('contact', name, fixedContactTypeForNew, undefined, (newId) => {
-                    setContactId(newId);
-                  });
+                  if (type === 'bill') {
+                    sessionStorage.setItem('addNewVendor', 'true');
+                    dispatch({ type: 'SET_PAGE', payload: 'vendorDirectory' });
+                    onClose();
+                  } else {
+                    entityFormModal.openForm('contact', name, fixedContactTypeForNew, undefined, (newId) => {
+                      setContactId(newId);
+                    });
+                  }
                 }}
               />
             )}
@@ -1705,7 +1722,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
               <div className="mb-3 p-3 bg-white border border-gray-200 rounded-lg flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 bg-indigo-100 rounded flex items-center justify-center">
-                    <div className="w-4 h-4 text-indigo-600">{ICONS.file}</div>
+                    <div className="w-4 h-4 text-indigo-600">{ICONS.fileText}</div>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-800">Document attached</p>

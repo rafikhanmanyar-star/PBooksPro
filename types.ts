@@ -81,6 +81,7 @@ export enum ContactType {
   FRIEND_FAMILY = 'Friend & Family',
   CLIENT = 'Client',
   LEAD = 'Lead',
+  VENDOR = 'Vendor',
 }
 
 export enum InvoiceStatus {

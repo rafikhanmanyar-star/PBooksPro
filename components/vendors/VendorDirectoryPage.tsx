@@ -30,9 +30,18 @@ const AddVendorSection: React.FC<{
     optionsView: 'Quotation' | 'Bills' | 'Reports' | null;
     setOptionsView: (view: 'Quotation' | 'Bills' | 'Reports' | null) => void;
     setSelectedVendorId: (id: string | null) => void;
-}> = ({ optionsView, setOptionsView, setSelectedVendorId }) => {
+    triggerAddVendor?: boolean;
+    onModalOpenHandled?: () => void;
+}> = ({ optionsView, setOptionsView, setSelectedVendorId, triggerAddVendor, onModalOpenHandled }) => {
     const { state, dispatch } = useAppContext();
     const [isModalOpen, setIsModalOpen] = useState(false);
+
+    useEffect(() => {
+        if (triggerAddVendor) {
+            setIsModalOpen(true);
+            onModalOpenHandled?.();
+        }
+    }, [triggerAddVendor, onModalOpenHandled]);
 
     const handleSubmit = (vendorData: Partial<Vendor> | any) => {
         dispatch({ type: 'ADD_VENDOR', payload: { ...vendorData, id: `vendor_${Date.now()}` } as Vendor });
@@ -143,14 +152,29 @@ const VendorDirectoryPage: React.FC = () => {
 
     const [duplicateBillData, setDuplicateBillData] = useState<Partial<Bill> | null>(null);
 
-    // Check if we need to open a vendor from search
+    // Check if we need to open a vendor from search or add new vendor
     useEffect(() => {
         const vendorId = sessionStorage.getItem('openVendorId');
         if (vendorId) {
             sessionStorage.removeItem('openVendorId');
             setSelectedVendorId(vendorId);
         }
+
+        const addNewVendor = sessionStorage.getItem('addNewVendor');
+        if (addNewVendor === 'true') {
+            sessionStorage.removeItem('addNewVendor');
+            // We need to trigger the modal which is inside AddVendorSection
+            // Since we can't easily reach into AddVendorSection, we'll expose the state
+            // But for now, let's use a custom event or refactor. 
+            // Better: Move the Modal state to VendorDirectoryPage or trigger via prop.
+            // Since AddVendorSection is a child, we can pass a prop 'initialOpenModal'.
+            // However, we are in a useEffect here.
+            // Let's use a state variable passed to AddVendorSection.
+            setTriggerAddVendor(true);
+        }
     }, []);
+
+    const [triggerAddVendor, setTriggerAddVendor] = useState(false);
 
     // Safety check: ensure state is initialized
     if (!state || !state.contacts) {
@@ -330,7 +354,13 @@ const VendorDirectoryPage: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
-            <AddVendorSection optionsView={optionsView} setOptionsView={setOptionsView} setSelectedVendorId={setSelectedVendorId} />
+            <AddVendorSection
+                optionsView={optionsView}
+                setOptionsView={setOptionsView}
+                setSelectedVendorId={setSelectedVendorId}
+                triggerAddVendor={triggerAddVendor}
+                onModalOpenHandled={() => setTriggerAddVendor(false)}
+            />
             <div className="flex-grow flex flex-col md:flex-row gap-3 md:gap-4 p-3 md:p-4 min-h-0 overflow-hidden">
                 {/* Vendor List Sidebar */}
                 <div
