@@ -296,7 +296,7 @@ app.get('/api/app-info/db-check', async (req, res) => {
     };
 
     try {
-      const t = await db.query('SELECT id, name, license_type, license_status, license_expiry_date FROM tenants');
+      const t = await db.query('SELECT id, name, email, license_type, license_status, license_expiry_date FROM tenants');
       counts.tenants = t.length;
       tenantsDetails = t;
 
