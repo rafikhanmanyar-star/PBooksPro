@@ -286,7 +286,8 @@ app.get('/api/app-info/db-check', async (req, res) => {
       LIMIT 20
     `);
 
-    // Check some counts
+    // Check some counts and details
+    let tenantsDetails: any[] = [];
     const counts = {
       tenants: 0,
       users: 0,
@@ -294,8 +295,9 @@ app.get('/api/app-info/db-check', async (req, res) => {
     };
 
     try {
-      const t = await db.query('SELECT count(*) FROM tenants');
-      counts.tenants = parseInt(t[0].count);
+      const t = await db.query('SELECT id, name, license_type, license_status, license_expiry_date FROM tenants');
+      counts.tenants = t.length;
+      tenantsDetails = t;
       const u = await db.query('SELECT count(*) FROM users');
       counts.users = parseInt(u[0].count);
       const a = await db.query('SELECT count(*) FROM admin_users');
@@ -309,6 +311,7 @@ app.get('/api/app-info/db-check', async (req, res) => {
       info: info[0],
       tables: tables.map(t => t.table_name),
       counts,
+      tenants: tenantsDetails,
       timestamp: new Date().toISOString()
     });
   } catch (error: any) {
