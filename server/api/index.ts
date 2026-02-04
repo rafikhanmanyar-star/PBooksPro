@@ -316,7 +316,7 @@ app.get('/api/app-info/db-check', async (req, res) => {
 
     res.json({
       success: true,
-      debug: "v5-users",
+      debug: "v6-emails",
       info: info[0],
       tables: tables.map(t => t.table_name),
       counts,
