@@ -142,6 +142,15 @@ import { licenseMiddleware } from '../middleware/licenseMiddleware.js';
 import { trackRequestMetrics } from './routes/admin/system-metrics.js';
 
 const app = express();
+
+// Endpoint to retrieve recent logs (public for debugging staging)
+app.get('/api/app-info/logs', (req, res) => {
+  res.json({
+    success: true,
+    logs: logBuffer,
+    timestamp: new Date().toISOString()
+  });
+});
 const httpServer = createServer(app);
 const port = Number(process.env.PORT) || 3000;
 
@@ -358,15 +367,6 @@ app.get('/api/app-info/db-check', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   }
-});
-
-// Endpoint to retrieve recent logs (public for debugging staging)
-app.get('/api/app-info/logs', (req, res) => {
-  res.json({
-    success: true,
-    logs: logBuffer,
-    timestamp: new Date().toISOString()
-  });
 });
 
 // Public routes (no authentication required)
