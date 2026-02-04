@@ -250,12 +250,46 @@ app.get('/', (req, res) => {
 });
 
 // Health check
-app.get('/health', (req, res) => {
+app.get('/health', async (req, res) => {
+  let dbStatus = 'disconnected';
+  try {
+    const db = getDatabaseService();
+    const isHealthy = await db.healthCheck();
+    dbStatus = isHealthy ? 'connected' : 'disconnected';
+  } catch (err) {
+    dbStatus = 'error';
+  }
+
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    database: pool.totalCount > 0 ? 'connected' : 'disconnected'
+    database: dbStatus,
+    pool: {
+      total: pool.totalCount,
+      idle: pool.idleCount,
+      waiting: pool.waitingCount
+    }
   });
+});
+
+// Database connectivity test endpoint (public for now to aid debugging)
+app.get('/api/app-info/db-check', async (req, res) => {
+  try {
+    const db = getDatabaseService();
+    const result = await db.query('SELECT current_database(), current_user, version()');
+    res.json({
+      success: true,
+      info: result[0],
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      code: error.code,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Public routes (no authentication required)
