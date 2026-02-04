@@ -208,18 +208,18 @@ router.get('/', async (req: AdminRequest, res) => {
         try {
             // Count active sessions (users who have activity in last 30 minutes)
             const activeSessions = await db.query<{ count: string }>(
-                `SELECT COUNT(DISTINCT user_id) as count 
-         FROM users 
-         WHERE last_login_at > NOW() - INTERVAL '30 minutes'`
+                `SELECT COUNT(DISTINCT id) as count 
+          FROM users 
+          WHERE last_login_at > NOW() - INTERVAL '30 minutes'`
             ).catch(() => [{ count: '0' }]);
 
             clientMetrics.activeSessions = parseInt(activeSessions[0]?.count || '0', 10);
 
             // Count total active users (logged in last 24 hours)
             const activeUsers = await db.query<{ count: string }>(
-                `SELECT COUNT(DISTINCT user_id) as count 
-         FROM users 
-         WHERE last_login_at > NOW() - INTERVAL '24 hours'`
+                `SELECT COUNT(DISTINCT id) as count 
+          FROM users 
+          WHERE last_login_at > NOW() - INTERVAL '24 hours'`
             ).catch(() => [{ count: '0' }]);
 
             clientMetrics.activeUsers = parseInt(activeUsers[0]?.count || '0', 10);
@@ -227,15 +227,15 @@ router.get('/', async (req: AdminRequest, res) => {
             // Get tenant distribution
             const tenantDist = await db.query<{ tenant_name: string; user_count: string; active_users: string }>(
                 `SELECT 
-          t.name as tenant_name,
-          COUNT(DISTINCT u.user_id) as user_count,
-          COUNT(DISTINCT CASE WHEN u.last_login_at > NOW() - INTERVAL '24 hours' THEN u.user_id END) as active_users
-         FROM tenants t
-         LEFT JOIN users u ON u.tenant_id = t.tenant_id
-         WHERE t.license_status = 'active'
-         GROUP BY t.tenant_id, t.name
-         ORDER BY active_users DESC
-         LIMIT 10`
+           t.name as tenant_name,
+           COUNT(DISTINCT u.id) as user_count,
+           COUNT(DISTINCT CASE WHEN u.last_login_at > NOW() - INTERVAL '24 hours' THEN u.id END) as active_users
+          FROM tenants t
+          LEFT JOIN users u ON u.tenant_id = t.id
+          WHERE t.license_status = 'active'
+          GROUP BY t.id, t.name
+          ORDER BY active_users DESC
+          LIMIT 10`
             ).catch(() => []);
 
             clientMetrics.tenantDistribution = tenantDist;
