@@ -86,7 +86,8 @@ const PAGE_GROUPS = {
   CONTACTS: ['contacts'],
   BUDGETS: ['budgets'],
   RENTAL: ['rentalManagement', 'rentalInvoices', 'rentalAgreements', 'ownerPayouts'],
-  PROJECT: ['projectManagement', 'projectInvoices', 'bills'],
+  PROJECT: ['projectManagement', 'bills'],
+  PROJECT_SELLING: ['projectSelling', 'projectInvoices'],
   INVESTMENT: ['investmentManagement'],
   PM_CONFIG: ['pmConfig'],
   TASKS: [
@@ -450,6 +451,7 @@ const App: React.FC = () => {
       case 'rentalAgreements': return 'Rental Agreements';
       case 'ownerPayouts': return 'Owner Payouts';
       case 'projectManagement': return 'Project Management';
+      case 'projectSelling': return 'Project Selling';
       case 'projectInvoices': return 'Project Invoices';
       case 'investmentManagement': return 'Inv. Cycle';
       case 'pmConfig': return 'PM Config.';
@@ -531,7 +533,7 @@ const App: React.FC = () => {
     const pageId = `page-${groupKey}`;
 
     // Fixed layout for certain complex modules
-    const isFixedLayout = groupKey === 'RENTAL' || groupKey === 'PROJECT' || groupKey === 'INVESTMENT' || groupKey === 'PM_CONFIG' || groupKey === 'PAYMENTS' || groupKey === 'PAYROLL';
+    const isFixedLayout = groupKey === 'RENTAL' || groupKey === 'PROJECT' || groupKey === 'PROJECT_SELLING' || groupKey === 'INVESTMENT' || groupKey === 'PM_CONFIG' || groupKey === 'PAYMENTS' || groupKey === 'PAYROLL';
     const overflowClass = isFixedLayout ? 'overflow-hidden' : 'overflow-y-auto';
     const bgClass = getPageBackground(groupKey);
 
@@ -614,6 +616,7 @@ const App: React.FC = () => {
               {renderPersistentPage('BUDGETS', <BudgetManagement />)}
               {renderPersistentPage('RENTAL', <RentalManagementPage initialPage={currentPage} />)}
               {renderPersistentPage('PROJECT', <ProjectManagementPage initialPage={currentPage} />)}
+              {renderPersistentPage('PROJECT_SELLING', <ProjectManagementPage initialPage={currentPage} />)}
               {renderPersistentPage('INVESTMENT', <InvestmentManagementPage />)}
               {renderPersistentPage('PM_CONFIG', <PMConfigPage />)}
               {renderPersistentPage('TASKS', <TaskModuleRouter currentPage={currentPage} />)}
@@ -632,7 +635,7 @@ const App: React.FC = () => {
             </ErrorBoundary>
 
             {/* Loading Overlay - Shows when navigating between pages (excluded for PROJECT, RENTAL, INVESTMENT, and PM_CONFIG groups to avoid duplicates with Suspense) */}
-            {showLoadingOverlay && activeGroup !== 'PROJECT' && activeGroup !== 'RENTAL' && activeGroup !== 'INVESTMENT' && activeGroup !== 'PM_CONFIG' && (
+            {showLoadingOverlay && activeGroup !== 'PROJECT' && activeGroup !== 'PROJECT_SELLING' && activeGroup !== 'RENTAL' && activeGroup !== 'INVESTMENT' && activeGroup !== 'PM_CONFIG' && (
               <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-50 flex items-center justify-center transition-opacity duration-200 animate-fade-in">
                 <div className="flex flex-col items-center gap-4">
                   <div className="relative">

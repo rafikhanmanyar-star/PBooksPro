@@ -205,13 +205,24 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 ]
             },
             {
-                title: 'Operations',
+                title: 'Selling',
                 items: [
-                    { page: 'projectManagement', label: 'Projects', icon: ICONS.archive },
-                    { page: 'rentalManagement', label: 'Rentals', icon: ICONS.building },
-                    { page: 'vendorDirectory', label: 'Vendors', icon: ICONS.briefcase },
-                    ...(isAdmin ? [{ page: 'investmentManagement', label: 'Inv. Cycle', icon: ICONS.dollarSign }] : []),
-                    { page: 'pmConfig', label: 'PM Cycle', icon: ICONS.filter },
+                    { page: 'projectSelling', label: 'Project selling', icon: ICONS.trendingUp },
+                    ...(isAdmin ? [{ page: 'investmentManagement', label: 'Inv Mgmt', icon: ICONS.dollarSign }] : []),
+                ]
+            },
+            {
+                title: 'Construction',
+                items: [
+                    { page: 'projectManagement', label: 'Project construction', icon: ICONS.archive },
+                    { page: 'vendorDirectory', label: 'Vendor directory', icon: ICONS.briefcase },
+                    { page: 'pmConfig', label: 'PM cycel', icon: ICONS.filter },
+                ]
+            },
+            {
+                title: 'Rental',
+                items: [
+                    { page: 'rentalManagement', label: 'Rental', icon: ICONS.building },
                 ]
             },
             {
@@ -267,20 +278,24 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
 
         // Filter groups based on modules
         return groups.filter(group => {
-            if (group.title === 'Operations') {
-                // Keep Real Estate / Rental modules if enabled
-                const hasRealEstate = hasModule('real_estate');
-                const hasRental = hasModule('rental');
+            const hasRealEstate = hasModule('real_estate');
+            const hasRental = hasModule('rental');
 
-                // If neither, we might still show basic operations like Vendor Directory
-                // But the user requested these to be optional
+            if (group.title === 'Selling') {
+                // Project Selling & Inv Mgmt require Real Estate
+                return hasRealEstate;
+            }
+            if (group.title === 'Construction') {
                 group.items = group.items.filter(item => {
-                    if (item.page === 'projectManagement' || item.page === 'pmConfig' || item.page === 'investmentManagement') return hasRealEstate;
-                    if (item.page === 'rentalManagement') return hasRental;
-                    return true; // Always show Vendor Directory (Basic)
+                    if (item.page === 'projectManagement' || item.page === 'pmConfig') return hasRealEstate;
+                    return true; // Vendor Directory is widely available
                 });
                 return group.items.length > 0;
             }
+            if (group.title === 'Rental') {
+                return hasRental;
+            }
+
             if (group.title === 'Tasks') {
                 return hasModule('tasks');
             }
@@ -297,7 +312,9 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const isCurrent = (itemPage: Page) => {
         if (currentPage === itemPage) return true;
         if (itemPage === 'rentalManagement' && (currentPage.startsWith('rental') || currentPage === 'ownerPayouts')) return true;
-        if (itemPage === 'projectManagement' && (currentPage.startsWith('project') || currentPage === 'bills')) return true;
+        if (itemPage === 'projectManagement' && (currentPage.startsWith('project') || currentPage === 'bills') && currentPage !== 'projectSelling' && currentPage !== 'projectInvoices') return true;
+        // projectInvoices is now under Selling (Project selling), so it should activate projectSelling not projectManagement.
+        if (itemPage === 'projectSelling' && (currentPage === 'projectSelling' || currentPage === 'projectInvoices' || currentPage === 'marketing')) return true;
         return false;
     };
 

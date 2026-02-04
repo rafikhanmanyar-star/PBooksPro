@@ -294,6 +294,9 @@ class SyncEngine {
       case 'document':
         await this.syncDocument(item);
         break;
+      case 'vendor':
+        await this.syncVendor(item);
+        break;
       case 'user':
       case 'users':
         // Users are handled by the validation check above
@@ -566,6 +569,20 @@ class SyncEngine {
         break;
       case 'delete':
         await this.apiService.deleteDocument(item.data.id);
+        break;
+    }
+  }
+
+  private async syncVendor(item: SyncQueueItem): Promise<void> {
+    switch (item.action) {
+      case 'create':
+        await this.apiService.saveVendor(item.data);
+        break;
+      case 'update':
+        await this.apiService.saveVendor(item.data);
+        break;
+      case 'delete':
+        await this.apiService.deleteVendor(item.data.id);
         break;
     }
   }

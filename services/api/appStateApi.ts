@@ -5,7 +5,7 @@
  * This is used when the app is in cloud mode (authenticated with tenant).
  */
 
-import { AppState, InvoiceStatus, ProjectAgreementStatus, ContractStatus, SalesReturnStatus, SalesReturnReason, PMCycleAllocation, Quotation, Document } from '../../types';
+import { AppState, InvoiceStatus, ProjectAgreementStatus, ContractStatus, SalesReturnStatus, SalesReturnReason, PMCycleAllocation, Quotation, Document, Vendor } from '../../types';
 import { AccountsApiRepository } from './repositories/accountsApi';
 import { ContactsApiRepository } from './repositories/contactsApi';
 import { TransactionsApiRepository } from './repositories/transactionsApi';
@@ -29,6 +29,7 @@ import { RecurringInvoiceTemplatesApiRepository } from './repositories/recurring
 import { AppSettingsApiRepository } from './repositories/appSettingsApi';
 import { PMCycleAllocationsApiRepository } from './repositories/pmCycleAllocationsApi';
 import { TransactionLogApiRepository } from './repositories/transactionLogApi';
+import { VendorsApiRepository } from './repositories/vendorsApi';
 import { apiClient } from './client';
 import { logger } from '../logger';
 
@@ -63,6 +64,7 @@ export class AppStateApiService {
   private appSettingsRepo: AppSettingsApiRepository;
   private pmCycleAllocationsRepo: PMCycleAllocationsApiRepository;
   private transactionLogRepo: TransactionLogApiRepository;
+  private vendorsRepo: VendorsApiRepository;
 
   constructor() {
     this.accountsRepo = new AccountsApiRepository();
@@ -88,6 +90,7 @@ export class AppStateApiService {
     this.appSettingsRepo = new AppSettingsApiRepository();
     this.pmCycleAllocationsRepo = new PMCycleAllocationsApiRepository();
     this.transactionLogRepo = new TransactionLogApiRepository();
+    this.vendorsRepo = new VendorsApiRepository();
   }
 
   /**
@@ -132,6 +135,7 @@ export class AppStateApiService {
         recurringInvoiceTemplates,
         pmCycleAllocations,
         transactionLog,
+        vendors,
       ] = await Promise.all([
         this.accountsRepo.findAll().catch(err => {
           logger.errorCategory('sync', 'Error loading accounts from API:', err);
@@ -221,6 +225,10 @@ export class AppStateApiService {
           console.error('Error loading transaction logs from API:', err);
           return [];
         }),
+        this.vendorsRepo.findAll().catch(err => {
+          console.error('Error loading vendors from API:', err);
+          return [];
+        }),
       ]);
 
       logger.logCategory('sync', '✅ Loaded from API:', {
@@ -245,6 +253,7 @@ export class AppStateApiService {
         documents: documents.length,
         recurringInvoiceTemplates: recurringInvoiceTemplates.length,
         pmCycleAllocations: pmCycleAllocations.length,
+        vendors: vendors.length,
       });
 
       const parseJsonSafe = <T,>(value: any, fallback: T): T => {
@@ -732,6 +741,7 @@ export class AppStateApiService {
         recurringInvoiceTemplates: recurringInvoiceTemplates || [],
         pmCycleAllocations: pmCycleAllocations || [],
         transactionLog: transactionLog || [],
+        vendors: vendors || [],
       };
     } catch (error) {
       logger.errorCategory('sync', '❌ Error loading state from API:', error);
@@ -775,6 +785,30 @@ export class AppStateApiService {
       description: saved.description || undefined,
       parentAccountId: (saved as any).parent_account_id || saved.parentAccountId || undefined
     };
+  }
+
+  /**
+   * Save vendor to API
+   */
+  async saveVendor(vendor: Partial<Vendor>): Promise<Vendor> {
+    // Always use POST endpoint - it handles upserts automatically
+    try {
+      if (vendor.id && await this.vendorsRepo.exists(vendor.id)) {
+        return await this.vendorsRepo.update(vendor.id, vendor);
+      } else {
+        return await this.vendorsRepo.create(vendor);
+      }
+    } catch (e) {
+      // Fallback to create if update fails or check fails
+      return await this.vendorsRepo.create(vendor);
+    }
+  }
+
+  /**
+   * Delete vendor from API
+   */
+  async deleteVendor(id: string): Promise<void> {
+    return this.vendorsRepo.delete(id);
   }
 
   /**

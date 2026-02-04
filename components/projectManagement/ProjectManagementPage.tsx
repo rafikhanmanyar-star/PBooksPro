@@ -33,15 +33,15 @@ import ProjectCashFlowReport from '../reports/ProjectCashFlowReport';
 import MarketingActivityReport from '../reports/MarketingActivityReport';
 
 interface ProjectManagementPageProps {
-  initialPage: Page;
+    initialPage: Page;
 }
 
 // Define all possible view keys
-type ProjectView = 
+type ProjectView =
     | 'Marketing' | 'Agreements' | 'Contracts' | 'Invoices' | 'Bills' | 'Sales Returns'
     | 'Broker Payouts' | 'PM Payouts'
-    | 'Visual Layout' | 'Tabular View' 
-    | 'Project Summary' | 'Revenue Analysis' | 'Owner Ledger' | 'Broker Report' 
+    | 'Visual Layout' | 'Tabular View'
+    | 'Project Summary' | 'Revenue Analysis' | 'Owner Ledger' | 'Broker Report'
     | 'Income by Category' | 'Expense by Category' | 'Material Report' | 'Vendor Ledger'
     | 'PM Cost Report' | 'Profit & Loss' | 'Balance Sheet' | 'Investor Distribution' | 'Contract Report'
     | 'Budget vs Actual' | 'Cash Flows' | 'Marketing Activity';
@@ -53,7 +53,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
     // Check admin role from both AuthContext (cloud auth) and AppContext (local auth)
     // Organization admins should have full access to all reports
     const isAdmin = user?.role === 'Admin' || currentUser?.role === 'Admin';
-    
+
     // Detect Mobile
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
     useEffect(() => {
@@ -63,10 +63,10 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
     }, []);
 
     const [activeView, setActiveView] = useLocalStorage<ProjectView>('projectManagement_activeView', 'Agreements');
-    
+
     const [isReportDropdownOpen, setIsReportDropdownOpen] = useState(false);
     const [isPayoutDropdownOpen, setIsPayoutDropdownOpen] = useState(false);
-    
+
     const reportDropdownRef = useRef<HTMLDivElement>(null);
     const payoutDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -84,6 +84,8 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    const isSellingMode = initialPage === 'projectSelling' || initialPage === 'projectInvoices';
+
     useEffect(() => {
         if (initialTabs && initialTabs.length > 0) {
             const [mainTab, subTab] = initialTabs;
@@ -96,27 +98,41 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                 setActiveView(mainTab as ProjectView);
             }
             dispatch({ type: 'CLEAR_INITIAL_TABS' });
+        } else {
+            // Set default view based on mode if no specific view is active or if active view is invalid for mode
+            if (isSellingMode) {
+                if (!['Marketing', 'Agreements', 'Invoices'].includes(activeView as string)) {
+                    setActiveView('Marketing');
+                }
+            } else {
+                // Construction Mode Defaults
+                if (['Marketing', 'Agreements', 'Invoices'].includes(activeView as string)) {
+                    setActiveView('Visual Layout');
+                }
+            }
         }
-    }, [initialTabs, dispatch, setActiveView]);
+    }, [initialTabs, dispatch, setActiveView, isSellingMode, activeView]);
 
     const renderContent = () => {
-        switch(activeView) {
-            // Operations
+        switch (activeView) {
+            // Selling Pages
             case 'Marketing': return <MarketingPage />;
             case 'Agreements': return <ProjectAgreementsPage />;
-            case 'Contracts': return <ProjectContractsPage />;
             case 'Invoices': return <InvoicesPage invoiceTypeFilter={InvoiceType.INSTALLMENT} hideTitleAndGoBack={true} />;
+
+            // Construction Pages
+            case 'Contracts': return <ProjectContractsPage />;
             case 'Bills': return <BillsPage projectContext={true} />;
             case 'Sales Returns': return <SalesReturnsPage />;
 
             // Payouts
             case 'Broker Payouts': return <BrokerPayouts context="Project" />;
             case 'PM Payouts': return <ProjectPMPayouts />; // Legacy / Simple View
-            
-            // Primary Reports (Now on Nav)
+
+            // Primary Reports (Now on Nav in Construction)
             case 'Visual Layout': return <ProjectLayoutReport />;
             case 'Tabular View': return <ProjectUnitReport />;
-            
+
             // Secondary Reports (From Dropdown)
             case 'Project Summary': return <ProjectSummaryReport />;
             case 'Marketing Activity': return <MarketingActivityReport />;
@@ -134,13 +150,13 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             case 'PM Cost Report': return <ProjectPMCostReport />;
             case 'Contract Report': return <ProjectContractReport />;
             case 'Budget vs Actual': return <ProjectBudgetReport />;
-            
+
             default: return null;
         }
     };
 
     const isReportActive = [
-        'Project Summary', 'Marketing Activity', 'Profit & Loss', 'Balance Sheet', 'Investor Distribution', 'Revenue Analysis', 'Owner Ledger', 'Broker Report', 
+        'Project Summary', 'Marketing Activity', 'Profit & Loss', 'Balance Sheet', 'Investor Distribution', 'Revenue Analysis', 'Owner Ledger', 'Broker Report',
         'Income by Category', 'Expense by Category', 'Material Report', 'Vendor Ledger', 'PM Cost Report', 'Contract Report', 'Budget vs Actual', 'Cash Flows'
     ].includes(activeView);
 
@@ -149,11 +165,10 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
     const NavButton = ({ view, label }: { view: ProjectView, label: string }) => (
         <button
             onClick={() => setActiveView(view)}
-            className={`whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeView === view 
-                ? 'bg-indigo-50 text-accent ring-1 ring-indigo-100' 
+            className={`whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors ${activeView === view
+                ? 'bg-indigo-50 text-accent ring-1 ring-indigo-100'
                 : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-            }`}
+                }`}
         >
             {label}
         </button>
@@ -163,17 +178,24 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         <div className="flex flex-col h-full space-y-4">
             {/* Custom Navigation Bar */}
             <div className="flex flex-col md:flex-row md:items-center justify-between bg-white border-b border-slate-200 px-4 py-2 shadow-sm flex-shrink-0 gap-3 md:gap-4 z-50 relative">
-                
+
                 {/* Left Side: Operational Tabs & Reports Dropdown */}
                 <div className="flex items-center flex-grow min-w-0">
                     {/* Operational Tabs - Scrollable */}
                     <div className="flex items-center gap-1 overflow-x-auto no-scrollbar flex-shrink">
-                        <NavButton view="Marketing" label="Marketing" />
-                        <NavButton view="Agreements" label="Sales Agr." />
-                        <NavButton view="Invoices" label="Invoices" />
-                        <NavButton view="Contracts" label="Contracts" />
-                        <NavButton view="Bills" label="Bills" />
-                        <NavButton view="Sales Returns" label="Returns" />
+                        {isSellingMode ? (
+                            <>
+                                <NavButton view="Marketing" label="Marketing" />
+                                <NavButton view="Agreements" label="Agreements" />
+                                <NavButton view="Invoices" label="Invoices" />
+                            </>
+                        ) : (
+                            <>
+                                <NavButton view="Contracts" label="Contracts" />
+                                <NavButton view="Bills" label="Bills" />
+                                <NavButton view="Sales Returns" label="Returns" />
+                            </>
+                        )}
                     </div>
 
                     {/* Vertical Divider */}
@@ -181,16 +203,15 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
 
                     {/* Fixed Dropdowns (Outside Scroll) */}
                     <div className="flex items-center gap-1 flex-shrink-0">
-                        
+
                         {/* Payouts Dropdown */}
                         <div className="relative" ref={payoutDropdownRef}>
                             <button
                                 onClick={() => setIsPayoutDropdownOpen(!isPayoutDropdownOpen)}
-                                className={`whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                                    isPayoutActive || isPayoutDropdownOpen
-                                    ? 'bg-indigo-50 text-accent ring-1 ring-indigo-100' 
+                                className={`whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors ${isPayoutActive || isPayoutDropdownOpen
+                                    ? 'bg-indigo-50 text-accent ring-1 ring-indigo-100'
                                     : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                                }`}
+                                    }`}
                             >
                                 Payouts
                             </button>
@@ -203,37 +224,36 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                                                 setActiveView('Broker Payouts');
                                                 setIsPayoutDropdownOpen(false);
                                             }}
-                                            className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors border-b border-slate-50 ${
-                                                activeView === 'Broker Payouts' ? 'text-accent font-medium bg-indigo-50/50' : 'text-slate-700'
-                                            }`}
+                                            className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors border-b border-slate-50 ${activeView === 'Broker Payouts' ? 'text-accent font-medium bg-indigo-50/50' : 'text-slate-700'
+                                                }`}
                                         >
                                             Brokers
                                         </button>
-                                        <button
-                                            onClick={() => {
-                                                setActiveView('PM Payouts');
-                                                setIsPayoutDropdownOpen(false);
-                                            }}
-                                            className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors ${
-                                                activeView === 'PM Payouts' ? 'text-accent font-medium bg-indigo-50/50' : 'text-slate-700'
-                                            }`}
-                                        >
-                                            PM Fee Log
-                                        </button>
+                                        {!isSellingMode && (
+                                            <button
+                                                onClick={() => {
+                                                    setActiveView('PM Payouts');
+                                                    setIsPayoutDropdownOpen(false);
+                                                }}
+                                                className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors ${activeView === 'PM Payouts' ? 'text-accent font-medium bg-indigo-50/50' : 'text-slate-700'
+                                                    }`}
+                                            >
+                                                PM Fee Log
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             )}
                         </div>
 
-                        {/* Reports Dropdown */}
+                        {/* Reports Dropdown - Different/Shared reports could be filtered later if needed */}
                         <div className="relative" ref={reportDropdownRef}>
                             <button
                                 onClick={() => setIsReportDropdownOpen(!isReportDropdownOpen)}
-                                className={`whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                                    isReportActive || isReportDropdownOpen
-                                    ? 'bg-indigo-50 text-accent ring-1 ring-indigo-100' 
+                                className={`whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors ${isReportActive || isReportDropdownOpen
+                                    ? 'bg-indigo-50 text-accent ring-1 ring-indigo-100'
                                     : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                                }`}
+                                    }`}
                             >
                                 Reports
                             </button>
@@ -292,9 +312,8 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                                                     setActiveView(reportName as ProjectView);
                                                     setIsReportDropdownOpen(false);
                                                 }}
-                                                className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 ${
-                                                    activeView === reportName ? 'text-accent font-medium bg-indigo-50/50' : 'text-slate-700'
-                                                }`}
+                                                className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 ${activeView === reportName ? 'text-accent font-medium bg-indigo-50/50' : 'text-slate-700'
+                                                    }`}
                                             >
                                                 {reportName}
                                             </button>
@@ -306,29 +325,29 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                     </div>
                 </div>
 
-                {/* Right Side: Segmented Control for Views */}
-                <div className="flex items-center bg-slate-100 rounded-full p-1 flex-shrink-0 self-start md:self-center">
-                    <button
-                        onClick={() => setActiveView('Visual Layout')}
-                        className={`px-4 py-1.5 text-xs sm:text-sm font-medium rounded-full transition-all duration-200 ${
-                            activeView === 'Visual Layout'
-                            ? 'bg-slate-200 text-slate-800 shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]'
-                            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
-                        }`}
-                    >
-                        Visual Layout
-                    </button>
-                    <button
-                        onClick={() => setActiveView('Tabular View')}
-                        className={`px-4 py-1.5 text-xs sm:text-sm font-medium rounded-full transition-all duration-200 ${
-                            activeView === 'Tabular View'
-                            ? 'bg-slate-200 text-slate-800 shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]'
-                            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
-                        }`}
-                    >
-                        Tabular View
-                    </button>
-                </div>
+                {/* Right Side: Segmented Control for Views - HIDE for Selling Mode if not relevant */}
+                {!isSellingMode && (
+                    <div className="flex items-center bg-slate-100 rounded-full p-1 flex-shrink-0 self-start md:self-center">
+                        <button
+                            onClick={() => setActiveView('Visual Layout')}
+                            className={`px-4 py-1.5 text-xs sm:text-sm font-medium rounded-full transition-all duration-200 ${activeView === 'Visual Layout'
+                                ? 'bg-slate-200 text-slate-800 shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]'
+                                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                                }`}
+                        >
+                            Visual Layout
+                        </button>
+                        <button
+                            onClick={() => setActiveView('Tabular View')}
+                            className={`px-4 py-1.5 text-xs sm:text-sm font-medium rounded-full transition-all duration-200 ${activeView === 'Tabular View'
+                                ? 'bg-slate-200 text-slate-800 shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]'
+                                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                                }`}
+                        >
+                            Tabular View
+                        </button>
+                    </div>
+                )}
             </div>
 
             <div className="flex-grow overflow-hidden">

@@ -13,6 +13,7 @@ export type Page =
   | 'rentalAgreements'
   | 'ownerPayouts'
   | 'projectManagement'
+  | 'projectSelling'
   | 'projectInvoices'
   | 'bills'
   | 'investmentManagement'

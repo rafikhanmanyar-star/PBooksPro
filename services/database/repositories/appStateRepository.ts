@@ -16,7 +16,7 @@ import {
     RentalAgreementsRepository, ProjectAgreementsRepository, ContractsRepository,
     InstallmentPlansRepository, PlanAmenitiesRepository, RecurringTemplatesRepository, TransactionLogRepository, ErrorLogRepository,
     QuotationsRepository, DocumentsRepository, PMCycleAllocationsRepository, AppSettingsRepository,
-    SalesReturnsRepository
+    SalesReturnsRepository, VendorsRepository
 } from './index';
 
 import { migrateTenantColumns } from '../tenantMigration';
@@ -53,6 +53,7 @@ export class AppStateRepository {
     private pmCycleAllocationsRepo = new PMCycleAllocationsRepository();
     private appSettingsRepo = new AppSettingsRepository();
     private salesReturnsRepo = new SalesReturnsRepository();
+    private vendorsRepo = new VendorsRepository();
 
 
     /**
@@ -125,6 +126,7 @@ export class AppStateRepository {
         const installmentPlans = this.installmentPlansRepo.findAll();
         const planAmenities = this.planAmenitiesRepo.findAll();
         const salesReturns = this.salesReturnsRepo.findAll();
+        const vendors = this.vendorsRepo.findAll();
 
 
         // Load settings - try cloud first, then fallback to local
@@ -566,6 +568,7 @@ export class AppStateRepository {
             defaultProjectId: settings.defaultProjectId || undefined,
             lastServiceChargeRun: settings.lastServiceChargeRun,
             salesReturns,
+            vendors,
 
             transactionLog,
             errorLog,
@@ -788,6 +791,7 @@ export class AppStateRepository {
                                 })));
                                 this.budgetsRepo.saveAll(state.budgets);
                                 this.salesReturnsRepo.saveAll(state.salesReturns || []);
+                                this.vendorsRepo.saveAll(state.vendors || []);
 
                             } catch (e) {
                                 console.error('❌ Failed to save documents/budgets/agreements/contracts:', e);
