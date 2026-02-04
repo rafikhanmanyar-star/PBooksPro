@@ -159,18 +159,15 @@ router.post('/unified-login', async (req, res) => {
       hasPassword: !!password
     });
 
+    console.log('👤 [DEBUG] Unified login attempt for:', normalizedOrganizationEmail, normalizedUsername);
     // Lookup tenants by organization email (case-insensitive)
-    console.log('🔍 Looking up tenant by email:', normalizedOrganizationEmail);
+    console.log('🔍 [DEBUG] Looking up tenant by email...');
     const tenants = await db.query(
       'SELECT * FROM tenants WHERE LOWER(TRIM(email)) = LOWER(TRIM($1))',
       [normalizedOrganizationEmail]
     );
 
-    console.log('📊 Tenant lookup result:', {
-      tenantsFound: tenants.length,
-      searchedEmail: normalizedOrganizationEmail,
-      foundEmails: tenants.map((t: any) => t.email?.substring(0, 15) + '...')
-    });
+    console.log('📊 [DEBUG] Tenant lookup result count:', tenants.length);
 
     if (tenants.length === 0) {
       console.log('❌ Unified login: No organization found for email:', normalizedOrganizationEmail);
@@ -196,8 +193,8 @@ router.post('/unified-login', async (req, res) => {
     const tenantId = tenant.id;
     console.log('✅ Tenant found:', { tenantId, tenantName: tenant.name, tenantEmail: tenant.email });
 
+    console.log('👤 [DEBUG] User lookup starting...');
     // Find user within tenant (case-insensitive username comparison)
-    console.log('🔍 Looking up user:', { username: normalizedUsername, tenantId });
     const allUsers = await db.query(
       `SELECT * FROM users
        WHERE tenant_id = $2
@@ -211,11 +208,7 @@ router.post('/unified-login', async (req, res) => {
       [normalizedUsername, tenantId]
     );
 
-    console.log('📊 User lookup result:', {
-      usersFound: allUsers.length,
-      searchedUsername: normalizedUsername,
-      foundUsernames: allUsers.map((u: any) => u.username)
-    });
+    console.log('📊 [DEBUG] User lookup result count:', allUsers.length);
 
     if (allUsers.length === 0) {
       console.log('❌ Unified login: User not found:', { username: normalizedUsername, tenantId });
@@ -248,11 +241,10 @@ router.post('/unified-login', async (req, res) => {
     console.log('✅ User found:', { userId: user.id, username: user.username, role: user.role, is_active: user.is_active });
 
     // Verify password
+    console.log('🔐 [DEBUG] Verifying password with bcrypt.compare...');
     const hasPassword = !!user.password;
-    console.log('🔐 Verifying password:', { hasPassword, passwordLength: user.password?.length });
-
     if (!user.password) {
-      console.log('❌ Unified login: User has no password set:', { username: normalizedUsername, tenantId });
+      console.log('❌ Unified login: User has no password set');
       return res.status(401).json({
         error: 'Invalid credentials',
         message: 'Invalid organization email, username, or password'
@@ -260,7 +252,7 @@ router.post('/unified-login', async (req, res) => {
     }
 
     const passwordMatch = await bcrypt.compare(password, user.password);
-    console.log('🔐 Password comparison result:', { passwordMatch });
+    console.log('🔐 [DEBUG] Password match result:', passwordMatch);
 
     if (!passwordMatch) {
       // Fallback for legacy plaintext passwords: compare raw, then upgrade hash.
