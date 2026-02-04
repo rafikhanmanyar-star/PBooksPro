@@ -595,6 +595,19 @@ export class AppStateApiService {
         updatedAt: c.updated_at || c.updatedAt || undefined
       }));
 
+      // Normalize vendors from API (transform snake_case to camelCase)
+      const normalizedVendors = vendors.map((v: any) => ({
+        id: v.id,
+        name: v.name || '',
+        description: v.description || undefined,
+        contactNo: v.contact_no || v.contactNo || undefined,
+        companyName: v.company_name || v.companyName || undefined,
+        address: v.address || undefined,
+        userId: v.user_id || v.userId || undefined,
+        createdAt: v.created_at || v.createdAt || undefined,
+        updatedAt: v.updated_at || v.updatedAt || undefined
+      }));
+
       // Normalize projects from API
       const normalizedProjects = projects.map((p: any) => ({
         id: p.id,
@@ -741,7 +754,7 @@ export class AppStateApiService {
         recurringInvoiceTemplates: recurringInvoiceTemplates || [],
         pmCycleAllocations: pmCycleAllocations || [],
         transactionLog: transactionLog || [],
-        vendors: vendors || [],
+        vendors: normalizedVendors || [],
       };
     } catch (error) {
       logger.errorCategory('sync', '❌ Error loading state from API:', error);
@@ -790,17 +803,45 @@ export class AppStateApiService {
   /**
    * Save vendor to API
    */
+  /**
+   * Save vendor to API
+   */
   async saveVendor(vendor: Partial<Vendor>): Promise<Vendor> {
     // Always use POST endpoint - it handles upserts automatically
     try {
+      let saved: any;
       if (vendor.id && await this.vendorsRepo.exists(vendor.id)) {
-        return await this.vendorsRepo.update(vendor.id, vendor);
+        saved = await this.vendorsRepo.update(vendor.id, vendor);
       } else {
-        return await this.vendorsRepo.create(vendor);
+        saved = await this.vendorsRepo.create(vendor);
       }
+
+      // Normalize the response (server returns snake_case, client expects camelCase)
+      return {
+        id: saved.id,
+        name: saved.name || '',
+        description: saved.description || undefined,
+        contactNo: saved.contact_no || saved.contactNo || undefined,
+        companyName: saved.company_name || saved.companyName || undefined,
+        address: saved.address || undefined,
+        userId: saved.user_id || saved.userId || undefined,
+        createdAt: saved.created_at || saved.createdAt || undefined,
+        updatedAt: saved.updated_at || saved.updatedAt || undefined
+      };
     } catch (e) {
       // Fallback to create if update fails or check fails
-      return await this.vendorsRepo.create(vendor);
+      const saved: any = await this.vendorsRepo.create(vendor);
+      return {
+        id: saved.id,
+        name: saved.name || '',
+        description: saved.description || undefined,
+        contactNo: saved.contact_no || saved.contactNo || undefined,
+        companyName: saved.company_name || saved.companyName || undefined,
+        address: saved.address || undefined,
+        userId: saved.user_id || saved.userId || undefined,
+        createdAt: saved.created_at || saved.createdAt || undefined,
+        updatedAt: saved.updated_at || saved.updatedAt || undefined
+      };
     }
   }
 

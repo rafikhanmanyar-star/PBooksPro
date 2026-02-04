@@ -99,14 +99,29 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             }
             dispatch({ type: 'CLEAR_INITIAL_TABS' });
         } else {
-            // Set default view based on mode if no specific view is active or if active view is invalid for mode
+            // Set default view based on mode
             if (isSellingMode) {
-                if (!['Marketing', 'Agreements', 'Invoices'].includes(activeView as string)) {
+                // Allowed views in Selling Mode
+                const allowedSellingViews = [
+                    'Marketing', 'Agreements', 'Invoices', 'Broker Payouts',
+                    'Project Summary', 'Marketing Activity', 'Revenue Analysis',
+                    'Owner Ledger', 'Broker Report', 'Income by Category', 'Expense by Category'
+                ];
+
+                if (!allowedSellingViews.includes(activeView as string)) {
                     setActiveView('Marketing');
                 }
             } else {
-                // Construction Mode Defaults
-                if (['Marketing', 'Agreements', 'Invoices'].includes(activeView as string)) {
+                // Construction Mode Defaults & Allowed Views
+                const allowedConstructionViews = [
+                    'Contracts', 'Bills', 'Sales Returns', 'PM Payouts',
+                    'Visual Layout', 'Tabular View',
+                    'Project Summary', 'Budget vs Actual', 'Contract Report',
+                    'PM Cost Report', 'Material Report', 'Vendor Ledger',
+                    'Owner Ledger', 'Income by Category', 'Expense by Category'
+                ];
+
+                if (!allowedConstructionViews.includes(activeView as string)) {
                     setActiveView('Visual Layout');
                 }
             }
@@ -219,16 +234,18 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                             {isPayoutDropdownOpen && (
                                 <div className="absolute left-0 mt-2 w-48 bg-white border border-slate-200 rounded-lg shadow-xl z-[100] animate-fade-in-fast overflow-hidden">
                                     <div className="py-1">
-                                        <button
-                                            onClick={() => {
-                                                setActiveView('Broker Payouts');
-                                                setIsPayoutDropdownOpen(false);
-                                            }}
-                                            className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors border-b border-slate-50 ${activeView === 'Broker Payouts' ? 'text-accent font-medium bg-indigo-50/50' : 'text-slate-700'
-                                                }`}
-                                        >
-                                            Brokers
-                                        </button>
+                                        {isSellingMode && (
+                                            <button
+                                                onClick={() => {
+                                                    setActiveView('Broker Payouts');
+                                                    setIsPayoutDropdownOpen(false);
+                                                }}
+                                                className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors border-b border-slate-50 ${activeView === 'Broker Payouts' ? 'text-accent font-medium bg-indigo-50/50' : 'text-slate-700'
+                                                    }`}
+                                            >
+                                                Brokers
+                                            </button>
+                                        )}
                                         {!isSellingMode && (
                                             <button
                                                 onClick={() => {
@@ -292,20 +309,25 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                                         )}
 
                                         <div className="bg-slate-50 px-4 py-1 text-xs font-semibold text-slate-500 border-b border-slate-200">OPERATIONAL</div>
-                                        {[
+                                        {(isSellingMode ? [
                                             'Project Summary',
                                             'Marketing Activity',
+                                            'Revenue Analysis',
+                                            'Broker Report',
+                                            'Owner Ledger',
+                                            'Income by Category',
+                                            'Expense by Category'
+                                        ] : [
+                                            'Project Summary',
                                             'Budget vs Actual',
                                             'Contract Report',
                                             'PM Cost Report',
-                                            'Revenue Analysis',
-                                            'Owner Ledger',
-                                            'Broker Report',
-                                            'Income by Category',
-                                            'Expense by Category',
                                             'Material Report',
-                                            'Vendor Ledger'
-                                        ].map((reportName) => (
+                                            'Vendor Ledger',
+                                            'Owner Ledger',
+                                            'Income by Category',
+                                            'Expense by Category'
+                                        ]).map((reportName) => (
                                             <button
                                                 key={reportName}
                                                 onClick={() => {
