@@ -23,6 +23,7 @@ interface ContactTreeNode {
     type: 'type' | 'contact';
     children: ContactTreeNode[];
     value?: number;
+    isActive?: boolean;
 }
 
 /** Premium tree sidebar: same style as Project Agreements (Directories, avatars, orange active, chevron) */
@@ -77,7 +78,7 @@ const ContactTreeSidebar: React.FC<{
                     <span className="flex-shrink-0 w-6 h-6 rounded-md bg-slate-800 text-slate-200 text-[10px] font-bold flex items-center justify-center">
                         {initials}
                     </span>
-                    <span className="flex-1 text-xs font-medium truncate">{node.label}</span>
+                    <span className={`flex-1 text-xs font-medium truncate ${node.isActive === false ? 'opacity-40 line-through' : ''}`}>{node.label}</span>
                     {node.value !== undefined && node.value > 0 && (
                         <span className={`text-[10px] font-semibold tabular-nums ${isSelected ? 'text-orange-600' : 'text-slate-500'}`}>
                             {node.value}
@@ -175,7 +176,7 @@ const ContactsPage: React.FC = () => {
                 value: childrenContacts.length,
                 children: childrenContacts
                     .sort((a, b) => a.name.localeCompare(b.name))
-                    .map(c => ({ id: c.id, label: c.name, type: 'contact' as const, children: [], value: undefined })),
+                    .map(c => ({ id: c.id, label: c.name, type: 'contact' as const, children: [], value: undefined, isActive: c.isActive })),
             };
         });
 
@@ -188,7 +189,7 @@ const ContactsPage: React.FC = () => {
                 value: state.vendors.length,
                 children: state.vendors
                     .sort((a, b) => a.name.localeCompare(b.name))
-                    .map(v => ({ id: v.id, label: v.name, type: 'contact', children: [], value: undefined }))
+                    .map(v => ({ id: v.id, label: v.name, type: 'contact', children: [], value: undefined, isActive: v.isActive }))
             });
         }
 
@@ -568,8 +569,11 @@ const ContactsPage: React.FC = () => {
                                                     className={`cursor-pointer transition-colors group touch-manipulation ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-slate-100`}
                                                     onClick={() => openLedger(contact)}
                                                 >
-                                                    <td className="px-2 md:px-4 py-2 md:py-3 font-medium text-gray-800 whitespace-nowrap text-xs md:text-sm">
+                                                    <td className={`px-2 md:px-4 py-2 md:py-3 font-medium whitespace-nowrap text-xs md:text-sm ${contact.isActive === false ? 'text-slate-400 line-through' : 'text-gray-800'}`}>
                                                         {contact.name}
+                                                        {contact.isActive === false && (
+                                                            <span className="ml-2 inline-block px-1.5 py-0.5 rounded bg-slate-100 text-[8px] text-slate-500 uppercase font-bold tracking-tight">Deactivated</span>
+                                                        )}
                                                     </td>
                                                     <td className="px-2 md:px-4 py-2 md:py-3">
                                                         <span className="inline-block bg-gray-100 text-gray-700 text-[9px] md:text-[10px] px-1.5 md:px-2 py-0.5 rounded-full font-medium uppercase tracking-wide whitespace-nowrap">

@@ -76,7 +76,10 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
         contractToEdit?.expenseCategoryItems || []
     );
 
-    const vendors = useMemo(() => state.vendors || [], [state.vendors]);
+    const vendors = useMemo(() => {
+        const list = state.vendors || [];
+        return list.filter(v => v.isActive !== false || v.id === vendorId);
+    }, [state.vendors, vendorId]);
     const expenseCategories = useMemo(() => state.categories.filter(c => c.type === TransactionType.EXPENSE), [state.categories]);
 
     // Get available categories (not already used in items)

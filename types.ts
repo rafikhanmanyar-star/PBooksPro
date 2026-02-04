@@ -228,6 +228,7 @@ export interface Contact {
   userId?: string;
   createdAt?: string;
   updatedAt?: string;
+  isActive?: boolean;
 }
 
 export interface Vendor {
@@ -240,6 +241,7 @@ export interface Vendor {
   userId?: string;
   createdAt?: string;
   updatedAt?: string;
+  isActive?: boolean;
 }
 
 export interface Category {

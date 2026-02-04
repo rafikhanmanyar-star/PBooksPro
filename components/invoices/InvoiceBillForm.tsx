@@ -1041,14 +1041,16 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     // If filteredContacts is typed as Contact[], we need to cast or unify types.
     // Fortunately, Vendor and Contact both have id and name.
     if (type === 'bill') {
+      const vendorList = (state.vendors || []).filter(v => v.isActive !== false || v.id === contactId);
       return {
         contactLabel: 'Vendor / Supplier',
-        filteredContacts: state.vendors || [],
+        filteredContacts: vendorList,
         fixedContactTypeForNew: ContactType.VENDOR
       };
     }
-    if (invoiceType === InvoiceType.RENTAL) return { contactLabel: 'Tenant', filteredContacts: state.contacts.filter(c => c.type === ContactType.TENANT), fixedContactTypeForNew: ContactType.TENANT };
-    const owners = state.contacts.filter(c => c.type === ContactType.CLIENT || c.type === ContactType.OWNER);
+    const tenantList = state.contacts.filter(c => c.type === ContactType.TENANT && (c.isActive !== false || c.id === contactId));
+    if (invoiceType === InvoiceType.RENTAL) return { contactLabel: 'Tenant', filteredContacts: tenantList, fixedContactTypeForNew: ContactType.TENANT };
+    const owners = state.contacts.filter(c => (c.type === ContactType.CLIENT || c.type === ContactType.OWNER) && (c.isActive !== false || c.id === contactId));
     return { contactLabel: 'Owner', filteredContacts: owners, fixedContactTypeForNew: ContactType.OWNER };
   }, [type, invoiceType, state.contacts, state.vendors]);
 

@@ -429,8 +429,13 @@ const VendorDirectoryPage: React.FC = () => {
                                             >
                                                 <div className="flex items-center justify-between gap-2">
                                                     <div className="flex-1 min-w-0">
-                                                        <div className={`text-sm font-semibold truncate ${isSelected ? 'text-indigo-900' : 'text-slate-800'}`}>
-                                                            {vendor.name}
+                                                        <div className="flex items-center justify-between gap-2 overflow-hidden">
+                                                            <h3 className={`text-sm font-semibold truncate ${isSelected ? 'text-indigo-900' : 'text-slate-800'} ${vendor.isActive === false ? 'opacity-50 line-through' : ''}`}>
+                                                                {vendor.name}
+                                                            </h3>
+                                                            {vendor.isActive === false && (
+                                                                <span className="flex-shrink-0 text-[8px] px-1 py-0.5 rounded-full bg-slate-200 text-slate-500 font-bold uppercase tracking-tight">Deactivated</span>
+                                                            )}
                                                         </div>
                                                         {vendor.companyName && (
                                                             <div className="text-[10px] text-slate-500 truncate mt-0.5 opacity-90">

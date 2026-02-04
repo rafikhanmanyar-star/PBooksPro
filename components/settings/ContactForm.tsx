@@ -40,6 +40,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
   const entityToEdit = vendorToEdit || contactToEdit;
   const [name, setName] = useState(entityToEdit?.name || initialName || '');
   const [description, setDescription] = useState(entityToEdit?.description || '');
+  const [isActive, setIsActive] = useState(entityToEdit?.isActive !== false); // Default to true
 
   // Vendor/Business specific fields
   const [companyName, setCompanyName] = useState(entityToEdit?.companyName || '');
@@ -96,9 +97,9 @@ const ContactForm: React.FC<ContactFormProps> = ({
     }
 
     if (isVendorForm) {
-      onSubmit({ name: trimmedName, description, companyName, contactNo, address } as any);
+      onSubmit({ name: trimmedName, description, companyName, contactNo, address, isActive } as any);
     } else {
-      onSubmit({ name: trimmedName, type, description, companyName, contactNo, address } as any);
+      onSubmit({ name: trimmedName, type, description, companyName, contactNo, address, isActive } as any);
     }
   };
 
@@ -199,6 +200,23 @@ const ContactForm: React.FC<ContactFormProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* Account Status Card */}
+              {isEditing && (
+                <div className={`mt-4 p-4 rounded-xl border transition-all duration-300 ${isActive ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Account Status</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${isActive ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}`}>
+                      {isActive ? 'Active' : 'Deactivated'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    {isActive
+                      ? `This ${isVendorForm ? 'vendor' : 'contact'} is visible in all forms and searches.`
+                      : `This ${isVendorForm ? 'vendor' : 'contact'} is hidden from selection menus and inactive.`}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -282,7 +300,20 @@ const ContactForm: React.FC<ContactFormProps> = ({
 
       {/* Fixed Footer with Actions */}
       <div className="flex-shrink-0 mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-slate-200 flex flex-col-reverse sm:flex-row justify-between items-center gap-3 sm:gap-4">
-        <div>
+        <div className="flex gap-2">
+          {isEditing && (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setIsActive(!isActive)}
+              className={`border-2 ${isActive ? 'border-rose-200 text-rose-600 hover:bg-rose-50' : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50'}`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="w-4 h-4">{isActive ? ICONS.x : ICONS.check}</span>
+                {isActive ? 'Deactivate' : 'Reactivate'}
+              </div>
+            </Button>
+          )}
           {contactToEdit && onDelete && (
             <Button type="button" variant="danger" onClick={onDelete} className="text-rose-600 bg-rose-50 hover:bg-rose-100 border-rose-200 w-full sm:w-auto">
               <div className="flex items-center gap-2">
