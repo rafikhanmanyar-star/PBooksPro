@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { Contact, ContactType, Bill, Transaction, Page, TransactionType } from '../../types';
+import { Vendor, Bill, Transaction, Page, TransactionType } from '../../types';
 import ContactForm from '../settings/ContactForm';
 import VendorLedger from './VendorLedger';
 import Button from '../ui/Button';
@@ -34,8 +34,8 @@ const AddVendorSection: React.FC<{
     const { state, dispatch } = useAppContext();
     const [isModalOpen, setIsModalOpen] = useState(false);
 
-    const handleSubmit = (contact: Omit<Contact, 'id'>) => {
-        dispatch({ type: 'ADD_CONTACT', payload: { ...contact, id: Date.now().toString() } });
+    const handleSubmit = (vendorData: Partial<Vendor> | any) => {
+        dispatch({ type: 'ADD_VENDOR', payload: { ...vendorData, id: `vendor_${Date.now()}` } as Vendor });
         setIsModalOpen(false);
     };
 
@@ -101,8 +101,8 @@ const AddVendorSection: React.FC<{
                 <ContactForm
                     onSubmit={handleSubmit}
                     onCancel={() => setIsModalOpen(false)}
-                    fixedTypeForNew={ContactType.VENDOR}
-                    existingContacts={state.contacts}
+                    isVendorForm={true}
+                    existingVendors={state.vendors}
                 />
             </Modal>
         </>
@@ -164,8 +164,7 @@ const VendorDirectoryPage: React.FC = () => {
         );
     }
 
-    const vendors = (state.contacts || [])
-        .filter(c => c.type === ContactType.VENDOR)
+    const vendors = (state.vendors || [])
         .sort((a, b) => a.name.localeCompare(b.name));
 
     const filteredVendors = useMemo(() => {
@@ -177,7 +176,7 @@ const VendorDirectoryPage: React.FC = () => {
     // Calculate payable amounts for each vendor
     const vendorsWithPayable = useMemo(() => {
         const vendors = filteredVendors.map(vendor => {
-            const vendorBills = (state.bills || []).filter(b => b.contactId === vendor.id);
+            const vendorBills = (state.bills || []).filter(b => b.vendorId === vendor.id);
 
             // Calculate total payable as sum of unpaid balances for all bills
             const payableAmount = vendorBills.reduce((sum, bill) => {
@@ -250,9 +249,9 @@ const VendorDirectoryPage: React.FC = () => {
     const transactionToEdit = editingItem?.type === 'transaction' ? (state.transactions || []).find(t => t.id === editingItem.id) : undefined;
 
 
-    const handleUpdateVendor = (contactData: Omit<Contact, 'id'>) => {
+    const handleUpdateVendor = (vendorData: Partial<Vendor> | any) => {
         if (!selectedVendor) return;
-        dispatch({ type: 'UPDATE_CONTACT', payload: { ...selectedVendor, ...contactData } });
+        dispatch({ type: 'UPDATE_VENDOR', payload: { ...selectedVendor, ...vendorData } as Vendor });
         setIsEditModalOpen(false);
     };
 
@@ -260,7 +259,7 @@ const VendorDirectoryPage: React.FC = () => {
         if (!selectedVendor) return;
         const confirmed = await showConfirm(`Are you sure you want to delete vendor "${selectedVendor.name}"? This cannot be undone.`, { title: 'Delete Vendor', confirmLabel: 'Delete', cancelLabel: 'Cancel' });
         if (confirmed) {
-            dispatch({ type: 'DELETE_CONTACT', payload: selectedVendor.id });
+            dispatch({ type: 'DELETE_VENDOR', payload: selectedVendor.id });
             setSelectedVendorId(null);
             setIsEditModalOpen(false);
         }
@@ -322,7 +321,7 @@ const VendorDirectoryPage: React.FC = () => {
     };
 
     const getVendorPayable = (vendorId: string) => {
-        const vendorBills = (state.bills || []).filter(b => b.contactId === vendorId);
+        const vendorBills = (state.bills || []).filter(b => b.vendorId === vendorId);
         return vendorBills.reduce((sum, bill) => {
             const balance = bill.amount - (bill.paidAmount || 0);
             return sum + Math.max(0, balance);
@@ -601,11 +600,12 @@ const VendorDirectoryPage: React.FC = () => {
                             <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title={`Edit: ${selectedVendor.name}`}>
                                 <ContactForm
                                     key={selectedVendor.id}
-                                    contactToEdit={selectedVendor}
+                                    vendorToEdit={selectedVendor}
                                     onSubmit={handleUpdateVendor}
                                     onDelete={handleDeleteVendor}
                                     onCancel={() => setIsEditModalOpen(false)}
-                                    existingContacts={state.contacts}
+                                    existingVendors={state.vendors}
+                                    isVendorForm={true}
                                 />
                             </Modal>
                             <Modal isOpen={isCreateBillModalOpen} onClose={() => setIsCreateBillModalOpen(false)} title={duplicateBillData ? `Duplicate Bill for ${selectedVendor.name}` : `Create Bill for ${selectedVendor.name}`}>
@@ -613,7 +613,7 @@ const VendorDirectoryPage: React.FC = () => {
                                     key={duplicateBillData ? 'dup-bill' : `new-bill-${selectedVendor.id}`}
                                     type="bill"
                                     onClose={() => setIsCreateBillModalOpen(false)}
-                                    initialContactId={selectedVendor.id}
+                                    initialVendorId={selectedVendor.id}
                                     initialData={duplicateBillData || undefined}
                                 />
                             </Modal>
@@ -654,7 +654,7 @@ const VendorDirectoryPage: React.FC = () => {
                                 {optionsView === 'Quotation' ? (
                                     <AllQuotationsTable
                                         onEditQuotation={(quotation) => {
-                                            const vendor = (state.contacts || []).find(c => c.id === quotation.vendorId);
+                                            const vendor = (state.vendors || []).find(v => v.id === quotation.vendorId);
                                             if (vendor) {
                                                 setSelectedVendorId(vendor.id);
                                                 setActiveTab('Quotations');
@@ -666,7 +666,7 @@ const VendorDirectoryPage: React.FC = () => {
                                 ) : optionsView === 'Bills' ? (
                                     <AllBillsTable
                                         onEditBill={(bill) => {
-                                            const vendor = (state.contacts || []).find(c => c.id === bill.contactId);
+                                            const vendor = (state.vendors || []).find(v => v.id === bill.vendorId);
                                             if (vendor) {
                                                 setSelectedVendorId(vendor.id);
                                                 setActiveTab('Bills');

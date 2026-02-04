@@ -42,6 +42,7 @@ import { PrintController } from './components/print/PrintController';
 // import WebSocketDebugPanel from './components/ui/WebSocketDebugPanel'; // Removed per user request
 import { lazyWithRetry } from './utils/lazyWithRetry';
 import { ContactsApiRepository } from './services/api/repositories/contactsApi';
+import { VendorsApiRepository } from './services/api/repositories/vendorsApi';
 import { devLogger } from './utils/devLogger';
 
 
@@ -338,6 +339,23 @@ const App: React.FC = () => {
     };
 
     loadContacts();
+
+    const loadVendors = async () => {
+      try {
+        devLogger.log('[App] 📥 Loading vendors...');
+        const vendorsApi = new VendorsApiRepository();
+        const vendors = await vendorsApi.findAll();
+        devLogger.log(`[App] ✅ Loaded ${vendors.length} vendors`);
+
+        vendors.forEach(vendor => {
+          dispatch({ type: 'ADD_VENDOR', payload: vendor });
+        });
+      } catch (error) {
+        console.error('[App] ❌ Failed to load vendors:', error);
+      }
+    };
+
+    loadVendors();
   }, [isAuthenticated, user, dispatch]);
 
   // Optimized navigation handler - uses startTransition for non-blocking updates

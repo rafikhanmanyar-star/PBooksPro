@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Contact } from '../../types';
+import { Contact, Vendor } from '../../types';
 import { WhatsAppChatService, WhatsAppMessage, normalizePhoneForMatch } from '../../services/whatsappChatService';
 import { useNotification } from '../../context/NotificationContext';
 import { useAppContext } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import { getWebSocketClient } from '../../services/websocketClient';
 import Button from '../ui/Button';
 import { ICONS } from '../../constants';
@@ -10,7 +11,7 @@ import { ICONS } from '../../constants';
 interface WhatsAppSidePanelProps {
   isOpen: boolean;
   onClose: () => void;
-  contact: Contact | null;
+  contact: Contact | Vendor | null;
   phoneNumber?: string;
   initialMessage?: string; // Pre-filled message when opening from invoice/bill
 }
@@ -24,6 +25,7 @@ const WhatsAppSidePanel: React.FC<WhatsAppSidePanelProps> = ({
 }) => {
   const { showAlert, showToast } = useNotification();
   const { state } = useAppContext();
+  const { tenant } = useAuth();
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [newMessage, setNewMessage] = useState(initialMessage);
   const [isLoading, setIsLoading] = useState(false);
@@ -194,8 +196,8 @@ const WhatsAppSidePanel: React.FC<WhatsAppSidePanelProps> = ({
     if (!isConfigured) {
       const { WhatsAppService } = await import('../../services/whatsappService');
       try {
-        WhatsAppService.sendMessage({ 
-          contact: contact || { id: '', name: phoneNumber, contactNo: phoneNumber, type: 'vendor' as any },
+        WhatsAppService.sendMessage({
+          contact: contact || { id: '', name: phoneNumber, contactNo: phoneNumber } as any,
           message: newMessage.trim()
         });
         setNewMessage('');
@@ -213,8 +215,9 @@ const WhatsAppSidePanel: React.FC<WhatsAppSidePanelProps> = ({
     // Optimistically add message to UI
     const tempMessage: WhatsAppMessage = {
       id: `temp-${Date.now()}`,
-      tenantId: state.tenantId || '',
-      contactId: contact?.id,
+      tenantId: tenant?.id || '',
+      contactId: contact && 'type' in contact ? contact.id : undefined,
+      vendorId: contact && !('type' in contact) ? contact.id : undefined,
       phoneNumber,
       direction: 'outgoing',
       status: 'sending',
@@ -228,7 +231,8 @@ const WhatsAppSidePanel: React.FC<WhatsAppSidePanelProps> = ({
       const result = await WhatsAppChatService.sendMessage({
         phoneNumber,
         message: messageText,
-        contactId: contact?.id,
+        contactId: contact && 'type' in contact ? contact.id : undefined,
+        vendorId: contact && !('type' in contact) ? contact.id : undefined,
       });
 
       // Update temp message with actual message ID
@@ -275,10 +279,10 @@ const WhatsAppSidePanel: React.FC<WhatsAppSidePanelProps> = ({
     } else if (d.toDateString() === yesterday.toDateString()) {
       return 'Yesterday';
     } else {
-      return d.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric', 
-        year: d.getFullYear() !== today.getFullYear() ? 'numeric' : undefined 
+      return d.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: d.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
       });
     }
   };
@@ -307,16 +311,15 @@ const WhatsAppSidePanel: React.FC<WhatsAppSidePanelProps> = ({
   return (
     <>
       {/* Backdrop - semi-transparent, non-blocking */}
-      <div 
+      <div
         className="fixed inset-0 bg-black/20 z-[9998] transition-opacity duration-300"
         onClick={onClose}
       />
-      
+
       {/* Side Panel */}
-      <div 
-        className={`fixed right-0 top-0 h-full w-full sm:w-[420px] bg-white shadow-2xl z-[9999] flex flex-col transform transition-transform duration-300 ease-out ${
-          isOpen ? 'translate-x-0' : 'translate-x-full'
-        }`}
+      <div
+        className={`fixed right-0 top-0 h-full w-full sm:w-[420px] bg-white shadow-2xl z-[9999] flex flex-col transform transition-transform duration-300 ease-out ${isOpen ? 'translate-x-0' : 'translate-x-full'
+          }`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -378,17 +381,15 @@ const WhatsAppSidePanel: React.FC<WhatsAppSidePanelProps> = ({
                       className={`flex ${message.direction === 'outgoing' ? 'justify-end' : 'justify-start'}`}
                     >
                       <div
-                        className={`max-w-[75%] rounded-lg px-3 py-2 ${
-                          message.direction === 'outgoing'
-                            ? 'bg-green-500 text-white'
-                            : 'bg-white text-slate-800 border border-slate-200'
-                        }`}
+                        className={`max-w-[75%] rounded-lg px-3 py-2 ${message.direction === 'outgoing'
+                          ? 'bg-green-500 text-white'
+                          : 'bg-white text-slate-800 border border-slate-200'
+                          }`}
                       >
                         <p className="text-sm whitespace-pre-wrap break-words">{message.messageText}</p>
                         <div
-                          className={`flex items-center gap-1 mt-1 ${
-                            message.direction === 'outgoing' ? 'justify-end text-green-100' : 'justify-start text-slate-500'
-                          }`}
+                          className={`flex items-center gap-1 mt-1 ${message.direction === 'outgoing' ? 'justify-end text-green-100' : 'justify-start text-slate-500'
+                            }`}
                         >
                           <span className="text-xs">{formatTime(message.timestamp)}</span>
                           {message.direction === 'outgoing' && (

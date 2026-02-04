@@ -74,7 +74,6 @@ export enum AccountType {
 export enum ContactType {
   OWNER = 'Owner',
   TENANT = 'Tenant',
-  VENDOR = 'Vendor',
   STAFF = 'Staff',
   BROKER = 'Broker',
   DEALER = 'Dealer',
@@ -220,6 +219,18 @@ export interface Contact {
   id: string;
   name: string;
   type: ContactType;
+  description?: string;
+  contactNo?: string;
+  companyName?: string;
+  address?: string;
+  userId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Vendor {
+  id: string;
+  name: string;
   description?: string;
   contactNo?: string;
   companyName?: string;
@@ -378,6 +389,7 @@ export interface Transaction {
   toAccountId?: string;
   categoryId?: string;
   contactId?: string;
+  vendorId?: string;
   projectId?: string;
   buildingId?: string;
   propertyId?: string;
@@ -417,7 +429,8 @@ export interface Invoice {
 export interface Bill {
   id: string;
   billNumber: string;
-  contactId: string;
+  contactId?: string;
+  vendorId?: string;
   amount: number;
   paidAmount: number;
   status: InvoiceStatus;
@@ -700,6 +713,7 @@ export interface AppState {
 
   accounts: Account[];
   contacts: Contact[];
+  vendors: Vendor[];
   categories: Category[];
 
   projects: Project[];
@@ -774,6 +788,9 @@ export type AppAction =
   | { type: 'ADD_CONTACT'; payload: Contact }
   | { type: 'UPDATE_CONTACT'; payload: Contact }
   | { type: 'DELETE_CONTACT'; payload: string }
+  | { type: 'ADD_VENDOR'; payload: Vendor }
+  | { type: 'UPDATE_VENDOR'; payload: Vendor }
+  | { type: 'DELETE_VENDOR'; payload: string }
   | { type: 'ADD_CATEGORY'; payload: Category }
   | { type: 'UPDATE_CATEGORY'; payload: Category }
   | { type: 'DELETE_CATEGORY'; payload: string }

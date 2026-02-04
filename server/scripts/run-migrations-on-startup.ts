@@ -139,10 +139,7 @@ async function runMigrations() {
     console.log('🔄 Running database migrations (Consolidated Flow)...');
 
     // 1. Find and run the base schema
-    // Use __dirname to find migrations directory relative to this script
-    // Note: __dirname is server/dist/scripts (compiled) or server/scripts (source)
-    // migrations is at server/migrations
-    const migrationsDir = join(__dirname, '../../migrations');
+    const migrationsDir = join(process.cwd(), 'server/migrations');
     const schemaPath = join(migrationsDir, 'postgresql-schema.sql');
 
     console.log('📋 Reading base schema from:', schemaPath);

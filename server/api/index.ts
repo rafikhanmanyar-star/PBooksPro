@@ -18,33 +18,6 @@ if (result.error && !process.env.DATABASE_URL) {
   console.warn('   __dirname:', __dirname);
 }
 
-// Log buffer for debugging
-const logBuffer: string[] = [];
-const MAX_LOGS = 100;
-
-function addToLogBuffer(type: string, args: any[]) {
-  const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
-  logBuffer.push(`[${new Date().toISOString()}] [${type}] ${message}`);
-  if (logBuffer.length > MAX_LOGS) logBuffer.shift();
-}
-
-const originalLog = console.log;
-const originalWarn = console.warn;
-const originalError = console.error;
-
-console.log = (...args: any[]) => {
-  addToLogBuffer('LOG', args);
-  originalLog.apply(console, args);
-};
-console.warn = (...args: any[]) => {
-  addToLogBuffer('WARN', args);
-  originalWarn.apply(console, args);
-};
-console.error = (...args: any[]) => {
-  addToLogBuffer('ERROR', args);
-  originalError.apply(console, args);
-};
-
 // Optional log filter for debugging (e.g., focus on payment/WhatsApp logs)
 // Enable with LOG_ONLY_PAYMENT=true to suppress other logs; allows payment|paddle|webhook|whatsapp
 if (process.env.LOG_ONLY_PAYMENT === 'true') {
@@ -56,15 +29,16 @@ if (process.env.LOG_ONLY_PAYMENT === 'true') {
     return /payment|paddle|webhook|whatsapp/.test(text);
   };
 
-  console.log = (...args: any[]) => {
+  const wrap = (method: (...args: any[]) => void) => (...args: any[]) => {
     if (shouldLog(args)) {
-      addToLogBuffer('LOG', args);
-      originalLog.apply(console, args);
+      method(...args);
     }
   };
-  // ... similar for warn/error if needed, but let's keep it simple for now
+
+  console.log = wrap(console.log);
+  console.warn = wrap(console.warn);
+  console.error = wrap(console.error);
 }
-export { logBuffer };
 
 // Run migrations on startup (non-blocking - don't await)
 // Set DISABLE_MIGRATIONS=true to skip (e.g. staging DB already updated)
@@ -137,20 +111,12 @@ import payrollRouter from './routes/payroll.js';
 import stateChangesRouter from './routes/stateChanges.js';
 import shopRouter from './routes/shop.js';
 import analyticsRouter from './routes/analytics.js';
+import vendorsRouter from './routes/vendors.js';
 import { tenantMiddleware } from '../middleware/tenantMiddleware.js';
 import { licenseMiddleware } from '../middleware/licenseMiddleware.js';
 import { trackRequestMetrics } from './routes/admin/system-metrics.js';
 
 const app = express();
-
-// Endpoint to retrieve recent logs (public for debugging staging)
-app.get('/api/app-info/logs', (req, res) => {
-  res.json({
-    success: true,
-    logs: logBuffer,
-    timestamp: new Date().toISOString()
-  });
-});
 const httpServer = createServer(app);
 const port = Number(process.env.PORT) || 3000;
 
@@ -285,88 +251,12 @@ app.get('/', (req, res) => {
 });
 
 // Health check
-app.get('/health', async (req, res) => {
-  let dbStatus = 'disconnected';
-  try {
-    const db = getDatabaseService();
-    const isHealthy = await db.healthCheck();
-    dbStatus = isHealthy ? 'connected' : 'disconnected';
-  } catch (err) {
-    dbStatus = 'error';
-  }
-
+app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    database: dbStatus,
-    pool: {
-      total: pool.totalCount,
-      idle: pool.idleCount,
-      waiting: pool.waitingCount
-    }
+    database: pool.totalCount > 0 ? 'connected' : 'disconnected'
   });
-});
-
-// Database connectivity test endpoint (public for now to aid debugging)
-app.get('/api/app-info/db-check', async (req, res) => {
-  try {
-    const db = getDatabaseService();
-    const info = await db.query('SELECT current_database(), current_user, version()');
-
-    // Check tables
-    const tables = await db.query(`
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema = 'public' 
-      LIMIT 20
-    `);
-
-    // Check some counts and details
-    let tenantsDetails: any[] = [];
-    let usersDetails: any[] = [];
-    const counts = {
-      tenants: 0,
-      users: 0,
-      admin_users: 0
-    };
-
-    try {
-      const t = await db.query('SELECT id, name, email, license_type, license_status, license_expiry_date FROM tenants');
-      counts.tenants = t.length;
-      tenantsDetails = t;
-
-      const uCount = await db.query('SELECT count(*) FROM users');
-      counts.users = parseInt(uCount[0].count);
-
-      const a = await db.query('SELECT count(*) FROM admin_users');
-      counts.admin_users = parseInt(a[0].count);
-
-      // Get some users from the first tenant to verify they exist and are correctly shaped
-      if (t.length > 0) {
-        usersDetails = await db.query('SELECT id, tenant_id, username, role, is_active, login_status FROM users WHERE tenant_id = $1 LIMIT 10', [t[0].id]);
-      }
-    } catch (e: any) {
-      console.error('db-check error:', e.message);
-    }
-
-    res.json({
-      success: true,
-      debug: "v6-emails",
-      info: info[0],
-      tables: tables.map(t => t.table_name),
-      counts,
-      tenants: tenantsDetails,
-      users: usersDetails,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      code: error.code,
-      timestamp: new Date().toISOString()
-    });
-  }
 });
 
 // Public routes (no authentication required)
@@ -793,6 +683,7 @@ app.use('/api/users', usersRouter); // User management (for authenticated tenant
 app.use('/api/tenants', tenantRouter); // Tenant management (for authenticated tenants)
 app.use('/api/transaction-audit', transactionAuditRouter); // Transaction audit logs
 app.use('/api/quotations', quotationsRouter); // Quotations
+app.use('/api/vendors', vendorsRouter); // Vendors
 app.use('/api/documents', documentsRouter); // Documents
 app.use('/api/recurring-invoice-templates', recurringInvoiceTemplatesRouter); // Recurring Invoice Templates
 app.use('/api/error-log', errorLogRouter); // Error Log

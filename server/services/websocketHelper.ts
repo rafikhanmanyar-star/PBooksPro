@@ -38,6 +38,11 @@ export const WS_EVENTS = {
   CONTACT_UPDATED: 'contact:updated',
   CONTACT_DELETED: 'contact:deleted',
 
+  // Vendors
+  VENDOR_CREATED: 'vendor:created',
+  VENDOR_UPDATED: 'vendor:updated',
+  VENDOR_DELETED: 'vendor:deleted',
+
   // Projects
   PROJECT_CREATED: 'project:created',
   PROJECT_UPDATED: 'project:updated',

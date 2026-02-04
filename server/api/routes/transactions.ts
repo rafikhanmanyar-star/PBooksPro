@@ -548,11 +548,11 @@ router.post('/', async (req: TenantRequest, res) => {
           `UPDATE transactions 
            SET type = $1, subtype = $2, amount = $3, date = $4, description = $5, 
                account_id = $6, from_account_id = $7, to_account_id = $8, category_id = $9, 
-               contact_id = $10, project_id = $11, building_id = $12, property_id = $13,
-               unit_id = $14, invoice_id = $15, bill_id = $16, payslip_id = $17,
-               contract_id = $18, agreement_id = $19, batch_id = $20, is_system = $21, 
-               user_id = $22, updated_at = NOW()
-           WHERE id = $23 AND tenant_id = $24
+               contact_id = $10, vendor_id = $11, project_id = $12, building_id = $13, property_id = $14,
+               unit_id = $15, invoice_id = $16, bill_id = $17, payslip_id = $18,
+               contract_id = $19, agreement_id = $20, batch_id = $21, is_system = $22, 
+               user_id = $23, updated_at = NOW()
+           WHERE id = $24 AND tenant_id = $25
            RETURNING *`,
           [
             transaction.type,
@@ -565,6 +565,7 @@ router.post('/', async (req: TenantRequest, res) => {
             transaction.toAccountId || null,
             transaction.categoryId || null,
             transaction.contactId || null,
+            transaction.vendorId || null,
             transaction.projectId || null,
             transaction.buildingId || null,
             transaction.propertyId || null,
@@ -598,10 +599,10 @@ router.post('/', async (req: TenantRequest, res) => {
         const insertResult = await client.query(
           `INSERT INTO transactions (
             id, tenant_id, user_id, type, subtype, amount, date, description, account_id, 
-            from_account_id, to_account_id, category_id, contact_id, project_id,
+            from_account_id, to_account_id, category_id, contact_id, vendor_id, project_id,
             building_id, property_id, unit_id, invoice_id, bill_id, payslip_id,
             contract_id, agreement_id, batch_id, is_system, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, NOW(), NOW())
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, NOW(), NOW())
           RETURNING *`,
           [
             transactionId,
@@ -617,6 +618,7 @@ router.post('/', async (req: TenantRequest, res) => {
             transaction.toAccountId || null,
             transaction.categoryId || null,
             transaction.contactId || null,
+            transaction.vendorId || null,
             transaction.projectId || null,
             transaction.buildingId || null,
             transaction.propertyId || null,
@@ -1021,11 +1023,11 @@ router.put('/:id', async (req: TenantRequest, res) => {
       UPDATE transactions 
       SET type = $1, subtype = $2, amount = $3, date = $4, description = $5, 
           account_id = $6, from_account_id = $7, to_account_id = $8, category_id = $9, 
-          contact_id = $10, project_id = $11, building_id = $12, property_id = $13,
-          unit_id = $14, invoice_id = $15, bill_id = $16, payslip_id = $17,
-          contract_id = $18, agreement_id = $19, batch_id = $20, is_system = $21, 
-          user_id = $22, updated_at = NOW()
-      WHERE id = $23 AND tenant_id = $24
+          contact_id = $10, vendor_id = $11, project_id = $12, building_id = $13, property_id = $14,
+          unit_id = $15, invoice_id = $16, bill_id = $17, payslip_id = $18,
+          contract_id = $19, agreement_id = $20, batch_id = $21, is_system = $22, 
+          user_id = $23, updated_at = NOW()
+      WHERE id = $24 AND tenant_id = $25
       RETURNING *
     `;
     const result = await db.transaction(async (client) => {
@@ -1040,6 +1042,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
         transaction.toAccountId || null,
         transaction.categoryId || null,
         transaction.contactId || null,
+        transaction.vendorId || null,
         transaction.projectId || null,
         transaction.buildingId || null,
         transaction.propertyId || null,
@@ -1493,11 +1496,11 @@ router.post('/batch', async (req: TenantRequest, res) => {
               `UPDATE transactions 
                SET type = $1, subtype = $2, amount = $3, date = $4, description = $5, 
                    account_id = $6, from_account_id = $7, to_account_id = $8, category_id = $9, 
-                   contact_id = $10, project_id = $11, building_id = $12, property_id = $13,
-                   unit_id = $14, invoice_id = $15, bill_id = $16, payslip_id = $17,
-                   contract_id = $18, agreement_id = $19, batch_id = $20, is_system = $21, 
-                   user_id = $22, updated_at = NOW()
-               WHERE id = $23 AND tenant_id = $24
+                   contact_id = $10, vendor_id = $11, project_id = $12, building_id = $13, property_id = $14,
+                   unit_id = $15, invoice_id = $16, bill_id = $17, payslip_id = $18,
+                   contract_id = $19, agreement_id = $20, batch_id = $21, is_system = $22, 
+                   user_id = $23, updated_at = NOW()
+               WHERE id = $24 AND tenant_id = $25
                RETURNING *`,
               [
                 transaction.type,
@@ -1510,6 +1513,7 @@ router.post('/batch', async (req: TenantRequest, res) => {
                 transaction.toAccountId || null,
                 transaction.categoryId || null,
                 transaction.contactId || null,
+                transaction.vendorId || null,
                 transaction.projectId || null,
                 transaction.buildingId || null,
                 transaction.propertyId || null,
@@ -1534,10 +1538,10 @@ router.post('/batch', async (req: TenantRequest, res) => {
             const insertResult = await client.query(
               `INSERT INTO transactions (
                 id, tenant_id, user_id, type, subtype, amount, date, description, account_id, 
-                from_account_id, to_account_id, category_id, contact_id, project_id,
+                from_account_id, to_account_id, category_id, contact_id, vendor_id, project_id,
                 building_id, property_id, unit_id, invoice_id, bill_id, payslip_id,
                 contract_id, agreement_id, batch_id, is_system, created_at, updated_at
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, NOW(), NOW())
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, NOW(), NOW())
               RETURNING *`,
               [
                 transactionId,
@@ -1553,6 +1557,7 @@ router.post('/batch', async (req: TenantRequest, res) => {
                 transaction.toAccountId || null,
                 transaction.categoryId || null,
                 transaction.contactId || null,
+                transaction.vendorId || null,
                 transaction.projectId || null,
                 transaction.buildingId || null,
                 transaction.propertyId || null,

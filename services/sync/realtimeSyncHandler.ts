@@ -22,6 +22,9 @@ const EVENT_MAP: Record<string, { entity: string; action: 'create' | 'update' | 
   'contact:created': { entity: 'contact', action: 'create' },
   'contact:updated': { entity: 'contact', action: 'update' },
   'contact:deleted': { entity: 'contact', action: 'delete' },
+  'vendor:created': { entity: 'vendor', action: 'create' },
+  'vendor:updated': { entity: 'vendor', action: 'update' },
+  'vendor:deleted': { entity: 'vendor', action: 'delete' },
   'account:created': { entity: 'account', action: 'create' },
   'account:updated': { entity: 'account', action: 'update' },
   'account:deleted': { entity: 'account', action: 'delete' },
@@ -77,6 +80,9 @@ const ACTION_TYPE_MAP: Record<string, AppAction['type']> = {
   'contact:create': 'ADD_CONTACT',
   'contact:update': 'UPDATE_CONTACT',
   'contact:delete': 'DELETE_CONTACT',
+  'vendor:create': 'ADD_VENDOR',
+  'vendor:update': 'UPDATE_VENDOR',
+  'vendor:delete': 'DELETE_VENDOR',
   'account:create': 'ADD_ACCOUNT',
   'account:update': 'UPDATE_ACCOUNT',
   'account:delete': 'DELETE_ACCOUNT',
@@ -207,9 +213,6 @@ function normalizeProject(data: any): any {
   };
 }
 
-/**
- * Normalize contact data from API/WebSocket (snake_case) to client format (camelCase)
- */
 function normalizeContact(data: any): any {
   if (!data) return data;
   return {
@@ -227,6 +230,24 @@ function normalizeContact(data: any): any {
       if (balance == null) return undefined;
       return typeof balance === 'number' ? balance : parseFloat(String(balance));
     })(),
+    userId: data.user_id ?? data.userId ?? undefined,
+    createdAt: data.created_at ?? data.createdAt ?? undefined,
+    updatedAt: data.updated_at ?? data.updatedAt ?? undefined,
+  };
+}
+
+/**
+ * Normalize vendor data from API/WebSocket (snake_case) to client format (camelCase)
+ */
+function normalizeVendor(data: any): any {
+  if (!data) return data;
+  return {
+    id: data.id,
+    name: data.name || '',
+    description: data.description ?? undefined,
+    contactNo: data.contact_no ?? data.contactNo ?? undefined,
+    companyName: data.company_name ?? data.companyName ?? undefined,
+    address: data.address ?? undefined,
     userId: data.user_id ?? data.userId ?? undefined,
     createdAt: data.created_at ?? data.createdAt ?? undefined,
     updatedAt: data.updated_at ?? data.updatedAt ?? undefined,
@@ -628,6 +649,7 @@ function getEntityNormalizer(entity: string): ((data: any) => any) | null {
     case 'building': return normalizeBuilding;
     case 'project': return normalizeProject;
     case 'contact': return normalizeContact;
+    case 'vendor': return normalizeVendor;
     case 'account': return normalizeAccount;
     case 'category': return normalizeCategory;
     case 'budget': return normalizeBudget;
@@ -709,7 +731,7 @@ class RealtimeSyncHandler {
       }
 
       const { entity, action } = eventInfo;
-      
+
       // Check if this event is from the current user (skip to prevent duplicates)
       // This is critical for preventing the creator from seeing their own record twice
       const eventUserId = data?.userId || data?.user_id;
@@ -717,19 +739,19 @@ class RealtimeSyncHandler {
         console.log(`[RealtimeSyncHandler] ⏭️ Skipping own event: ${eventName} (userId: ${eventUserId})`);
         return;
       }
-      
+
       // Extract entity data from server response
       // Server sends: { transaction: {...}, userId, username, timestamp } or { contact: {...}, ... }
       // The entity key might be singular (transaction) or plural (transactions)
       let entityData = data[entity] || data[`${entity}s`];
-      
+
       // If not found, try common variations
       if (!entityData) {
         // Try camelCase versions
         const camelEntity = entity.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
         entityData = data[camelEntity] || data[`${camelEntity}s`];
       }
-      
+
       // If still not found, try entity-specific aliases
       // Server sends { agreement: ... } for rental_agreement and project_agreement
       // Server sends { salesReturn: ... } for sales_return
@@ -752,17 +774,17 @@ class RealtimeSyncHandler {
           }
         }
       }
-      
+
       // If still not found, the data itself might be the entity
       if (!entityData) {
         entityData = data;
       }
-      
+
       // Extract entity ID - handle different naming conventions
       // For create/update events: entity has { id: '...' }
       // For delete events: server sends { transactionId: '...', invoiceId: '...', agreementId: '...' } etc.
       let entityId = entityData?.id;
-      
+
       // If no 'id' field, check for entity-specific ID fields (used in delete events)
       if (!entityId) {
         // Build possible ID field names based on entity type
@@ -775,7 +797,7 @@ class RealtimeSyncHandler {
           'agreementId',                // For rental_agreement and project_agreement
           'id',                         // Fallback
         ];
-        
+
         for (const field of possibleIdFields) {
           if (data[field]) {
             entityId = data[field];
@@ -816,12 +838,12 @@ class RealtimeSyncHandler {
       // while the database uses snake_case
       const normalizer = getEntityNormalizer(entity);
       const normalizedData = normalizer ? normalizer(entityData) : entityData;
-      
+
       if (normalizer) {
-        console.log(`[RealtimeSyncHandler] 🔄 Normalized ${entity} data:`, { 
-          original: entityData?.id, 
+        console.log(`[RealtimeSyncHandler] 🔄 Normalized ${entity} data:`, {
+          original: entityData?.id,
           normalized: normalizedData?.id,
-          hasNormalizer: true 
+          hasNormalizer: true
         });
       } else {
         console.log(`[RealtimeSyncHandler] ⚠️ No normalizer found for ${entity}, using raw data`);

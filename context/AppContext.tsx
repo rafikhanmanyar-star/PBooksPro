@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useState, useRef } from 'react';
-import { AppState, AppAction, Transaction, TransactionType, Account, Category, AccountType, LoanSubtype, InvoiceStatus, TransactionLogEntry, Page, ContractStatus, User, UserRole, ProjectAgreementStatus, Bill, SalesReturn, SalesReturnStatus, SalesReturnReason, Contact, Invoice } from '../types';
+import { AppState, AppAction, Transaction, TransactionType, Account, Category, AccountType, LoanSubtype, InvoiceStatus, TransactionLogEntry, Page, ContractStatus, User, UserRole, ProjectAgreementStatus, Bill, SalesReturn, SalesReturnStatus, SalesReturnReason, Contact, Vendor, Invoice } from '../types';
 import useDatabaseState from '../hooks/useDatabaseState';
 import { useDatabaseStateFallback } from '../hooks/useDatabaseStateFallback';
 import { runAllMigrations, needsMigration } from '../services/database/migration';
@@ -216,6 +216,7 @@ const initialState: AppState = {
     currentUser: null,
     accounts: SYSTEM_ACCOUNTS,
     contacts: [],
+    vendors: [],
     categories: SYSTEM_CATEGORIES,
     projects: [],
     buildings: [],
@@ -503,6 +504,24 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, contacts: state.contacts.map(c => c.id === action.payload.id ? action.payload : c) };
         case 'DELETE_CONTACT':
             return { ...state, contacts: state.contacts.filter(c => c.id !== action.payload) };
+
+        // --- VENDOR HANDLERS ---
+        case 'ADD_VENDOR': {
+            const vendorToAdd = {
+                ...action.payload,
+                userId: action.payload?.userId || state.currentUser?.id || undefined,
+                createdAt: action.payload?.createdAt || new Date().toISOString(),
+                updatedAt: action.payload?.updatedAt || new Date().toISOString()
+            };
+            if (state.vendors.find(v => v.id === vendorToAdd.id)) {
+                return { ...state, vendors: state.vendors.map(v => v.id === vendorToAdd.id ? vendorToAdd : v) };
+            }
+            return { ...state, vendors: [...state.vendors, vendorToAdd] };
+        }
+        case 'UPDATE_VENDOR':
+            return { ...state, vendors: state.vendors.map(v => v.id === action.payload.id ? action.payload : v) };
+        case 'DELETE_VENDOR':
+            return { ...state, vendors: state.vendors.filter(v => v.id !== action.payload) };
 
         // --- ENTITY HANDLERS (Projects, Buildings, etc) ---
         case 'ADD_PROJECT':
