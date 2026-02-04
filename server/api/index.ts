@@ -288,6 +288,7 @@ app.get('/api/app-info/db-check', async (req, res) => {
 
     // Check some counts and details
     let tenantsDetails: any[] = [];
+    let usersDetails: any[] = [];
     const counts = {
       tenants: 0,
       users: 0,
@@ -298,21 +299,29 @@ app.get('/api/app-info/db-check', async (req, res) => {
       const t = await db.query('SELECT id, name, license_type, license_status, license_expiry_date FROM tenants');
       counts.tenants = t.length;
       tenantsDetails = t;
-      const u = await db.query('SELECT count(*) FROM users');
-      counts.users = parseInt(u[0].count);
+
+      const uCount = await db.query('SELECT count(*) FROM users');
+      counts.users = parseInt(uCount[0].count);
+
       const a = await db.query('SELECT count(*) FROM admin_users');
       counts.admin_users = parseInt(a[0].count);
-    } catch (e) {
-      // Some tables might not exist yet
+
+      // Get some users from the first tenant to verify they exist and are correctly shaped
+      if (t.length > 0) {
+        usersDetails = await db.query('SELECT id, tenant_id, username, role, is_active FROM users WHERE tenant_id = $1 LIMIT 5', [t[0].id]);
+      }
+    } catch (e: any) {
+      console.error('db-check error:', e.message);
     }
 
     res.json({
       success: true,
-      debug: "v4-explicit-tenants",
+      debug: "v5-users",
       info: info[0],
       tables: tables.map(t => t.table_name),
       counts,
       tenants: tenantsDetails,
+      users: usersDetails,
       timestamp: new Date().toISOString()
     });
   } catch (error: any) {
