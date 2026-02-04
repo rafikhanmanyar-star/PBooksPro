@@ -337,6 +337,8 @@ class SyncManager {
       'installment_plans': '/installment-plans',
       'plan_amenities': '/plan-amenities',
       'sales_returns': '/sales-returns',
+      'vendor': '/vendors',
+      'vendors': '/vendors',
     };
 
     const endpoint = endpointMap[operation.entity] || `/${operation.entity}`;

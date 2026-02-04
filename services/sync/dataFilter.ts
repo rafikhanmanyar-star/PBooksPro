@@ -73,6 +73,7 @@ export const ORGANIZATION_DATA_FIELDS = [
     // Core entities
     'accounts',
     'contacts',
+    'vendors',
     'categories',
     'users', // User list (but not currentUser)
 
