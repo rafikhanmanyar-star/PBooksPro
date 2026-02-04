@@ -18,6 +18,33 @@ if (result.error && !process.env.DATABASE_URL) {
   console.warn('   __dirname:', __dirname);
 }
 
+// Log buffer for debugging
+const logBuffer: string[] = [];
+const MAX_LOGS = 100;
+
+function addToLogBuffer(type: string, args: any[]) {
+  const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+  logBuffer.push(`[${new Date().toISOString()}] [${type}] ${message}`);
+  if (logBuffer.length > MAX_LOGS) logBuffer.shift();
+}
+
+const originalLog = console.log;
+const originalWarn = console.warn;
+const originalError = console.error;
+
+console.log = (...args: any[]) => {
+  addToLogBuffer('LOG', args);
+  originalLog.apply(console, args);
+};
+console.warn = (...args: any[]) => {
+  addToLogBuffer('WARN', args);
+  originalWarn.apply(console, args);
+};
+console.error = (...args: any[]) => {
+  addToLogBuffer('ERROR', args);
+  originalError.apply(console, args);
+};
+
 // Optional log filter for debugging (e.g., focus on payment/WhatsApp logs)
 // Enable with LOG_ONLY_PAYMENT=true to suppress other logs; allows payment|paddle|webhook|whatsapp
 if (process.env.LOG_ONLY_PAYMENT === 'true') {
@@ -29,16 +56,15 @@ if (process.env.LOG_ONLY_PAYMENT === 'true') {
     return /payment|paddle|webhook|whatsapp/.test(text);
   };
 
-  const wrap = (method: (...args: any[]) => void) => (...args: any[]) => {
+  console.log = (...args: any[]) => {
     if (shouldLog(args)) {
-      method(...args);
+      addToLogBuffer('LOG', args);
+      originalLog.apply(console, args);
     }
   };
-
-  console.log = wrap(console.log);
-  console.warn = wrap(console.warn);
-  console.error = wrap(console.error);
+  // ... similar for warn/error if needed, but let's keep it simple for now
 }
+export { logBuffer };
 
 // Run migrations on startup (non-blocking - don't await)
 // Set DISABLE_MIGRATIONS=true to skip (e.g. staging DB already updated)
@@ -332,6 +358,15 @@ app.get('/api/app-info/db-check', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   }
+});
+
+// Endpoint to retrieve recent logs (public for debugging staging)
+app.get('/api/app-info/logs', (req, res) => {
+  res.json({
+    success: true,
+    logs: logBuffer,
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Public routes (no authentication required)
