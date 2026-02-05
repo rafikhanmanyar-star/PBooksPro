@@ -405,6 +405,8 @@ export interface Transaction {
   batchId?: string;
   isSystem?: boolean;
   userId?: string;
+  payslipId?: string;
+  reference?: string;
   children?: Transaction[];
 }
 

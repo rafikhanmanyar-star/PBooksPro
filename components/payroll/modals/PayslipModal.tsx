@@ -8,10 +8,13 @@ import { PayrollEmployee, PayrollRun, Payslip } from '../types';
 import { payrollApi } from '../../../services/api/payrollApi';
 import { useAuth } from '../../../context/AuthContext';
 import { useAppContext } from '../../../context/AppContext';
-import { Account, Category, Project, TransactionType, AccountType } from '../../../types';
+import { Account, Category, Project, Transaction, TransactionType, AccountType } from '../../../types';
 import { apiClient } from '../../../services/api/client';
 import { formatDate, formatCurrency, calculateAmount, roundToTwo } from '../utils/formatters';
 import ComboBox from '../../../components/ui/ComboBox';
+import PrintButton from '../../../components/ui/PrintButton';
+import { usePrintContext } from '../../../context/PrintContext';
+import { PayslipPrintData } from '../../print/PayslipPrintTemplate';
 
 interface PayslipModalProps {
   isOpen: boolean;
@@ -24,7 +27,8 @@ interface PayslipModalProps {
 
 const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, run, payslipData, onPaymentComplete }) => {
   const { tenant } = useAuth();
-  const { state } = useAppContext();
+  const { state, dispatch } = useAppContext();
+  const { print: triggerPrint } = usePrintContext();
   const companyName = tenant?.companyName || tenant?.name || 'Organization';
 
   // Payment state
@@ -334,13 +338,40 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => window.print()}
-              className="p-2 hover:bg-slate-200 rounded-lg text-slate-500 transition-colors"
-              title="Print"
-            >
-              <Printer size={18} />
-            </button>
+            <PrintButton
+              onPrint={() => {
+                const printData: PayslipPrintData = {
+                  companyName,
+                  month: run.month,
+                  year: run.year,
+                  employee: {
+                    name: employee.name,
+                    employee_code: employee.employee_code,
+                    id: employee.id,
+                    designation: employee.designation,
+                    joining_date: employee.joining_date
+                  },
+                  earnings: {
+                    basic,
+                    allowances: allowances.map(a => ({ name: a.name, amount: a.calculated })),
+                    adjustments: adjustmentEarnings.map(a => ({ name: a.name, amount: a.amount })),
+                    total: totalEarnings
+                  },
+                  deductions: {
+                    regular: deductions.map(d => ({ name: d.name, amount: d.calculated })),
+                    adjustments: adjustmentDeductions.map(a => ({ name: a.name, amount: a.amount })),
+                    total: totalDeductions
+                  },
+                  netPay,
+                  isPaid,
+                  paidAt: payslipData?.paid_at
+                };
+                triggerPrint('PAYSLIP', printData);
+              }}
+              variant="secondary"
+              className="!bg-slate-200 !text-slate-500 hover:!bg-slate-300"
+              showLabel={false}
+            />
             <button
               className="p-2 hover:bg-slate-200 rounded-lg text-slate-500 transition-colors"
               title="Download PDF"
@@ -839,6 +870,16 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                         if (result && result.success) {
                           setIsPaid(true);
                           setShowPaymentForm(false);
+
+                          // Dispatch transaction to global state so balances and ledger update immediately
+                          if (result.transaction) {
+                            dispatch({
+                              type: 'ADD_TRANSACTION',
+                              payload: result.transaction,
+                              _isRemote: true // Skip sync because server already has it
+                            } as any);
+                          }
+
                           if (onPaymentComplete) onPaymentComplete();
                         } else {
                           const errorMsg = result?.error || 'Failed to process payment. Please check your network or refresh the page.';

@@ -94,17 +94,15 @@ const TransactionDetailDrawer: React.FC<TransactionDetailDrawerProps> = ({
         <>
             {/* Overlay */}
             <div
-                className={`fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity duration-300 ${
-                    isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
-                }`}
+                className={`fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                    }`}
                 onClick={onClose}
             />
 
             {/* Drawer */}
             <div
-                className={`fixed right-0 top-0 h-full w-full sm:w-[600px] lg:w-[700px] bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-out ${
-                    isOpen ? 'translate-x-0' : 'translate-x-full'
-                } flex flex-col`}
+                className={`fixed right-0 top-0 h-full w-full sm:w-[600px] lg:w-[700px] bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-out ${isOpen ? 'translate-x-0' : 'translate-x-full'
+                    } flex flex-col`}
             >
                 {/* Header */}
                 <div className={`flex-shrink-0 ${config.bgColor} ${config.borderColor} border-b px-6 py-4`}>
@@ -279,6 +277,20 @@ const TransactionDetailDrawer: React.FC<TransactionDetailDrawerProps> = ({
                             }
                             mono
                         />
+
+                        {/* Payslip ID */}
+                        {transaction.payslipId && (
+                            <DetailRow
+                                label="Payslip ID"
+                                value={transaction.payslipId}
+                                icon={
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                }
+                                mono
+                            />
+                        )}
                     </div>
 
                     {/* Children Transactions */}

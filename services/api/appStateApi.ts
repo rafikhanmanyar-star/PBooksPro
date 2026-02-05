@@ -567,6 +567,8 @@ export class AppStateApiService {
         batchId: t.batch_id || t.batchId || undefined,
         isSystem: t.is_system === true || t.is_system === 1 || t.isSystem === true || false,
         userId: t.user_id || t.userId || undefined,
+        payslipId: t.payslip_id || t.payslipId || undefined,
+        reference: t.reference || undefined,
         children: t.children || undefined
       }));
 
@@ -973,6 +975,8 @@ export class AppStateApiService {
       agreementId: (saved as any).agreement_id || saved.agreementId || undefined,
       batchId: (saved as any).batch_id || saved.batchId || undefined,
       isSystem: (saved as any).is_system === true || (saved as any).is_system === 1 || saved.isSystem === true || false,
+      payslipId: (saved as any).payslip_id || saved.payslipId || undefined,
+      reference: saved.reference || undefined,
       children: saved.children || undefined
     };
   }
