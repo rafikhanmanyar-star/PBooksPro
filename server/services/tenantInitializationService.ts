@@ -69,51 +69,47 @@ export class TenantInitializationService {
     let categoriesCreated = 0;
 
     try {
-      // Initialize system accounts
+      // Initialize system accounts globally (tenant_id = NULL)
       for (const account of SYSTEM_ACCOUNTS) {
         const existing = await this.db.query(
-          'SELECT id FROM accounts WHERE id = $1 AND tenant_id = $2',
-          [account.id, tenantId]
+          'SELECT id FROM accounts WHERE id = $1 AND tenant_id IS NULL',
+          [account.id]
         );
 
         if (existing.length === 0) {
           await this.db.query(
             `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+             VALUES ($1, NULL, $2, $3, $4, $5, $6, NOW(), NOW())
              ON CONFLICT (id) DO NOTHING`,
-            [account.id, tenantId, account.name, account.type, account.balance, account.isPermanent, account.description]
+            [account.id, account.name, account.type, account.balance, account.isPermanent, account.description]
           );
           accountsCreated++;
-          console.log(`✅ Created system account: ${account.name} (${account.id}) for tenant ${tenantId}`);
+          console.log(`✅ Created global system account: ${account.name} (${account.id})`);
         }
       }
 
-      // Initialize system categories
+      // Initialize system categories globally (tenant_id = NULL)
       for (const category of SYSTEM_CATEGORIES) {
         const existing = await this.db.query(
-          'SELECT id FROM categories WHERE id = $1 AND tenant_id = $2',
-          [category.id, tenantId]
+          'SELECT id FROM categories WHERE id = $1 AND tenant_id IS NULL',
+          [category.id]
         );
 
         if (existing.length === 0) {
           await this.db.query(
             `INSERT INTO categories (id, tenant_id, name, type, is_permanent, is_rental, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+             VALUES ($1, NULL, $2, $3, $4, $5, NOW(), NOW())
              ON CONFLICT (id) DO NOTHING`,
-            [category.id, tenantId, category.name, category.type, category.isPermanent, category.isRental || false]
+            [category.id, category.name, category.type, category.isPermanent, category.isRental || false]
           );
           categoriesCreated++;
-          console.log(`✅ Created system category: ${category.name} (${category.id}) for tenant ${tenantId}`);
+          console.log(`✅ Created global system category: ${category.name} (${category.id})`);
         }
-      }
-
-      if (accountsCreated > 0 || categoriesCreated > 0) {
-        console.log(`✅ Initialized system data for tenant ${tenantId}: ${accountsCreated} accounts, ${categoriesCreated} categories`);
       }
 
       return { accountsCreated, categoriesCreated };
     } catch (error: any) {
-      console.error(`❌ Error initializing system data for tenant ${tenantId}:`, error);
+      console.error(`❌ Error initializing system data:`, error);
       throw error;
     }
   }
@@ -124,18 +120,18 @@ export class TenantInitializationService {
   async ensureSystemAccounts(tenantId: string): Promise<void> {
     for (const account of SYSTEM_ACCOUNTS) {
       const existing = await this.db.query(
-        'SELECT id FROM accounts WHERE id = $1 AND tenant_id = $2',
-        [account.id, tenantId]
+        'SELECT id FROM accounts WHERE id = $1 AND tenant_id IS NULL',
+        [account.id]
       );
 
       if (existing.length === 0) {
         await this.db.query(
           `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+           VALUES ($1, NULL, $2, $3, $4, $5, $6, NOW(), NOW())
            ON CONFLICT (id) DO NOTHING`,
-          [account.id, tenantId, account.name, account.type, account.balance, account.isPermanent, account.description]
+          [account.id, account.name, account.type, account.balance, account.isPermanent, account.description]
         );
-        console.log(`✅ Auto-created missing system account: ${account.name} (${account.id}) for tenant ${tenantId}`);
+        console.log(`✅ Auto-created missing global system account: ${account.name} (${account.id})`);
       }
     }
   }
@@ -146,26 +142,25 @@ export class TenantInitializationService {
   async ensureSystemCategories(tenantId: string): Promise<void> {
     for (const category of SYSTEM_CATEGORIES) {
       const existing = await this.db.query(
-        'SELECT id FROM categories WHERE id = $1 AND tenant_id = $2',
-        [category.id, tenantId]
+        'SELECT id FROM categories WHERE id = $1 AND tenant_id IS NULL',
+        [category.id]
       );
 
       if (existing.length === 0) {
         await this.db.query(
           `INSERT INTO categories (id, tenant_id, name, type, is_permanent, is_rental, description, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+           VALUES ($1, NULL, $2, $3, $4, $5, $6, NOW(), NOW())
            ON CONFLICT (id) DO NOTHING`,
           [
-            category.id, 
-            tenantId, 
-            category.name, 
-            category.type, 
-            category.isPermanent, 
+            category.id,
+            category.name,
+            category.type,
+            category.isPermanent,
             category.isRental || false,
             (category as any).description || null
           ]
         );
-        console.log(`✅ Auto-created missing system category: ${category.name} (${category.id}) for tenant ${tenantId}`);
+        console.log(`✅ Auto-created missing global system category: ${category.name} (${category.id})`);
       }
     }
   }
