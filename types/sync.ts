@@ -25,6 +25,7 @@ export type SyncOperationType =
   | 'recurring_invoice_template'
   | 'plan_amenity'
   | 'pm_cycle_allocation'
+  | 'vendor'
   | 'user'
   | 'users';
 

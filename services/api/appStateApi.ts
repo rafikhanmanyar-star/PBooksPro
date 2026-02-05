@@ -5,7 +5,7 @@
  * This is used when the app is in cloud mode (authenticated with tenant).
  */
 
-import { AppState, InvoiceStatus, ProjectAgreementStatus, ContractStatus, SalesReturnStatus, SalesReturnReason, PMCycleAllocation, Quotation, Document } from '../../types';
+import { AppState, InvoiceStatus, ProjectAgreementStatus, ContractStatus, SalesReturnStatus, SalesReturnReason, PMCycleAllocation, Quotation, Document, Vendor } from '../../types';
 import { AccountsApiRepository } from './repositories/accountsApi';
 import { ContactsApiRepository } from './repositories/contactsApi';
 import { TransactionsApiRepository } from './repositories/transactionsApi';
@@ -29,6 +29,7 @@ import { RecurringInvoiceTemplatesApiRepository } from './repositories/recurring
 import { AppSettingsApiRepository } from './repositories/appSettingsApi';
 import { PMCycleAllocationsApiRepository } from './repositories/pmCycleAllocationsApi';
 import { TransactionLogApiRepository } from './repositories/transactionLogApi';
+import { VendorsApiRepository } from './repositories/vendorsApi';
 import { apiClient } from './client';
 import { logger } from '../logger';
 
@@ -63,6 +64,7 @@ export class AppStateApiService {
   private appSettingsRepo: AppSettingsApiRepository;
   private pmCycleAllocationsRepo: PMCycleAllocationsApiRepository;
   private transactionLogRepo: TransactionLogApiRepository;
+  private vendorsRepo: VendorsApiRepository;
 
   constructor() {
     this.accountsRepo = new AccountsApiRepository();
@@ -88,6 +90,7 @@ export class AppStateApiService {
     this.appSettingsRepo = new AppSettingsApiRepository();
     this.pmCycleAllocationsRepo = new PMCycleAllocationsApiRepository();
     this.transactionLogRepo = new TransactionLogApiRepository();
+    this.vendorsRepo = new VendorsApiRepository();
   }
 
   /**
@@ -132,6 +135,7 @@ export class AppStateApiService {
         recurringInvoiceTemplates,
         pmCycleAllocations,
         transactionLog,
+        vendors,
       ] = await Promise.all([
         this.accountsRepo.findAll().catch(err => {
           logger.errorCategory('sync', 'Error loading accounts from API:', err);
@@ -221,6 +225,10 @@ export class AppStateApiService {
           console.error('Error loading transaction logs from API:', err);
           return [];
         }),
+        this.vendorsRepo.findAll().catch(err => {
+          console.error('Error loading vendors from API:', err);
+          return [];
+        }),
       ]);
 
       logger.logCategory('sync', '✅ Loaded from API:', {
@@ -245,6 +253,7 @@ export class AppStateApiService {
         documents: documents.length,
         recurringInvoiceTemplates: recurringInvoiceTemplates.length,
         pmCycleAllocations: pmCycleAllocations.length,
+        vendors: vendors.length,
       });
 
       const parseJsonSafe = <T,>(value: any, fallback: T): T => {
@@ -558,6 +567,8 @@ export class AppStateApiService {
         batchId: t.batch_id || t.batchId || undefined,
         isSystem: t.is_system === true || t.is_system === 1 || t.isSystem === true || false,
         userId: t.user_id || t.userId || undefined,
+        payslipId: t.payslip_id || t.payslipId || undefined,
+        reference: t.reference || undefined,
         children: t.children || undefined
       }));
 
@@ -584,6 +595,19 @@ export class AppStateApiService {
         userId: c.user_id || c.userId || undefined,
         createdAt: c.created_at || c.createdAt || undefined,
         updatedAt: c.updated_at || c.updatedAt || undefined
+      }));
+
+      // Normalize vendors from API (transform snake_case to camelCase)
+      const normalizedVendors = vendors.map((v: any) => ({
+        id: v.id,
+        name: v.name || '',
+        description: v.description || undefined,
+        contactNo: v.contact_no || v.contactNo || undefined,
+        companyName: v.company_name || v.companyName || undefined,
+        address: v.address || undefined,
+        userId: v.user_id || v.userId || undefined,
+        createdAt: v.created_at || v.createdAt || undefined,
+        updatedAt: v.updated_at || v.updatedAt || undefined
       }));
 
       // Normalize projects from API
@@ -732,6 +756,7 @@ export class AppStateApiService {
         recurringInvoiceTemplates: recurringInvoiceTemplates || [],
         pmCycleAllocations: pmCycleAllocations || [],
         transactionLog: transactionLog || [],
+        vendors: normalizedVendors || [],
       };
     } catch (error) {
       logger.errorCategory('sync', '❌ Error loading state from API:', error);
@@ -775,6 +800,58 @@ export class AppStateApiService {
       description: saved.description || undefined,
       parentAccountId: (saved as any).parent_account_id || saved.parentAccountId || undefined
     };
+  }
+
+  /**
+   * Save vendor to API
+   */
+  /**
+   * Save vendor to API
+   */
+  async saveVendor(vendor: Partial<Vendor>): Promise<Vendor> {
+    // Always use POST endpoint - it handles upserts automatically
+    try {
+      let saved: any;
+      if (vendor.id && await this.vendorsRepo.exists(vendor.id)) {
+        saved = await this.vendorsRepo.update(vendor.id, vendor);
+      } else {
+        saved = await this.vendorsRepo.create(vendor);
+      }
+
+      // Normalize the response (server returns snake_case, client expects camelCase)
+      return {
+        id: saved.id,
+        name: saved.name || '',
+        description: saved.description || undefined,
+        contactNo: saved.contact_no || saved.contactNo || undefined,
+        companyName: saved.company_name || saved.companyName || undefined,
+        address: saved.address || undefined,
+        userId: saved.user_id || saved.userId || undefined,
+        createdAt: saved.created_at || saved.createdAt || undefined,
+        updatedAt: saved.updated_at || saved.updatedAt || undefined
+      };
+    } catch (e) {
+      // Fallback to create if update fails or check fails
+      const saved: any = await this.vendorsRepo.create(vendor);
+      return {
+        id: saved.id,
+        name: saved.name || '',
+        description: saved.description || undefined,
+        contactNo: saved.contact_no || saved.contactNo || undefined,
+        companyName: saved.company_name || saved.companyName || undefined,
+        address: saved.address || undefined,
+        userId: saved.user_id || saved.userId || undefined,
+        createdAt: saved.created_at || saved.createdAt || undefined,
+        updatedAt: saved.updated_at || saved.updatedAt || undefined
+      };
+    }
+  }
+
+  /**
+   * Delete vendor from API
+   */
+  async deleteVendor(id: string): Promise<void> {
+    return this.vendorsRepo.delete(id);
   }
 
   /**
@@ -898,6 +975,8 @@ export class AppStateApiService {
       agreementId: (saved as any).agreement_id || saved.agreementId || undefined,
       batchId: (saved as any).batch_id || saved.batchId || undefined,
       isSystem: (saved as any).is_system === true || (saved as any).is_system === 1 || saved.isSystem === true || false,
+      payslipId: (saved as any).payslip_id || saved.payslipId || undefined,
+      reference: saved.reference || undefined,
       children: saved.children || undefined
     };
   }

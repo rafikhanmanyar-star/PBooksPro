@@ -1069,7 +1069,7 @@ class DatabaseService {
 
             // List of required tables from schema
             const requiredTables = [
-                'metadata', 'users', 'accounts', 'contacts', 'categories', 'projects', 'buildings',
+                'metadata', 'users', 'accounts', 'contacts', 'vendors', 'categories', 'projects', 'buildings',
                 'properties', 'units', 'transactions', 'invoices', 'bills', 'budgets',
                 'quotations', 'documents', 'rental_agreements', 'project_agreements',
                 'project_agreement_units', 'sales_returns', 'contracts', 'contract_categories',

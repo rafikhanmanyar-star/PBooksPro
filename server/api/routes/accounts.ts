@@ -10,7 +10,7 @@ const getDb = () => getDatabaseService();
 router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
-    
+
     // Ensure system accounts exist before fetching
     try {
       const { TenantInitializationService } = await import('../../services/tenantInitializationService.js');
@@ -20,12 +20,12 @@ router.get('/', async (req: TenantRequest, res) => {
       // Log but don't fail - accounts will still be returned
       console.warn('Warning: Failed to ensure system accounts:', initError);
     }
-    
+
     const accounts = await db.query(
-      'SELECT * FROM accounts WHERE tenant_id = $1 ORDER BY name',
+      'SELECT * FROM accounts WHERE tenant_id = $1 OR tenant_id IS NULL ORDER BY name',
       [req.tenantId]
     );
-    
+
     // Transform snake_case column names to camelCase and ensure balance is a number
     const transformedAccounts = accounts.map((account: any) => ({
       id: account.id,
@@ -38,7 +38,7 @@ router.get('/', async (req: TenantRequest, res) => {
       createdAt: account.created_at,
       updatedAt: account.updated_at
     }));
-    
+
     res.json(transformedAccounts);
   } catch (error) {
     console.error('Error fetching accounts:', error);
@@ -57,17 +57,17 @@ router.post('/', async (req: TenantRequest, res) => {
         type: req.body.type
       }
     });
-    
+
     const db = getDb();
     const account = req.body;
-    
+
     // Generate ID if not provided
     const accountId = account.id || `account_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     console.log('📝 POST /accounts - Using account ID:', accountId);
-    
+
     // Track if this is an update operation
     let isUpdate = false;
-    
+
     // Use transaction for data integrity (upsert behavior)
     const result = await db.transaction(async (client) => {
       // Check if account with this ID already exists
@@ -75,7 +75,7 @@ router.post('/', async (req: TenantRequest, res) => {
         'SELECT * FROM accounts WHERE id = $1 AND tenant_id = $2',
         [accountId, req.tenantId]
       );
-      
+
       if (existing.rows.length > 0) {
         // Update existing account
         console.log('🔄 POST /accounts - Updating existing account:', accountId);
@@ -120,12 +120,12 @@ router.post('/', async (req: TenantRequest, res) => {
         return insertResult.rows[0];
       }
     });
-    
+
     if (!result) {
       console.error('❌ POST /accounts - Transaction returned no result');
       return res.status(500).json({ error: 'Failed to create/update account' });
     }
-    
+
     // Transform snake_case to camelCase for response
     const transformedResult = {
       id: result.id,
@@ -138,14 +138,14 @@ router.post('/', async (req: TenantRequest, res) => {
       createdAt: result.created_at,
       updatedAt: result.updated_at
     };
-    
+
     console.log('✅ POST /accounts - Account saved successfully:', {
       id: transformedResult.id,
       name: transformedResult.name,
       balance: transformedResult.balance,
       tenantId: req.tenantId
     });
-    
+
     // Emit WebSocket event for real-time sync
     emitToTenant(req.tenantId!, isUpdate ? WS_EVENTS.ACCOUNT_UPDATED : WS_EVENTS.ACCOUNT_CREATED, {
       account: transformedResult,
@@ -162,15 +162,15 @@ router.post('/', async (req: TenantRequest, res) => {
       tenantId: req.tenantId,
       accountId: req.body?.id
     });
-    
+
     if (error.code === '23505') { // Unique violation
-      return res.status(409).json({ 
+      return res.status(409).json({
         error: 'Duplicate account',
         message: 'An account with this ID already exists'
       });
     }
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       error: 'Failed to create/update account',
       message: error.message || 'Internal server error'
     });
@@ -198,11 +198,11 @@ router.put('/:id', async (req: TenantRequest, res) => {
         req.tenantId
       ]
     );
-    
+
     if (result.length === 0) {
       return res.status(404).json({ error: 'Account not found' });
     }
-    
+
     // Transform snake_case to camelCase for response
     const transformedResult = {
       id: result[0].id,
@@ -215,13 +215,13 @@ router.put('/:id', async (req: TenantRequest, res) => {
       createdAt: result[0].created_at,
       updatedAt: result[0].updated_at
     };
-    
+
     emitToTenant(req.tenantId!, WS_EVENTS.ACCOUNT_UPDATED, {
       account: transformedResult,
       userId: req.user?.userId,
       username: req.user?.username,
     });
-    
+
     res.json(transformedResult);
   } catch (error) {
     console.error('Error updating account:', error);
@@ -237,11 +237,11 @@ router.delete('/:id', async (req: TenantRequest, res) => {
       'DELETE FROM accounts WHERE id = $1 AND tenant_id = $2 RETURNING id',
       [req.params.id, req.tenantId]
     );
-    
+
     if (result.length === 0) {
       return res.status(404).json({ error: 'Account not found' });
     }
-    
+
     emitToTenant(req.tenantId!, WS_EVENTS.ACCOUNT_DELETED, {
       accountId: req.params.id,
       userId: req.user?.userId,

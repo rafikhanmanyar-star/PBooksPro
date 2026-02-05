@@ -599,6 +599,8 @@ export abstract class BaseRepository<T> {
                 || this.tableName === 'contacts'
                 || this.tableName === 'inventory_items'
                 || this.tableName === 'warehouses'
+                || this.tableName === 'sales_returns'
+                || this.tableName === 'vendors'
                 || this.tableName === 'purchase_bills'
                 || this.tableName === 'purchase_bill_items'
                 || this.tableName === 'purchase_bill_payments'

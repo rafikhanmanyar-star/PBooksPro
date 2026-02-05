@@ -51,7 +51,8 @@ const BillTreeSidebar: React.FC<{
     selectedId: string | null;
     selectedParentId: string | null;
     onSelect: (id: string, type: 'group' | 'vendor', parentId?: string) => void;
-}> = ({ nodes, selectedId, selectedParentId, onSelect }) => {
+    onViewVendor: (vendorId: string) => void;
+}> = ({ nodes, selectedId, selectedParentId, onSelect, onViewVendor }) => {
     const [sortConfig, setSortConfig] = useState<{ key: 'name' | 'balance'; direction: 'asc' | 'desc' }>({ key: 'balance', direction: 'desc' });
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(nodes.map(n => n.id)));
 
@@ -129,7 +130,19 @@ const BillTreeSidebar: React.FC<{
                     ) : (
                         <span className="w-5 flex-shrink-0" />
                     )}
-                    <span className="flex-1 text-xs font-medium truncate">{node.name}</span>
+                    <span className="flex-1 text-xs font-medium truncate group-hover:text-clip">{node.name}</span>
+                    {node.type === 'vendor' && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onViewVendor(node.id);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-indigo-600 transition-all rounded hover:bg-indigo-50 mr-1"
+                            title="View in Vendor Directory"
+                        >
+                            <div className="w-3.5 h-3.5">{ICONS.addressBook}</div>
+                        </button>
+                    )}
                     {node.balance > 0 && (
                         <span className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded border flex-shrink-0 ${isSelected ? 'bg-orange-500 text-white border-orange-600' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
                             {node.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -333,7 +346,8 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                 // Find or create Vendor node
                 let vendorNode = group.children.find(c => c.id === bill.contactId);
                 if (!vendorNode) {
-                    const vendor = state.contacts.find(c => c.id === bill.contactId);
+                    // Search in vendors first, then contacts fallback
+                    const vendor = state.vendors?.find(v => v.id === bill.contactId) || state.contacts.find(c => c.id === bill.contactId);
                     vendorNode = {
                         id: bill.contactId,
                         name: vendor?.name || 'Unknown Vendor',
@@ -365,7 +379,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         if (typeFilter === 'All' || typeFilter === 'Bills') {
             baseBills.forEach(bill => {
                 const project = state.projects.find(p => p.id === bill.projectId);
-                const vendor = state.contacts.find(c => c.id === bill.contactId);
+                const vendor = state.vendors?.find(v => v.id === bill.contactId) || state.contacts.find(c => c.id === bill.contactId);
                 const contract = state.contracts.find(c => c.id === bill.contractId);
                 const balance = bill.amount - bill.paidAmount;
 
@@ -395,7 +409,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                     if (!bill || !baseBills.includes(bill)) return; // Only include payments for bills in our base list
 
                     const project = state.projects.find(p => p.id === payment.projectId || bill.projectId);
-                    const vendor = state.contacts.find(c => c.id === payment.contactId || bill.contactId);
+                    const vendor = state.vendors?.find(v => v.id === payment.contactId || bill.contactId) || state.contacts.find(c => c.id === payment.contactId || bill.contactId);
                     const contract = state.contracts.find(c => c.id === payment.contractId || bill.contractId);
 
                     rows.push({
@@ -575,6 +589,11 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         return <span className="text-indigo-600 ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
     };
 
+    const handleViewVendor = (vendorId: string) => {
+        sessionStorage.setItem('openVendorId', vendorId);
+        dispatch({ type: 'SET_PAGE', payload: 'vendorDirectory' });
+    };
+
     const handleRecordPayment = (bill: Bill) => {
         setPaymentBill(bill);
         setIsPaymentModalOpen(true);
@@ -612,7 +631,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
 
     const handleSendWhatsApp = (e: React.MouseEvent, bill: Bill) => {
         e.stopPropagation();
-        const vendor = state.contacts.find(c => c.id === bill.contactId);
+        const vendor = state.vendors?.find(v => v.id === bill.contactId) || state.contacts.find(c => c.id === bill.contactId);
         if (!vendor?.contactNo) {
             showAlert("This vendor does not have a phone number saved.");
             return;
@@ -800,6 +819,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                             selectedId={selectedNode?.id ?? null}
                             selectedParentId={selectedNode?.parentId ?? null}
                             onSelect={(id, type, parentId) => setSelectedNode({ id, type, parentId })}
+                            onViewVendor={handleViewVendor}
                         />
                     </div>
                 </aside>

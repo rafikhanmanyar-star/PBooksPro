@@ -1,4 +1,4 @@
-import { Contact, WhatsAppTemplates } from '../types';
+import { Contact, Vendor, WhatsAppTemplates } from '../types';
 import { CURRENCY } from '../constants';
 
 /**
@@ -11,7 +11,7 @@ import { CURRENCY } from '../constants';
  */
 
 export interface WhatsAppMessageOptions {
-  contact: Contact;
+  contact: Contact | Vendor;
   message: string;
   phoneNumber?: string;
 }
@@ -52,16 +52,16 @@ export class WhatsAppService {
    */
   static formatPhoneNumber(phoneNumber: string): string | null {
     if (!phoneNumber) return null;
-    
+
     // Remove all non-numeric characters
     const cleaned = phoneNumber.replace(/[^0-9]/g, '');
-    
+
     // Basic validation - should be at least 10 digits
     if (cleaned.length < 10) return null;
-    
+
     // If it starts with 0, remove it (common in some countries)
     const withoutLeadingZero = cleaned.startsWith('0') ? cleaned.substring(1) : cleaned;
-    
+
     return withoutLeadingZero;
   }
 
@@ -78,7 +78,7 @@ export class WhatsAppService {
    * Supports placeholders like {contactName}, {amount}, etc.
    */
   static replaceTemplateVariables(
-    template: string, 
+    template: string,
     variables: TemplateVariables
   ): string {
     let message = template;
@@ -97,7 +97,7 @@ export class WhatsAppService {
     if (!formattedPhone) {
       throw new Error('Invalid phone number');
     }
-    
+
     const encodedMessage = encodeURIComponent(message);
     return `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
   }
@@ -108,7 +108,7 @@ export class WhatsAppService {
    */
   static sendMessage(options: WhatsAppMessageOptions): void {
     const { contact, message, phoneNumber } = options;
-    
+
     const phone = phoneNumber || contact.contactNo;
     if (!phone) {
       throw new Error(`Contact "${contact.name}" does not have a phone number`);
@@ -136,7 +136,7 @@ export class WhatsAppService {
    */
   static generateInvoiceReminder(
     template: string,
-    contact: Contact,
+    contact: Contact | Vendor,
     invoiceNumber: string,
     amount: number,
     dueDate?: string,
@@ -158,7 +158,7 @@ export class WhatsAppService {
    */
   static generateInvoiceReceipt(
     template: string,
-    contact: Contact,
+    contact: Contact | Vendor,
     invoiceNumber: string,
     paidAmount: number,
     balance: number,
@@ -180,7 +180,7 @@ export class WhatsAppService {
    */
   static generateBillPayment(
     template: string,
-    contact: Contact,
+    contact: Contact | Vendor,
     billNumber: string,
     paidAmount: number
   ): string {
@@ -196,7 +196,7 @@ export class WhatsAppService {
    */
   static generateVendorGreeting(
     template: string,
-    contact: Contact
+    contact: Contact | Vendor
   ): string {
     return this.replaceTemplateVariables(template, {
       contactName: contact.name

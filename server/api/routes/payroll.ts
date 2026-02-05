@@ -1129,11 +1129,13 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
     };
 
     // Process payment atomically within a transaction (same approach as bill payment)
+
+    // Process payment atomically within a transaction (same approach as bill payment)
     const db = getDb();
     const result = await db.transaction(async (client) => {
       // Validate and ensure account exists (same approach as transactions route - inside transaction)
       const accountCheck = await client.query(
-        'SELECT id, name, type, balance FROM accounts WHERE id = $1 AND tenant_id = $2',
+        'SELECT id, name, type, balance FROM accounts WHERE id = $1 AND (tenant_id = $2 OR tenant_id IS NULL)',
         [accountId, tenantId]
       );
 
@@ -1146,22 +1148,24 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
             accountId: accountId
           };
         }
+
+        // Use the base ID for system account lookup
         const systemAccount = SYSTEM_ACCOUNTS[accountId];
         if (systemAccount) {
-          // Auto-create system account
-          console.log(`🔧 POST /payroll/payslips/:id/pay - Auto-creating missing system account: ${accountId}`);
+          // Auto-create system account as a global entity (tenant_id IS NULL)
+          console.log(`🔧 POST /payroll/payslips/:id/pay - Auto-creating missing global system account: ${accountId}`);
           await client.query(
             `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, 0, TRUE, $5, NOW(), NOW())
+             VALUES ($1, NULL, $2, $3, 0, TRUE, $4, NOW(), NOW())
              ON CONFLICT (id) DO NOTHING`,
-            [accountId, tenantId, systemAccount.name, systemAccount.type, systemAccount.description]
+            [accountId, systemAccount.name, systemAccount.type, systemAccount.description]
           );
-          console.log(`✅ POST /payroll/payslips/:id/pay - System account created: ${accountId}`);
+          console.log(`✅ POST /payroll/payslips/:id/pay - Global system account created: ${accountId}`);
 
           // Re-query to get the newly created account
           const newAccountCheck = await client.query(
-            'SELECT id, name, type, balance FROM accounts WHERE id = $1 AND tenant_id = $2',
-            [accountId, tenantId]
+            'SELECT id, name, type, balance FROM accounts WHERE id = $1 AND tenant_id IS NULL',
+            [accountId]
           );
           if (newAccountCheck.rows.length > 0) {
             accountCheck.rows.push(newAccountCheck.rows[0]);
@@ -1188,7 +1192,7 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
         id: transactionId,
         type: 'Expense',
         amount: paymentAmount,
-        accountId,
+        accountId: accountId,
         categoryId: effectiveCategoryId,
         projectId: effectiveProjectId
       });
@@ -1205,9 +1209,9 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
       const transaction = transactionResult.rows[0];
       console.log('✅ Transaction created:', transaction.id);
 
-      // Update account balance
+      // Update account balance (supports both tenant-specific and global accounts)
       await client.query(
-        `UPDATE accounts SET balance = balance - $1 WHERE id = $2 AND tenant_id = $3`,
+        `UPDATE accounts SET balance = balance - $1 WHERE id = $2 AND (tenant_id = $3 OR tenant_id IS NULL)`,
         [paymentAmount, accountId, tenantId]
       );
       console.log('✅ Account balance updated');
@@ -1222,28 +1226,39 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
          RETURNING *`,
         [transaction.id, id, tenantId]
       );
-      console.log('✅ Payslip marked as paid');
+      // 6. Check if all payslips for this run are now paid
+      const runId = payslip.run_id;
+      const statusCheck = await client.query(
+        `SELECT COUNT(*) as total, 
+                COUNT(*) FILTER (WHERE is_paid = true) as paid
+         FROM payslips 
+         WHERE payroll_run_id = $1 AND tenant_id = $2`,
+        [runId, tenantId]
+      );
+
+      const totalNum = parseInt(statusCheck.rows[0].total);
+      const paidNum = parseInt(statusCheck.rows[0].paid);
+
+      if (totalNum > 0 && totalNum === paidNum) {
+        console.log(`🎊 All ${totalNum} payslips for run ${runId} are paid. Updating run status to PAID.`);
+        await client.query(
+          'UPDATE payroll_runs SET status = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3',
+          ['PAID', runId, tenantId]
+        );
+      }
 
       return {
         transaction: transaction,
-        payslip: updateResult.rows[0]
+        payslip: updateResult.rows[0],
+        totalCount: totalNum,
+        paidCount: paidNum
       };
     });
 
-    // NOTE: Auto-paid feature removed - users must manually mark run as PAID after all payslips are paid
-    // Check payslip status for information only (not for auto-update)
-    const payslipStatus = await getDb().query(
-      `SELECT COUNT(*) as total, 
-              COUNT(*) FILTER (WHERE is_paid = true) as paid
-       FROM payslips 
-       WHERE payroll_run_id = $1 AND tenant_id = $2`,
-      [payslip.run_id, tenantId]
-    );
+    // 7. Emit WebSocket event and respond
+    const totalPayslips = result.totalCount;
+    const paidPayslips = result.paidCount;
 
-    const totalPayslips = parseInt(payslipStatus[0].total);
-    const paidPayslips = parseInt(payslipStatus[0].paid);
-
-    // Emit WebSocket event
     emitToTenant(tenantId, 'payslip_paid', {
       payslipId: id,
       transactionId: result.transaction.id,
@@ -1277,7 +1292,7 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
 
       return res.status(404).json({
         error: 'Payment account not found',
-        message: error.message || `Account with ID "${accountId}" does not exist or does not belong to this tenant. Please select a valid account.`,
+        message: error.message || `Account with ID "${accountId}" does not exist. Please select a valid account.`,
         accountId: accountId,
         availableAccounts: availableAccounts.map((a: any) => ({ id: a.id, name: a.name, type: a.type }))
       });

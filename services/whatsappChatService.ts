@@ -10,6 +10,7 @@ export interface WhatsAppMessage {
   id: string;
   tenantId: string;
   contactId?: string;
+  vendorId?: string;
   phoneNumber: string;
   messageId?: string;
   wamId?: string;
@@ -26,6 +27,7 @@ export interface WhatsAppMessage {
 
 export interface SendMessageRequest {
   contactId?: string;
+  vendorId?: string;
   phoneNumber: string;
   message: string;
 }
@@ -96,7 +98,7 @@ export class WhatsAppChatService {
   static async sendMessage(request: SendMessageRequest): Promise<SendMessageResponse> {
     const sendId = `send_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     const startTime = Date.now();
-    
+
     try {
       console.log(`[WhatsApp Chat Service] [${sendId}] ===== INITIATING MESSAGE SEND =====`, {
         phoneNumber: request.phoneNumber.substring(0, 5) + '***',
@@ -116,10 +118,11 @@ export class WhatsAppChatService {
         phoneNumber: request.phoneNumber,
         message: request.message,
         contactId: request.contactId,
+        vendorId: request.vendorId,
       });
 
       const duration = Date.now() - startTime;
-      
+
       // Validate response
       if (!response || (response.error && !response.messageId)) {
         console.error(`[WhatsApp Chat Service] [${sendId}] ❌ INVALID RESPONSE FROM SERVER`, {

@@ -1,7 +1,7 @@
 
 import type { Dispatch } from 'react';
 export { ImportType } from '../types';
-import { AppState, AppAction, ImportLogEntry, Account, Contact, Project, Category, Building, Property, Unit, Transaction, Invoice, Bill, RentalAgreement, ProjectAgreement, Budget, ContactType, TransactionType, RentalAgreementStatus, ProjectAgreementStatus, InvoiceStatus, InvoiceType, LoanSubtype, AccountType, Contract, ContractExpenseCategoryItem, ContractStatus, RecurringInvoiceTemplate, ImportType } from '../types';
+import { AppState, AppAction, ImportLogEntry, Account, Contact, Vendor, Quotation, Project, Category, Building, Property, Unit, Transaction, Invoice, Bill, RentalAgreement, ProjectAgreement, Budget, ContactType, TransactionType, RentalAgreementStatus, ProjectAgreementStatus, InvoiceStatus, InvoiceType, LoanSubtype, AccountType, Contract, ContractExpenseCategoryItem, ContractStatus, RecurringInvoiceTemplate, ImportType } from '../types';
 import type { ProgressContextType } from '../context/ProgressContext';
 import * as XLSX from 'xlsx';
 import { normalizeNameForComparison } from '../utils/stringUtils';
@@ -96,8 +96,6 @@ const normalizeContactType = (input: string): ContactType | null => {
         return entry ? entry[1] : null;
     }
 
-    if (lower === 'supplier') return ContactType.VENDOR;
-    if (lower === 'vendor') return ContactType.VENDOR;
     if (lower === 'friend') return ContactType.FRIEND_FAMILY;
     if (lower === 'family') return ContactType.FRIEND_FAMILY;
     if (lower === 'client') return ContactType.OWNER;
@@ -1140,6 +1138,7 @@ export const runImportProcess = async (
         invoices: new Map(tempState.invoices.map(i => [normalizeNameForComparison(i.invoiceNumber), i.id])),
         bills: new Map(tempState.bills.map(i => [normalizeNameForComparison(i.billNumber), i.id])),
         contracts: new Map((tempState.contracts || []).map(i => [normalizeNameForComparison(i.contractNumber), i.id])),
+        vendors: new Map((tempState.vendors || []).map(i => [normalizeNameForComparison(i.name), i.id])),
     };
 
     // Track transaction IDs for duplicate detection
@@ -1512,23 +1511,37 @@ export const runImportProcess = async (
 
                 // --- CONTACTS ---
                 else if (sheetName === 'Contacts') {
+                    const rowTypeLower = String(row.type || '').toLowerCase();
+                    const isVendor = rowTypeLower === 'vendor' || rowTypeLower === 'supplier';
+
+                    if (importType === ImportType.VENDORS && !isVendor) {
+                        log(sheetName, rowNum, 'Skipped', `Contact type is not a vendor. Only vendors are imported when selecting "Vendors Only" import type.`, row);
+                        continue;
+                    }
+
+                    if (importType === ImportType.CONTACTS && isVendor) {
+                        log(sheetName, rowNum, 'Skipped', `Contact type is a vendor. Use "Vendors Only" import to import vendors.`, row);
+                        continue;
+                    }
+
                     const type = normalizeContactType(row.type);
-                    if (!type) {
+                    if (!type && !isVendor) {
                         const validTypes = Object.values(ContactType).join(', ');
                         const errorMsg = generateErrorWithSuggestions(sheetName, rowNum, row, ['type']);
                         log(sheetName, rowNum, 'Error', errorMsg + `\n   💡 Valid types are: ${validTypes}\n   Common alternatives: "Vendor" (for Supplier), "Friend" or "Family" (for Friend & Family), "Client" (for Owner)`, row);
                         continue;
                     }
 
-                    // Filter vendors if importType is VENDORS
-                    if (importType === ImportType.VENDORS && type !== ContactType.VENDOR) {
-                        log(sheetName, rowNum, 'Skipped', `Contact type "${type}" is not a vendor. Only vendors are imported when selecting "Vendors Only" import type.`, row);
-                        continue;
-                    }
-
-                    if (maps.contacts.has(normalizeNameForComparison(row.name))) {
-                        log(sheetName, rowNum, 'Skipped', `Duplicate entry: A contact with the name "${row.name}" already exists in the system.`, row);
-                        continue;
+                    if (isVendor) {
+                        if (maps.vendors.has(normalizeNameForComparison(row.name))) {
+                            log(sheetName, rowNum, 'Skipped', `Duplicate entry: A vendor with the name "${row.name}" already exists in the system.`, row);
+                            continue;
+                        }
+                    } else {
+                        if (maps.contacts.has(normalizeNameForComparison(row.name))) {
+                            log(sheetName, rowNum, 'Skipped', `Duplicate entry: A contact with the name "${row.name}" already exists in the system.`, row);
+                            continue;
+                        }
                     }
 
                     const missing = validateRecord(row, ['name']);
@@ -1538,15 +1551,28 @@ export const runImportProcess = async (
                         continue;
                     }
 
-                    const newContact: Contact = {
-                        id: generateImportId('con', index),
-                        name: row.name, type,
-                        description: row.description, contactNo: row.contactNo,
-                        companyName: row.companyName, address: row.address
-                    };
-                    tempState.contacts.push(newContact);
-                    maps.contacts.set(normalizeNameForComparison(newContact.name), newContact.id);
-                    log(sheetName, rowNum, 'Success', `Added Contact: ${newContact.name}${importType === ImportType.VENDORS ? ' (Vendor)' : ''}`);
+                    if (isVendor) {
+                        const newVendor: Vendor = {
+                            id: generateImportId('ven', index),
+                            name: row.name,
+                            description: row.description, contactNo: row.contactNo,
+                            companyName: row.companyName, address: row.address
+                        };
+                        (tempState.vendors ||= []);
+                        tempState.vendors.push(newVendor);
+                        maps.vendors.set(normalizeNameForComparison(newVendor.name), newVendor.id);
+                        log(sheetName, rowNum, 'Success', `Added Vendor: ${newVendor.name}`);
+                    } else {
+                        const newContact: Contact = {
+                            id: generateImportId('con', index),
+                            name: row.name, type: type!,
+                            description: row.description, contactNo: row.contactNo,
+                            companyName: row.companyName, address: row.address
+                        };
+                        tempState.contacts.push(newContact);
+                        maps.contacts.set(normalizeNameForComparison(newContact.name), newContact.id);
+                        log(sheetName, rowNum, 'Success', `Added Contact: ${newContact.name}`);
+                    }
                 }
 
                 // --- CATEGORIES ---
@@ -1715,10 +1741,10 @@ export const runImportProcess = async (
 
                     const newUnit: Unit = {
                         id: generateImportId('unit', index),
-                        name: row.name, 
-                        projectId, 
+                        name: row.name,
+                        projectId,
                         contactId: ownerId,
-                        salePrice: row.salePrice ? parseFloat(row.salePrice) : undefined, 
+                        salePrice: row.salePrice ? parseFloat(row.salePrice) : undefined,
                         description: row.description || undefined,
                         type: row.type || undefined,
                         area: row.area ? parseFloat(row.area) : undefined,
@@ -1747,7 +1773,7 @@ export const runImportProcess = async (
                         const newAgr: RentalAgreement = {
                             id: generateImportId('ra', index),
                             agreementNumber: row.agreementNumber,
-                            tenantId, propertyId, brokerId,
+                            contactId: tenantId, propertyId, brokerId,
                             startDate: new Date(row.startDate).toISOString(),
                             endDate: new Date(row.endDate).toISOString(),
                             monthlyRent: parseFloat(row.monthlyRent),

@@ -26,6 +26,10 @@ export class ContactsRepository extends BaseRepository<any> {
     constructor() { super('contacts'); }
 }
 
+export class VendorsRepository extends BaseRepository<any> {
+    constructor() { super('vendors'); }
+}
+
 export class CategoriesRepository extends BaseRepository<any> {
     constructor() { super('categories'); }
 }

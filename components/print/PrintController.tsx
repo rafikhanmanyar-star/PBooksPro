@@ -14,11 +14,13 @@ import { BillPrintTemplate } from './BillPrintTemplate';
 import { AgreementLayout } from './AgreementLayout';
 import { LedgerLayout } from './LedgerLayout';
 import { ReportLayout } from './ReportLayout';
+import { PayslipPrintTemplate } from './PayslipPrintTemplate';
 import type { InvoicePrintData } from './InvoicePrintTemplate';
 import type { BillPrintData } from './BillPrintTemplate';
 import type { AgreementPrintData } from './AgreementLayout';
 import type { LedgerPrintData } from './LedgerLayout';
 import type { ReportPrintData } from './ReportLayout';
+import type { PayslipPrintData } from './PayslipPrintTemplate';
 import { PurchaseOrder } from '../../types';
 import './printForm.css';
 import './printPortal.css';
@@ -108,6 +110,14 @@ function PrintControllerContent(): React.ReactElement | null {
       break;
     case 'REPORT':
       content = <ReportLayout data={activeDocument as ReportPrintData} />;
+      break;
+    case 'PAYSLIP':
+      content = (
+        <PayslipPrintTemplate
+          printSettings={printSettings}
+          data={activeDocument as PayslipPrintData}
+        />
+      );
       break;
     default:
       content = null;

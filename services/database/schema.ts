@@ -61,6 +61,20 @@ CREATE TABLE IF NOT EXISTS contacts (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Vendors table
+CREATE TABLE IF NOT EXISTS vendors (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    contact_no TEXT,
+    company_name TEXT,
+    address TEXT,
+    description TEXT,
+    tenant_id TEXT,
+    user_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Categories table
 CREATE TABLE IF NOT EXISTS categories (
     id TEXT PRIMARY KEY,
@@ -691,6 +705,8 @@ CREATE INDEX IF NOT EXISTS idx_accounts_tenant_id ON accounts(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON accounts(user_id);
 CREATE INDEX IF NOT EXISTS idx_contacts_tenant_id ON contacts(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_contacts_user_id ON contacts(user_id);
+CREATE INDEX IF NOT EXISTS idx_vendors_tenant_id ON vendors(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_vendors_user_id ON vendors(user_id);
 CREATE INDEX IF NOT EXISTS idx_categories_tenant_id ON categories(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_categories_user_id ON categories(user_id);
 CREATE INDEX IF NOT EXISTS idx_projects_tenant_id ON projects(tenant_id);

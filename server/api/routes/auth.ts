@@ -26,7 +26,7 @@ router.post('/lookup-tenants', async (req, res) => {
         code: dbError?.code,
         stack: dbError?.stack
       });
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: 'Database connection failed',
         message: 'Unable to connect to database. Please check server configuration.',
         code: 'DATABASE_CONNECTION_ERROR'
@@ -35,7 +35,7 @@ router.post('/lookup-tenants', async (req, res) => {
 
     const { organizationEmail } = req.body;
     const normalizedOrganizationEmail = organizationEmail?.trim();
-    
+
     if (!normalizedOrganizationEmail) {
       return res.status(400).json({ error: 'Organization email is required' });
     }
@@ -54,9 +54,9 @@ router.post('/lookup-tenants', async (req, res) => {
 
     if (rateLimit && rateLimit.resetAt > now) {
       if (rateLimit.count >= RATE_LIMIT_MAX_REQUESTS) {
-        return res.status(429).json({ 
-          error: 'Too many requests', 
-          message: 'Please wait a moment before trying again.' 
+        return res.status(429).json({
+          error: 'Too many requests',
+          message: 'Please wait a moment before trying again.'
         });
       }
       rateLimit.count++;
@@ -88,7 +88,7 @@ router.post('/lookup-tenants', async (req, res) => {
         hint: queryError?.hint,
         stack: queryError?.stack
       });
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: 'Database query failed',
         message: 'An error occurred while querying the database. Please try again.',
         code: 'DATABASE_QUERY_ERROR'
@@ -115,9 +115,9 @@ router.post('/lookup-tenants', async (req, res) => {
       detail: error?.detail,
       hint: error?.hint
     });
-    
+
     // Return properly formatted error response
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Lookup failed',
       message: error?.message || 'An error occurred while looking up organizations. Please try again.',
       code: error?.code || 'UNKNOWN_ERROR'
@@ -132,27 +132,27 @@ router.post('/unified-login', async (req, res) => {
     const { organizationEmail, username, password } = req.body;
     const normalizedOrganizationEmail = organizationEmail?.trim();
     const normalizedUsername = username?.trim();
-    
+
     if (!normalizedOrganizationEmail || !normalizedUsername || !password) {
-      return res.status(400).json({ 
-        error: 'All fields required', 
-        message: 'Organization email, username, and password are required' 
+      return res.status(400).json({
+        error: 'All fields required',
+        message: 'Organization email, username, and password are required'
       });
     }
 
     // Basic email format validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(normalizedOrganizationEmail)) {
-      return res.status(400).json({ 
-        error: 'Invalid email format', 
-        message: 'Please enter a valid organization email address' 
+      return res.status(400).json({
+        error: 'Invalid email format',
+        message: 'Please enter a valid organization email address'
       });
     }
 
-    console.log('🔐 Unified login attempt:', { 
-      orgEmail: normalizedOrganizationEmail.substring(0, 15) + '...', 
-      username: normalizedUsername.substring(0, 10) + '...', 
-      hasPassword: !!password 
+    console.log('🔐 Unified login attempt:', {
+      orgEmail: normalizedOrganizationEmail.substring(0, 15) + '...',
+      username: normalizedUsername.substring(0, 10) + '...',
+      hasPassword: !!password
     });
 
     // Lookup tenants by organization email (case-insensitive)
@@ -162,8 +162,8 @@ router.post('/unified-login', async (req, res) => {
       [normalizedOrganizationEmail]
     );
 
-    console.log('📊 Tenant lookup result:', { 
-      tenantsFound: tenants.length, 
+    console.log('📊 Tenant lookup result:', {
+      tenantsFound: tenants.length,
       searchedEmail: normalizedOrganizationEmail,
       foundEmails: tenants.map((t: any) => t.email?.substring(0, 15) + '...')
     });
@@ -173,18 +173,18 @@ router.post('/unified-login', async (req, res) => {
       // Also check what emails exist in the database for debugging
       const allTenants = await db.query('SELECT id, email, name FROM tenants LIMIT 10');
       console.log('📊 Available tenants in DB:', allTenants.map((t: any) => ({ id: t.id?.substring(0, 15), email: t.email })));
-      return res.status(401).json({ 
-        error: 'Invalid credentials', 
-        message: 'Invalid organization email, username, or password' 
+      return res.status(401).json({
+        error: 'Invalid credentials',
+        message: 'Invalid organization email, username, or password'
       });
     }
 
     // If multiple tenants found with same email, fail for security
     if (tenants.length > 1) {
       console.log('❌ Unified login: Multiple tenants found for email:', normalizedOrganizationEmail, tenants.length);
-      return res.status(401).json({ 
-        error: 'Invalid credentials', 
-        message: 'Invalid organization email, username, or password' 
+      return res.status(401).json({
+        error: 'Invalid credentials',
+        message: 'Invalid organization email, username, or password'
       });
     }
 
@@ -206,9 +206,9 @@ router.post('/unified-login', async (req, res) => {
          username ASC`,
       [normalizedUsername, tenantId]
     );
-    
-    console.log('📊 User lookup result:', { 
-      usersFound: allUsers.length, 
+
+    console.log('📊 User lookup result:', {
+      usersFound: allUsers.length,
       searchedUsername: normalizedUsername,
       foundUsernames: allUsers.map((u: any) => u.username)
     });
@@ -217,26 +217,26 @@ router.post('/unified-login', async (req, res) => {
       console.log('❌ Unified login: User not found:', { username: normalizedUsername, tenantId });
       // Also check what users exist for this tenant for debugging
       const tenantUsers = await db.query('SELECT id, username, email, is_active FROM users WHERE tenant_id = $1', [tenantId]);
-      console.log('📊 Available users for tenant:', tenantUsers.map((u: any) => ({ 
-        id: u.id?.substring(0, 15), 
-        username: u.username, 
+      console.log('📊 Available users for tenant:', tenantUsers.map((u: any) => ({
+        id: u.id?.substring(0, 15),
+        username: u.username,
         email: u.email,
-        is_active: u.is_active 
+        is_active: u.is_active
       })));
-      return res.status(401).json({ 
-        error: 'Invalid credentials', 
-        message: 'Invalid organization email, username, or password' 
+      return res.status(401).json({
+        error: 'Invalid credentials',
+        message: 'Invalid organization email, username, or password'
       });
     }
-    
+
     // Check if user is active
     const users = allUsers.filter(u => u.is_active === true || u.is_active === null);
-    
+
     if (users.length === 0) {
       console.log('❌ Unified login: User is inactive:', { username: normalizedUsername, tenantId, is_active: allUsers[0]?.is_active });
-      return res.status(403).json({ 
-        error: 'Account disabled', 
-        message: 'Your account has been disabled. Please contact your administrator.' 
+      return res.status(403).json({
+        error: 'Account disabled',
+        message: 'Your account has been disabled. Please contact your administrator.'
       });
     }
 
@@ -246,18 +246,18 @@ router.post('/unified-login', async (req, res) => {
     // Verify password
     const hasPassword = !!user.password;
     console.log('🔐 Verifying password:', { hasPassword, passwordLength: user.password?.length });
-    
+
     if (!user.password) {
       console.log('❌ Unified login: User has no password set:', { username: normalizedUsername, tenantId });
-      return res.status(401).json({ 
-        error: 'Invalid credentials', 
-        message: 'Invalid organization email, username, or password' 
+      return res.status(401).json({
+        error: 'Invalid credentials',
+        message: 'Invalid organization email, username, or password'
       });
     }
-    
+
     const passwordMatch = await bcrypt.compare(password, user.password);
     console.log('🔐 Password comparison result:', { passwordMatch });
-    
+
     if (!passwordMatch) {
       // Fallback for legacy plaintext passwords: compare raw, then upgrade hash.
       if (user.password === password) {
@@ -266,13 +266,13 @@ router.post('/unified-login', async (req, res) => {
         console.log('✅ Unified login: Upgraded legacy plaintext password to bcrypt hash');
       } else {
         console.log('❌ Unified login: Password mismatch for user:', { username: normalizedUsername, tenantId });
-        return res.status(401).json({ 
-          error: 'Invalid credentials', 
-          message: 'Invalid organization email, username, or password' 
+        return res.status(401).json({
+          error: 'Invalid credentials',
+          message: 'Invalid organization email, username, or password'
         });
       }
     }
-    
+
     console.log('✅ Password verified successfully');
 
     // Check login_status flag - primary check for duplicate logins
@@ -339,8 +339,8 @@ router.post('/unified-login', async (req, res) => {
     // Increased expiration to 30 days to prevent premature expiration
     const expiresIn = '30d';
     const token = jwt.sign(
-      { 
-        userId: user.id, 
+      {
+        userId: user.id,
         username: user.username,
         tenantId: user.tenant_id,
         role: user.role
@@ -378,12 +378,12 @@ router.post('/unified-login', async (req, res) => {
 
     console.log('✅ Unified login successful:', { userId: user.id, username: user.username, tenantId: user.tenant_id });
 
-    res.json({ 
-      token, 
-      user: { 
-        id: user.id, 
-        username: user.username, 
-        name: user.name, 
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        name: user.name,
         role: user.role,
         tenantId: user.tenant_id
       },
@@ -403,31 +403,31 @@ router.post('/unified-login', async (req, res) => {
     });
 
     // Check for database connection errors
-    const isDatabaseError = error?.code === 'ENOTFOUND' || 
-                            error?.code === 'ECONNREFUSED' || 
-                            error?.code === 'ETIMEDOUT' ||
-                            error?.message?.includes('getaddrinfo') ||
-                            error?.message?.includes('ENOTFOUND');
+    const isDatabaseError = error?.code === 'ENOTFOUND' ||
+      error?.code === 'ECONNREFUSED' ||
+      error?.code === 'ETIMEDOUT' ||
+      error?.message?.includes('getaddrinfo') ||
+      error?.message?.includes('ENOTFOUND');
 
     if (isDatabaseError) {
       const dbUrl = process.env.DATABASE_URL || '';
       const isInternalUrl = dbUrl.includes('@dpg-') && !dbUrl.includes('.render.com');
-      
+
       let errorMessage = 'Database connection failed. ';
       if (isInternalUrl) {
         errorMessage += 'The database URL appears to be an internal URL. Please use the External Database URL from Render Dashboard.';
       } else {
         errorMessage += 'Please check your database connection settings.';
       }
-      
-      return res.status(500).json({ 
+
+      return res.status(500).json({
         error: 'Login failed',
         message: errorMessage,
         hint: 'If using Render, ensure DATABASE_URL uses the External Database URL (with full hostname like dpg-xxx-a.region-postgres.render.com)'
       });
     }
 
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Login failed',
       message: error?.message || 'An error occurred during login. Please try again.'
     });
@@ -440,7 +440,7 @@ router.post('/smart-login', async (req, res) => {
     const db = getDb();
     const { username, password, tenantId } = req.body;
     const normalizedUsername = username?.trim();
-    
+
     if (!normalizedUsername || !password) {
       return res.status(400).json({ error: 'Username and password are required' });
     }
@@ -456,16 +456,16 @@ router.post('/smart-login', async (req, res) => {
       'SELECT * FROM tenants WHERE id = $1',
       [tenantId]
     );
-    
+
     if (tenants.length === 0) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         error: 'Invalid tenant',
         message: 'The selected organization does not exist. Please try again.'
       });
     }
 
     const tenant = tenants[0];
-    
+
     // Find user within tenant (case-insensitive username comparison)
     const allUsers = await db.query(
       `SELECT * FROM users
@@ -479,15 +479,15 @@ router.post('/smart-login', async (req, res) => {
          username ASC`,
       [normalizedUsername, tenantId]
     );
-    
+
     if (allUsers.length === 0) {
       console.log('❌ Smart login: User not found:', { username: normalizedUsername, tenantId });
       return res.status(401).json({ error: 'Invalid credentials', message: 'User not found' });
     }
-    
+
     // Check if user is active
     const users = allUsers.filter(u => u.is_active === true || u.is_active === null);
-    
+
     if (users.length === 0) {
       console.log('❌ Smart login: User is inactive:', { username: normalizedUsername, tenantId, is_active: allUsers[0]?.is_active });
       return res.status(403).json({ error: 'Account disabled', message: 'Your account has been disabled. Please contact your administrator.' });
@@ -499,7 +499,7 @@ router.post('/smart-login', async (req, res) => {
     if (!user.password) {
       return res.status(401).json({ error: 'Invalid credentials', message: 'Incorrect password' });
     }
-    
+
     const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
       if (user.password === password) {
@@ -575,8 +575,8 @@ router.post('/smart-login', async (req, res) => {
     // Increased expiration to 30 days to prevent premature expiration
     const expiresIn = '30d';
     const token = jwt.sign(
-      { 
-        userId: user.id, 
+      {
+        userId: user.id,
         username: user.username,
         tenantId: user.tenant_id,
         role: user.role
@@ -612,12 +612,12 @@ router.post('/smart-login', async (req, res) => {
       ]
     );
 
-    res.json({ 
-      token, 
-      user: { 
-        id: user.id, 
-        username: user.username, 
-        name: user.name, 
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        name: user.name,
         role: user.role,
         tenantId: user.tenant_id
       },
@@ -637,31 +637,31 @@ router.post('/smart-login', async (req, res) => {
     });
 
     // Check for database connection errors
-    const isDatabaseError = error?.code === 'ENOTFOUND' || 
-                            error?.code === 'ECONNREFUSED' || 
-                            error?.code === 'ETIMEDOUT' ||
-                            error?.message?.includes('getaddrinfo') ||
-                            error?.message?.includes('ENOTFOUND');
+    const isDatabaseError = error?.code === 'ENOTFOUND' ||
+      error?.code === 'ECONNREFUSED' ||
+      error?.code === 'ETIMEDOUT' ||
+      error?.message?.includes('getaddrinfo') ||
+      error?.message?.includes('ENOTFOUND');
 
     if (isDatabaseError) {
       const dbUrl = process.env.DATABASE_URL || '';
       const isInternalUrl = dbUrl.includes('@dpg-') && !dbUrl.includes('.render.com');
-      
+
       let errorMessage = 'Database connection failed. ';
       if (isInternalUrl) {
         errorMessage += 'The database URL appears to be an internal URL. Please use the External Database URL from Render Dashboard.';
       } else {
         errorMessage += 'Please check your database connection settings.';
       }
-      
-      return res.status(500).json({ 
+
+      return res.status(500).json({
         error: 'Login failed',
         message: errorMessage,
         hint: 'If using Render, ensure DATABASE_URL uses the External Database URL (with full hostname like dpg-xxx-a.region-postgres.render.com)'
       });
     }
 
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Login failed',
       message: error?.message || 'An error occurred during login. Please try again.'
     });
@@ -674,7 +674,7 @@ router.post('/login', async (req, res) => {
     const db = getDb();
     const { username, password, tenantId } = req.body;
     const normalizedUsername = username?.trim();
-    
+
     if (!tenantId) {
       return res.status(400).json({ error: 'Tenant ID required' });
     }
@@ -684,10 +684,10 @@ router.post('/login', async (req, res) => {
       'SELECT * FROM tenants WHERE id = $1',
       [tenantId]
     );
-    
+
     if (tenants.length === 0) {
       // Tenant doesn't exist - return 401 to indicate authentication failure
-      return res.status(401).json({ 
+      return res.status(401).json({
         error: 'Invalid tenant',
         message: 'The specified tenant does not exist. Please check your tenant ID and try again.'
       });
@@ -709,28 +709,28 @@ router.post('/login', async (req, res) => {
          username ASC`,
       [normalizedUsername, tenantId]
     );
-    
+
     if (allUsers.length === 0) {
       console.log('❌ Login: User not found:', { username: normalizedUsername, tenantId });
       return res.status(401).json({ error: 'Invalid credentials', message: 'User not found' });
     }
-    
+
     // Filter for active users (is_active = TRUE or NULL)
     const users = allUsers.filter((u: any) => u.is_active === true || u.is_active === null);
-    
+
     if (users.length === 0) {
       console.log('❌ Login: User is inactive:', { username: normalizedUsername, tenantId, is_active: allUsers[0]?.is_active });
       return res.status(403).json({ error: 'Account disabled', message: 'Your account has been disabled. Please contact your administrator.' });
     }
 
     const user = users[0];
-    
+
     // Verify password
     if (!user.password) {
       console.log('❌ Login: User has no password set:', { userId: user.id, username: user.username });
       return res.status(401).json({ error: 'Invalid credentials', message: 'Password not set for this user' });
     }
-    
+
     const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
       if (user.password === password) {
@@ -742,7 +742,7 @@ router.post('/login', async (req, res) => {
         return res.status(401).json({ error: 'Invalid credentials', message: 'Incorrect password' });
       }
     }
-    
+
     console.log('✅ Login: Password verified for user:', { userId: user.id, username: user.username, role: user.role });
 
     // Check login_status flag - primary check for duplicate logins
@@ -809,8 +809,8 @@ router.post('/login', async (req, res) => {
     // Increased expiration to 30 days to prevent premature expiration
     const expiresIn = '30d';
     const token = jwt.sign(
-      { 
-        userId: user.id, 
+      {
+        userId: user.id,
         username: user.username,
         tenantId: user.tenant_id,
         role: user.role
@@ -846,12 +846,12 @@ router.post('/login', async (req, res) => {
       ]
     );
 
-    res.json({ 
-      token, 
-      user: { 
-        id: user.id, 
-        username: user.username, 
-        name: user.name, 
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        name: user.name,
         role: user.role,
         tenantId: user.tenant_id
       },
@@ -872,13 +872,13 @@ router.post('/refresh-token', async (req, res) => {
   try {
     const db = getDb();
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ error: 'No authentication token' });
     }
-    
+
     const oldToken = authHeader.substring(7);
-    
+
     try {
       // Session must exist and be unexpired (blocking).
       // This keeps refresh aligned with tenantMiddleware which requires user_sessions.
@@ -936,39 +936,39 @@ router.post('/refresh-token', async (req, res) => {
           code: 'SESSION_MISMATCH'
         });
       }
-      
+
       // Verify user still exists and is active
       const users = await db.query(
         'SELECT * FROM users WHERE id = $1 AND tenant_id = $2 AND is_active = TRUE',
         [decoded.userId, decoded.tenantId]
       );
-      
+
       if (users.length === 0) {
         return res.status(401).json({ error: 'User not found or inactive' });
       }
-      
+
       const user = users[0];
-      
+
       // Verify tenant exists
       const tenants = await db.query(
         'SELECT * FROM tenants WHERE id = $1',
         [decoded.tenantId]
       );
-      
+
       if (tenants.length === 0) {
         // Tenant doesn't exist - token is invalid, user needs to re-login
         // Return 401 instead of 403 to indicate authentication failure
-        return res.status(401).json({ 
-          error: 'Invalid token', 
-          message: 'The tenant associated with your token no longer exists. Please login again.' 
+        return res.status(401).json({
+          error: 'Invalid token',
+          message: 'The tenant associated with your token no longer exists. Please login again.'
         });
       }
-      
+
       // Generate new token with same expiration (30 days)
       const expiresIn = '30d';
       const newToken = jwt.sign(
-        { 
-          userId: user.id, 
+        {
+          userId: user.id,
           username: user.username,
           tenantId: user.tenant_id,
           role: user.role
@@ -976,11 +976,11 @@ router.post('/refresh-token', async (req, res) => {
         process.env.JWT_SECRET!,
         { expiresIn }
       );
-      
+
       // Update session with new token
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 30);
-      
+
       const updated = await db.query(
         `UPDATE user_sessions 
          SET token = $1, expires_at = $2, last_activity = NOW() 
@@ -996,8 +996,8 @@ router.post('/refresh-token', async (req, res) => {
           code: 'SESSION_INVALID'
         });
       }
-      
-      res.json({ 
+
+      res.json({
         token: newToken,
         expiresIn: expiresIn
       });
@@ -1016,26 +1016,26 @@ router.post('/logout', async (req, res) => {
   try {
     const db = getDb();
     const authHeader = req.headers.authorization;
-    
+
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
-      
+
       try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
-        
+
         // Delete session by token or by user_id + tenant_id (more reliable)
         await db.query(
           'DELETE FROM user_sessions WHERE token = $1 OR (user_id = $2 AND tenant_id = $3)',
           [token, decoded.userId, decoded.tenantId]
         );
-        
+
         // Set login_status = FALSE to allow user to login again immediately
         // This is critical for allowing re-login after logout
         await db.query(
           'UPDATE users SET login_status = FALSE WHERE id = $1',
           [decoded.userId]
         );
-        
+
         console.log(`✅ User ${decoded.userId} logged out, login_status set to FALSE`);
         res.json({ success: true, message: 'Logged out successfully' });
       } catch (jwtError) {
@@ -1058,31 +1058,31 @@ router.post('/heartbeat', async (req, res) => {
   try {
     const db = getDb();
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ error: 'No authentication token' });
     }
-    
+
     const token = authHeader.substring(7);
-    
+
     try {
       // Verify token is valid
       const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
-      
+
       // Check if session exists first
       const sessionCheck = await db.query(
         'SELECT id FROM user_sessions WHERE token = $1 AND user_id = $2 AND tenant_id = $3',
         [token, decoded.userId, decoded.tenantId]
       );
-      
+
       // If session doesn't exist, try to create it (might be a race condition after login)
       if (!sessionCheck || sessionCheck.length === 0) {
         // Try to create the session if it doesn't exist (handles race condition after login)
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + 30); // 30 days to match JWT expiration
-        
+
         const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        
+
         try {
           await db.query(
             `INSERT INTO user_sessions (id, user_id, tenant_id, token, ip_address, user_agent, expires_at, last_activity)
@@ -1109,10 +1109,10 @@ router.post('/heartbeat', async (req, res) => {
             'SELECT id FROM user_sessions WHERE token = $1 AND user_id = $2 AND tenant_id = $3',
             [token, decoded.userId, decoded.tenantId]
           );
-          
+
           if (!retryCheck || retryCheck.length === 0) {
             // Session truly doesn't exist - return error
-            return res.status(401).json({ 
+            return res.status(401).json({
               error: 'Session not found',
               code: 'SESSION_NOT_FOUND'
             });
@@ -1125,16 +1125,16 @@ router.post('/heartbeat', async (req, res) => {
           [token, decoded.userId, decoded.tenantId]
         );
       }
-      
+
       // Ensure login_status is true (maintain login status during heartbeat)
       await db.query(
         'UPDATE users SET login_status = TRUE WHERE id = $1',
         [decoded.userId]
       );
-      
+
       res.json({ success: true, message: 'Heartbeat received' });
     } catch (jwtError) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         error: 'Invalid token',
         code: 'INVALID_TOKEN'
       });
@@ -1149,7 +1149,7 @@ router.post('/heartbeat', async (req, res) => {
 router.post('/lookup-tenant', async (req, res) => {
   try {
     const { email, companyName } = req.body;
-    
+
     if (!email && !companyName) {
       return res.status(400).json({ error: 'Email or company name required' });
     }
@@ -1157,7 +1157,7 @@ router.post('/lookup-tenant', async (req, res) => {
     const db = getDb();
     let query = 'SELECT id, name, company_name, email FROM tenants WHERE 1=1';
     const params: any[] = [];
-    
+
     if (email) {
       query += ' AND email = $1';
       params.push(email);
@@ -1165,15 +1165,15 @@ router.post('/lookup-tenant', async (req, res) => {
       query += ' AND (company_name ILIKE $1 OR name ILIKE $1)';
       params.push(`%${companyName}%`);
     }
-    
+
     query += ' LIMIT 5';
-    
+
     const tenants = await db.query(query, params);
-    
+
     if (tenants.length === 0) {
       return res.status(404).json({ error: 'Tenant not found' });
     }
-    
+
     res.json({ tenants });
   } catch (error) {
     console.error('Tenant lookup error:', error);
@@ -1184,15 +1184,15 @@ router.post('/lookup-tenant', async (req, res) => {
 // Register new tenant (self-signup with free trial)
 router.post('/register-tenant', async (req, res) => {
   try {
-    const { 
-      companyName, 
-      email, 
-      phone, 
+    const {
+      companyName,
+      email,
+      phone,
       address,
-      adminUsername, 
-      adminPassword, 
+      adminUsername,
+      adminPassword,
       adminName,
-      isSupplier 
+      isSupplier
     } = req.body;
 
     console.log('Registration request received:', {
@@ -1206,36 +1206,36 @@ router.post('/register-tenant', async (req, res) => {
     // Validate input
     if (!companyName || !email || !adminUsername || !adminPassword) {
       console.error('Missing required fields:', { companyName: !!companyName, email: !!email, adminUsername: !!adminUsername, adminPassword: !!adminPassword });
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Missing required fields',
         message: 'Please provide company name, email, admin username, and admin password'
       });
     }
 
     const db = getDb();
-    
+
     // Check if organization already exists (by email OR company_name)
     // Prevent re-registration of organizations
     const existingByEmail = await db.query(
       'SELECT id, company_name FROM tenants WHERE email = $1',
       [email]
     );
-    
+
     if (existingByEmail.length > 0) {
-      return res.status(409).json({ 
+      return res.status(409).json({
         error: 'Organization already registered',
         message: 'An organization with this email already exists. This organization has already been registered. Please login instead.'
       });
     }
-    
+
     // Check if company name already exists
     const existingByCompany = await db.query(
       'SELECT id, email FROM tenants WHERE LOWER(company_name) = LOWER($1) OR LOWER(name) = LOWER($1)',
       [companyName]
     );
-    
+
     if (existingByCompany.length > 0) {
-      return res.status(409).json({ 
+      return res.status(409).json({
         error: 'Organization already registered',
         message: 'An organization with this company name already exists. This organization has already been registered. Please login instead.'
       });
@@ -1299,7 +1299,7 @@ router.post('/register-tenant', async (req, res) => {
           email,
           role: 'Admin'
         });
-        
+
         await client.query(
           `INSERT INTO users (id, tenant_id, username, name, role, password, email, is_active)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
@@ -1311,11 +1311,11 @@ router.post('/register-tenant', async (req, res) => {
           'SELECT id, username, email, role, is_active FROM users WHERE id = $1',
           [userId]
         );
-        
+
         if (verifyResult.rows.length === 0) {
           throw new Error('User creation verification failed - user not found after insert');
         }
-        
+
         const createdUser = verifyResult.rows[0];
         console.log('✅ Admin user created successfully:', {
           userId: createdUser.id,
@@ -1335,8 +1335,8 @@ router.post('/register-tenant', async (req, res) => {
         detail: transactionError?.detail,
         constraint: transactionError?.constraint
       });
-      
-      return res.status(500).json({ 
+
+      return res.status(500).json({
         error: 'Failed to create organization',
         message: transactionError.message || 'An error occurred while creating your account. Please try again.',
         details: process.env.NODE_ENV === 'development' ? transactionError.message : undefined
@@ -1363,7 +1363,7 @@ router.post('/register-tenant', async (req, res) => {
     });
   } catch (error: any) {
     console.error('Tenant registration error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Registration failed',
       message: error.message || 'An unexpected error occurred. Please try again.'
     });

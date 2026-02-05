@@ -111,6 +111,7 @@ import payrollRouter from './routes/payroll.js';
 import stateChangesRouter from './routes/stateChanges.js';
 import shopRouter from './routes/shop.js';
 import analyticsRouter from './routes/analytics.js';
+import vendorsRouter from './routes/vendors.js';
 import { tenantMiddleware } from '../middleware/tenantMiddleware.js';
 import { licenseMiddleware } from '../middleware/licenseMiddleware.js';
 import { trackRequestMetrics } from './routes/admin/system-metrics.js';
@@ -682,6 +683,7 @@ app.use('/api/users', usersRouter); // User management (for authenticated tenant
 app.use('/api/tenants', tenantRouter); // Tenant management (for authenticated tenants)
 app.use('/api/transaction-audit', transactionAuditRouter); // Transaction audit logs
 app.use('/api/quotations', quotationsRouter); // Quotations
+app.use('/api/vendors', vendorsRouter); // Vendors
 app.use('/api/documents', documentsRouter); // Documents
 app.use('/api/recurring-invoice-templates', recurringInvoiceTemplatesRouter); // Recurring Invoice Templates
 app.use('/api/error-log', errorLogRouter); // Error Log

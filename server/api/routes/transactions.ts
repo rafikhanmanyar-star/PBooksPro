@@ -71,7 +71,7 @@ const applyAccountBalanceChanges = async (
     // Let's assume we store them as 'Journal' and subtype 'Debit'/'Credit'.
 
     if (normalized.accountId) {
-      const accRes = await client.query('SELECT type FROM accounts WHERE id = $1', [normalized.accountId]);
+      const accRes = await client.query('SELECT type FROM accounts WHERE id = $1 AND (tenant_id = $2 OR tenant_id IS NULL)', [normalized.accountId, tenantId]);
       if (accRes.rows.length > 0) {
         const accType = accRes.rows[0].type;
         const isDebit = normalized.subtype === 'Debit';
@@ -94,7 +94,7 @@ const applyAccountBalanceChanges = async (
   for (const [accountId, delta] of deltas.entries()) {
     if (!delta) continue;
     await client.query(
-      'UPDATE accounts SET balance = balance + $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3',
+      'UPDATE accounts SET balance = balance + $1, updated_at = NOW() WHERE id = $2 AND (tenant_id = $3 OR tenant_id IS NULL)',
       [delta, accountId, tenantId]
     );
   }
@@ -337,7 +337,7 @@ router.post('/', async (req: TenantRequest, res) => {
 
     // Use transaction for data integrity (upsert behavior)
     let wasUpdate = false;
-    let oldValues = null;
+    let oldValues: any = null;
     let billLocked = false;
     let invoiceLocked = false;
 
@@ -347,7 +347,7 @@ router.post('/', async (req: TenantRequest, res) => {
 
       // Validate and ensure account exists
       const accountCheck = await client.query(
-        'SELECT id FROM accounts WHERE id = $1 AND tenant_id = $2',
+        'SELECT id FROM accounts WHERE id = $1 AND (tenant_id = $2 OR tenant_id IS NULL)',
         [transaction.accountId, req.tenantId]
       );
 
@@ -355,15 +355,15 @@ router.post('/', async (req: TenantRequest, res) => {
         // Check if it's a system account that should be auto-created
         const systemAccount = SYSTEM_ACCOUNTS[transaction.accountId];
         if (systemAccount) {
-          // Auto-create system account
-          console.log(`🔧 POST /transactions - Auto-creating missing system account: ${transaction.accountId}`);
+          // Auto-create global system account
+          console.log(`🔧 POST /transactions - Auto-creating missing global system account: ${transaction.accountId}`);
           await client.query(
             `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, 0, TRUE, $5, NOW(), NOW())
+             VALUES ($1, NULL, $2, $3, 0, TRUE, $4, NOW(), NOW())
              ON CONFLICT (id) DO NOTHING`,
-            [transaction.accountId, req.tenantId, systemAccount.name, systemAccount.type, systemAccount.description]
+            [transaction.accountId, systemAccount.name, systemAccount.type, systemAccount.description]
           );
-          console.log(`✅ POST /transactions - System account created: ${transaction.accountId}`);
+          console.log(`✅ POST /transactions - Global system account created: ${transaction.accountId}`);
         } else {
           // Not a system account - return error
           throw {
@@ -377,7 +377,7 @@ router.post('/', async (req: TenantRequest, res) => {
       // Validate from_account_id if provided (for transfers)
       if (transaction.fromAccountId) {
         const fromAccountCheck = await client.query(
-          'SELECT id FROM accounts WHERE id = $1 AND tenant_id = $2',
+          'SELECT id FROM accounts WHERE id = $1 AND (tenant_id = $2 OR tenant_id IS NULL)',
           [transaction.fromAccountId, req.tenantId]
         );
 
@@ -385,15 +385,15 @@ router.post('/', async (req: TenantRequest, res) => {
           // Check if it's a system account that should be auto-created
           const systemAccount = SYSTEM_ACCOUNTS[transaction.fromAccountId];
           if (systemAccount) {
-            // Auto-create system account
-            console.log(`🔧 POST /transactions - Auto-creating missing system account (fromAccount): ${transaction.fromAccountId}`);
+            // Auto-create global system account
+            console.log(`🔧 POST /transactions - Auto-creating missing global system account (fromAccount): ${transaction.fromAccountId}`);
             await client.query(
               `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
-               VALUES ($1, $2, $3, $4, 0, TRUE, $5, NOW(), NOW())
+               VALUES ($1, NULL, $2, $3, 0, TRUE, $4, NOW(), NOW())
                ON CONFLICT (id) DO NOTHING`,
-              [transaction.fromAccountId, req.tenantId, systemAccount.name, systemAccount.type, systemAccount.description]
+              [transaction.fromAccountId, systemAccount.name, systemAccount.type, systemAccount.description]
             );
-            console.log(`✅ POST /transactions - System account created (fromAccount): ${transaction.fromAccountId}`);
+            console.log(`✅ POST /transactions - Global system account created (fromAccount): ${transaction.fromAccountId}`);
           } else {
             // Not a system account - return error
             throw {
@@ -408,7 +408,7 @@ router.post('/', async (req: TenantRequest, res) => {
       // Validate to_account_id if provided (for transfers)
       if (transaction.toAccountId) {
         const toAccountCheck = await client.query(
-          'SELECT id FROM accounts WHERE id = $1 AND tenant_id = $2',
+          'SELECT id FROM accounts WHERE id = $1 AND (tenant_id = $2 OR tenant_id IS NULL)',
           [transaction.toAccountId, req.tenantId]
         );
 
@@ -416,15 +416,15 @@ router.post('/', async (req: TenantRequest, res) => {
           // Check if it's a system account that should be auto-created
           const systemAccount = SYSTEM_ACCOUNTS[transaction.toAccountId];
           if (systemAccount) {
-            // Auto-create system account
-            console.log(`🔧 POST /transactions - Auto-creating missing system account (toAccount): ${transaction.toAccountId}`);
+            // Auto-create global system account
+            console.log(`🔧 POST /transactions - Auto-creating missing global system account (toAccount): ${transaction.toAccountId}`);
             await client.query(
               `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
-               VALUES ($1, $2, $3, $4, 0, TRUE, $5, NOW(), NOW())
+               VALUES ($1, NULL, $2, $3, 0, TRUE, $4, NOW(), NOW())
                ON CONFLICT (id) DO NOTHING`,
-              [transaction.toAccountId, req.tenantId, systemAccount.name, systemAccount.type, systemAccount.description]
+              [transaction.toAccountId, systemAccount.name, systemAccount.type, systemAccount.description]
             );
-            console.log(`✅ POST /transactions - System account created (toAccount): ${transaction.toAccountId}`);
+            console.log(`✅ POST /transactions - Global system account created (toAccount): ${transaction.toAccountId}`);
           } else {
             // Not a system account - return error
             throw {
@@ -548,11 +548,11 @@ router.post('/', async (req: TenantRequest, res) => {
           `UPDATE transactions 
            SET type = $1, subtype = $2, amount = $3, date = $4, description = $5, 
                account_id = $6, from_account_id = $7, to_account_id = $8, category_id = $9, 
-               contact_id = $10, project_id = $11, building_id = $12, property_id = $13,
-               unit_id = $14, invoice_id = $15, bill_id = $16, payslip_id = $17,
-               contract_id = $18, agreement_id = $19, batch_id = $20, is_system = $21, 
-               user_id = $22, updated_at = NOW()
-           WHERE id = $23 AND tenant_id = $24
+               contact_id = $10, vendor_id = $11, project_id = $12, building_id = $13, property_id = $14,
+               unit_id = $15, invoice_id = $16, bill_id = $17, payslip_id = $18,
+               contract_id = $19, agreement_id = $20, batch_id = $21, is_system = $22, 
+               user_id = $23, updated_at = NOW()
+           WHERE id = $24 AND tenant_id = $25
            RETURNING *`,
           [
             transaction.type,
@@ -565,6 +565,7 @@ router.post('/', async (req: TenantRequest, res) => {
             transaction.toAccountId || null,
             transaction.categoryId || null,
             transaction.contactId || null,
+            transaction.vendorId || null,
             transaction.projectId || null,
             transaction.buildingId || null,
             transaction.propertyId || null,
@@ -581,8 +582,13 @@ router.post('/', async (req: TenantRequest, res) => {
             req.tenantId
           ]
         );
-        await applyAccountBalanceChanges(client, req.tenantId!, oldValues, -1);
-        await applyAccountBalanceChanges(client, req.tenantId!, transaction, 1);
+
+        // Use consistent scoped IDs for balance changes too
+        const oldValuesScoped = oldValues ? { ...oldValues } : {};
+        const newValuesScoped = { ...transaction };
+
+        await applyAccountBalanceChanges(client, req.tenantId!, oldValuesScoped, -1);
+        await applyAccountBalanceChanges(client, req.tenantId!, newValuesScoped, 1);
         return updateResult.rows[0];
       } else {
         // Create new transaction
@@ -598,10 +604,10 @@ router.post('/', async (req: TenantRequest, res) => {
         const insertResult = await client.query(
           `INSERT INTO transactions (
             id, tenant_id, user_id, type, subtype, amount, date, description, account_id, 
-            from_account_id, to_account_id, category_id, contact_id, project_id,
+            from_account_id, to_account_id, category_id, contact_id, vendor_id, project_id,
             building_id, property_id, unit_id, invoice_id, bill_id, payslip_id,
             contract_id, agreement_id, batch_id, is_system, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, NOW(), NOW())
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, NOW(), NOW())
           RETURNING *`,
           [
             transactionId,
@@ -617,6 +623,7 @@ router.post('/', async (req: TenantRequest, res) => {
             transaction.toAccountId || null,
             transaction.categoryId || null,
             transaction.contactId || null,
+            transaction.vendorId || null,
             transaction.projectId || null,
             transaction.buildingId || null,
             transaction.propertyId || null,
@@ -630,6 +637,7 @@ router.post('/', async (req: TenantRequest, res) => {
             transaction.isSystem || false
           ]
         );
+        // Use consistent scoped IDs for balance changes too
         await applyAccountBalanceChanges(client, req.tenantId!, transaction, 1);
 
         console.log('✅ POST /transactions - Transaction inserted successfully:', {
@@ -1021,11 +1029,11 @@ router.put('/:id', async (req: TenantRequest, res) => {
       UPDATE transactions 
       SET type = $1, subtype = $2, amount = $3, date = $4, description = $5, 
           account_id = $6, from_account_id = $7, to_account_id = $8, category_id = $9, 
-          contact_id = $10, project_id = $11, building_id = $12, property_id = $13,
-          unit_id = $14, invoice_id = $15, bill_id = $16, payslip_id = $17,
-          contract_id = $18, agreement_id = $19, batch_id = $20, is_system = $21, 
-          user_id = $22, updated_at = NOW()
-      WHERE id = $23 AND tenant_id = $24
+          contact_id = $10, vendor_id = $11, project_id = $12, building_id = $13, property_id = $14,
+          unit_id = $15, invoice_id = $16, bill_id = $17, payslip_id = $18,
+          contract_id = $19, agreement_id = $20, batch_id = $21, is_system = $22, 
+          user_id = $23, updated_at = NOW()
+      WHERE id = $24 AND tenant_id = $25
       RETURNING *
     `;
     const result = await db.transaction(async (client) => {
@@ -1040,6 +1048,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
         transaction.toAccountId || null,
         transaction.categoryId || null,
         transaction.contactId || null,
+        transaction.vendorId || null,
         transaction.projectId || null,
         transaction.buildingId || null,
         transaction.propertyId || null,
@@ -1493,11 +1502,11 @@ router.post('/batch', async (req: TenantRequest, res) => {
               `UPDATE transactions 
                SET type = $1, subtype = $2, amount = $3, date = $4, description = $5, 
                    account_id = $6, from_account_id = $7, to_account_id = $8, category_id = $9, 
-                   contact_id = $10, project_id = $11, building_id = $12, property_id = $13,
-                   unit_id = $14, invoice_id = $15, bill_id = $16, payslip_id = $17,
-                   contract_id = $18, agreement_id = $19, batch_id = $20, is_system = $21, 
-                   user_id = $22, updated_at = NOW()
-               WHERE id = $23 AND tenant_id = $24
+                   contact_id = $10, vendor_id = $11, project_id = $12, building_id = $13, property_id = $14,
+                   unit_id = $15, invoice_id = $16, bill_id = $17, payslip_id = $18,
+                   contract_id = $19, agreement_id = $20, batch_id = $21, is_system = $22, 
+                   user_id = $23, updated_at = NOW()
+               WHERE id = $24 AND tenant_id = $25
                RETURNING *`,
               [
                 transaction.type,
@@ -1510,6 +1519,7 @@ router.post('/batch', async (req: TenantRequest, res) => {
                 transaction.toAccountId || null,
                 transaction.categoryId || null,
                 transaction.contactId || null,
+                transaction.vendorId || null,
                 transaction.projectId || null,
                 transaction.buildingId || null,
                 transaction.propertyId || null,
@@ -1534,10 +1544,10 @@ router.post('/batch', async (req: TenantRequest, res) => {
             const insertResult = await client.query(
               `INSERT INTO transactions (
                 id, tenant_id, user_id, type, subtype, amount, date, description, account_id, 
-                from_account_id, to_account_id, category_id, contact_id, project_id,
+                from_account_id, to_account_id, category_id, contact_id, vendor_id, project_id,
                 building_id, property_id, unit_id, invoice_id, bill_id, payslip_id,
                 contract_id, agreement_id, batch_id, is_system, created_at, updated_at
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, NOW(), NOW())
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, NOW(), NOW())
               RETURNING *`,
               [
                 transactionId,
@@ -1553,6 +1563,7 @@ router.post('/batch', async (req: TenantRequest, res) => {
                 transaction.toAccountId || null,
                 transaction.categoryId || null,
                 transaction.contactId || null,
+                transaction.vendorId || null,
                 transaction.projectId || null,
                 transaction.buildingId || null,
                 transaction.propertyId || null,

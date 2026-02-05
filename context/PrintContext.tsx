@@ -6,7 +6,7 @@
 
 import React, { createContext, useContext, useCallback, useState, useMemo } from 'react';
 
-export type PrintLayoutType = 'PO' | 'INVOICE' | 'BILL' | 'AGREEMENT' | 'LEDGER' | 'REPORT';
+export type PrintLayoutType = 'PO' | 'INVOICE' | 'BILL' | 'AGREEMENT' | 'LEDGER' | 'REPORT' | 'PAYSLIP';
 
 export interface PrintContextValue {
   /** The data object currently set for printing (null when idle) */

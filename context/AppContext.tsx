@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useState, useRef } from 'react';
-import { AppState, AppAction, Transaction, TransactionType, Account, Category, AccountType, LoanSubtype, InvoiceStatus, TransactionLogEntry, Page, ContractStatus, User, UserRole, ProjectAgreementStatus, Bill, SalesReturn, SalesReturnStatus, SalesReturnReason, Contact, Invoice } from '../types';
+import { AppState, AppAction, Transaction, TransactionType, Account, Category, AccountType, LoanSubtype, InvoiceStatus, TransactionLogEntry, Page, ContractStatus, User, UserRole, ProjectAgreementStatus, Bill, SalesReturn, SalesReturnStatus, SalesReturnReason, Contact, Vendor, Invoice } from '../types';
 import useDatabaseState from '../hooks/useDatabaseState';
 import { useDatabaseStateFallback } from '../hooks/useDatabaseStateFallback';
 import { runAllMigrations, needsMigration } from '../services/database/migration';
@@ -216,6 +216,7 @@ const initialState: AppState = {
     currentUser: null,
     accounts: SYSTEM_ACCOUNTS,
     contacts: [],
+    vendors: [],
     categories: SYSTEM_CATEGORIES,
     projects: [],
     buildings: [],
@@ -503,6 +504,24 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, contacts: state.contacts.map(c => c.id === action.payload.id ? action.payload : c) };
         case 'DELETE_CONTACT':
             return { ...state, contacts: state.contacts.filter(c => c.id !== action.payload) };
+
+        // --- VENDOR HANDLERS ---
+        case 'ADD_VENDOR': {
+            const vendorToAdd = {
+                ...action.payload,
+                userId: action.payload?.userId || state.currentUser?.id || undefined,
+                createdAt: action.payload?.createdAt || new Date().toISOString(),
+                updatedAt: action.payload?.updatedAt || new Date().toISOString()
+            };
+            if (state.vendors.find(v => v.id === vendorToAdd.id)) {
+                return { ...state, vendors: state.vendors.map(v => v.id === vendorToAdd.id ? vendorToAdd : v) };
+            }
+            return { ...state, vendors: [...state.vendors, vendorToAdd] };
+        }
+        case 'UPDATE_VENDOR':
+            return { ...state, vendors: state.vendors.map(v => v.id === action.payload.id ? action.payload : v) };
+        case 'DELETE_VENDOR':
+            return { ...state, vendors: state.vendors.filter(v => v.id !== action.payload) };
 
         // --- ENTITY HANDLERS (Projects, Buildings, etc) ---
         case 'ADD_PROJECT':
@@ -1530,6 +1549,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 'ADD_CONTACT',
                 'UPDATE_CONTACT',
                 'DELETE_CONTACT',
+                // Vendors
+                'ADD_VENDOR',
+                'UPDATE_VENDOR',
+                'DELETE_VENDOR',
                 // Categories
                 'ADD_CATEGORY',
                 'UPDATE_CATEGORY',
@@ -1766,6 +1789,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 status: err?.status
                             });
                             throw err;
+                        }
+                    }
+
+                    // Handle vendor changes
+                    if (action.type === 'ADD_VENDOR') {
+                        const vendor = action.payload;
+                        logger.logCategory('sync', `🔄 Starting sync for ADD_VENDOR: ${vendor.name} (${vendor.id})`);
+                        try {
+                            const apiService = getAppStateApiService();
+                            await apiService.saveVendor(vendor);
+                            logger.logCategory('sync', `✅ Synced vendor to API: ${vendor.name} (${vendor.id})`);
+                        } catch (err: any) {
+                            logger.errorCategory('sync', `❌ FAILED to sync vendor ${vendor.name} to API:`, {
+                                error: err,
+                                errorMessage: err?.message || err?.error || 'Unknown error',
+                                vendor: { id: vendor.id, name: vendor.name }
+                            });
+                        }
+                    } else if (action.type === 'UPDATE_VENDOR') {
+                        const vendor = action.payload;
+                        logger.logCategory('sync', `🔄 Starting sync for UPDATE_VENDOR: ${vendor.name} (${vendor.id})`);
+                        try {
+                            const apiService = getAppStateApiService();
+                            await apiService.saveVendor(vendor);
+                            logger.logCategory('sync', `✅ Synced vendor update to API: ${vendor.name} (${vendor.id})`);
+                        } catch (err: any) {
+                            logger.errorCategory('sync', `❌ FAILED to sync vendor update ${vendor.name} to API:`, {
+                                error: err,
+                                errorMessage: err?.message || err?.error || 'Unknown error',
+                                vendor: { id: vendor.id, name: vendor.name }
+                            });
+                        }
+                    } else if (action.type === 'DELETE_VENDOR') {
+                        const vendorId = action.payload as string;
+                        try {
+                            const apiService = getAppStateApiService();
+                            await apiService.deleteVendor(vendorId);
+                            logger.logCategory('sync', '✅ Synced vendor deletion to API:', vendorId);
+                        } catch (err: any) {
+                            logger.errorCategory('sync', `⚠️ Failed to sync vendor deletion ${vendorId} to API:`, {
+                                error: err,
+                                vendorId,
+                                errorMessage: err?.message || err?.error || 'Unknown error'
+                            });
                         }
                     }
 
@@ -2315,6 +2382,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         return { type: 'contact', action: 'update', data: action.payload };
                     case 'DELETE_CONTACT':
                         return { type: 'contact', action: 'delete', data: { id: action.payload } };
+                    case 'ADD_VENDOR':
+                        return { type: 'vendor', action: 'create', data: action.payload };
+                    case 'UPDATE_VENDOR':
+                        return { type: 'vendor', action: 'update', data: action.payload };
+                    case 'DELETE_VENDOR':
+                        return { type: 'vendor', action: 'delete', data: { id: action.payload } };
                     case 'ADD_INVOICE':
                         return { type: 'invoice', action: 'create', data: action.payload };
                     case 'UPDATE_INVOICE':
@@ -2860,6 +2933,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     'bill:created', 'bill:updated', 'bill:deleted',
                     'invoice:created', 'invoice:updated', 'invoice:deleted',
                     'contact:created', 'contact:updated', 'contact:deleted',
+                    'vendor:created', 'vendor:updated', 'vendor:deleted',
                     'project:created', 'project:updated', 'project:deleted',
                     'account:created', 'account:updated', 'account:deleted',
                     'category:created', 'category:updated', 'category:deleted',
@@ -3127,6 +3201,74 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
                     dispatch({
                         type: 'DELETE_CONTACT',
+                        payload: id,
+                        _isRemote: true
+                    } as any);
+                }));
+
+                // Vendor events - immediate updates for real-time sync
+                unsubSpecific.push(ws.on('vendor:created', (data: any) => {
+                    const payloadVendor = data?.vendor ?? data;
+                    if (!payloadVendor || !payloadVendor.id) return;
+
+                    // Check if vendor already exists (prevent duplicates)
+                    const exists = stateRef.current.vendors.some(v => v.id === payloadVendor.id);
+                    if (exists) return;
+
+                    // Normalize vendor data (snake_case -> camelCase)
+                    const normalized = {
+                        id: payloadVendor.id,
+                        name: payloadVendor.name,
+                        description: payloadVendor.description ?? undefined,
+                        contactNo: payloadVendor.contact_no ?? payloadVendor.contactNo ?? undefined,
+                        companyName: payloadVendor.company_name ?? payloadVendor.companyName ?? undefined,
+                        address: payloadVendor.address ?? undefined,
+                        userId: payloadVendor.user_id ?? payloadVendor.userId ?? undefined,
+                        createdAt: payloadVendor.created_at ?? payloadVendor.createdAt ?? new Date().toISOString(),
+                        updatedAt: payloadVendor.updated_at ?? payloadVendor.updatedAt ?? new Date().toISOString()
+                    };
+
+                    dispatch({
+                        type: 'ADD_VENDOR',
+                        payload: normalized,
+                        _isRemote: true
+                    } as any);
+                }));
+
+                unsubSpecific.push(ws.on('vendor:updated', (data: any) => {
+                    const payloadVendor = data?.vendor ?? data;
+                    if (!payloadVendor || !payloadVendor.id) return;
+
+                    const existing = stateRef.current.vendors.find(v => v.id === payloadVendor.id);
+
+                    // Normalize and merge with existing data
+                    const normalized = {
+                        id: payloadVendor.id,
+                        name: payloadVendor.name,
+                        description: payloadVendor.description ?? undefined,
+                        contactNo: payloadVendor.contact_no ?? payloadVendor.contactNo ?? undefined,
+                        companyName: payloadVendor.company_name ?? payloadVendor.companyName ?? undefined,
+                        address: payloadVendor.address ?? undefined,
+                        userId: payloadVendor.user_id ?? payloadVendor.userId ?? undefined,
+                        createdAt: payloadVendor.created_at ?? payloadVendor.createdAt ?? existing?.createdAt ?? new Date().toISOString(),
+                        updatedAt: payloadVendor.updated_at ?? payloadVendor.updatedAt ?? new Date().toISOString()
+                    };
+
+                    const merged = existing ? { ...existing, ...normalized } : normalized;
+
+                    dispatch({
+                        type: existing ? 'UPDATE_VENDOR' : 'ADD_VENDOR',
+                        payload: merged,
+                        _isRemote: true
+                    } as any);
+                }));
+
+                unsubSpecific.push(ws.on('vendor:deleted', (data: any) => {
+                    const id = data?.vendorId ?? data?.id;
+                    if (!id) return;
+
+                    dispatch({
+                        type: 'DELETE_VENDOR',
                         payload: id,
                         _isRemote: true
                     } as any);

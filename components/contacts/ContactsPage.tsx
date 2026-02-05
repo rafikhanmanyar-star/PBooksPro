@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { Contact, ContactType, TransactionType, LoanSubtype } from '../../types';
+import { Contact, Vendor, ContactType, TransactionType, LoanSubtype } from '../../types';
 import ContactForm from '../settings/ContactForm';
 import Button from '../ui/Button';
 import Modal from '../ui/Modal';
@@ -23,6 +23,7 @@ interface ContactTreeNode {
     type: 'type' | 'contact';
     children: ContactTreeNode[];
     value?: number;
+    isActive?: boolean;
 }
 
 /** Premium tree sidebar: same style as Project Agreements (Directories, avatars, orange active, chevron) */
@@ -60,9 +61,8 @@ const ContactTreeSidebar: React.FC<{
         return (
             <div key={node.id} className={level > 0 ? 'ml-4 border-l border-slate-200/80 pl-3' : ''}>
                 <div
-                    className={`group flex items-center gap-2 py-1.5 px-2 rounded-lg -mx-0.5 transition-all cursor-pointer ${
-                        isSelected ? 'bg-orange-500/10 text-orange-700' : 'hover:bg-slate-100/80 text-slate-700 hover:text-slate-900'
-                    }`}
+                    className={`group flex items-center gap-2 py-1.5 px-2 rounded-lg -mx-0.5 transition-all cursor-pointer ${isSelected ? 'bg-orange-500/10 text-orange-700' : 'hover:bg-slate-100/80 text-slate-700 hover:text-slate-900'
+                        }`}
                     onClick={() => onSelect(node.id, node.type)}
                 >
                     {hasChildren ? (
@@ -78,7 +78,7 @@ const ContactTreeSidebar: React.FC<{
                     <span className="flex-shrink-0 w-6 h-6 rounded-md bg-slate-800 text-slate-200 text-[10px] font-bold flex items-center justify-center">
                         {initials}
                     </span>
-                    <span className="flex-1 text-xs font-medium truncate">{node.label}</span>
+                    <span className={`flex-1 text-xs font-medium truncate ${node.isActive === false ? 'opacity-40 line-through' : ''}`}>{node.label}</span>
                     {node.value !== undefined && node.value > 0 && (
                         <span className={`text-[10px] font-semibold tabular-nums ${isSelected ? 'text-orange-600' : 'text-slate-500'}`}>
                             {node.value}
@@ -109,7 +109,7 @@ const ContactsPage: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { showConfirm, showAlert } = useNotification();
     const { openChat } = useWhatsApp();
-    
+
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<string>('All');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
@@ -121,13 +121,13 @@ const ContactsPage: React.FC = () => {
     const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('contacts_sidebarWidth', 280);
     const [isResizing, setIsResizing] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
-    
+
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [contactToEdit, setContactToEdit] = useState<Contact | null>(null);
     const [ledgerModal, setLedgerModal] = useState<{ isOpen: boolean; contact: Contact | null }>({ isOpen: false, contact: null });
     const isSubmittingRef = useRef(false);
 
-    const TABS = ['All', 'Owners', 'Tenants', 'Brokers', 'Friends & Family'];
+    const TABS = ['All', 'Owners', 'Tenants', 'Brokers', 'Vendors', 'Friends & Family'];
 
     // Sync activeTab when tree type is selected
     useEffect(() => {
@@ -139,10 +139,10 @@ const ContactsPage: React.FC = () => {
     // Compute balances for all contacts
     const contactBalances = useMemo(() => {
         const balances = new Map<string, number>();
-        
+
         state.transactions.forEach(tx => {
             if (!tx.contactId) return;
-            
+
             let amount = 0;
             if (tx.type === TransactionType.INCOME) amount = tx.amount; // They paid us (positive)
             else if (tx.type === TransactionType.EXPENSE) amount = -tx.amount; // We paid them (negative)
@@ -150,7 +150,7 @@ const ContactsPage: React.FC = () => {
                 if (tx.subtype === LoanSubtype.RECEIVE) amount = tx.amount; // Money in
                 else amount = -tx.amount; // Money out
             }
-            
+
             balances.set(tx.contactId, (balances.get(tx.contactId) || 0) + amount);
         });
 
@@ -159,14 +159,15 @@ const ContactsPage: React.FC = () => {
 
     // Tree data: two levels — Type (Owners, Tenants, Brokers, Friends & Family) -> Contacts
     const treeData = useMemo<ContactTreeNode[]>(() => {
-        const baseContacts = state.contacts.filter(c => c.type !== ContactType.VENDOR && c.type !== ContactType.STAFF);
+        const baseContacts = state.contacts.filter(c => c.type !== ContactType.STAFF);
         const typeConfig: { id: string; label: string; filter: (c: Contact) => boolean }[] = [
             { id: 'Owners', label: 'Owners', filter: c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT },
             { id: 'Tenants', label: 'Tenants', filter: c => c.type === ContactType.TENANT },
             { id: 'Brokers', label: 'Brokers', filter: c => c.type === ContactType.BROKER || c.type === ContactType.DEALER },
             { id: 'Friends & Family', label: 'Friends & Family', filter: c => c.type === ContactType.FRIEND_FAMILY },
         ];
-        return typeConfig.map(({ id, label, filter }) => {
+
+        const nodes = typeConfig.map(({ id, label, filter }) => {
             const childrenContacts = baseContacts.filter(filter);
             return {
                 id,
@@ -175,10 +176,25 @@ const ContactsPage: React.FC = () => {
                 value: childrenContacts.length,
                 children: childrenContacts
                     .sort((a, b) => a.name.localeCompare(b.name))
-                    .map(c => ({ id: c.id, label: c.name, type: 'contact' as const, children: [], value: undefined })),
+                    .map(c => ({ id: c.id, label: c.name, type: 'contact' as const, children: [], value: undefined, isActive: c.isActive })),
             };
-        }).filter(node => node.value! > 0);
-    }, [state.contacts]);
+        });
+
+        // Add Vendors Node
+        if (state.vendors && state.vendors.length > 0) {
+            nodes.push({
+                id: 'Vendors',
+                label: 'Vendors',
+                type: 'type',
+                value: state.vendors.length,
+                children: state.vendors
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map(v => ({ id: v.id, label: v.name, type: 'contact', children: [], value: undefined, isActive: v.isActive }))
+            });
+        }
+
+        return nodes.filter(node => node.value! > 0);
+    }, [state.contacts, state.vendors]);
 
     const filterContactTree = useCallback((nodes: ContactTreeNode[], q: string): ContactTreeNode[] => {
         if (!q.trim()) return nodes;
@@ -232,27 +248,37 @@ const ContactsPage: React.FC = () => {
     }, []);
 
     const contacts = useMemo(() => {
-        let filtered = state.contacts.filter(c => c.type !== ContactType.VENDOR && c.type !== ContactType.STAFF);
+        let filtered = state.contacts.filter(c => c.type !== ContactType.STAFF);
 
         if (selectedTreeType === 'contact' && selectedTreeId) {
-            filtered = filtered.filter(c => c.id === selectedTreeId);
+            // Check both contacts and vendors for selection
+            const vendor = state.vendors?.find(v => v.id === selectedTreeId);
+            if (vendor) {
+                filtered = [vendor as unknown as Contact];
+            } else {
+                filtered = filtered.filter(c => c.id === selectedTreeId);
+            }
         } else if (activeTab !== 'All') {
             if (activeTab === 'Owners') filtered = filtered.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
             else if (activeTab === 'Tenants') filtered = filtered.filter(c => c.type === ContactType.TENANT);
             else if (activeTab === 'Brokers') filtered = filtered.filter(c => c.type === ContactType.BROKER || c.type === ContactType.DEALER);
             else if (activeTab === 'Friends & Family') filtered = filtered.filter(c => c.type === ContactType.FRIEND_FAMILY);
+            else if (activeTab === 'Vendors') filtered = (state.vendors || []) as unknown as Contact[];
+        } else {
+            // All tab: include vendors
+            filtered = [...filtered, ...((state.vendors || []) as unknown as Contact[])];
         }
-        
+
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
-            filtered = filtered.filter(c => 
-                c.name.toLowerCase().includes(q) || 
+            filtered = filtered.filter(c =>
+                c.name.toLowerCase().includes(q) ||
                 c.contactNo?.includes(q) ||
                 (c.companyName && c.companyName.toLowerCase().includes(q)) ||
                 (c.address && c.address.toLowerCase().includes(q))
             );
         }
-        
+
         return filtered.sort((a, b) => {
             let valA: string | number = '';
             let valB: string | number = '';
@@ -269,7 +295,7 @@ const ContactsPage: React.FC = () => {
             if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [state.contacts, activeTab, searchQuery, sortConfig, contactBalances, selectedTreeType, selectedTreeId]);
+    }, [state.contacts, state.vendors, activeTab, searchQuery, sortConfig, contactBalances, selectedTreeType, selectedTreeId]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -293,11 +319,20 @@ const ContactsPage: React.FC = () => {
 
         try {
             if (contactToEdit) {
-                dispatch({ type: 'UPDATE_CONTACT', payload: { ...contactToEdit, ...contactData } });
+                if (contactToEdit.type === ContactType.VENDOR) {
+                    dispatch({ type: 'UPDATE_VENDOR', payload: { ...contactToEdit, ...contactData } as Vendor });
+                } else {
+                    dispatch({ type: 'UPDATE_CONTACT', payload: { ...contactToEdit, ...contactData } });
+                }
             } else {
-                // Generate a unique ID that includes timestamp and random component
-                const contactId = `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                dispatch({ type: 'ADD_CONTACT', payload: { ...contactData, id: contactId } });
+                if (activeTab === 'Vendors' || (contactData as any).type === ContactType.VENDOR) {
+                    const vendorId = `vendor_${Date.now()}`; // Use vendor ID format
+                    dispatch({ type: 'ADD_VENDOR', payload: { ...contactData, id: vendorId, type: ContactType.VENDOR } as Vendor });
+                } else {
+                    // Generate a unique ID that includes timestamp and random component
+                    const contactId = `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    dispatch({ type: 'ADD_CONTACT', payload: { ...contactData, id: contactId } });
+                }
             }
             setIsModalOpen(false);
             setContactToEdit(null);
@@ -313,11 +348,15 @@ const ContactsPage: React.FC = () => {
         if (!contactToEdit) return;
         const confirmed = await showConfirm(`Are you sure you want to delete "${contactToEdit.name}"? This cannot be undone.`);
         if (confirmed) {
-            dispatch({ type: 'DELETE_CONTACT', payload: contactToEdit.id });
+            if (contactToEdit.type === ContactType.VENDOR) {
+                dispatch({ type: 'DELETE_VENDOR', payload: contactToEdit.id });
+            } else {
+                dispatch({ type: 'DELETE_CONTACT', payload: contactToEdit.id });
+            }
             handleCloseModal();
         }
     };
-    
+
     const openAddModal = () => {
         setContactToEdit(null);
         isSubmittingRef.current = false; // Reset submission guard
@@ -343,7 +382,7 @@ const ContactsPage: React.FC = () => {
 
     const handleSendWhatsApp = async (contact: Contact, e: React.MouseEvent) => {
         e.stopPropagation();
-        
+
         if (!contact.contactNo) {
             showAlert("This contact does not have a phone number saved.");
             return;
@@ -353,41 +392,43 @@ const ContactsPage: React.FC = () => {
             // Check if WhatsApp API is configured
             const { WhatsAppChatService } = await import('../../services/whatsappChatService');
             const isApiConfigured = await WhatsAppChatService.isConfigured();
-            
+
             if (isApiConfigured) {
                 // Open WhatsApp side panel (API connected)
                 openChat(contact, contact.contactNo);
             } else {
                 // Use manual WhatsApp (wa.me) - old method
-                WhatsAppService.sendMessage({ 
-                    contact, 
-                    message: `Hello ${contact.name}!` 
+                WhatsAppService.sendMessage({
+                    contact,
+                    message: `Hello ${contact.name}!`
                 });
             }
         } catch (error) {
             // Fallback to manual WhatsApp if check fails
             console.warn('WhatsApp API check failed, using manual method:', error);
-            WhatsAppService.sendMessage({ 
-                contact, 
-                message: `Hello ${contact.name}!` 
+            WhatsAppService.sendMessage({
+                contact,
+                message: `Hello ${contact.name}!`
             });
         }
     };
 
     // Determine default type for new contact based on active tab
     const getDefaultType = () => {
-        switch(activeTab) {
+        switch (activeTab) {
             case 'Owners': return ContactType.OWNER;
             case 'Tenants': return ContactType.TENANT;
             case 'Brokers': return ContactType.BROKER;
+            case 'Vendors': return ContactType.VENDOR;
             case 'Friends & Family': return ContactType.FRIEND_FAMILY;
             default: return undefined;
         }
     };
 
     const allowedTypes = [
-        ContactType.OWNER, ContactType.TENANT, ContactType.CLIENT, 
-        ContactType.BROKER, ContactType.DEALER, ContactType.FRIEND_FAMILY
+        ContactType.OWNER, ContactType.TENANT, ContactType.CLIENT,
+        ContactType.BROKER, ContactType.DEALER, ContactType.FRIEND_FAMILY,
+        ContactType.VENDOR
     ];
 
     return (
@@ -480,134 +521,138 @@ const ContactsPage: React.FC = () => {
                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                                 <span className="h-4 w-4">{ICONS.search}</span>
                             </div>
-                            <Input 
-                                placeholder="Search contacts..." 
-                                value={searchQuery} 
-                                onChange={(e) => setSearchQuery(e.target.value)} 
+                            <Input
+                                placeholder="Search contacts..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
                                 className="pl-9"
                             />
                         </div>
                     </div>
 
-            <div className="flex-grow overflow-hidden bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col">
-                {/* Mobile: Horizontal scroll wrapper with subtle scroll indicator */}
-                <div className="overflow-x-auto overflow-y-auto flex-grow -mx-px">
-                    <table className="min-w-full divide-y divide-gray-200 text-xs md:text-sm">
-                        <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm border-b border-gray-200">
-                            <tr>
-                                <th onClick={() => handleSort('name')} className="px-2 md:px-4 py-2 md:py-3 text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
-                                    Name <SortIcon column="name"/>
-                                </th>
-                                <th onClick={() => handleSort('type')} className="px-2 md:px-4 py-2 md:py-3 text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
-                                    Type <SortIcon column="type"/>
-                                </th>
-                                <th onClick={() => handleSort('companyName')} className="hidden sm:table-cell px-2 md:px-4 py-2 md:py-3 text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
-                                    Company <SortIcon column="companyName"/>
-                                </th>
-                                <th onClick={() => handleSort('contactNo')} className="px-2 md:px-4 py-2 md:py-3 text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
-                                    Phone <SortIcon column="contactNo"/>
-                                </th>
-                                <th onClick={() => handleSort('address')} className="hidden lg:table-cell px-2 md:px-4 py-2 md:py-3 text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
-                                    Address <SortIcon column="address"/>
-                                </th>
-                                <th onClick={() => handleSort('balance')} className="px-2 md:px-4 py-2 md:py-3 text-right text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
-                                    Balance <SortIcon column="balance"/>
-                                </th>
-                                <th className="px-2 md:px-4 py-2 md:py-3 text-right text-[10px] md:text-xs font-semibold text-gray-700 whitespace-nowrap">
-                                    Actions
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {contacts.length > 0 ? (
-                                contacts.map((contact, index) => {
-                                    const balance = contactBalances.get(contact.id) || 0;
-                                    return (
-                                        <tr 
-                                            key={contact.id} 
-                                            className={`cursor-pointer transition-colors group touch-manipulation ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-slate-100`}
-                                            onClick={() => openLedger(contact)}
-                                        >
-                                            <td className="px-2 md:px-4 py-2 md:py-3 font-medium text-gray-800 whitespace-nowrap text-xs md:text-sm">
-                                                {contact.name}
-                                            </td>
-                                            <td className="px-2 md:px-4 py-2 md:py-3">
-                                                <span className="inline-block bg-gray-100 text-gray-700 text-[9px] md:text-[10px] px-1.5 md:px-2 py-0.5 rounded-full font-medium uppercase tracking-wide whitespace-nowrap">
-                                                    {contact.type}
-                                                </span>
-                                            </td>
-                                            <td className="hidden sm:table-cell px-2 md:px-4 py-2 md:py-3 text-gray-600 whitespace-nowrap text-xs md:text-sm">
-                                                {contact.companyName || '-'}
-                                            </td>
-                                            <td className="px-2 md:px-4 py-2 md:py-3 text-gray-600 font-mono whitespace-nowrap text-xs md:text-sm">
-                                                {contact.contactNo || '-'}
-                                            </td>
-                                            <td className="hidden lg:table-cell px-2 md:px-4 py-2 md:py-3 text-gray-600 truncate max-w-xs text-xs md:text-sm" title={contact.address}>
-                                                {contact.address || '-'}
-                                            </td>
-                                            <td className={`px-2 md:px-4 py-2 md:py-3 text-right font-bold font-mono whitespace-nowrap text-xs md:text-sm ${balance > 0 ? 'text-green-600' : balance < 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                                                <span className="hidden sm:inline">{CURRENCY} </span>{Math.abs(balance).toLocaleString()}
-                                                <span className="text-[9px] md:text-[10px] font-normal ml-0.5 md:ml-1 text-gray-400">
-                                                    {balance > 0 ? '(Cr)' : balance < 0 ? '(Dr)' : ''}
-                                                </span>
-                                            </td>
-                                            <td className="px-2 md:px-4 py-2 md:py-3 text-right">
-                                                <div className="flex justify-end gap-0.5 md:gap-1">
-                                                    {contact.contactNo && WhatsAppService.isValidPhoneNumber(contact.contactNo) && (
-                                                        <button 
-                                                            onClick={(e) => handleSendWhatsApp(contact, e)}
-                                                            className="text-gray-400 hover:text-green-600 active:text-green-700 p-1 md:p-1.5 rounded-full hover:bg-green-50 active:bg-green-100 transition-colors md:opacity-0 md:group-hover:opacity-100 touch-manipulation"
-                                                            title="Send WhatsApp Message"
-                                                        >
-                                                            <div className="w-3.5 h-3.5 md:w-4 md:h-4">{ICONS.whatsapp}</div>
-                                                        </button>
-                                                    )}
-                                                    <button 
-                                                        onClick={(e) => openEditModal(contact, e)}
-                                                        className="text-gray-400 hover:text-blue-600 active:text-blue-700 p-1 md:p-1.5 rounded-full hover:bg-blue-50 active:bg-blue-100 transition-colors md:opacity-0 md:group-hover:opacity-100 touch-manipulation"
-                                                        title="Edit Contact"
-                                                    >
-                                                        <div className="w-3.5 h-3.5 md:w-4 md:h-4">{ICONS.edit}</div>
-                                                    </button>
+                    <div className="flex-grow overflow-hidden bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col">
+                        {/* Mobile: Horizontal scroll wrapper with subtle scroll indicator */}
+                        <div className="overflow-x-auto overflow-y-auto flex-grow -mx-px">
+                            <table className="min-w-full divide-y divide-gray-200 text-xs md:text-sm">
+                                <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm border-b border-gray-200">
+                                    <tr>
+                                        <th onClick={() => handleSort('name')} className="px-2 md:px-4 py-2 md:py-3 text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
+                                            Name <SortIcon column="name" />
+                                        </th>
+                                        <th onClick={() => handleSort('type')} className="px-2 md:px-4 py-2 md:py-3 text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
+                                            Type <SortIcon column="type" />
+                                        </th>
+                                        <th onClick={() => handleSort('companyName')} className="hidden sm:table-cell px-2 md:px-4 py-2 md:py-3 text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
+                                            Company <SortIcon column="companyName" />
+                                        </th>
+                                        <th onClick={() => handleSort('contactNo')} className="px-2 md:px-4 py-2 md:py-3 text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
+                                            Phone <SortIcon column="contactNo" />
+                                        </th>
+                                        <th onClick={() => handleSort('address')} className="hidden lg:table-cell px-2 md:px-4 py-2 md:py-3 text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
+                                            Address <SortIcon column="address" />
+                                        </th>
+                                        <th onClick={() => handleSort('balance')} className="px-2 md:px-4 py-2 md:py-3 text-right text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
+                                            Balance <SortIcon column="balance" />
+                                        </th>
+                                        <th className="px-2 md:px-4 py-2 md:py-3 text-right text-[10px] md:text-xs font-semibold text-gray-700 whitespace-nowrap">
+                                            Actions
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {contacts.length > 0 ? (
+                                        contacts.map((contact, index) => {
+                                            const balance = contactBalances.get(contact.id) || 0;
+                                            return (
+                                                <tr
+                                                    key={contact.id}
+                                                    className={`cursor-pointer transition-colors group touch-manipulation ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-slate-100`}
+                                                    onClick={() => openLedger(contact)}
+                                                >
+                                                    <td className={`px-2 md:px-4 py-2 md:py-3 font-medium whitespace-nowrap text-xs md:text-sm ${contact.isActive === false ? 'text-slate-400 line-through' : 'text-gray-800'}`}>
+                                                        {contact.name}
+                                                        {contact.isActive === false && (
+                                                            <span className="ml-2 inline-block px-1.5 py-0.5 rounded bg-slate-100 text-[8px] text-slate-500 uppercase font-bold tracking-tight">Deactivated</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-2 md:px-4 py-2 md:py-3">
+                                                        <span className="inline-block bg-gray-100 text-gray-700 text-[9px] md:text-[10px] px-1.5 md:px-2 py-0.5 rounded-full font-medium uppercase tracking-wide whitespace-nowrap">
+                                                            {contact.type}
+                                                        </span>
+                                                    </td>
+                                                    <td className="hidden sm:table-cell px-2 md:px-4 py-2 md:py-3 text-gray-600 whitespace-nowrap text-xs md:text-sm">
+                                                        {contact.companyName || '-'}
+                                                    </td>
+                                                    <td className="px-2 md:px-4 py-2 md:py-3 text-gray-600 font-mono whitespace-nowrap text-xs md:text-sm">
+                                                        {contact.contactNo || '-'}
+                                                    </td>
+                                                    <td className="hidden lg:table-cell px-2 md:px-4 py-2 md:py-3 text-gray-600 truncate max-w-xs text-xs md:text-sm" title={contact.address}>
+                                                        {contact.address || '-'}
+                                                    </td>
+                                                    <td className={`px-2 md:px-4 py-2 md:py-3 text-right font-bold font-mono whitespace-nowrap text-xs md:text-sm ${balance > 0 ? 'text-green-600' : balance < 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                                                        <span className="hidden sm:inline">{CURRENCY} </span>{Math.abs(balance).toLocaleString()}
+                                                        <span className="text-[9px] md:text-[10px] font-normal ml-0.5 md:ml-1 text-gray-400">
+                                                            {balance > 0 ? '(Cr)' : balance < 0 ? '(Dr)' : ''}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-2 md:px-4 py-2 md:py-3 text-right">
+                                                        <div className="flex justify-end gap-0.5 md:gap-1">
+                                                            {contact.contactNo && WhatsAppService.isValidPhoneNumber(contact.contactNo) && (
+                                                                <button
+                                                                    onClick={(e) => handleSendWhatsApp(contact, e)}
+                                                                    className="text-gray-400 hover:text-green-600 active:text-green-700 p-1 md:p-1.5 rounded-full hover:bg-green-50 active:bg-green-100 transition-colors md:opacity-0 md:group-hover:opacity-100 touch-manipulation"
+                                                                    title="Send WhatsApp Message"
+                                                                >
+                                                                    <div className="w-3.5 h-3.5 md:w-4 md:h-4">{ICONS.whatsapp}</div>
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                onClick={(e) => openEditModal(contact, e)}
+                                                                className="text-gray-400 hover:text-blue-600 active:text-blue-700 p-1 md:p-1.5 rounded-full hover:bg-blue-50 active:bg-blue-100 transition-colors md:opacity-0 md:group-hover:opacity-100 touch-manipulation"
+                                                                title="Edit Contact"
+                                                            >
+                                                                <div className="w-3.5 h-3.5 md:w-4 md:h-4">{ICONS.edit}</div>
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    ) : (
+                                        <tr>
+                                            <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
+                                                <div className="flex flex-col items-center justify-center">
+                                                    <div className="w-12 h-12 opacity-20 mb-2">{ICONS.users}</div>
+                                                    <p>No contacts found.</p>
                                                 </div>
                                             </td>
                                         </tr>
-                                    );
-                                })
-                            ) : (
-                                <tr>
-                                    <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
-                                        <div className="flex flex-col items-center justify-center">
-                                            <div className="w-12 h-12 opacity-20 mb-2">{ICONS.users}</div>
-                                            <p>No contacts found.</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-                <div className="p-2 md:p-3 border-t border-slate-200 bg-slate-50 text-[10px] md:text-xs text-slate-500 font-medium">
-                    Total Contacts: {contacts.length}
-                </div>
-            </div>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div className="p-2 md:p-3 border-t border-slate-200 bg-slate-50 text-[10px] md:text-xs text-slate-500 font-medium">
+                            Total Contacts: {contacts.length}
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={contactToEdit ? `Edit Contact` : `New Contact`}>
-                <ContactForm 
-                    onSubmit={handleSaveContact} 
-                    onCancel={handleCloseModal} 
+                <ContactForm
+                    onSubmit={handleSaveContact}
+                    onCancel={handleCloseModal}
                     contactToEdit={contactToEdit || undefined}
                     onDelete={handleDeleteContact}
                     existingContacts={state.contacts}
                     fixedTypeForNew={contactToEdit ? undefined : getDefaultType()}
                     allowedTypesForNew={allowedTypes}
+                    isVendorForm={contactToEdit?.type === ContactType.VENDOR || activeTab === 'Vendors'}
                 />
             </Modal>
 
             {ledgerModal.contact && (
-                <SettingsLedgerModal 
+                <SettingsLedgerModal
                     isOpen={ledgerModal.isOpen}
                     onClose={() => setLedgerModal({ isOpen: false, contact: null })}
                     entityId={ledgerModal.contact.id}

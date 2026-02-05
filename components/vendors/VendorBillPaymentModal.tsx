@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { Contact, Transaction, TransactionType, InvoiceStatus, AccountType } from '../../types';
+import { Vendor, Transaction, TransactionType, InvoiceStatus, AccountType } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -15,7 +15,7 @@ import { formatDate } from '../../utils/dateUtils';
 interface VendorBillPaymentModalProps {
     isOpen: boolean;
     onClose: () => void;
-    vendor: Contact;
+    vendor: Vendor;
 }
 
 const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen, onClose, vendor }) => {
@@ -32,7 +32,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
     // Get pending bills
     const pendingBills = useMemo(() => {
         return state.bills
-            .filter(b => b.contactId === vendor.id && b.status !== InvoiceStatus.PAID)
+            .filter(b => b.vendorId === vendor.id && b.status !== InvoiceStatus.PAID)
             .sort((a, b) => new Date(a.issueDate).getTime() - new Date(b.issueDate).getTime());
     }, [state.bills, vendor.id]);
 
@@ -63,22 +63,22 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
 
     const handleSubmit = async () => {
         if (!accountId) { await showAlert("Please select a payment account."); return; }
-        
+
         const numericTotal = parseFloat(totalAmount);
         if (isNaN(numericTotal) || numericTotal <= 0) { await showAlert("Please enter a valid amount."); return; }
 
         if (selectedBillIds.size === 0) { await showAlert("Please select at least one bill to pay."); return; }
 
         const selectedBills = pendingBills.filter(b => selectedBillIds.has(b.id));
-        
+
         // Sort selected bills by date (oldest first) to distribute payment
         selectedBills.sort((a, b) => new Date(a.issueDate).getTime() - new Date(b.issueDate).getTime());
 
         const totalDueSelected = selectedBills.reduce((acc, b) => acc + (b.amount - b.paidAmount), 0);
-        
+
         if (numericTotal > totalDueSelected + 0.01) { // Allow small epsilon
-             await showAlert(`Payment amount cannot exceed the total due for selected bills (${CURRENCY} ${totalDueSelected.toLocaleString()})`);
-             return;
+            await showAlert(`Payment amount cannot exceed the total due for selected bills (${CURRENCY} ${totalDueSelected.toLocaleString()})`);
+            return;
         }
 
         let remainingToDistribute = numericTotal;
@@ -90,7 +90,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
 
             const due = bill.amount - bill.paidAmount;
             const payAmount = Math.min(due, remainingToDistribute);
-            
+
             // Ensure precision doesn't cause issues
             const roundedPayAmount = Math.round(payAmount * 100) / 100;
 
@@ -102,7 +102,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
                     date: paymentDate,
                     description: description || `Bill Payment: #${bill.billNumber}` + (reference ? ` (Ref: ${reference})` : ''),
                     accountId,
-                    contactId: vendor.id,
+                    vendorId: vendor.id,
                     projectId: bill.projectId,
                     buildingId: bill.buildingId,
                     propertyId: bill.propertyId,
@@ -130,7 +130,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
                         savedTransactions.push(saved as Transaction);
                     } catch (error: any) {
                         failedBills.push({ billId: tx.billId!, error });
-                        
+
                         // Handle specific error codes
                         if (error.status === 409 || error.code === 'BILL_LOCKED' || error.code === 'BILL_VERSION_MISMATCH') {
                             console.warn(`Payment conflict for bill ${tx.billId}:`, error.message);
@@ -162,7 +162,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
                 // Dispatch only successful transactions
                 if (savedTransactions.length > 0) {
                     dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: savedTransactions });
-                    
+
                     if (failedBills.length > 0) {
                         showToast(
                             `Payment recorded for ${savedTransactions.length} bill(s). ${failedBills.length} payment(s) failed due to conflicts. Please refresh and try again.`,
@@ -209,8 +209,8 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
                             <thead className="bg-slate-100 sticky top-0">
                                 <tr>
                                     <th className="px-4 py-2 text-center w-10">
-                                        <input 
-                                            type="checkbox" 
+                                        <input
+                                            type="checkbox"
                                             checked={selectedBillIds.size > 0 && selectedBillIds.size === pendingBills.length}
                                             onChange={handleSelectAll}
                                             className="rounded text-accent focus:ring-accent"
@@ -228,8 +228,8 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
                                     return (
                                         <tr key={bill.id} className={selectedBillIds.has(bill.id) ? 'bg-indigo-50' : 'hover:bg-slate-50'}>
                                             <td className="px-4 py-2 text-center">
-                                                <input 
-                                                    type="checkbox" 
+                                                <input
+                                                    type="checkbox"
                                                     checked={selectedBillIds.has(bill.id)}
                                                     onChange={() => handleToggleBill(bill.id)}
                                                     className="rounded text-accent focus:ring-accent"
@@ -253,20 +253,20 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
 
                 <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-4">
-                        <ComboBox 
+                        <ComboBox
                             id="payment-account"
                             name="payment-account"
-                            label="Pay From Account" 
-                            items={userSelectableAccounts} 
-                            selectedId={accountId} 
-                            onSelect={(item) => setAccountId(item?.id || '')} 
+                            label="Pay From Account"
+                            items={userSelectableAccounts}
+                            selectedId={accountId}
+                            onSelect={(item) => setAccountId(item?.id || '')}
                             placeholder="Select Account"
                             required
                         />
-                        <Input 
+                        <Input
                             id="payment-amount"
                             name="payment-amount"
-                            label="Total Payment Amount" 
+                            label="Total Payment Amount"
                             type="number"
                             value={totalAmount}
                             onChange={e => setTotalAmount(e.target.value)}
@@ -274,28 +274,28 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({ isOpen,
                         />
                     </div>
                     <div className="space-y-4">
-                        <DatePicker 
+                        <DatePicker
                             id="payment-date"
                             name="payment-date"
-                            label="Payment Date" 
-                            value={paymentDate} 
+                            label="Payment Date"
+                            value={paymentDate}
                             onChange={d => setPaymentDate(d.toISOString().split('T')[0])}
                             required
                         />
-                        <Input 
+                        <Input
                             id="payment-reference"
                             name="payment-reference"
-                            label="Payment Reference" 
+                            label="Payment Reference"
                             value={reference}
                             onChange={e => setReference(e.target.value)}
                             placeholder="Cheque No, Transaction ID..."
                         />
                     </div>
                     <div className="md:col-span-2">
-                        <Input 
+                        <Input
                             id="payment-description"
                             name="payment-description"
-                            label="Description" 
+                            label="Description"
                             value={description}
                             onChange={e => setDescription(e.target.value)}
                             placeholder="Optional notes..."

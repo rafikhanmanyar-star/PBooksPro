@@ -137,9 +137,26 @@ CREATE TABLE IF NOT EXISTS contacts (
     tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     type TEXT NOT NULL,
+    description TEXT,
     contact_no TEXT,
     company_name TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    address TEXT,
+    user_id TEXT REFERENCES users(id),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS vendors (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    contact_no TEXT,
+    company_name TEXT,
+    address TEXT,
+    description TEXT,
+    user_id TEXT REFERENCES users(id),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS categories (
