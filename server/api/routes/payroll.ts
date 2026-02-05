@@ -1222,28 +1222,39 @@ router.post('/payslips/:id/pay', async (req: TenantRequest, res) => {
          RETURNING *`,
         [transaction.id, id, tenantId]
       );
-      console.log('✅ Payslip marked as paid');
+      // 6. Check if all payslips for this run are now paid
+      const runId = payslip.run_id;
+      const statusCheck = await client.query(
+        `SELECT COUNT(*) as total, 
+                COUNT(*) FILTER (WHERE is_paid = true) as paid
+         FROM payslips 
+         WHERE payroll_run_id = $1 AND tenant_id = $2`,
+        [runId, tenantId]
+      );
+
+      const totalNum = parseInt(statusCheck.rows[0].total);
+      const paidNum = parseInt(statusCheck.rows[0].paid);
+
+      if (totalNum > 0 && totalNum === paidNum) {
+        console.log(`🎊 All ${totalNum} payslips for run ${runId} are paid. Updating run status to PAID.`);
+        await client.query(
+          'UPDATE payroll_runs SET status = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3',
+          ['PAID', runId, tenantId]
+        );
+      }
 
       return {
         transaction: transaction,
-        payslip: updateResult.rows[0]
+        payslip: updateResult.rows[0],
+        totalCount: totalNum,
+        paidCount: paidNum
       };
     });
 
-    // NOTE: Auto-paid feature removed - users must manually mark run as PAID after all payslips are paid
-    // Check payslip status for information only (not for auto-update)
-    const payslipStatus = await getDb().query(
-      `SELECT COUNT(*) as total, 
-              COUNT(*) FILTER (WHERE is_paid = true) as paid
-       FROM payslips 
-       WHERE payroll_run_id = $1 AND tenant_id = $2`,
-      [payslip.run_id, tenantId]
-    );
+    // 7. Emit WebSocket event and respond
+    const totalPayslips = result.totalCount;
+    const paidPayslips = result.paidCount;
 
-    const totalPayslips = parseInt(payslipStatus[0].total);
-    const paidPayslips = parseInt(payslipStatus[0].paid);
-
-    // Emit WebSocket event
     emitToTenant(tenantId, 'payslip_paid', {
       payslipId: id,
       transactionId: result.transaction.id,
