@@ -44,20 +44,20 @@ type SortKey = 'date' | 'vendorName' | 'particulars' | 'billAmount' | 'paidAmoun
 const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
     const { state } = useAppContext();
     const { print: triggerPrint } = usePrintContext();
-    
+
     // Filters
     const [dateRange, setDateRange] = useState<DateRangeOption>('all');
     const [startDate, setStartDate] = useState('2000-01-01');
     const [endDate, setEndDate] = useState('2100-12-31');
-    
+
     const [selectedVendorId, setSelectedVendorId] = useState<string>('all');
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
 
     // Sorting - default to date ascending (oldest first) for Project context
-    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ 
-        key: 'date', 
-        direction: context === 'Project' ? 'asc' : 'desc' 
+    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({
+        key: 'date',
+        direction: context === 'Project' ? 'asc' : 'desc'
     });
 
     // Editing state
@@ -65,14 +65,25 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
     const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
 
     // Select Lists
-    const vendors = useMemo(() => state.contacts.filter(c => c.type === ContactType.VENDOR), [state.contacts]);
+    const vendors = useMemo(() => {
+        const contactVendors = state.contacts.filter(c => c.type === ContactType.VENDOR);
+        const vendorsList = state.vendors || [];
+        // Combine and remove duplicates by ID
+        const combined = [...vendorsList];
+        contactVendors.forEach(cv => {
+            if (!combined.find(v => v.id === cv.id)) {
+                combined.push(cv as any);
+            }
+        });
+        return combined;
+    }, [state.contacts, state.vendors]);
     const vendorItems = useMemo(() => [{ id: 'all', name: 'All Vendors' }, ...vendors], [vendors]);
     const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
 
     const handleRangeChange = (option: DateRangeOption) => {
         setDateRange(option);
         const now = new Date();
-        
+
         if (option === 'all') {
             setStartDate('2000-01-01');
             setEndDate('2100-12-31');
@@ -119,8 +130,8 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
         const getBuildingId = (buildingId?: string, propertyId?: string) => {
             if (buildingId) return buildingId;
             if (propertyId) {
-                 const prop = state.properties.find(p => p.id === propertyId);
-                 return prop?.buildingId;
+                const prop = state.properties.find(p => p.id === propertyId);
+                return prop?.buildingId;
             }
             return undefined;
         };
@@ -145,7 +156,10 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
             const date = new Date(bill.issueDate);
             if (date >= start && date <= end) {
                 // Filter by vendor FIRST (at source)
-                if (selectedVendorId !== 'all' && bill.contactId !== selectedVendorId) return;
+                const vendorId = bill.vendorId || bill.contactId;
+                if (!vendorId) return;
+
+                if (selectedVendorId !== 'all' && vendorId !== selectedVendorId) return;
 
                 // Filter by context
                 if (context === 'Project' && !bill.projectId) return;
@@ -157,7 +171,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
 
                 items.push({
                     date: bill.issueDate,
-                    vendorId: bill.contactId,
+                    vendorId: vendorId,
                     particulars: `Bill #${bill.billNumber} (${bill.description || '-'})`,
                     bill: bill.amount,
                     paid: 0,
@@ -172,11 +186,11 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
             if (tx.type === TransactionType.EXPENSE) {
                 // Determine the actual vendor ID for this transaction
                 // For tenant-allocated bills, contactId is set to the tenant, so we look up the bill
-                let vendorId: string | undefined = tx.contactId;
+                let vendorId: string | undefined = tx.vendorId || tx.contactId;
                 if (tx.billId) {
                     const bill = state.bills.find(b => b.id === tx.billId);
                     if (bill) {
-                        vendorId = bill.contactId;
+                        vendorId = bill.vendorId || bill.contactId;
                     }
                 }
 
@@ -215,7 +229,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
         // First, create rows with basic data (no balance yet)
         // Note: Vendor filtering is already done at source above, so all items here are for the selected vendor
         let rows: VendorLedgerRow[] = [];
-        
+
         items.forEach((item, index) => {
             const vendorName = vendors.find(v => v.id === item.vendorId)?.name || 'Unknown';
 
@@ -237,7 +251,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
         // Apply search filter
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
-            rows = rows.filter(r => 
+            rows = rows.filter(r =>
                 r.vendorName.toLowerCase().includes(q) ||
                 r.particulars.toLowerCase().includes(q) ||
                 (r.buildingName && r.buildingName.toLowerCase().includes(q))
@@ -251,7 +265,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                 const vendorCompare = a.vendorName.localeCompare(b.vendorName);
                 if (vendorCompare !== 0) return vendorCompare;
             }
-            
+
             // Then apply the sort config
             let valA: any = a[sortConfig.key];
             let valB: any = b[sortConfig.key];
@@ -272,14 +286,14 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
         // Now calculate running balance in the sorted order
         let runningBalance = 0;
         let currentVendor = '';
-        
+
         rows.forEach((row) => {
             // Reset balance when vendor changes (only when showing all vendors)
             if (selectedVendorId === 'all' && row.vendorId !== currentVendor) {
                 currentVendor = row.vendorId;
                 runningBalance = 0;
             }
-            
+
             // Calculate balance: bill increases payable, payment decreases payable
             // Same logic as VendorLedger: credit (bill) - debit (paid)
             runningBalance += row.billAmount - row.paidAmount;
@@ -291,7 +305,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
     }, [state, startDate, endDate, selectedVendorId, selectedBuildingId, searchQuery, context, vendors, sortConfig]);
 
     const finalBalance = reportData.length > 0 ? reportData[reportData.length - 1].balance : 0;
-    
+
     const totals = useMemo(() => {
         return reportData.reduce((acc, curr) => ({
             bill: acc.bill + curr.billAmount,
@@ -334,11 +348,10 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                                 <button
                                     key={opt}
                                     onClick={() => handleRangeChange(opt)}
-                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap capitalize ${
-                                        dateRange === opt 
-                                        ? 'bg-white text-accent shadow-sm font-bold' 
-                                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
-                                    }`}
+                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap capitalize ${dateRange === opt
+                                            ? 'bg-white text-accent shadow-sm font-bold'
+                                            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
+                                        }`}
                                 >
                                     {opt === 'all' ? 'Total' : opt === 'thisMonth' ? 'This Month' : opt === 'lastMonth' ? 'Last Month' : 'Custom'}
                                 </button>
@@ -357,22 +370,22 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                         {/* Show Building Filter only for Rental or General context */}
                         {context !== 'Project' && (
                             <div className="w-48 flex-shrink-0">
-                                <ComboBox 
-                                    items={buildings} 
-                                    selectedId={selectedBuildingId} 
-                                    onSelect={(item) => setSelectedBuildingId(item?.id || 'all')} 
+                                <ComboBox
+                                    items={buildings}
+                                    selectedId={selectedBuildingId}
+                                    onSelect={(item) => setSelectedBuildingId(item?.id || 'all')}
                                     allowAddNew={false}
                                     placeholder="Filter Building"
                                 />
                             </div>
                         )}
-                        
+
                         {/* Vendor Filter */}
                         <div className="w-48 flex-shrink-0">
-                            <ComboBox 
-                                items={vendorItems} 
-                                selectedId={selectedVendorId} 
-                                onSelect={(item) => setSelectedVendorId(item?.id || 'all')} 
+                            <ComboBox
+                                items={vendorItems}
+                                selectedId={selectedVendorId}
+                                onSelect={(item) => setSelectedVendorId(item?.id || 'all')}
                                 allowAddNew={false}
                                 placeholder="Filter Vendor"
                             />
@@ -383,15 +396,15 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                                 <span className="h-4 w-4">{ICONS.search}</span>
                             </div>
-                            <Input 
-                                placeholder="Search report..." 
-                                value={searchQuery} 
-                                onChange={(e) => setSearchQuery(e.target.value)} 
+                            <Input
+                                placeholder="Search report..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
                                 className="pl-9 py-1.5 text-sm"
                             />
                             {searchQuery && (
-                                <button 
-                                    onClick={() => setSearchQuery('')} 
+                                <button
+                                    onClick={() => setSearchQuery('')}
                                     className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
                                 >
                                     <div className="w-4 h-4">{ICONS.x}</div>
@@ -423,9 +436,9 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                     </h3>
                     <div className="text-center text-sm text-slate-500 mb-6">
                         <p>{formatDate(startDate)} - {formatDate(endDate)}</p>
-                        {selectedVendorId !== 'all' && <p className="font-semibold mt-1">Vendor: {state.contacts.find(c=>c.id===selectedVendorId)?.name}</p>}
+                        {selectedVendorId !== 'all' && <p className="font-semibold mt-1">Vendor: {vendors.find(v => v.id === selectedVendorId)?.name}</p>}
                     </div>
-                    
+
                     <div className="overflow-x-auto">
                         <table className="w-full divide-y divide-slate-200 text-sm table-fixed" style={{ tableLayout: 'fixed' }}>
                             <colgroup>
@@ -439,21 +452,21 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                             </colgroup>
                             <thead className="bg-slate-50 sticky top-0 z-10">
                                 <tr>
-                                    <th onClick={() => handleSort('date')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Date <SortIcon column="date"/></th>
-                                    <th onClick={() => handleSort('vendorName')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Vendor <SortIcon column="vendorName"/></th>
-                                    {context !== 'Project' && <th onClick={() => handleSort('buildingName')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Building <SortIcon column="buildingName"/></th>}
-                                    <th onClick={() => handleSort('particulars')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Particulars <SortIcon column="particulars"/></th>
-                                    <th onClick={() => handleSort('billAmount')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Bill Amount <SortIcon column="billAmount"/></th>
-                                    <th onClick={() => handleSort('paidAmount')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Paid Amount <SortIcon column="paidAmount"/></th>
-                                    <th onClick={() => handleSort('balance')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Balance <SortIcon column="balance"/></th>
+                                    <th onClick={() => handleSort('date')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Date <SortIcon column="date" /></th>
+                                    <th onClick={() => handleSort('vendorName')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Vendor <SortIcon column="vendorName" /></th>
+                                    {context !== 'Project' && <th onClick={() => handleSort('buildingName')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Building <SortIcon column="buildingName" /></th>}
+                                    <th onClick={() => handleSort('particulars')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Particulars <SortIcon column="particulars" /></th>
+                                    <th onClick={() => handleSort('billAmount')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Bill Amount <SortIcon column="billAmount" /></th>
+                                    <th onClick={() => handleSort('paidAmount')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Paid Amount <SortIcon column="paidAmount" /></th>
+                                    <th onClick={() => handleSort('balance')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Balance <SortIcon column="balance" /></th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
                                 {reportData.map(item => {
                                     const isClickable = !!(item.billId || item.transactionId);
                                     return (
-                                        <tr 
-                                            key={item.id} 
+                                        <tr
+                                            key={item.id}
                                             className={`transition-colors ${isClickable ? 'cursor-pointer hover:bg-slate-100' : 'hover:bg-slate-50'}`}
                                             onClick={() => {
                                                 if (item.billId) {
@@ -489,7 +502,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                         </table>
                     </div>
                     {reportData.length === 0 && (
-                         <div className="text-center py-16">
+                        <div className="text-center py-16">
                             <p className="text-slate-500">No ledger transactions found for the selected criteria.</p>
                         </div>
                     )}
@@ -498,9 +511,9 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
             </div>
 
             {/* Edit Bill Modal */}
-            <Modal 
-                isOpen={!!billToEdit} 
-                onClose={() => setBillToEdit(null)} 
+            <Modal
+                isOpen={!!billToEdit}
+                onClose={() => setBillToEdit(null)}
                 title={billToEdit ? `Edit Bill #${billToEdit.billNumber}` : "Edit Bill"}
             >
                 {billToEdit && (
@@ -515,9 +528,9 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
             </Modal>
 
             {/* Edit Transaction Modal */}
-            <Modal 
-                isOpen={!!transactionToEdit} 
-                onClose={() => setTransactionToEdit(null)} 
+            <Modal
+                isOpen={!!transactionToEdit}
+                onClose={() => setTransactionToEdit(null)}
                 title="Edit Payment"
             >
                 {transactionToEdit && (
@@ -525,7 +538,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                         transactionToEdit={transactionToEdit}
                         transactionTypeForNew={null}
                         onClose={() => setTransactionToEdit(null)}
-                        onShowDeleteWarning={() => {}}
+                        onShowDeleteWarning={() => { }}
                     />
                 )}
             </Modal>

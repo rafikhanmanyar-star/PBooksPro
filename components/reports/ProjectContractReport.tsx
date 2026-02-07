@@ -43,7 +43,7 @@ const ProjectContractReport: React.FC = () => {
 
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
-            contracts = contracts.filter(c => 
+            contracts = contracts.filter(c =>
                 c.contractNumber.toLowerCase().includes(q) ||
                 c.name.toLowerCase().includes(q)
             );
@@ -51,8 +51,8 @@ const ProjectContractReport: React.FC = () => {
 
         return contracts.map(contract => {
             const project = state.projects.find(p => p.id === contract.projectId);
-            const vendor = state.contacts.find(c => c.id === contract.vendorId);
-            
+            const vendor = state.vendors?.find(v => v.id === contract.vendorId) || state.contacts.find(c => c.id === contract.vendorId);
+
             // Calculate paid amount based on linked transactions
             const paidAmount = state.transactions
                 .filter(tx => tx.contractId === contract.id)
@@ -94,7 +94,7 @@ const ProjectContractReport: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full space-y-4">
-             <style>{STANDARD_PRINT_STYLES}</style>
+            <style>{STANDARD_PRINT_STYLES}</style>
             <div className="flex-shrink-0">
                 <ReportToolbar
                     searchQuery={searchQuery}
@@ -104,12 +104,12 @@ const ProjectContractReport: React.FC = () => {
                     hideGroup={true}
                     hideDate={true}
                 >
-                    <ComboBox 
-                        label="Project" 
-                        items={projectItems} 
-                        selectedId={selectedProjectId} 
-                        onSelect={(item) => setSelectedProjectId(item?.id || 'all')} 
-                        allowAddNew={false} 
+                    <ComboBox
+                        label="Project"
+                        items={projectItems}
+                        selectedId={selectedProjectId}
+                        onSelect={(item) => setSelectedProjectId(item?.id || 'all')}
+                        allowAddNew={false}
                     />
                 </ReportToolbar>
             </div>
@@ -152,7 +152,7 @@ const ProjectContractReport: React.FC = () => {
                                         <td className="px-3 py-2 text-center">
                                             <div className="flex items-center gap-2 justify-center">
                                                 <div className="w-12 bg-slate-200 rounded-full h-1.5 hidden sm:block">
-                                                    <div className={`h-1.5 rounded-full ${row.progress > 100 ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{width: `${Math.min(row.progress, 100)}%`}}></div>
+                                                    <div className={`h-1.5 rounded-full ${row.progress > 100 ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(row.progress, 100)}%` }}></div>
                                                 </div>
                                                 <span className="text-xs">{row.progress.toFixed(0)}%</span>
                                             </div>

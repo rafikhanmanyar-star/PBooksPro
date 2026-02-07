@@ -188,8 +188,16 @@ const VendorDirectoryPage: React.FC = () => {
         );
     }
 
-    const vendors = (state.vendors || [])
-        .sort((a, b) => a.name.localeCompare(b.name));
+    const vendors = useMemo(() => {
+        const list = [...(state.vendors || [])];
+        // Add vendors from contacts table that aren't in the vendors table
+        state.contacts.forEach(c => {
+            if (c.type === 'Vendor' && !list.some(v => v.id === c.id)) {
+                list.push(c as unknown as Vendor);
+            }
+        });
+        return list.sort((a, b) => a.name.localeCompare(b.name));
+    }, [state.vendors, state.contacts]);
 
     const filteredVendors = useMemo(() => {
         if (!vendorSearch) return vendors;
@@ -200,7 +208,7 @@ const VendorDirectoryPage: React.FC = () => {
     // Calculate payable amounts for each vendor
     const vendorsWithPayable = useMemo(() => {
         const vendors = filteredVendors.map(vendor => {
-            const vendorBills = (state.bills || []).filter(b => b.vendorId === vendor.id);
+            const vendorBills = (state.bills || []).filter(b => (b.vendorId || b.contactId) === vendor.id);
 
             // Calculate total payable as sum of unpaid balances for all bills
             const payableAmount = vendorBills.reduce((sum, bill) => {
@@ -345,7 +353,7 @@ const VendorDirectoryPage: React.FC = () => {
     };
 
     const getVendorPayable = (vendorId: string) => {
-        const vendorBills = (state.bills || []).filter(b => b.vendorId === vendorId);
+        const vendorBills = (state.bills || []).filter(b => (b.vendorId || b.contactId) === vendorId);
         return vendorBills.reduce((sum, bill) => {
             const balance = bill.amount - (bill.paidAmount || 0);
             return sum + Math.max(0, balance);

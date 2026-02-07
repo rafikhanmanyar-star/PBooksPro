@@ -1179,6 +1179,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             let offlineBills: Bill[] = [];
                             let offlineAccounts: Account[] = [];
                             let offlineCategories: Category[] = [];
+                            let offlineVendors: Vendor[] = [];
 
                             try {
                                 const syncQueue = getSyncQueue();
@@ -1201,6 +1202,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                             offlineAccounts.push(item.data as Account);
                                         } else if (item.type === 'category' && item.action === 'create') {
                                             offlineCategories.push(item.data as Category);
+                                        } else if (item.type === 'vendor' && item.action === 'create') {
+                                            offlineVendors.push(item.data as Vendor);
                                         }
                                     }
 
@@ -1210,7 +1213,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                         invoices: offlineInvoices.length,
                                         bills: offlineBills.length,
                                         accounts: offlineAccounts.length,
-                                        categories: offlineCategories.length
+                                        categories: offlineCategories.length,
+                                        vendors: offlineVendors.length
                                     });
                                 }
                             } catch (syncQueueError) {
@@ -1234,7 +1238,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                         BillsRepository, BudgetsRepository, RentalAgreementsRepository,
                                         ProjectAgreementsRepository, ContractsRepository,
                                         QuotationsRepository, DocumentsRepository,
-                                        RecurringTemplatesRepository, PMCycleAllocationsRepository } = await import('../services/database/repositories/index');
+                                        RecurringTemplatesRepository, PMCycleAllocationsRepository,
+                                        VendorsRepository } = await import('../services/database/repositories/index');
 
                                     // Clear all tenant-specific data to start fresh
                                     // This ensures no cross-tenant data leakage
@@ -1256,6 +1261,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     const documentsRepo = new DocumentsRepository();
                                     const recurringTemplatesRepo = new RecurringTemplatesRepository();
                                     const pmCycleAllocationsRepo = new PMCycleAllocationsRepository();
+                                    const vendorsRepo = new VendorsRepository();
 
                                     // Delete ALL data (from all tenants) to ensure clean state when switching tenants
                                     // Use deleteAllUnfiltered to bypass tenant filtering and clear everything
@@ -1277,6 +1283,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     documentsRepo.deleteAllUnfiltered();
                                     recurringTemplatesRepo.deleteAllUnfiltered();
                                     pmCycleAllocationsRepo.deleteAllUnfiltered();
+                                    vendorsRepo.deleteAllUnfiltered();
 
                                     console.log('🗑️ Cleared local database data to prevent cross-tenant leakage');
                                 }
@@ -1296,6 +1303,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             const apiBillsMap = new Map((apiState.bills || []).map(b => [b.id, b]));
                             const apiAccountsMap = new Map((apiState.accounts || []).map(a => [a.id, a]));
                             const apiCategoriesMap = new Map((apiState.categories || []).map(c => [c.id, c]));
+                            const apiVendorsMap = new Map((apiState.vendors || []).map(v => [v.id, v]));
 
                             // Merge offline transactions (offline takes precedence)
                             for (const offlineTx of offlineTransactions) {
@@ -1327,13 +1335,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 apiCategoriesMap.set(offlineCategory.id, offlineCategory);
                             }
 
+                            // Merge offline vendors
+                            for (const offlineVendor of offlineVendors) {
+                                apiVendorsMap.set(offlineVendor.id, offlineVendor);
+                            }
+
                             logger.logCategory('sync', `✅ Merged offline data with API data:`, {
                                 transactions: apiTransactionsMap.size,
                                 contacts: apiContactsMap.size,
                                 invoices: apiInvoicesMap.size,
                                 bills: apiBillsMap.size,
                                 accounts: apiAccountsMap.size,
-                                categories: apiCategoriesMap.size
+                                categories: apiCategoriesMap.size,
+                                vendors: apiVendorsMap.size
                             });
 
                             // Replace state with merged data using functional update
@@ -1358,6 +1372,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                         projectAgreements: apiState.projectAgreements || [],
                                         contracts: apiState.contracts || [],
                                         pmCycleAllocations: apiState.pmCycleAllocations || [],
+                                        vendors: Array.from(apiVendorsMap.values()),
                                         transactionLog: apiState.transactionLog || [],
                                     };
 
@@ -1396,6 +1411,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     invoices: Array.from(apiInvoicesMap.values()).length,
                                     bills: Array.from(apiBillsMap.values()).length,
                                     budgets: apiState.budgets?.length || 0,
+                                    vendors: Array.from(apiVendorsMap.values()).length,
                                     rentalAgreements: apiState.rentalAgreements?.length || 0,
                                     projectAgreements: apiState.projectAgreements?.length || 0,
                                     contracts: apiState.contracts?.length || 0,

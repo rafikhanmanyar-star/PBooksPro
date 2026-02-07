@@ -125,7 +125,7 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
 
     const handleExport = () => {
         if (!vendorId) return;
-        const vendor = state.contacts.find(c => c.id === vendorId);
+        const vendor = state.vendors?.find(v => v.id === vendorId) || state.contacts.find(c => c.id === vendorId);
         const data = ledgerItems.map(item => ({
             Date: formatDate(item.date),
             Particulars: item.particulars,
