@@ -257,11 +257,10 @@ class DatabaseService {
                         // Silent - not critical
                     }
 
-                    // Ensure all tables are present (for existing databases)
-                    // Safe to create indexes now because tenant_id columns already exist
-                    this.ensureAllTablesExist();
                     // Ensure contracts table has new columns
                     this.ensureContractColumnsExist();
+                    // Ensure vendor_id columns exist
+                    this.ensureVendorIdColumnsExist();
                 } catch (tenantIdError) {
                     // Old database without tenant_id support - recreate it
                     logger.logCategory('database', '🔄 Detected old database format, recreating with new schema...');
@@ -903,6 +902,8 @@ class DatabaseService {
 
                 // Ensure contract and bill columns exist (for expense_category_items)
                 this.ensureContractColumnsExist();
+                // Ensure vendor_id columns exist
+                this.ensureVendorIdColumnsExist();
 
 
                 // Run version-specific migrations
@@ -1009,6 +1010,78 @@ class DatabaseService {
             }
         } catch (error) {
             console.error('❌ Error ensuring contract/bill columns exist:', error);
+        }
+    }
+
+    /**
+     * Ensure tables have vendor_id column for linking to vendors table instead of contacts
+     */
+    ensureVendorIdColumnsExist(): void {
+        if (!this.db || !this.isInitialized) return;
+
+        try {
+            const tablesToUpdate = ['bills', 'transactions', 'vendors'];
+
+            for (const table of tablesToUpdate) {
+                const tableExists = this.query<{ name: string }>(
+                    `SELECT name FROM sqlite_master WHERE type='table' AND name='${table}'`
+                ).length > 0;
+
+                if (!tableExists) continue;
+
+                const results = this.query<{ name: string }>(`PRAGMA table_info(${table})`);
+                const columnNames = new Set(results.map(col => col.name));
+
+                if (table === 'vendors') {
+                    if (!columnNames.has('is_active')) {
+                        console.log('🔄 Adding is_active column to vendors table...');
+                        this.execute('ALTER TABLE vendors ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1');
+                    }
+                } else {
+                    if (!columnNames.has('vendor_id')) {
+                        console.log(`🔄 Adding vendor_id column to ${table} table...`);
+                        // Add REFERENCES vendors(id) for foreign key constraint
+                        this.execute(`ALTER TABLE ${table} ADD COLUMN vendor_id TEXT REFERENCES vendors(id)`);
+                    }
+                }
+            }
+
+            // DATA MIGRATION: Move data from contact_id to vendor_id if contact_id is actually a vendor ID
+            // This ensures existing data is correctly linked after schema change
+            console.log('🔄 Migrating vendor links from contact_id to vendor_id...');
+
+            // For Bills
+            // Check if bills table exists and has contact_id
+            const billsTableInfo = this.query<{ name: string }>('PRAGMA table_info(bills)');
+            const billsColumnNames = new Set(billsTableInfo.map(col => col.name));
+            if (billsColumnNames.has('contact_id')) {
+                this.execute(`
+                    UPDATE bills
+                    SET vendor_id = contact_id, contact_id = NULL
+                    WHERE vendor_id IS NULL
+                    AND contact_id IS NOT NULL
+                    AND contact_id IN (SELECT id FROM vendors);
+                `);
+            }
+
+            // For Transactions
+            // Check if transactions table exists and has contact_id
+            const transactionsTableInfo = this.query<{ name: string }>('PRAGMA table_info(transactions)');
+            const transactionsColumnNames = new Set(transactionsTableInfo.map(col => col.name));
+            if (transactionsColumnNames.has('contact_id')) {
+                this.execute(`
+                    UPDATE transactions
+                    SET vendor_id = contact_id, contact_id = NULL
+                    WHERE vendor_id IS NULL
+                    AND contact_id IS NOT NULL
+                    AND contact_id IN (SELECT id FROM vendors);
+                `);
+            }
+
+            console.log('✅ Vendor link migration completed');
+
+        } catch (error) {
+            console.error('❌ Error ensuring vendor_id columns exist:', error);
         }
     }
 
@@ -1160,6 +1233,7 @@ class DatabaseService {
         // This adds missing columns like expense_category_items
         this.ensureAllTablesExist();
         this.ensureContractColumnsExist();
+        this.ensureVendorIdColumnsExist();
 
         // Clear repository column caches so they pick up the new columns
         // This is critical - otherwise repositories will filter out new columns when saving

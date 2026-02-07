@@ -107,6 +107,7 @@ export class TransactionsRepository extends BaseRepository<any> {
      */
     async findAllPaginated(params: {
         projectId?: string | null;
+        vendorId?: string | null;
         limit?: number;
         offset?: number;
     } = {}): Promise<any[]> {
@@ -114,6 +115,7 @@ export class TransactionsRepository extends BaseRepository<any> {
             try {
                 return await this.nativeService.listTransactions({
                     projectId: params.projectId,
+                    vendorId: params.vendorId,
                     limit: params.limit || 100,
                     offset: params.offset || 0,
                 });
@@ -123,9 +125,23 @@ export class TransactionsRepository extends BaseRepository<any> {
         }
 
         // Fallback to sql.js with efficient SQL-level pagination
+        let condition = undefined;
+        let sqlParams: any[] = [];
+
+        if (params.projectId && params.vendorId) {
+            condition = 'project_id = ? AND vendor_id = ?';
+            sqlParams = [params.projectId, params.vendorId];
+        } else if (params.projectId) {
+            condition = 'project_id = ?';
+            sqlParams = [params.projectId];
+        } else if (params.vendorId) {
+            condition = 'vendor_id = ?';
+            sqlParams = [params.vendorId];
+        }
+
         return super.findAll({
-            condition: params.projectId ? 'project_id = ?' : undefined,
-            params: params.projectId ? [params.projectId] : [],
+            condition,
+            params: sqlParams,
             limit: params.limit || 100,
             offset: params.offset || 0,
             orderBy: 'date',
@@ -136,7 +152,7 @@ export class TransactionsRepository extends BaseRepository<any> {
     /**
      * Get transaction totals (native backend only)
      */
-    async getTotals(params: { projectId?: string | null } = {}): Promise<{ totalIncome: number; totalExpense: number }> {
+    async getTotals(params: { projectId?: string | null, vendorId?: string | null } = {}): Promise<{ totalIncome: number; totalExpense: number }> {
         if (this.useNativeBackend && this.nativeService) {
             try {
                 const result = await this.nativeService.getTotals(params);
@@ -148,17 +164,32 @@ export class TransactionsRepository extends BaseRepository<any> {
                 console.error('❌ Native backend totals query failed:', error);
             }
         }
+
+        let whereClause = '';
+        let sqlParams: any[] = [];
+
+        if (params.projectId && params.vendorId) {
+            whereClause = 'WHERE project_id = ? AND vendor_id = ?';
+            sqlParams = [params.projectId, params.vendorId];
+        } else if (params.projectId) {
+            whereClause = 'WHERE project_id = ?';
+            sqlParams = [params.projectId];
+        } else if (params.vendorId) {
+            whereClause = 'WHERE vendor_id = ?';
+            sqlParams = [params.vendorId];
+        }
+
         // Fallback: calculate from sql.js using optimized query
         const sql = `
             SELECT 
                 SUM(CASE WHEN type = 'INCOME' THEN amount ELSE 0 END) as total_income,
                 SUM(CASE WHEN type = 'EXPENSE' THEN amount ELSE 0 END) as total_expense
             FROM transactions
-            ${params.projectId ? 'WHERE project_id = ?' : ''}
+            ${whereClause}
         `;
         const results = this.db.query<{ total_income: number; total_expense: number }>(
             sql,
-            params.projectId ? [params.projectId] : []
+            sqlParams
         );
 
         return {
@@ -170,10 +201,10 @@ export class TransactionsRepository extends BaseRepository<any> {
     /**
      * Get transaction count
      */
-    async getCount(params: { projectId?: string | null } = {}): Promise<number> {
+    async getCount(params: { projectId?: string | null, vendorId?: string | null } = {}): Promise<number> {
         if (this.useNativeBackend && this.nativeService) {
             try {
-                return await this.nativeService.getTransactionCount(params.projectId);
+                return await this.nativeService.getTransactionCount(params.projectId, params.vendorId);
             } catch (error) {
                 console.error('❌ Native backend count query failed:', error);
             }
@@ -189,9 +220,23 @@ export class TransactionsRepository extends BaseRepository<any> {
             }
         }
 
+        let whereClause = '';
+        let sqlParams: any[] = [];
+
+        if (params.projectId && params.vendorId) {
+            whereClause = 'WHERE project_id = ? AND vendor_id = ?';
+            sqlParams = [params.projectId, params.vendorId];
+        } else if (params.projectId) {
+            whereClause = 'WHERE project_id = ?';
+            sqlParams = [params.projectId];
+        } else if (params.vendorId) {
+            whereClause = 'WHERE vendor_id = ?';
+            sqlParams = [params.vendorId];
+        }
+
         // Fallback to sql.js
-        const sql = `SELECT COUNT(*) as count FROM transactions ${params.projectId ? 'WHERE project_id = ?' : ''}`;
-        const results = this.db.query<{ count: number }>(sql, params.projectId ? [params.projectId] : []);
+        const sql = `SELECT COUNT(*) as count FROM transactions ${whereClause}`;
+        const results = this.db.query<{ count: number }>(sql, sqlParams);
         return results[0]?.count || 0;
     }
 

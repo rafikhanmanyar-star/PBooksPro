@@ -25,7 +25,7 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
         else newSet.add(id);
         setExpandedIds(newSet);
     };
-    
+
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
             key,
@@ -37,7 +37,7 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
         if (!vendorId) return [];
 
         const bills = state.bills
-            .filter(b => b.contactId === vendorId)
+            .filter(b => b.vendorId === vendorId || (!b.vendorId && b.contactId === vendorId))
             .map(b => ({
                 id: `bill-${b.id}`,
                 originalId: b.id,
@@ -49,7 +49,7 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                 children: [] as any[]
             }));
 
-        const allPayments = state.transactions.filter(t => t.contactId === vendorId && t.type === TransactionType.EXPENSE);
+        const allPayments = state.transactions.filter(t => (t.vendorId === vendorId || (!t.vendorId && t.contactId === vendorId)) && t.type === TransactionType.EXPENSE);
         const paymentMap = new Map<string, any>();
         const individualPayments: any[] = [];
 
@@ -97,23 +97,23 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
         }));
 
         const combined = [...bills, ...individualPayments, ...batchedPayments].sort((a, b) => {
-             // Base Sort
-             let valA: any = a[sortConfig.key];
-             let valB: any = b[sortConfig.key];
-             
-             if (sortConfig.key === 'date') {
+            // Base Sort
+            let valA: any = a[sortConfig.key];
+            let valB: any = b[sortConfig.key];
+
+            if (sortConfig.key === 'date') {
                 valA = new Date(valA).getTime();
                 valB = new Date(valB).getTime();
-             } else if (typeof valA === 'string') {
+            } else if (typeof valA === 'string') {
                 valA = valA.toLowerCase();
                 valB = valB.toLowerCase();
-             }
-             
-             if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
-             if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
-             return 0;
+            }
+
+            if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
         });
-        
+
         let runningBalance = 0;
         return combined.map(item => {
             // In vendor ledger: Credit (Bill) increases balance (payable), Debit (Payment) decreases balance
@@ -155,14 +155,14 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                             <table className="min-w-full divide-y divide-gray-200">
                                 <thead className="bg-slate-50 sticky top-0 z-10">
                                     <tr>
-                                        <th onClick={() => handleSort('date')} scope="col" className="py-2 pl-2 pr-2 text-left text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Date <SortIcon column="date"/></th>
-                                        <th onClick={() => handleSort('particulars')} scope="col" className="px-2 py-2 text-left text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none">Particulars <SortIcon column="particulars"/></th>
-                                        <th onClick={() => handleSort('credit')} scope="col" className="px-2 py-2 text-right text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Bills (Cr) <SortIcon column="credit"/></th>
-                                        <th onClick={() => handleSort('debit')} scope="col" className="px-2 py-2 text-right text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Payments (Dr) <SortIcon column="debit"/></th>
-                                        <th scope="col" className="py-2 pl-2 pr-1 text-right text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap" onClick={() => handleSort('balance')}>Balance <SortIcon column="balance"/></th>
+                                        <th onClick={() => handleSort('date')} scope="col" className="py-2 pl-2 pr-2 text-left text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Date <SortIcon column="date" /></th>
+                                        <th onClick={() => handleSort('particulars')} scope="col" className="px-2 py-2 text-left text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none">Particulars <SortIcon column="particulars" /></th>
+                                        <th onClick={() => handleSort('credit')} scope="col" className="px-2 py-2 text-right text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Bills (Cr) <SortIcon column="credit" /></th>
+                                        <th onClick={() => handleSort('debit')} scope="col" className="px-2 py-2 text-right text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Payments (Dr) <SortIcon column="debit" /></th>
+                                        <th scope="col" className="py-2 pl-2 pr-1 text-right text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap" onClick={() => handleSort('balance')}>Balance <SortIcon column="balance" /></th>
                                         <th scope="col" className="py-2 pl-1 pr-2 w-8">
-                                            <button 
-                                                onClick={handleExport} 
+                                            <button
+                                                onClick={handleExport}
                                                 disabled={ledgerItems.length === 0}
                                                 className="flex items-center justify-center w-6 h-6 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors disabled:opacity-50"
                                                 title="Export to Excel"
@@ -176,12 +176,12 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                                     {ledgerItems.map((item) => {
                                         const hasChildren = item.children && item.children.length > 0;
                                         const isExpanded = expandedIds.has(item.id);
-                                        
+
                                         return (
                                             <React.Fragment key={item.id}>
-                                                <tr 
+                                                <tr
                                                     className={`hover:bg-slate-50 cursor-pointer transition-colors ${isExpanded ? 'bg-slate-50' : ''}`}
-                                                    onClick={() => hasChildren ? toggleExpand({ stopPropagation: () => {} } as any, item.id) : onItemClick(item.originalId, item.type)}
+                                                    onClick={() => hasChildren ? toggleExpand({ stopPropagation: () => { } } as any, item.id) : onItemClick(item.originalId, item.type)}
                                                 >
                                                     <td className="whitespace-nowrap py-2 pl-2 pr-2 text-xs text-slate-700 flex items-center gap-1.5">
                                                         {hasChildren && (
@@ -202,8 +202,8 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                                                     <td className="py-2 pl-1 pr-2 w-8"></td>
                                                 </tr>
                                                 {isExpanded && hasChildren && item.children.map((child: any) => (
-                                                    <tr 
-                                                        key={child.id} 
+                                                    <tr
+                                                        key={child.id}
                                                         className="bg-slate-50/70 text-xs hover:bg-slate-100 cursor-pointer"
                                                         onClick={() => onItemClick(child.originalId, child.type)}
                                                     >

@@ -6,7 +6,7 @@
  * data model.
  */
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const CREATE_SCHEMA_SQL = `
 -- Enable foreign keys
@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS vendors (
     company_name TEXT,
     address TEXT,
     description TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
     tenant_id TEXT,
     user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -166,6 +167,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     to_account_id TEXT,
     category_id TEXT,
     contact_id TEXT,
+    vendor_id TEXT,
     project_id TEXT,
     building_id TEXT,
     property_id TEXT,
@@ -185,6 +187,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     FOREIGN KEY (to_account_id) REFERENCES accounts(id) ON DELETE SET NULL,
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
     FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE SET NULL,
+    FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE SET NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
     FOREIGN KEY (building_id) REFERENCES buildings(id) ON DELETE SET NULL,
     FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE SET NULL,
@@ -230,7 +233,8 @@ CREATE TABLE IF NOT EXISTS invoices (
 CREATE TABLE IF NOT EXISTS bills (
     id TEXT PRIMARY KEY,
     bill_number TEXT NOT NULL,
-    contact_id TEXT NOT NULL,
+    contact_id TEXT,
+    vendor_id TEXT,
     amount REAL NOT NULL,
     paid_amount REAL NOT NULL DEFAULT 0,
     status TEXT NOT NULL,
@@ -252,7 +256,8 @@ CREATE TABLE IF NOT EXISTS bills (
     version INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE RESTRICT,
+    FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE SET NULL,
+    FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE SET NULL,
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
     FOREIGN KEY (building_id) REFERENCES buildings(id) ON DELETE SET NULL,
@@ -289,7 +294,7 @@ CREATE TABLE IF NOT EXISTS quotations (
     user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (vendor_id) REFERENCES contacts(id) ON DELETE CASCADE,
+    FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
     FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE SET NULL
 );
 
@@ -489,7 +494,7 @@ CREATE TABLE IF NOT EXISTS contracts (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT,
-    FOREIGN KEY (vendor_id) REFERENCES contacts(id) ON DELETE RESTRICT
+    FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE RESTRICT
 );
 
 -- Contract Categories junction table

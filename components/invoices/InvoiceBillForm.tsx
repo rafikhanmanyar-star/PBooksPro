@@ -649,14 +649,21 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     }));
   };
 
-  const handleContactSubmit = (contact: Omit<Contact, 'id'>) => {
-    const newContact = { ...contact, id: Date.now().toString() };
-    dispatch({ type: 'ADD_CONTACT', payload: newContact });
-    setContactId(newContact.id);
+  const handleContactSubmit = (data: Omit<Contact, 'id'> | Omit<Vendor, 'id'>) => {
+    const newId = Date.now().toString();
+    if (type === 'bill') {
+      const newVendor = { ...data, id: newId } as Vendor;
+      dispatch({ type: 'ADD_VENDOR', payload: newVendor });
+      setVendorId(newId);
+    } else {
+      const newContact = { ...data, id: newId } as Contact;
+      dispatch({ type: 'ADD_CONTACT', payload: newContact });
+      setContactId(newId);
+    }
     setIsContactModalOpen(false);
     setNewItemName('');
-    showToast(`New contact ${contact.name} added!`);
-  }
+    showToast(`New ${type === 'bill' ? 'vendor' : 'contact'} ${data.name} added!`);
+  };
 
   const tenantAgreements = useMemo(() => {
     if (!contactId && invoiceType === InvoiceType.RENTAL) return [];
@@ -814,7 +821,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     }
 
     return {
-      contactId: contactId || '', // Ensure contactId is always set (required field)
+      contactId: type === 'bill' ? undefined : (contactId || ''),
+      vendorId: type === 'bill' ? (vendorId || contactId || '') : undefined,
       propertyId: propertyId || undefined,
       projectId: projectId || undefined,
       amount: finalAmount,
@@ -1036,12 +1044,9 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   /* Updated to use state.vendors for bills */
   const { contactLabel, filteredContacts, fixedContactTypeForNew } = useMemo(() => {
-    // If it's a bill, we should ideally be looking at vendors. 
-    // However, the ComboBox expects items with {id, name}. 
-    // If filteredContacts is typed as Contact[], we need to cast or unify types.
-    // Fortunately, Vendor and Contact both have id and name.
+    // If it's a bill, we should look at vendors.
     if (type === 'bill') {
-      const vendorList = (state.vendors || []).filter(v => v.isActive !== false || v.id === contactId);
+      const vendorList = (state.vendors || []).filter(v => v.isActive !== false || v.id === (vendorId || contactId));
       return {
         contactLabel: 'Vendor / Supplier',
         filteredContacts: vendorList,
@@ -1052,15 +1057,19 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     if (invoiceType === InvoiceType.RENTAL) return { contactLabel: 'Tenant', filteredContacts: tenantList, fixedContactTypeForNew: ContactType.TENANT };
     const owners = state.contacts.filter(c => (c.type === ContactType.CLIENT || c.type === ContactType.OWNER) && (c.isActive !== false || c.id === contactId));
     return { contactLabel: 'Owner', filteredContacts: owners, fixedContactTypeForNew: ContactType.OWNER };
-  }, [type, invoiceType, state.contacts, state.vendors]);
+  }, [type, invoiceType, state.contacts, state.vendors, contactId, vendorId]);
 
   const agreementItems = useMemo(() => tenantAgreements.map(a => ({ id: a.id, name: `${a.agreementNumber} - ${state.properties.find(p => p.id === a.propertyId)?.name}` })), [tenantAgreements, state.properties]);
 
   const handleContactSelect = (item: { id: string; name: string } | null, newName?: string) => {
     if (newName) { setNewItemName(newName); setIsContactModalOpen(true); }
     else {
-      setContactId(item?.id || '');
-      if (invoiceType === InvoiceType.RENTAL) setAgreementId('');
+      if (type === 'bill') {
+        setVendorId(item?.id || '');
+      } else {
+        setContactId(item?.id || '');
+        if (invoiceType === InvoiceType.RENTAL) setAgreementId('');
+      }
       setContractId('');
     }
   };
@@ -1214,8 +1223,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
               <ComboBox
                 label={contactLabel}
                 items={filteredContacts}
-                selectedId={contactId}
-                onSelect={(item) => setContactId(item?.id || '')}
+                selectedId={type === 'bill' ? (vendorId || contactId) : contactId}
+                onSelect={handleContactSelect}
                 placeholder={`Select ${contactLabel}...`}
                 required
                 disabled={isContactLockedByUnit || !!agreementForInvoice || isAgreementCancelled}
@@ -1864,7 +1873,15 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         </div>
       </form>
       <Modal isOpen={isContactModalOpen} onClose={() => setIsContactModalOpen(false)} title={`Add New ${contactLabel}`}>
-        <ContactForm onSubmit={handleContactSubmit} onCancel={() => setIsContactModalOpen(false)} existingContacts={state.contacts} fixedTypeForNew={fixedContactTypeForNew} initialName={newItemName} />
+        <ContactForm
+          onSubmit={handleContactSubmit}
+          onCancel={() => setIsContactModalOpen(false)}
+          existingContacts={state.contacts}
+          existingVendors={state.vendors}
+          isVendorForm={type === 'bill'}
+          fixedTypeForNew={fixedContactTypeForNew}
+          initialName={newItemName}
+        />
       </Modal>
       <EntityFormModal
         isOpen={entityFormModal.isFormOpen}

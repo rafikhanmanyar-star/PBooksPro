@@ -255,7 +255,8 @@ export class AppStateRepository {
                 const normalizedBill: Bill = {
                     id: b.id || '',
                     billNumber: b.billNumber ?? b.bill_number ?? `BILL-${b.id}`,
-                    contactId: b.contactId ?? b.contact_id ?? '',
+                    contactId: (b.contactId ?? b.contact_id) || undefined,
+                    vendorId: (b.vendorId ?? b.vendor_id) || undefined,
                     amount: typeof b.amount === 'number' ? b.amount : (b.amount != null ? parseFloat(String(b.amount)) : 0),
                     paidAmount: typeof b.paidAmount === 'number' ? b.paidAmount : (b.paidAmount != null ? parseFloat(String(b.paidAmount)) : (b.paid_amount != null ? parseFloat(String(b.paid_amount)) : 0)),
                     status: b.status ?? 'Unpaid',
@@ -303,6 +304,7 @@ export class AppStateRepository {
             }),
             quotations: quotations.map(q => ({
                 ...q,
+                vendorId: q.vendorId ?? q.vendor_id ?? '',
                 items: typeof q.items === 'string' ? JSON.parse(q.items) : q.items
             })),
             documents,
@@ -469,6 +471,7 @@ export class AppStateRepository {
             }),
             contracts: contracts.map(c => ({
                 ...c,
+                vendorId: c.vendorId ?? c.vendor_id ?? '',
                 documentId: (c as any).documentId ?? (c as any).document_id ?? undefined,
                 expenseCategoryItems: c.expenseCategoryItems
                     ? (typeof c.expenseCategoryItems === 'string' ? JSON.parse(c.expenseCategoryItems) : c.expenseCategoryItems)
@@ -740,13 +743,14 @@ export class AppStateRepository {
                                     const billToSave: any = {
                                         id: b.id,
                                         billNumber: b.billNumber || `BILL-${b.id}`,
-                                        contactId: b.contactId || '',
                                         amount: b.amount || 0,
                                         paidAmount: b.paidAmount || 0,
                                         status: b.status || 'Unpaid',
                                         issueDate: b.issueDate || new Date().toISOString().split('T')[0],
                                     };
                                     // Only include optional fields if they have values (to avoid skipping in objectToDbFormat)
+                                    if (b.contactId) billToSave.contactId = b.contactId;
+                                    if (b.vendorId) billToSave.vendorId = b.vendorId;
                                     if (b.dueDate) billToSave.dueDate = b.dueDate;
                                     if (b.description) billToSave.description = b.description;
                                     if (b.categoryId) billToSave.categoryId = b.categoryId;
@@ -774,6 +778,7 @@ export class AppStateRepository {
                             try {
                                 this.quotationsRepo.saveAll(state.quotations.map(q => ({
                                     ...q,
+                                    vendorId: q.vendorId || '',
                                     items: typeof q.items === 'string' ? q.items : JSON.stringify(q.items)
                                 })));
                             } catch (e) {
@@ -793,8 +798,26 @@ export class AppStateRepository {
                                 this.salesReturnsRepo.saveAll(state.salesReturns || []);
                                 this.vendorsRepo.saveAll(state.vendors || []);
 
+                                // Agreements and Contracts
+                                this.rentalAgreementsRepo.saveAll(state.rentalAgreements || []);
+                                this.projectAgreementsRepo.saveAll((state.projectAgreements || []).map(pa => ({
+                                    ...pa,
+                                    unitIds: JSON.stringify(pa.unitIds),
+                                    cancellationDetails: pa.cancellationDetails ? JSON.stringify(pa.cancellationDetails) : undefined,
+                                    installmentPlan: pa.installmentPlan ? JSON.stringify(pa.installmentPlan) : undefined
+                                })));
+                                this.contractsRepo.saveAll((state.contracts || []).map(c => ({
+                                    ...c,
+                                    vendorId: c.vendorId || '',
+                                    expenseCategoryItems: c.expenseCategoryItems ? JSON.stringify(c.expenseCategoryItems) : undefined
+                                })));
+
+                                // Other tables
+                                this.recurringTemplatesRepo.saveAll(state.recurringInvoiceTemplates || []);
+                                this.planAmenitiesRepo.saveAll(state.planAmenities || []);
+
                             } catch (e) {
-                                console.error('❌ Failed to save documents/budgets/agreements/contracts:', e);
+                                console.error('❌ Failed to save documents/budgets/agreements/contracts/templates:', e);
                                 throw e;
                             }
 
