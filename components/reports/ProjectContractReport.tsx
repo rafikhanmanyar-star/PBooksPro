@@ -75,7 +75,7 @@ const ProjectContractReport: React.FC = () => {
             };
         }).sort((a, b) => a.projectName.localeCompare(b.projectName));
 
-    }, [state.contracts, state.transactions, selectedProjectId, searchQuery]);
+    }, [state.contracts, state.transactions, state.projects, state.vendors, selectedProjectId, searchQuery]);
 
     const handleExport = () => {
         const data = reportData.map(r => ({

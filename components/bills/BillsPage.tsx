@@ -372,7 +372,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
             .filter(g => g.count > 0) // Only show groups with bills
             .sort((a, b) => a.name.localeCompare(b.name));
 
-    }, [baseBills, state.projects, state.contacts, projectFilter]);
+    }, [baseBills, state.projects, state.contacts, state.vendors, projectFilter]);
 
     // --- Unified Table Data (Bills + Payments) ---
     const tableRows = useMemo<TableRow[]>(() => {
@@ -435,7 +435,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         }
 
         return rows;
-    }, [baseBills, state.transactions, state.bills, state.projects, state.contacts, state.contracts, typeFilter]);
+    }, [baseBills, state.transactions, state.bills, state.projects, state.contacts, state.vendors, state.contracts, typeFilter]);
 
     // --- Filtered Table Rows ---
     const filteredRows = useMemo(() => {

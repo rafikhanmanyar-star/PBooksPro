@@ -104,7 +104,7 @@ const ProjectContractsPage: React.FC = () => {
             .filter(g => g.count > 0)
             .sort((a, b) => a.name.localeCompare(b.name));
 
-    }, [state.contracts, state.projects, state.contacts, state.transactions]);
+    }, [state.contracts, state.projects, state.contacts, state.vendors, state.transactions]);
 
     // --- Filter Logic ---
     const filteredContracts = useMemo(() => {
@@ -153,7 +153,7 @@ const ProjectContractsPage: React.FC = () => {
             return 0;
         });
 
-    }, [state.contracts, state.projects, state.contacts, state.transactions, searchQuery, selectedNode, sortConfig]);
+    }, [state.contracts, state.projects, state.contacts, state.vendors, state.transactions, searchQuery, selectedNode, sortConfig]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
