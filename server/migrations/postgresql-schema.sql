@@ -154,6 +154,7 @@ CREATE TABLE IF NOT EXISTS vendors (
     company_name TEXT,
     address TEXT,
     description TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
     user_id TEXT REFERENCES users(id),
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -607,6 +608,13 @@ CREATE TABLE IF NOT EXISTS marketplace_categories (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Fix-up for marketplace_categories
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='marketplace_categories' AND column_name='icon') THEN
+        ALTER TABLE marketplace_categories ADD COLUMN icon TEXT;
+    END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS whatsapp_configs (
     id TEXT PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -637,6 +645,7 @@ BEGIN
     FOR t IN 
         SELECT table_name FROM information_schema.tables 
         WHERE table_schema = 'public' 
+        AND table_type = 'BASE TABLE'
         AND table_name NOT IN ('tenants', 'schema_migrations', 'admin_users', 'marketplace_categories')
     LOOP
         EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t.table_name);

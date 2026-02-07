@@ -1195,10 +1195,10 @@ class DatabaseService {
     private executeSchemaStatements(sql: string): void {
         if (!this.db) return;
 
-        // Split by semicolon and filter out empty statements
+        // Split by semicolon and filter out truly empty statements
         const statements = sql.split(';')
             .map(s => s.trim())
-            .filter(s => s.length > 0 && !s.startsWith('--'));
+            .filter(s => s.length > 0);
 
         for (const statement of statements) {
             try {
