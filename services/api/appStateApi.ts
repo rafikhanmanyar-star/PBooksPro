@@ -428,6 +428,7 @@ export class AppStateApiService {
         staffId: b.staff_id || b.staffId || undefined,
         documentPath: b.document_path || b.documentPath || undefined,
         documentId: b.document_id || b.documentId || undefined,
+        vendorId: b.vendor_id || b.vendorId || undefined,
         expenseCategoryItems: (() => {
           const items = b.expense_category_items || b.expenseCategoryItems;
           if (!items) return undefined;
@@ -556,6 +557,7 @@ export class AppStateApiService {
         toAccountId: t.to_account_id || t.toAccountId || undefined,
         categoryId: t.category_id || t.categoryId || undefined,
         contactId: t.contact_id || t.contactId || undefined,
+        vendorId: t.vendor_id || t.vendorId || undefined,
         projectId: t.project_id || t.projectId || undefined,
         buildingId: t.building_id || t.buildingId || undefined,
         propertyId: t.property_id || t.propertyId || undefined,
@@ -965,6 +967,7 @@ export class AppStateApiService {
       toAccountId: (saved as any).to_account_id || saved.toAccountId || undefined,
       categoryId: (saved as any).category_id || saved.categoryId || undefined,
       contactId: (saved as any).contact_id || saved.contactId || undefined,
+      vendorId: (saved as any).vendor_id || saved.vendorId || undefined,
       projectId: (saved as any).project_id || saved.projectId || undefined,
       buildingId: (saved as any).building_id || saved.buildingId || undefined,
       propertyId: (saved as any).property_id || saved.propertyId || undefined,
@@ -1341,6 +1344,7 @@ export class AppStateApiService {
       contractId: (saved as any).contract_id || saved.contractId || undefined,
       staffId: (saved as any).staff_id || saved.staffId || undefined,
       documentPath: (saved as any).document_path || saved.documentPath || undefined,
+      vendorId: (saved as any).vendor_id || saved.vendorId || undefined,
       expenseCategoryItems: (() => {
         const items = (saved as any).expense_category_items || saved.expenseCategoryItems;
         if (!items) return undefined;
