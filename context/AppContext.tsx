@@ -1382,6 +1382,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                         transactionLog: apiState.transactionLog || [],
                                     };
 
+                                    // Enhanced vendor logging for debugging
+                                    const vendorsInState = Array.from(apiVendorsMap.values());
+                                    logger.logCategory('sync', `📦 Vendors in merged state: ${vendorsInState.length}`);
+                                    if (vendorsInState.length > 0) {
+                                        logger.logCategory('sync', '📋 Sample vendors:', vendorsInState.slice(0, 3).map(v => ({ id: v.id, name: v.name })));
+                                    } else {
+                                        logger.warnCategory('sync', '⚠️ No vendors in merged state after API load');
+                                    }
+
                                     // Save API data to local database with proper tenant_id (async, don't await)
                                     // This ensures offline access and proper tenant isolation
                                     // IMPORTANT: Disable sync queueing since this data is FROM cloud, not TO cloud

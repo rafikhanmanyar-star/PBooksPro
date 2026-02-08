@@ -231,6 +231,13 @@ export class AppStateApiService {
         }),
       ]);
 
+      // Enhanced vendor logging for debugging
+      if (vendors.length > 0) {
+        logger.logCategory('sync', '📋 Vendors loaded from API:', vendors.map(v => ({ id: v.id, name: v.name })));
+      } else {
+        logger.warnCategory('sync', '⚠️ No vendors returned from API');
+      }
+
       logger.logCategory('sync', '✅ Loaded from API:', {
         accounts: accounts.length,
         contacts: contacts.length,

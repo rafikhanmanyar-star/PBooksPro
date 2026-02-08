@@ -101,16 +101,20 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Initialize barcode scanner and thermal printer
     useEffect(() => {
-        // Initialize thermal printer with print settings
-        if (!thermalPrinterRef.current) {
-            thermalPrinterRef.current = createThermalPrinter({
-                paperWidth: 80, // 80mm thermal paper
-                autoConnect: true,
-                printSettings: state.printSettings // Pass print settings for configurable receipts
-            });
-        }
+        // Re-create thermal printer with updated print settings
+        // This ensures the printer always uses the latest configuration
+        thermalPrinterRef.current = createThermalPrinter({
+            paperWidth: 80, // 80mm thermal paper
+            autoConnect: true,
+            printSettings: state.printSettings // Pass print settings for configurable receipts
+        });
 
-        // Initialize barcode scanner
+        console.log('🖨️ Thermal printer initialized with settings:', {
+            shopName: state.printSettings?.posShopName,
+            showBarcode: state.printSettings?.posShowBarcode
+        });
+
+        // Initialize barcode scanner (only once)
         if (!barcodeScannerRef.current) {
             barcodeScannerRef.current = createBarcodeScanner((barcode) => {
                 console.log('Barcode scanned:', barcode);

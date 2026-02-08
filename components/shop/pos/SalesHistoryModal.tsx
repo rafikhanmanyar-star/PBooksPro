@@ -65,10 +65,12 @@ const SalesHistoryModal: React.FC = () => {
         }
     };
 
-    const filteredSales = sales.filter(sale =>
-        sale.saleNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (sale.customerName && sale.customerName.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
+    const filteredSales = sales.filter(sale => {
+        const searchLower = searchTerm.toLowerCase();
+        const saleNumberMatch = sale.saleNumber?.toLowerCase().includes(searchLower);
+        const customerNameMatch = sale.customerName?.toLowerCase().includes(searchLower);
+        return saleNumberMatch || customerNameMatch;
+    });
 
     const handlePrint = (sale: POSSale) => {
         printReceipt(sale);
@@ -94,8 +96,8 @@ const SalesHistoryModal: React.FC = () => {
                             type="text"
                             placeholder="Search by Receipt # or Customer Name (or scan barcode)..."
                             className={`w-full pl-12 pr-4 py-3 bg-slate-50 border-2 rounded-xl focus:ring-0 transition-all font-bold ${isBarcodeScan
-                                    ? 'border-indigo-500 bg-indigo-50'
-                                    : 'border-slate-100 focus:border-indigo-500'
+                                ? 'border-indigo-500 bg-indigo-50'
+                                : 'border-slate-100 focus:border-indigo-500'
                                 }`}
                             value={searchTerm}
                             onChange={(e) => handleSearchChange(e.target.value)}

@@ -143,6 +143,10 @@ export class ThermalPrinter {
                 margin: 0;
                 padding: 0;
             }
+            
+            .receipt {
+                page-break-after: always;
+            }
         }
 
         body {
