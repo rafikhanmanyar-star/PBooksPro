@@ -351,10 +351,30 @@ export class ThermalPrinter {
             ${data.footer || 'Thank you for your business!'}
             <br>
             Please keep this receipt for your records
+            <div style="margin-top: 50px; border-bottom: 2px dashed #eee; padding-bottom: 50px; text-align: center; color: #666; font-size: 8px;">
+                *** END OF RECEIPT ***
+                <br>
+                [ CUT HERE ]
+            </div>
         </div>
     </div>
 </body>
 </html>
+        `;
+    }
+
+    /**
+     * Guide for Silent Printing (Direct Print without Preview)
+     * To enable this in Chrome:
+     * 1. Set your Thermal Printer as the Windows Default Printer.
+     * 2. Launch Chrome with the --kiosk-printing flag.
+     *    Example: chrome.exe --kiosk-printing
+     */
+    getSilentPrintGuide(): string {
+        return `
+            To print without a preview dialog:
+            1. Set your Thermal Printer as the Windows Default Printer.
+            2. Launch Chrome with the --kiosk-printing flag.
         `;
     }
 

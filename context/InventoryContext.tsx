@@ -41,14 +41,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const fetchData = async () => {
             try {
                 console.log('🔄 [InventoryContext] Fetching warehouses, products, and inventory...');
-                const [warehousesList, products, inventory] = await Promise.all([
+                const [warehousesList, products, inventory, movementList] = await Promise.all([
                     shopApi.getWarehouses(),
                     shopApi.getProducts(),
-                    shopApi.getInventory()
+                    shopApi.getInventory(),
+                    shopApi.getMovements()
                 ]);
 
                 console.log('📦 [InventoryContext] Raw warehouses from API:', warehousesList);
-                console.log('📦 [InventoryContext] Warehouses count:', warehousesList?.length || 0);
+                console.log('📦 [InventoryContext] Movements count:', movementList?.length || 0);
 
                 // Map Warehouses
                 const whs: Warehouse[] = warehousesList.map((w: any) => ({
@@ -58,7 +59,23 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                     location: w.location || 'Main'
                 }));
                 setWarehouses(whs);
-                console.log('✅ [InventoryContext] Warehouses set in state:', whs);
+
+                // Map Movements
+                const mappedMovements: StockMovement[] = movementList.map((m: any) => ({
+                    id: m.id,
+                    itemId: m.product_id,
+                    itemName: m.product_name || 'Unknown Item',
+                    type: m.type as any,
+                    quantity: parseFloat(m.quantity),
+                    beforeQty: 0, // Not stored in DB yet
+                    afterQty: 0,  // Not stored in DB yet
+                    warehouseId: m.warehouse_id,
+                    referenceId: m.reference_id || 'N/A',
+                    timestamp: m.created_at,
+                    userId: m.user_id || 'system',
+                    notes: m.reason
+                }));
+                setMovements(mappedMovements);
 
                 // Aggregate Stock
                 const stockMap: Record<string, { total: number, reserved: number, byWh: Record<string, number> }> = {};
@@ -80,12 +97,12 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                     sku: p.sku,
                     barcode: p.barcode || undefined,
                     name: p.name,
-                    category: p.category_id || 'General', // TODO: Fetch category name
+                    category: p.category_id || 'General',
                     unit: p.unit || 'pcs',
                     onHand: stockMap[p.id]?.total || 0,
                     available: (stockMap[p.id]?.total || 0) - (stockMap[p.id]?.reserved || 0),
                     reserved: stockMap[p.id]?.reserved || 0,
-                    inTransit: 0, // Not tracked in basic schema yet
+                    inTransit: 0,
                     damaged: 0,
                     costPrice: parseFloat(p.cost_price || '0'),
                     retailPrice: parseFloat(p.retail_price || '0'),

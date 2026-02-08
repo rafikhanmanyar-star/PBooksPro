@@ -26,6 +26,7 @@ export const shopApi = {
     getProducts: () => apiClient.get<ShopProduct[]>('/shop/products'),
     getInventory: () => apiClient.get<any[]>('/shop/inventory'),
     adjustInventory: (data: any) => apiClient.post('/shop/inventory/adjust', data),
+    getMovements: (productId?: string) => apiClient.get<any[]>(`/shop/inventory/movements${productId ? `?productId=${productId}` : ''}`),
     getSales: () => apiClient.get<any[]>('/shop/sales'),
     createSale: (saleData: any) => apiClient.post('/shop/sales', saleData),
     getLoyaltyMembers: () => apiClient.get<any[]>('/shop/loyalty/members'),

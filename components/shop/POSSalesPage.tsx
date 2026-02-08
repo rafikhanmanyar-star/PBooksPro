@@ -10,6 +10,7 @@ import ShortcutBar from './pos/ShortcutBar';
 import PaymentModal from './pos/PaymentModal';
 import HeldSalesModal from './pos/HeldSalesModal';
 import CustomerSelectionModal from './pos/CustomerSelectionModal';
+import SalesHistoryModal from './pos/SalesHistoryModal';
 
 const POSSalesContent: React.FC = () => {
     const {
@@ -19,6 +20,8 @@ const POSSalesContent: React.FC = () => {
         setIsHeldSalesModalOpen,
         isCustomerModalOpen,
         setIsCustomerModalOpen,
+        isSalesHistoryModalOpen,
+        setIsSalesHistoryModalOpen,
         holdSale,
         clearCart,
         completeSale,
@@ -43,6 +46,7 @@ const POSSalesContent: React.FC = () => {
                     if (searchInput) searchInput.focus();
                     break;
                 case 'F6': setIsCustomerModalOpen(!isCustomerModalOpen); break;
+                case 'F9': setIsSalesHistoryModalOpen(!isSalesHistoryModalOpen); break;
                 case 'F8': setIsPaymentModalOpen(!isPaymentModalOpen); break;
                 case 'F12':
                     if (balanceDue <= 0) {
@@ -91,6 +95,7 @@ const POSSalesContent: React.FC = () => {
                 isOpen={usePOS().isCustomerModalOpen}
                 onClose={() => usePOS().setIsCustomerModalOpen(false)}
             />
+            <SalesHistoryModal />
         </div>
     );
 };

@@ -137,6 +137,16 @@ router.post('/inventory/adjust', async (req: any, res) => {
     }
 });
 
+router.get('/inventory/movements', async (req: any, res) => {
+    try {
+        const productId = req.query.productId as string;
+        const movements = await getShopService().getInventoryMovements(req.tenantId, productId);
+        res.json(movements);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // --- Sales ---
 router.get('/sales', async (req: any, res) => {
     try {

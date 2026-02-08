@@ -70,4 +70,5 @@ export interface StockTransfer {
     receivedBy?: string;
     timestamp: string;
     receivedAt?: string;
+    notes?: string;
 }

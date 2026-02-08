@@ -182,6 +182,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
     category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
     contact_id TEXT REFERENCES contacts(id) ON DELETE SET NULL,
+    vendor_id TEXT REFERENCES vendors(id) ON DELETE SET NULL,
     project_id TEXT,
     invoice_id TEXT,
     bill_id TEXT,
@@ -259,7 +260,8 @@ CREATE TABLE IF NOT EXISTS bills (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     bill_number TEXT NOT NULL,
-    contact_id TEXT NOT NULL REFERENCES contacts(id),
+    contact_id TEXT REFERENCES contacts(id),
+    vendor_id TEXT REFERENCES vendors(id),
     amount DECIMAL(15, 2) NOT NULL,
     paid_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'Unpaid',
@@ -331,7 +333,7 @@ CREATE TABLE IF NOT EXISTS contracts (
     contract_number TEXT NOT NULL,
     name TEXT NOT NULL,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    vendor_id TEXT NOT NULL REFERENCES contacts(id),
+    vendor_id TEXT NOT NULL REFERENCES vendors(id),
     total_amount DECIMAL(15, 2) NOT NULL,
     status TEXT NOT NULL,
     user_id TEXT REFERENCES users(id),
@@ -636,6 +638,20 @@ CREATE TABLE IF NOT EXISTS app_settings (
     tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     value JSONB NOT NULL,
     PRIMARY KEY (tenant_id, key)
+);
+
+CREATE TABLE IF NOT EXISTS quotations (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    vendor_id TEXT NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    date DATE NOT NULL,
+    items JSONB NOT NULL,
+    total_amount DECIMAL(15, 2) NOT NULL,
+    document_id TEXT,
+    user_id TEXT REFERENCES users(id),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 -- ============================================================================

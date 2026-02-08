@@ -102,6 +102,24 @@ The barcode scanner is automatically initialized when the POS page loads. No add
    - Click "Print"
    - The receipt will be printed immediately
 
+### Silent Printing (Direct Print)
+
+To print receipts automatically without showing the print preview:
+1. **Set Windows Default**: Ensure your Thermal Printer is set as the "Default Printer" in Windows Settings.
+2. **Enable Chrome Kiosk Mode**: 
+   - In your Chrome shortcut target, add `--kiosk-printing` at the end.
+   - Example: `chrome.exe --kiosk-printing`
+
+### Auto-Cutting Paper
+
+1. Go to Printer **Printing Preferences** -> **Device Settings**.
+2. Set **Cutter** to "Cut at end of job".
+
+### Reprinting Receipts
+
+1. Press **F9** in the POS to search old sales history.
+2. Select a sale and click **REPRINT RECEIPT** to print a previous receipt.
+
 3. **Receipt Contents**:
    - Store name and information
    - Receipt number and timestamp

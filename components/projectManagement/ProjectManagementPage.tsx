@@ -310,16 +310,11 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                                         )}
 
                                         <div className="bg-slate-50 px-4 py-1 text-xs font-semibold text-slate-500 border-b border-slate-200">OPERATIONAL</div>
-                                        {(isSellingMode ? [
+                                        {[
                                             'Project Summary',
                                             'Marketing Activity',
                                             'Revenue Analysis',
                                             'Broker Report',
-                                            'Owner Ledger',
-                                            'Income by Category',
-                                            'Expense by Category'
-                                        ] : [
-                                            'Project Summary',
                                             'Budget vs Actual',
                                             'Contract Report',
                                             'PM Cost Report',
@@ -328,7 +323,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                                             'Owner Ledger',
                                             'Income by Category',
                                             'Expense by Category'
-                                        ]).map((reportName) => (
+                                        ].map((reportName) => (
                                             <button
                                                 key={reportName}
                                                 onClick={() => {

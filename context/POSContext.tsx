@@ -56,6 +56,9 @@ interface POSContextType {
     searchQuery: string;
     setSearchQuery: (query: string) => void;
 
+    isSalesHistoryModalOpen: boolean;
+    setIsSalesHistoryModalOpen: (isOpen: boolean) => void;
+
     completeSale: () => Promise<void>;
     printReceipt: (saleData?: any) => Promise<void>;
     lastCompletedSale: any | null;
@@ -72,6 +75,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [isHeldSalesModalOpen, setIsHeldSalesModalOpen] = useState(false);
     const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+    const [isSalesHistoryModalOpen, setIsSalesHistoryModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [lastCompletedSale, setLastCompletedSale] = useState<any | null>(null);
 
@@ -390,6 +394,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsHeldSalesModalOpen,
         isCustomerModalOpen,
         setIsCustomerModalOpen,
+        isSalesHistoryModalOpen,
+        setIsSalesHistoryModalOpen,
         searchQuery,
         setSearchQuery,
         completeSale,

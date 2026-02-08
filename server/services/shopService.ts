@@ -208,6 +208,25 @@ export class ShopService {
         return this.db.query(query, params);
     }
 
+    async getInventoryMovements(tenantId: string, productId?: string) {
+        let query = `
+            SELECT m.*, p.name as product_name, p.sku, w.name as warehouse_name
+            FROM shop_inventory_movements m
+            JOIN shop_products p ON m.product_id = p.id AND p.tenant_id = $1
+            JOIN shop_warehouses w ON m.warehouse_id = w.id AND w.tenant_id = $1
+            WHERE m.tenant_id = $1
+        `;
+        const params: any[] = [tenantId];
+
+        if (productId) {
+            query += ` AND m.product_id = $2`;
+            params.push(productId);
+        }
+
+        query += ` ORDER BY m.created_at DESC`;
+        return this.db.query(query, params);
+    }
+
     async adjustInventory(tenantId: string, data: {
         productId: string,
         warehouseId: string,

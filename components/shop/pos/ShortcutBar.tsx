@@ -28,6 +28,7 @@ const ShortcutBar: React.FC = () => {
             }
         },
         { key: 'F6', label: 'Customer', action: () => setIsCustomerModalOpen(!isCustomerModalOpen) },
+        { key: 'F9', label: 'History', action: () => usePOS().setIsSalesHistoryModalOpen(!usePOS().isSalesHistoryModalOpen) },
         { key: 'F8', label: 'Payment', action: () => setIsPaymentModalOpen(!isPaymentModalOpen) },
         {
             key: 'F12', label: 'Finish', action: () => {

@@ -15,6 +15,20 @@ const StockMaster: React.FC = () => {
 
     const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
     const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
+    const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+
+    const { movements } = useInventory();
+    const itemHistory = movements.filter(m => m.itemId === selectedItem?.id);
+
+    const getMovementStyle = (type: string) => {
+        switch (type) {
+            case 'Sale': return 'bg-rose-100 text-rose-600';
+            case 'Purchase': return 'bg-emerald-100 text-emerald-600';
+            case 'Transfer': return 'bg-indigo-100 text-indigo-600';
+            case 'Adjustment': return 'bg-amber-100 text-amber-600';
+            default: return 'bg-slate-100 text-slate-600';
+        }
+    };
 
     const [transferData, setTransferData] = useState({
         sourceWarehouseId: '',
@@ -208,13 +222,89 @@ const StockMaster: React.FC = () => {
                                     Adjust
                                 </button>
                             </div>
-                            <button className="w-full py-4 bg-slate-50 text-slate-400 rounded-2xl font-black text-xs uppercase tracking-[0.2em] border border-dashed border-slate-200 hover:bg-slate-100 transition-all">
+                            <button
+                                onClick={() => setIsHistoryModalOpen(true)}
+                                className="w-full py-4 bg-slate-50 text-slate-400 rounded-2xl font-black text-xs uppercase tracking-[0.2em] border border-dashed border-slate-200 hover:bg-slate-100 transition-all"
+                            >
                                 View Full Card History
                             </button>
                         </div>
                     </Card>
                 </div>
             )}
+
+            {/* History Modal */}
+            <Modal
+                isOpen={isHistoryModalOpen}
+                onClose={() => setIsHistoryModalOpen(false)}
+                title={`Stock Card - ${selectedItem?.name}`}
+                size="lg"
+            >
+                <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
+                    <div className="flex justify-between items-center">
+                        <div>
+                            <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Bin Card History</p>
+                            <h4 className="text-sm font-bold text-slate-600 mt-1">Audit Trail for {selectedItem?.sku}</h4>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Current Balance</p>
+                            <p className="text-lg font-black text-indigo-600 font-mono italic">{selectedItem?.onHand} {selectedItem?.unit}</p>
+                        </div>
+                    </div>
+
+                    <div className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+                        <table className="w-full text-left">
+                            <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
+                                <tr>
+                                    <th className="px-6 py-4">Date</th>
+                                    <th className="px-6 py-4">Event</th>
+                                    <th className="px-6 py-4">Warehouse</th>
+                                    <th className="px-6 py-4 text-center">Qty</th>
+                                    <th className="px-6 py-4 text-right">Reference</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {itemHistory.length > 0 ? itemHistory.map(move => (
+                                    <tr key={move.id} className="hover:bg-slate-50/50 transition-colors">
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <div className="text-xs font-bold text-slate-700">
+                                                {new Date(move.timestamp).toLocaleDateString()}
+                                            </div>
+                                            <div className="text-[10px] text-slate-400 font-mono">
+                                                {new Date(move.timestamp).toLocaleTimeString()}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider ${getMovementStyle(move.type)}`}>
+                                                {move.type}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-xs font-bold text-slate-600">
+                                            {warehouses.find(w => w.id === move.warehouseId)?.name || '---'}
+                                        </td>
+                                        <td className="px-6 py-4 text-center">
+                                            <span className={`text-sm font-black font-mono ${move.quantity > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                {move.quantity > 0 ? '+' : ''}{move.quantity}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-500 p-1 rounded uppercase">
+                                                {move.referenceId.slice(0, 8)}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                )) : (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic text-sm">
+                                            No historical transactions found for this item.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </Modal>
 
             {/* Transfer Modal */}
             <Modal
