@@ -76,6 +76,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 const mappedItems: InventoryItem[] = products.map((p: any) => ({
                     id: p.id,
                     sku: p.sku,
+                    barcode: p.barcode || undefined,
                     name: p.name,
                     category: p.category_id || 'General', // TODO: Fetch category name
                     unit: p.unit || 'pcs',
@@ -162,6 +163,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         try {
             const payload = {
                 sku: item.sku,
+                barcode: item.barcode || null,
                 name: item.name,
                 category_id: item.category === 'General' ? null : item.category,
                 retail_price: item.retailPrice,

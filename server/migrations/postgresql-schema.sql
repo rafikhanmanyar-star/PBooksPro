@@ -429,9 +429,17 @@ CREATE TABLE IF NOT EXISTS shop_products (
     tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     sku TEXT NOT NULL,
+    barcode TEXT,
     retail_price DECIMAL(15, 2) DEFAULT 0,
     UNIQUE(tenant_id, sku)
 );
+
+-- Add barcode column if it doesn't exist
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='shop_products' AND column_name='barcode') THEN
+        ALTER TABLE shop_products ADD COLUMN barcode TEXT;
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS shop_sales (
     id TEXT PRIMARY KEY DEFAULT uuid_generate_v4(),

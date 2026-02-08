@@ -16,6 +16,7 @@ const InventoryContent: React.FC = () => {
     const [isNewSkuModalOpen, setIsNewSkuModalOpen] = useState(false);
     const [newItemData, setNewItemData] = useState({
         sku: '',
+        barcode: '',
         name: '',
         category: 'General',
         retailPrice: 0,
@@ -28,6 +29,7 @@ const InventoryContent: React.FC = () => {
         addItem({
             id: '', // Will be generated
             sku: newItemData.sku || `SKU-${Date.now()}`,
+            barcode: newItemData.barcode || undefined,
             name: newItemData.name,
             category: newItemData.category,
             retailPrice: Number(newItemData.retailPrice),
@@ -44,6 +46,7 @@ const InventoryContent: React.FC = () => {
         setIsNewSkuModalOpen(false);
         setNewItemData({
             sku: '',
+            barcode: '',
             name: '',
             category: 'General',
             retailPrice: 0,
@@ -121,6 +124,14 @@ const InventoryContent: React.FC = () => {
                             value={newItemData.sku}
                             onChange={(e) => setNewItemData({ ...newItemData, sku: e.target.value })}
                         />
+                        <Input
+                            label="Barcode"
+                            placeholder="Scan or enter barcode"
+                            value={newItemData.barcode}
+                            onChange={(e) => setNewItemData({ ...newItemData, barcode: e.target.value })}
+                        />
+                    </div>
+                    <div className="grid grid-cols-1 gap-4">
                         <Input
                             label="Product Name"
                             placeholder="e.g. Cotton T-Shirt"

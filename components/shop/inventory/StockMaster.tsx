@@ -66,7 +66,8 @@ const StockMaster: React.FC = () => {
 
     const filteredItems = items.filter(item =>
         item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.sku.includes(searchQuery)
+        item.sku.includes(searchQuery) ||
+        (item.barcode && item.barcode.includes(searchQuery))
     );
 
     return (
@@ -108,7 +109,10 @@ const StockMaster: React.FC = () => {
                                     >
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="font-bold text-slate-800 text-sm">{item.name}</div>
-                                            <div className="text-[10px] text-slate-400 font-mono italic">{item.sku}</div>
+                                            <div className="text-[10px] text-slate-400 font-mono italic">SKU: {item.sku}</div>
+                                            {item.barcode && (
+                                                <div className="text-[10px] text-indigo-500 font-mono font-bold mt-0.5">📊 {item.barcode}</div>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4 text-sm font-black font-mono text-slate-700">{item.onHand}</td>
                                         <td className="px-6 py-4">
@@ -141,6 +145,9 @@ const StockMaster: React.FC = () => {
                             <div>
                                 <h2 className="text-xl font-black text-slate-800">{selectedItem.name}</h2>
                                 <p className="text-[10px] font-black uppercase text-indigo-500 tracking-widest mt-1">SKU ID: {selectedItem.sku}</p>
+                                {selectedItem.barcode && (
+                                    <p className="text-[10px] font-black uppercase text-emerald-600 tracking-widest mt-0.5">📊 BARCODE: {selectedItem.barcode}</p>
+                                )}
                             </div>
                             <button
                                 onClick={() => setSelectedItem(null)}
