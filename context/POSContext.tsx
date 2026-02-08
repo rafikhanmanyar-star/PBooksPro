@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
     POSCartItem,
     POSProduct,
@@ -12,6 +12,9 @@ import {
 import { shopApi } from '../services/api/shopApi';
 import { ContactsApiRepository } from '../services/api/repositories/contactsApi';
 import { CURRENCY } from '../constants';
+import { BarcodeScanner, createBarcodeScanner } from '../services/barcode/barcodeScanner';
+import { ThermalPrinter, createThermalPrinter, ReceiptData } from '../services/printer/thermalPrinter';
+
 
 
 interface POSContextType {
@@ -54,6 +57,8 @@ interface POSContextType {
     setSearchQuery: (query: string) => void;
 
     completeSale: () => Promise<void>;
+    printReceipt: (saleData?: any) => Promise<void>;
+    lastCompletedSale: any | null;
 }
 
 const POSContext = createContext<POSContextType | undefined>(undefined);
@@ -67,6 +72,12 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const [isHeldSalesModalOpen, setIsHeldSalesModalOpen] = useState(false);
     const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [lastCompletedSale, setLastCompletedSale] = useState<any | null>(null);
+
+    // Barcode scanner and printer instances
+    const barcodeScannerRef = useRef<BarcodeScanner | null>(null);
+    const thermalPrinterRef = useRef<ThermalPrinter | null>(null);
+
 
     // Totals Calculation
     const totals = useMemo(() => {
@@ -80,6 +91,84 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         return { subtotal, taxTotal, discountTotal, grandTotal, totalPaid, balanceDue, changeDue };
     }, [cart, payments]);
+
+    // Initialize barcode scanner and thermal printer
+    useEffect(() => {
+        // Initialize thermal printer
+        if (!thermalPrinterRef.current) {
+            thermalPrinterRef.current = createThermalPrinter({
+                paperWidth: 80, // 80mm thermal paper
+                autoConnect: true
+            });
+        }
+
+        // Initialize barcode scanner
+        if (!barcodeScannerRef.current) {
+            barcodeScannerRef.current = createBarcodeScanner((barcode) => {
+                console.log('Barcode scanned:', barcode);
+                setSearchQuery(barcode);
+            });
+            barcodeScannerRef.current.start();
+        }
+
+        // Cleanup on unmount
+        return () => {
+            if (barcodeScannerRef.current) {
+                barcodeScannerRef.current.stop();
+            }
+        };
+    }, []);
+
+    // Print receipt function
+    const printReceipt = useCallback(async (saleData?: any) => {
+        try {
+            const dataToUse = saleData || lastCompletedSale;
+            if (!dataToUse) {
+                alert('No sale data available to print');
+                return;
+            }
+
+            const receiptData: ReceiptData = {
+                storeName: 'PBooks Pro Store',
+                storeAddress: 'Karachi, Pakistan',
+                storePhone: '+92-XXX-XXXXXXX',
+                taxId: 'TAX-ID-XXXXX',
+                receiptNumber: dataToUse.saleNumber,
+                date: new Date(dataToUse.createdAt || Date.now()).toLocaleDateString(),
+                time: new Date(dataToUse.createdAt || Date.now()).toLocaleTimeString(),
+                cashier: dataToUse.userId || 'Cashier',
+                customer: customer?.name,
+                items: dataToUse.items.map((item: any) => ({
+                    name: item.name || 'Unknown Item',
+                    quantity: item.quantity,
+                    unitPrice: item.unitPrice,
+                    discount: item.discountAmount || 0,
+                    total: item.subtotal
+                })),
+                subtotal: dataToUse.subtotal,
+                discount: dataToUse.discountTotal,
+                tax: dataToUse.taxTotal,
+                total: dataToUse.grandTotal,
+                payments: dataToUse.paymentDetails.map((p: any) => ({
+                    method: p.method,
+                    amount: p.amount
+                })),
+                change: dataToUse.changeDue > 0 ? dataToUse.changeDue : undefined,
+                footer: 'Thank you for shopping with us!'
+            };
+
+            if (thermalPrinterRef.current) {
+                await thermalPrinterRef.current.printReceipt(receiptData);
+                console.log('Receipt printed successfully');
+            } else {
+                throw new Error('Printer not initialized');
+            }
+        } catch (error: any) {
+            console.error('Failed to print receipt:', error);
+            alert('Failed to print receipt: ' + (error.message || 'Unknown error'));
+        }
+    }, [lastCompletedSale, customer]);
+
 
     const addToCart = useCallback((product: POSProduct, variant?: POSProductVariant, quantity: number = 1) => {
         setCart(prev => {
@@ -230,15 +319,20 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 paymentDetails: payments,
                 items: cart.map(item => ({
                     productId: item.productId,
+                    name: item.name, // Include name for receipt printing
                     quantity: item.quantity,
                     unitPrice: item.unitPrice,
                     taxAmount: item.taxAmount,
                     discountAmount: item.discountAmount,
                     subtotal: (item.unitPrice * item.quantity) - item.discountAmount + item.taxAmount
-                }))
+                })),
+                createdAt: new Date().toISOString()
             };
 
             await shopApi.createSale(saleData);
+
+            // Save sale data for receipt printing
+            setLastCompletedSale(saleData);
 
             clearCart();
             setIsPaymentModalOpen(false);
@@ -296,7 +390,9 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsCustomerModalOpen,
         searchQuery,
         setSearchQuery,
-        completeSale
+        completeSale,
+        printReceipt,
+        lastCompletedSale
     };
 
     return <POSContext.Provider value={value}>{children}</POSContext.Provider>;
