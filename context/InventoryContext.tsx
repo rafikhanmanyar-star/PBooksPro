@@ -20,6 +20,7 @@ interface InventoryContextType {
     updateStock: (itemId: string, warehouseId: string, delta: number, type: any, referenceId: string, notes?: string) => void;
     requestTransfer: (transfer: Omit<StockTransfer, 'id' | 'timestamp' | 'status'>) => void;
     approveAdjustment: (adjustmentId: string) => void;
+    refreshWarehouses: () => Promise<void>; // NEW: Refresh warehouses list
 
     // Filters & Dashboard Data
     lowStockItems: InventoryItem[];
@@ -98,6 +99,24 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             }
         };
         fetchData();
+    }, []);
+
+    // NEW: Refresh warehouses function
+    const refreshWarehouses = useCallback(async () => {
+        try {
+            console.log('🔄 [InventoryContext] Refreshing warehouses...');
+            const warehousesList = await shopApi.getWarehouses();
+            const whs: Warehouse[] = warehousesList.map((w: any) => ({
+                id: w.id,
+                name: w.name,
+                code: w.code,
+                location: w.location || 'Main'
+            }));
+            setWarehouses(whs);
+            console.log('✅ [InventoryContext] Warehouses refreshed:', whs);
+        } catch (error) {
+            console.error('Failed to refresh warehouses:', error);
+        }
     }, []);
 
     const updateStock = useCallback(async (
@@ -233,6 +252,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         updateStock,
         requestTransfer,
         approveAdjustment,
+        refreshWarehouses,
         lowStockItems,
         totalInventoryValue
     };
