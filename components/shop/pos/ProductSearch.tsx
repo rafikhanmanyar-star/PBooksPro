@@ -192,12 +192,12 @@ const ProductSearch: React.FC = () => {
                                             {product.barcode}
                                         </div>
                                     )}
-                                    <div className="px-1.5 py-0.5 bg-slate-800/80 text-white rounded text-[10px] font-mono">
-                                        {product.sku}
-                                    </div>
                                 </div>
                             </div>
                             <div className="text-xs font-bold text-slate-800 line-clamp-2 leading-tight mb-1">{product.name}</div>
+                            {product.barcode && (
+                                <div className="text-[9px] font-mono text-indigo-400 mb-2 truncate">Barcode: {product.barcode}</div>
+                            )}
                             <div className="mt-auto flex items-center justify-between">
                                 <span className="text-sm font-black text-indigo-600 font-mono">{CURRENCY} {product.price}</span>
                                 <span className={`text-[10px] font-bold px-1.5 rounded ${product.stockLevel < 10 ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-500'}`}>

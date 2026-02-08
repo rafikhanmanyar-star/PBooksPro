@@ -17,6 +17,7 @@ interface InventoryContextType {
     transfers: StockTransfer[];
 
     addItem: (item: InventoryItem) => Promise<InventoryItem>;
+    updateItem: (id: string, updates: Partial<InventoryItem>) => Promise<void>;
     updateStock: (itemId: string, warehouseId: string, delta: number, type: any, referenceId: string, notes?: string) => void;
     requestTransfer: (transfer: Omit<StockTransfer, 'id' | 'timestamp' | 'status'>) => void;
     approveAdjustment: (adjustmentId: string) => void;
@@ -280,6 +281,29 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
     }, [refreshItems]);
 
+    const updateItem = useCallback(async (id: string, updates: Partial<InventoryItem>) => {
+        try {
+            const payload: any = {};
+            if (updates.name) payload.name = updates.name;
+            if (updates.sku) payload.sku = updates.sku;
+            if (updates.barcode !== undefined) payload.barcode = updates.barcode;
+            if (updates.category) payload.category_id = updates.category === 'General' ? null : updates.category;
+            if (updates.retailPrice !== undefined) payload.retail_price = updates.retailPrice;
+            if (updates.costPrice !== undefined) payload.cost_price = updates.costPrice;
+            if (updates.unit) payload.unit = updates.unit;
+            if (updates.reorderPoint !== undefined) payload.reorder_point = updates.reorderPoint;
+
+            await shopApi.updateProduct(id, payload);
+
+            // Refresh items to sync local state
+            await refreshItems();
+        } catch (error: any) {
+            console.error("Failed to update product:", error);
+            alert(`Failed to update product: ${error.message}`);
+            throw error;
+        }
+    }, [refreshItems]);
+
     const requestTransfer = useCallback((transfer: Omit<StockTransfer, 'id' | 'timestamp' | 'status'>) => {
         const newTransfer: StockTransfer = {
             ...transfer,
@@ -320,6 +344,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         adjustments,
         transfers,
         addItem,
+        updateItem,
         updateStock,
         requestTransfer,
         approveAdjustment,

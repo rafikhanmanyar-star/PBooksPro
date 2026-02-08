@@ -115,6 +115,15 @@ router.post('/products', async (req: any, res) => {
     }
 });
 
+router.put('/products/:id', async (req: any, res) => {
+    try {
+        await getShopService().updateProduct(req.tenantId, req.params.id, req.body);
+        res.json({ success: true, message: 'Product updated successfully' });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 router.get('/inventory', async (req: any, res) => {
     try {
         const inventory = await getShopService().getInventory(req.tenantId);

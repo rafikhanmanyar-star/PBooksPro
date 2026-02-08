@@ -16,9 +16,39 @@ const StockMaster: React.FC = () => {
     const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
     const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-
-    const { movements } = useInventory();
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const { movements, updateItem } = useInventory();
     const itemHistory = movements.filter(m => m.itemId === selectedItem?.id);
+    const [editData, setEditData] = useState<any>(null);
+
+    // Initialize edit data when selected item changes
+    React.useEffect(() => {
+        if (selectedItem) {
+            setEditData({
+                name: selectedItem.name,
+                sku: selectedItem.sku,
+                barcode: selectedItem.barcode || '',
+                category: selectedItem.category,
+                unit: selectedItem.unit,
+                retailPrice: selectedItem.retailPrice,
+                costPrice: selectedItem.costPrice,
+                reorderPoint: selectedItem.reorderPoint
+            });
+        }
+    }, [selectedItem]);
+
+    const handleUpdateItem = async () => {
+        if (!selectedItem || !editData) return;
+        try {
+            await updateItem(selectedItem.id, editData);
+            setIsEditModalOpen(false);
+            // Re-select item to refresh side panel
+            const updated = items.find(i => i.id === selectedItem.id);
+            if (updated) setSelectedItem(updated);
+        } catch (error) {
+            console.error(error);
+        }
+    };
 
     const getMovementStyle = (type: string) => {
         switch (type) {
@@ -231,6 +261,12 @@ const StockMaster: React.FC = () => {
                                 </button>
                             </div>
                             <button
+                                onClick={() => setIsEditModalOpen(true)}
+                                className="w-full py-4 bg-indigo-50 text-indigo-600 rounded-2xl font-black text-xs hover:bg-indigo-100 transition-all uppercase tracking-widest shadow-sm border border-indigo-100 mb-3"
+                            >
+                                Edit Product Details
+                            </button>
+                            <button
                                 onClick={() => setIsHistoryModalOpen(true)}
                                 className="w-full py-4 bg-slate-50 text-slate-400 rounded-2xl font-black text-xs uppercase tracking-[0.2em] border border-dashed border-slate-200 hover:bg-slate-100 transition-all"
                             >
@@ -410,6 +446,66 @@ const StockMaster: React.FC = () => {
                         </Button>
                     </div>
                 </div>
+            </Modal>
+
+            {/* Edit Product Modal */}
+            <Modal
+                isOpen={isEditModalOpen}
+                onClose={() => setIsEditModalOpen(false)}
+                title={`Edit Product - ${selectedItem?.name}`}
+            >
+                {editData && (
+                    <div className="space-y-4">
+                        <Input
+                            label="Product Name"
+                            value={editData.name}
+                            onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                        />
+                        <div className="grid grid-cols-2 gap-4">
+                            <Input
+                                label="SKU"
+                                value={editData.sku}
+                                onChange={(e) => setEditData({ ...editData, sku: e.target.value })}
+                            />
+                            <Input
+                                label="Barcode"
+                                value={editData.barcode}
+                                onChange={(e) => setEditData({ ...editData, barcode: e.target.value })}
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <Input
+                                label="Retail Price"
+                                type="number"
+                                value={editData.retailPrice}
+                                onChange={(e) => setEditData({ ...editData, retailPrice: Number(e.target.value) })}
+                            />
+                            <Input
+                                label="Cost Price"
+                                type="number"
+                                value={editData.costPrice}
+                                onChange={(e) => setEditData({ ...editData, costPrice: Number(e.target.value) })}
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <Input
+                                label="Unit"
+                                value={editData.unit}
+                                onChange={(e) => setEditData({ ...editData, unit: e.target.value })}
+                            />
+                            <Input
+                                label="Reorder Point"
+                                type="number"
+                                value={editData.reorderPoint}
+                                onChange={(e) => setEditData({ ...editData, reorderPoint: Number(e.target.value) })}
+                            />
+                        </div>
+                        <div className="flex justify-end gap-3 mt-6">
+                            <Button variant="secondary" onClick={() => setIsEditModalOpen(false)}>Cancel</Button>
+                            <Button onClick={handleUpdateItem}>Save Changes</Button>
+                        </div>
+                    </div>
+                )}
             </Modal>
         </div>
     );
