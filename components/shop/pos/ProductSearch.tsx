@@ -82,59 +82,58 @@ const ProductSearch: React.FC = () => {
 
     const filteredProducts = useMemo(() => {
         const query = searchQuery.toLowerCase().trim();
+        if (!query) return products.filter(p => selectedCategory === 'all' || p.categoryId === selectedCategory);
 
         return products.filter(p => {
-            // Priority 1: Exact barcode match (case-sensitive for barcodes)
-            if (p.barcode && p.barcode === searchQuery.trim()) {
-                return true;
-            }
+            const barcode = (p.barcode || '').toLowerCase();
+            const sku = (p.sku || '').toLowerCase();
+            const name = (p.name || '').toLowerCase();
+
+            // Priority 1: Exact barcode match
+            if (barcode === query) return true;
 
             // Priority 2: Partial barcode match
-            if (p.barcode && p.barcode.includes(searchQuery.trim())) {
-                return true;
-            }
+            if (barcode.includes(query)) return true;
 
-            // Priority 3: Search in all other fields
-            const matchesName = p.name.toLowerCase().includes(query);
-            const matchesSku = p.sku.toLowerCase().includes(query);
-            const matchesCategory = p.categoryId.toLowerCase().includes(query);
-            const matchesPrice = p.price.toString().includes(query);
-            const matchesUnit = p.unit.toLowerCase().includes(query);
+            // Priority 3: Search in other fields (respected by category)
+            const matchesOther = name.includes(query) ||
+                sku.includes(query) ||
+                p.categoryId.toLowerCase().includes(query) ||
+                p.price.toString().includes(query) ||
+                p.unit.toLowerCase().includes(query);
 
-            const matchesSearch = matchesName || matchesSku || matchesCategory || matchesPrice || matchesUnit;
             const matchesCat = selectedCategory === 'all' || p.categoryId === selectedCategory;
 
-            return matchesSearch && matchesCat;
+            return matchesOther && matchesCat;
         }).sort((a, b) => {
-            // Sort by relevance: exact barcode matches first, then partial matches, then name matches
-            const aExactBarcode = a.barcode === searchQuery.trim() ? 1 : 0;
-            const bExactBarcode = b.barcode === searchQuery.trim() ? 1 : 0;
+            const aBarcode = (a.barcode || '').toLowerCase();
+            const bBarcode = (b.barcode || '').toLowerCase();
 
-            if (aExactBarcode !== bExactBarcode) {
-                return bExactBarcode - aExactBarcode; // Exact barcode matches first
-            }
+            // Exact barcode matches first
+            if (aBarcode === query && bBarcode !== query) return -1;
+            if (bBarcode === query && aBarcode !== query) return 1;
 
-            const aPartialBarcode = a.barcode && a.barcode.includes(searchQuery.trim()) ? 1 : 0;
-            const bPartialBarcode = b.barcode && b.barcode.includes(searchQuery.trim()) ? 1 : 0;
+            // Partial barcode matches second
+            const aPartial = aBarcode.includes(query);
+            const bPartial = bBarcode.includes(query);
+            if (aPartial && !bPartial) return -1;
+            if (bPartial && !aPartial) return 1;
 
-            if (aPartialBarcode !== bPartialBarcode) {
-                return bPartialBarcode - aPartialBarcode; // Partial barcode matches second
-            }
-
-            // Then alphabetically by name
             return a.name.localeCompare(b.name);
         });
     }, [searchQuery, selectedCategory, products]);
 
     // Handle barcode "instant add"
     useEffect(() => {
-        if (!searchQuery) return;
-        const exactMatch = products.find(p => p.barcode === searchQuery);
+        const query = searchQuery.trim();
+        if (!query || query.length < 3) return; // Prevent too short matches
+
+        const exactMatch = products.find(p => p.barcode && p.barcode.toLowerCase() === query.toLowerCase());
         if (exactMatch) {
             addToCart(exactMatch);
-            setSearchQuery('');
+            // Search will be cleared by addToCart via context
         }
-    }, [searchQuery, addToCart, setSearchQuery, products]);
+    }, [searchQuery, addToCart, products]);
 
     return (
         <div className="flex flex-col h-full bg-slate-50">
@@ -187,8 +186,15 @@ const ProductSearch: React.FC = () => {
                                 ) : (
                                     React.cloneElement(ICONS.package as React.ReactElement, { size: 32 } as any)
                                 )}
-                                <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-slate-800/80 text-[pattern] text-white rounded text-[10px] font-mono">
-                                    {product.sku}
+                                <div className="absolute bottom-1 right-1 flex flex-col items-end gap-0.5">
+                                    {product.barcode && (
+                                        <div className="px-1.5 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-mono font-bold shadow-sm">
+                                            {product.barcode}
+                                        </div>
+                                    )}
+                                    <div className="px-1.5 py-0.5 bg-slate-800/80 text-white rounded text-[10px] font-mono">
+                                        {product.sku}
+                                    </div>
                                 </div>
                             </div>
                             <div className="text-xs font-bold text-slate-800 line-clamp-2 leading-tight mb-1">{product.name}</div>

@@ -78,11 +78,12 @@ const StockMaster: React.FC = () => {
         setAdjustData({ warehouseId: '', type: 'Increase', quantity: 0, reason: '' });
     };
 
-    const filteredItems = items.filter(item =>
-        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.sku.includes(searchQuery) ||
-        (item.barcode && item.barcode.includes(searchQuery))
-    );
+    const filteredItems = items.filter(item => {
+        const query = searchQuery.toLowerCase().trim();
+        return item.name.toLowerCase().includes(query) ||
+            item.sku.toLowerCase().includes(query) ||
+            (item.barcode && item.barcode.toLowerCase().includes(query));
+    });
 
     return (
         <div className="flex gap-8 animate-fade-in relative h-full">
@@ -95,7 +96,7 @@ const StockMaster: React.FC = () => {
                     <input
                         type="text"
                         className="block w-full pl-10 pr-3 py-3 border border-slate-200 rounded-xl leading-5 bg-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
-                        placeholder="Search SKU or Name..."
+                        placeholder="Search SKU, Name or Barcode..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
@@ -107,6 +108,7 @@ const StockMaster: React.FC = () => {
                             <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
                                 <tr>
                                     <th className="px-6 py-4">Item Details</th>
+                                    <th className="px-6 py-4">Barcode</th>
                                     <th className="px-6 py-4">On Hand</th>
                                     <th className="px-6 py-4">Available</th>
                                     <th className="px-6 py-4">In Transit</th>
@@ -124,8 +126,14 @@ const StockMaster: React.FC = () => {
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="font-bold text-slate-800 text-sm">{item.name}</div>
                                             <div className="text-[10px] text-slate-400 font-mono italic">SKU: {item.sku}</div>
-                                            {item.barcode && (
-                                                <div className="text-[10px] text-indigo-500 font-mono font-bold mt-0.5">📊 {item.barcode}</div>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            {item.barcode ? (
+                                                <div className="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg w-fit border border-indigo-100">
+                                                    <span className="text-xs font-mono font-bold">{item.barcode}</span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-slate-300 text-[10px] italic">No Barcode</span>
                                             )}
                                         </td>
                                         <td className="px-6 py-4 text-sm font-black font-mono text-slate-700">{item.onHand}</td>
