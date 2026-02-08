@@ -1023,7 +1023,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     console.log('[AppContext] About to initialize database hooks...');
     console.log('[AppContext] initialState keys:', Object.keys(initialState));
 
-    const [dbState, setDbState] = useDatabaseState<AppState>('finance_app_state_v4', initialState);
+    const [dbState, setDbState, dbStateHelpers] = useDatabaseState<AppState>('finance_app_state_v4', initialState);
     const [fallbackState, setFallbackState] = useDatabaseStateFallback<AppState>('finance_app_state_v4', initialState);
 
     console.log('[AppContext] Database hooks initialized successfully');
@@ -1031,6 +1031,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Initialize storedState safely - use initialState as fallback if hooks aren't ready
     const storedState = (useFallback ? fallbackState : dbState) || initialState;
     const setStoredState = useFallback ? setFallbackState : setDbState;
+    // Single saver contract: persist only via hook’s saveNow (see doc/DB_STATE_LOADER_SAVER_CONTRACT.md)
+    const saveNow = dbStateHelpers?.saveNow;
 
     // Use a ref to track storedState to avoid initialization issues in dependency arrays
     // Initialize ref with initialState to ensure it's always defined
@@ -1359,60 +1361,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             // Replace state with merged data using functional update
                             // This ensures we access the current state value correctly
                             if (isMounted) {
-                                setStoredState(prev => {
-                                    const fullState: AppState = {
-                                        ...prev,
-                                        // Use merged data - offline transactions are included
-                                        accounts: Array.from(apiAccountsMap.values()),
-                                        contacts: Array.from(apiContactsMap.values()),
-                                        transactions: Array.from(apiTransactionsMap.values()),
-                                        categories: Array.from(apiCategoriesMap.values()),
-                                        projects: apiState.projects || [],
-                                        buildings: apiState.buildings || [],
-                                        properties: apiState.properties || [],
-                                        units: apiState.units || [],
-                                        invoices: Array.from(apiInvoicesMap.values()),
-                                        bills: Array.from(apiBillsMap.values()),
-                                        budgets: apiState.budgets || [],
-                                        rentalAgreements: apiState.rentalAgreements || [],
-                                        projectAgreements: apiState.projectAgreements || [],
-                                        contracts: apiState.contracts || [],
-                                        pmCycleAllocations: apiState.pmCycleAllocations || [],
-                                        vendors: Array.from(apiVendorsMap.values()),
-                                        transactionLog: apiState.transactionLog || [],
-                                    };
+                                const fullState: AppState = {
+                                    ...storedStateRef.current,
+                                    accounts: Array.from(apiAccountsMap.values()),
+                                    contacts: Array.from(apiContactsMap.values()),
+                                    transactions: Array.from(apiTransactionsMap.values()),
+                                    categories: Array.from(apiCategoriesMap.values()),
+                                    projects: apiState.projects || [],
+                                    buildings: apiState.buildings || [],
+                                    properties: apiState.properties || [],
+                                    units: apiState.units || [],
+                                    invoices: Array.from(apiInvoicesMap.values()),
+                                    bills: Array.from(apiBillsMap.values()),
+                                    budgets: apiState.budgets || [],
+                                    rentalAgreements: apiState.rentalAgreements || [],
+                                    projectAgreements: apiState.projectAgreements || [],
+                                    contracts: apiState.contracts || [],
+                                    pmCycleAllocations: apiState.pmCycleAllocations || [],
+                                    vendors: Array.from(apiVendorsMap.values()),
+                                    transactionLog: apiState.transactionLog || [],
+                                };
 
-                                    // Enhanced vendor logging for debugging
-                                    const vendorsInState = Array.from(apiVendorsMap.values());
-                                    logger.logCategory('sync', `📦 Vendors in merged state: ${vendorsInState.length}`);
-                                    if (vendorsInState.length > 0) {
-                                        logger.logCategory('sync', '📋 Sample vendors:', vendorsInState.slice(0, 3).map(v => ({ id: v.id, name: v.name })));
-                                    } else {
-                                        logger.warnCategory('sync', '⚠️ No vendors in merged state after API load');
+                                const vendorsInState = Array.from(apiVendorsMap.values());
+                                logger.logCategory('sync', `📦 Vendors in merged state: ${vendorsInState.length}`);
+                                if (vendorsInState.length > 0) {
+                                    logger.logCategory('sync', '📋 Sample vendors:', vendorsInState.slice(0, 3).map(v => ({ id: v.id, name: v.name })));
+                                } else {
+                                    logger.warnCategory('sync', '⚠️ No vendors in merged state after API load');
+                                }
+
+                                setStoredState(fullState);
+                                if (!useFallback && getDatabaseService().isReady() && saveNow) {
+                                    try {
+                                        await saveNow(fullState, { disableSyncQueueing: true });
+                                    } catch (saveError) {
+                                        console.warn('⚠️ Could not save API data to local database:', saveError);
                                     }
-
-                                    // Save API data to local database with proper tenant_id (async, don't await)
-                                    // This ensures offline access and proper tenant isolation
-                                    // IMPORTANT: Disable sync queueing since this data is FROM cloud, not TO cloud
-                                    // Also clear existing sync queue since data is already in cloud
-                                    const dbService = getDatabaseService();
-                                    if (dbService.isReady()) {
-                                        // DON'T clear sync queue - local changes need to be pushed upstream!
-                                        // Bi-directional sync will handle merging local and remote changes
-                                        // Use IIFE to handle async operations
-                                        (async () => {
-                                            try {
-                                                const appStateRepo = await getAppStateRepository();
-                                                // disableSyncQueueing=true prevents re-queueing cloud data
-                                                await appStateRepo.saveState(fullState, true);
-                                            } catch (saveError) {
-                                                console.warn('⚠️ Could not save API data to local database:', saveError);
-                                            }
-                                        })();
-                                    }
-
-                                    return fullState;
-                                });
+                                }
                                 console.log('✅ Loaded and merged data from API + offline sync queue:', {
                                     accounts: Array.from(apiAccountsMap.values()).length,
                                     contacts: Array.from(apiContactsMap.values()).length,
@@ -1456,41 +1441,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             // Continue anyway - app can work without database
                         }
 
-                        // Wait for state to load from database
+                        // Load state from database explicitly so we know it's in React before finishing init.
+                        // (Previously we only checked dbService.isReady(), so UI could show empty state briefly.)
                         setInitMessage('Loading application data from database...');
                         setInitProgress(70);
 
-                        // Wait longer for database state to load (up to 5 seconds)
-                        // Note: We can't directly access storedState here as it may not be initialized
-                        // Instead, we'll rely on the database loading mechanism and timeout
-                        let stateLoaded = false;
-                        const checkStateLoaded = () => {
-                            // Check if database has been initialized and has data
-                            // We'll check this by trying to load from database directly
-                            try {
-                                const dbService = getDatabaseService();
-                                if (dbService.isReady()) {
-                                    // Database is ready, assume state will be loaded
-                                    return true;
-                                }
-                            } catch {
-                                // Database not ready yet
+                        try {
+                            const appStateRepo = await getAppStateRepository();
+                            const loadedState = await appStateRepo.loadState();
+                            if (isMounted) {
+                                setStoredState(loadedState as AppState);
+                                logger.logCategory('database', '✅ Database state loaded for offline init');
                             }
-                            return false;
-                        };
-
-                        // Poll for state to load (with timeout)
-                        const maxWaitTime = 5000; // 5 seconds max
-                        const pollInterval = 100; // Check every 100ms
-                        const startTime = Date.now();
-
-                        while (!stateLoaded && (Date.now() - startTime) < maxWaitTime) {
-                            await new Promise(resolve => setTimeout(resolve, pollInterval));
-                            if (checkStateLoaded()) {
-                                stateLoaded = true;
-                                logger.logCategory('database', '✅ Database state loaded');
-                                break;
-                            }
+                        } catch (loadErr) {
+                            logger.warnCategory('database', '⚠️ Offline path loadState failed, continuing:', loadErr);
                         }
 
                         if (!isMounted) return;
@@ -3420,49 +3384,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 previousTransactionsLengthRef.current = state.transactions.length;
                 previousBillsLengthRef.current = state.bills.length;
 
-                // Save immediately for critical data changes (no delay for transactions)
-                const saveImmediately = async () => {
-                    try {
-                        const dbService = getDatabaseService();
-                        if (!dbService.isReady()) {
-                            await dbService.initialize();
-                        }
-
-                        const appStateRepo = await getAppStateRepository();
-                        await appStateRepo.saveState(state);
-                        console.log('✅ State saved immediately after data change:', {
-                            contacts: state.contacts.length,
-                            transactions: state.transactions.length,
-                            bills: state.bills.length,
-                            invoices: state.invoices.length,
-                        });
-                    } catch (error) {
-                        console.error('❌ Failed to save state after data change:', error);
-                        // Log detailed error
-                        const { getErrorLogger } = await import('../services/errorLogger');
-                        getErrorLogger().logError(error instanceof Error ? error : new Error(String(error)), {
-                            errorType: 'immediate_save_failed',
-                            componentStack: 'AppContext immediate save',
-                            stateSnapshot: {
+                if (!useFallback && saveNow) {
+                    const doSave = async () => {
+                        try {
+                            await saveNow(state);
+                            console.log('✅ State saved immediately after data change:', {
                                 contacts: state.contacts.length,
                                 transactions: state.transactions.length,
-                                bills: state.bills.length
-                            }
-                        });
+                                bills: state.bills.length,
+                                invoices: state.invoices.length,
+                            });
+                        } catch (error) {
+                            console.error('❌ Failed to save state after data change:', error);
+                            const { getErrorLogger } = await import('../services/errorLogger');
+                            getErrorLogger().logError(error instanceof Error ? error : new Error(String(error)), {
+                                errorType: 'immediate_save_failed',
+                                componentStack: 'AppContext immediate save',
+                                stateSnapshot: {
+                                    contacts: state.contacts.length,
+                                    transactions: state.transactions.length,
+                                    bills: state.bills.length
+                                }
+                            });
+                        }
+                    };
+                    if (transactionsChanged) {
+                        doSave();
+                    } else {
+                        const saveTimer = setTimeout(doSave, 200);
+                        return () => clearTimeout(saveTimer);
                     }
-                };
-
-                // For transactions, save immediately (no delay)
-                if (transactionsChanged) {
-                    saveImmediately();
-                } else {
-                    // For other changes, small delay
-                    const saveTimer = setTimeout(saveImmediately, 200);
-                    return () => clearTimeout(saveTimer);
                 }
             }
         }
-    }, [state.contacts.length, state.transactions.length, state.bills.length, state.invoices.length, isInitializing, state]);
+    }, [state.contacts.length, state.transactions.length, state.bills.length, state.invoices.length, isInitializing, state, useFallback, saveNow]);
 
     // 🔧 FIX: Sync authenticated user from AuthContext to AppContext state
     useEffect(() => {
@@ -3492,16 +3447,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, [auth.user, auth.isAuthenticated, state.currentUser]);
 
     useEffect(() => {
-        if (!isInitializing && state.currentUser) {
-            // After login, ensure state is saved immediately
+        if (!isInitializing && state.currentUser && !useFallback && saveNow) {
             const saveTimer = setTimeout(async () => {
                 try {
-                    const dbService = getDatabaseService();
-                    if (dbService.isReady()) {
-                        const appStateRepo = await getAppStateRepository();
-                        await appStateRepo.saveState(state);
-                        console.log('✅ State saved after login');
-                    }
+                    await saveNow(state);
+                    console.log('✅ State saved after login');
                 } catch (error) {
                     console.error('Failed to save state after login:', error);
                     // Check if it's a missing table error
@@ -3570,26 +3520,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             return () => clearTimeout(saveTimer);
         }
-    }, [state.currentUser, isInitializing, state]);
+    }, [state.currentUser, isInitializing, state, useFallback, saveNow]);
 
     // Listen for logout event to save state before logout
     useEffect(() => {
         const handleSaveStateBeforeLogout = async (event: CustomEvent) => {
             try {
                 logger.logCategory('database', '💾 Saving state before logout...');
-                const dbService = getDatabaseService();
-                if (dbService.isReady()) {
-                    const appStateRepo = await getAppStateRepository();
-                    await appStateRepo.saveState(state);
+                if (!useFallback && saveNow) {
+                    await saveNow(state);
                     logger.logCategory('database', '✅ State saved successfully before logout');
-                } else {
-                    logger.warnCategory('database', '⚠️ Database not ready, skipping save before logout');
+                } else if (!useFallback) {
+                    const dbService = getDatabaseService();
+                    if (dbService.isReady()) {
+                        const appStateRepo = await getAppStateRepository();
+                        await appStateRepo.saveState(state);
+                        logger.logCategory('database', '✅ State saved successfully before logout');
+                    } else {
+                        logger.warnCategory('database', '⚠️ Database not ready, skipping save before logout');
+                    }
                 }
-                // Dispatch event to indicate save is complete
                 window.dispatchEvent(new CustomEvent('state-saved-for-logout'));
             } catch (error) {
                 logger.errorCategory('database', '❌ Failed to save state before logout:', error);
-                // Still dispatch event even if save fails, so logout can proceed
                 window.dispatchEvent(new CustomEvent('state-saved-for-logout'));
             }
         };
@@ -3600,7 +3553,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 window.removeEventListener('save-state-before-logout', handleSaveStateBeforeLogout as EventListener);
             };
         }
-    }, [state]);
+    }, [state, useFallback, saveNow]);
 
     // Auto-sync local data to API when user re-authenticates
     useEffect(() => {
@@ -3707,49 +3660,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             const apiService = getAppStateApiService();
                             const apiState = await apiService.loadState();
 
-                            // Create full state with API data using functional update to access current state
-                            setStoredState(prev => {
-                                const fullState: AppState = {
-                                    ...prev,
-                                    // Replace with API data
-                                    accounts: apiState.accounts || [],
-                                    contacts: apiState.contacts || [],
-                                    transactions: apiState.transactions || [],
-                                    categories: apiState.categories || [],
-                                    projects: apiState.projects || [],
-                                    buildings: apiState.buildings || [],
-                                    properties: apiState.properties || [],
-                                    units: apiState.units || [],
-                                    invoices: apiState.invoices || [],
-                                    bills: apiState.bills || [],
-                                    budgets: apiState.budgets || [],
-                                    rentalAgreements: apiState.rentalAgreements || [],
-                                    projectAgreements: apiState.projectAgreements || [],
-                                    contracts: apiState.contracts || [],
-                                    vendors: (apiState.vendors || []).map((v: any) => ({
-                                        ...v,
-                                        isActive: v.isActive ?? v.is_active ?? true
-                                    })),
-                                    installmentPlans: apiState.installmentPlans || [],
-                                    planAmenities: apiState.planAmenities || [],
-                                };
+                            const prev = storedStateRef.current;
+                            const fullState: AppState = {
+                                ...prev,
+                                accounts: apiState.accounts || [],
+                                contacts: apiState.contacts || [],
+                                transactions: apiState.transactions || [],
+                                categories: apiState.categories || [],
+                                projects: apiState.projects || [],
+                                buildings: apiState.buildings || [],
+                                properties: apiState.properties || [],
+                                units: apiState.units || [],
+                                invoices: apiState.invoices || [],
+                                bills: apiState.bills || [],
+                                budgets: apiState.budgets || [],
+                                rentalAgreements: apiState.rentalAgreements || [],
+                                projectAgreements: apiState.projectAgreements || [],
+                                contracts: apiState.contracts || [],
+                                vendors: (apiState.vendors || []).map((v: any) => ({
+                                    ...v,
+                                    isActive: v.isActive ?? v.is_active ?? true
+                                })),
+                                installmentPlans: apiState.installmentPlans || [],
+                                planAmenities: apiState.planAmenities || [],
+                            };
 
-                                // Save API data to local database with proper tenant_id (async, don't await)
-                                // IMPORTANT: Disable sync queueing since this data is FROM cloud, not TO cloud
-                                // DON'T clear sync queue - local changes need to be pushed upstream!
-                                // Bi-directional sync will handle merging local and remote changes
-                                (async () => {
-                                    try {
-                                        const appStateRepo = await getAppStateRepository();
-                                        // disableSyncQueueing=true prevents re-queueing cloud data
-                                        await appStateRepo.saveState(fullState, true);
-                                    } catch (err) {
-                                        logger.errorCategory('database', '⚠️ Failed to save API data to local database:', err);
-                                    }
-                                })();
-
-                                return fullState;
-                            });
+                            setStoredState(fullState);
+                            if (saveNow) {
+                                try {
+                                    await saveNow(fullState, { disableSyncQueueing: true });
+                                } catch (err) {
+                                    logger.errorCategory('database', '⚠️ Failed to save API data to local database:', err);
+                                }
+                            }
 
                             logger.logCategory('sync', '✅ Reloaded and saved data from API for new tenant:', {
                                 contacts: apiState.contacts?.length || 0,
@@ -3772,7 +3715,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         // Update previous tenant ID
         prevTenantIdRef.current = currentTenantId;
-    }, [auth.tenant?.id, isAuthenticated, isInitializing, setStoredState]);
+    }, [auth.tenant?.id, isAuthenticated, isInitializing, setStoredState, saveNow]);
 
     // Show loading/initialization state
     if (isInitializing) {

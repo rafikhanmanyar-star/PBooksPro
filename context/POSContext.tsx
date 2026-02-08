@@ -315,8 +315,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         try {
             const saleNumber = `SALE-${Date.now()}`;
             const saleData = {
-                branchId: 'st-1', // Default Karachi Flagship for now
-                terminalId: 't-1',
+                branchId: null, // TODO: Set up branch configuration
+                terminalId: null, // TODO: Set up terminal configuration
                 userId: 'default-user',
                 customerId: customer?.id,
                 loyaltyMemberId: null, // TODO: Link loyalty member

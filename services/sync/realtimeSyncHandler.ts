@@ -13,6 +13,7 @@ import { getWebSocketClient } from '../websocketClient';
 import { getLockManager } from './lockManager';
 import { isMobileDevice } from '../../utils/platformDetection';
 import { AppAction } from '../../types';
+import { BaseRepository } from '../database/repositories/baseRepository';
 
 // Event name mapping: server event -> { entity, action }
 const EVENT_MAP: Record<string, { entity: string; action: 'create' | 'update' | 'delete' }> = {
@@ -873,11 +874,11 @@ class RealtimeSyncHandler {
         console.log(`[RealtimeSyncHandler] ✅ Dispatched ${actionType} for ${entity}:${entityId}`);
       }
 
-      // Also update local database (desktop only)
+      // Also update local database (desktop only) using schema/tenant-aware path
       if (!isMobileDevice()) {
         try {
           if (action === 'create' || action === 'update') {
-            await this.updateLocalDatabase(entity, entityId, entityData, action);
+            await this.updateLocalDatabase(entity, entityId, normalizedData, action);
           } else if (action === 'delete') {
             await this.deleteFromLocalDatabase(entity, entityId);
           }
@@ -893,7 +894,48 @@ class RealtimeSyncHandler {
   }
 
   /**
-   * Update local database with entity data (desktop only)
+   * Map entity names to table names (entity keys used by AppStateRepository.getRepoByEntityKey).
+   */
+  private static readonly ENTITY_TO_TABLE: Record<string, string> = {
+    transaction: 'transactions',
+    transactions: 'transactions',
+    contact: 'contacts',
+    contacts: 'contacts',
+    account: 'accounts',
+    accounts: 'accounts',
+    category: 'categories',
+    categories: 'categories',
+    project: 'projects',
+    projects: 'projects',
+    invoice: 'invoices',
+    invoices: 'invoices',
+    bill: 'bills',
+    bills: 'bills',
+    building: 'buildings',
+    buildings: 'buildings',
+    property: 'properties',
+    properties: 'properties',
+    unit: 'units',
+    units: 'units',
+    rental_agreement: 'rental_agreements',
+    rental_agreements: 'rental_agreements',
+    project_agreement: 'project_agreements',
+    project_agreements: 'project_agreements',
+    contract: 'contracts',
+    contracts: 'contracts',
+    budget: 'budgets',
+    budgets: 'budgets',
+    plan_amenity: 'plan_amenities',
+    plan_amenities: 'plan_amenities',
+    installment_plan: 'installment_plans',
+    installment_plans: 'installment_plans',
+    vendor: 'vendors',
+    vendors: 'vendors',
+  };
+
+  /**
+   * Update local database with entity data (desktop only).
+   * Uses AppStateRepository.upsertEntity for schema/tenant-aware writes (objectToDbFormat, tenant_id, user_id).
    */
   private async updateLocalDatabase(
     entity: string,
@@ -908,61 +950,18 @@ class RealtimeSyncHandler {
       return;
     }
 
+    const entityKey = RealtimeSyncHandler.ENTITY_TO_TABLE[entity] || entity;
+
     try {
-      // Map entity names to table names
-      const tableMap: Record<string, string> = {
-        'transaction': 'transactions',
-        'transactions': 'transactions',
-        'contact': 'contacts',
-        'contacts': 'contacts',
-        'account': 'accounts',
-        'accounts': 'accounts',
-        'category': 'categories',
-        'categories': 'categories',
-        'project': 'projects',
-        'projects': 'projects',
-        'invoice': 'invoices',
-        'invoices': 'invoices',
-        'bill': 'bills',
-        'bills': 'bills',
-        'building': 'buildings',
-        'buildings': 'buildings',
-        'property': 'properties',
-        'properties': 'properties',
-        'unit': 'units',
-        'units': 'units',
-        'rental_agreement': 'rental_agreements',
-        'rental_agreements': 'rental_agreements',
-        'project_agreement': 'project_agreements',
-        'project_agreements': 'project_agreements',
-        'contract': 'contracts',
-        'contracts': 'contracts',
-        'budget': 'budgets',
-        'budgets': 'budgets',
-        'plan_amenity': 'plan_amenities',
-        'plan_amenities': 'plan_amenities',
-        'installment_plan': 'installment_plans',
-        'installment_plans': 'installment_plans',
-      };
-
-      const tableName = tableMap[entity] || entity;
-
-      // Build SQL based on action
-      if (action === 'create' || action === 'update') {
-        // Normalize data for local schema differences
-        const dbData = tableName === 'rental_agreements'
-          ? this.normalizeRentalAgreementForLocal(data)
-          : data;
-
-        // Use INSERT OR REPLACE for upsert behavior
-        const columns = Object.keys(dbData).join(', ');
-        const placeholders = Object.keys(dbData).map(() => '?').join(', ');
-        const values = Object.values(dbData);
-
-        const sql = `INSERT OR REPLACE INTO ${tableName} (${columns}) VALUES (${placeholders})`;
-        dbService.execute(sql, values);
-        dbService.save();
+      const { AppStateRepository } = await import('../database/repositories/appStateRepository');
+      const appStateRepo = new AppStateRepository();
+      BaseRepository.disableSyncQueueing();
+      try {
+        appStateRepo.upsertEntity(entityKey, data);
+      } finally {
+        BaseRepository.enableSyncQueueing();
       }
+      dbService.save();
     } catch (error) {
       console.error(`[RealtimeSyncHandler] Failed to update local database for ${entity}:${entityId}`, error);
       throw error;

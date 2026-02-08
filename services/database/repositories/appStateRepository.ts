@@ -989,7 +989,7 @@ export class AppStateRepository {
             rental_agreements: this.rentalAgreementsRepo,
             project_agreements: this.projectAgreementsRepo,
             installment_plans: this.installmentPlansRepo,
-
+            vendors: this.vendorsRepo,
         };
         return map[entityKey] ?? null;
     }

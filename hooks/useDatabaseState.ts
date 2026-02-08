@@ -1,8 +1,8 @@
 /**
  * useDatabaseState Hook
- * 
+ *
  * Replacement for useLocalStorage that uses SQL database instead.
- * Provides the same interface for seamless migration.
+ * Single owner of DB persist for app state; see doc/DB_STATE_LOADER_SAVER_CONTRACT.md.
  */
 
 import React, { useState, useEffect, useCallback, Dispatch, SetStateAction } from 'react';
@@ -42,6 +42,9 @@ async function getAppStateRepository(): Promise<any> {
 
 let dbInitialized = false;
 let initializationPromise: Promise<void> | null = null;
+
+/** Set on beforeunload when state is dirty; cleared when save succeeds. Next load can detect possible unsaved data. */
+const DB_STATE_DIRTY_KEY = 'finance_app_state_dirty';
 
 async function ensureDatabaseInitialized(): Promise<void> {
     if (dbInitialized) return;
@@ -86,7 +89,7 @@ async function ensureDatabaseInitialized(): Promise<void> {
 export function useDatabaseState<T extends AppState>(
     key: string,
     initialValue: T
-): [T, Dispatch<SetStateAction<T>>] {
+): UseDatabaseStateResult<T> {
     // Start with initial value immediately - don't block rendering
     const [storedValue, setStoredValue] = useState<T>(initialValue);
     const [isLoading, setIsLoading] = useState(true); // Start as true to indicate loading
@@ -140,7 +143,6 @@ export function useDatabaseState<T extends AppState>(
                         // Only update if the state hasn't been modified by the user in the meantime
                         if (!hasModifiedRef.current) {
                             // Always use loaded state from database (it's the source of truth)
-                            // The database will have the initial state if it's a fresh install
                             console.log('✅ Loaded state from database:', {
                                 users: state.users.length,
                                 accounts: state.accounts.length,
@@ -151,8 +153,19 @@ export function useDatabaseState<T extends AppState>(
                             setStoredValue(state as T);
                             setIsLoading(false);
                         } else {
-                            console.log('⚠️ Database loaded but state was already modified by user - preserving user changes');
+                            // Preserve user changes; persist current state so DB is not left stale
+                            console.log('⚠️ Database loaded but state was already modified by user - preserving user changes and flushing to DB');
                             setIsLoading(false);
+                            const valueToSave = pendingSaveRef.current ?? (storedValue as T);
+                            if (valueToSave && valueToSave !== initialValue) {
+                                ensureDatabaseInitialized()
+                                    .then(async () => {
+                                        const appStateRepo = await getAppStateRepository();
+                                        await appStateRepo.saveState(valueToSave as AppState);
+                                        console.log('✅ User-modified state saved after skipping load');
+                                    })
+                                    .catch((err) => console.warn('⚠️ Failed to save user-modified state after skip load:', err));
+                            }
                         }
                     }
                 } catch (loadError) {
@@ -226,6 +239,7 @@ export function useDatabaseState<T extends AppState>(
 
                     const appStateRepo = await getAppStateRepository();
                     await appStateRepo.saveState(valueToSave as AppState);
+                    if (typeof localStorage !== 'undefined') localStorage.removeItem(DB_STATE_DIRTY_KEY);
                     console.log('✅ State saved to database');
                     pendingSaveRef.current = null;
                 } catch (error) {
@@ -249,80 +263,83 @@ export function useDatabaseState<T extends AppState>(
         }
     }, [storedValue]);
 
-    // Immediate save function (for critical operations)
-    const saveImmediately = useCallback(async () => {
-        const valueToSave = pendingSaveRef.current || storedValue;
+    // Flush to DB (for AppContext: single owner of persist). Clears debounce and saves.
+    const saveNow = useCallback(async (value?: T, options?: { disableSyncQueueing?: boolean }) => {
+        if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+            saveTimeoutRef.current = null;
+        }
+        const valueToSave = value ?? pendingSaveRef.current ?? storedValue;
         if (!valueToSave) return;
 
         try {
             await ensureDatabaseInitialized();
             const appStateRepo = await getAppStateRepository();
-            await appStateRepo.saveState(valueToSave as AppState);
-            console.log('✅ State saved immediately to database');
+            await appStateRepo.saveState(valueToSave as AppState, options?.disableSyncQueueing ?? false);
+            if (typeof localStorage !== 'undefined') localStorage.removeItem(DB_STATE_DIRTY_KEY);
+            console.log('✅ State saved to database (saveNow)');
             pendingSaveRef.current = null;
         } catch (error) {
-            console.error('⚠️ Failed to save state immediately:', error);
+            console.error('⚠️ Failed to save state (saveNow):', error);
+            throw error;
         }
     }, [storedValue]);
 
-    // Save immediately when component unmounts (with error handling)
+    // Save immediately when component unmounts (with error handling).
+    // Always persist latest value (pending or current) when there is something to save;
+    // previously we skipped when pendingSaveRef was set, which lost pending changes.
     useEffect(() => {
         return () => {
-            // Clear any pending timeout
+            // Clear any pending timeout so we don't double-save
             if (saveTimeoutRef.current) {
                 clearTimeout(saveTimeoutRef.current);
             }
 
-            // Save immediately on unmount (only if not already saving)
-            if (!isLoading && !pendingSaveRef.current) {
-                const valueToSave = pendingSaveRef.current || storedValue;
-                if (valueToSave && valueToSave !== initialValue) {
-                    // Mark as saving to prevent multiple unmount saves
-                    pendingSaveRef.current = valueToSave;
-
-                    ensureDatabaseInitialized()
-                        .then(async () => {
-                            const appStateRepo = await getAppStateRepository();
-                            await appStateRepo.saveState(valueToSave as AppState);
-                            console.log('✅ State saved on unmount');
-                        })
-                        .catch((error) => {
-                            // Only log if it's not a UNIQUE constraint error (expected during rapid saves)
-                            const errorMsg = error?.message || String(error);
-                            if (!errorMsg.includes('UNIQUE constraint')) {
-                                console.warn('⚠️ Failed to save state on unmount:', error);
-                            }
-                            // Don't throw - just log and continue
-                        })
-                        .finally(() => {
-                            // Clear the pending save flag after a delay to allow for retries if needed
-                            setTimeout(() => {
-                                pendingSaveRef.current = null;
-                            }, 1000);
-                        });
-                }
+            const valueToSave = pendingSaveRef.current ?? storedValue;
+            const hasSomethingToSave = valueToSave && valueToSave !== initialValue;
+            if (!isLoading && hasSomethingToSave) {
+                ensureDatabaseInitialized()
+                    .then(async () => {
+                        const appStateRepo = await getAppStateRepository();
+                        await appStateRepo.saveState(valueToSave as AppState);
+                        console.log('✅ State saved on unmount');
+                    })
+                    .catch((error) => {
+                        const errorMsg = error?.message || String(error);
+                        if (!errorMsg.includes('UNIQUE constraint')) {
+                            console.warn('⚠️ Failed to save state on unmount:', error);
+                        }
+                    })
+                    .finally(() => {
+                        setTimeout(() => {
+                            pendingSaveRef.current = null;
+                        }, 1000);
+                    });
             }
         };
     }, [storedValue, isLoading, initialValue]);
 
-    // Add window unload handler to save state before page closes
+    // beforeunload/pagehide: best-effort save only. Browsers do not wait for async work,
+    // so close-time save is not guaranteed. We set a dirty flag so next load can detect it.
     useEffect(() => {
         const handleBeforeUnload = () => {
-            // Save immediately before page unloads
             const valueToSave = pendingSaveRef.current || storedValue;
             if (valueToSave && valueToSave !== initialValue) {
-                // Use synchronous storage if possible
                 try {
+                    if (typeof localStorage !== 'undefined') {
+                        localStorage.setItem(DB_STATE_DIRTY_KEY, Date.now().toString());
+                    }
                     ensureDatabaseInitialized().then(async () => {
                         try {
                             const appStateRepo = await getAppStateRepository();
                             await appStateRepo.saveState(valueToSave as AppState);
+                            if (typeof localStorage !== 'undefined') {
+                                localStorage.removeItem(DB_STATE_DIRTY_KEY);
+                            }
                         } catch {
                             // Ignore errors during unload
                         }
-                    }).catch(() => {
-                        // Ignore errors during unload
-                    });
+                    }).catch(() => {});
                 } catch (e) {
                     // Ignore errors during unload
                 }
@@ -338,7 +355,12 @@ export function useDatabaseState<T extends AppState>(
         };
     }, [storedValue, initialValue]);
 
-    return [storedValue, setValue];
+    return [storedValue, setValue, { saveNow }];
 }
 
+export type UseDatabaseStateResult<T> = [
+    T,
+    React.Dispatch<React.SetStateAction<T>>,
+    { saveNow: (value?: T, options?: { disableSyncQueueing?: boolean }) => Promise<void> }
+];
 export default useDatabaseState;
