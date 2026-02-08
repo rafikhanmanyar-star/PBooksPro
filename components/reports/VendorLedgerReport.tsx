@@ -66,17 +66,8 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
 
     // Select Lists
     const vendors = useMemo(() => {
-        const contactVendors = state.contacts.filter(c => c.type === ContactType.VENDOR);
-        const vendorsList = state.vendors || [];
-        // Combine and remove duplicates by ID
-        const combined = [...vendorsList];
-        contactVendors.forEach(cv => {
-            if (!combined.find(v => v.id === cv.id)) {
-                combined.push(cv as any);
-            }
-        });
-        return combined;
-    }, [state.contacts, state.vendors]);
+        return state.vendors || [];
+    }, [state.vendors]);
     const vendorItems = useMemo(() => [{ id: 'all', name: 'All Vendors' }, ...vendors], [vendors]);
     const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
 
@@ -156,7 +147,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
             const date = new Date(bill.issueDate);
             if (date >= start && date <= end) {
                 // Filter by vendor FIRST (at source)
-                const vendorId = bill.vendorId || bill.contactId;
+                const vendorId = bill.vendorId;
                 if (!vendorId) return;
 
                 if (selectedVendorId !== 'all' && vendorId !== selectedVendorId) return;
@@ -186,11 +177,11 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
             if (tx.type === TransactionType.EXPENSE) {
                 // Determine the actual vendor ID for this transaction
                 // For tenant-allocated bills, contactId is set to the tenant, so we look up the bill
-                let vendorId: string | undefined = tx.vendorId || tx.contactId;
+                let vendorId: string | undefined = tx.vendorId;
                 if (tx.billId) {
                     const bill = state.bills.find(b => b.id === tx.billId);
                     if (bill) {
-                        vendorId = bill.vendorId || bill.contactId;
+                        vendorId = bill.vendorId;
                     }
                 }
 
@@ -349,8 +340,8 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                                     key={opt}
                                     onClick={() => handleRangeChange(opt)}
                                     className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap capitalize ${dateRange === opt
-                                            ? 'bg-white text-accent shadow-sm font-bold'
-                                            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
+                                        ? 'bg-white text-accent shadow-sm font-bold'
+                                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
                                         }`}
                                 >
                                     {opt === 'all' ? 'Total' : opt === 'thisMonth' ? 'This Month' : opt === 'lastMonth' ? 'Last Month' : 'Custom'}

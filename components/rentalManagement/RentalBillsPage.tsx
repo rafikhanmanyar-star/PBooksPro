@@ -269,12 +269,12 @@ const RentalBillsPage: React.FC = () => {
                 group.balance += balance;
 
                 // Find or create Vendor node
-                const vendorId = bill.vendorId || bill.contactId;
+                const vendorId = bill.vendorId;
                 if (!vendorId) return;
 
                 let vendorNode = group.children.find(c => c.id === vendorId);
                 if (!vendorNode) {
-                    const vendor = state.vendors?.find(v => v.id === vendorId) || state.contacts.find(c => c.id === vendorId);
+                    const vendor = state.vendors?.find(v => v.id === vendorId);
                     vendorNode = {
                         id: vendorId,
                         name: vendor?.name || 'Unknown Vendor',
@@ -296,7 +296,7 @@ const RentalBillsPage: React.FC = () => {
             .filter(g => g.count > 0) // Only show groups with bills
             .sort((a, b) => a.name.localeCompare(b.name));
 
-    }, [baseBills, state.buildings, state.properties, state.contacts, state.vendors]);
+    }, [baseBills, state.buildings, state.properties, state.vendors]);
 
     // --- Grid Data Logic ---
     const filteredBills = useMemo(() => {
@@ -322,10 +322,10 @@ const RentalBillsPage: React.FC = () => {
                 // Filter by Vendor within context of parent group
                 const parentGroupId = selectedNode.parentId || 'unassigned';
                 if (parentGroupId === 'unassigned') {
-                    result = result.filter(b => !b.buildingId && !b.propertyId && (b.vendorId || b.contactId) === selectedNode.id);
+                    result = result.filter(b => (b.vendorId) === selectedNode.id);
                 } else {
                     result = result.filter(b => {
-                        if ((b.vendorId || b.contactId) !== selectedNode.id) return false;
+                        if (b.vendorId !== selectedNode.id) return false;
                         if (b.buildingId === parentGroupId) return true;
                         if (b.propertyId) {
                             const prop = state.properties.find(p => p.id === b.propertyId);
@@ -366,8 +366,8 @@ const RentalBillsPage: React.FC = () => {
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
             result = result.filter(b => {
-                const vendorId = b.vendorId || b.contactId;
-                const vendor = state.vendors?.find(v => v.id === vendorId) || state.contacts.find(c => c.id === vendorId);
+                const vendorId = b.vendorId;
+                const vendor = state.vendors?.find(v => v.id === vendorId);
                 return (
                     b.billNumber.toLowerCase().includes(q) ||
                     (b.description && b.description.toLowerCase().includes(q)) ||
@@ -401,10 +401,10 @@ const RentalBillsPage: React.FC = () => {
                     break;
                 }
                 case 'vendorName': {
-                    const vendorIdA = a.vendorId || a.contactId;
-                    const vendorIdB = b.vendorId || b.contactId;
-                    const vA = state.vendors?.find(v => v.id === vendorIdA)?.name || state.contacts.find(c => c.id === vendorIdA)?.name || '';
-                    const vB = state.vendors?.find(v => v.id === vendorIdB)?.name || state.contacts.find(c => c.id === vendorIdB)?.name || '';
+                    const vendorIdA = a.vendorId;
+                    const vendorIdB = b.vendorId;
+                    const vA = state.vendors?.find(v => v.id === vendorIdA)?.name || '';
+                    const vB = state.vendors?.find(v => v.id === vendorIdB)?.name || '';
                     valA = vA.toLowerCase(); valB = vB.toLowerCase();
                     break;
                 }
@@ -426,7 +426,7 @@ const RentalBillsPage: React.FC = () => {
             return 0;
         });
 
-    }, [baseBills, selectedNode, buildingFilter, startDate, endDate, searchQuery, sortConfig, state.buildings, state.properties, state.contacts, state.vendors, state.contracts]);
+    }, [baseBills, selectedNode, buildingFilter, startDate, endDate, searchQuery, sortConfig, state.buildings, state.properties, state.vendors, state.contracts]);
 
     // Sidebar resize: container-relative width (150–600px)
     const handleMouseMove = useCallback((e: MouseEvent) => {
@@ -795,8 +795,8 @@ const RentalBillsPage: React.FC = () => {
                                         buildingName = state.buildings.find(b => b.id === prop?.buildingId)?.name || 'Unknown';
                                     }
 
-                                    const vendorId = bill.vendorId || bill.contactId;
-                                    const vendor = state.vendors?.find(v => v.id === vendorId) || state.contacts.find(c => c.id === vendorId);
+                                    const vendorId = bill.vendorId;
+                                    const vendor = state.vendors?.find(v => v.id === vendorId);
                                     const contract = state.contracts.find(c => c.id === bill.contractId);
 
                                     const isExpanded = expandedBillIds.has(bill.id);

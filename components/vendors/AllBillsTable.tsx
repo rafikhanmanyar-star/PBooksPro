@@ -20,14 +20,12 @@ const AllBillsTable: React.FC<AllBillsTableProps> = ({ onEditBill }) => {
 
     const bills = useMemo(() => {
         return state.bills.filter(b => {
-            const vendorId = b.vendorId || b.contactId;
+            const vendorId = b.vendorId;
             if (!vendorId) return false;
             const vendor = state.vendors?.find(v => v.id === vendorId);
-            if (vendor) return true;
-            const contact = state.contacts.find(c => c.id === vendorId);
-            return contact?.type === ContactType.VENDOR;
+            return vendor !== undefined;
         });
-    }, [state.bills, state.contacts, state.vendors]);
+    }, [state.bills, state.vendors]);
 
     const filteredBills = useMemo(() => {
         let result = bills;
@@ -37,8 +35,8 @@ const AllBillsTable: React.FC<AllBillsTableProps> = ({ onEditBill }) => {
         if (search) {
             const q = search.toLowerCase();
             result = result.filter(b => {
-                const vendorId = b.vendorId || b.contactId;
-                const vendor = state.vendors?.find(v => v.id === vendorId) || state.contacts.find(c => c.id === vendorId);
+                const vendorId = b.vendorId;
+                const vendor = state.vendors?.find(v => v.id === vendorId);
                 return (
                     b.billNumber.toLowerCase().includes(q) ||
                     (b.description && b.description.toLowerCase().includes(q)) ||
@@ -61,10 +59,10 @@ const AllBillsTable: React.FC<AllBillsTableProps> = ({ onEditBill }) => {
                     bVal = b.billNumber.toLowerCase();
                     break;
                 case 'vendorName':
-                    const vendorIdA = a.vendorId || a.contactId;
-                    const vendorIdB = b.vendorId || b.contactId;
-                    const vendorA = state.vendors?.find(v => v.id === vendorIdA) || state.contacts.find(c => c.id === vendorIdA);
-                    const vendorB = state.vendors?.find(v => v.id === vendorIdB) || state.contacts.find(c => c.id === vendorIdB);
+                    const vendorIdA = a.vendorId;
+                    const vendorIdB = b.vendorId;
+                    const vendorA = state.vendors?.find(v => v.id === vendorIdA);
+                    const vendorB = state.vendors?.find(v => v.id === vendorIdB);
                     aVal = vendorA?.name.toLowerCase() || '';
                     bVal = vendorB?.name.toLowerCase() || '';
                     break;
@@ -96,7 +94,7 @@ const AllBillsTable: React.FC<AllBillsTableProps> = ({ onEditBill }) => {
             if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [bills, search, statusFilter, sortConfig, state.contacts]);
+    }, [bills, search, statusFilter, sortConfig, state.vendors]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -153,8 +151,8 @@ const AllBillsTable: React.FC<AllBillsTableProps> = ({ onEditBill }) => {
                     </thead>
                     <tbody className="divide-y divide-slate-200 bg-white">
                         {filteredBills.length > 0 ? filteredBills.map(bill => {
-                            const vendorId = bill.vendorId || bill.contactId;
-                            const vendor = state.vendors?.find(v => v.id === vendorId) || state.contacts.find(c => c.id === vendorId);
+                            const vendorId = bill.vendorId;
+                            const vendor = state.vendors?.find(v => v.id === vendorId);
                             return (
                                 <tr key={bill.id} onClick={() => onEditBill?.(bill)} className="hover:bg-slate-50 cursor-pointer transition-colors group">
                                     <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-700">{formatDate(bill.issueDate)}</td>
@@ -166,8 +164,8 @@ const AllBillsTable: React.FC<AllBillsTableProps> = ({ onEditBill }) => {
                                     <td className={`px-4 py-3 text-sm text-right font-bold tabular-nums ${(bill.amount - (bill.paidAmount || 0)) > 0 ? 'text-rose-600' : 'text-slate-400'}`}>{CURRENCY} {(bill.amount - (bill.paidAmount || 0)).toLocaleString()}</td>
                                     <td className="px-4 py-3 text-center">
                                         <span className={`px-2 py-1 rounded-full text-xs font-semibold inline-block w-24 text-center ${bill.status === InvoiceStatus.PAID ? 'bg-emerald-100 text-emerald-800' :
-                                                bill.status === InvoiceStatus.PARTIALLY_PAID ? 'bg-amber-100 text-amber-800' :
-                                                    'bg-rose-100 text-rose-800'
+                                            bill.status === InvoiceStatus.PARTIALLY_PAID ? 'bg-amber-100 text-amber-800' :
+                                                'bg-rose-100 text-rose-800'
                                             }`}>
                                             {bill.status}
                                         </span>
