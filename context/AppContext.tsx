@@ -3641,12 +3641,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         rentalAgreements: apiState.rentalAgreements || [],
                         projectAgreements: apiState.projectAgreements || [],
                         contracts: apiState.contracts || [],
+                        vendors: (apiState.vendors || []).map((v: any) => ({
+                            ...v,
+                            isActive: v.isActive ?? v.is_active ?? true
+                        })),
                         installmentPlans: apiState.installmentPlans || [],
                         planAmenities: apiState.planAmenities || [],
                     }));
 
                     logger.logCategory('sync', '✅ Reloaded data from API:', {
                         contacts: apiState.contacts?.length || 0,
+                        vendors: apiState.vendors?.length || 0,
                         projects: apiState.projects?.length || 0,
                         transactions: apiState.transactions?.length || 0,
                     });
@@ -3721,6 +3726,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     rentalAgreements: apiState.rentalAgreements || [],
                                     projectAgreements: apiState.projectAgreements || [],
                                     contracts: apiState.contracts || [],
+                                    vendors: (apiState.vendors || []).map((v: any) => ({
+                                        ...v,
+                                        isActive: v.isActive ?? v.is_active ?? true
+                                    })),
                                     installmentPlans: apiState.installmentPlans || [],
                                     planAmenities: apiState.planAmenities || [],
                                 };
@@ -3744,6 +3753,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
                             logger.logCategory('sync', '✅ Reloaded and saved data from API for new tenant:', {
                                 contacts: apiState.contacts?.length || 0,
+                                vendors: apiState.vendors?.length || 0,
                                 projects: apiState.projects?.length || 0,
                                 transactions: apiState.transactions?.length || 0,
                             });

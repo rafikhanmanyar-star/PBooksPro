@@ -624,6 +624,7 @@ export class AppStateRepository {
                 console.log('💾 Saving state to database:', {
                     transactions: state.transactions.length,
                     contacts: state.contacts.length,
+                    vendors: (state as any).vendors?.length || 0,
                     bills: state.bills.length,
                     invoices: state.invoices.length,
                     quotations: state.quotations.length

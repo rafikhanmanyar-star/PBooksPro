@@ -15,6 +15,11 @@ I've added enhanced logging to help diagnose why vendors are not loading on next
 - Shows sample vendor data (first 3 vendors)
 - Warns if no vendors exist after merge
 
+### 3. Fixed Unnecessary 404 Errors (`services/api/appStateApi.ts`)
+- Removed the `vendorsRepo.exists()` check in `saveVendor()`
+- This check was causing a `GET /api/vendors/:id` call which resulted in `404 Not Found` (HTML error) for new vendors
+- The system now correctly uses the "POST handles upsert" pattern, which is more efficient and silent
+
 ## How to Diagnose the Issue
 
 ### Step 1: Create a New Vendor

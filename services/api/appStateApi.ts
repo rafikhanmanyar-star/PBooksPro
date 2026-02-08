@@ -613,6 +613,7 @@ export class AppStateApiService {
         description: v.description || undefined,
         contactNo: v.contact_no || v.contactNo || undefined,
         companyName: v.company_name || v.companyName || undefined,
+        isActive: v.is_active ?? v.isActive ?? true,
         address: v.address || undefined,
         userId: v.user_id || v.userId || undefined,
         createdAt: v.created_at || v.createdAt || undefined,
@@ -820,12 +821,7 @@ export class AppStateApiService {
   async saveVendor(vendor: Partial<Vendor>): Promise<Vendor> {
     // Always use POST endpoint - it handles upserts automatically
     try {
-      let saved: any;
-      if (vendor.id && await this.vendorsRepo.exists(vendor.id)) {
-        saved = await this.vendorsRepo.update(vendor.id, vendor);
-      } else {
-        saved = await this.vendorsRepo.create(vendor);
-      }
+      const saved: any = await this.vendorsRepo.create(vendor);
 
       // Normalize the response (server returns snake_case, client expects camelCase)
       return {
@@ -834,25 +830,15 @@ export class AppStateApiService {
         description: saved.description || undefined,
         contactNo: saved.contact_no || saved.contactNo || undefined,
         companyName: saved.company_name || saved.companyName || undefined,
+        isActive: saved.is_active ?? saved.isActive ?? true,
         address: saved.address || undefined,
         userId: saved.user_id || saved.userId || undefined,
         createdAt: saved.created_at || saved.createdAt || undefined,
         updatedAt: saved.updated_at || saved.updatedAt || undefined
       };
-    } catch (e) {
-      // Fallback to create if update fails or check fails
-      const saved: any = await this.vendorsRepo.create(vendor);
-      return {
-        id: saved.id,
-        name: saved.name || '',
-        description: saved.description || undefined,
-        contactNo: saved.contact_no || saved.contactNo || undefined,
-        companyName: saved.company_name || saved.companyName || undefined,
-        address: saved.address || undefined,
-        userId: saved.user_id || saved.userId || undefined,
-        createdAt: saved.created_at || saved.createdAt || undefined,
-        updatedAt: saved.updated_at || saved.updatedAt || undefined
-      };
+    } catch (error) {
+      console.error('❌ saveVendor failed:', error);
+      throw error;
     }
   }
 
