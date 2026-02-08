@@ -16,7 +16,7 @@ import { Bill } from '../../types';
 
 const ProcurementContent: React.FC = () => {
     const { state, dispatch } = useAppContext();
-    const { items, warehouses, updateStock, addItem, refreshWarehouses } = useInventory();
+    const { items, warehouses, updateStock, addItem, refreshWarehouses, refreshItems } = useInventory();
     const { accounts, postJournalEntry } = useAccounting();
 
     // 🔍 DEBUG: Check if warehouses are loaded
@@ -30,6 +30,12 @@ const ProcurementContent: React.FC = () => {
         console.log('🔄 [ProcurementPage] Refreshing warehouses on mount...');
         refreshWarehouses();
     }, [refreshWarehouses]);
+
+    // 🔄 Refresh items/products when component mounts to get latest SKUs
+    React.useEffect(() => {
+        console.log('🔄 [ProcurementPage] Refreshing products on mount...');
+        refreshItems();
+    }, [refreshItems]);
 
     const billsApi = useMemo(() => new BillsApiRepository(), []);
     const contactsApi = useMemo(() => new ContactsApiRepository(), []);

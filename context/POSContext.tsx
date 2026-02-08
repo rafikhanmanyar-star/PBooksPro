@@ -59,6 +59,7 @@ interface POSContextType {
     completeSale: () => Promise<void>;
     printReceipt: (saleData?: any) => Promise<void>;
     lastCompletedSale: any | null;
+    setLastCompletedSale: (sale: any | null) => void;
 }
 
 const POSContext = createContext<POSContextType | undefined>(undefined);
@@ -335,13 +336,14 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setLastCompletedSale(saleData);
 
             clearCart();
-            setIsPaymentModalOpen(false);
+            // Keep modal open so user can print receipt
+            // setIsPaymentModalOpen(false);
 
             // Show success message with change due if applicable
             if (totals.changeDue > 0) {
-                alert(`Sale completed!\n\nChange to return: ${CURRENCY} ${totals.changeDue.toLocaleString()}`);
+                alert(`Sale completed!\n\nChange to return: ${CURRENCY} ${totals.changeDue.toLocaleString()}\n\nYou can now print the receipt.`);
             } else {
-                alert('Sale completed successfully and synced to backend!');
+                alert('Sale completed successfully!\n\nYou can now print the receipt.');
             }
         } catch (error: any) {
             console.error('Failed to complete sale:', error);
@@ -392,7 +394,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSearchQuery,
         completeSale,
         printReceipt,
-        lastCompletedSale
+        lastCompletedSale,
+        setLastCompletedSale
     };
 
     return <POSContext.Provider value={value}>{children}</POSContext.Provider>;

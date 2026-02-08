@@ -81,12 +81,48 @@ const ProductSearch: React.FC = () => {
     }, []);
 
     const filteredProducts = useMemo(() => {
+        const query = searchQuery.toLowerCase().trim();
+
         return products.filter(p => {
-            const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                p.sku.includes(searchQuery) ||
-                p.barcode === searchQuery;
+            // Priority 1: Exact barcode match (case-sensitive for barcodes)
+            if (p.barcode && p.barcode === searchQuery.trim()) {
+                return true;
+            }
+
+            // Priority 2: Partial barcode match
+            if (p.barcode && p.barcode.includes(searchQuery.trim())) {
+                return true;
+            }
+
+            // Priority 3: Search in all other fields
+            const matchesName = p.name.toLowerCase().includes(query);
+            const matchesSku = p.sku.toLowerCase().includes(query);
+            const matchesCategory = p.categoryId.toLowerCase().includes(query);
+            const matchesPrice = p.price.toString().includes(query);
+            const matchesUnit = p.unit.toLowerCase().includes(query);
+
+            const matchesSearch = matchesName || matchesSku || matchesCategory || matchesPrice || matchesUnit;
             const matchesCat = selectedCategory === 'all' || p.categoryId === selectedCategory;
+
             return matchesSearch && matchesCat;
+        }).sort((a, b) => {
+            // Sort by relevance: exact barcode matches first, then partial matches, then name matches
+            const aExactBarcode = a.barcode === searchQuery.trim() ? 1 : 0;
+            const bExactBarcode = b.barcode === searchQuery.trim() ? 1 : 0;
+
+            if (aExactBarcode !== bExactBarcode) {
+                return bExactBarcode - aExactBarcode; // Exact barcode matches first
+            }
+
+            const aPartialBarcode = a.barcode && a.barcode.includes(searchQuery.trim()) ? 1 : 0;
+            const bPartialBarcode = b.barcode && b.barcode.includes(searchQuery.trim()) ? 1 : 0;
+
+            if (aPartialBarcode !== bPartialBarcode) {
+                return bPartialBarcode - aPartialBarcode; // Partial barcode matches second
+            }
+
+            // Then alphabetically by name
+            return a.name.localeCompare(b.name);
         });
     }, [searchQuery, selectedCategory, products]);
 
@@ -113,7 +149,7 @@ const ProductSearch: React.FC = () => {
                         id="pos-product-search"
                         type="text"
                         className="block w-full pl-10 pr-3 py-3 border border-slate-200 rounded-xl leading-5 bg-slate-100 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-all shadow-inner"
-                        placeholder="Scan Barcode or Search (F4)..."
+                        placeholder="Scan Barcode / Search Name, SKU, Price... (F4)"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />

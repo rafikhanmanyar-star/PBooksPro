@@ -11,7 +11,7 @@ import Input from '../ui/Input';
 import Button from '../ui/Button';
 
 const InventoryContent: React.FC = () => {
-    const { addItem } = useInventory();
+    const { addItem, refreshItems } = useInventory();
     const [activeTab, setActiveTab] = useState<'dashboard' | 'stock' | 'movements' | 'adjustments'>('dashboard');
     const [isNewSkuModalOpen, setIsNewSkuModalOpen] = useState(false);
     const [newItemData, setNewItemData] = useState({
@@ -25,35 +25,46 @@ const InventoryContent: React.FC = () => {
         unit: 'pcs'
     });
 
-    const handleCreateSku = () => {
-        addItem({
-            id: '', // Will be generated
-            sku: newItemData.sku || `SKU-${Date.now()}`,
-            barcode: newItemData.barcode || undefined,
-            name: newItemData.name,
-            category: newItemData.category,
-            retailPrice: Number(newItemData.retailPrice),
-            costPrice: Number(newItemData.costPrice),
-            onHand: 0,
-            available: 0,
-            reserved: 0,
-            inTransit: 0,
-            damaged: 0,
-            reorderPoint: Number(newItemData.reorderPoint),
-            unit: newItemData.unit,
-            warehouseStock: {}
-        });
-        setIsNewSkuModalOpen(false);
-        setNewItemData({
-            sku: '',
-            barcode: '',
-            name: '',
-            category: 'General',
-            retailPrice: 0,
-            costPrice: 0,
-            reorderPoint: 10,
-            unit: 'pcs'
-        });
+    // 🔄 Refresh items when component mounts to get latest SKUs
+    React.useEffect(() => {
+        console.log('🔄 [InventoryPage] Refreshing items on mount...');
+        refreshItems();
+    }, [refreshItems]);
+
+    const handleCreateSku = async () => {
+        try {
+            await addItem({
+                id: '', // Will be generated
+                sku: newItemData.sku || `SKU-${Date.now()}`,
+                barcode: newItemData.barcode || undefined,
+                name: newItemData.name,
+                category: newItemData.category,
+                retailPrice: Number(newItemData.retailPrice),
+                costPrice: Number(newItemData.costPrice),
+                onHand: 0,
+                available: 0,
+                reserved: 0,
+                inTransit: 0,
+                damaged: 0,
+                reorderPoint: Number(newItemData.reorderPoint),
+                unit: newItemData.unit,
+                warehouseStock: {}
+            });
+            setIsNewSkuModalOpen(false);
+            setNewItemData({
+                sku: '',
+                barcode: '',
+                name: '',
+                category: 'General',
+                retailPrice: 0,
+                costPrice: 0,
+                reorderPoint: 10,
+                unit: 'pcs'
+            });
+        } catch (error) {
+            // Error already handled in addItem
+            console.error('Failed to create SKU:', error);
+        }
     };
 
     const tabs = [

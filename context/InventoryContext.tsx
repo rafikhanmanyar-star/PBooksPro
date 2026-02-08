@@ -20,7 +20,8 @@ interface InventoryContextType {
     updateStock: (itemId: string, warehouseId: string, delta: number, type: any, referenceId: string, notes?: string) => void;
     requestTransfer: (transfer: Omit<StockTransfer, 'id' | 'timestamp' | 'status'>) => void;
     approveAdjustment: (adjustmentId: string) => void;
-    refreshWarehouses: () => Promise<void>; // NEW: Refresh warehouses list
+    refreshWarehouses: () => Promise<void>; // Refresh warehouses list
+    refreshItems: () => Promise<void>; // NEW: Refresh products/SKU list
 
     // Filters & Dashboard Data
     lowStockItems: InventoryItem[];
@@ -119,6 +120,55 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
     }, []);
 
+    // NEW: Refresh items/products function
+    const refreshItems = useCallback(async () => {
+        try {
+            console.log('🔄 [InventoryContext] Refreshing products/items...');
+            const [products, inventory] = await Promise.all([
+                shopApi.getProducts(),
+                shopApi.getInventory()
+            ]);
+
+            // Aggregate Stock
+            const stockMap: Record<string, { total: number, reserved: number, byWh: Record<string, number> }> = {};
+
+            inventory.forEach((inv: any) => {
+                if (!stockMap[inv.product_id]) {
+                    stockMap[inv.product_id] = { total: 0, reserved: 0, byWh: {} };
+                }
+                const qty = parseFloat(inv.quantity_on_hand || '0');
+                const reserved = parseFloat(inv.quantity_reserved || '0');
+                stockMap[inv.product_id].total += qty;
+                stockMap[inv.product_id].reserved += reserved;
+                stockMap[inv.product_id].byWh[inv.warehouse_id] = qty;
+            });
+
+            // Map Products to InventoryItems
+            const mappedItems: InventoryItem[] = products.map((p: any) => ({
+                id: p.id,
+                sku: p.sku,
+                barcode: p.barcode || undefined,
+                name: p.name,
+                category: p.category_id || 'General',
+                unit: p.unit || 'pcs',
+                onHand: stockMap[p.id]?.total || 0,
+                available: (stockMap[p.id]?.total || 0) - (stockMap[p.id]?.reserved || 0),
+                reserved: stockMap[p.id]?.reserved || 0,
+                inTransit: 0,
+                damaged: 0,
+                costPrice: parseFloat(p.cost_price || '0'),
+                retailPrice: parseFloat(p.retail_price || '0'),
+                reorderPoint: p.reorder_point || 10,
+                warehouseStock: stockMap[p.id]?.byWh || {}
+            }));
+
+            setItems(mappedItems);
+            console.log('✅ [InventoryContext] Products refreshed:', mappedItems.length, 'items');
+        } catch (error) {
+            console.error('Failed to refresh products:', error);
+        }
+    }, []);
+
     const updateStock = useCallback(async (
         itemId: string,
         warehouseId: string,
@@ -196,6 +246,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             if (response && response.id) {
                 const newItem = { ...item, id: response.id };
                 setItems(prev => [...prev, newItem]);
+
+                // Refresh items list to ensure it's in sync with database
+                await refreshItems();
+
                 return newItem;
             } else {
                 throw new Error("Invalid response from server");
@@ -207,7 +261,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             // Do NOT fall back to local-only state to avoid confusion
             throw error;
         }
-    }, []);
+    }, [refreshItems]);
 
     const requestTransfer = useCallback((transfer: Omit<StockTransfer, 'id' | 'timestamp' | 'status'>) => {
         const newTransfer: StockTransfer = {
@@ -253,6 +307,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         requestTransfer,
         approveAdjustment,
         refreshWarehouses,
+        refreshItems,
         lowStockItems,
         totalInventoryValue
     };

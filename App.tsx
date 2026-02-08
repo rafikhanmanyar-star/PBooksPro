@@ -318,46 +318,7 @@ const App: React.FC = () => {
     }
   }, [isAuthenticated, dispatch, user?.id]);
 
-  // Load contacts from API when authenticated
-  // OPTIMIZED: Batch dispatch, reduced logging
-  useEffect(() => {
-    if (!isAuthenticated || !user) return;
 
-    const loadContacts = async () => {
-      try {
-        devLogger.log('[App] 📥 Loading contacts...');
-        const contactsApi = new ContactsApiRepository();
-        const contacts = await contactsApi.findAll();
-        devLogger.log(`[App] ✅ Loaded ${contacts.length} contacts`);
-
-        // OPTIMIZATION: Batch dispatch to reduce re-renders
-        contacts.forEach(contact => {
-          dispatch({ type: 'ADD_CONTACT', payload: contact });
-        });
-      } catch (error) {
-        console.error('[App] ❌ Failed to load contacts:', error);
-      }
-    };
-
-    loadContacts();
-
-    const loadVendors = async () => {
-      try {
-        devLogger.log('[App] 📥 Loading vendors...');
-        const vendorsApi = new VendorsApiRepository();
-        const vendors = await vendorsApi.findAll();
-        devLogger.log(`[App] ✅ Loaded ${vendors.length} vendors`);
-
-        vendors.forEach(vendor => {
-          dispatch({ type: 'ADD_VENDOR', payload: vendor });
-        });
-      } catch (error) {
-        console.error('[App] ❌ Failed to load vendors:', error);
-      }
-    };
-
-    loadVendors();
-  }, [isAuthenticated, user, dispatch]);
 
   // Optimized navigation handler - uses startTransition for non-blocking updates
   const handleSetPage = useCallback((page: Page) => {

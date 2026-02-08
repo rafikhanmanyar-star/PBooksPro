@@ -420,6 +420,26 @@ const reducer = (state: AppState, action: AppAction): AppState => {
         // --- TRANSACTION HANDLERS ---
         case 'ADD_TRANSACTION': {
             const tx = action.payload as Transaction;
+
+            // Deduplicate: check if transaction with same ID exists
+            const existingTxIndex = state.transactions.findIndex(t => t.id === tx.id);
+            if (existingTxIndex >= 0) {
+                // If it's a remote update or we already have it, just update it if needed or ignore
+                // For transactions, we usually want to update it to ensure we have latest status/amounts
+                const updatedTransactions = [...state.transactions];
+                updatedTransactions[existingTxIndex] = { ...updatedTransactions[existingTxIndex], ...tx };
+
+                let newStateWithTx = { ...state, transactions: updatedTransactions };
+                // Re-apply effects (careful: this might duplicate effects if not idempotent)
+                // However, applyTransactionEffect is usually additive/subtractive based on amounts
+                // For deduplication, we should only apply if it was NOT already there, 
+                // BUT if the amount changed, we might need to adjust.
+                // For now, let's keep it simple: if it exists, replace data but don't re-apply effects 
+                // unless we find a reason to. Most ADD_TRANSACTION calls are for NEW things. 
+                // Remote ones (from WebSocket/Sync) should use UPDATE_TRANSACTION if they change things.
+                return newStateWithTx;
+            }
+
             let newStateWithTx = { ...state, transactions: [...state.transactions, tx] };
             newStateWithTx = applyTransactionEffect(newStateWithTx, tx, true);
             if (tx.contractId) newStateWithTx = updateContractStatus(newStateWithTx, tx.contractId);
@@ -598,6 +618,9 @@ const reducer = (state: AppState, action: AppAction): AppState => {
 
         // --- INVOICE/BILL HANDLERS ---
         case 'ADD_INVOICE':
+            if (state.invoices.find(i => i.id === action.payload.id)) {
+                return { ...state, invoices: state.invoices.map(i => i.id === action.payload.id ? action.payload : i) };
+            }
             return { ...state, invoices: [...state.invoices, action.payload] };
         case 'UPDATE_INVOICE':
             return { ...state, invoices: state.invoices.map(i => i.id === action.payload.id ? action.payload : i) };
@@ -605,6 +628,9 @@ const reducer = (state: AppState, action: AppAction): AppState => {
             return { ...state, invoices: state.invoices.filter(i => i.id !== action.payload) };
 
         case 'ADD_BILL':
+            if (state.bills.find(b => b.id === action.payload.id)) {
+                return { ...state, bills: state.bills.map(b => b.id === action.payload.id ? action.payload : b) };
+            }
             return { ...state, bills: [...state.bills, action.payload] };
         case 'UPDATE_BILL': {
             const updatedBill = action.payload as Bill;
@@ -1222,74 +1248,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 // Continue anyway - offline data might be lost but app should still work
                             }
 
-                            // Clear local database data for previous tenant if tenant changed
-                            // This prevents cross-tenant data leakage
+                            // Clear local database data for previous tenant ONLY if tenant changed
+                            // This prevents cross-tenant data leakage while preserving local data on refresh
                             try {
                                 const dbService = getDatabaseService();
                                 if (dbService.isReady()) {
-                                    const appStateRepo = await getAppStateRepository();
-                                    const localState = await appStateRepo.loadState();
+                                    const { SettingsRepository } = await import('../services/database/repositories/index');
+                                    const settingsRepo = new SettingsRepository();
 
-                                    // Check if we need to clear data (tenant switch detected)
-                                    // We'll clear tenant-specific data to ensure clean state
-                                    const { ContactsRepository, TransactionsRepository, AccountsRepository,
-                                        CategoriesRepository, ProjectsRepository, BuildingsRepository,
-                                        PropertiesRepository, UnitsRepository, InvoicesRepository,
-                                        BillsRepository, BudgetsRepository, RentalAgreementsRepository,
-                                        ProjectAgreementsRepository, ContractsRepository,
-                                        QuotationsRepository, DocumentsRepository,
-                                        RecurringTemplatesRepository, PMCycleAllocationsRepository,
-                                        VendorsRepository } = await import('../services/database/repositories/index');
+                                    const localTenantId = await settingsRepo.get('tenantId');
+                                    const currentTenantId = auth.tenant?.id || auth.user?.tenantId;
 
-                                    // Clear all tenant-specific data to start fresh
-                                    // This ensures no cross-tenant data leakage
-                                    const contactsRepo = new ContactsRepository();
-                                    const transactionsRepo = new TransactionsRepository();
-                                    const accountsRepo = new AccountsRepository();
-                                    const categoriesRepo = new CategoriesRepository();
-                                    const projectsRepo = new ProjectsRepository();
-                                    const buildingsRepo = new BuildingsRepository();
-                                    const propertiesRepo = new PropertiesRepository();
-                                    const unitsRepo = new UnitsRepository();
-                                    const invoicesRepo = new InvoicesRepository();
-                                    const billsRepo = new BillsRepository();
-                                    const budgetsRepo = new BudgetsRepository();
-                                    const rentalAgreementsRepo = new RentalAgreementsRepository();
-                                    const projectAgreementsRepo = new ProjectAgreementsRepository();
-                                    const contractsRepo = new ContractsRepository();
-                                    const quotationsRepo = new QuotationsRepository();
-                                    const documentsRepo = new DocumentsRepository();
-                                    const recurringTemplatesRepo = new RecurringTemplatesRepository();
-                                    const pmCycleAllocationsRepo = new PMCycleAllocationsRepository();
-                                    const vendorsRepo = new VendorsRepository();
+                                    if (currentTenantId && localTenantId && currentTenantId !== localTenantId) {
+                                        console.log(`🔄 Tenant switch detected: ${localTenantId} -> ${currentTenantId}. Clearing local data...`);
 
-                                    // Delete ALL data (from all tenants) to ensure clean state when switching tenants
-                                    // Use deleteAllUnfiltered to bypass tenant filtering and clear everything
-                                    contactsRepo.deleteAllUnfiltered();
-                                    transactionsRepo.deleteAllUnfiltered();
-                                    accountsRepo.deleteAllUnfiltered();
-                                    categoriesRepo.deleteAllUnfiltered();
-                                    projectsRepo.deleteAllUnfiltered();
-                                    buildingsRepo.deleteAllUnfiltered();
-                                    propertiesRepo.deleteAllUnfiltered();
-                                    unitsRepo.deleteAllUnfiltered();
-                                    invoicesRepo.deleteAllUnfiltered();
-                                    billsRepo.deleteAllUnfiltered();
-                                    budgetsRepo.deleteAllUnfiltered();
-                                    rentalAgreementsRepo.deleteAllUnfiltered();
-                                    projectAgreementsRepo.deleteAllUnfiltered();
-                                    contractsRepo.deleteAllUnfiltered();
-                                    quotationsRepo.deleteAllUnfiltered();
-                                    documentsRepo.deleteAllUnfiltered();
-                                    recurringTemplatesRepo.deleteAllUnfiltered();
-                                    pmCycleAllocationsRepo.deleteAllUnfiltered();
-                                    vendorsRepo.deleteAllUnfiltered();
+                                        const { ContactsRepository, TransactionsRepository, AccountsRepository,
+                                            CategoriesRepository, ProjectsRepository, BuildingsRepository,
+                                            PropertiesRepository, UnitsRepository, InvoicesRepository,
+                                            BillsRepository, BudgetsRepository, RentalAgreementsRepository,
+                                            ProjectAgreementsRepository, ContractsRepository,
+                                            QuotationsRepository, DocumentsRepository,
+                                            RecurringTemplatesRepository, PMCycleAllocationsRepository,
+                                            VendorsRepository } = await import('../services/database/repositories/index');
 
-                                    console.log('🗑️ Cleared local database data to prevent cross-tenant leakage');
+                                        // Clear all tenant-specific data to start fresh
+                                        const repos = [
+                                            new ContactsRepository(), new TransactionsRepository(), new AccountsRepository(),
+                                            new CategoriesRepository(), new ProjectsRepository(), new BuildingsRepository(),
+                                            new PropertiesRepository(), new UnitsRepository(), new InvoicesRepository(),
+                                            new BillsRepository(), new BudgetsRepository(), new RentalAgreementsRepository(),
+                                            new ProjectAgreementsRepository(), new ContractsRepository(),
+                                            new QuotationsRepository(), new DocumentsRepository(),
+                                            new RecurringTemplatesRepository(), new PMCycleAllocationsRepository(),
+                                            new VendorsRepository()
+                                        ];
+
+                                        for (const repo of repos) {
+                                            await repo.deleteAllUnfiltered();
+                                        }
+
+                                        await settingsRepo.set('tenantId', currentTenantId);
+                                        console.log('🗑️ Cleared local database data to prevent cross-tenant leakage');
+                                    } else if (currentTenantId && !localTenantId) {
+                                        // First time initialization - set the tenant ID
+                                        await settingsRepo.set('tenantId', currentTenantId);
+                                    }
                                 }
                             } catch (clearError) {
-                                console.warn('⚠️ Could not clear local database data:', clearError);
-                                // Continue anyway - tenant filtering in queries will handle it
+                                console.warn('⚠️ Could not check/clear local database data:', clearError);
                             }
 
                             const apiService = getAppStateApiService();
@@ -1723,26 +1729,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const apiService = getAppStateApiService();
 
                     // Handle account changes
-                    if (action.type === 'ADD_ACCOUNT') {
-                        const account = action.payload as Account;
-                        // Skip system accounts (they're permanent)
-                        if (!account.isPermanent) {
-                            await apiService.saveAccount(account);
-                            logger.logCategory('sync', '✅ Synced account to API:', account.name);
-                        }
-                    } else if (action.type === 'UPDATE_ACCOUNT') {
+                    if (action.type === 'ADD_ACCOUNT' || action.type === 'UPDATE_ACCOUNT') {
                         const account = action.payload as Account;
                         if (!account.isPermanent) {
-                            await apiService.saveAccount(account);
-                            logger.logCategory('sync', '✅ Synced account update to API:', account.name);
+                            try {
+                                await apiService.saveAccount(account);
+                                logger.logCategory('sync', `✅ Synced account ${action.type === 'ADD_ACCOUNT' ? '' : 'update'} to API: ${account.name}`);
+                            } catch (err) {
+                                logger.errorCategory('sync', `❌ FAILED to sync account ${account.name} to API:`, err);
+                                await queueOperationForSync(action);
+                            }
                         }
                     } else if (action.type === 'DELETE_ACCOUNT') {
                         const accountId = action.payload as string;
-                        // Check if it's a system account before deleting
                         const account = state.accounts.find(a => a.id === accountId);
                         if (account && !account.isPermanent) {
-                            await apiService.deleteAccount(accountId);
-                            logger.logCategory('sync', '✅ Synced account deletion to API:', accountId);
+                            try {
+                                await apiService.deleteAccount(accountId);
+                                logger.logCategory('sync', '✅ Synced account deletion to API:', accountId);
+                            } catch (err) {
+                                logger.errorCategory('sync', `❌ FAILED to sync account deletion ${accountId} to API:`, err);
+                                await queueOperationForSync(action);
+                            }
                         }
                     }
 
@@ -1853,33 +1861,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     }
 
                     // Handle transaction changes
-                    if (action.type === 'ADD_TRANSACTION') {
+                    if (action.type === 'ADD_TRANSACTION' || action.type === 'UPDATE_TRANSACTION' || action.type === 'RESTORE_TRANSACTION') {
                         const transaction = action.payload as Transaction;
-                        await apiService.saveTransaction(transaction);
-                        logger.logCategory('sync', '✅ Synced transaction to API:', transaction.id);
-                    } else if (action.type === 'UPDATE_TRANSACTION') {
-                        const transaction = action.payload as Transaction;
-                        await apiService.saveTransaction(transaction);
-                        logger.logCategory('sync', '✅ Synced transaction update to API:', transaction.id);
+                        try {
+                            await apiService.saveTransaction(transaction);
+                            logger.logCategory('sync', `✅ Synced transaction ${action.type === 'UPDATE_TRANSACTION' ? 'update' : ''} to API: ${transaction.id}`);
+                        } catch (err) {
+                            logger.errorCategory('sync', `❌ FAILED to sync transaction ${transaction.id} to API:`, err);
+                            await queueOperationForSync(action);
+                        }
                     } else if (action.type === 'DELETE_TRANSACTION') {
                         const transactionId = action.payload as string;
-                        await apiService.deleteTransaction(transactionId);
-                        logger.logCategory('sync', '✅ Synced transaction deletion to API:', transactionId);
+                        try {
+                            await apiService.deleteTransaction(transactionId);
+                            logger.logCategory('sync', '✅ Synced transaction deletion to API:', transactionId);
+                        } catch (err) {
+                            logger.errorCategory('sync', `❌ FAILED to sync transaction deletion ${transactionId} to API:`, err);
+                            await queueOperationForSync(action);
+                        }
                     } else if (action.type === 'BATCH_ADD_TRANSACTIONS') {
                         // Sync batch transactions
                         const transactions = action.payload as Transaction[];
-                        const syncPromises = transactions.map(tx =>
-                            apiService.saveTransaction(tx).catch(err => {
-                                logger.errorCategory('sync', `⚠️ Failed to sync transaction ${tx.id}:`, err);
-                                return null;
-                            })
-                        );
-                        await Promise.all(syncPromises);
-                        logger.logCategory('sync', `✅ Synced ${transactions.length} transactions to API (batch)`);
-                    } else if (action.type === 'RESTORE_TRANSACTION') {
-                        const transaction = action.payload as Transaction;
-                        await apiService.saveTransaction(transaction);
-                        logger.logCategory('sync', '✅ Synced restored transaction to API:', transaction.id);
+                        try {
+                            const syncPromises = transactions.map(tx =>
+                                apiService.saveTransaction(tx).catch(async err => {
+                                    logger.errorCategory('sync', `⚠️ Failed to sync transaction ${tx.id} during batch:`, err);
+                                    // Queue individual failed transactions from batch
+                                    await queueOperationForSync({ type: 'ADD_TRANSACTION', payload: tx } as AppAction);
+                                    return null;
+                                })
+                            );
+                            await Promise.all(syncPromises);
+                            logger.logCategory('sync', `✅ Processed batch of ${transactions.length} transactions`);
+                        } catch (err) {
+                            logger.errorCategory('sync', '❌ FAILED to process transaction batch:', err);
+                            await queueOperationForSync(action);
+                        }
                     }
 
                     // Handle category changes
@@ -1913,64 +1930,79 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         }
                     }
 
-                    // Handle project changes
-                    if (action.type === 'ADD_PROJECT') {
+                    // Handle project, building, property, unit changes
+                    if (action.type === 'ADD_PROJECT' || action.type === 'UPDATE_PROJECT') {
                         const project = action.payload;
-                        await apiService.saveProject(project);
-                        logger.logCategory('sync', '✅ Synced project to API:', project.name);
-                    } else if (action.type === 'UPDATE_PROJECT') {
-                        const project = action.payload;
-                        await apiService.saveProject(project);
-                        logger.logCategory('sync', '✅ Synced project update to API:', project.name);
+                        try {
+                            await apiService.saveProject(project);
+                            logger.logCategory('sync', `✅ Synced project ${action.type === 'UPDATE_PROJECT' ? 'update' : ''} to API: ${project.name}`);
+                        } catch (err) {
+                            logger.errorCategory('sync', `❌ FAILED to sync project ${project.name} to API:`, err);
+                            await queueOperationForSync(action);
+                        }
                     } else if (action.type === 'DELETE_PROJECT') {
                         const projectId = action.payload as string;
-                        await apiService.deleteProject(projectId);
-                        logger.logCategory('sync', '✅ Synced project deletion to API:', projectId);
-                    }
-
-                    // Handle building changes
-                    if (action.type === 'ADD_BUILDING') {
+                        try {
+                            await apiService.deleteProject(projectId);
+                            logger.logCategory('sync', '✅ Synced project deletion to API:', projectId);
+                        } catch (err) {
+                            logger.errorCategory('sync', `❌ FAILED to sync project deletion ${projectId} to API:`, err);
+                            await queueOperationForSync(action);
+                        }
+                    } else if (action.type === 'ADD_BUILDING' || action.type === 'UPDATE_BUILDING') {
                         const building = action.payload;
-                        await apiService.saveBuilding(building);
-                        logger.logCategory('sync', '✅ Synced building to API:', building.name);
-                    } else if (action.type === 'UPDATE_BUILDING') {
-                        const building = action.payload;
-                        await apiService.saveBuilding(building);
-                        logger.logCategory('sync', '✅ Synced building update to API:', building.name);
+                        try {
+                            await apiService.saveBuilding(building);
+                            logger.logCategory('sync', `✅ Synced building ${action.type === 'UPDATE_BUILDING' ? 'update' : ''} to API: ${building.name}`);
+                        } catch (err) {
+                            logger.errorCategory('sync', `❌ FAILED to sync building ${building.name} to API:`, err);
+                            await queueOperationForSync(action);
+                        }
                     } else if (action.type === 'DELETE_BUILDING') {
                         const buildingId = action.payload as string;
-                        await apiService.deleteBuilding(buildingId);
-                        logger.logCategory('sync', '✅ Synced building deletion to API:', buildingId);
-                    }
-
-                    // Handle property changes
-                    if (action.type === 'ADD_PROPERTY') {
+                        try {
+                            await apiService.deleteBuilding(buildingId);
+                            logger.logCategory('sync', '✅ Synced building deletion to API:', buildingId);
+                        } catch (err) {
+                            logger.errorCategory('sync', `❌ FAILED to sync building deletion ${buildingId} to API:`, err);
+                            await queueOperationForSync(action);
+                        }
+                    } else if (action.type === 'ADD_PROPERTY' || action.type === 'UPDATE_PROPERTY') {
                         const property = action.payload;
-                        await apiService.saveProperty(property);
-                        logger.logCategory('sync', '✅ Synced property to API:', property.name);
-                    } else if (action.type === 'UPDATE_PROPERTY') {
-                        const property = action.payload;
-                        await apiService.saveProperty(property);
-                        logger.logCategory('sync', '✅ Synced property update to API:', property.name);
+                        try {
+                            await apiService.saveProperty(property);
+                            logger.logCategory('sync', `✅ Synced property ${action.type === 'UPDATE_PROPERTY' ? 'update' : ''} to API: ${property.name}`);
+                        } catch (err) {
+                            logger.errorCategory('sync', `❌ FAILED to sync property ${property.name} to API:`, err);
+                            await queueOperationForSync(action);
+                        }
                     } else if (action.type === 'DELETE_PROPERTY') {
                         const propertyId = action.payload as string;
-                        await apiService.deleteProperty(propertyId);
-                        logger.logCategory('sync', '✅ Synced property deletion to API:', propertyId);
-                    }
-
-                    // Handle unit changes
-                    if (action.type === 'ADD_UNIT') {
+                        try {
+                            await apiService.deleteProperty(propertyId);
+                            logger.logCategory('sync', '✅ Synced property deletion to API:', propertyId);
+                        } catch (err) {
+                            logger.errorCategory('sync', `❌ FAILED to sync property deletion ${propertyId} to API:`, err);
+                            await queueOperationForSync(action);
+                        }
+                    } else if (action.type === 'ADD_UNIT' || action.type === 'UPDATE_UNIT') {
                         const unit = action.payload;
-                        await apiService.saveUnit(unit);
-                        logger.logCategory('sync', '✅ Synced unit to API:', unit.name);
-                    } else if (action.type === 'UPDATE_UNIT') {
-                        const unit = action.payload;
-                        await apiService.saveUnit(unit);
-                        logger.logCategory('sync', '✅ Synced unit update to API:', unit.name);
+                        try {
+                            await apiService.saveUnit(unit);
+                            logger.logCategory('sync', `✅ Synced unit ${action.type === 'UPDATE_UNIT' ? 'update' : ''} to API: ${unit.name}`);
+                        } catch (err) {
+                            logger.errorCategory('sync', `❌ FAILED to sync unit ${unit.name} to API:`, err);
+                            await queueOperationForSync(action);
+                        }
                     } else if (action.type === 'DELETE_UNIT') {
                         const unitId = action.payload as string;
-                        await apiService.deleteUnit(unitId);
-                        logger.logCategory('sync', '✅ Synced unit deletion to API:', unitId);
+                        try {
+                            await apiService.deleteUnit(unitId);
+                            logger.logCategory('sync', '✅ Synced unit deletion to API:', unitId);
+                        } catch (err) {
+                            logger.errorCategory('sync', `❌ FAILED to sync unit deletion ${unitId} to API:`, err);
+                            await queueOperationForSync(action);
+                        }
                     }
 
                     // Handle installment plan changes
@@ -2047,67 +2079,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     }
 
                     // Handle invoice changes
-                    if (action.type === 'ADD_INVOICE') {
+                    if (action.type === 'ADD_INVOICE' || action.type === 'UPDATE_INVOICE') {
                         const invoice = action.payload;
-                        await apiService.saveInvoice(invoice);
-                        logger.logCategory('sync', '✅ Synced invoice to API:', invoice.invoiceNumber);
-                    } else if (action.type === 'UPDATE_INVOICE') {
-                        const invoice = action.payload;
-                        await apiService.saveInvoice(invoice);
-                        logger.logCategory('sync', '✅ Synced invoice update to API:', invoice.invoiceNumber);
+                        try {
+                            await apiService.saveInvoice(invoice);
+                            logger.logCategory('sync', `✅ Synced invoice ${action.type === 'UPDATE_INVOICE' ? 'update' : ''} to API: ${invoice.invoiceNumber}`);
+                        } catch (err) {
+                            logger.errorCategory('sync', `❌ FAILED to sync invoice ${invoice.invoiceNumber} to API:`, err);
+                            await queueOperationForSync(action);
+                        }
                     } else if (action.type === 'DELETE_INVOICE') {
                         const invoiceId = action.payload as string;
-                        await apiService.deleteInvoice(invoiceId);
-                        logger.logCategory('sync', '✅ Synced invoice deletion to API:', invoiceId);
+                        try {
+                            await apiService.deleteInvoice(invoiceId);
+                            logger.logCategory('sync', '✅ Synced invoice deletion to API:', invoiceId);
+                        } catch (err) {
+                            logger.errorCategory('sync', `❌ FAILED to sync invoice deletion ${invoiceId} to API:`, err);
+                            await queueOperationForSync(action);
+                        }
                     }
 
                     // Handle bill changes
-                    if (action.type === 'ADD_BILL') {
+                    if (action.type === 'ADD_BILL' || action.type === 'UPDATE_BILL') {
                         const bill = action.payload;
-                        logger.logCategory('sync', `🔄 Starting sync for ADD_BILL: ${bill.billNumber} (${bill.id})`);
+                        logger.logCategory('sync', `🔄 Starting sync for ${action.type}: ${bill.billNumber} (${bill.id})`);
                         try {
-                            logger.logCategory('sync', `📤 Calling apiService.saveBill for: ${bill.billNumber}`);
                             await apiService.saveBill(bill);
-                            logger.logCategory('sync', '✅ Synced bill to API:', bill.billNumber);
+                            logger.logCategory('sync', `✅ Synced bill ${action.type === 'UPDATE_BILL' ? 'update' : ''} to API: ${bill.billNumber}`);
                         } catch (err: any) {
-                            logger.errorCategory('sync', `❌ FAILED to sync bill ${bill.billNumber} to API:`, {
-                                error: err,
-                                errorMessage: err?.message || err?.error || 'Unknown error',
-                                status: err?.status,
-                                statusText: err?.statusText,
-                                bill: {
-                                    id: bill.id,
-                                    billNumber: bill.billNumber,
-                                    amount: bill.amount,
-                                    projectId: bill.projectId
-                                },
-                                fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
-                            });
-                            // Don't re-throw - log and continue, data is saved locally
-                            // This allows user to continue working even if sync fails
-                        }
-                    } else if (action.type === 'UPDATE_BILL') {
-                        const bill = action.payload;
-                        logger.logCategory('sync', `🔄 Starting sync for UPDATE_BILL: ${bill.billNumber} (${bill.id})`);
-                        try {
-                            logger.logCategory('sync', `📤 Calling apiService.saveBill for update: ${bill.billNumber}`);
-                            await apiService.saveBill(bill);
-                            logger.logCategory('sync', '✅ Synced bill update to API:', bill.billNumber);
-                        } catch (err: any) {
-                            logger.errorCategory('sync', `❌ FAILED to sync bill update ${bill.billNumber} to API:`, {
-                                error: err,
-                                errorMessage: err?.message || err?.error || 'Unknown error',
-                                status: err?.status,
-                                statusText: err?.statusText,
-                                bill: {
-                                    id: bill.id,
-                                    billNumber: bill.billNumber,
-                                    amount: bill.amount,
-                                    projectId: bill.projectId
-                                },
-                                fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
-                            });
-                            // Don't re-throw - log and continue
+                            logger.errorCategory('sync', `❌ FAILED to sync bill ${bill.billNumber} to API:`, err);
+                            // Queue for later sync
+                            await queueOperationForSync(action);
                         }
                     } else if (action.type === 'DELETE_BILL') {
                         const billId = action.payload as string;
@@ -2115,13 +2117,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             await apiService.deleteBill(billId);
                             logger.logCategory('sync', '✅ Synced bill deletion to API:', billId);
                         } catch (err: any) {
-                            logger.errorCategory('sync', `⚠️ Failed to sync bill deletion ${billId} to API:`, {
-                                error: err,
-                                billId: billId,
-                                errorMessage: err?.message || err?.error || 'Unknown error',
-                                status: err?.status
-                            });
-                            // Don't re-throw for deletions - allow local deletion even if sync fails
+                            logger.errorCategory('sync', `❌ FAILED to sync bill deletion ${billId} to API:`, err);
+                            await queueOperationForSync(action);
                         }
                     }
 
@@ -2156,48 +2153,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     }
 
                     // Handle project agreement changes
-                    if (action.type === 'ADD_PROJECT_AGREEMENT') {
-                        const agreement = action.payload;
-                        await apiService.saveProjectAgreement(agreement);
-                        logger.logCategory('sync', '✅ Synced project agreement to API:', agreement.agreementNumber);
-                    } else if (action.type === 'UPDATE_PROJECT_AGREEMENT') {
-                        const agreement = action.payload;
-                        await apiService.saveProjectAgreement(agreement);
-                        logger.logCategory('sync', '✅ Synced project agreement update to API:', agreement.agreementNumber);
+                    if (action.type === 'ADD_PROJECT_AGREEMENT' || action.type === 'UPDATE_PROJECT_AGREEMENT' || action.type === 'CANCEL_PROJECT_AGREEMENT') {
+                        let agreement: any;
+                        if (action.type === 'CANCEL_PROJECT_AGREEMENT') {
+                            const { agreementId } = action.payload as any;
+                            agreement = newState.projectAgreements.find(pa => pa.id === agreementId);
+                        } else {
+                            agreement = action.payload;
+                        }
+
+                        if (agreement) {
+                            try {
+                                await apiService.saveProjectAgreement(agreement);
+                                logger.logCategory('sync', `✅ Synced project agreement ${action.type} to API: ${agreement.agreementNumber}`);
+                            } catch (err) {
+                                logger.errorCategory('sync', `❌ FAILED to sync project agreement ${agreement.agreementNumber || 'unknown'} to API:`, err);
+                                await queueOperationForSync(action);
+                            }
+                        }
                     } else if (action.type === 'DELETE_PROJECT_AGREEMENT') {
                         const agreementId = action.payload as string;
-                        await apiService.deleteProjectAgreement(agreementId);
-                        logger.logCategory('sync', '✅ Synced project agreement deletion to API:', agreementId);
-                    } else if (action.type === 'CANCEL_PROJECT_AGREEMENT') {
-                        // When cancelling, we need to sync the updated agreement
-                        const { agreementId } = action.payload as any;
-                        const updatedAgreement = newState.projectAgreements.find(pa => pa.id === agreementId);
-                        if (updatedAgreement) {
-                            await apiService.saveProjectAgreement(updatedAgreement);
-                            logger.logCategory('sync', '✅ Synced cancelled project agreement to API:', agreementId);
+                        try {
+                            await apiService.deleteProjectAgreement(agreementId);
+                            logger.logCategory('sync', '✅ Synced project agreement deletion to API:', agreementId);
+                        } catch (err) {
+                            logger.errorCategory('sync', `❌ FAILED to sync project agreement deletion ${agreementId} to API:`, err);
+                            await queueOperationForSync(action);
                         }
                     }
 
                     // Handle sales return changes
-                    if (action.type === 'ADD_SALES_RETURN') {
-                        const salesReturn = action.payload as any;
-                        await apiService.saveSalesReturn(salesReturn);
-                        logger.logCategory('sync', '✅ Synced sales return to API:', salesReturn.returnNumber);
-                    } else if (action.type === 'UPDATE_SALES_RETURN') {
-                        const salesReturn = action.payload as any;
-                        await apiService.saveSalesReturn(salesReturn);
-                        logger.logCategory('sync', '✅ Synced sales return update to API:', salesReturn.returnNumber);
+                    if (action.type === 'ADD_SALES_RETURN' || action.type === 'UPDATE_SALES_RETURN' || action.type === 'MARK_RETURN_REFUNDED') {
+                        let salesReturn: any;
+                        if (action.type === 'MARK_RETURN_REFUNDED') {
+                            const { returnId } = action.payload as any;
+                            salesReturn = newState.salesReturns.find(sr => sr.id === returnId);
+                        } else {
+                            salesReturn = action.payload;
+                        }
+
+                        if (salesReturn) {
+                            try {
+                                await apiService.saveSalesReturn(salesReturn);
+                                logger.logCategory('sync', `✅ Synced sales return ${action.type} to API: ${salesReturn.returnNumber}`);
+                            } catch (err) {
+                                logger.errorCategory('sync', `❌ FAILED to sync sales return ${salesReturn.returnNumber || 'unknown'} to API:`, err);
+                                await queueOperationForSync(action);
+                            }
+                        }
                     } else if (action.type === 'DELETE_SALES_RETURN') {
                         const salesReturnId = action.payload as string;
-                        await apiService.deleteSalesReturn(salesReturnId);
-                        logger.logCategory('sync', '✅ Synced sales return deletion to API:', salesReturnId);
-                    } else if (action.type === 'MARK_RETURN_REFUNDED') {
-                        // When marking as refunded, update the sales return
-                        const { returnId } = action.payload as any;
-                        const salesReturn = newState.salesReturns.find(sr => sr.id === returnId);
-                        if (salesReturn) {
-                            await apiService.saveSalesReturn(salesReturn);
-                            logger.logCategory('sync', '✅ Synced sales return refund status to API:', salesReturn.returnNumber);
+                        try {
+                            await apiService.deleteSalesReturn(salesReturnId);
+                            logger.logCategory('sync', '✅ Synced sales return deletion to API:', salesReturnId);
+                        } catch (err) {
+                            logger.errorCategory('sync', `❌ FAILED to sync sales return deletion ${salesReturnId} to API:`, err);
+                            await queueOperationForSync(action);
                         }
                     }
 
@@ -2600,7 +2611,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     storedInvoices: currentStoredState.invoices.length,
                     currentInvoices: state.invoices.length
                 });
-                dispatch({ type: 'SET_STATE', payload: currentStoredState });
+                dispatch({ type: 'SET_STATE', payload: currentStoredState, _isRemote: true } as any);
                 reducerInitializedRef.current = true;
             } else if (storedHasUserData && currentHasUserData) {
                 // Mark as initialized if both have data (already synced)
