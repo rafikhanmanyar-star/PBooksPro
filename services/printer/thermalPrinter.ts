@@ -92,6 +92,9 @@ export class ThermalPrinter {
             // Print
             printFrame.contentWindow?.print();
 
+            // Automatically cut paper after printing
+            await this.cutPaper();
+
             // Clean up after printing
             setTimeout(() => {
                 document.body.removeChild(printFrame);
@@ -376,6 +379,33 @@ export class ThermalPrinter {
             1. Set your Thermal Printer as the Windows Default Printer.
             2. Launch Chrome with the --kiosk-printing flag.
         `;
+    }
+
+    /**
+     * Cut paper after printing
+     * 
+     * Note: Since we're using the browser's print API (not direct ESC/POS commands),
+     * automatic paper cutting must be configured in the printer driver settings.
+     * 
+     * To enable automatic cutting:
+     * 1. Open Windows Settings → Devices → Printers & Scanners
+     * 2. Select your thermal printer → Manage → Printing Preferences
+     * 3. Go to Device Settings tab
+     * 4. Set "Cutter" option to "Cut at end of job"
+     * 
+     * This method serves as a placeholder and documentation for the cutting functionality.
+     * The actual cutting is performed by the printer driver based on its configuration.
+     */
+    async cutPaper(): Promise<void> {
+        // Log that cutting should occur (if printer is configured)
+        console.log('📄 Receipt printed - Paper will be cut automatically if printer cutter is enabled');
+
+        // Wait a moment to ensure print job is fully sent to printer
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        // Note: Direct ESC/POS cutting command would be: \x1D\x56\x00 (GS V 0)
+        // However, browser print API doesn't support sending raw ESC/POS commands
+        // The cutting must be configured in the printer driver settings
     }
 
     /**

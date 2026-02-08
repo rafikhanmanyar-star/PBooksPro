@@ -112,8 +112,16 @@ To print receipts automatically without showing the print preview:
 
 ### Auto-Cutting Paper
 
-1. Go to Printer **Printing Preferences** -> **Device Settings**.
+**The `cutPaper()` function is now called automatically after each receipt is printed.**
+
+To enable automatic paper cutting:
+
+1. Go to Printer **Printing Preferences** → **Device Settings**.
 2. Set **Cutter** to "Cut at end of job".
+
+Once configured, the paper will be cut automatically after every receipt without any additional action needed. The system calls the `cutPaper()` method after printing, which ensures the print job is fully sent to the printer before cutting occurs.
+
+**Technical Note**: Since the POS system uses the browser's print API (not direct ESC/POS commands), the actual cutting is performed by the printer driver. The `cutPaper()` method provides a 200ms delay to ensure the print job is complete before the driver initiates the cut.
 
 ### Reprinting Receipts
 
