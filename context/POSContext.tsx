@@ -14,6 +14,7 @@ import { ContactsApiRepository } from '../services/api/repositories/contactsApi'
 import { CURRENCY } from '../constants';
 import { BarcodeScanner, createBarcodeScanner } from '../services/barcode/barcodeScanner';
 import { ThermalPrinter, createThermalPrinter, ReceiptData } from '../services/printer/thermalPrinter';
+import { useAppContext } from './AppContext';
 
 
 
@@ -68,6 +69,7 @@ interface POSContextType {
 const POSContext = createContext<POSContextType | undefined>(undefined);
 
 export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const { state } = useAppContext(); // Access app state for print settings
     const [cart, setCart] = useState<POSCartItem[]>([]);
     const [customer, setCustomer] = useState<POSCustomer | null>(null);
     const [payments, setPayments] = useState<POSPayment[]>([]);
@@ -99,11 +101,12 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Initialize barcode scanner and thermal printer
     useEffect(() => {
-        // Initialize thermal printer
+        // Initialize thermal printer with print settings
         if (!thermalPrinterRef.current) {
             thermalPrinterRef.current = createThermalPrinter({
                 paperWidth: 80, // 80mm thermal paper
-                autoConnect: true
+                autoConnect: true,
+                printSettings: state.printSettings // Pass print settings for configurable receipts
             });
         }
 
@@ -122,7 +125,7 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 barcodeScannerRef.current.stop();
             }
         };
-    }, []);
+    }, [state.printSettings]); // Re-initialize when print settings change
 
     // Print receipt function
     const printReceipt = useCallback(async (saleData?: any) => {

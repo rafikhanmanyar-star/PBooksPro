@@ -17,6 +17,7 @@ const SalesHistoryModal: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedSale, setSelectedSale] = useState<POSSale | null>(null);
+    const [isBarcodeScan, setIsBarcodeScan] = useState(false);
 
     useEffect(() => {
         if (isSalesHistoryModalOpen) {
@@ -40,6 +41,27 @@ const SalesHistoryModal: React.FC = () => {
             console.error('Failed to fetch sales history:', error);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    // Handle search term changes with barcode detection
+    const handleSearchChange = (value: string) => {
+        setSearchTerm(value);
+
+        // Detect if this looks like a barcode scan (typically longer and alphanumeric)
+        const looksLikeBarcode = value.length > 8 && /^[A-Z0-9-]+$/i.test(value);
+        setIsBarcodeScan(looksLikeBarcode);
+
+        // Auto-select sale if exact match found
+        if (looksLikeBarcode) {
+            const matchedSale = sales.find(sale =>
+                sale.saleNumber.toLowerCase() === value.toLowerCase()
+            );
+            if (matchedSale) {
+                setSelectedSale(matchedSale);
+                // Visual feedback for successful barcode scan
+                console.log('✅ Barcode matched:', matchedSale.saleNumber);
+            }
         }
     };
 
@@ -70,12 +92,20 @@ const SalesHistoryModal: React.FC = () => {
                         </span>
                         <input
                             type="text"
-                            placeholder="Search by Receipt # or Customer Name..."
-                            className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-indigo-500 focus:ring-0 transition-all font-bold"
+                            placeholder="Search by Receipt # or Customer Name (or scan barcode)..."
+                            className={`w-full pl-12 pr-4 py-3 bg-slate-50 border-2 rounded-xl focus:ring-0 transition-all font-bold ${isBarcodeScan
+                                    ? 'border-indigo-500 bg-indigo-50'
+                                    : 'border-slate-100 focus:border-indigo-500'
+                                }`}
                             value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onChange={(e) => handleSearchChange(e.target.value)}
                             autoFocus
                         />
+                        {isBarcodeScan && (
+                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-600 text-xs font-bold">
+                                📷 BARCODE
+                            </span>
+                        )}
                     </div>
                 </div>
 

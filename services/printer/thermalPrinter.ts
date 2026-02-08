@@ -4,11 +4,14 @@
  * Supports both direct USB printing and network printing
  */
 
+import { PrintSettings } from '../../types';
+
 export interface PrinterConfig {
     printerName?: string;
     paperWidth?: number; // in mm (default 80mm for thermal printers)
     encoding?: string;
     autoConnect?: boolean;
+    printSettings?: PrintSettings; // Optional print settings for configurable templates
 }
 
 export interface ReceiptData {
@@ -50,6 +53,7 @@ export interface ReceiptPayment {
  */
 export class ThermalPrinter {
     private config: PrinterConfig;
+    private printSettings?: PrintSettings;
 
     constructor(config: PrinterConfig = {}) {
         this.config = {
@@ -58,6 +62,7 @@ export class ThermalPrinter {
             autoConnect: true,
             ...config
         };
+        this.printSettings = config.printSettings;
     }
 
     /**
@@ -113,6 +118,14 @@ export class ThermalPrinter {
     private generateReceiptHTML(data: ReceiptData): string {
         const { items, payments } = data;
 
+        // Use PrintSettings if available, otherwise fall back to data
+        const shopName = this.printSettings?.posShopName || data.storeName;
+        const shopAddress = this.printSettings?.posShopAddress || data.storeAddress;
+        const shopPhone = this.printSettings?.posShopPhone || data.storePhone;
+        const terminalId = this.printSettings?.posTerminalId;
+        const showBarcode = this.printSettings?.posShowBarcode ?? true;
+        const footerText = this.printSettings?.posReceiptFooter || data.footer || 'Thank you for your business!';
+
         return `
 <!DOCTYPE html>
 <html>
@@ -165,6 +178,13 @@ export class ThermalPrinter {
             line-height: 1.3;
         }
 
+        .receipt-title {
+            text-align: center;
+            font-size: 14px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
         .receipt-info {
             margin: 10px 0;
             font-size: 11px;
@@ -174,6 +194,11 @@ export class ThermalPrinter {
             display: flex;
             justify-content: space-between;
             margin: 2px 0;
+        }
+
+        .separator {
+            border-top: 1px dashed #000;
+            margin: 10px 0;
         }
 
         .items {
@@ -236,6 +261,18 @@ export class ThermalPrinter {
             margin: 5px 0;
         }
 
+        .barcode-container {
+            text-align: center;
+            margin: 15px 0;
+            padding: 10px 0;
+            border-top: 1px dashed #000;
+        }
+
+        .barcode-container svg {
+            max-width: 100%;
+            height: auto;
+        }
+
         .footer {
             text-align: center;
             margin-top: 15px;
@@ -243,40 +280,33 @@ export class ThermalPrinter {
             border-top: 2px dashed #000;
             font-size: 10px;
         }
-
-        .barcode {
-            text-align: center;
-            margin: 10px 0;
-            font-family: 'Libre Barcode 128', cursive;
-            font-size: 40px;
-            letter-spacing: 0;
-        }
     </style>
 </head>
 <body>
     <div class="receipt">
         <!-- Header -->
         <div class="header">
-            <div class="store-name">${this.escapeHTML(data.storeName)}</div>
-            ${data.storeAddress ? `<div class="store-info">${this.escapeHTML(data.storeAddress)}</div>` : ''}
-            ${data.storePhone ? `<div class="store-info">Tel: ${this.escapeHTML(data.storePhone)}</div>` : ''}
+            <div class="store-name">${this.escapeHTML(shopName)}</div>
+            ${shopAddress ? `<div class="store-info">Address: ${this.escapeHTML(shopAddress)}</div>` : ''}
+            ${shopPhone ? `<div class="store-info">Tel: ${this.escapeHTML(shopPhone)}</div>` : ''}
             ${data.taxId ? `<div class="store-info">Tax ID: ${this.escapeHTML(data.taxId)}</div>` : ''}
         </div>
+
+        <div class="receipt-title">CASH RECEIPT</div>
+        <div class="separator"></div>
 
         <!-- Receipt Info -->
         <div class="receipt-info">
             <div class="info-row">
-                <span>Receipt #:</span>
-                <span><strong>${this.escapeHTML(data.receiptNumber)}</strong></span>
-            </div>
-            <div class="info-row">
-                <span>Date:</span>
-                <span>${this.escapeHTML(data.date)}</span>
-            </div>
-            <div class="info-row">
-                <span>Time:</span>
+                <span>Date: ${this.escapeHTML(data.date)}</span>
                 <span>${this.escapeHTML(data.time)}</span>
             </div>
+            ${terminalId ? `
+            <div class="info-row">
+                <span>Terminal:</span>
+                <span>${this.escapeHTML(terminalId)}</span>
+            </div>
+            ` : ''}
             <div class="info-row">
                 <span>Cashier:</span>
                 <span>${this.escapeHTML(data.cashier)}</span>
@@ -288,6 +318,8 @@ export class ThermalPrinter {
             </div>
             ` : ''}
         </div>
+
+        <div class="separator"></div>
 
         <!-- Items -->
         <div class="items">
@@ -307,6 +339,8 @@ export class ThermalPrinter {
                 </div>
             `).join('')}
         </div>
+
+        <div class="separator"></div>
 
         <!-- Totals -->
         <div class="totals">
@@ -330,6 +364,8 @@ export class ThermalPrinter {
             </div>
         </div>
 
+        <div class="separator"></div>
+
         <!-- Payments -->
         <div class="payments">
             ${payments.map(payment => `
@@ -346,19 +382,24 @@ export class ThermalPrinter {
             ` : ''}
         </div>
 
-        <!-- Barcode -->
-        <div class="barcode">*${data.receiptNumber}*</div>
-
         <!-- Footer -->
         <div class="footer">
-            ${data.footer || 'Thank you for your business!'}
+            ${footerText}
             <br>
             Please keep this receipt for your records
-            <div style="margin-top: 50px; border-bottom: 2px dashed #eee; padding-bottom: 50px; text-align: center; color: #666; font-size: 8px;">
-                *** END OF RECEIPT ***
-                <br>
-                [ CUT HERE ]
-            </div>
+        </div>
+
+        ${showBarcode ? `
+        <!-- Barcode -->
+        <div class="barcode-container">
+            ${this.generateBarcodeSVG(data.receiptNumber)}
+        </div>
+        ` : ''}
+
+        <div style="margin-top: 50px; border-bottom: 2px dashed #eee; padding-bottom: 50px; text-align: center; color: #666; font-size: 8px;">
+            *** END OF RECEIPT ***
+            <br>
+            [ CUT HERE ]
         </div>
     </div>
 </body>
@@ -380,6 +421,46 @@ export class ThermalPrinter {
             2. Launch Chrome with the --kiosk-printing flag.
         `;
     }
+
+    /**
+     * Generate Code128-style barcode SVG
+     * Creates a simple barcode representation for receipt numbers
+     */
+    private generateBarcodeSVG(text: string): string {
+        // Simple barcode pattern generator
+        // In production, you might want to use a proper Code128 library
+        const barcodeWidth = 250;
+        const barcodeHeight = 60;
+        const barWidth = 2;
+
+        // Convert text to binary pattern (simplified)
+        let pattern = '';
+        for (let i = 0; i < text.length; i++) {
+            const charCode = text.charCodeAt(i);
+            pattern += charCode.toString(2).padStart(8, '0');
+        }
+
+        // Generate SVG bars
+        let bars = '';
+        let x = 0;
+        for (let i = 0; i < pattern.length && x < barcodeWidth; i++) {
+            if (pattern[i] === '1') {
+                bars += `<rect x="${x}" y="0" width="${barWidth}" height="${barcodeHeight}" fill="black"/>`;
+            }
+            x += barWidth;
+        }
+
+        return `
+            <svg width="${barcodeWidth}" height="${barcodeHeight + 20}" xmlns="http://www.w3.org/2000/svg">
+                <rect width="${barcodeWidth}" height="${barcodeHeight}" fill="white"/>
+                ${bars}
+                <text x="${barcodeWidth / 2}" y="${barcodeHeight + 15}" 
+                      font-family="monospace" font-size="10" 
+                      text-anchor="middle" fill="black">${text}</text>
+            </svg>
+        `;
+    }
+
 
     /**
      * Cut paper after printing
