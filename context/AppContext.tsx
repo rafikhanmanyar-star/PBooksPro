@@ -1376,7 +1376,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     budgets: apiState.budgets || [],
                                     rentalAgreements: apiState.rentalAgreements || [],
                                     projectAgreements: apiState.projectAgreements || [],
+                                    installmentPlans: apiState.installmentPlans || [],
+                                    planAmenities: apiState.planAmenities || [],
                                     contracts: apiState.contracts || [],
+                                    salesReturns: apiState.salesReturns || [],
+                                    quotations: apiState.quotations || [],
+                                    documents: apiState.documents || [],
+                                    recurringInvoiceTemplates: apiState.recurringInvoiceTemplates || [],
                                     pmCycleAllocations: apiState.pmCycleAllocations || [],
                                     vendors: Array.from(apiVendorsMap.values()),
                                     transactionLog: apiState.transactionLog || [],
@@ -2560,13 +2566,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const storedHasMoreData = currentStoredState.contacts.length > state.contacts.length ||
                 currentStoredState.transactions.length > state.transactions.length ||
                 currentStoredState.invoices.length > state.invoices.length ||
-                currentStoredState.accounts.length > state.accounts.length;
+                currentStoredState.accounts.length > state.accounts.length ||
+                (currentStoredState.projectAgreements?.length ?? 0) > (state.projectAgreements?.length ?? 0) ||
+                (currentStoredState.installmentPlans?.length ?? 0) > (state.installmentPlans?.length ?? 0);
 
             // Check if storedState has any user data (not just system defaults)
             const storedHasUserData = currentStoredState.contacts.length > 0 ||
                 currentStoredState.transactions.length > 0 ||
                 currentStoredState.invoices.length > 0 ||
-                currentStoredState.bills.length > 0;
+                currentStoredState.bills.length > 0 ||
+                (currentStoredState.projectAgreements?.length ?? 0) > 0 ||
+                (currentStoredState.installmentPlans?.length ?? 0) > 0;
 
             const currentHasUserData = state.contacts.length > 0 ||
                 state.transactions.length > 0 ||
@@ -3619,8 +3629,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }
             };
 
-            // Delay reload slightly to ensure token is fully set
-            setTimeout(reloadDataFromApi, 1000);
+            // Delay reload slightly to ensure token is fully set and reducer has synced
+            setTimeout(reloadDataFromApi, 300);
         }
     }, [isAuthenticated, isInitializing]);
 

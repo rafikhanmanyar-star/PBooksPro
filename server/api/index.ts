@@ -668,7 +668,13 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
-app.use('/api', licenseMiddleware(pool));
+// License middleware - skip for license-status so the client can always load status (including expired)
+app.use('/api', (req: any, res: Response, next: NextFunction) => {
+  if (req.method === 'GET' && req.path === '/tenants/license-status') {
+    return next();
+  }
+  return licenseMiddleware(pool)(req, res, next);
+});
 
 // Data routes (require tenant context and valid license)
 app.use('/api/transactions', transactionsRouter);

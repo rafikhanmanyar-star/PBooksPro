@@ -718,11 +718,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         logger.logCategory('auth', '✅ Unified login completed successfully');
 
-        // Load license immediately so features enable without waiting for LicenseContext effect
+        // Load license immediately so features enable without waiting for LicenseContext effect.
+        // Defer dispatch so LicenseContext has committed and can receive the event.
         checkLicenseStatus()
           .then((licenseStatus) => {
             if (typeof window !== 'undefined' && licenseStatus && ('licenseType' in licenseStatus || 'licenseStatus' in licenseStatus)) {
-              window.dispatchEvent(new CustomEvent('license-status-loaded', { detail: licenseStatus }));
+              const dispatch = () => window.dispatchEvent(new CustomEvent('license-status-loaded', { detail: licenseStatus }));
+              if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(dispatch);
+              else setTimeout(dispatch, 0);
             }
           })
           .catch((err) => logger.warnCategory('auth', 'Post-login license fetch failed (will retry in context):', err));
@@ -836,7 +839,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       checkLicenseStatus()
         .then((licenseStatus) => {
           if (typeof window !== 'undefined' && licenseStatus && ('licenseType' in licenseStatus || 'licenseStatus' in licenseStatus)) {
-            window.dispatchEvent(new CustomEvent('license-status-loaded', { detail: licenseStatus }));
+            const dispatch = () => window.dispatchEvent(new CustomEvent('license-status-loaded', { detail: licenseStatus }));
+            if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(dispatch);
+            else setTimeout(dispatch, 0);
           }
         })
         .catch((err) => logger.warnCategory('auth', 'Post-login license fetch failed (will retry in context):', err));

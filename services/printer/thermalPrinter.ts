@@ -5,6 +5,7 @@
  */
 
 import { PrintSettings } from '../../types';
+import html2canvas from 'html2canvas';
 
 export interface PrinterConfig {
     printerName?: string;
@@ -12,6 +13,12 @@ export interface PrinterConfig {
     encoding?: string;
     autoConnect?: boolean;
     printSettings?: PrintSettings; // Optional print settings for configurable templates
+    /**
+     * If true, rasterizes the receipt HTML into a single PNG before printing.
+     * This dramatically improves output consistency on many thermal printer drivers
+     * (fixes "preview looks right, but printer outputs plain text / loses layout / skips barcode").
+     */
+    rasterize?: boolean;
 }
 
 export interface ReceiptData {
@@ -60,6 +67,7 @@ export class ThermalPrinter {
             paperWidth: 80, // 80mm thermal paper
             encoding: 'UTF-8',
             autoConnect: true,
+            rasterize: true,
             ...config
         };
         this.printSettings = config.printSettings;
@@ -91,13 +99,19 @@ export class ThermalPrinter {
             doc.write(receiptHTML);
             doc.close();
 
-            // Wait for content to load
-            await new Promise(resolve => setTimeout(resolve, 100));
+            // Wait for DOM + resources (barcode image) to be ready
+            await this.waitForPrintDocumentReady(doc);
 
-            // Print
-            printFrame.contentWindow?.print();
+            // Some thermal printer drivers will ignore CSS layout / images and print "text-only".
+            // Rasterizing the receipt into an image forces graphics output so the paper matches the preview.
+            if (this.config.rasterize) {
+                await this.rasterizeReceiptToImage(doc);
+                // Ensure the generated PNG is fully loaded before printing.
+                await this.waitForPrintDocumentReady(doc);
+            }
 
-            // Automatically cut paper after printing
+            // Print, then (driver-configured) cut
+            await this.printAndWaitForCompletion(printFrame);
             await this.cutPaper();
 
             // Clean up after printing
@@ -109,6 +123,128 @@ export class ThermalPrinter {
             console.error('Print error:', error);
             throw new Error(`Failed to print receipt: ${error}`);
         }
+    }
+
+    private async printAndWaitForCompletion(printFrame: HTMLIFrameElement): Promise<void> {
+        const win = printFrame.contentWindow;
+        if (!win) return;
+
+        // Best-effort: wait for "afterprint" so we don't tear down too early.
+        await new Promise<void>((resolve) => {
+            let done = false;
+            const finish = () => {
+                if (done) return;
+                done = true;
+                try {
+                    win.removeEventListener('afterprint', finish);
+                } catch {
+                    // ignore
+                }
+                resolve();
+            };
+
+            try {
+                win.addEventListener('afterprint', finish, { once: true });
+            } catch {
+                // ignore
+            }
+
+            // Fallback: some browsers/drivers don't reliably fire afterprint
+            setTimeout(finish, 8000);
+
+            try {
+                win.focus();
+                win.print();
+            } catch {
+                // If print fails, still resolve so caller can throw higher up
+                finish();
+            }
+        });
+    }
+
+    private async waitForPrintDocumentReady(doc: Document): Promise<void> {
+        // Ensure the document is "interactive"/"complete"
+        await new Promise<void>((resolve) => setTimeout(resolve, 150));
+
+        // Wait for fonts (if supported)
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const fontsReady = (doc as any).fonts?.ready;
+            if (fontsReady && typeof fontsReady.then === 'function') {
+                await fontsReady;
+            }
+        } catch {
+            // ignore
+        }
+
+        // Wait for images (barcode <img>) to load/decode
+        const images = Array.from(doc.images || []);
+        await Promise.all(images.map(async (img) => {
+            try {
+                if (!img.complete) {
+                    await new Promise<void>((resolve) => {
+                        const onDone = () => resolve();
+                        img.addEventListener('load', onDone, { once: true });
+                        img.addEventListener('error', onDone, { once: true });
+                    });
+                }
+                // decode() is more reliable when available
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const anyImg = img as any;
+                if (typeof anyImg.decode === 'function') {
+                    await anyImg.decode();
+                }
+            } catch {
+                // ignore
+            }
+        }));
+    }
+
+    private async rasterizeReceiptToImage(doc: Document): Promise<void> {
+        const receiptEl = doc.querySelector('.receipt') as HTMLElement | null;
+        if (!receiptEl) return;
+
+        // Ensure layout is settled before capturing.
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+
+        const canvas = await html2canvas(receiptEl, {
+            backgroundColor: '#ffffff',
+            scale: 2,
+            logging: false,
+            useCORS: true,
+            allowTaint: true,
+        });
+
+        const png = canvas.toDataURL('image/png');
+
+        // Replace the document with a single image for maximum driver compatibility.
+        const widthPx = receiptEl.getBoundingClientRect().width || 302;
+        doc.open();
+        doc.write(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=${Math.round(widthPx)}">
+  <title>Receipt</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: #fff; }
+    @page { size: 80mm auto; margin: 0; }
+    body { width: ${Math.round(widthPx)}px; max-width: ${Math.round(widthPx)}px; }
+    img { display: block; width: 100%; height: auto; }
+    @media print { * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  </style>
+</head>
+<body>
+  <img src="${png}" alt="Receipt" />
+</body>
+</html>
+        `);
+        doc.close();
+
+        // Give the browser a beat to load the PNG before printing.
+        await new Promise<void>((resolve) => setTimeout(resolve, 100));
     }
 
     /**
@@ -126,164 +262,82 @@ export class ThermalPrinter {
         const showBarcode = this.printSettings?.posShowBarcode ?? true;
         const footerText = this.printSettings?.posReceiptFooter || data.footer || 'Thank you for your business!';
 
+        /* 80mm thermal (e.g. Black Copper): 80mm = 302px at 96dpi. Use px so preview = print. */
+        const WIDTH_PX = 302;
+        const PADDING_PX = 8;
+
         return `
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=${WIDTH_PX}">
     <title>Receipt ${data.receiptNumber}</title>
     <style>
+        * { box-sizing: border-box; }
+        html { margin: 0; padding: 0; }
+        /* 80mm paper for Black Copper / thermal; no margin so receipt fills roll */
         @page {
             size: 80mm auto;
             margin: 0;
         }
-        
-        @media print {
-            body {
-                margin: 0;
-                padding: 0;
-            }
-            
-            .receipt {
-                page-break-after: always;
-            }
-        }
-
         body {
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            line-height: 1.4;
+            font-family: 'Courier New', Consolas, monospace;
+            font-size: 11px;
+            line-height: 1.35;
             color: #000;
             background: #fff;
-            width: 80mm;
-            margin: 0 auto;
-            padding: 5mm;
+            margin: 0;
+            padding: ${PADDING_PX}px;
+            width: ${WIDTH_PX}px;
+            min-width: ${WIDTH_PX}px;
+            max-width: ${WIDTH_PX}px;
         }
-
         .receipt {
-            width: 100%;
+            width: ${WIDTH_PX - PADDING_PX * 2}px;
+        }
+        @media print {
+            html, body {
+                margin: 0 !important;
+                padding: ${PADDING_PX}px !important;
+                width: ${WIDTH_PX}px !important;
+                min-width: ${WIDTH_PX}px !important;
+                max-width: ${WIDTH_PX}px !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .receipt { width: ${WIDTH_PX - PADDING_PX * 2}px !important; }
+            .barcode-container, .receipt-end { page-break-inside: avoid; page-break-before: avoid; }
+            .barcode-container, .barcode-container img { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
 
         .header {
             text-align: center;
-            margin-bottom: 10px;
-            border-bottom: 2px dashed #000;
-            padding-bottom: 10px;
-        }
-
-        .store-name {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-
-        .store-info {
-            font-size: 10px;
-            line-height: 1.3;
-        }
-
-        .receipt-title {
-            text-align: center;
-            font-size: 14px;
-            font-weight: bold;
-            margin: 10px 0;
-        }
-
-        .receipt-info {
-            margin: 10px 0;
-            font-size: 11px;
-        }
-
-        .info-row {
-            display: flex;
-            justify-content: space-between;
-            margin: 2px 0;
-        }
-
-        .separator {
-            border-top: 1px dashed #000;
-            margin: 10px 0;
-        }
-
-        .items {
-            margin: 10px 0;
-            border-top: 1px dashed #000;
+            margin-bottom: 6px;
             border-bottom: 1px dashed #000;
-            padding: 5px 0;
+            padding-bottom: 6px;
         }
-
-        .item {
-            margin: 5px 0;
-        }
-
-        .item-name {
-            font-weight: bold;
-        }
-
-        .item-details {
-            display: flex;
-            justify-content: space-between;
-            font-size: 11px;
-            margin-left: 10px;
-        }
-
-        .totals {
-            margin: 10px 0;
-            font-size: 12px;
-        }
-
-        .total-row {
-            display: flex;
-            justify-content: space-between;
-            margin: 3px 0;
-        }
-
-        .grand-total {
-            font-size: 16px;
-            font-weight: bold;
-            border-top: 2px solid #000;
-            border-bottom: 2px solid #000;
-            padding: 5px 0;
-            margin: 5px 0;
-        }
-
-        .payments {
-            margin: 10px 0;
-            border-top: 1px dashed #000;
-            padding-top: 5px;
-        }
-
-        .payment-row {
-            display: flex;
-            justify-content: space-between;
-            margin: 3px 0;
-        }
-
-        .change {
-            font-size: 14px;
-            font-weight: bold;
-            margin: 5px 0;
-        }
-
-        .barcode-container {
-            text-align: center;
-            margin: 15px 0;
-            padding: 10px 0;
-            border-top: 1px dashed #000;
-        }
-
-        .barcode-container svg {
-            max-width: 100%;
-            height: auto;
-        }
-
-        .footer {
-            text-align: center;
-            margin-top: 15px;
-            padding-top: 10px;
-            border-top: 2px dashed #000;
-            font-size: 10px;
-        }
+        .store-name { font-size: 14px; font-weight: bold; margin-bottom: 3px; }
+        .store-info { font-size: 9px; line-height: 1.25; }
+        .receipt-title { text-align: center; font-size: 12px; font-weight: bold; margin: 6px 0; }
+        .receipt-info { margin: 6px 0; font-size: 10px; }
+        .info-row { display: flex; justify-content: space-between; margin: 1px 0; }
+        .separator { border-top: 1px dashed #000; margin: 6px 0; }
+        .items { margin: 6px 0; border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 4px 0; }
+        .item { margin: 4px 0; }
+        .item-name { font-weight: bold; }
+        .item-details { display: flex; justify-content: space-between; font-size: 10px; margin-left: 8px; }
+        .totals { margin: 6px 0; font-size: 11px; }
+        .total-row { display: flex; justify-content: space-between; margin: 2px 0; }
+        .grand-total { font-size: 13px; font-weight: bold; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0; margin: 4px 0; }
+        .payments { margin: 6px 0; border-top: 1px dashed #000; padding-top: 4px; }
+        .payment-row { display: flex; justify-content: space-between; margin: 2px 0; }
+        .change { font-size: 12px; font-weight: bold; margin: 4px 0; }
+        .barcode-container { text-align: center; margin: 10px 0; padding: 8px 0; border-top: 1px dashed #000; }
+        .barcode-container svg, .barcode-container .barcode-img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+        .barcode-text { font-size: 9px; margin-top: 4px; font-weight: bold; }
+        .footer { text-align: center; margin-top: 10px; padding-top: 8px; border-top: 1px dashed #000; font-size: 9px; }
+        .receipt-end { margin-top: 12px; padding-bottom: 12px; border-bottom: 1px dashed #ccc; text-align: center; color: #333; font-size: 8px; }
     </style>
 </head>
 <body>
@@ -394,17 +448,18 @@ export class ThermalPrinter {
         </div>
 
         ${showBarcode ? `
-        <!-- Barcode -->
+        <!-- Barcode: use img + data URL so thermal drivers that skip SVG still print it -->
         <div class="barcode-container">
-            ${this.generateBarcodeSVG(data.receiptNumber)}
+            <img class="barcode-img" src="${this.getBarcodeDataURL(data.receiptNumber)}" alt="${this.escapeHTML(data.receiptNumber)}" width="250" height="80" />
+            <div class="barcode-text">${this.escapeHTML(data.receiptNumber)}</div>
         </div>
         ` : ''}
 
-        <div style="margin-top: 50px; border-bottom: 2px dashed #eee; padding-bottom: 50px; text-align: center; color: #666; font-size: 8px;">
-            *** END OF RECEIPT ***
-            <br>
-            [ CUT HERE ]
+        <div class="receipt-end">
+            *** END OF RECEIPT ***<br>[ CUT HERE ]
         </div>
+        <!-- Extra feed helps cutters and manual tear-off -->
+        <div style="height: 16mm;"></div>
     </div>
 </body>
 </html>
@@ -465,6 +520,16 @@ export class ThermalPrinter {
         `;
     }
 
+    /**
+     * Return barcode as data URL so thermal drivers that skip inline SVG can print it via <img>
+     */
+    private getBarcodeDataURL(text: string): string {
+        const svg = this.generateBarcodeSVG(text).replace(/\s+/g, ' ').trim();
+        if (typeof btoa !== 'undefined') {
+            return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+        }
+        return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    }
 
     /**
      * Cut paper after printing

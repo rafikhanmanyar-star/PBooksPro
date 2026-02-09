@@ -59,10 +59,15 @@ export class DatabaseService {
 
         // RLS tenant context must be set on the SAME connection as the query.
         // Use a short transaction and SET LOCAL to avoid leaking across pooled connections.
+        // SET LOCAL does not support bound parameters ($1) in PostgreSQL, so we escape the value.
         const client = await this.pool.connect();
         try {
           await client.query('BEGIN');
-          await client.query('SET LOCAL app.current_tenant_id = $1', [tenantId]);
+          const safeTenantId = String(tenantId).replace(/'/g, "''");
+          if (!/^[a-zA-Z0-9_-]+$/.test(tenantId)) {
+            throw new Error('Invalid tenant id for SET LOCAL');
+          }
+          await client.query(`SET LOCAL app.current_tenant_id = '${safeTenantId}'`);
           const result = await client.query(text, params);
           await client.query('COMMIT');
           return result.rows;
@@ -154,10 +159,15 @@ export class DatabaseService {
         }
 
         // Same logic as query(): run in a short transaction with SET LOCAL.
+        // SET LOCAL does not support bound parameters ($1) in PostgreSQL, so escape the value.
+        if (!/^[a-zA-Z0-9_-]+$/.test(tenantId)) {
+          throw new Error('Invalid tenant id for SET LOCAL');
+        }
+        const safeTenantId = String(tenantId).replace(/'/g, "''");
         const client = await this.pool.connect();
         try {
           await client.query('BEGIN');
-          await client.query('SET LOCAL app.current_tenant_id = $1', [tenantId]);
+          await client.query(`SET LOCAL app.current_tenant_id = '${safeTenantId}'`);
           await client.query(text, params);
           await client.query('COMMIT');
           return;
@@ -238,8 +248,12 @@ export class DatabaseService {
         const tenantId = getCurrentTenantId();
         if (tenantId) {
           // Apply RLS tenant context for this transaction.
-          // SET LOCAL guarantees no leakage beyond this transaction.
-          await client.query('SET LOCAL app.current_tenant_id = $1', [tenantId]);
+          // SET LOCAL does not support bound parameters ($1) in PostgreSQL, so escape the value.
+          if (!/^[a-zA-Z0-9_-]+$/.test(tenantId)) {
+            throw new Error('Invalid tenant id for SET LOCAL');
+          }
+          const safeTenantId = String(tenantId).replace(/'/g, "''");
+          await client.query(`SET LOCAL app.current_tenant_id = '${safeTenantId}'`);
         }
 
         const result = await callback(client);

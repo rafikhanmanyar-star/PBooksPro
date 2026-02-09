@@ -81,16 +81,15 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
         return () => { cancelled = true; };
     }, [isAuthenticated, checkLicenseStatus]);
 
-    // When auth just logged in, license may be loaded via event so we have it immediately
+    // Listen for license loaded event from login flow (added on mount so we never miss the event)
     useEffect(() => {
-        if (!isAuthenticated) return;
         const onLicenseLoaded = (e: CustomEvent) => {
             const status = e.detail;
             if (isRealLicenseResponse(status)) setCloudLicense(status);
         };
         window.addEventListener('license-status-loaded' as any, onLicenseLoaded);
         return () => window.removeEventListener('license-status-loaded' as any, onLicenseLoaded);
-    }, [isAuthenticated]);
+    }, []);
 
     useEffect(() => {
         // 1. Initialize Device ID if missing
