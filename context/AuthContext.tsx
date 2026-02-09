@@ -781,6 +781,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   /**
+   * Check license status. Throws on error so callers (e.g. LicenseContext) don't treat fallback as valid data.
+   * Defined before login/unifiedLogin so they can reference it in their dependency arrays.
+   */
+  const checkLicenseStatus = useCallback(async () => {
+    const response = await apiClient.get<{
+      isValid?: boolean;
+      licenseType?: string;
+      licenseStatus?: string;
+      expiryDate?: string | null;
+      daysRemaining?: number;
+      isExpired?: boolean;
+      modules?: string[];
+    }>('/tenants/license-status');
+    return response;
+  }, []);
+
+  /**
    * Login with username, password, and tenant ID (legacy - kept for backward compatibility)
    */
   const login = useCallback(async (username: string, password: string, tenantId: string) => {
@@ -887,22 +904,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }));
       throw error;
     }
-  }, []);
-
-  /**
-   * Check license status. Throws on error so callers (e.g. LicenseContext) don't treat fallback as valid data.
-   */
-  const checkLicenseStatus = useCallback(async () => {
-    const response = await apiClient.get<{
-      isValid?: boolean;
-      licenseType?: string;
-      licenseStatus?: string;
-      expiryDate?: string | null;
-      daysRemaining?: number;
-      isExpired?: boolean;
-      modules?: string[];
-    }>('/tenants/license-status');
-    return response;
   }, []);
 
   return (
