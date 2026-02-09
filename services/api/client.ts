@@ -329,7 +329,14 @@ export class ApiClient {
                                     endpoint.includes('/rental-agreements') ||
                                     endpoint.includes('/project-agreements') ||
                                     endpoint.includes('/contracts') ||
-                                    endpoint.includes('/budgets');
+                                    endpoint.includes('/budgets') ||
+                                    endpoint.includes('/vendors') ||
+                                    endpoint.includes('/quotations') ||
+                                    endpoint.includes('/sales-returns') ||
+                                    endpoint.includes('/documents') ||
+                                    endpoint.includes('/recurring-invoice-templates') ||
+                                    endpoint.includes('/pm-cycle-allocations') ||
+                                    endpoint.includes('/transaction-audit');
           
           if (isValidationEndpoint) {
             // Silent fail for validation endpoints - expected if token is invalid during app init

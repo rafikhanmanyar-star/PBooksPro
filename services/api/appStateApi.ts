@@ -615,6 +615,7 @@ export class AppStateApiService {
         companyName: v.company_name || v.companyName || undefined,
         isActive: v.is_active ?? v.isActive ?? true,
         address: v.address || undefined,
+        tenantId: v.tenant_id || v.tenantId || undefined,
         userId: v.user_id || v.userId || undefined,
         createdAt: v.created_at || v.createdAt || undefined,
         updatedAt: v.updated_at || v.updatedAt || undefined
