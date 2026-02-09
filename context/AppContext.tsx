@@ -2666,6 +2666,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (apiState.buildings) updates.buildings = mergeById(currentState.buildings, apiState.buildings);
             if (apiState.properties) updates.properties = mergeById(currentState.properties, apiState.properties);
             if (apiState.units) updates.units = mergeById(currentState.units, apiState.units);
+            if (apiState.vendors) updates.vendors = mergeById(currentState.vendors || [], apiState.vendors);
 
             if (Object.keys(updates).length === 0) return;
 
@@ -3577,9 +3578,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const apiService = getAppStateApiService();
                     const apiState = await apiService.loadState();
 
-                    // Replace state with API data for this tenant only (server filters by JWT tenant_id)
-                    setStoredState(prev => ({
-                        ...prev,
+                    // Build updates from API data for this tenant (server filters by JWT tenant_id)
+                    const apiUpdates = {
                         accounts: apiState.accounts || [],
                         contacts: apiState.contacts || [],
                         transactions: apiState.transactions || [],
@@ -3600,7 +3600,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         })),
                         installmentPlans: apiState.installmentPlans || [],
                         planAmenities: apiState.planAmenities || [],
-                    }));
+                    };
+
+                    // Update stored state (persistence layer)
+                    setStoredState(prev => ({ ...prev, ...apiUpdates }));
+
+                    // Also dispatch to reducer so UI components see the data immediately
+                    dispatch({ type: 'SET_STATE', payload: { ...stateRef.current, ...apiUpdates }, _isRemote: true } as any);
 
                     logger.logCategory('sync', '✅ Reloaded data from API:', {
                         contacts: apiState.contacts?.length || 0,

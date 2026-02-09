@@ -45,6 +45,7 @@ const ENTITY_QUERIES: { key: string; table: string; tenantColumn: string }[] = [
   { key: 'rental_agreements', table: 'rental_agreements', tenantColumn: 'tenant_id' },
   { key: 'project_agreements', table: 'project_agreements', tenantColumn: 'tenant_id' },
   { key: 'installment_plans', table: 'installment_plans', tenantColumn: 'tenant_id' },
+  { key: 'vendors', table: 'vendors', tenantColumn: 'tenant_id' },
 ];
 
 function snakeToCamel(str: string): string {

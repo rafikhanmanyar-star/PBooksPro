@@ -120,11 +120,10 @@ export function tenantMiddleware(pool: Pool) {
         });
       }
 
-      // Establish request-scoped tenant context so DatabaseService can apply
-      // Postgres RLS tenant settings on the correct connection.
-      return await runWithTenantContext(
-        { tenantId: req.tenantId, userId: req.userId },
-        async () => {
+      // NOTE: Security queries below run OUTSIDE runWithTenantContext intentionally.
+      // The middleware's own queries (user check, session check) must see all data
+      // regardless of RLS policy and should use plain pool.query() for efficiency.
+      // Only the downstream route handler (next()) runs inside tenant context.
 
       // CRITICAL SECURITY CHECK: Verify user actually belongs to the tenant from token
       // This prevents users from accessing data from other tenants by manipulating tokens
@@ -406,26 +405,13 @@ export function tenantMiddleware(pool: Pool) {
         });
       }
 
-      // Activate PostgreSQL Row Level Security (RLS) for defense-in-depth.
-      // NOTE:
-      // - We do NOT rely on this pool for application queries (DatabaseService has its own pool).
-      // - If this pool is ever used for tenant-scoped queries in the future, we must ensure
-      //   the setting does not leak across pooled connections. Use SET LOCAL inside a tx.
-      try {
-        const client = await pool.connect();
-        try {
-          await client.query('BEGIN');
-          await client.query('SET LOCAL app.current_tenant_id = $1', [req.tenantId]);
-          await client.query('COMMIT');
-        } finally {
-          client.release();
-        }
-      } catch (rlsError) {
-        // Non-fatal: RLS is a safety net, explicit WHERE clauses are the primary guard
-        console.warn('Failed to set RLS tenant context (non-fatal):', rlsError);
-      }
-
-      next();
+      // Establish request-scoped tenant context so DatabaseService can apply
+      // Postgres RLS tenant settings on the correct connection for route handlers.
+      // Only the downstream route handler (next()) runs inside tenant context.
+      return await runWithTenantContext(
+        { tenantId: req.tenantId!, userId: req.userId },
+        async () => {
+          next();
         }
       );
     } catch (error) {
