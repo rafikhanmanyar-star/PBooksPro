@@ -239,7 +239,7 @@ const PurchasesTab: React.FC = () => {
         );
 
         // Create expense transaction in the main ledger
-        const vendor = state.contacts.find(c => c.id === bill.vendorId);
+        const vendor = state.vendors?.find(v => v.id === bill.vendorId);
         const account = state.accounts.find(a => a.id === paymentAccountId);
         
         if (account) {
@@ -270,7 +270,7 @@ const PurchasesTab: React.FC = () => {
 
     // Get vendor name
     const getVendorName = (vendorId: string) => {
-        const vendor = state.contacts.find(c => c.id === vendorId);
+        const vendor = state.vendors?.find(v => v.id === vendorId);
         return vendor?.name || 'Unknown Vendor';
     };
 

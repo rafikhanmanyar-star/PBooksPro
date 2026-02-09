@@ -190,14 +190,8 @@ const VendorDirectoryPage: React.FC = () => {
 
     const vendors = useMemo(() => {
         const list = [...(state.vendors || [])];
-        // Add vendors from contacts table that aren't in the vendors table
-        state.contacts.forEach(c => {
-            if (c.type === 'Vendor' && !list.some(v => v.id === c.id)) {
-                list.push(c as unknown as Vendor);
-            }
-        });
         return list.sort((a, b) => a.name.localeCompare(b.name));
-    }, [state.vendors, state.contacts]);
+    }, [state.vendors]);
 
     const filteredVendors = useMemo(() => {
         if (!vendorSearch) return vendors;

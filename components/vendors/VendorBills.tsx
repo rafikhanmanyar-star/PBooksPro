@@ -25,7 +25,7 @@ const VendorBills: React.FC<VendorBillsProps> = ({ vendorId, onEditBill }) => {
     const [statusFilter, setStatusFilter] = useState<string>('All');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'issueDate', direction: 'desc' });
 
-    const vendor = state.vendors?.find(v => v.id === vendorId) || state.contacts.find(c => c.id === vendorId);
+    const vendor = state.vendors?.find(v => v.id === vendorId);
 
     const bills = useMemo(() => {
         return state.bills.filter(b => (b.vendorId || b.contactId) === vendorId);

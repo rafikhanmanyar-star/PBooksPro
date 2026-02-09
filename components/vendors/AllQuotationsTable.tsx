@@ -35,7 +35,7 @@ const AllQuotationsTable: React.FC<AllQuotationsTableProps> = ({ onEditQuotation
                     const category = state.categories.find(c => c.id === item.categoryId);
                     return category?.name.toLowerCase().includes(q);
                 }) ||
-                state.contacts.find(c => c.id === quotation.vendorId)?.name.toLowerCase().includes(q)
+                state.vendors?.find(v => v.id === quotation.vendorId)?.name.toLowerCase().includes(q)
             );
         }
         
@@ -61,8 +61,8 @@ const AllQuotationsTable: React.FC<AllQuotationsTableProps> = ({ onEditQuotation
                     bVal = b.items.length;
                     break;
                 case 'vendorName':
-                    const vendorA = state.contacts.find(c => c.id === a.vendorId);
-                    const vendorB = state.contacts.find(c => c.id === b.vendorId);
+                    const vendorA = state.vendors?.find(v => v.id === a.vendorId);
+                    const vendorB = state.vendors?.find(v => v.id === b.vendorId);
                     aVal = vendorA?.name.toLowerCase() || '';
                     bVal = vendorB?.name.toLowerCase() || '';
                     break;
@@ -74,7 +74,7 @@ const AllQuotationsTable: React.FC<AllQuotationsTableProps> = ({ onEditQuotation
             if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [quotations, search, sortConfig, state.categories, state.contacts]);
+    }, [quotations, search, sortConfig, state.categories, state.vendors]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -172,7 +172,7 @@ const AllQuotationsTable: React.FC<AllQuotationsTableProps> = ({ onEditQuotation
                     </thead>
                     <tbody className="divide-y divide-slate-200 bg-white">
                         {filteredQuotations.length > 0 ? filteredQuotations.map(quotation => {
-                            const vendor = state.contacts.find(c => c.id === quotation.vendorId);
+                            const vendor = state.vendors?.find(v => v.id === quotation.vendorId);
                             return (
                                 <tr 
                                     key={quotation.id} 

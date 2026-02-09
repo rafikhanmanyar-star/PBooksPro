@@ -4,14 +4,14 @@ import { InventoryProvider, useInventory } from '../../context/InventoryContext'
 import { AccountingProvider, useAccounting } from '../../context/AccountingContext';
 import { useAppContext } from '../../context/AppContext';
 import { ICONS, CURRENCY } from '../../constants';
-import { Contact, ContactType, InvoiceStatus } from '../../types';
+import { Contact, InvoiceStatus } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import Select from '../ui/Select';
 import ContactForm from '../settings/ContactForm';
 import { BillsApiRepository } from '../../services/api/repositories/billsApi';
-import { ContactsApiRepository } from '../../services/api/repositories/contactsApi';
+import { VendorsApiRepository } from '../../services/api/repositories/vendorsApi';
 import { Bill } from '../../types';
 
 const ProcurementContent: React.FC = () => {
@@ -38,7 +38,7 @@ const ProcurementContent: React.FC = () => {
     }, [refreshItems]);
 
     const billsApi = useMemo(() => new BillsApiRepository(), []);
-    const contactsApi = useMemo(() => new ContactsApiRepository(), []);
+    const vendorsApi = useMemo(() => new VendorsApiRepository(), []);
 
     const [selectedVendor, setSelectedVendor] = useState<Contact | null>(null);
     const [targetWarehouse, setTargetWarehouse] = useState('');
@@ -60,8 +60,8 @@ const ProcurementContent: React.FC = () => {
     const [isSubmitLoading, setIsSubmitLoading] = useState(false);
 
     const vendors = useMemo(() =>
-        (state.contacts || []).filter(c => c.type === ContactType.VENDOR),
-        [state.contacts]
+        state.vendors || [],
+        [state.vendors]
     );
 
     const filteredVendors = vendors.filter(v =>
@@ -243,14 +243,19 @@ const ProcurementContent: React.FC = () => {
     const handleCreateVendor = async (contact: Omit<Contact, 'id'>) => {
         console.log('🚀 Initiating vendor creation:', contact);
         try {
-            // Ensure type is Vendor if coming from this page
-            const vendorData = { ...contact, type: ContactType.VENDOR };
-            const savedVendor = await contactsApi.create(vendorData as Partial<Contact>);
+            const vendorData = {
+                name: contact.name,
+                description: (contact as any).description || null,
+                contactNo: (contact as any).contactNo || null,
+                companyName: (contact as any).companyName || null,
+                address: (contact as any).address || null,
+            };
+            const savedVendor = await vendorsApi.create(vendorData);
 
             console.log('✅ Vendor saved to DB:', savedVendor);
 
-            dispatch({ type: 'ADD_CONTACT', payload: savedVendor });
-            setSelectedVendor(savedVendor);
+            dispatch({ type: 'ADD_VENDOR', payload: savedVendor as any });
+            setSelectedVendor(savedVendor as any);
             setIsCreateVendorModalOpen(false);
 
             // Success feedback (optional: use toast if available)
@@ -702,8 +707,8 @@ const ProcurementContent: React.FC = () => {
                     <ContactForm
                         onSubmit={handleCreateVendor}
                         onCancel={() => setIsCreateVendorModalOpen(false)}
-                        fixedTypeForNew={ContactType.VENDOR}
-                        existingContacts={state.contacts}
+                        isVendorForm={true}
+                        existingVendors={state.vendors}
                     />
                 </div>
             </Modal>

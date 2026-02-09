@@ -27,7 +27,7 @@ const ProjectContractDetailModal: React.FC<ProjectContractDetailModalProps> = ({
     const { showAlert } = useNotification();
 
     const project = state.projects.find(p => p.id === contract.projectId);
-    const vendor = state.vendors?.find(v => v.id === contract.vendorId) || state.contacts.find(c => c.id === contract.vendorId);
+    const vendor = state.vendors?.find(v => v.id === contract.vendorId);
 
     const payments = useMemo(() => {
         return state.transactions

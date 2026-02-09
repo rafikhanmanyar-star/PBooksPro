@@ -112,12 +112,12 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, currentPage 
             .filter(contract => {
               const contractNumber = contract.contractNumber?.toLowerCase() || '';
               const name = contract.name?.toLowerCase() || '';
-              const vendor = state.contacts.find(c => c.id === contract.vendorId)?.name.toLowerCase() || '';
+              const vendor = state.vendors?.find(v => v.id === contract.vendorId)?.name.toLowerCase() || '';
               return contractNumber.includes(query) || name.includes(query) || vendor.includes(query);
             })
             .slice(0, 20)
             .forEach(contract => {
-              const vendor = state.contacts.find(c => c.id === contract.vendorId)?.name || 'Unknown';
+              const vendor = state.vendors?.find(v => v.id === contract.vendorId)?.name || 'Unknown';
               results.push({
                 id: contract.id,
                 type: 'Contract',
