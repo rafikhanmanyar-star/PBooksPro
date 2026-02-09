@@ -668,7 +668,7 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
-app.use('/api', licenseMiddleware());
+app.use('/api', licenseMiddleware(pool));
 
 // Data routes (require tenant context and valid license)
 app.use('/api/transactions', transactionsRouter);
