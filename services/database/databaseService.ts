@@ -686,12 +686,46 @@ class DatabaseService {
     }
 
     /**
+     * Execute a tenant-scoped SQL query with automatic tenant_id filtering.
+     * SECURITY: Use this for all tenant-scoped data access to prevent cross-tenant leaks.
+     * Throws if the SQL does not contain a tenant_id filter (safety check).
+     *
+     * @param sql - SQL query (must include tenant_id filter)
+     * @param params - Query parameters
+     * @param tenantId - Current tenant ID (validated against sql)
+     */
+    queryForTenant<T = any>(sql: string, params: any[], tenantId: string): T[] {
+        if (!tenantId) {
+            throw new Error('SECURITY: queryForTenant called without tenantId');
+        }
+        if (!sql.toLowerCase().includes('tenant_id')) {
+            throw new Error(`SECURITY: Query missing tenant_id filter: ${sql.substring(0, 100)}`);
+        }
+        return this.query<T>(sql, params);
+    }
+
+    /**
+     * Execute a tenant-scoped SQL statement with automatic tenant_id validation.
+     * SECURITY: Use this for all tenant-scoped mutations to prevent cross-tenant writes.
+     */
+    executeForTenant(sql: string, params: any[], tenantId: string): void {
+        if (!tenantId) {
+            throw new Error('SECURITY: executeForTenant called without tenantId');
+        }
+        if (!sql.toLowerCase().includes('tenant_id')) {
+            throw new Error(`SECURITY: Statement missing tenant_id filter: ${sql.substring(0, 100)}`);
+        }
+        this.execute(sql, params);
+    }
+
+    /**
      * Clear all transaction-related data (keeps configuration and master data)
      * Preserves: Contacts, categories, projects, buildings, properties, units, settings
      * Clears: Transactions, invoices, bills, contracts, agreements, sales returns, accounts
-     * Note: Accounts are deleted (not just reset) to avoid duplicate key errors on reload
+     *
+     * @param tenantId - If provided, only clears data for this tenant. If not, clears all.
      */
-    clearTransactionData(): void {
+    clearTransactionData(tenantId?: string): void {
         const db = this.getDatabase();
         // ORDER MATTERS: Delete child tables before parent tables to respect foreign key constraints
         const transactionTables = [
@@ -713,24 +747,30 @@ class DatabaseService {
             // Disable foreign keys temporarily
             db.run('PRAGMA foreign_keys = OFF');
 
-            // Clear transaction-related tables (including accounts)
+            // Clear transaction-related tables, optionally filtered by tenant
             transactionTables.forEach(table => {
                 try {
-                    db.run(`DELETE FROM ${table}`);
-                    console.log(`✓ Cleared ${table}`);
+                    if (tenantId) {
+                        db.run(`DELETE FROM ${table} WHERE tenant_id = ?`, [tenantId]);
+                    } else {
+                        db.run(`DELETE FROM ${table}`);
+                    }
+                    console.log(`✓ Cleared ${table}${tenantId ? ` for tenant ${tenantId}` : ''}`);
                 } catch (error) {
                     console.warn(`⚠️ Could not clear ${table}:`, error);
                 }
             });
 
-            // Reset auto-increment counters for cleared tables
-            transactionTables.forEach(table => {
-                try {
-                    db.run(`DELETE FROM sqlite_sequence WHERE name = ?`, [table]);
-                } catch (error) {
-                    // Ignore - table might not have auto-increment
-                }
-            });
+            // Reset auto-increment counters for cleared tables (only when clearing all)
+            if (!tenantId) {
+                transactionTables.forEach(table => {
+                    try {
+                        db.run(`DELETE FROM sqlite_sequence WHERE name = ?`, [table]);
+                    } catch (error) {
+                        // Ignore - table might not have auto-increment
+                    }
+                });
+            }
 
             // Re-enable foreign keys
             db.run('PRAGMA foreign_keys = ON');
@@ -738,7 +778,7 @@ class DatabaseService {
             db.run('COMMIT');
             this.save();
 
-            console.log('✅ Successfully cleared all transaction data from local database');
+            console.log(`✅ Successfully cleared all transaction data from local database${tenantId ? ` for tenant ${tenantId}` : ''}`);
             console.log('ℹ️  Accounts will be reloaded from cloud on next sync');
         } catch (error) {
             db.run('ROLLBACK');
@@ -749,8 +789,10 @@ class DatabaseService {
 
     /**
      * Clear all data (keeps schema)
+     *
+     * @param tenantId - If provided, only clears data for this tenant. If not, clears all.
      */
-    clearAllData(): void {
+    clearAllData(tenantId?: string): void {
         const db = this.getDatabase();
         const tables = [
             'users', 'accounts', 'contacts', 'categories', 'projects', 'buildings',
@@ -766,11 +808,23 @@ class DatabaseService {
             db.run('PRAGMA foreign_keys = OFF');
 
             tables.forEach(table => {
-                db.run(`DELETE FROM ${table}`);
+                if (tenantId) {
+                    // Tenant-scoped clear: only delete data for this tenant
+                    // Some tables (error_log, app_settings, etc.) don't have tenant_id
+                    try {
+                        db.run(`DELETE FROM ${table} WHERE tenant_id = ?`, [tenantId]);
+                    } catch {
+                        // Table doesn't have tenant_id — skip (don't delete shared data)
+                    }
+                } else {
+                    db.run(`DELETE FROM ${table}`);
+                }
             });
 
-            // Reset auto-increment counters
-            db.run('DELETE FROM sqlite_sequence');
+            // Reset auto-increment counters (only when clearing all)
+            if (!tenantId) {
+                db.run('DELETE FROM sqlite_sequence');
+            }
 
             // Re-enable foreign keys
             db.run('PRAGMA foreign_keys = ON');
@@ -914,6 +968,64 @@ class DatabaseService {
                         await migrateAddDocumentPathToBills();
                     } catch (migrationError) {
                         console.warn('⚠️ document_path migration failed, continuing anyway:', migrationError);
+                    }
+                }
+
+                if (currentVersion < 7) {
+                    // Migration to v7: Add version, deleted_at columns to all entity tables
+                    // and ensure sync_conflicts table exists
+                    console.log('🔄 Running v7 migration: Adding version, deleted_at, sync_conflicts...');
+                    try {
+                        const entityTables = [
+                            'accounts', 'contacts', 'vendors', 'categories', 'projects',
+                            'buildings', 'properties', 'units', 'transactions', 'invoices',
+                            'bills', 'budgets', 'quotations', 'plan_amenities',
+                            'installment_plans', 'documents', 'rental_agreements',
+                            'project_agreements', 'sales_returns', 'contracts',
+                            'recurring_invoice_templates', 'pm_cycle_allocations',
+                            'purchase_orders',
+                        ];
+
+                        for (const table of entityTables) {
+                            try {
+                                const columns = this.query<{ name: string }>(`PRAGMA table_info(${table})`);
+                                const colNames = new Set(columns.map(c => c.name));
+
+                                if (!colNames.has('version')) {
+                                    this.execute(`ALTER TABLE ${table} ADD COLUMN version INTEGER NOT NULL DEFAULT 1`);
+                                    console.log(`  Added version to ${table}`);
+                                }
+                                if (!colNames.has('deleted_at')) {
+                                    this.execute(`ALTER TABLE ${table} ADD COLUMN deleted_at TEXT`);
+                                    console.log(`  Added deleted_at to ${table}`);
+                                }
+                            } catch (tableError) {
+                                console.warn(`  ⚠️ Migration for ${table} failed:`, tableError);
+                            }
+                        }
+
+                        // Rename org_id to tenant_id in rental_agreements if needed
+                        try {
+                            const raCols = this.query<{ name: string }>('PRAGMA table_info(rental_agreements)');
+                            const raColNames = new Set(raCols.map(c => c.name));
+                            if (raColNames.has('org_id') && !raColNames.has('tenant_id')) {
+                                this.execute('ALTER TABLE rental_agreements RENAME COLUMN org_id TO tenant_id');
+                                console.log('  Renamed org_id to tenant_id in rental_agreements');
+                            }
+                        } catch (renameError) {
+                            console.warn('  ⚠️ rental_agreements org_id rename failed:', renameError);
+                        }
+
+                        // Backfill NULL tenant_id values with empty string
+                        for (const table of entityTables) {
+                            try {
+                                this.execute(`UPDATE ${table} SET tenant_id = '' WHERE tenant_id IS NULL`);
+                            } catch (_) { /* ignore if table doesn't have tenant_id */ }
+                        }
+
+                        console.log('✅ v7 migration completed');
+                    } catch (v7Error) {
+                        console.warn('⚠️ v7 migration partially failed:', v7Error);
                     }
                 }
 

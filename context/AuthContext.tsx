@@ -101,6 +101,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       logger.errorCategory('auth', 'Logout API error:', error);
       // Continue with local logout even if API fails
     } finally {
+      // SECURITY: Clear all sync queues BEFORE clearing auth to prevent cross-tenant data bleed.
+      // If queues are not cleared, stale operations from this user/tenant could sync
+      // when a different user/tenant logs in on the same device.
+      const currentTenantId = apiClient.getTenantId();
+      try {
+        // 1. Clear the persistent SyncOutbox (SQLite sync_outbox table)
+        if (currentTenantId) {
+          const { getDatabaseService } = await import('../services/database/databaseService');
+          const db = getDatabaseService();
+          if (db.isReady()) {
+            db.execute(
+              "DELETE FROM sync_outbox WHERE tenant_id = ? AND status IN ('pending', 'failed')",
+              [currentTenantId]
+            );
+            db.save();
+            logger.logCategory('auth', 'Cleared sync_outbox for tenant on logout');
+          }
+        }
+      } catch (e) {
+        logger.warnCategory('auth', 'Failed to clear sync_outbox on logout:', e);
+      }
+
+      try {
+        // 2. Clear the IndexedDB SyncQueue for the current tenant
+        if (currentTenantId) {
+          const { getSyncQueue } = await import('../services/syncQueue');
+          const syncQueue = getSyncQueue();
+          await syncQueue.clearAll(currentTenantId);
+          logger.logCategory('auth', 'Cleared IndexedDB sync queue for tenant on logout');
+        }
+      } catch (e) {
+        logger.warnCategory('auth', 'Failed to clear IndexedDB sync queue on logout:', e);
+      }
+
+      try {
+        // 3. Clear the SyncManager in-memory/localStorage queue
+        const { getSyncManager } = await import('../services/sync/syncManager');
+        getSyncManager().clearAll();
+        logger.logCategory('auth', 'Cleared SyncManager queue on logout');
+      } catch (e) {
+        logger.warnCategory('auth', 'Failed to clear SyncManager queue on logout:', e);
+      }
+
+      // 4. Also clear any legacy localStorage sync_queue key directly
+      localStorage.removeItem('sync_queue');
+
       // Clear local auth
       apiClient.clearAuth();
 

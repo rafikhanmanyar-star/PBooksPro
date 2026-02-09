@@ -19,6 +19,7 @@ import { isMobileDevice } from '../../utils/platformDetection';
 
 export interface SyncOperation {
   id: string;
+  tenantId?: string; // Tenant that owns this operation (for isolation)
   type: 'create' | 'update' | 'delete';
   entity: string; // 'transaction', 'contact', etc.
   entityId: string;
@@ -38,6 +39,7 @@ class SyncManager {
   private connectionMonitor = getConnectionMonitor();
   private maxRetries = 3;
   private retryDelay = 5000; // 5 seconds
+  private activeTenantId: string | null = null;
 
   // Batching configuration - larger batches and parallel execution for faster sync
   private readonly BATCH_SIZE = 20; // Process up to 20 operations per batch in parallel
@@ -45,6 +47,8 @@ class SyncManager {
 
   constructor() {
     // Load sync queue from local storage on initialization
+    // Try to get tenantId from localStorage for initial load
+    this.activeTenantId = typeof window !== 'undefined' ? localStorage.getItem('tenant_id') : null;
     this.loadSyncQueue();
 
     // Start monitoring connection
@@ -83,8 +87,12 @@ class SyncManager {
       !(op.entity === entity && op.entityId === entityId && op.status === 'pending')
     );
 
+    // Get current tenant for scoping
+    const currentTenantId = this.getCurrentTenantId();
+
     const operation: SyncOperation = {
       id: `${entity}_${entityId}_${Date.now()}`,
+      tenantId: currentTenantId || undefined,
       type,
       entity,
       entityId,
@@ -217,7 +225,17 @@ class SyncManager {
     }
 
     // Get pending operations
-    const pendingOps = this.queue.filter(op => op.status === 'pending' || op.status === 'failed');
+    let pendingOps = this.queue.filter(op => op.status === 'pending' || op.status === 'failed');
+
+    // SECURITY: Filter out operations that don't belong to the current tenant
+    const currentTenant = this.getCurrentTenantId();
+    if (currentTenant) {
+      const beforeFilter = pendingOps.length;
+      pendingOps = pendingOps.filter(op => !op.tenantId || op.tenantId === currentTenant);
+      if (pendingOps.length !== beforeFilter) {
+        console.warn(`[SyncManager] SECURITY: Filtered out ${beforeFilter - pendingOps.length} operations from other tenants`);
+      }
+    }
 
     if (pendingOps.length === 0) {
       console.log('[SyncManager] ℹ️ No pending operations to sync');
@@ -476,22 +494,74 @@ class SyncManager {
   }
 
   /**
-   * Save sync queue to localStorage
+   * Get the localStorage key for the sync queue, scoped by tenant.
+   * SECURITY: Each tenant gets its own queue key to prevent cross-tenant data leaks.
+   */
+  private getSyncQueueKey(): string {
+    const tenantId = this.getCurrentTenantId();
+    if (tenantId) {
+      return `sync_queue_${tenantId}`;
+    }
+    return 'sync_queue'; // Fallback for backward compatibility
+  }
+
+  /**
+   * Get the current tenant ID from activeTenantId or localStorage.
+   */
+  private getCurrentTenantId(): string | null {
+    if (this.activeTenantId) return this.activeTenantId;
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('tenant_id');
+    }
+    return null;
+  }
+
+  /**
+   * Set the active tenant ID. Call this on login/tenant switch.
+   * Also migrates any legacy unscoped queue data to the new tenant-scoped key.
+   */
+  setTenantId(tenantId: string | null): void {
+    const previousTenantId = this.activeTenantId;
+    this.activeTenantId = tenantId;
+
+    if (tenantId && tenantId !== previousTenantId) {
+      // Migrate legacy unscoped queue if it exists and new scoped key is empty
+      try {
+        const legacyQueue = localStorage.getItem('sync_queue');
+        const scopedKey = `sync_queue_${tenantId}`;
+        const scopedQueue = localStorage.getItem(scopedKey);
+        if (legacyQueue && !scopedQueue) {
+          // Move legacy queue to scoped key
+          localStorage.setItem(scopedKey, legacyQueue);
+          localStorage.removeItem('sync_queue');
+          console.log(`[SyncManager] Migrated legacy sync_queue to ${scopedKey}`);
+        }
+      } catch (_) { /* ignore migration errors */ }
+
+      // Reload queue for the new tenant
+      this.loadSyncQueue();
+    }
+  }
+
+  /**
+   * Save sync queue to localStorage (tenant-scoped)
+   * SECURITY: Queue is keyed by tenant to prevent cross-tenant data leaks.
    */
   private saveSyncQueue(): void {
     try {
-      localStorage.setItem('sync_queue', JSON.stringify(this.queue));
+      localStorage.setItem(this.getSyncQueueKey(), JSON.stringify(this.queue));
     } catch (error) {
       console.error('[SyncManager] Failed to save sync queue:', error);
     }
   }
 
   /**
-   * Load sync queue from localStorage
+   * Load sync queue from localStorage (tenant-scoped)
+   * SECURITY: Only loads the queue for the current tenant.
    */
   private loadSyncQueue(): void {
     try {
-      const saved = localStorage.getItem('sync_queue');
+      const saved = localStorage.getItem(this.getSyncQueueKey());
       if (saved) {
         this.queue = JSON.parse(saved);
         // Filter out completed operations on load (they shouldn't be in the queue)
@@ -499,9 +569,15 @@ class SyncManager {
         this.queue = this.queue.filter(op => op.status !== 'completed');
         const afterCount = this.queue.length;
 
-        if (beforeCount !== afterCount) {
+        // SECURITY: Also filter out operations that don't match the current tenant
+        const tenantId = this.getCurrentTenantId();
+        if (tenantId) {
+          this.queue = this.queue.filter(op => !op.tenantId || op.tenantId === tenantId);
+        }
+
+        if (beforeCount !== this.queue.length) {
           this.saveSyncQueue();
-          console.log(`[SyncManager] Loaded ${afterCount} pending operations (removed ${beforeCount - afterCount} completed operations)`);
+          console.log(`[SyncManager] Loaded ${this.queue.length} pending operations (filtered from ${beforeCount})`);
         } else {
           console.log(`[SyncManager] Loaded ${afterCount} operations from queue`);
         }

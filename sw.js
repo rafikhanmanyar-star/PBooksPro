@@ -44,8 +44,19 @@ self.addEventListener('activate', (event) => {
 
 // Fetch event - serve from cache, fallback to network
 self.addEventListener('fetch', (event) => {
-  // Don't intercept requests from admin portal (port 5174) or Vite internals
+  // SECURITY: Never cache or intercept mutation requests (POST, PUT, DELETE, PATCH)
+  // Caching these could cause silent data loss or serve stale responses
+  if (event.request.method !== 'GET') {
+    return; // Let mutation requests go directly to network
+  }
+
+  // Don't intercept API requests - only cache static assets
   const url = new URL(event.request.url);
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) {
+    return; // API responses must never be cached by the service worker
+  }
+
+  // Don't intercept requests from admin portal (port 5174) or Vite internals
   if (url.port === '5174' || url.hostname.includes('admin') ||
     url.pathname.includes('/@vite') || url.pathname.includes('/@react-refresh') ||
     url.pathname.includes('/src/') || url.pathname.includes('.ts') || url.pathname.includes('.tsx') ||

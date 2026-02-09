@@ -696,3 +696,70 @@ INSERT INTO marketplace_categories (id, name, icon) VALUES
 ('services', 'Settings', 'Settings'),
 ('other', 'MoreHorizontal', 'MoreHorizontal')
 ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================================
+-- SCHEMA HARDENING: version, deleted_at columns for optimistic locking & soft deletes
+-- ============================================================================
+
+DO $$ 
+DECLARE
+    tbl TEXT;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY[
+        'accounts', 'contacts', 'vendors', 'categories', 'projects',
+        'buildings', 'properties', 'units', 'transactions', 'invoices',
+        'bills', 'budgets', 'quotations', 'contracts',
+        'rental_agreements', 'project_agreements', 'sales_returns',
+        'recurring_invoice_templates', 'documents',
+        'purchase_orders', 'p2p_invoices', 'p2p_bills'
+    ]
+    LOOP
+        -- Add version column if missing
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = tbl AND column_name = 'version'
+        ) THEN
+            EXECUTE format('ALTER TABLE %I ADD COLUMN version INTEGER NOT NULL DEFAULT 1', tbl);
+        END IF;
+
+        -- Add deleted_at column if missing
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = tbl AND column_name = 'deleted_at'
+        ) THEN
+            EXECUTE format('ALTER TABLE %I ADD COLUMN deleted_at TIMESTAMP', tbl);
+        END IF;
+    END LOOP;
+END $$;
+
+-- Sync Conflicts table: audit trail for all conflict resolutions
+CREATE TABLE IF NOT EXISTS sync_conflicts (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    local_version INTEGER,
+    remote_version INTEGER,
+    local_data JSONB,
+    remote_data JSONB,
+    resolution TEXT NOT NULL,
+    resolved_by TEXT,
+    device_id TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sync_conflicts_tenant ON sync_conflicts(tenant_id, entity_type, created_at);
+
+-- Idempotency Cache table: prevents duplicate sync push processing
+CREATE TABLE IF NOT EXISTS idempotency_cache (
+    idempotency_key TEXT NOT NULL,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    status_code INTEGER NOT NULL,
+    response_body JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS idx_idempotency_cache_created ON idempotency_cache(created_at);
+
+-- Auto-cleanup expired idempotency entries (>24h)
+-- In production, run via pg_cron or application-level scheduler:
+-- DELETE FROM idempotency_cache WHERE created_at < NOW() - INTERVAL '24 hours';

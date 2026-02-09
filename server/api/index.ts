@@ -650,6 +650,10 @@ app.get('/mock-payment', (req, res) => {
 // Protected routes (tenant + license authentication required)
 app.use('/api', tenantMiddleware(pool));
 
+// Idempotency middleware: prevent duplicate processing of sync push operations
+import { idempotencyMiddleware } from '../middleware/idempotencyMiddleware.js';
+app.use('/api', idempotencyMiddleware);
+
 // Payment routes (require tenant context but allow expired licenses)
 app.use('/api/payments', (req: any, res: Response, next: NextFunction) => {
   // Skip license check for payment routes - allow expired tenants to pay

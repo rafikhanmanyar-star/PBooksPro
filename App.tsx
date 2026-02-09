@@ -303,10 +303,14 @@ const App: React.FC = () => {
     if (token && tenantId && !apiClient.isTokenExpired()) {
       wsClient.connect(token, tenantId);
 
-      // Set dispatch callback and current user ID for real-time sync handler
+      // Set dispatch callback, current user ID, and tenant ID for real-time sync handler
       const realtimeSyncHandler = getRealtimeSyncHandler();
       realtimeSyncHandler.setDispatch(dispatch);
       realtimeSyncHandler.setCurrentUserId(user?.id || null);
+      realtimeSyncHandler.setCurrentTenantId(tenantId || null);
+
+      // Also set tenant ID on SyncManager for tenant-scoped queue
+      getSyncManager().setTenantId(tenantId || null);
 
       devLogger.log('[App] ✅ WebSocket & sync connected');
 
@@ -314,6 +318,7 @@ const App: React.FC = () => {
         wsClient.disconnect();
         realtimeSyncHandler.setDispatch(null);
         realtimeSyncHandler.setCurrentUserId(null);
+        realtimeSyncHandler.setCurrentTenantId(null);
       };
     }
   }, [isAuthenticated, dispatch, user?.id]);

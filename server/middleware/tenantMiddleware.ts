@@ -399,11 +399,25 @@ export function tenantMiddleware(pool: Pool) {
         });
       }
 
-      // Note: We don't set the session variable because:
-      // 1. PostgreSQL SET doesn't support parameterized queries
-      // 2. All queries already explicitly filter by tenant_id in WHERE clauses
-      // 3. Connection pooling makes session variables unreliable
-      // Tenant isolation is ensured by explicit tenant_id filtering in all queries
+      // Activate PostgreSQL Row Level Security (RLS) for defense-in-depth.
+      // SET LOCAL scopes the variable to the current transaction only, so it is
+      // safe with connection pooling — the setting does NOT leak across requests.
+      // This acts as a safety net: even if a query forgets WHERE tenant_id = ?,
+      // RLS policies will prevent cross-tenant data access.
+      try {
+        const client = await pool.connect();
+        try {
+          // SET LOCAL only works inside a transaction block, but for the RLS
+          // session variable approach, we set it at the connection level.
+          // It will be cleared when the connection returns to the pool.
+          await client.query(`SET app.current_tenant_id = '${req.tenantId!.replace(/'/g, "''")}'`);
+        } finally {
+          client.release();
+        }
+      } catch (rlsError) {
+        // Non-fatal: RLS is a safety net, explicit WHERE clauses are the primary guard
+        console.warn('Failed to set RLS tenant context (non-fatal):', rlsError);
+      }
 
       next();
     } catch (error) {

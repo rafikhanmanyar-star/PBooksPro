@@ -673,6 +673,7 @@ class RealtimeSyncHandler {
   private isInitialized = false;
   private dispatchCallback: ((action: AppAction) => void) | null = null;
   private currentUserId: string | null = null;
+  private currentTenantId: string | null = null;
 
   /**
    * Set the dispatch callback from AppContext
@@ -689,6 +690,15 @@ class RealtimeSyncHandler {
   setCurrentUserId(userId: string | null): void {
     this.currentUserId = userId;
     console.log(`[RealtimeSyncHandler] 👤 Current user ID set to: ${userId || 'null'}`);
+  }
+
+  /**
+   * Set the current tenant ID for cross-tenant validation.
+   * SECURITY: WebSocket events are validated against this tenant ID before applying.
+   */
+  setCurrentTenantId(tenantId: string | null): void {
+    this.currentTenantId = tenantId;
+    console.log(`[RealtimeSyncHandler] 🏢 Current tenant ID set to: ${tenantId || 'null'}`);
   }
 
   /**
@@ -732,6 +742,15 @@ class RealtimeSyncHandler {
       }
 
       const { entity, action } = eventInfo;
+
+      // SECURITY: Validate that the event data belongs to the current tenant.
+      // If the server has a bug or WebSocket room leaks, this prevents cross-tenant data
+      // from being written to the local database.
+      const eventTenantId = data?.tenant_id || data?.tenantId;
+      if (eventTenantId && this.currentTenantId && eventTenantId !== this.currentTenantId) {
+        console.error(`[RealtimeSyncHandler] SECURITY: Received data for tenant ${eventTenantId}, expected ${this.currentTenantId}. Discarding event: ${eventName}`);
+        return;
+      }
 
       // Check if this event is from the current user (skip to prevent duplicates)
       // This is critical for preventing the creator from seeing their own record twice
