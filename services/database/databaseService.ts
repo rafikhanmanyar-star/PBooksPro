@@ -360,6 +360,38 @@ class DatabaseService {
     }
 
     /**
+     * Raw query - bypasses isReady() guard. For use during initialization/migration only.
+     * Requires this.db to be non-null (caller must verify).
+     */
+    private rawQuery<T = any>(sql: string, params: any[] = []): T[] {
+        if (!this.db) return [];
+        const stmt = this.db.prepare(sql);
+        stmt.bind(params);
+        const results: T[] = [];
+        while (stmt.step()) {
+            results.push(stmt.getAsObject() as T);
+        }
+        stmt.free();
+        return results;
+    }
+
+    /**
+     * Raw execute - bypasses isReady() guard. For use during initialization/migration only.
+     * Requires this.db to be non-null (caller must verify).
+     */
+    private rawExecute(sql: string, params: any[] = []): void {
+        if (!this.db) return;
+        try {
+            this.db.run(sql, params);
+        } catch (error: any) {
+            const errorMsg = error?.message || String(error);
+            // Silently ignore "duplicate column" errors during migration
+            if (errorMsg.includes('duplicate column')) return;
+            throw error;
+        }
+    }
+
+    /**
      * Check if currently in a transaction
      */
     isInTransaction(): boolean {
@@ -927,115 +959,150 @@ class DatabaseService {
     }
 
     /**
-     * Check schema version and migrate if needed
+     * Check schema version and migrate if needed.
+     * NOTE: This runs BEFORE isInitialized=true, so we use rawQuery/rawExecute
+     * which bypass the isReady() guard. this.db is verified non-null at entry.
      */
     private async checkAndMigrateSchema(): Promise<void> {
         if (!this.db) return;
 
         try {
-            const currentVersion = parseInt(this.getMetadata('schema_version') || '0');
+            // Read schema_version directly (getMetadata relies on isReady which is false here)
+            let currentVersion = 0;
+            try {
+                const rows = this.rawQuery<{ value: string }>(
+                    'SELECT value FROM metadata WHERE key = ?', ['schema_version']
+                );
+                if (rows.length > 0) {
+                    currentVersion = parseInt(rows[0].value || '0');
+                }
+            } catch (_) {
+                // metadata table may not exist yet
+            }
             const latestVersion = SCHEMA_VERSION;
 
             if (currentVersion < latestVersion) {
                 console.log(`🔄 Schema migration needed: ${currentVersion} -> ${latestVersion}`);
-                console.log('⚠️ Running schema migration...');
 
-                // IMPORTANT: Add tenant_id columns FIRST before running ensureAllTablesExist
-                // because ensureAllTablesExist runs CREATE_SCHEMA_SQL which includes indexes on tenant_id
-                // If we create indexes before the columns exist, SQLite will error
+                // Temporarily set isInitialized so that helper methods (ensureAllTablesExist,
+                // ensureContractColumnsExist, ensureVendorIdColumnsExist, migrateTenantColumns)
+                // don't bail out due to their isReady()/isInitialized guards.
+                this.isInitialized = true;
+
                 try {
-                    const { migrateTenantColumns } = await import('./tenantMigration');
-                    migrateTenantColumns();
-                } catch (migrationError) {
-                    console.warn('⚠️ Tenant migration failed, continuing anyway:', migrationError);
-                }
-
-                // Ensure all tables exist (this will create any missing tables AND indexes)
-                // Now safe because tenant_id columns already exist
-                this.ensureAllTablesExist();
-
-                // Ensure contract and bill columns exist (for expense_category_items)
-                this.ensureContractColumnsExist();
-                // Ensure vendor_id columns exist
-                this.ensureVendorIdColumnsExist();
-
-
-                // Run version-specific migrations
-                if (currentVersion < 3) {
-                    // Migration from v2 to v3: Add document_path to bills table
+                    // IMPORTANT: Add tenant_id columns FIRST before running ensureAllTablesExist
+                    // because ensureAllTablesExist runs CREATE_SCHEMA_SQL which includes indexes on tenant_id
+                    // If we create indexes before the columns exist, SQLite will error
                     try {
-                        const { migrateAddDocumentPathToBills } = await import('./migrations/add-document-path-to-bills');
-                        await migrateAddDocumentPathToBills();
+                        const { migrateTenantColumns } = await import('./tenantMigration');
+                        migrateTenantColumns();
                     } catch (migrationError) {
-                        console.warn('⚠️ document_path migration failed, continuing anyway:', migrationError);
+                        console.warn('⚠️ Tenant migration failed, continuing anyway:', migrationError);
                     }
-                }
 
-                if (currentVersion < 7) {
-                    // Migration to v7: Add version, deleted_at columns to all entity tables
-                    // and ensure sync_conflicts table exists
-                    console.log('🔄 Running v7 migration: Adding version, deleted_at, sync_conflicts...');
-                    try {
-                        const entityTables = [
-                            'accounts', 'contacts', 'vendors', 'categories', 'projects',
-                            'buildings', 'properties', 'units', 'transactions', 'invoices',
-                            'bills', 'budgets', 'quotations', 'plan_amenities',
-                            'installment_plans', 'documents', 'rental_agreements',
-                            'project_agreements', 'sales_returns', 'contracts',
-                            'recurring_invoice_templates', 'pm_cycle_allocations',
-                            'purchase_orders',
-                        ];
+                    // Ensure all tables exist (this will create any missing tables AND indexes)
+                    // Now safe because tenant_id columns already exist
+                    this.ensureAllTablesExist();
 
-                        for (const table of entityTables) {
-                            try {
-                                const columns = this.query<{ name: string }>(`PRAGMA table_info(${table})`);
-                                const colNames = new Set(columns.map(c => c.name));
+                    // Ensure contract and bill columns exist (for expense_category_items)
+                    this.ensureContractColumnsExist();
+                    // Ensure vendor_id columns exist
+                    this.ensureVendorIdColumnsExist();
 
-                                if (!colNames.has('version')) {
-                                    this.execute(`ALTER TABLE ${table} ADD COLUMN version INTEGER NOT NULL DEFAULT 1`);
-                                    console.log(`  Added version to ${table}`);
-                                }
-                                if (!colNames.has('deleted_at')) {
-                                    this.execute(`ALTER TABLE ${table} ADD COLUMN deleted_at TEXT`);
-                                    console.log(`  Added deleted_at to ${table}`);
-                                }
-                            } catch (tableError) {
-                                console.warn(`  ⚠️ Migration for ${table} failed:`, tableError);
-                            }
-                        }
-
-                        // Rename org_id to tenant_id in rental_agreements if needed
+                    // Run version-specific migrations
+                    if (currentVersion < 3) {
+                        // Migration from v2 to v3: Add document_path to bills table
                         try {
-                            const raCols = this.query<{ name: string }>('PRAGMA table_info(rental_agreements)');
-                            const raColNames = new Set(raCols.map(c => c.name));
-                            if (raColNames.has('org_id') && !raColNames.has('tenant_id')) {
-                                this.execute('ALTER TABLE rental_agreements RENAME COLUMN org_id TO tenant_id');
-                                console.log('  Renamed org_id to tenant_id in rental_agreements');
-                            }
-                        } catch (renameError) {
-                            console.warn('  ⚠️ rental_agreements org_id rename failed:', renameError);
+                            const { migrateAddDocumentPathToBills } = await import('./migrations/add-document-path-to-bills');
+                            await migrateAddDocumentPathToBills();
+                        } catch (migrationError) {
+                            console.warn('⚠️ document_path migration failed, continuing anyway:', migrationError);
                         }
-
-                        // Backfill NULL tenant_id values with empty string
-                        for (const table of entityTables) {
-                            try {
-                                this.execute(`UPDATE ${table} SET tenant_id = '' WHERE tenant_id IS NULL`);
-                            } catch (_) { /* ignore if table doesn't have tenant_id */ }
-                        }
-
-                        console.log('✅ v7 migration completed');
-                    } catch (v7Error) {
-                        console.warn('⚠️ v7 migration partially failed:', v7Error);
                     }
+
+                    if (currentVersion < 7) {
+                        // Migration to v7: Add version, deleted_at columns to all entity tables
+                        // and ensure sync_conflicts table exists
+                        console.log('🔄 Running v7 migration: Adding version, deleted_at, sync_conflicts...');
+                        try {
+                            const entityTables = [
+                                'accounts', 'contacts', 'vendors', 'categories', 'projects',
+                                'buildings', 'properties', 'units', 'transactions', 'invoices',
+                                'bills', 'budgets', 'quotations', 'plan_amenities',
+                                'installment_plans', 'documents', 'rental_agreements',
+                                'project_agreements', 'sales_returns', 'contracts',
+                                'recurring_invoice_templates', 'pm_cycle_allocations',
+                                'purchase_orders',
+                            ];
+
+                            for (const table of entityTables) {
+                                try {
+                                    const columns = this.rawQuery<{ name: string }>(`PRAGMA table_info(${table})`);
+                                    const colNames = new Set(columns.map(c => c.name));
+
+                                    if (!colNames.has('version')) {
+                                        this.rawExecute(`ALTER TABLE ${table} ADD COLUMN version INTEGER NOT NULL DEFAULT 1`);
+                                        console.log(`  Added version to ${table}`);
+                                    }
+                                    if (!colNames.has('deleted_at')) {
+                                        this.rawExecute(`ALTER TABLE ${table} ADD COLUMN deleted_at TEXT`);
+                                        console.log(`  Added deleted_at to ${table}`);
+                                    }
+                                } catch (tableError) {
+                                    console.warn(`  ⚠️ Migration for ${table} failed:`, tableError);
+                                }
+                            }
+
+                            // Rename org_id to tenant_id in rental_agreements if needed
+                            try {
+                                const raCols = this.rawQuery<{ name: string }>('PRAGMA table_info(rental_agreements)');
+                                const raColNames = new Set(raCols.map(c => c.name));
+                                if (raColNames.has('org_id') && !raColNames.has('tenant_id')) {
+                                    this.rawExecute('ALTER TABLE rental_agreements RENAME COLUMN org_id TO tenant_id');
+                                    console.log('  Renamed org_id to tenant_id in rental_agreements');
+                                }
+                            } catch (renameError) {
+                                console.warn('  ⚠️ rental_agreements org_id rename failed:', renameError);
+                            }
+
+                            // Backfill NULL tenant_id values with empty string
+                            for (const table of entityTables) {
+                                try {
+                                    this.rawExecute(`UPDATE ${table} SET tenant_id = '' WHERE tenant_id IS NULL`);
+                                } catch (_) { /* ignore if table doesn't have tenant_id */ }
+                            }
+
+                            console.log('✅ v7 migration completed');
+                        } catch (v7Error) {
+                            console.warn('⚠️ v7 migration partially failed:', v7Error);
+                        }
+                    }
+
+                    // Update schema version directly (setMetadata relies on isReady)
+                    this.rawExecute(
+                        'INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime("now"))',
+                        ['schema_version', latestVersion.toString()]
+                    );
+
+                    // Save immediately after migration (bypass persistToStorage which checks isInitialized)
+                    try {
+                        const data = this.db!.export();
+                        if (await this.opfs.isSupported()) {
+                            await this.opfs.save(data);
+                        } else {
+                            const buffer = Array.from(data);
+                            localStorage.setItem('finance_db', JSON.stringify(buffer));
+                        }
+                        console.log('💾 Database saved after migration');
+                    } catch (saveError) {
+                        console.warn('⚠️ Could not save database after migration:', saveError);
+                    }
+
+                    console.log('✅ Schema migration completed successfully');
+                } finally {
+                    // Reset isInitialized - it will be set to true properly at the end of _doInitialize
+                    this.isInitialized = false;
                 }
-
-                // Update schema version
-                this.setMetadata('schema_version', latestVersion.toString());
-
-                // Save immediately after migration
-                await this.persistToStorage();
-
-                console.log('✅ Schema migration completed successfully');
             } else if (currentVersion > latestVersion) {
                 console.warn(`⚠️ Database schema version (${currentVersion}) is newer than app version (${latestVersion}). This may cause issues.`);
             } else {
@@ -1043,6 +1110,8 @@ class DatabaseService {
             }
         } catch (error) {
             console.error('❌ Error during schema migration check:', error);
+            // Reset isInitialized in case of error
+            this.isInitialized = false;
             // Don't throw - allow app to continue with existing schema
         }
     }

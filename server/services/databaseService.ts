@@ -1,4 +1,5 @@
 import { Pool, PoolClient } from 'pg';
+import { getCurrentTenantId } from './tenantContext.js';
 
 export class DatabaseService {
   private pool: Pool;
@@ -50,8 +51,31 @@ export class DatabaseService {
     
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        const result = await this.pool.query(text, params);
-        return result.rows;
+        const tenantId = getCurrentTenantId();
+        if (!tenantId) {
+          const result = await this.pool.query(text, params);
+          return result.rows;
+        }
+
+        // RLS tenant context must be set on the SAME connection as the query.
+        // Use a short transaction and SET LOCAL to avoid leaking across pooled connections.
+        const client = await this.pool.connect();
+        try {
+          await client.query('BEGIN');
+          await client.query('SET LOCAL app.current_tenant_id = $1', [tenantId]);
+          const result = await client.query(text, params);
+          await client.query('COMMIT');
+          return result.rows;
+        } catch (err) {
+          try {
+            await client.query('ROLLBACK');
+          } catch {
+            // ignore rollback errors
+          }
+          throw err;
+        } finally {
+          client.release();
+        }
       } catch (error: any) {
         lastError = error;
         
@@ -123,7 +147,30 @@ export class DatabaseService {
     
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        await this.pool.query(text, params);
+        const tenantId = getCurrentTenantId();
+        if (!tenantId) {
+          await this.pool.query(text, params);
+          return;
+        }
+
+        // Same logic as query(): run in a short transaction with SET LOCAL.
+        const client = await this.pool.connect();
+        try {
+          await client.query('BEGIN');
+          await client.query('SET LOCAL app.current_tenant_id = $1', [tenantId]);
+          await client.query(text, params);
+          await client.query('COMMIT');
+          return;
+        } catch (err) {
+          try {
+            await client.query('ROLLBACK');
+          } catch {
+            // ignore rollback errors
+          }
+          throw err;
+        } finally {
+          client.release();
+        }
         return;
       } catch (error: any) {
         lastError = error;
@@ -187,6 +234,14 @@ export class DatabaseService {
         console.log(`🔄 Database transaction starting (attempt ${attempt}/${retries})`);
         await client.query('BEGIN');
         console.log('✅ Transaction BEGIN successful');
+
+        const tenantId = getCurrentTenantId();
+        if (tenantId) {
+          // Apply RLS tenant context for this transaction.
+          // SET LOCAL guarantees no leakage beyond this transaction.
+          await client.query('SET LOCAL app.current_tenant_id = $1', [tenantId]);
+        }
+
         const result = await callback(client);
         console.log('✅ Transaction callback completed, committing...');
         await client.query('COMMIT');

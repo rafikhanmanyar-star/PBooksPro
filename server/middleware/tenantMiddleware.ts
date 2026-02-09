@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { Pool } from 'pg';
+import { runWithTenantContext } from '../services/tenantContext.js';
 
 export interface TenantRequest extends Record<string, any> {
   tenantId?: string;
@@ -118,6 +119,12 @@ export function tenantMiddleware(pool: Pool) {
           code: 'NO_TENANT_CONTEXT'
         });
       }
+
+      // Establish request-scoped tenant context so DatabaseService can apply
+      // Postgres RLS tenant settings on the correct connection.
+      return await runWithTenantContext(
+        { tenantId: req.tenantId, userId: req.userId },
+        async () => {
 
       // CRITICAL SECURITY CHECK: Verify user actually belongs to the tenant from token
       // This prevents users from accessing data from other tenants by manipulating tokens
@@ -400,17 +407,16 @@ export function tenantMiddleware(pool: Pool) {
       }
 
       // Activate PostgreSQL Row Level Security (RLS) for defense-in-depth.
-      // SET LOCAL scopes the variable to the current transaction only, so it is
-      // safe with connection pooling — the setting does NOT leak across requests.
-      // This acts as a safety net: even if a query forgets WHERE tenant_id = ?,
-      // RLS policies will prevent cross-tenant data access.
+      // NOTE:
+      // - We do NOT rely on this pool for application queries (DatabaseService has its own pool).
+      // - If this pool is ever used for tenant-scoped queries in the future, we must ensure
+      //   the setting does not leak across pooled connections. Use SET LOCAL inside a tx.
       try {
         const client = await pool.connect();
         try {
-          // SET LOCAL only works inside a transaction block, but for the RLS
-          // session variable approach, we set it at the connection level.
-          // It will be cleared when the connection returns to the pool.
-          await client.query(`SET app.current_tenant_id = '${req.tenantId!.replace(/'/g, "''")}'`);
+          await client.query('BEGIN');
+          await client.query('SET LOCAL app.current_tenant_id = $1', [req.tenantId]);
+          await client.query('COMMIT');
         } finally {
           client.release();
         }
@@ -420,6 +426,8 @@ export function tenantMiddleware(pool: Pool) {
       }
 
       next();
+        }
+      );
     } catch (error) {
       console.error('Tenant middleware error:', error);
       res.status(401).json({ error: 'Invalid token' });
