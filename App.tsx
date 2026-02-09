@@ -123,6 +123,9 @@ const App: React.FC = () => {
   // State to track if the native OS keyboard is likely open
   const [isNativeKeyboardOpen, setIsNativeKeyboardOpen] = useState(false);
 
+  // POS Sales: allow toggling sidebar visibility (F7 Full screen)
+  const [isPosFullScreen, setIsPosFullScreen] = useState(false);
+
   // Use React 18 startTransition for non-blocking navigation (improves INP)
   const [isPending, startNavTransition] = useTransition();
 
@@ -322,6 +325,24 @@ const App: React.FC = () => {
       };
     }
   }, [isAuthenticated, dispatch, user?.id]);
+
+  // Listen for POS fullscreen toggle events emitted by the POS page
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const ce = event as CustomEvent<{ enabled?: boolean }>;
+      setIsPosFullScreen(Boolean(ce.detail?.enabled));
+    };
+
+    window.addEventListener('pos:fullscreen', handler as EventListener);
+    return () => window.removeEventListener('pos:fullscreen', handler as EventListener);
+  }, []);
+
+  // Safety: if leaving POS Sales, always restore normal layout
+  useEffect(() => {
+    if (currentPage !== 'posSales' && isPosFullScreen) {
+      setIsPosFullScreen(false);
+    }
+  }, [currentPage, isPosFullScreen]);
 
 
 
@@ -551,6 +572,8 @@ const App: React.FC = () => {
     return <LicenseLockScreen />;
   }
 
+  const shouldHideSidebar = currentPage === 'posSales' && isPosFullScreen;
+
   return (
     <OfflineProvider>
       <PrintController />
@@ -559,11 +582,11 @@ const App: React.FC = () => {
         onContextMenu={(e) => e.preventDefault()}
       >
         {/* Left Fixed Sidebar (Desktop) */}
-        <Sidebar currentPage={currentPage} setCurrentPage={handleSetPage} />
+        {!shouldHideSidebar && <Sidebar currentPage={currentPage} setCurrentPage={handleSetPage} />}
 
         {/* Main Content Wrapper */}
         <div
-          className="flex-1 flex flex-col min-w-0 transition-all duration-300 ease-in-out md:pl-64"
+          className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ease-in-out ${shouldHideSidebar ? '' : 'md:pl-64'}`}
           style={{ marginRight: 'var(--right-sidebar-width, 0px)' }}
         >
           <Header title={getPageTitle(currentPage)} isNavigating={isPending} />

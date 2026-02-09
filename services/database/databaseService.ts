@@ -820,6 +820,71 @@ class DatabaseService {
     }
 
     /**
+     * Clear all POS / Shop module data from local database (keeps schema)
+     *
+     * @param tenantId - If provided, only clears data for this tenant. If not, clears all.
+     */
+    clearPosData(tenantId?: string): void {
+        const db = this.getDatabase();
+
+        // ORDER MATTERS: Delete child tables before parent tables to respect foreign key constraints
+        const posTables = [
+            'shop_sale_items',
+            'shop_sales',
+            'shop_inventory_movements',
+            'shop_inventory',
+            'shop_loyalty_members',
+            'shop_products',
+            'shop_terminals',
+            'shop_warehouses',
+            'shop_branches',
+            'shop_policies',
+        ];
+
+        db.run('BEGIN TRANSACTION');
+        try {
+            // Disable foreign keys temporarily
+            db.run('PRAGMA foreign_keys = OFF');
+
+            posTables.forEach(table => {
+                try {
+                    if (tenantId) {
+                        db.run(`DELETE FROM ${table} WHERE tenant_id = ?`, [tenantId]);
+                    } else {
+                        db.run(`DELETE FROM ${table}`);
+                    }
+                    console.log(`✓ Cleared ${table}${tenantId ? ` for tenant ${tenantId}` : ''}`);
+                } catch (error) {
+                    // Table might not exist in older local DBs; don't fail the whole clear
+                    console.warn(`⚠️ Could not clear ${table}:`, error);
+                }
+            });
+
+            // Reset auto-increment counters for cleared tables (only when clearing all)
+            if (!tenantId) {
+                posTables.forEach(table => {
+                    try {
+                        db.run(`DELETE FROM sqlite_sequence WHERE name = ?`, [table]);
+                    } catch {
+                        // Ignore - table might not have auto-increment
+                    }
+                });
+            }
+
+            // Re-enable foreign keys
+            db.run('PRAGMA foreign_keys = ON');
+
+            db.run('COMMIT');
+            this.save();
+            console.log(`✅ Successfully cleared POS data from local database${tenantId ? ` for tenant ${tenantId}` : ''}`);
+        } catch (error) {
+            db.run('ROLLBACK');
+            console.error('❌ Error clearing POS data:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Clear all data (keeps schema)
      *
      * @param tenantId - If provided, only clears data for this tenant. If not, clears all.

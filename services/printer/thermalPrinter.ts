@@ -81,9 +81,15 @@ export class ThermalPrinter {
         try {
             // Create a hidden iframe for printing
             const printFrame = document.createElement('iframe');
-            printFrame.style.position = 'absolute';
-            printFrame.style.width = '0';
-            printFrame.style.height = '0';
+            // NOTE: must not be 0x0. Some browsers/drivers (and html2canvas) will render a blank page
+            // when the iframe viewport is zero-sized, resulting in "nothing prints".
+            printFrame.style.position = 'fixed';
+            printFrame.style.left = '-10000px';
+            printFrame.style.top = '0';
+            printFrame.style.width = '400px';
+            printFrame.style.height = '1200px';
+            printFrame.style.opacity = '0';
+            printFrame.style.pointerEvents = 'none';
             printFrame.style.border = 'none';
             document.body.appendChild(printFrame);
 
@@ -105,9 +111,14 @@ export class ThermalPrinter {
             // Some thermal printer drivers will ignore CSS layout / images and print "text-only".
             // Rasterizing the receipt into an image forces graphics output so the paper matches the preview.
             if (this.config.rasterize) {
-                await this.rasterizeReceiptToImage(doc);
-                // Ensure the generated PNG is fully loaded before printing.
-                await this.waitForPrintDocumentReady(doc);
+                try {
+                    await this.rasterizeReceiptToImage(doc);
+                    // Ensure the generated PNG is fully loaded before printing.
+                    await this.waitForPrintDocumentReady(doc);
+                } catch (err) {
+                    // Fallback to HTML printing if rasterization fails for any reason
+                    console.warn('⚠️ Receipt rasterization failed, falling back to HTML print.', err);
+                }
             }
 
             // Print, then (driver-configured) cut

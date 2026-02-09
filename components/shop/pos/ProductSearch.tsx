@@ -7,21 +7,8 @@ import Card from '../../ui/Card';
 
 import { shopApi } from '../../../services/api/shopApi';
 
-// Mock Products for blueprint (Fallback)
-const MOCK_PRODUCTS: POSProduct[] = [
-    { id: '1', sku: '1001', barcode: '8901', name: 'Premium Cotton T-Shirt', price: 1200, cost: 600, categoryId: 'cat1', taxRate: 17, isTaxInclusive: true, unit: 'pcs', stockLevel: 45 },
-    { id: '2', sku: '1002', barcode: '8902', name: 'Denim Jeans Slim Fit', price: 2500, cost: 1200, categoryId: 'cat1', taxRate: 17, isTaxInclusive: true, unit: 'pcs', stockLevel: 20 },
-    { id: '3', sku: '2001', barcode: '8903', name: 'Wireless Bluetooth Earbuds', price: 4500, cost: 2000, categoryId: 'cat2', taxRate: 17, isTaxInclusive: true, unit: 'pcs', stockLevel: 15 },
-    { id: '4', sku: '2002', barcode: '8904', name: 'Smart Watch Series 7', price: 15000, cost: 8000, categoryId: 'cat2', taxRate: 17, isTaxInclusive: true, unit: 'pcs', stockLevel: 8 },
-    { id: '5', sku: '3001', barcode: '8905', name: 'Organic Honey 500g', price: 850, cost: 400, categoryId: 'cat3', taxRate: 0, isTaxInclusive: true, unit: 'jar', stockLevel: 60 },
-    { id: '6', sku: '3002', barcode: '8906', name: 'Fresh Milk 1L', price: 180, cost: 150, categoryId: 'cat3', taxRate: 0, isTaxInclusive: true, unit: 'pack', stockLevel: 100 },
-];
-
 const CATEGORIES = [
     { id: 'all', name: 'All Items' },
-    { id: 'cat1', name: 'Apparel' },
-    { id: 'cat2', name: 'Electronics' },
-    { id: 'cat3', name: 'Grocery' },
 ];
 
 const ProductSearch: React.FC = () => {
@@ -29,12 +16,14 @@ const ProductSearch: React.FC = () => {
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [products, setProducts] = useState<POSProduct[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
     // Load products from API
     useEffect(() => {
         const loadProducts = async () => {
             try {
+                setLoadError(null);
                 // In a real scenario, we might check if products allow public access or generic access
                 // For now, assuming auth header is handled by client or unnecessary for read if generic
                 const response = await shopApi.getProducts();
@@ -60,8 +49,9 @@ const ProductSearch: React.FC = () => {
                     setProducts([]);
                 }
             } catch (error) {
-                console.warn("Failed to fetch products from API, using mock data:", error);
-                setProducts(MOCK_PRODUCTS);
+                console.warn("Failed to fetch products from API:", error);
+                setLoadError('Unable to load products. Please check connection and try again.');
+                setProducts([]);
             } finally {
                 setIsLoading(false);
             }
@@ -174,6 +164,12 @@ const ProductSearch: React.FC = () => {
             {/* Product Grid */}
             <div className="flex-1 overflow-y-auto p-4 content-start">
                 <div className="grid grid-cols-2 gap-3">
+                    {loadError && (
+                        <div className="col-span-2 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700">
+                            <div className="text-xs font-black uppercase tracking-widest">Products not loaded</div>
+                            <div className="text-xs mt-1 font-medium">{loadError}</div>
+                        </div>
+                    )}
                     {filteredProducts.map(product => (
                         <button
                             key={product.id}
