@@ -8,6 +8,7 @@ import {
     StockTransfer
 } from '../types/inventory';
 import { shopApi } from '../services/api/shopApi';
+import { useAuth } from './AuthContext';
 
 interface InventoryContextType {
     items: InventoryItem[];
@@ -32,6 +33,7 @@ interface InventoryContextType {
 const InventoryContext = createContext<InventoryContextType | undefined>(undefined);
 
 export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const { isAuthenticated } = useAuth();
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
     const [items, setItems] = useState<InventoryItem[]>([]);
     const [movements, setMovements] = useState<StockMovement[]>([]);
@@ -39,6 +41,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const [transfers, setTransfers] = useState<StockTransfer[]>([]);
 
     React.useEffect(() => {
+        if (!isAuthenticated) return; // Don't fetch until user is logged in
+
         const fetchData = async () => {
             try {
                 console.log('🔄 [InventoryContext] Fetching warehouses, products, and inventory...');
@@ -118,7 +122,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             }
         };
         fetchData();
-    }, []);
+    }, [isAuthenticated]);
 
     // NEW: Refresh warehouses function
     const refreshWarehouses = useCallback(async () => {

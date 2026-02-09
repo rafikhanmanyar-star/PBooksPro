@@ -9,6 +9,7 @@ import {
     LoyaltyCampaign
 } from '../types/loyalty';
 import { shopApi } from '../services/api/shopApi';
+import { useAuth } from './AuthContext';
 
 interface LoyaltyContextType {
     members: LoyaltyMember[];
@@ -33,6 +34,7 @@ interface LoyaltyContextType {
 const LoyaltyContext = createContext<LoyaltyContextType | undefined>(undefined);
 
 export const LoyaltyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const { isAuthenticated } = useAuth();
     const [programs] = useState<LoyaltyProgram[]>([
         { id: 'prog-1', name: 'Elite Rewards 2026', type: 'Points', earnRate: 0.05, redeemRate: 1, minRedeemPoints: 500, isActive: true }
     ]);
@@ -51,6 +53,8 @@ export const LoyaltyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const [members, setMembers] = useState<LoyaltyMember[]>([]);
 
     React.useEffect(() => {
+        if (!isAuthenticated) return; // Don't fetch until user is logged in
+
         const fetchMembers = async () => {
             try {
                 const data = await shopApi.getLoyaltyMembers();
@@ -77,7 +81,7 @@ export const LoyaltyProvider: React.FC<{ children: React.ReactNode }> = ({ child
             }
         };
         fetchMembers();
-    }, []);
+    }, [isAuthenticated]);
 
     const addMember = useCallback(async (memberData: any) => {
         try {

@@ -7,6 +7,7 @@ import {
     AccountType
 } from '../types/accounting';
 import { accountingApi } from '../services/api/accountingApi';
+import { useAuth } from './AuthContext';
 
 interface AccountingContextType {
     accounts: ChartAccount[];
@@ -26,13 +27,15 @@ interface AccountingContextType {
 const AccountingContext = createContext<AccountingContextType | undefined>(undefined);
 
 export const AccountingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const { isAuthenticated } = useAuth();
     const [accounts, setAccounts] = useState<ChartAccount[]>([]);
     const [entries, setEntries] = useState<JournalEntry[]>([]);
     const [ledgers, setLedgers] = useState<Record<string, LedgerTransaction[]>>({});
 
     React.useEffect(() => {
+        if (!isAuthenticated) return; // Don't fetch until user is logged in
         accountingApi.getAccounts().then(setAccounts).catch(console.error);
-    }, []);
+    }, [isAuthenticated]);
 
     const postJournalEntry = useCallback(async (entry: Omit<JournalEntry, 'id' | 'status'>) => {
         try {
