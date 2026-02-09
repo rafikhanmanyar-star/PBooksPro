@@ -125,15 +125,13 @@ class SchemaSyncService {
       this.cloudSchemaVersion = response.version;
       console.log(`[SchemaSync] Cloud schema version: ${this.cloudSchemaVersion}`);
     } catch (error: any) {
-      // 401 Unauthorized is expected before login - suppress
-      if (error?.status === 401 || error?.message?.includes('authentication token')) {
-        // Silent - expected before authentication
-        this.cloudSchemaVersion = null;
-      } else if (error instanceof Error && error.message.includes('404')) {
-        // Endpoint not implemented yet - silent
+      const status = error?.status ?? (typeof error?.message === 'string' && error.message.match(/HTTP (\d+)/)?.[1]);
+      const is404 = status === 404 || (error?.message && String(error.message).includes('404'));
+      const is503 = status === 503 || (error?.message && String(error.message).includes('503'));
+      const is401 = error?.status === 401 || error?.message?.includes('authentication token');
+      if (is401 || is404 || is503) {
         this.cloudSchemaVersion = null;
       } else {
-        // Only log unexpected errors
         console.warn('[SchemaSync] Failed to load cloud schema version:', error);
         this.cloudSchemaVersion = null;
       }

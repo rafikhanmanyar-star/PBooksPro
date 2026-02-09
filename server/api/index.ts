@@ -259,6 +259,11 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Schema version for client schema sync (optional; no auth required)
+app.get('/api/schema/version', (req, res) => {
+  res.json({ version: 1 });
+});
+
 // Public routes (no authentication required)
 app.use('/api/app-info', appInfoRouter); // Version info (public)
 app.use('/api/auth', authRouter);

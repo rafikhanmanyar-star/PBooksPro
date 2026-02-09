@@ -251,9 +251,12 @@ export class ApiClient {
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
         if (!response.ok) {
-          // Always log errors, even if logging is disabled
           const text = await response.text();
-          logger.errorCategory('api', `❌ Non-JSON error response for ${endpoint}:`, text);
+          const isSchemaVersionEndpoint = endpoint.includes('/schema/version');
+          const isExpectedUnavailable = isSchemaVersionEndpoint && (response.status === 404 || response.status === 503);
+          if (!isExpectedUnavailable) {
+            logger.errorCategory('api', `❌ Non-JSON error response for ${endpoint}:`, text);
+          }
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         return {} as T;
