@@ -6,6 +6,7 @@ import Card from '../ui/Card';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import ComboBox from '../ui/ComboBox';
+import Select from '../ui/Select';
 import DatePicker from '../ui/DatePicker';
 import Modal from '../ui/Modal';
 import TransactionForm from '../transactions/TransactionForm';
@@ -357,8 +358,8 @@ const OwnerPayoutsReport: React.FC = () => {
                                 key={opt}
                                 onClick={() => handleRangeChange(opt)}
                                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap capitalize ${dateRange === opt
-                                        ? 'bg-white text-accent shadow-sm font-bold'
-                                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
+                                    ? 'bg-white text-accent shadow-sm font-bold'
+                                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
                                     }`}
                             >
                                 {opt === 'all' ? 'Total' : opt === 'thisMonth' ? 'This Month' : opt === 'lastMonth' ? 'Last Month' : 'Custom'}

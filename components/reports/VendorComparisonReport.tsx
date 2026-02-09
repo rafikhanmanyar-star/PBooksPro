@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { Quotation, ContactType, TransactionType } from '../../types';
+import { Quotation, TransactionType } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
@@ -51,8 +51,8 @@ const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context
 
     // Get all vendors
     const vendors = useMemo(() => {
-        return state.contacts.filter(c => c.type === ContactType.VENDOR);
-    }, [state.contacts]);
+        return state.vendors || [];
+    }, [state.vendors]);
 
     // Build comparison data by category
     const comparisonData = useMemo<CategoryVendorComparison[]>(() => {

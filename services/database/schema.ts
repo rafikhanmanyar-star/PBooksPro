@@ -6,7 +6,7 @@
  * data model.
  */
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 7;
 
 export const CREATE_SCHEMA_SQL = `
 -- Enable foreign keys
@@ -39,8 +39,10 @@ CREATE TABLE IF NOT EXISTS accounts (
     is_permanent INTEGER NOT NULL DEFAULT 0,
     description TEXT,
     parent_account_id TEXT,
-    tenant_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (parent_account_id) REFERENCES accounts(id) ON DELETE SET NULL
@@ -55,8 +57,10 @@ CREATE TABLE IF NOT EXISTS contacts (
     contact_no TEXT,
     company_name TEXT,
     address TEXT,
-    tenant_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -69,8 +73,11 @@ CREATE TABLE IF NOT EXISTS vendors (
     company_name TEXT,
     address TEXT,
     description TEXT,
-    tenant_id TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -84,8 +91,10 @@ CREATE TABLE IF NOT EXISTS categories (
     is_permanent INTEGER NOT NULL DEFAULT 0,
     is_rental INTEGER NOT NULL DEFAULT 0,
     parent_category_id TEXT,
-    tenant_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (parent_category_id) REFERENCES categories(id) ON DELETE SET NULL
@@ -100,8 +109,10 @@ CREATE TABLE IF NOT EXISTS projects (
     status TEXT,
     pm_config TEXT, -- JSON string
     installment_config TEXT, -- JSON string
-    tenant_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -112,8 +123,10 @@ CREATE TABLE IF NOT EXISTS buildings (
     name TEXT NOT NULL,
     description TEXT,
     color TEXT,
-    tenant_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -126,8 +139,10 @@ CREATE TABLE IF NOT EXISTS properties (
     building_id TEXT NOT NULL,
     description TEXT,
     monthly_service_charge REAL,
-    tenant_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (owner_id) REFERENCES contacts(id) ON DELETE RESTRICT,
@@ -145,8 +160,10 @@ CREATE TABLE IF NOT EXISTS units (
     type TEXT,
     area REAL,
     floor TEXT,
-    tenant_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT,
@@ -166,6 +183,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     to_account_id TEXT,
     category_id TEXT,
     contact_id TEXT,
+    vendor_id TEXT,
     project_id TEXT,
     building_id TEXT,
     property_id TEXT,
@@ -176,8 +194,10 @@ CREATE TABLE IF NOT EXISTS transactions (
     agreement_id TEXT,
     batch_id TEXT,
     is_system INTEGER NOT NULL DEFAULT 0,
-    tenant_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
@@ -185,6 +205,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     FOREIGN KEY (to_account_id) REFERENCES accounts(id) ON DELETE SET NULL,
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
     FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE SET NULL,
+    FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE SET NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
     FOREIGN KEY (building_id) REFERENCES buildings(id) ON DELETE SET NULL,
     FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE SET NULL,
@@ -194,7 +215,7 @@ CREATE TABLE IF NOT EXISTS transactions (
 -- Invoices table
 CREATE TABLE IF NOT EXISTS invoices (
     id TEXT PRIMARY KEY,
-    invoice_number TEXT NOT NULL UNIQUE,
+    invoice_number TEXT NOT NULL,
     contact_id TEXT NOT NULL,
     amount REAL NOT NULL,
     paid_amount REAL NOT NULL DEFAULT 0,
@@ -212,8 +233,10 @@ CREATE TABLE IF NOT EXISTS invoices (
     security_deposit_charge REAL,
     service_charges REAL,
     rental_month TEXT,
-    tenant_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE RESTRICT,
@@ -221,7 +244,8 @@ CREATE TABLE IF NOT EXISTS invoices (
     FOREIGN KEY (building_id) REFERENCES buildings(id) ON DELETE SET NULL,
     FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE SET NULL,
     FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE SET NULL,
-    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
+    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+    UNIQUE(tenant_id, invoice_number)
 );
 
 -- Bills table
@@ -230,7 +254,8 @@ CREATE TABLE IF NOT EXISTS invoices (
 CREATE TABLE IF NOT EXISTS bills (
     id TEXT PRIMARY KEY,
     bill_number TEXT NOT NULL,
-    contact_id TEXT NOT NULL,
+    contact_id TEXT,
+    vendor_id TEXT,
     amount REAL NOT NULL,
     paid_amount REAL NOT NULL DEFAULT 0,
     status TEXT NOT NULL,
@@ -247,12 +272,14 @@ CREATE TABLE IF NOT EXISTS bills (
     expense_category_items TEXT,
     document_path TEXT,
     document_id TEXT REFERENCES documents(id) ON DELETE SET NULL,
-    tenant_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
     version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE RESTRICT,
+    FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE SET NULL,
+    FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE SET NULL,
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
     FOREIGN KEY (building_id) REFERENCES buildings(id) ON DELETE SET NULL,
@@ -267,8 +294,10 @@ CREATE TABLE IF NOT EXISTS budgets (
     category_id TEXT NOT NULL,
     amount REAL NOT NULL,
     project_id TEXT,
-    tenant_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
@@ -285,23 +314,27 @@ CREATE TABLE IF NOT EXISTS quotations (
     items TEXT NOT NULL, -- JSON array of QuotationItem
     document_id TEXT,
     total_amount REAL NOT NULL,
-    tenant_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (vendor_id) REFERENCES contacts(id) ON DELETE CASCADE,
+    FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
     FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE SET NULL
 );
 
 -- Plan Amenities table (configurable amenities for installment plans)
 CREATE TABLE IF NOT EXISTS plan_amenities (
     id TEXT PRIMARY KEY,
-    tenant_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     name TEXT NOT NULL,
     price REAL NOT NULL DEFAULT 0,
     is_percentage INTEGER NOT NULL DEFAULT 0,
     is_active INTEGER NOT NULL DEFAULT 1,
     description TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -309,7 +342,7 @@ CREATE TABLE IF NOT EXISTS plan_amenities (
 -- Installment Plans table
 CREATE TABLE IF NOT EXISTS installment_plans (
     id TEXT PRIMARY KEY,
-    tenant_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
     project_id TEXT NOT NULL,
     lead_id TEXT NOT NULL,
@@ -345,6 +378,7 @@ CREATE TABLE IF NOT EXISTS installment_plans (
     -- Selected amenities (JSON string)
     selected_amenities TEXT DEFAULT '[]',
     amenities_total REAL DEFAULT 0,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
@@ -363,16 +397,19 @@ CREATE TABLE IF NOT EXISTS documents (
     file_name TEXT NOT NULL,
     file_size INTEGER NOT NULL,
     mime_type TEXT NOT NULL,
-    tenant_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
     uploaded_by TEXT
 );
 
 -- Rental Agreements table
+-- Note: org_id renamed to tenant_id for consistency with all other tables
 CREATE TABLE IF NOT EXISTS rental_agreements (
     id TEXT PRIMARY KEY,
-    agreement_number TEXT NOT NULL UNIQUE,
+    agreement_number TEXT NOT NULL,
     contact_id TEXT NOT NULL,
     property_id TEXT NOT NULL,
     start_date TEXT NOT NULL,
@@ -384,19 +421,22 @@ CREATE TABLE IF NOT EXISTS rental_agreements (
     security_deposit REAL,
     broker_id TEXT,
     broker_fee REAL,
-    org_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE RESTRICT,
     FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE RESTRICT,
-    FOREIGN KEY (broker_id) REFERENCES contacts(id) ON DELETE SET NULL
+    FOREIGN KEY (broker_id) REFERENCES contacts(id) ON DELETE SET NULL,
+    UNIQUE(tenant_id, agreement_number)
 );
 
 -- Project Agreements table
 CREATE TABLE IF NOT EXISTS project_agreements (
     id TEXT PRIMARY KEY,
-    agreement_number TEXT NOT NULL UNIQUE,
+    agreement_number TEXT NOT NULL,
     client_id TEXT NOT NULL,
     project_id TEXT NOT NULL,
     list_price REAL NOT NULL,
@@ -418,13 +458,16 @@ CREATE TABLE IF NOT EXISTS project_agreements (
     misc_discount_category_id TEXT,
     selling_price_category_id TEXT,
     rebate_category_id TEXT,
-    tenant_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (client_id) REFERENCES contacts(id) ON DELETE RESTRICT,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT,
-    FOREIGN KEY (rebate_broker_id) REFERENCES contacts(id) ON DELETE SET NULL
+    FOREIGN KEY (rebate_broker_id) REFERENCES contacts(id) ON DELETE SET NULL,
+    UNIQUE(tenant_id, agreement_number)
 );
 
 -- Project Agreement Units junction table
@@ -453,8 +496,10 @@ CREATE TABLE IF NOT EXISTS sales_returns (
     refund_bill_id TEXT,
     created_by TEXT,
     notes TEXT,
-    tenant_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (agreement_id) REFERENCES project_agreements(id) ON DELETE RESTRICT,
@@ -468,7 +513,7 @@ CREATE INDEX IF NOT EXISTS idx_sales_returns_agreement_id ON sales_returns(agree
 -- Contracts table
 CREATE TABLE IF NOT EXISTS contracts (
     id TEXT PRIMARY KEY,
-    contract_number TEXT NOT NULL UNIQUE,
+    contract_number TEXT NOT NULL,
     name TEXT NOT NULL,
     project_id TEXT NOT NULL,
     vendor_id TEXT NOT NULL,
@@ -484,12 +529,15 @@ CREATE TABLE IF NOT EXISTS contracts (
     description TEXT,
     document_path TEXT,
     document_id TEXT REFERENCES documents(id) ON DELETE SET NULL,
-    tenant_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT,
-    FOREIGN KEY (vendor_id) REFERENCES contacts(id) ON DELETE RESTRICT
+    FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE RESTRICT,
+    UNIQUE(tenant_id, contract_number)
 );
 
 -- Contract Categories junction table
@@ -518,8 +566,10 @@ CREATE TABLE IF NOT EXISTS recurring_invoice_templates (
     max_occurrences INTEGER,
     generated_count INTEGER NOT NULL DEFAULT 0,
     last_generated_date TEXT,
-    tenant_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE,
@@ -545,8 +595,10 @@ CREATE TABLE IF NOT EXISTS pm_cycle_allocations (
     expense_total REAL NOT NULL DEFAULT 0,
     fee_rate REAL NOT NULL,
     excluded_category_ids TEXT, -- JSON string
-    tenant_id TEXT,
+    tenant_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
@@ -730,7 +782,7 @@ CREATE INDEX IF NOT EXISTS idx_quotations_tenant_id ON quotations(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_quotations_user_id ON quotations(user_id);
 CREATE INDEX IF NOT EXISTS idx_documents_tenant_id ON documents(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);
-CREATE INDEX IF NOT EXISTS idx_rental_agreements_org_id ON rental_agreements(org_id);
+CREATE INDEX IF NOT EXISTS idx_rental_agreements_tenant_id ON rental_agreements(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_rental_agreements_contact_id ON rental_agreements(contact_id);
 CREATE INDEX IF NOT EXISTS idx_rental_agreements_user_id ON rental_agreements(user_id);
 CREATE INDEX IF NOT EXISTS idx_project_agreements_tenant_id ON project_agreements(tenant_id);
@@ -759,7 +811,7 @@ CREATE INDEX IF NOT EXISTS idx_task_performance_scores_user_id ON task_performan
 -- Purchase Orders table
 CREATE TABLE IF NOT EXISTS purchase_orders (
     id TEXT PRIMARY KEY,
-    po_number TEXT NOT NULL UNIQUE,
+    po_number TEXT NOT NULL,
     buyer_tenant_id TEXT NOT NULL,
     supplier_tenant_id TEXT NOT NULL,
     project_id TEXT,
@@ -775,14 +827,17 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
     completed_at TEXT,
     tenant_id TEXT NOT NULL,
     user_id TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(tenant_id, po_number)
 );
 
 -- P2P Invoices table
 CREATE TABLE IF NOT EXISTS p2p_invoices (
     id TEXT PRIMARY KEY,
-    invoice_number TEXT NOT NULL UNIQUE,
+    invoice_number TEXT NOT NULL,
     po_id TEXT NOT NULL,
     buyer_tenant_id TEXT NOT NULL,
     supplier_tenant_id TEXT NOT NULL,
@@ -796,13 +851,14 @@ CREATE TABLE IF NOT EXISTS p2p_invoices (
     user_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE RESTRICT
+    FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE RESTRICT,
+    UNIQUE(tenant_id, invoice_number)
 );
 
 -- P2P Bills table
 CREATE TABLE IF NOT EXISTS p2p_bills (
     id TEXT PRIMARY KEY,
-    bill_number TEXT NOT NULL UNIQUE,
+    bill_number TEXT NOT NULL,
     invoice_id TEXT NOT NULL,
     po_id TEXT NOT NULL,
     buyer_tenant_id TEXT NOT NULL,
@@ -820,7 +876,8 @@ CREATE TABLE IF NOT EXISTS p2p_bills (
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (invoice_id) REFERENCES p2p_invoices(id) ON DELETE RESTRICT,
     FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE RESTRICT,
-    FOREIGN KEY (payment_account_id) REFERENCES accounts(id) ON DELETE SET NULL
+    FOREIGN KEY (payment_account_id) REFERENCES accounts(id) ON DELETE SET NULL,
+    UNIQUE(tenant_id, bill_number)
 );
 
 -- P2P Audit Trail table
@@ -1090,4 +1147,43 @@ CREATE TABLE IF NOT EXISTS sync_metadata (
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (tenant_id, entity_type)
 );
+
+-- Sync Conflicts table: logs all conflict resolutions for audit trail
+CREATE TABLE IF NOT EXISTS sync_conflicts (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    local_version INTEGER,
+    remote_version INTEGER,
+    local_data TEXT,
+    remote_data TEXT,
+    resolution TEXT NOT NULL,
+    resolved_by TEXT,
+    device_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_sync_conflicts_tenant ON sync_conflicts(tenant_id, entity_type, created_at);
+
+-- Composite indexes for efficient tenant-scoped lookups (tenant_id, id)
+CREATE INDEX IF NOT EXISTS idx_accounts_tenant_pk ON accounts(tenant_id, id);
+CREATE INDEX IF NOT EXISTS idx_contacts_tenant_pk ON contacts(tenant_id, id);
+CREATE INDEX IF NOT EXISTS idx_vendors_tenant_pk ON vendors(tenant_id, id);
+CREATE INDEX IF NOT EXISTS idx_categories_tenant_pk ON categories(tenant_id, id);
+CREATE INDEX IF NOT EXISTS idx_projects_tenant_pk ON projects(tenant_id, id);
+CREATE INDEX IF NOT EXISTS idx_buildings_tenant_pk ON buildings(tenant_id, id);
+CREATE INDEX IF NOT EXISTS idx_properties_tenant_pk ON properties(tenant_id, id);
+CREATE INDEX IF NOT EXISTS idx_units_tenant_pk ON units(tenant_id, id);
+CREATE INDEX IF NOT EXISTS idx_transactions_tenant_pk ON transactions(tenant_id, id);
+CREATE INDEX IF NOT EXISTS idx_invoices_tenant_pk ON invoices(tenant_id, id);
+CREATE INDEX IF NOT EXISTS idx_bills_tenant_pk ON bills(tenant_id, id);
+CREATE INDEX IF NOT EXISTS idx_budgets_tenant_pk ON budgets(tenant_id, id);
+CREATE INDEX IF NOT EXISTS idx_quotations_tenant_pk ON quotations(tenant_id, id);
+CREATE INDEX IF NOT EXISTS idx_documents_tenant_pk ON documents(tenant_id, id);
+CREATE INDEX IF NOT EXISTS idx_contracts_tenant_pk ON contracts(tenant_id, id);
+CREATE INDEX IF NOT EXISTS idx_rental_agreements_tenant_pk ON rental_agreements(tenant_id, id);
+CREATE INDEX IF NOT EXISTS idx_project_agreements_tenant_pk ON project_agreements(tenant_id, id);
+CREATE INDEX IF NOT EXISTS idx_installment_plans_tenant_pk ON installment_plans(tenant_id, id);
+CREATE INDEX IF NOT EXISTS idx_recurring_invoice_templates_tenant_pk ON recurring_invoice_templates(tenant_id, id);
+CREATE INDEX IF NOT EXISTS idx_pm_cycle_allocations_tenant_pk ON pm_cycle_allocations(tenant_id, id);
 `;

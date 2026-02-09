@@ -154,6 +154,7 @@ CREATE TABLE IF NOT EXISTS vendors (
     company_name TEXT,
     address TEXT,
     description TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
     user_id TEXT REFERENCES users(id),
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -181,6 +182,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
     category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
     contact_id TEXT REFERENCES contacts(id) ON DELETE SET NULL,
+    vendor_id TEXT REFERENCES vendors(id) ON DELETE SET NULL,
     project_id TEXT,
     invoice_id TEXT,
     bill_id TEXT,
@@ -258,7 +260,8 @@ CREATE TABLE IF NOT EXISTS bills (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     bill_number TEXT NOT NULL,
-    contact_id TEXT NOT NULL REFERENCES contacts(id),
+    contact_id TEXT REFERENCES contacts(id),
+    vendor_id TEXT REFERENCES vendors(id),
     amount DECIMAL(15, 2) NOT NULL,
     paid_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'Unpaid',
@@ -330,7 +333,7 @@ CREATE TABLE IF NOT EXISTS contracts (
     contract_number TEXT NOT NULL,
     name TEXT NOT NULL,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    vendor_id TEXT NOT NULL REFERENCES contacts(id),
+    vendor_id TEXT NOT NULL REFERENCES vendors(id),
     total_amount DECIMAL(15, 2) NOT NULL,
     status TEXT NOT NULL,
     user_id TEXT REFERENCES users(id),
@@ -428,9 +431,17 @@ CREATE TABLE IF NOT EXISTS shop_products (
     tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     sku TEXT NOT NULL,
+    barcode TEXT,
     retail_price DECIMAL(15, 2) DEFAULT 0,
     UNIQUE(tenant_id, sku)
 );
+
+-- Add barcode column if it doesn't exist
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='shop_products' AND column_name='barcode') THEN
+        ALTER TABLE shop_products ADD COLUMN barcode TEXT;
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS shop_sales (
     id TEXT PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -607,6 +618,13 @@ CREATE TABLE IF NOT EXISTS marketplace_categories (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Fix-up for marketplace_categories
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='marketplace_categories' AND column_name='icon') THEN
+        ALTER TABLE marketplace_categories ADD COLUMN icon TEXT;
+    END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS whatsapp_configs (
     id TEXT PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -620,6 +638,20 @@ CREATE TABLE IF NOT EXISTS app_settings (
     tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     value JSONB NOT NULL,
     PRIMARY KEY (tenant_id, key)
+);
+
+CREATE TABLE IF NOT EXISTS quotations (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    vendor_id TEXT NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    date DATE NOT NULL,
+    items JSONB NOT NULL,
+    total_amount DECIMAL(15, 2) NOT NULL,
+    document_id TEXT,
+    user_id TEXT REFERENCES users(id),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 -- ============================================================================
@@ -637,6 +669,7 @@ BEGIN
     FOR t IN 
         SELECT table_name FROM information_schema.tables 
         WHERE table_schema = 'public' 
+        AND table_type = 'BASE TABLE'
         AND table_name NOT IN ('tenants', 'schema_migrations', 'admin_users', 'marketplace_categories')
     LOOP
         EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t.table_name);
@@ -663,3 +696,70 @@ INSERT INTO marketplace_categories (id, name, icon) VALUES
 ('services', 'Settings', 'Settings'),
 ('other', 'MoreHorizontal', 'MoreHorizontal')
 ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================================
+-- SCHEMA HARDENING: version, deleted_at columns for optimistic locking & soft deletes
+-- ============================================================================
+
+DO $$ 
+DECLARE
+    tbl TEXT;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY[
+        'accounts', 'contacts', 'vendors', 'categories', 'projects',
+        'buildings', 'properties', 'units', 'transactions', 'invoices',
+        'bills', 'budgets', 'quotations', 'contracts',
+        'rental_agreements', 'project_agreements', 'sales_returns',
+        'recurring_invoice_templates', 'documents',
+        'purchase_orders', 'p2p_invoices', 'p2p_bills'
+    ]
+    LOOP
+        -- Add version column if missing
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = tbl AND column_name = 'version'
+        ) THEN
+            EXECUTE format('ALTER TABLE %I ADD COLUMN version INTEGER NOT NULL DEFAULT 1', tbl);
+        END IF;
+
+        -- Add deleted_at column if missing
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = tbl AND column_name = 'deleted_at'
+        ) THEN
+            EXECUTE format('ALTER TABLE %I ADD COLUMN deleted_at TIMESTAMP', tbl);
+        END IF;
+    END LOOP;
+END $$;
+
+-- Sync Conflicts table: audit trail for all conflict resolutions
+CREATE TABLE IF NOT EXISTS sync_conflicts (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    local_version INTEGER,
+    remote_version INTEGER,
+    local_data JSONB,
+    remote_data JSONB,
+    resolution TEXT NOT NULL,
+    resolved_by TEXT,
+    device_id TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sync_conflicts_tenant ON sync_conflicts(tenant_id, entity_type, created_at);
+
+-- Idempotency Cache table: prevents duplicate sync push processing
+CREATE TABLE IF NOT EXISTS idempotency_cache (
+    idempotency_key TEXT NOT NULL,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    status_code INTEGER NOT NULL,
+    response_body JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (tenant_id, idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS idx_idempotency_cache_created ON idempotency_cache(created_at);
+
+-- Auto-cleanup expired idempotency entries (>24h)
+-- In production, run via pg_cron or application-level scheduler:
+-- DELETE FROM idempotency_cache WHERE created_at < NOW() - INTERVAL '24 hours';

@@ -257,11 +257,10 @@ class DatabaseService {
                         // Silent - not critical
                     }
 
-                    // Ensure all tables are present (for existing databases)
-                    // Safe to create indexes now because tenant_id columns already exist
-                    this.ensureAllTablesExist();
                     // Ensure contracts table has new columns
                     this.ensureContractColumnsExist();
+                    // Ensure vendor_id columns exist
+                    this.ensureVendorIdColumnsExist();
                 } catch (tenantIdError) {
                     // Old database without tenant_id support - recreate it
                     logger.logCategory('database', '🔄 Detected old database format, recreating with new schema...');
@@ -358,6 +357,38 @@ class DatabaseService {
      */
     isReady(): boolean {
         return this.isInitialized && this.db !== null;
+    }
+
+    /**
+     * Raw query - bypasses isReady() guard. For use during initialization/migration only.
+     * Requires this.db to be non-null (caller must verify).
+     */
+    private rawQuery<T = any>(sql: string, params: any[] = []): T[] {
+        if (!this.db) return [];
+        const stmt = this.db.prepare(sql);
+        stmt.bind(params);
+        const results: T[] = [];
+        while (stmt.step()) {
+            results.push(stmt.getAsObject() as T);
+        }
+        stmt.free();
+        return results;
+    }
+
+    /**
+     * Raw execute - bypasses isReady() guard. For use during initialization/migration only.
+     * Requires this.db to be non-null (caller must verify).
+     */
+    private rawExecute(sql: string, params: any[] = []): void {
+        if (!this.db) return;
+        try {
+            this.db.run(sql, params);
+        } catch (error: any) {
+            const errorMsg = error?.message || String(error);
+            // Silently ignore "duplicate column" errors during migration
+            if (errorMsg.includes('duplicate column')) return;
+            throw error;
+        }
     }
 
     /**
@@ -687,12 +718,46 @@ class DatabaseService {
     }
 
     /**
+     * Execute a tenant-scoped SQL query with automatic tenant_id filtering.
+     * SECURITY: Use this for all tenant-scoped data access to prevent cross-tenant leaks.
+     * Throws if the SQL does not contain a tenant_id filter (safety check).
+     *
+     * @param sql - SQL query (must include tenant_id filter)
+     * @param params - Query parameters
+     * @param tenantId - Current tenant ID (validated against sql)
+     */
+    queryForTenant<T = any>(sql: string, params: any[], tenantId: string): T[] {
+        if (!tenantId) {
+            throw new Error('SECURITY: queryForTenant called without tenantId');
+        }
+        if (!sql.toLowerCase().includes('tenant_id')) {
+            throw new Error(`SECURITY: Query missing tenant_id filter: ${sql.substring(0, 100)}`);
+        }
+        return this.query<T>(sql, params);
+    }
+
+    /**
+     * Execute a tenant-scoped SQL statement with automatic tenant_id validation.
+     * SECURITY: Use this for all tenant-scoped mutations to prevent cross-tenant writes.
+     */
+    executeForTenant(sql: string, params: any[], tenantId: string): void {
+        if (!tenantId) {
+            throw new Error('SECURITY: executeForTenant called without tenantId');
+        }
+        if (!sql.toLowerCase().includes('tenant_id')) {
+            throw new Error(`SECURITY: Statement missing tenant_id filter: ${sql.substring(0, 100)}`);
+        }
+        this.execute(sql, params);
+    }
+
+    /**
      * Clear all transaction-related data (keeps configuration and master data)
      * Preserves: Contacts, categories, projects, buildings, properties, units, settings
      * Clears: Transactions, invoices, bills, contracts, agreements, sales returns, accounts
-     * Note: Accounts are deleted (not just reset) to avoid duplicate key errors on reload
+     *
+     * @param tenantId - If provided, only clears data for this tenant. If not, clears all.
      */
-    clearTransactionData(): void {
+    clearTransactionData(tenantId?: string): void {
         const db = this.getDatabase();
         // ORDER MATTERS: Delete child tables before parent tables to respect foreign key constraints
         const transactionTables = [
@@ -714,24 +779,30 @@ class DatabaseService {
             // Disable foreign keys temporarily
             db.run('PRAGMA foreign_keys = OFF');
 
-            // Clear transaction-related tables (including accounts)
+            // Clear transaction-related tables, optionally filtered by tenant
             transactionTables.forEach(table => {
                 try {
-                    db.run(`DELETE FROM ${table}`);
-                    console.log(`✓ Cleared ${table}`);
+                    if (tenantId) {
+                        db.run(`DELETE FROM ${table} WHERE tenant_id = ?`, [tenantId]);
+                    } else {
+                        db.run(`DELETE FROM ${table}`);
+                    }
+                    console.log(`✓ Cleared ${table}${tenantId ? ` for tenant ${tenantId}` : ''}`);
                 } catch (error) {
                     console.warn(`⚠️ Could not clear ${table}:`, error);
                 }
             });
 
-            // Reset auto-increment counters for cleared tables
-            transactionTables.forEach(table => {
-                try {
-                    db.run(`DELETE FROM sqlite_sequence WHERE name = ?`, [table]);
-                } catch (error) {
-                    // Ignore - table might not have auto-increment
-                }
-            });
+            // Reset auto-increment counters for cleared tables (only when clearing all)
+            if (!tenantId) {
+                transactionTables.forEach(table => {
+                    try {
+                        db.run(`DELETE FROM sqlite_sequence WHERE name = ?`, [table]);
+                    } catch (error) {
+                        // Ignore - table might not have auto-increment
+                    }
+                });
+            }
 
             // Re-enable foreign keys
             db.run('PRAGMA foreign_keys = ON');
@@ -739,7 +810,7 @@ class DatabaseService {
             db.run('COMMIT');
             this.save();
 
-            console.log('✅ Successfully cleared all transaction data from local database');
+            console.log(`✅ Successfully cleared all transaction data from local database${tenantId ? ` for tenant ${tenantId}` : ''}`);
             console.log('ℹ️  Accounts will be reloaded from cloud on next sync');
         } catch (error) {
             db.run('ROLLBACK');
@@ -749,9 +820,76 @@ class DatabaseService {
     }
 
     /**
-     * Clear all data (keeps schema)
+     * Clear all POS / Shop module data from local database (keeps schema)
+     *
+     * @param tenantId - If provided, only clears data for this tenant. If not, clears all.
      */
-    clearAllData(): void {
+    clearPosData(tenantId?: string): void {
+        const db = this.getDatabase();
+
+        // ORDER MATTERS: Delete child tables before parent tables to respect foreign key constraints
+        const posTables = [
+            'shop_sale_items',
+            'shop_sales',
+            'shop_inventory_movements',
+            'shop_inventory',
+            'shop_loyalty_members',
+            'shop_products',
+            'shop_terminals',
+            'shop_warehouses',
+            'shop_branches',
+            'shop_policies',
+        ];
+
+        db.run('BEGIN TRANSACTION');
+        try {
+            // Disable foreign keys temporarily
+            db.run('PRAGMA foreign_keys = OFF');
+
+            posTables.forEach(table => {
+                try {
+                    if (tenantId) {
+                        db.run(`DELETE FROM ${table} WHERE tenant_id = ?`, [tenantId]);
+                    } else {
+                        db.run(`DELETE FROM ${table}`);
+                    }
+                    console.log(`✓ Cleared ${table}${tenantId ? ` for tenant ${tenantId}` : ''}`);
+                } catch (error) {
+                    // Table might not exist in older local DBs; don't fail the whole clear
+                    console.warn(`⚠️ Could not clear ${table}:`, error);
+                }
+            });
+
+            // Reset auto-increment counters for cleared tables (only when clearing all)
+            if (!tenantId) {
+                posTables.forEach(table => {
+                    try {
+                        db.run(`DELETE FROM sqlite_sequence WHERE name = ?`, [table]);
+                    } catch {
+                        // Ignore - table might not have auto-increment
+                    }
+                });
+            }
+
+            // Re-enable foreign keys
+            db.run('PRAGMA foreign_keys = ON');
+
+            db.run('COMMIT');
+            this.save();
+            console.log(`✅ Successfully cleared POS data from local database${tenantId ? ` for tenant ${tenantId}` : ''}`);
+        } catch (error) {
+            db.run('ROLLBACK');
+            console.error('❌ Error clearing POS data:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Clear all data (keeps schema)
+     *
+     * @param tenantId - If provided, only clears data for this tenant. If not, clears all.
+     */
+    clearAllData(tenantId?: string): void {
         const db = this.getDatabase();
         const tables = [
             'users', 'accounts', 'contacts', 'categories', 'projects', 'buildings',
@@ -767,11 +905,23 @@ class DatabaseService {
             db.run('PRAGMA foreign_keys = OFF');
 
             tables.forEach(table => {
-                db.run(`DELETE FROM ${table}`);
+                if (tenantId) {
+                    // Tenant-scoped clear: only delete data for this tenant
+                    // Some tables (error_log, app_settings, etc.) don't have tenant_id
+                    try {
+                        db.run(`DELETE FROM ${table} WHERE tenant_id = ?`, [tenantId]);
+                    } catch {
+                        // Table doesn't have tenant_id — skip (don't delete shared data)
+                    }
+                } else {
+                    db.run(`DELETE FROM ${table}`);
+                }
             });
 
-            // Reset auto-increment counters
-            db.run('DELETE FROM sqlite_sequence');
+            // Reset auto-increment counters (only when clearing all)
+            if (!tenantId) {
+                db.run('DELETE FROM sqlite_sequence');
+            }
 
             // Re-enable foreign keys
             db.run('PRAGMA foreign_keys = ON');
@@ -874,55 +1024,150 @@ class DatabaseService {
     }
 
     /**
-     * Check schema version and migrate if needed
+     * Check schema version and migrate if needed.
+     * NOTE: This runs BEFORE isInitialized=true, so we use rawQuery/rawExecute
+     * which bypass the isReady() guard. this.db is verified non-null at entry.
      */
     private async checkAndMigrateSchema(): Promise<void> {
         if (!this.db) return;
 
         try {
-            const currentVersion = parseInt(this.getMetadata('schema_version') || '0');
+            // Read schema_version directly (getMetadata relies on isReady which is false here)
+            let currentVersion = 0;
+            try {
+                const rows = this.rawQuery<{ value: string }>(
+                    'SELECT value FROM metadata WHERE key = ?', ['schema_version']
+                );
+                if (rows.length > 0) {
+                    currentVersion = parseInt(rows[0].value || '0');
+                }
+            } catch (_) {
+                // metadata table may not exist yet
+            }
             const latestVersion = SCHEMA_VERSION;
 
             if (currentVersion < latestVersion) {
                 console.log(`🔄 Schema migration needed: ${currentVersion} -> ${latestVersion}`);
-                console.log('⚠️ Running schema migration...');
 
-                // IMPORTANT: Add tenant_id columns FIRST before running ensureAllTablesExist
-                // because ensureAllTablesExist runs CREATE_SCHEMA_SQL which includes indexes on tenant_id
-                // If we create indexes before the columns exist, SQLite will error
+                // Temporarily set isInitialized so that helper methods (ensureAllTablesExist,
+                // ensureContractColumnsExist, ensureVendorIdColumnsExist, migrateTenantColumns)
+                // don't bail out due to their isReady()/isInitialized guards.
+                this.isInitialized = true;
+
                 try {
-                    const { migrateTenantColumns } = await import('./tenantMigration');
-                    migrateTenantColumns();
-                } catch (migrationError) {
-                    console.warn('⚠️ Tenant migration failed, continuing anyway:', migrationError);
-                }
-
-                // Ensure all tables exist (this will create any missing tables AND indexes)
-                // Now safe because tenant_id columns already exist
-                this.ensureAllTablesExist();
-
-                // Ensure contract and bill columns exist (for expense_category_items)
-                this.ensureContractColumnsExist();
-
-
-                // Run version-specific migrations
-                if (currentVersion < 3) {
-                    // Migration from v2 to v3: Add document_path to bills table
+                    // IMPORTANT: Add tenant_id columns FIRST before running ensureAllTablesExist
+                    // because ensureAllTablesExist runs CREATE_SCHEMA_SQL which includes indexes on tenant_id
+                    // If we create indexes before the columns exist, SQLite will error
                     try {
-                        const { migrateAddDocumentPathToBills } = await import('./migrations/add-document-path-to-bills');
-                        await migrateAddDocumentPathToBills();
+                        const { migrateTenantColumns } = await import('./tenantMigration');
+                        migrateTenantColumns();
                     } catch (migrationError) {
-                        console.warn('⚠️ document_path migration failed, continuing anyway:', migrationError);
+                        console.warn('⚠️ Tenant migration failed, continuing anyway:', migrationError);
                     }
+
+                    // Ensure all tables exist (this will create any missing tables AND indexes)
+                    // Now safe because tenant_id columns already exist
+                    this.ensureAllTablesExist();
+
+                    // Ensure contract and bill columns exist (for expense_category_items)
+                    this.ensureContractColumnsExist();
+                    // Ensure vendor_id columns exist
+                    this.ensureVendorIdColumnsExist();
+
+                    // Run version-specific migrations
+                    if (currentVersion < 3) {
+                        // Migration from v2 to v3: Add document_path to bills table
+                        try {
+                            const { migrateAddDocumentPathToBills } = await import('./migrations/add-document-path-to-bills');
+                            await migrateAddDocumentPathToBills();
+                        } catch (migrationError) {
+                            console.warn('⚠️ document_path migration failed, continuing anyway:', migrationError);
+                        }
+                    }
+
+                    if (currentVersion < 7) {
+                        // Migration to v7: Add version, deleted_at columns to all entity tables
+                        // and ensure sync_conflicts table exists
+                        console.log('🔄 Running v7 migration: Adding version, deleted_at, sync_conflicts...');
+                        try {
+                            const entityTables = [
+                                'accounts', 'contacts', 'vendors', 'categories', 'projects',
+                                'buildings', 'properties', 'units', 'transactions', 'invoices',
+                                'bills', 'budgets', 'quotations', 'plan_amenities',
+                                'installment_plans', 'documents', 'rental_agreements',
+                                'project_agreements', 'sales_returns', 'contracts',
+                                'recurring_invoice_templates', 'pm_cycle_allocations',
+                                'purchase_orders',
+                            ];
+
+                            for (const table of entityTables) {
+                                try {
+                                    const columns = this.rawQuery<{ name: string }>(`PRAGMA table_info(${table})`);
+                                    const colNames = new Set(columns.map(c => c.name));
+
+                                    if (!colNames.has('version')) {
+                                        this.rawExecute(`ALTER TABLE ${table} ADD COLUMN version INTEGER NOT NULL DEFAULT 1`);
+                                        console.log(`  Added version to ${table}`);
+                                    }
+                                    if (!colNames.has('deleted_at')) {
+                                        this.rawExecute(`ALTER TABLE ${table} ADD COLUMN deleted_at TEXT`);
+                                        console.log(`  Added deleted_at to ${table}`);
+                                    }
+                                } catch (tableError) {
+                                    console.warn(`  ⚠️ Migration for ${table} failed:`, tableError);
+                                }
+                            }
+
+                            // Rename org_id to tenant_id in rental_agreements if needed
+                            try {
+                                const raCols = this.rawQuery<{ name: string }>('PRAGMA table_info(rental_agreements)');
+                                const raColNames = new Set(raCols.map(c => c.name));
+                                if (raColNames.has('org_id') && !raColNames.has('tenant_id')) {
+                                    this.rawExecute('ALTER TABLE rental_agreements RENAME COLUMN org_id TO tenant_id');
+                                    console.log('  Renamed org_id to tenant_id in rental_agreements');
+                                }
+                            } catch (renameError) {
+                                console.warn('  ⚠️ rental_agreements org_id rename failed:', renameError);
+                            }
+
+                            // Backfill NULL tenant_id values with empty string
+                            for (const table of entityTables) {
+                                try {
+                                    this.rawExecute(`UPDATE ${table} SET tenant_id = '' WHERE tenant_id IS NULL`);
+                                } catch (_) { /* ignore if table doesn't have tenant_id */ }
+                            }
+
+                            console.log('✅ v7 migration completed');
+                        } catch (v7Error) {
+                            console.warn('⚠️ v7 migration partially failed:', v7Error);
+                        }
+                    }
+
+                    // Update schema version directly (setMetadata relies on isReady)
+                    this.rawExecute(
+                        'INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime("now"))',
+                        ['schema_version', latestVersion.toString()]
+                    );
+
+                    // Save immediately after migration (bypass persistToStorage which checks isInitialized)
+                    try {
+                        const data = this.db!.export();
+                        if (await this.opfs.isSupported()) {
+                            await this.opfs.save(data);
+                        } else {
+                            const buffer = Array.from(data);
+                            localStorage.setItem('finance_db', JSON.stringify(buffer));
+                        }
+                        console.log('💾 Database saved after migration');
+                    } catch (saveError) {
+                        console.warn('⚠️ Could not save database after migration:', saveError);
+                    }
+
+                    console.log('✅ Schema migration completed successfully');
+                } finally {
+                    // Reset isInitialized - it will be set to true properly at the end of _doInitialize
+                    this.isInitialized = false;
                 }
-
-                // Update schema version
-                this.setMetadata('schema_version', latestVersion.toString());
-
-                // Save immediately after migration
-                await this.persistToStorage();
-
-                console.log('✅ Schema migration completed successfully');
             } else if (currentVersion > latestVersion) {
                 console.warn(`⚠️ Database schema version (${currentVersion}) is newer than app version (${latestVersion}). This may cause issues.`);
             } else {
@@ -930,6 +1175,8 @@ class DatabaseService {
             }
         } catch (error) {
             console.error('❌ Error during schema migration check:', error);
+            // Reset isInitialized in case of error
+            this.isInitialized = false;
             // Don't throw - allow app to continue with existing schema
         }
     }
@@ -1009,6 +1256,78 @@ class DatabaseService {
             }
         } catch (error) {
             console.error('❌ Error ensuring contract/bill columns exist:', error);
+        }
+    }
+
+    /**
+     * Ensure tables have vendor_id column for linking to vendors table instead of contacts
+     */
+    ensureVendorIdColumnsExist(): void {
+        if (!this.db || !this.isInitialized) return;
+
+        try {
+            const tablesToUpdate = ['bills', 'transactions', 'vendors'];
+
+            for (const table of tablesToUpdate) {
+                const tableExists = this.query<{ name: string }>(
+                    `SELECT name FROM sqlite_master WHERE type='table' AND name='${table}'`
+                ).length > 0;
+
+                if (!tableExists) continue;
+
+                const results = this.query<{ name: string }>(`PRAGMA table_info(${table})`);
+                const columnNames = new Set(results.map(col => col.name));
+
+                if (table === 'vendors') {
+                    if (!columnNames.has('is_active')) {
+                        console.log('🔄 Adding is_active column to vendors table...');
+                        this.execute('ALTER TABLE vendors ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1');
+                    }
+                } else {
+                    if (!columnNames.has('vendor_id')) {
+                        console.log(`🔄 Adding vendor_id column to ${table} table...`);
+                        // Add REFERENCES vendors(id) for foreign key constraint
+                        this.execute(`ALTER TABLE ${table} ADD COLUMN vendor_id TEXT REFERENCES vendors(id)`);
+                    }
+                }
+            }
+
+            // DATA MIGRATION: Move data from contact_id to vendor_id if contact_id is actually a vendor ID
+            // This ensures existing data is correctly linked after schema change
+            console.log('🔄 Migrating vendor links from contact_id to vendor_id...');
+
+            // For Bills
+            // Check if bills table exists and has contact_id
+            const billsTableInfo = this.query<{ name: string }>('PRAGMA table_info(bills)');
+            const billsColumnNames = new Set(billsTableInfo.map(col => col.name));
+            if (billsColumnNames.has('contact_id')) {
+                this.execute(`
+                    UPDATE bills
+                    SET vendor_id = contact_id, contact_id = NULL
+                    WHERE vendor_id IS NULL
+                    AND contact_id IS NOT NULL
+                    AND contact_id IN (SELECT id FROM vendors);
+                `);
+            }
+
+            // For Transactions
+            // Check if transactions table exists and has contact_id
+            const transactionsTableInfo = this.query<{ name: string }>('PRAGMA table_info(transactions)');
+            const transactionsColumnNames = new Set(transactionsTableInfo.map(col => col.name));
+            if (transactionsColumnNames.has('contact_id')) {
+                this.execute(`
+                    UPDATE transactions
+                    SET vendor_id = contact_id, contact_id = NULL
+                    WHERE vendor_id IS NULL
+                    AND contact_id IS NOT NULL
+                    AND contact_id IN (SELECT id FROM vendors);
+                `);
+            }
+
+            console.log('✅ Vendor link migration completed');
+
+        } catch (error) {
+            console.error('❌ Error ensuring vendor_id columns exist:', error);
         }
     }
 
@@ -1122,10 +1441,10 @@ class DatabaseService {
     private executeSchemaStatements(sql: string): void {
         if (!this.db) return;
 
-        // Split by semicolon and filter out empty statements
+        // Split by semicolon and filter out truly empty statements
         const statements = sql.split(';')
             .map(s => s.trim())
-            .filter(s => s.length > 0 && !s.startsWith('--'));
+            .filter(s => s.length > 0);
 
         for (const statement of statements) {
             try {
@@ -1160,6 +1479,7 @@ class DatabaseService {
         // This adds missing columns like expense_category_items
         this.ensureAllTablesExist();
         this.ensureContractColumnsExist();
+        this.ensureVendorIdColumnsExist();
 
         // Clear repository column caches so they pick up the new columns
         // This is critical - otherwise repositories will filter out new columns when saving

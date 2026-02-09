@@ -59,6 +59,7 @@ class SyncOutboxService {
        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), NULL, 'pending', 0, NULL)`,
       [id, tenantId, userId ?? null, entityType, action, entityId, payloadJson]
     );
+    this.db.save();
     return id;
   }
 
@@ -82,6 +83,7 @@ class SyncOutboxService {
       `UPDATE sync_outbox SET status = 'syncing', updated_at = datetime('now') WHERE id = ?`,
       [id]
     );
+    this.db.save();
   }
 
   /**
@@ -93,6 +95,7 @@ class SyncOutboxService {
       `UPDATE sync_outbox SET status = 'synced', synced_at = datetime('now'), updated_at = datetime('now'), error_message = NULL WHERE id = ?`,
       [id]
     );
+    this.db.save();
   }
 
   /**
@@ -104,6 +107,7 @@ class SyncOutboxService {
       `UPDATE sync_outbox SET status = 'failed', updated_at = datetime('now'), retry_count = retry_count + 1, error_message = ? WHERE id = ?`,
       [errorMessage?.slice(0, 500) ?? 'Unknown error', id]
     );
+    this.db.save();
   }
 
   /**
@@ -127,6 +131,7 @@ class SyncOutboxService {
       `DELETE FROM sync_outbox WHERE tenant_id = ? AND status = 'synced' AND datetime(synced_at) < datetime('now', ?)`,
       [tenantId, `-${days} days`]
     );
+    this.db.save();
     return 1;
   }
 }

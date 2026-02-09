@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { ShopPurchaseBill, ShopBillItem, ShopBillStatus, ShopInventoryItem, ShopPayment, ContactType, TransactionType, Account, AccountType } from '../../types';
+import { ShopPurchaseBill, ShopBillItem, ShopBillStatus, ShopInventoryItem, ShopPayment, TransactionType, Account, AccountType } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -48,10 +48,10 @@ const PurchasesTab: React.FC = () => {
     const [paymentAccountId, setPaymentAccountId] = useState('');
     const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
 
-    // Get vendors from contacts
+    // Get vendors from vendors table
     const vendors = useMemo(() => 
-        state.contacts.filter(c => c.type === ContactType.VENDOR).sort((a, b) => a.name.localeCompare(b.name)),
-        [state.contacts]
+        (state.vendors || []).sort((a, b) => a.name.localeCompare(b.name)),
+        [state.vendors]
     );
 
     // Get expense categories for inventory items
@@ -239,7 +239,7 @@ const PurchasesTab: React.FC = () => {
         );
 
         // Create expense transaction in the main ledger
-        const vendor = state.contacts.find(c => c.id === bill.vendorId);
+        const vendor = state.vendors?.find(v => v.id === bill.vendorId);
         const account = state.accounts.find(a => a.id === paymentAccountId);
         
         if (account) {
@@ -270,7 +270,7 @@ const PurchasesTab: React.FC = () => {
 
     // Get vendor name
     const getVendorName = (vendorId: string) => {
-        const vendor = state.contacts.find(c => c.id === vendorId);
+        const vendor = state.vendors?.find(v => v.id === vendorId);
         return vendor?.name || 'Unknown Vendor';
     };
 

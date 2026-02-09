@@ -1,4 +1,5 @@
 import { Pool, PoolClient } from 'pg';
+import { getCurrentTenantId } from './tenantContext.js';
 
 export class DatabaseService {
   private pool: Pool;
@@ -50,8 +51,36 @@ export class DatabaseService {
     
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        const result = await this.pool.query(text, params);
-        return result.rows;
+        const tenantId = getCurrentTenantId();
+        if (!tenantId) {
+          const result = await this.pool.query(text, params);
+          return result.rows;
+        }
+
+        // RLS tenant context must be set on the SAME connection as the query.
+        // Use a short transaction and SET LOCAL to avoid leaking across pooled connections.
+        // SET LOCAL does not support bound parameters ($1) in PostgreSQL, so we escape the value.
+        const client = await this.pool.connect();
+        try {
+          await client.query('BEGIN');
+          const safeTenantId = String(tenantId).replace(/'/g, "''");
+          if (!/^[a-zA-Z0-9_-]+$/.test(tenantId)) {
+            throw new Error('Invalid tenant id for SET LOCAL');
+          }
+          await client.query(`SET LOCAL app.current_tenant_id = '${safeTenantId}'`);
+          const result = await client.query(text, params);
+          await client.query('COMMIT');
+          return result.rows;
+        } catch (err) {
+          try {
+            await client.query('ROLLBACK');
+          } catch {
+            // ignore rollback errors
+          }
+          throw err;
+        } finally {
+          client.release();
+        }
       } catch (error: any) {
         lastError = error;
         
@@ -123,7 +152,35 @@ export class DatabaseService {
     
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        await this.pool.query(text, params);
+        const tenantId = getCurrentTenantId();
+        if (!tenantId) {
+          await this.pool.query(text, params);
+          return;
+        }
+
+        // Same logic as query(): run in a short transaction with SET LOCAL.
+        // SET LOCAL does not support bound parameters ($1) in PostgreSQL, so escape the value.
+        if (!/^[a-zA-Z0-9_-]+$/.test(tenantId)) {
+          throw new Error('Invalid tenant id for SET LOCAL');
+        }
+        const safeTenantId = String(tenantId).replace(/'/g, "''");
+        const client = await this.pool.connect();
+        try {
+          await client.query('BEGIN');
+          await client.query(`SET LOCAL app.current_tenant_id = '${safeTenantId}'`);
+          await client.query(text, params);
+          await client.query('COMMIT');
+          return;
+        } catch (err) {
+          try {
+            await client.query('ROLLBACK');
+          } catch {
+            // ignore rollback errors
+          }
+          throw err;
+        } finally {
+          client.release();
+        }
         return;
       } catch (error: any) {
         lastError = error;
@@ -187,6 +244,18 @@ export class DatabaseService {
         console.log(`🔄 Database transaction starting (attempt ${attempt}/${retries})`);
         await client.query('BEGIN');
         console.log('✅ Transaction BEGIN successful');
+
+        const tenantId = getCurrentTenantId();
+        if (tenantId) {
+          // Apply RLS tenant context for this transaction.
+          // SET LOCAL does not support bound parameters ($1) in PostgreSQL, so escape the value.
+          if (!/^[a-zA-Z0-9_-]+$/.test(tenantId)) {
+            throw new Error('Invalid tenant id for SET LOCAL');
+          }
+          const safeTenantId = String(tenantId).replace(/'/g, "''");
+          await client.query(`SET LOCAL app.current_tenant_id = '${safeTenantId}'`);
+        }
+
         const result = await callback(client);
         console.log('✅ Transaction callback completed, committing...');
         await client.query('COMMIT');

@@ -86,12 +86,16 @@ class PostgreSQLLocalService {
           cache: 'no-cache',
         });
         if (!response.ok) {
-          throw new Error(`Health check failed: ${response.statusText}`);
+          const status = response.status;
+          const msg = status === 503
+            ? 'Service Unavailable (backend may be starting or under load)'
+            : response.statusText;
+          throw new Error(`Health check failed: ${msg} (${status})`);
         }
       } catch (error) {
         console.warn('⚠️ Cloud database health check failed, but continuing:', error);
-        // Don't throw - allow service to be used even if health check fails
-        // The actual queries will fail gracefully if connection is down
+        // Don't throw - allow service to be used even if health check fails.
+        // 503 is common when the backend is cold-starting (e.g. on Render).
       }
 
       this.isInitialized = true;

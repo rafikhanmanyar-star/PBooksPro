@@ -101,3 +101,32 @@ export interface POSSessionState {
     heldSales: POSHeldSale[];
     activeTerminalId: string;
 }
+
+export interface POSSale {
+    id?: string;
+    saleNumber: string;
+    branchId: string;
+    terminalId: string;
+    userId: string;
+    customerId?: string;
+    customerName?: string;
+    loyaltyMemberId?: string | null;
+    subtotal: number;
+    taxTotal: number;
+    discountTotal: number;
+    grandTotal: number;
+    totalPaid: number;
+    changeDue: number;
+    paymentMethod: string;
+    paymentDetails: POSPayment[];
+    items: {
+        productId: string;
+        name: string;
+        quantity: number;
+        unitPrice: number;
+        taxAmount: number;
+        discountAmount: number;
+        subtotal: number;
+    }[];
+    createdAt: string;
+}

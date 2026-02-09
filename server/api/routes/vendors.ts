@@ -35,11 +35,14 @@ router.post('/', async (req: TenantRequest, res) => {
             });
         }
 
-        // Check for duplicate vendor name
+        // Generate ID if not provided
+        const vendorId = vendor.id || `vendor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+        // Check for duplicate vendor name, excluding the current vendor ID if it already exists
         const trimmedName = vendor.name.trim();
         const existingVendorByName = await db.query(
-            'SELECT id, name FROM vendors WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
-            [req.tenantId, trimmedName]
+            'SELECT id, name FROM vendors WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2) AND id != $3',
+            [req.tenantId, trimmedName, vendorId]
         );
 
         if (existingVendorByName.length > 0) {
@@ -49,14 +52,10 @@ router.post('/', async (req: TenantRequest, res) => {
             });
         }
 
-        // Generate ID if not provided
-        const vendorId = vendor.id || `vendor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-        // Use PostgreSQL UPSERT (ON CONFLICT)
         const result = await db.query(
             `INSERT INTO vendors (
-        id, tenant_id, name, description, contact_no, company_name, address, user_id, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+        id, tenant_id, name, description, contact_no, company_name, address, is_active, user_id, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
       ON CONFLICT (id) 
       DO UPDATE SET
         name = EXCLUDED.name,
@@ -64,6 +63,7 @@ router.post('/', async (req: TenantRequest, res) => {
         contact_no = EXCLUDED.contact_no,
         company_name = EXCLUDED.company_name,
         address = EXCLUDED.address,
+        is_active = EXCLUDED.is_active,
         user_id = EXCLUDED.user_id,
         updated_at = NOW()
       WHERE vendors.tenant_id = $2
@@ -76,6 +76,7 @@ router.post('/', async (req: TenantRequest, res) => {
                 vendor.contactNo || null,
                 vendor.companyName || null,
                 vendor.address || null,
+                vendor.isActive !== undefined ? vendor.isActive : true,
                 req.user?.userId || null
             ]
         );
@@ -132,8 +133,8 @@ router.put('/:id', async (req: TenantRequest, res) => {
         const result = await db.query(
             `UPDATE vendors 
        SET name = $1, description = $2, contact_no = $3, 
-           company_name = $4, address = $5, user_id = $6, updated_at = NOW()
-       WHERE id = $7 AND tenant_id = $8
+           company_name = $4, address = $5, is_active = $6, user_id = $7, updated_at = NOW()
+       WHERE id = $8 AND tenant_id = $9
        RETURNING *`,
             [
                 vendor.name,
@@ -141,6 +142,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
                 vendor.contactNo || null,
                 vendor.companyName || null,
                 vendor.address || null,
+                vendor.isActive !== undefined ? vendor.isActive : true,
                 req.user?.userId || null,
                 req.params.id,
                 req.tenantId

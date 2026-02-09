@@ -5,6 +5,9 @@ const SECRET_SALT = process.env.LICENSE_SECRET_SALT || 'PBOOKSPRO_SECURE_SALT_20
 
 export type ModuleKey = 'real_estate' | 'rental' | 'tasks' | 'biz_planet' | 'shop';
 
+/** Default modules included when tenant has active paid license but no tenant_modules rows (e.g. base yearly/monthly). */
+export const DEFAULT_LICENSE_MODULES: ModuleKey[] = ['real_estate', 'rental', 'tasks', 'biz_planet', 'shop'];
+
 export interface TenantModule {
   id: string;
   tenantId: string;
@@ -132,28 +135,44 @@ export class LicenseService {
   }
 
   /**
-   * Check if a specific module is enabled for a tenant
+   * Check if a specific module is enabled for a tenant.
+   * Returns true if tenant_modules has an active row, or if tenant has active paid license and module is in default set.
    */
   async isModuleEnabled(tenantId: string, moduleKey: string): Promise<boolean> {
     const modules = await this.db.query(
       "SELECT status FROM tenant_modules WHERE tenant_id = $1 AND module_key = $2 AND status = 'active'",
       [tenantId, moduleKey]
     );
+    if (modules.length > 0) return true;
 
-    // Some modules might be part of the core license or trial
-    // For now, only check the tenant_modules table
-    return modules.length > 0;
+    const allModules = await this.getTenantModules(tenantId);
+    return allModules.includes(moduleKey);
   }
 
   /**
-   * Get all active modules for a tenant
+   * Get all active modules for a tenant.
+   * If tenant has an active paid license (yearly/monthly/perpetual) but no tenant_modules rows,
+   * returns the default module list so features are enabled (base license includes all modules).
    */
   async getTenantModules(tenantId: string): Promise<string[]> {
     const modules = await this.db.query(
       "SELECT module_key FROM tenant_modules WHERE tenant_id = $1 AND status = 'active'",
       [tenantId]
     );
-    return modules.map(m => m.module_key);
+    const fromDb = modules.map((m: { module_key: string }) => m.module_key);
+    if (fromDb.length > 0) return fromDb;
+
+    const tenants = await this.db.query(
+      'SELECT license_type, license_status FROM tenants WHERE id = $1',
+      [tenantId]
+    );
+    if (tenants.length === 0) return [];
+    const tenant = tenants[0];
+    const paidActive =
+      (tenant.license_type === 'yearly' || tenant.license_type === 'monthly' || tenant.license_type === 'perpetual') &&
+      tenant.license_status === 'active';
+    if (paidActive) return [...DEFAULT_LICENSE_MODULES];
+    return [];
   }
 
   /**

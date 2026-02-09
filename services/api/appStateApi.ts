@@ -231,6 +231,13 @@ export class AppStateApiService {
         }),
       ]);
 
+      // Enhanced vendor logging for debugging
+      if (vendors.length > 0) {
+        logger.logCategory('sync', '📋 Vendors loaded from API:', vendors.map(v => ({ id: v.id, name: v.name })));
+      } else {
+        logger.warnCategory('sync', '⚠️ No vendors returned from API');
+      }
+
       logger.logCategory('sync', '✅ Loaded from API:', {
         accounts: accounts.length,
         contacts: contacts.length,
@@ -428,6 +435,7 @@ export class AppStateApiService {
         staffId: b.staff_id || b.staffId || undefined,
         documentPath: b.document_path || b.documentPath || undefined,
         documentId: b.document_id || b.documentId || undefined,
+        vendorId: b.vendor_id || b.vendorId || undefined,
         expenseCategoryItems: (() => {
           const items = b.expense_category_items || b.expenseCategoryItems;
           if (!items) return undefined;
@@ -556,6 +564,7 @@ export class AppStateApiService {
         toAccountId: t.to_account_id || t.toAccountId || undefined,
         categoryId: t.category_id || t.categoryId || undefined,
         contactId: t.contact_id || t.contactId || undefined,
+        vendorId: t.vendor_id || t.vendorId || undefined,
         projectId: t.project_id || t.projectId || undefined,
         buildingId: t.building_id || t.buildingId || undefined,
         propertyId: t.property_id || t.propertyId || undefined,
@@ -604,7 +613,9 @@ export class AppStateApiService {
         description: v.description || undefined,
         contactNo: v.contact_no || v.contactNo || undefined,
         companyName: v.company_name || v.companyName || undefined,
+        isActive: v.is_active ?? v.isActive ?? true,
         address: v.address || undefined,
+        tenantId: v.tenant_id || v.tenantId || undefined,
         userId: v.user_id || v.userId || undefined,
         createdAt: v.created_at || v.createdAt || undefined,
         updatedAt: v.updated_at || v.updatedAt || undefined
@@ -811,12 +822,7 @@ export class AppStateApiService {
   async saveVendor(vendor: Partial<Vendor>): Promise<Vendor> {
     // Always use POST endpoint - it handles upserts automatically
     try {
-      let saved: any;
-      if (vendor.id && await this.vendorsRepo.exists(vendor.id)) {
-        saved = await this.vendorsRepo.update(vendor.id, vendor);
-      } else {
-        saved = await this.vendorsRepo.create(vendor);
-      }
+      const saved: any = await this.vendorsRepo.create(vendor);
 
       // Normalize the response (server returns snake_case, client expects camelCase)
       return {
@@ -825,25 +831,15 @@ export class AppStateApiService {
         description: saved.description || undefined,
         contactNo: saved.contact_no || saved.contactNo || undefined,
         companyName: saved.company_name || saved.companyName || undefined,
+        isActive: saved.is_active ?? saved.isActive ?? true,
         address: saved.address || undefined,
         userId: saved.user_id || saved.userId || undefined,
         createdAt: saved.created_at || saved.createdAt || undefined,
         updatedAt: saved.updated_at || saved.updatedAt || undefined
       };
-    } catch (e) {
-      // Fallback to create if update fails or check fails
-      const saved: any = await this.vendorsRepo.create(vendor);
-      return {
-        id: saved.id,
-        name: saved.name || '',
-        description: saved.description || undefined,
-        contactNo: saved.contact_no || saved.contactNo || undefined,
-        companyName: saved.company_name || saved.companyName || undefined,
-        address: saved.address || undefined,
-        userId: saved.user_id || saved.userId || undefined,
-        createdAt: saved.created_at || saved.createdAt || undefined,
-        updatedAt: saved.updated_at || saved.updatedAt || undefined
-      };
+    } catch (error) {
+      console.error('❌ saveVendor failed:', error);
+      throw error;
     }
   }
 
@@ -965,6 +961,7 @@ export class AppStateApiService {
       toAccountId: (saved as any).to_account_id || saved.toAccountId || undefined,
       categoryId: (saved as any).category_id || saved.categoryId || undefined,
       contactId: (saved as any).contact_id || saved.contactId || undefined,
+      vendorId: (saved as any).vendor_id || saved.vendorId || undefined,
       projectId: (saved as any).project_id || saved.projectId || undefined,
       buildingId: (saved as any).building_id || saved.buildingId || undefined,
       propertyId: (saved as any).property_id || saved.propertyId || undefined,
@@ -1341,6 +1338,7 @@ export class AppStateApiService {
       contractId: (saved as any).contract_id || saved.contractId || undefined,
       staffId: (saved as any).staff_id || saved.staffId || undefined,
       documentPath: (saved as any).document_path || saved.documentPath || undefined,
+      vendorId: (saved as any).vendor_id || saved.vendorId || undefined,
       expenseCategoryItems: (() => {
         const items = (saved as any).expense_category_items || saved.expenseCategoryItems;
         if (!items) return undefined;

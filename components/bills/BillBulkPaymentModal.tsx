@@ -21,10 +21,10 @@ interface BillBulkPaymentModalProps {
 const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onClose, selectedBills, onPaymentComplete }) => {
     const { state, dispatch } = useAppContext();
     const { showToast, showAlert } = useNotification();
-    
+
     // State for individual bill payment amounts
     const [payments, setPayments] = useState<Record<string, string>>({});
-    
+
     const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
     const [accountId, setAccountId] = useState('');
     const [reference, setReference] = useState('');
@@ -58,7 +58,7 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
                 initialPayments[bill.id] = remaining > 0 ? remaining.toString() : '0';
             });
             setPayments(initialPayments);
-            
+
             const cashAccount = userSelectableAccounts.find(a => a.name === 'Cash');
             setAccountId(cashAccount?.id || userSelectableAccounts[0]?.id || '');
         }
@@ -76,7 +76,7 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
             await showAlert("Please select a payment account.");
             return;
         }
-        
+
         if (totalPaymentAmount <= 0) {
             await showAlert("Total payment amount must be greater than zero.");
             return;
@@ -87,8 +87,8 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
             const payAmount = parseFloat(payments[bill.id] || '0');
             const due = bill.amount - bill.paidAmount;
             if (payAmount > due + 0.01) { // Small epsilon for float comparison
-                 await showAlert(`Payment for bill #${bill.billNumber} (${CURRENCY} ${payAmount.toLocaleString()}) exceeds balance due (${CURRENCY} ${due.toLocaleString()}).`);
-                 return;
+                await showAlert(`Payment for bill #${bill.billNumber} (${CURRENCY} ${payAmount.toLocaleString()}) exceeds balance due (${CURRENCY} ${due.toLocaleString()}).`);
+                return;
             }
         }
 
@@ -117,7 +117,7 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
                     if (originalCategory) {
                         // Find or use category with "(Tenant)" suffix
                         const tenantCategoryName = `${originalCategory.name} (Tenant)`;
-                        const tenantCategory = state.categories.find(c => 
+                        const tenantCategory = state.categories.find(c =>
                             c.name === tenantCategoryName && c.type === TransactionType.EXPENSE
                         );
                         tenantCategoryId = tenantCategory?.id || bill.categoryId;
@@ -133,6 +133,7 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
                     accountId,
                     // For tenant-allocated bills, use tenant contactId; otherwise use vendor contactId
                     contactId: tenantId || bill.contactId,
+                    vendorId: bill.vendorId || (!tenantId ? bill.contactId : undefined),
                     projectId: bill.projectId,
                     buildingId: bill.buildingId,
                     propertyId: bill.propertyId,
@@ -164,7 +165,7 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
                 } catch (error: any) {
                     const bill = selectedBills.find(b => b.id === tx.billId);
                     failedBills.push({ bill: bill!, error });
-                    
+
                     // Handle specific error codes
                     if (error.status === 409 || error.code === 'BILL_LOCKED' || error.code === 'BILL_VERSION_MISMATCH') {
                         // Concurrent modification - don't show error for this one, will show summary
@@ -198,7 +199,7 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
             // If some succeeded, dispatch only the successful ones
             if (savedTransactions.length > 0) {
                 dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: savedTransactions });
-                
+
                 if (failedBills.length > 0) {
                     const failedBillNumbers = failedBills.map(f => f.bill.billNumber).join(', ');
                     showToast(
@@ -234,7 +235,7 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
                         <p className="text-xs text-slate-500 mt-1">Total Due for Selection: {CURRENCY} {totalDue.toLocaleString()}</p>
                     </div>
                     <div className="flex-grow">
-                        <ComboBox 
+                        <ComboBox
                             label="Payment Account"
                             items={userSelectableAccounts}
                             selectedId={accountId}
@@ -243,10 +244,10 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
                         />
                     </div>
                 </div>
-                
+
                 <div className="flex gap-4">
-                     <div className="flex-1"><DatePicker label="Payment Date" value={paymentDate} onChange={d => setPaymentDate(d.toISOString().split('T')[0])} /></div>
-                     <Input label="Reference / Note" value={reference} onChange={e => setReference(e.target.value)} placeholder="e.g. Check #123" className="flex-1"/>
+                    <div className="flex-1"><DatePicker label="Payment Date" value={paymentDate} onChange={d => setPaymentDate(d.toISOString().split('T')[0])} /></div>
+                    <Input label="Reference / Note" value={reference} onChange={e => setReference(e.target.value)} placeholder="e.g. Check #123" className="flex-1" />
                 </div>
 
                 <div className="mt-4 border rounded-lg overflow-hidden">

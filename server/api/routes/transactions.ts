@@ -1024,6 +1024,17 @@ router.put('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Transaction not found' });
     }
 
+    // Optimistic locking: if client sends X-Entity-Version header, enforce version check
+    const clientVersion = req.headers['x-entity-version'] ? parseInt(req.headers['x-entity-version'] as string) : null;
+    const serverVersion = oldTransaction[0].version;
+    if (clientVersion != null && serverVersion != null && clientVersion !== serverVersion) {
+      return res.status(409).json({
+        error: 'Version conflict',
+        message: `Expected version ${clientVersion} but server has version ${serverVersion}. Another user may have modified this record.`,
+        serverVersion,
+      });
+    }
+
     const transaction = req.body;
     const query = `
       UPDATE transactions 
@@ -1032,7 +1043,8 @@ router.put('/:id', async (req: TenantRequest, res) => {
           contact_id = $10, vendor_id = $11, project_id = $12, building_id = $13, property_id = $14,
           unit_id = $15, invoice_id = $16, bill_id = $17, payslip_id = $18,
           contract_id = $19, agreement_id = $20, batch_id = $21, is_system = $22, 
-          user_id = $23, updated_at = NOW()
+          user_id = $23, updated_at = NOW(),
+          version = COALESCE(version, 1) + 1
       WHERE id = $24 AND tenant_id = $25
       RETURNING *
     `;

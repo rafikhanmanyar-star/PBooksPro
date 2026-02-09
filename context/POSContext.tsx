@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
     POSCartItem,
     POSProduct,
@@ -12,6 +12,10 @@ import {
 import { shopApi } from '../services/api/shopApi';
 import { ContactsApiRepository } from '../services/api/repositories/contactsApi';
 import { CURRENCY } from '../constants';
+import { BarcodeScanner, createBarcodeScanner } from '../services/barcode/barcodeScanner';
+import { ThermalPrinter, createThermalPrinter, ReceiptData } from '../services/printer/thermalPrinter';
+import { useAppContext } from './AppContext';
+
 
 
 interface POSContextType {
@@ -53,12 +57,19 @@ interface POSContextType {
     searchQuery: string;
     setSearchQuery: (query: string) => void;
 
+    isSalesHistoryModalOpen: boolean;
+    setIsSalesHistoryModalOpen: (isOpen: boolean) => void;
+
     completeSale: () => Promise<void>;
+    printReceipt: (saleData?: any) => Promise<void>;
+    lastCompletedSale: any | null;
+    setLastCompletedSale: (sale: any | null) => void;
 }
 
 const POSContext = createContext<POSContextType | undefined>(undefined);
 
 export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const { state } = useAppContext(); // Access app state for print settings
     const [cart, setCart] = useState<POSCartItem[]>([]);
     const [customer, setCustomer] = useState<POSCustomer | null>(null);
     const [payments, setPayments] = useState<POSPayment[]>([]);
@@ -66,7 +77,14 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [isHeldSalesModalOpen, setIsHeldSalesModalOpen] = useState(false);
     const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+    const [isSalesHistoryModalOpen, setIsSalesHistoryModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [lastCompletedSale, setLastCompletedSale] = useState<any | null>(null);
+
+    // Barcode scanner and printer instances
+    const barcodeScannerRef = useRef<BarcodeScanner | null>(null);
+    const thermalPrinterRef = useRef<ThermalPrinter | null>(null);
+
 
     // Totals Calculation
     const totals = useMemo(() => {
@@ -80,6 +98,89 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         return { subtotal, taxTotal, discountTotal, grandTotal, totalPaid, balanceDue, changeDue };
     }, [cart, payments]);
+
+    // Initialize barcode scanner and thermal printer
+    useEffect(() => {
+        // Re-create thermal printer with updated print settings
+        // This ensures the printer always uses the latest configuration
+        thermalPrinterRef.current = createThermalPrinter({
+            paperWidth: 80, // 80mm thermal paper
+            autoConnect: true,
+            printSettings: state.printSettings // Pass print settings for configurable receipts
+        });
+
+        console.log('🖨️ Thermal printer initialized with settings:', {
+            shopName: state.printSettings?.posShopName,
+            showBarcode: state.printSettings?.posShowBarcode
+        });
+
+        // Initialize barcode scanner (only once)
+        if (!barcodeScannerRef.current) {
+            barcodeScannerRef.current = createBarcodeScanner((barcode) => {
+                console.log('Barcode scanned:', barcode);
+                setSearchQuery(barcode);
+            });
+            barcodeScannerRef.current.start();
+        }
+
+        // Cleanup on unmount
+        return () => {
+            if (barcodeScannerRef.current) {
+                barcodeScannerRef.current.stop();
+            }
+        };
+    }, [state.printSettings]); // Re-initialize when print settings change
+
+    // Print receipt function
+    const printReceipt = useCallback(async (saleData?: any) => {
+        try {
+            const dataToUse = saleData || lastCompletedSale;
+            if (!dataToUse) {
+                alert('No sale data available to print');
+                return;
+            }
+
+            const receiptData: ReceiptData = {
+                storeName: 'PBooks Pro Store',
+                storeAddress: 'Karachi, Pakistan',
+                storePhone: '+92-XXX-XXXXXXX',
+                taxId: 'TAX-ID-XXXXX',
+                receiptNumber: dataToUse.saleNumber,
+                date: new Date(dataToUse.createdAt || Date.now()).toLocaleDateString(),
+                time: new Date(dataToUse.createdAt || Date.now()).toLocaleTimeString(),
+                cashier: dataToUse.userId || 'Cashier',
+                customer: customer?.name,
+                items: dataToUse.items.map((item: any) => ({
+                    name: item.name || 'Unknown Item',
+                    quantity: item.quantity,
+                    unitPrice: item.unitPrice,
+                    discount: item.discountAmount || 0,
+                    total: item.subtotal
+                })),
+                subtotal: dataToUse.subtotal,
+                discount: dataToUse.discountTotal,
+                tax: dataToUse.taxTotal,
+                total: dataToUse.grandTotal,
+                payments: dataToUse.paymentDetails.map((p: any) => ({
+                    method: p.method,
+                    amount: p.amount
+                })),
+                change: dataToUse.changeDue > 0 ? dataToUse.changeDue : undefined,
+                footer: 'Thank you for shopping with us!'
+            };
+
+            if (thermalPrinterRef.current) {
+                await thermalPrinterRef.current.printReceipt(receiptData);
+                console.log('Receipt printed successfully');
+            } else {
+                throw new Error('Printer not initialized');
+            }
+        } catch (error: any) {
+            console.error('Failed to print receipt:', error);
+            alert('Failed to print receipt: ' + (error.message || 'Unknown error'));
+        }
+    }, [lastCompletedSale, customer]);
+
 
     const addToCart = useCallback((product: POSProduct, variant?: POSProductVariant, quantity: number = 1) => {
         setCart(prev => {
@@ -214,8 +315,8 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         try {
             const saleNumber = `SALE-${Date.now()}`;
             const saleData = {
-                branchId: 'st-1', // Default Karachi Flagship for now
-                terminalId: 't-1',
+                branchId: null, // TODO: Set up branch configuration
+                terminalId: null, // TODO: Set up terminal configuration
                 userId: 'default-user',
                 customerId: customer?.id,
                 loyaltyMemberId: null, // TODO: Link loyalty member
@@ -230,24 +331,30 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 paymentDetails: payments,
                 items: cart.map(item => ({
                     productId: item.productId,
+                    name: item.name, // Include name for receipt printing
                     quantity: item.quantity,
                     unitPrice: item.unitPrice,
                     taxAmount: item.taxAmount,
                     discountAmount: item.discountAmount,
                     subtotal: (item.unitPrice * item.quantity) - item.discountAmount + item.taxAmount
-                }))
+                })),
+                createdAt: new Date().toISOString()
             };
 
             await shopApi.createSale(saleData);
 
+            // Save sale data for receipt printing
+            setLastCompletedSale(saleData);
+
             clearCart();
-            setIsPaymentModalOpen(false);
+            // Keep modal open so user can print receipt
+            // setIsPaymentModalOpen(false);
 
             // Show success message with change due if applicable
             if (totals.changeDue > 0) {
-                alert(`Sale completed!\n\nChange to return: ${CURRENCY} ${totals.changeDue.toLocaleString()}`);
+                alert(`Sale completed!\n\nChange to return: ${CURRENCY} ${totals.changeDue.toLocaleString()}\n\nYou can now print the receipt.`);
             } else {
-                alert('Sale completed successfully and synced to backend!');
+                alert('Sale completed successfully!\n\nYou can now print the receipt.');
             }
         } catch (error: any) {
             console.error('Failed to complete sale:', error);
@@ -294,9 +401,14 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsHeldSalesModalOpen,
         isCustomerModalOpen,
         setIsCustomerModalOpen,
+        isSalesHistoryModalOpen,
+        setIsSalesHistoryModalOpen,
         searchQuery,
         setSearchQuery,
-        completeSale
+        completeSale,
+        printReceipt,
+        lastCompletedSale,
+        setLastCompletedSale
     };
 
     return <POSContext.Provider value={value}>{children}</POSContext.Provider>;

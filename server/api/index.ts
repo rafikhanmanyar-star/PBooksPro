@@ -259,6 +259,11 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Schema version for client schema sync (optional; no auth required)
+app.get('/api/schema/version', (req, res) => {
+  res.json({ version: 1 });
+});
+
 // Public routes (no authentication required)
 app.use('/api/app-info', appInfoRouter); // Version info (public)
 app.use('/api/auth', authRouter);
@@ -645,6 +650,10 @@ app.get('/mock-payment', (req, res) => {
 // Protected routes (tenant + license authentication required)
 app.use('/api', tenantMiddleware(pool));
 
+// Idempotency middleware: prevent duplicate processing of sync push operations
+import { idempotencyMiddleware } from '../middleware/idempotencyMiddleware.js';
+app.use('/api', idempotencyMiddleware);
+
 // Payment routes (require tenant context but allow expired licenses)
 app.use('/api/payments', (req: any, res: Response, next: NextFunction) => {
   // Skip license check for payment routes - allow expired tenants to pay
@@ -659,7 +668,13 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
-app.use('/api', licenseMiddleware());
+// License middleware - skip for license-status so the client can always load status (including expired)
+app.use('/api', (req: any, res: Response, next: NextFunction) => {
+  if (req.method === 'GET' && req.path === '/tenants/license-status') {
+    return next();
+  }
+  return licenseMiddleware(pool)(req, res, next);
+});
 
 // Data routes (require tenant context and valid license)
 app.use('/api/transactions', transactionsRouter);

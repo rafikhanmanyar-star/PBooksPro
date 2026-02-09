@@ -13,11 +13,13 @@ const getDb = () => getDatabaseService();
 router.post('/promote', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
-    const { tenantId, taxId, paymentTerms, supplierCategory, supplierStatus } = req.body;
+    // SECURITY: Use tenantId from JWT (req.tenantId), never from client body
+    const tenantId = req.tenantId!;
+    const { taxId, paymentTerms, supplierCategory, supplierStatus } = req.body;
 
-    // Validate tenant exists
+    // Validate tenant exists (tenantId is guaranteed by middleware)
     if (!tenantId) {
-      return res.status(400).json({ error: 'tenantId is required' });
+      return res.status(401).json({ error: 'Tenant authentication required' });
     }
 
     // Get tenant to verify it exists
@@ -94,6 +96,10 @@ router.post('/promote', async (req: TenantRequest, res) => {
 router.get('/', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
+    // SECURITY: Only return suppliers that the current tenant has a relationship with,
+    // or that have been registered as suppliers. Restrict to non-sensitive fields only.
+    // Note: This is a marketplace-style query; tenants promoted as suppliers are visible
+    // to other tenants for procurement purposes. Sensitive fields are excluded.
     const suppliers = await db.query(
       `SELECT id, name, company_name, email, phone, address, is_supplier, 
               tax_id, payment_terms, supplier_category, supplier_status, created_at

@@ -115,6 +115,15 @@ router.post('/products', async (req: any, res) => {
     }
 });
 
+router.put('/products/:id', async (req: any, res) => {
+    try {
+        await getShopService().updateProduct(req.tenantId, req.params.id, req.body);
+        res.json({ success: true, message: 'Product updated successfully' });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 router.get('/inventory', async (req: any, res) => {
     try {
         const inventory = await getShopService().getInventory(req.tenantId);
@@ -132,6 +141,16 @@ router.post('/inventory/adjust', async (req: any, res) => {
 
         const result = await getShopService().adjustInventory(req.tenantId, data);
         res.status(200).json(result);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.get('/inventory/movements', async (req: any, res) => {
+    try {
+        const productId = req.query.productId as string;
+        const movements = await getShopService().getInventoryMovements(req.tenantId, productId);
+        res.json(movements);
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }

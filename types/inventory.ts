@@ -10,6 +10,7 @@ export interface Warehouse {
 export interface InventoryItem {
     id: string;
     sku: string;
+    barcode?: string; // Barcode for scanning in POS
     name: string;
     category: string;
     unit: string;
@@ -69,4 +70,5 @@ export interface StockTransfer {
     receivedBy?: string;
     timestamp: string;
     receivedAt?: string;
+    notes?: string;
 }

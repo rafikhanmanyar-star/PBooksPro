@@ -245,10 +245,13 @@ export const createProjectBackup = async (projectId: string, projectName: string
         progress.updateProgress(65, 'Including related quotations...');
         
         // Quotations related to project vendors
-        const vendorIds = new Set(Array.from(contactIds).filter(id => {
-            const contact = state.contacts.find(c => c.id === id);
-            return contact && contact.type === ContactType.VENDOR;
-        }));
+        const vendorIds = new Set([
+            ...Array.from(contactIds).filter(id => {
+                const contact = state.contacts.find(c => c.id === id);
+                return contact && contact.type === ContactType.VENDOR;
+            }),
+            ...(state.vendors || []).map(v => v.id)
+        ]);
         const relatedQuotations = state.quotations.filter((q: any) => vendorIds.has(q.vendorId));
         
         // Collect quotation IDs for document lookup
@@ -547,9 +550,9 @@ export const createLoansInvestorsPMBackup = async (
         // Filter related entities
         const relatedContacts = state.contacts.filter(c => contactIds.has(c.id));
         
-        // Include all vendors (they might be loan providers/recipients)
-        const allVendors = state.contacts.filter(c => c.type === ContactType.VENDOR);
-        const allContacts = Array.from(new Map([...relatedContacts, ...allVendors].map(c => [c.id, c])).values());
+        // Include all vendors from the vendors table (they might be loan providers/recipients)
+        const allVendors = state.vendors || [];
+        const allContacts = Array.from(new Map(relatedContacts.map(c => [c.id, c])).values());
 
         progress.updateProgress(60, 'Including related categories...');
 
@@ -601,6 +604,7 @@ export const createLoansInvestorsPMBackup = async (
                 
                 // Related entities
                 contacts: allContacts,
+                vendors: allVendors,
                 categories: allCategories,
                 accounts: allAccounts,
                 

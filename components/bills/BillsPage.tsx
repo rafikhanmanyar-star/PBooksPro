@@ -344,12 +344,15 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                 group.balance += balance;
 
                 // Find or create Vendor node
-                let vendorNode = group.children.find(c => c.id === bill.contactId);
+                const vendorId = bill.vendorId;
+                if (!vendorId) return;
+
+                let vendorNode = group.children.find(c => c.id === vendorId);
                 if (!vendorNode) {
-                    // Search in vendors first, then contacts fallback
-                    const vendor = state.vendors?.find(v => v.id === bill.contactId) || state.contacts.find(c => c.id === bill.contactId);
+                    // Load vendor from vendors table only
+                    const vendor = state.vendors?.find(v => v.id === vendorId);
                     vendorNode = {
-                        id: bill.contactId,
+                        id: vendorId,
                         name: vendor?.name || 'Unknown Vendor',
                         type: 'vendor',
                         children: [],
@@ -369,7 +372,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
             .filter(g => g.count > 0) // Only show groups with bills
             .sort((a, b) => a.name.localeCompare(b.name));
 
-    }, [baseBills, state.projects, state.contacts, projectFilter]);
+    }, [baseBills, state.projects, state.vendors, projectFilter]);
 
     // --- Unified Table Data (Bills + Payments) ---
     const tableRows = useMemo<TableRow[]>(() => {
@@ -379,7 +382,8 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         if (typeFilter === 'All' || typeFilter === 'Bills') {
             baseBills.forEach(bill => {
                 const project = state.projects.find(p => p.id === bill.projectId);
-                const vendor = state.vendors?.find(v => v.id === bill.contactId) || state.contacts.find(c => c.id === bill.contactId);
+                const vendorId = bill.vendorId;
+                const vendor = state.vendors?.find(v => v.id === vendorId);
                 const contract = state.contracts.find(c => c.id === bill.contractId);
                 const balance = bill.amount - bill.paidAmount;
 
@@ -409,7 +413,8 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                     if (!bill || !baseBills.includes(bill)) return; // Only include payments for bills in our base list
 
                     const project = state.projects.find(p => p.id === payment.projectId || bill.projectId);
-                    const vendor = state.vendors?.find(v => v.id === payment.contactId || bill.contactId) || state.contacts.find(c => c.id === payment.contactId || bill.contactId);
+                    const vendorId = payment.vendorId || bill.vendorId;
+                    const vendor = state.vendors?.find(v => v.id === vendorId);
                     const contract = state.contracts.find(c => c.id === payment.contractId || bill.contractId);
 
                     rows.push({
@@ -430,7 +435,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         }
 
         return rows;
-    }, [baseBills, state.transactions, state.bills, state.projects, state.contacts, state.contracts, typeFilter]);
+    }, [baseBills, state.transactions, state.bills, state.projects, state.vendors, state.contracts, typeFilter]);
 
     // --- Filtered Table Rows ---
     const filteredRows = useMemo(() => {
@@ -448,11 +453,11 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                 result = result.filter(row => {
                     const bill = row.bill || (row.payment ? state.bills.find(b => b.id === row.payment?.billId) : null);
                     if (!bill) return false;
-                    const contactId = bill.contactId;
+                    const vendorId = bill.vendorId;
                     if (parentGroupId === 'unassigned') {
-                        return !bill.projectId && contactId === selectedNode.id;
+                        return !bill.projectId && vendorId === selectedNode.id;
                     } else {
-                        return bill.projectId === parentGroupId && contactId === selectedNode.id;
+                        return bill.projectId === parentGroupId && vendorId === selectedNode.id;
                     }
                 });
             }
@@ -631,7 +636,8 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
 
     const handleSendWhatsApp = (e: React.MouseEvent, bill: Bill) => {
         e.stopPropagation();
-        const vendor = state.vendors?.find(v => v.id === bill.contactId) || state.contacts.find(c => c.id === bill.contactId);
+        const vendorId = bill.vendorId;
+        const vendor = state.vendors?.find(v => v.id === vendorId);
         if (!vendor?.contactNo) {
             showAlert("This vendor does not have a phone number saved.");
             return;

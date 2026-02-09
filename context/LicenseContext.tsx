@@ -48,24 +48,48 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
         modules?: string[];
     } | null>(null);
 
+    // Only treat as valid server response if it has license fields (avoids treating error fallback as data)
+    const isRealLicenseResponse = (s: any) =>
+        s && typeof s === 'object' && ('licenseType' in s || 'licenseStatus' in s);
+
     useEffect(() => {
         if (!isAuthenticated) {
             setCloudLicense(null);
             return;
         }
 
-        const loadCloudLicense = async () => {
+        let cancelled = false;
+        const maxRetries = 3;
+
+        const loadCloudLicense = async (attempt = 0) => {
             try {
                 const status = await checkLicenseStatus();
-                setCloudLicense(status as any);
+                if (cancelled) return;
+                if (isRealLicenseResponse(status)) {
+                    setCloudLicense(status as any);
+                }
             } catch (error) {
-                // Keep local license state if cloud check fails
+                if (cancelled) return;
                 console.error('Cloud license check failed:', error);
+                if (attempt < maxRetries) {
+                    setTimeout(() => void loadCloudLicense(attempt + 1), 1000 * (attempt + 1));
+                }
             }
         };
 
-        void loadCloudLicense();
+        void loadCloudLicense(0);
+        return () => { cancelled = true; };
     }, [isAuthenticated, checkLicenseStatus]);
+
+    // Listen for license loaded event from login flow (added on mount so we never miss the event)
+    useEffect(() => {
+        const onLicenseLoaded = (e: CustomEvent) => {
+            const status = e.detail;
+            if (isRealLicenseResponse(status)) setCloudLicense(status);
+        };
+        window.addEventListener('license-status-loaded' as any, onLicenseLoaded);
+        return () => window.removeEventListener('license-status-loaded' as any, onLicenseLoaded);
+    }, []);
 
     useEffect(() => {
         // 1. Initialize Device ID if missing

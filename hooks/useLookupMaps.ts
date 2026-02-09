@@ -50,16 +50,20 @@ export function useLookupMaps(): LookupMaps {
 
     const categoriesMap = new Map<string, { name: string; type: string; isRental?: boolean }>();
     (state.categories || []).forEach(cat => {
-      categoriesMap.set(cat.id, { 
-        name: cat.name, 
+      categoriesMap.set(cat.id, {
+        name: cat.name,
         type: cat.type,
-        isRental: cat.isRental 
+        isRental: cat.isRental
       });
     });
 
     const contactsMap = new Map<string, { name: string }>();
     (state.contacts || []).forEach(contact => {
       contactsMap.set(contact.id, { name: contact.name });
+    });
+    // Add vendors to the same map for unified lookup
+    (state.vendors || []).forEach(vendor => {
+      contactsMap.set(vendor.id, { name: vendor.name });
     });
 
     const projectsMap = new Map<string, { name: string }>();
@@ -74,9 +78,9 @@ export function useLookupMaps(): LookupMaps {
 
     const propertiesMap = new Map<string, { name: string; buildingId?: string }>();
     (state.properties || []).forEach(property => {
-      propertiesMap.set(property.id, { 
-        name: property.name, 
-        buildingId: property.buildingId 
+      propertiesMap.set(property.id, {
+        name: property.name,
+        buildingId: property.buildingId
       });
     });
 
@@ -111,6 +115,7 @@ export function useLookupMaps(): LookupMaps {
     state?.accounts,
     state?.categories,
     state?.contacts,
+    state?.vendors,
     state?.projects,
     state?.buildings,
     state?.properties,

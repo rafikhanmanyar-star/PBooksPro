@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { Pool } from 'pg';
+import { runWithTenantContext } from '../services/tenantContext.js';
 
 export interface TenantRequest extends Record<string, any> {
   tenantId?: string;
@@ -118,6 +119,11 @@ export function tenantMiddleware(pool: Pool) {
           code: 'NO_TENANT_CONTEXT'
         });
       }
+
+      // NOTE: Security queries below run OUTSIDE runWithTenantContext intentionally.
+      // The middleware's own queries (user check, session check) must see all data
+      // regardless of RLS policy and should use plain pool.query() for efficiency.
+      // Only the downstream route handler (next()) runs inside tenant context.
 
       // CRITICAL SECURITY CHECK: Verify user actually belongs to the tenant from token
       // This prevents users from accessing data from other tenants by manipulating tokens
@@ -399,13 +405,15 @@ export function tenantMiddleware(pool: Pool) {
         });
       }
 
-      // Note: We don't set the session variable because:
-      // 1. PostgreSQL SET doesn't support parameterized queries
-      // 2. All queries already explicitly filter by tenant_id in WHERE clauses
-      // 3. Connection pooling makes session variables unreliable
-      // Tenant isolation is ensured by explicit tenant_id filtering in all queries
-
-      next();
+      // Establish request-scoped tenant context so DatabaseService can apply
+      // Postgres RLS tenant settings on the correct connection for route handlers.
+      // Only the downstream route handler (next()) runs inside tenant context.
+      return await runWithTenantContext(
+        { tenantId: req.tenantId!, userId: req.userId },
+        async () => {
+          next();
+        }
+      );
     } catch (error) {
       console.error('Tenant middleware error:', error);
       res.status(401).json({ error: 'Invalid token' });

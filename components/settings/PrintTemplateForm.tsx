@@ -44,7 +44,7 @@ const PrintTemplateForm: React.FC = () => {
 
     const handleResetInvoiceTemplate = async () => {
         if (await showConfirm('Reset invoice template to system default? This will discard your custom HTML.', { title: 'Reset Template', confirmLabel: 'Reset' })) {
-             const defaultTemplate = `<!DOCTYPE html>
+            const defaultTemplate = `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -479,9 +479,9 @@ const PrintTemplateForm: React.FC = () => {
     </div>
 </body>
 </html>`;
-             setInvoiceHtml(defaultTemplate);
-             dispatch({ type: 'UPDATE_INVOICE_TEMPLATE', payload: defaultTemplate });
-             showToast('Template reset to default.');
+            setInvoiceHtml(defaultTemplate);
+            dispatch({ type: 'UPDATE_INVOICE_TEMPLATE', payload: defaultTemplate });
+            showToast('Template reset to default.');
         }
     }
 
@@ -496,7 +496,7 @@ const PrintTemplateForm: React.FC = () => {
                         onChange={e => handleChange('companyName', e.target.value)}
                         placeholder="Your Business Name"
                     />
-                     <Textarea
+                    <Textarea
                         label="Address"
                         value={settings.companyAddress}
                         onChange={e => handleChange('companyAddress', e.target.value)}
@@ -512,8 +512,8 @@ const PrintTemplateForm: React.FC = () => {
                 </div>
 
                 <div className="space-y-4">
-                     <h3 className="text-lg font-semibold text-slate-800">Logo & Branding</h3>
-                     <div className="flex items-start gap-4">
+                    <h3 className="text-lg font-semibold text-slate-800">Logo & Branding</h3>
+                    <div className="flex items-start gap-4">
                         <div className="flex-grow">
                             <label className="block text-sm font-medium text-slate-600 mb-1">Company Logo</label>
                             <div className="flex items-center gap-2">
@@ -526,18 +526,18 @@ const PrintTemplateForm: React.FC = () => {
                                     </Button>
                                 )}
                             </div>
-                             <input 
-                                type="file" 
-                                ref={fileInputRef} 
-                                onChange={handleFileChange} 
-                                className="hidden" 
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                onChange={handleFileChange}
+                                className="hidden"
                                 accept="image/*"
                             />
                             <div className="mt-2">
                                 <label className="flex items-center gap-2 cursor-pointer">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={settings.showLogo} 
+                                    <input
+                                        type="checkbox"
+                                        checked={settings.showLogo}
                                         onChange={e => handleChange('showLogo', e.target.checked)}
                                         className="rounded text-accent focus:ring-accent"
                                     />
@@ -550,13 +550,13 @@ const PrintTemplateForm: React.FC = () => {
                                 <img src={settings.logoUrl} alt="Logo Preview" className="h-20 w-auto object-contain" />
                             </div>
                         )}
-                     </div>
+                    </div>
                 </div>
             </div>
-            
+
             <div className="space-y-4 border-t pt-4">
-                 <h3 className="text-lg font-semibold text-slate-800">Header & Footer</h3>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <h3 className="text-lg font-semibold text-slate-800">Header & Footer</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Input
                         label="Custom Header Text (Optional)"
                         value={settings.headerText}
@@ -570,17 +570,17 @@ const PrintTemplateForm: React.FC = () => {
                         placeholder="e.g., Thank you for your business!"
                     />
                     <div className="md:col-span-2">
-                         <label className="flex items-center gap-2 cursor-pointer">
-                            <input 
-                                type="checkbox" 
-                                checked={settings.showDatePrinted} 
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={settings.showDatePrinted}
                                 onChange={e => handleChange('showDatePrinted', e.target.checked)}
                                 className="rounded text-accent focus:ring-accent"
                             />
                             <span className="text-sm text-slate-700">Show "Printed on [Date]" in footer</span>
                         </label>
                     </div>
-                 </div>
+                </div>
             </div>
 
             <div className="space-y-4 border-t pt-4">
@@ -600,9 +600,64 @@ const PrintTemplateForm: React.FC = () => {
             </div>
 
             <div className="space-y-4 border-t pt-4">
+                <h3 className="text-lg font-semibold text-slate-800">POS Receipt Template</h3>
+                <p className="text-sm text-slate-500">Configure the thermal receipt format for Point of Sale transactions. These settings will be used when printing receipts from the POS system.</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Input
+                        label="Shop Name"
+                        value={settings.posShopName ?? ''}
+                        onChange={e => handleChange('posShopName', e.target.value)}
+                        placeholder="e.g., PBooks Pro Store"
+                    />
+                    <Input
+                        label="Shop Phone"
+                        value={settings.posShopPhone ?? ''}
+                        onChange={e => handleChange('posShopPhone', e.target.value)}
+                        placeholder="e.g., +92-XXX-XXXXXXX"
+                    />
+                    <div className="md:col-span-2">
+                        <Textarea
+                            label="Shop Address"
+                            value={settings.posShopAddress ?? ''}
+                            onChange={e => handleChange('posShopAddress', e.target.value)}
+                            placeholder="e.g., 123 Main Street, Karachi, Pakistan"
+                            rows={2}
+                        />
+                    </div>
+                    <Input
+                        label="Terminal ID (Optional)"
+                        value={settings.posTerminalId ?? ''}
+                        onChange={e => handleChange('posTerminalId', e.target.value)}
+                        placeholder="e.g., TERMINAL-01"
+                    />
+                    <Input
+                        label="Receipt Footer Text"
+                        value={settings.posReceiptFooter ?? ''}
+                        onChange={e => handleChange('posReceiptFooter', e.target.value)}
+                        placeholder="e.g., Thank you for your business!"
+                    />
+                    <div className="md:col-span-2">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={settings.posShowBarcode ?? true}
+                                onChange={e => handleChange('posShowBarcode', e.target.checked)}
+                                className="rounded text-accent focus:ring-accent"
+                            />
+                            <span className="text-sm text-slate-700">Show barcode on receipts (for transaction lookup)</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div className="space-y-4 border-t pt-4">
                 <h3 className="text-lg font-semibold text-slate-800">Print templates</h3>
                 <p className="text-sm text-slate-500">Data-driven templates used when you click Print on a form. Layout and branding come from the settings above.</p>
                 <ul className="space-y-2 text-sm text-slate-700">
+                    <li className="flex items-center gap-2">
+                        <span className="font-mono font-semibold text-indigo-600">POSReceiptTemplate</span>
+                        <span>— POS sale receipts (configured above, used in POS sales)</span>
+                    </li>
                     <li className="flex items-center gap-2">
                         <span className="font-mono font-semibold text-indigo-600">POPrintTemplate</span>
                         <span>— Purchase orders (Buyer Dashboard: open a PO, then Print)</span>
@@ -617,25 +672,25 @@ const PrintTemplateForm: React.FC = () => {
                     </li>
                 </ul>
             </div>
-            
+
             <div className="space-y-4 border-t pt-4">
                 <div className="flex justify-between items-center">
                     <h3 className="text-lg font-semibold text-slate-800">Invoice HTML Template</h3>
                     <Button variant="ghost" size="sm" onClick={handleResetInvoiceTemplate} className="text-rose-600 hover:bg-rose-50">Reset to Default</Button>
                 </div>
                 <p className="text-sm text-slate-500">
-                    Customize the HTML structure used when printing invoices. 
-                    Supported placeholders: 
-                    <code className="bg-slate-100 px-1 rounded text-xs">{`{companyName}`}</code>, 
-                    <code className="bg-slate-100 px-1 rounded text-xs">{`{companyAddress}`}</code>, 
-                    <code className="bg-slate-100 px-1 rounded text-xs">{`{invoiceNumber}`}</code>, 
-                    <code className="bg-slate-100 px-1 rounded text-xs">{`{contactName}`}</code>, 
-                    <code className="bg-slate-100 px-1 rounded text-xs">{`{amount}`}</code>, 
+                    Customize the HTML structure used when printing invoices.
+                    Supported placeholders:
+                    <code className="bg-slate-100 px-1 rounded text-xs">{`{companyName}`}</code>,
+                    <code className="bg-slate-100 px-1 rounded text-xs">{`{companyAddress}`}</code>,
+                    <code className="bg-slate-100 px-1 rounded text-xs">{`{invoiceNumber}`}</code>,
+                    <code className="bg-slate-100 px-1 rounded text-xs">{`{contactName}`}</code>,
+                    <code className="bg-slate-100 px-1 rounded text-xs">{`{amount}`}</code>,
                     <code className="bg-slate-100 px-1 rounded text-xs">{`{logoImg}`}</code>, etc.
                 </p>
-                <Textarea 
-                    label="" 
-                    value={invoiceHtml} 
+                <Textarea
+                    label=""
+                    value={invoiceHtml}
                     onChange={(e) => setInvoiceHtml(e.target.value)}
                     rows={15}
                     className="font-mono text-xs"

@@ -670,6 +670,20 @@ export interface PrintSettings {
   marginBottom?: number;
   marginLeft?: number;
   marginRight?: number;
+
+  // POS Receipt Settings
+  /** Shop name for POS receipts */
+  posShopName?: string;
+  /** Shop address for POS receipts */
+  posShopAddress?: string;
+  /** Shop phone number for POS receipts */
+  posShopPhone?: string;
+  /** Terminal ID for POS receipts */
+  posTerminalId?: string;
+  /** Show barcode on POS receipts */
+  posShowBarcode?: boolean;
+  /** Footer text for POS receipts */
+  posReceiptFooter?: string;
 }
 
 export interface WhatsAppTemplates {

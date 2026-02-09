@@ -7,21 +7,8 @@ import Card from '../../ui/Card';
 
 import { shopApi } from '../../../services/api/shopApi';
 
-// Mock Products for blueprint (Fallback)
-const MOCK_PRODUCTS: POSProduct[] = [
-    { id: '1', sku: '1001', barcode: '8901', name: 'Premium Cotton T-Shirt', price: 1200, cost: 600, categoryId: 'cat1', taxRate: 17, isTaxInclusive: true, unit: 'pcs', stockLevel: 45 },
-    { id: '2', sku: '1002', barcode: '8902', name: 'Denim Jeans Slim Fit', price: 2500, cost: 1200, categoryId: 'cat1', taxRate: 17, isTaxInclusive: true, unit: 'pcs', stockLevel: 20 },
-    { id: '3', sku: '2001', barcode: '8903', name: 'Wireless Bluetooth Earbuds', price: 4500, cost: 2000, categoryId: 'cat2', taxRate: 17, isTaxInclusive: true, unit: 'pcs', stockLevel: 15 },
-    { id: '4', sku: '2002', barcode: '8904', name: 'Smart Watch Series 7', price: 15000, cost: 8000, categoryId: 'cat2', taxRate: 17, isTaxInclusive: true, unit: 'pcs', stockLevel: 8 },
-    { id: '5', sku: '3001', barcode: '8905', name: 'Organic Honey 500g', price: 850, cost: 400, categoryId: 'cat3', taxRate: 0, isTaxInclusive: true, unit: 'jar', stockLevel: 60 },
-    { id: '6', sku: '3002', barcode: '8906', name: 'Fresh Milk 1L', price: 180, cost: 150, categoryId: 'cat3', taxRate: 0, isTaxInclusive: true, unit: 'pack', stockLevel: 100 },
-];
-
 const CATEGORIES = [
     { id: 'all', name: 'All Items' },
-    { id: 'cat1', name: 'Apparel' },
-    { id: 'cat2', name: 'Electronics' },
-    { id: 'cat3', name: 'Grocery' },
 ];
 
 const ProductSearch: React.FC = () => {
@@ -29,12 +16,14 @@ const ProductSearch: React.FC = () => {
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [products, setProducts] = useState<POSProduct[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
     // Load products from API
     useEffect(() => {
         const loadProducts = async () => {
             try {
+                setLoadError(null);
                 // In a real scenario, we might check if products allow public access or generic access
                 // For now, assuming auth header is handled by client or unnecessary for read if generic
                 const response = await shopApi.getProducts();
@@ -60,8 +49,9 @@ const ProductSearch: React.FC = () => {
                     setProducts([]);
                 }
             } catch (error) {
-                console.warn("Failed to fetch products from API, using mock data:", error);
-                setProducts(MOCK_PRODUCTS);
+                console.warn("Failed to fetch products from API:", error);
+                setLoadError('Unable to load products. Please check connection and try again.');
+                setProducts([]);
             } finally {
                 setIsLoading(false);
             }
@@ -81,24 +71,59 @@ const ProductSearch: React.FC = () => {
     }, []);
 
     const filteredProducts = useMemo(() => {
+        const query = searchQuery.toLowerCase().trim();
+        if (!query) return products.filter(p => selectedCategory === 'all' || p.categoryId === selectedCategory);
+
         return products.filter(p => {
-            const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                p.sku.includes(searchQuery) ||
-                p.barcode === searchQuery;
+            const barcode = (p.barcode || '').toLowerCase();
+            const sku = (p.sku || '').toLowerCase();
+            const name = (p.name || '').toLowerCase();
+
+            // Priority 1: Exact barcode match
+            if (barcode === query) return true;
+
+            // Priority 2: Partial barcode match
+            if (barcode.includes(query)) return true;
+
+            // Priority 3: Search in other fields (respected by category)
+            const matchesOther = name.includes(query) ||
+                sku.includes(query) ||
+                p.categoryId.toLowerCase().includes(query) ||
+                p.price.toString().includes(query) ||
+                p.unit.toLowerCase().includes(query);
+
             const matchesCat = selectedCategory === 'all' || p.categoryId === selectedCategory;
-            return matchesSearch && matchesCat;
+
+            return matchesOther && matchesCat;
+        }).sort((a, b) => {
+            const aBarcode = (a.barcode || '').toLowerCase();
+            const bBarcode = (b.barcode || '').toLowerCase();
+
+            // Exact barcode matches first
+            if (aBarcode === query && bBarcode !== query) return -1;
+            if (bBarcode === query && aBarcode !== query) return 1;
+
+            // Partial barcode matches second
+            const aPartial = aBarcode.includes(query);
+            const bPartial = bBarcode.includes(query);
+            if (aPartial && !bPartial) return -1;
+            if (bPartial && !aPartial) return 1;
+
+            return a.name.localeCompare(b.name);
         });
     }, [searchQuery, selectedCategory, products]);
 
     // Handle barcode "instant add"
     useEffect(() => {
-        if (!searchQuery) return;
-        const exactMatch = products.find(p => p.barcode === searchQuery);
+        const query = searchQuery.trim();
+        if (!query || query.length < 3) return; // Prevent too short matches
+
+        const exactMatch = products.find(p => p.barcode && p.barcode.toLowerCase() === query.toLowerCase());
         if (exactMatch) {
             addToCart(exactMatch);
-            setSearchQuery('');
+            // Search will be cleared by addToCart via context
         }
-    }, [searchQuery, addToCart, setSearchQuery, products]);
+    }, [searchQuery, addToCart, products]);
 
     return (
         <div className="flex flex-col h-full bg-slate-50">
@@ -113,7 +138,7 @@ const ProductSearch: React.FC = () => {
                         id="pos-product-search"
                         type="text"
                         className="block w-full pl-10 pr-3 py-3 border border-slate-200 rounded-xl leading-5 bg-slate-100 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-all shadow-inner"
-                        placeholder="Scan Barcode or Search (F4)..."
+                        placeholder="Scan Barcode / Search Name, SKU, Price... (F4)"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
@@ -139,6 +164,12 @@ const ProductSearch: React.FC = () => {
             {/* Product Grid */}
             <div className="flex-1 overflow-y-auto p-4 content-start">
                 <div className="grid grid-cols-2 gap-3">
+                    {loadError && (
+                        <div className="col-span-2 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700">
+                            <div className="text-xs font-black uppercase tracking-widest">Products not loaded</div>
+                            <div className="text-xs mt-1 font-medium">{loadError}</div>
+                        </div>
+                    )}
                     {filteredProducts.map(product => (
                         <button
                             key={product.id}
@@ -151,11 +182,18 @@ const ProductSearch: React.FC = () => {
                                 ) : (
                                     React.cloneElement(ICONS.package as React.ReactElement, { size: 32 } as any)
                                 )}
-                                <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-slate-800/80 text-[pattern] text-white rounded text-[10px] font-mono">
-                                    {product.sku}
+                                <div className="absolute bottom-1 right-1 flex flex-col items-end gap-0.5">
+                                    {product.barcode && (
+                                        <div className="px-1.5 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-mono font-bold shadow-sm">
+                                            {product.barcode}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div className="text-xs font-bold text-slate-800 line-clamp-2 leading-tight mb-1">{product.name}</div>
+                            {product.barcode && (
+                                <div className="text-[9px] font-mono text-indigo-400 mb-2 truncate">Barcode: {product.barcode}</div>
+                            )}
                             <div className="mt-auto flex items-center justify-between">
                                 <span className="text-sm font-black text-indigo-600 font-mono">{CURRENCY} {product.price}</span>
                                 <span className={`text-[10px] font-bold px-1.5 rounded ${product.stockLevel < 10 ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-500'}`}>

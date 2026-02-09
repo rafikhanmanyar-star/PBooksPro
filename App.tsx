@@ -123,6 +123,9 @@ const App: React.FC = () => {
   // State to track if the native OS keyboard is likely open
   const [isNativeKeyboardOpen, setIsNativeKeyboardOpen] = useState(false);
 
+  // POS Sales: allow toggling sidebar visibility (F7 Full screen)
+  const [isPosFullScreen, setIsPosFullScreen] = useState(false);
+
   // Use React 18 startTransition for non-blocking navigation (improves INP)
   const [isPending, startNavTransition] = useTransition();
 
@@ -303,10 +306,14 @@ const App: React.FC = () => {
     if (token && tenantId && !apiClient.isTokenExpired()) {
       wsClient.connect(token, tenantId);
 
-      // Set dispatch callback and current user ID for real-time sync handler
+      // Set dispatch callback, current user ID, and tenant ID for real-time sync handler
       const realtimeSyncHandler = getRealtimeSyncHandler();
       realtimeSyncHandler.setDispatch(dispatch);
       realtimeSyncHandler.setCurrentUserId(user?.id || null);
+      realtimeSyncHandler.setCurrentTenantId(tenantId || null);
+
+      // Also set tenant ID on SyncManager for tenant-scoped queue
+      getSyncManager().setTenantId(tenantId || null);
 
       devLogger.log('[App] ✅ WebSocket & sync connected');
 
@@ -314,50 +321,30 @@ const App: React.FC = () => {
         wsClient.disconnect();
         realtimeSyncHandler.setDispatch(null);
         realtimeSyncHandler.setCurrentUserId(null);
+        realtimeSyncHandler.setCurrentTenantId(null);
       };
     }
   }, [isAuthenticated, dispatch, user?.id]);
 
-  // Load contacts from API when authenticated
-  // OPTIMIZED: Batch dispatch, reduced logging
+  // Listen for POS fullscreen toggle events emitted by the POS page
   useEffect(() => {
-    if (!isAuthenticated || !user) return;
-
-    const loadContacts = async () => {
-      try {
-        devLogger.log('[App] 📥 Loading contacts...');
-        const contactsApi = new ContactsApiRepository();
-        const contacts = await contactsApi.findAll();
-        devLogger.log(`[App] ✅ Loaded ${contacts.length} contacts`);
-
-        // OPTIMIZATION: Batch dispatch to reduce re-renders
-        contacts.forEach(contact => {
-          dispatch({ type: 'ADD_CONTACT', payload: contact });
-        });
-      } catch (error) {
-        console.error('[App] ❌ Failed to load contacts:', error);
-      }
+    const handler = (event: Event) => {
+      const ce = event as CustomEvent<{ enabled?: boolean }>;
+      setIsPosFullScreen(Boolean(ce.detail?.enabled));
     };
 
-    loadContacts();
+    window.addEventListener('pos:fullscreen', handler as EventListener);
+    return () => window.removeEventListener('pos:fullscreen', handler as EventListener);
+  }, []);
 
-    const loadVendors = async () => {
-      try {
-        devLogger.log('[App] 📥 Loading vendors...');
-        const vendorsApi = new VendorsApiRepository();
-        const vendors = await vendorsApi.findAll();
-        devLogger.log(`[App] ✅ Loaded ${vendors.length} vendors`);
+  // Safety: if leaving POS Sales, always restore normal layout
+  useEffect(() => {
+    if (currentPage !== 'posSales' && isPosFullScreen) {
+      setIsPosFullScreen(false);
+    }
+  }, [currentPage, isPosFullScreen]);
 
-        vendors.forEach(vendor => {
-          dispatch({ type: 'ADD_VENDOR', payload: vendor });
-        });
-      } catch (error) {
-        console.error('[App] ❌ Failed to load vendors:', error);
-      }
-    };
 
-    loadVendors();
-  }, [isAuthenticated, user, dispatch]);
 
   // Optimized navigation handler - uses startTransition for non-blocking updates
   const handleSetPage = useCallback((page: Page) => {
@@ -585,6 +572,8 @@ const App: React.FC = () => {
     return <LicenseLockScreen />;
   }
 
+  const shouldHideSidebar = currentPage === 'posSales' && isPosFullScreen;
+
   return (
     <OfflineProvider>
       <PrintController />
@@ -593,11 +582,11 @@ const App: React.FC = () => {
         onContextMenu={(e) => e.preventDefault()}
       >
         {/* Left Fixed Sidebar (Desktop) */}
-        <Sidebar currentPage={currentPage} setCurrentPage={handleSetPage} />
+        {!shouldHideSidebar && <Sidebar currentPage={currentPage} setCurrentPage={handleSetPage} />}
 
         {/* Main Content Wrapper */}
         <div
-          className="flex-1 flex flex-col min-w-0 transition-all duration-300 ease-in-out md:pl-64"
+          className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ease-in-out ${shouldHideSidebar ? '' : 'md:pl-64'}`}
           style={{ marginRight: 'var(--right-sidebar-width, 0px)' }}
         >
           <Header title={getPageTitle(currentPage)} isNavigating={isPending} />

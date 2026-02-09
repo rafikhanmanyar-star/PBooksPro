@@ -251,9 +251,12 @@ export class ApiClient {
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
         if (!response.ok) {
-          // Always log errors, even if logging is disabled
           const text = await response.text();
-          logger.errorCategory('api', `❌ Non-JSON error response for ${endpoint}:`, text);
+          const isSchemaVersionEndpoint = endpoint.includes('/schema/version');
+          const isExpectedUnavailable = isSchemaVersionEndpoint && (response.status === 404 || response.status === 503);
+          if (!isExpectedUnavailable) {
+            logger.errorCategory('api', `❌ Non-JSON error response for ${endpoint}:`, text);
+          }
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         return {} as T;
@@ -326,7 +329,14 @@ export class ApiClient {
                                     endpoint.includes('/rental-agreements') ||
                                     endpoint.includes('/project-agreements') ||
                                     endpoint.includes('/contracts') ||
-                                    endpoint.includes('/budgets');
+                                    endpoint.includes('/budgets') ||
+                                    endpoint.includes('/vendors') ||
+                                    endpoint.includes('/quotations') ||
+                                    endpoint.includes('/sales-returns') ||
+                                    endpoint.includes('/documents') ||
+                                    endpoint.includes('/recurring-invoice-templates') ||
+                                    endpoint.includes('/pm-cycle-allocations') ||
+                                    endpoint.includes('/transaction-audit');
           
           if (isValidationEndpoint) {
             // Silent fail for validation endpoints - expected if token is invalid during app init
@@ -445,10 +455,11 @@ export class ApiClient {
   /**
    * POST request
    */
-  async post<T>(endpoint: string, data?: any): Promise<T> {
+  async post<T>(endpoint: string, data?: any, options?: { headers?: Record<string, string> }): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'POST',
       body: data ? JSON.stringify(data) : undefined,
+      headers: options?.headers,
     });
   }
 

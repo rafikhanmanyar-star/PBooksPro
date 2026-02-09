@@ -168,27 +168,70 @@ export class ShopService {
             try {
                 const res = await client.query(`
                     INSERT INTO shop_products (
-                        tenant_id, name, sku, category_id, unit, 
-                        cost_price, retail_price, tax_rate, reorder_point
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                        tenant_id, name, sku, barcode, category_id, unit, 
+                        cost_price, retail_price, tax_rate, reorder_point, is_active
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                     RETURNING id
                 `, [
                     tenantId,
                     data.name,
                     data.sku || `SKU-${Date.now()}`,
+                    data.barcode || null,
                     categoryId,
                     data.unit || 'pcs',
                     data.cost_price || 0,
                     data.retail_price || 0,
                     data.tax_rate || 0,
-                    data.reorder_point || 10
+                    data.reorder_point || 10,
+                    true // is_active
                 ]);
                 return res.rows[0].id;
             } catch (err: any) {
                 if (err.code === '23505') { // Unique constraint violation
                     throw new Error(`SKU "${data.sku}" already exists in the system.`);
                 }
-                throw err;
+                console.error(`[ShopService] Error creating product:`, err);
+                throw new Error(`Failed to create product: ${err.message}`);
+            }
+        });
+    }
+
+    async updateProduct(tenantId: string, productId: string, data: any) {
+        return this.db.transaction(async (client) => {
+            // 1. Update Product details
+            try {
+                await client.query(`
+                    UPDATE shop_products 
+                    SET name = $1, 
+                        sku = $2, 
+                        barcode = $3, 
+                        category_id = $4, 
+                        unit = $5, 
+                        cost_price = $6, 
+                        retail_price = $7, 
+                        tax_rate = $8, 
+                        reorder_point = $9,
+                        is_active = $10,
+                        updated_at = NOW()
+                    WHERE id = $11 AND tenant_id = $12
+                `, [
+                    data.name,
+                    data.sku,
+                    data.barcode,
+                    data.category_id || data.categoryId,
+                    data.unit,
+                    data.cost_price || data.cost,
+                    data.retail_price || data.price,
+                    data.tax_rate || data.taxRate,
+                    data.reorder_point || data.reorderPoint,
+                    data.is_active !== undefined ? data.is_active : true,
+                    productId,
+                    tenantId
+                ]);
+                return { success: true };
+            } catch (err: any) {
+                console.error(`[ShopService] Error updating product:`, err);
+                throw new Error(`Failed to update product: ${err.message}`);
             }
         });
     }
@@ -205,6 +248,25 @@ export class ShopService {
 
         // Note: Currently inventory is per warehouse, but we can link warehouse to branch if needed.
         // For simplicity, we fetch all.
+        return this.db.query(query, params);
+    }
+
+    async getInventoryMovements(tenantId: string, productId?: string) {
+        let query = `
+            SELECT m.*, p.name as product_name, p.sku, w.name as warehouse_name
+            FROM shop_inventory_movements m
+            JOIN shop_products p ON m.product_id = p.id AND p.tenant_id = $1
+            JOIN shop_warehouses w ON m.warehouse_id = w.id AND w.tenant_id = $1
+            WHERE m.tenant_id = $1
+        `;
+        const params: any[] = [tenantId];
+
+        if (productId) {
+            query += ` AND m.product_id = $2`;
+            params.push(productId);
+        }
+
+        query += ` ORDER BY m.created_at DESC`;
         return this.db.query(query, params);
     }
 

@@ -9,6 +9,19 @@ import Textarea from '../ui/Textarea';
 import { useNotification } from '../../context/NotificationContext';
 import { ContactsApiRepository } from '../../services/api/repositories/contactsApi';
 
+/** Normalize API contact (snake_case) to app Contact (camelCase) so it displays correctly. */
+function normalizeContactFromApi(api: any): Contact {
+    return {
+        id: api.id,
+        name: api.name,
+        type: api.type,
+        description: api.description ?? undefined,
+        contactNo: api.contact_no ?? api.contactNo ?? undefined,
+        companyName: api.company_name ?? api.companyName ?? undefined,
+        address: api.address ?? undefined,
+    };
+}
+
 interface ContactTypeOption {
     id: ContactType;
     label: string;
@@ -185,11 +198,13 @@ const ContactsManagement: React.FC = () => {
             const contactsApi = new ContactsApiRepository();
 
             if (editingContact) {
-                await contactsApi.update(editingContact.id, contactData);
+                const updated = await contactsApi.update(editingContact.id, contactData);
                 showToast('Contact updated successfully', 'success');
+                appDispatch({ type: 'UPDATE_CONTACT', payload: normalizeContactFromApi(updated) });
             } else {
-                await contactsApi.create(contactData);
+                const created = await contactsApi.create(contactData);
                 showToast('Contact created successfully', 'success');
+                appDispatch({ type: 'ADD_CONTACT', payload: normalizeContactFromApi(created) });
             }
 
             // Reset form and close
@@ -272,6 +287,7 @@ const ContactsManagement: React.FC = () => {
                 const contactsApi = new ContactsApiRepository();
                 await contactsApi.delete(contact.id);
                 showToast('Contact deleted successfully', 'success');
+                appDispatch({ type: 'DELETE_CONTACT', payload: contact.id });
 
                 if (editingContact?.id === contact.id) {
                     handleResetForm();

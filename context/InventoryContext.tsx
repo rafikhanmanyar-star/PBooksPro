@@ -8,6 +8,7 @@ import {
     StockTransfer
 } from '../types/inventory';
 import { shopApi } from '../services/api/shopApi';
+import { useAuth } from './AuthContext';
 
 interface InventoryContextType {
     items: InventoryItem[];
@@ -17,9 +18,12 @@ interface InventoryContextType {
     transfers: StockTransfer[];
 
     addItem: (item: InventoryItem) => Promise<InventoryItem>;
+    updateItem: (id: string, updates: Partial<InventoryItem>) => Promise<void>;
     updateStock: (itemId: string, warehouseId: string, delta: number, type: any, referenceId: string, notes?: string) => void;
     requestTransfer: (transfer: Omit<StockTransfer, 'id' | 'timestamp' | 'status'>) => void;
     approveAdjustment: (adjustmentId: string) => void;
+    refreshWarehouses: () => Promise<void>; // Refresh warehouses list
+    refreshItems: () => Promise<void>; // NEW: Refresh products/SKU list
 
     // Filters & Dashboard Data
     lowStockItems: InventoryItem[];
@@ -29,6 +33,7 @@ interface InventoryContextType {
 const InventoryContext = createContext<InventoryContextType | undefined>(undefined);
 
 export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const { isAuthenticated } = useAuth();
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
     const [items, setItems] = useState<InventoryItem[]>([]);
     const [movements, setMovements] = useState<StockMovement[]>([]);
@@ -36,17 +41,20 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const [transfers, setTransfers] = useState<StockTransfer[]>([]);
 
     React.useEffect(() => {
+        if (!isAuthenticated) return; // Don't fetch until user is logged in
+
         const fetchData = async () => {
             try {
                 console.log('🔄 [InventoryContext] Fetching warehouses, products, and inventory...');
-                const [warehousesList, products, inventory] = await Promise.all([
+                const [warehousesList, products, inventory, movementList] = await Promise.all([
                     shopApi.getWarehouses(),
                     shopApi.getProducts(),
-                    shopApi.getInventory()
+                    shopApi.getInventory(),
+                    shopApi.getMovements()
                 ]);
 
                 console.log('📦 [InventoryContext] Raw warehouses from API:', warehousesList);
-                console.log('📦 [InventoryContext] Warehouses count:', warehousesList?.length || 0);
+                console.log('📦 [InventoryContext] Movements count:', movementList?.length || 0);
 
                 // Map Warehouses
                 const whs: Warehouse[] = warehousesList.map((w: any) => ({
@@ -56,7 +64,23 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                     location: w.location || 'Main'
                 }));
                 setWarehouses(whs);
-                console.log('✅ [InventoryContext] Warehouses set in state:', whs);
+
+                // Map Movements
+                const mappedMovements: StockMovement[] = movementList.map((m: any) => ({
+                    id: m.id,
+                    itemId: m.product_id,
+                    itemName: m.product_name || 'Unknown Item',
+                    type: m.type as any,
+                    quantity: parseFloat(m.quantity),
+                    beforeQty: 0, // Not stored in DB yet
+                    afterQty: 0,  // Not stored in DB yet
+                    warehouseId: m.warehouse_id,
+                    referenceId: m.reference_id || 'N/A',
+                    timestamp: m.created_at,
+                    userId: m.user_id || 'system',
+                    notes: m.reason
+                }));
+                setMovements(mappedMovements);
 
                 // Aggregate Stock
                 const stockMap: Record<string, { total: number, reserved: number, byWh: Record<string, number> }> = {};
@@ -76,13 +100,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 const mappedItems: InventoryItem[] = products.map((p: any) => ({
                     id: p.id,
                     sku: p.sku,
+                    barcode: p.barcode || undefined,
                     name: p.name,
-                    category: p.category_id || 'General', // TODO: Fetch category name
+                    category: p.category_id || 'General',
                     unit: p.unit || 'pcs',
                     onHand: stockMap[p.id]?.total || 0,
                     available: (stockMap[p.id]?.total || 0) - (stockMap[p.id]?.reserved || 0),
                     reserved: stockMap[p.id]?.reserved || 0,
-                    inTransit: 0, // Not tracked in basic schema yet
+                    inTransit: 0,
                     damaged: 0,
                     costPrice: parseFloat(p.cost_price || '0'),
                     retailPrice: parseFloat(p.retail_price || '0'),
@@ -97,6 +122,73 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             }
         };
         fetchData();
+    }, [isAuthenticated]);
+
+    // NEW: Refresh warehouses function
+    const refreshWarehouses = useCallback(async () => {
+        try {
+            console.log('🔄 [InventoryContext] Refreshing warehouses...');
+            const warehousesList = await shopApi.getWarehouses();
+            const whs: Warehouse[] = warehousesList.map((w: any) => ({
+                id: w.id,
+                name: w.name,
+                code: w.code,
+                location: w.location || 'Main'
+            }));
+            setWarehouses(whs);
+            console.log('✅ [InventoryContext] Warehouses refreshed:', whs);
+        } catch (error) {
+            console.error('Failed to refresh warehouses:', error);
+        }
+    }, []);
+
+    // NEW: Refresh items/products function
+    const refreshItems = useCallback(async () => {
+        try {
+            console.log('🔄 [InventoryContext] Refreshing products/items...');
+            const [products, inventory] = await Promise.all([
+                shopApi.getProducts(),
+                shopApi.getInventory()
+            ]);
+
+            // Aggregate Stock
+            const stockMap: Record<string, { total: number, reserved: number, byWh: Record<string, number> }> = {};
+
+            inventory.forEach((inv: any) => {
+                if (!stockMap[inv.product_id]) {
+                    stockMap[inv.product_id] = { total: 0, reserved: 0, byWh: {} };
+                }
+                const qty = parseFloat(inv.quantity_on_hand || '0');
+                const reserved = parseFloat(inv.quantity_reserved || '0');
+                stockMap[inv.product_id].total += qty;
+                stockMap[inv.product_id].reserved += reserved;
+                stockMap[inv.product_id].byWh[inv.warehouse_id] = qty;
+            });
+
+            // Map Products to InventoryItems
+            const mappedItems: InventoryItem[] = products.map((p: any) => ({
+                id: p.id,
+                sku: p.sku,
+                barcode: p.barcode || undefined,
+                name: p.name,
+                category: p.category_id || 'General',
+                unit: p.unit || 'pcs',
+                onHand: stockMap[p.id]?.total || 0,
+                available: (stockMap[p.id]?.total || 0) - (stockMap[p.id]?.reserved || 0),
+                reserved: stockMap[p.id]?.reserved || 0,
+                inTransit: 0,
+                damaged: 0,
+                costPrice: parseFloat(p.cost_price || '0'),
+                retailPrice: parseFloat(p.retail_price || '0'),
+                reorderPoint: p.reorder_point || 10,
+                warehouseStock: stockMap[p.id]?.byWh || {}
+            }));
+
+            setItems(mappedItems);
+            console.log('✅ [InventoryContext] Products refreshed:', mappedItems.length, 'items');
+        } catch (error) {
+            console.error('Failed to refresh products:', error);
+        }
     }, []);
 
     const updateStock = useCallback(async (
@@ -162,6 +254,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         try {
             const payload = {
                 sku: item.sku,
+                barcode: item.barcode || null,
                 name: item.name,
                 category_id: item.category === 'General' ? null : item.category,
                 retail_price: item.retailPrice,
@@ -175,6 +268,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             if (response && response.id) {
                 const newItem = { ...item, id: response.id };
                 setItems(prev => [...prev, newItem]);
+
+                // Refresh items list to ensure it's in sync with database
+                await refreshItems();
+
                 return newItem;
             } else {
                 throw new Error("Invalid response from server");
@@ -186,7 +283,30 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             // Do NOT fall back to local-only state to avoid confusion
             throw error;
         }
-    }, []);
+    }, [refreshItems]);
+
+    const updateItem = useCallback(async (id: string, updates: Partial<InventoryItem>) => {
+        try {
+            const payload: any = {};
+            if (updates.name) payload.name = updates.name;
+            if (updates.sku) payload.sku = updates.sku;
+            if (updates.barcode !== undefined) payload.barcode = updates.barcode;
+            if (updates.category) payload.category_id = updates.category === 'General' ? null : updates.category;
+            if (updates.retailPrice !== undefined) payload.retail_price = updates.retailPrice;
+            if (updates.costPrice !== undefined) payload.cost_price = updates.costPrice;
+            if (updates.unit) payload.unit = updates.unit;
+            if (updates.reorderPoint !== undefined) payload.reorder_point = updates.reorderPoint;
+
+            await shopApi.updateProduct(id, payload);
+
+            // Refresh items to sync local state
+            await refreshItems();
+        } catch (error: any) {
+            console.error("Failed to update product:", error);
+            alert(`Failed to update product: ${error.message}`);
+            throw error;
+        }
+    }, [refreshItems]);
 
     const requestTransfer = useCallback((transfer: Omit<StockTransfer, 'id' | 'timestamp' | 'status'>) => {
         const newTransfer: StockTransfer = {
@@ -228,9 +348,12 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         adjustments,
         transfers,
         addItem,
+        updateItem,
         updateStock,
         requestTransfer,
         approveAdjustment,
+        refreshWarehouses,
+        refreshItems,
         lowStockItems,
         totalInventoryValue
     };

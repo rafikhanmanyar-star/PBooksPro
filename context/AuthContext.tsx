@@ -101,6 +101,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       logger.errorCategory('auth', 'Logout API error:', error);
       // Continue with local logout even if API fails
     } finally {
+      // SECURITY: Clear all sync queues BEFORE clearing auth to prevent cross-tenant data bleed.
+      // If queues are not cleared, stale operations from this user/tenant could sync
+      // when a different user/tenant logs in on the same device.
+      const currentTenantId = apiClient.getTenantId();
+      try {
+        // 1. Clear the persistent SyncOutbox (SQLite sync_outbox table)
+        if (currentTenantId) {
+          const { getDatabaseService } = await import('../services/database/databaseService');
+          const db = getDatabaseService();
+          if (db.isReady()) {
+            db.execute(
+              "DELETE FROM sync_outbox WHERE tenant_id = ? AND status IN ('pending', 'failed')",
+              [currentTenantId]
+            );
+            db.save();
+            logger.logCategory('auth', 'Cleared sync_outbox for tenant on logout');
+          }
+        }
+      } catch (e) {
+        logger.warnCategory('auth', 'Failed to clear sync_outbox on logout:', e);
+      }
+
+      try {
+        // 2. Clear the IndexedDB SyncQueue for the current tenant
+        if (currentTenantId) {
+          const { getSyncQueue } = await import('../services/syncQueue');
+          const syncQueue = getSyncQueue();
+          await syncQueue.clearAll(currentTenantId);
+          logger.logCategory('auth', 'Cleared IndexedDB sync queue for tenant on logout');
+        }
+      } catch (e) {
+        logger.warnCategory('auth', 'Failed to clear IndexedDB sync queue on logout:', e);
+      }
+
+      try {
+        // 3. Clear the SyncManager in-memory/localStorage queue
+        const { getSyncManager } = await import('../services/sync/syncManager');
+        getSyncManager().clearAll();
+        logger.logCategory('auth', 'Cleared SyncManager queue on logout');
+      } catch (e) {
+        logger.warnCategory('auth', 'Failed to clear SyncManager queue on logout:', e);
+      }
+
+      // 4. Also clear any legacy localStorage sync_queue key directly
+      localStorage.removeItem('sync_queue');
+
       // Clear local auth
       apiClient.clearAuth();
 
@@ -672,6 +718,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         logger.logCategory('auth', '✅ Unified login completed successfully');
 
+        // Load license immediately so features enable without waiting for LicenseContext effect.
+        // Defer dispatch so LicenseContext has committed and can receive the event.
+        checkLicenseStatus()
+          .then((licenseStatus) => {
+            if (typeof window !== 'undefined' && licenseStatus && ('licenseType' in licenseStatus || 'licenseStatus' in licenseStatus)) {
+              const dispatch = () => window.dispatchEvent(new CustomEvent('license-status-loaded', { detail: licenseStatus }));
+              if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(dispatch);
+              else setTimeout(dispatch, 0);
+            }
+          })
+          .catch((err) => logger.warnCategory('auth', 'Post-login license fetch failed (will retry in context):', err));
+
         // Sync pending operations after successful login
         try {
           const { isMobileDevice } = await import('../utils/platformDetection');
@@ -726,6 +784,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   /**
+   * Check license status. Throws on error so callers (e.g. LicenseContext) don't treat fallback as valid data.
+   * Defined before login/unifiedLogin so they can reference it in their dependency arrays.
+   */
+  const checkLicenseStatus = useCallback(async () => {
+    const response = await apiClient.get<{
+      isValid?: boolean;
+      licenseType?: string;
+      licenseStatus?: string;
+      expiryDate?: string | null;
+      daysRemaining?: number;
+      isExpired?: boolean;
+      modules?: string[];
+    }>('/tenants/license-status');
+    return response;
+  }, []);
+
+  /**
    * Login with username, password, and tenant ID (legacy - kept for backward compatibility)
    */
   const login = useCallback(async (username: string, password: string, tenantId: string) => {
@@ -759,6 +834,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading: false,
         error: null,
       });
+
+      // Load license immediately so features enable without waiting for LicenseContext effect
+      checkLicenseStatus()
+        .then((licenseStatus) => {
+          if (typeof window !== 'undefined' && licenseStatus && ('licenseType' in licenseStatus || 'licenseStatus' in licenseStatus)) {
+            const dispatch = () => window.dispatchEvent(new CustomEvent('license-status-loaded', { detail: licenseStatus }));
+            if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(dispatch);
+            else setTimeout(dispatch, 0);
+          }
+        })
+        .catch((err) => logger.warnCategory('auth', 'Post-login license fetch failed (will retry in context):', err));
     } catch (error: any) {
       const errorMessage = error.error || error.message || 'Login failed';
       setState({
@@ -770,7 +856,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       throw error;
     }
-  }, []);
+  }, [checkLicenseStatus]);
 
   /**
    * Register a new tenant (self-signup with free trial)
@@ -822,26 +908,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         error: errorMessage,
       }));
       throw error;
-    }
-  }, []);
-
-  /**
-   * Check license status
-   */
-  const checkLicenseStatus = useCallback(async () => {
-    try {
-      const response = await apiClient.get<{
-        isValid: boolean;
-        daysRemaining?: number;
-        type?: string;
-        status?: string;
-        modules?: string[];
-      }>('/tenants/license-status');
-
-      return response;
-    } catch (error: any) {
-      logger.errorCategory('auth', 'License check error:', error);
-      return { isValid: false, modules: [] };
     }
   }, []);
 

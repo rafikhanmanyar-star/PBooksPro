@@ -82,7 +82,7 @@ const ProjectContractsPage: React.FC = () => {
                 // Find or create Vendor node under this project
                 let vendorNode = group.children.find(c => c.id === contract.vendorId);
                 if (!vendorNode) {
-                    const vendor = state.contacts.find(c => c.id === contract.vendorId);
+                    const vendor = state.vendors?.find(v => v.id === contract.vendorId);
                     vendorNode = {
                         id: contract.vendorId,
                         name: vendor?.name || 'Unknown Vendor',
@@ -104,7 +104,7 @@ const ProjectContractsPage: React.FC = () => {
             .filter(g => g.count > 0)
             .sort((a, b) => a.name.localeCompare(b.name));
 
-    }, [state.contracts, state.projects, state.contacts, state.transactions]);
+    }, [state.contracts, state.projects, state.vendors, state.transactions]);
 
     // --- Filter Logic ---
     const filteredContracts = useMemo(() => {
@@ -127,7 +127,7 @@ const ProjectContractsPage: React.FC = () => {
                 c.contractNumber.toLowerCase().includes(q) ||
                 c.name.toLowerCase().includes(q) ||
                 state.projects.find(p => p.id === c.projectId)?.name.toLowerCase().includes(q) ||
-                state.contacts.find(v => v.id === c.vendorId)?.name.toLowerCase().includes(q)
+                state.vendors?.find(v => v.id === c.vendorId)?.name.toLowerCase().includes(q)
             );
         }
 
@@ -153,7 +153,7 @@ const ProjectContractsPage: React.FC = () => {
             return 0;
         });
 
-    }, [state.contracts, state.projects, state.contacts, state.transactions, searchQuery, selectedNode, sortConfig]);
+    }, [state.contracts, state.projects, state.contacts, state.vendors, state.transactions, searchQuery, selectedNode, sortConfig]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -228,8 +228,8 @@ const ProjectContractsPage: React.FC = () => {
 
     const handleWhatsApp = useCallback((contract: Contract, e: React.MouseEvent) => {
         e.stopPropagation(); // Prevent row click
-        
-        const vendor = state.contacts.find(c => c.id === contract.vendorId);
+
+        const vendor = state.vendors?.find(v => v.id === contract.vendorId);
         if (!vendor?.contactNo) {
             showAlert("Vendor contact number not found.");
             return;
@@ -386,7 +386,7 @@ const ProjectContractsPage: React.FC = () => {
                                     const totalAmount = contract.totalAmount ?? 0;
                                     const paid = getPaidAmount(contract.id) ?? 0;
                                     const balance = totalAmount - paid;
-                                    const vendor = state.contacts.find(c => c.id === contract.vendorId);
+                                    const vendor = state.vendors?.find(v => v.id === contract.vendorId);
                                     const project = state.projects.find(p => p.id === contract.projectId);
 
                                     return (
@@ -430,8 +430,8 @@ const ProjectContractsPage: React.FC = () => {
                                             </td>
                                             <td className="px-4 py-2.5 text-center">
                                                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${contract.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                                                        contract.status === 'Terminated' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
-                                                            'bg-slate-100 text-slate-600 border border-slate-200'
+                                                    contract.status === 'Terminated' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
+                                                        'bg-slate-100 text-slate-600 border border-slate-200'
                                                     }`}>
                                                     {contract.status === 'Active' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>}
                                                     {contract.status}

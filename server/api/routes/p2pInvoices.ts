@@ -337,35 +337,35 @@ router.put('/:id/approve', async (req: TenantRequest, res) => {
       const supplierContactNo = registeredSupplier?.supplier_contact_no || '';
       const supplierAddress = registeredSupplier?.supplier_address || '';
 
-      // Find existing contact in vendor directory by matching company name or supplier tenant ID
-      let contactId = null;
+      // Find existing vendor in vendors table by matching company name or supplier tenant ID
+      let vendorId = null;
 
       // First try to find by company name (exact match first)
-      let existingContact = await db.query(
-        `SELECT id FROM contacts WHERE tenant_id = $1 AND contact_type = 'Vendor' AND company_name = $2 LIMIT 1`,
+      let existingVendor = await db.query(
+        `SELECT id FROM vendors WHERE tenant_id = $1 AND company_name = $2 LIMIT 1`,
         [req.tenantId, supplierCompany]
       );
 
       // If not found, try partial match
-      if (!existingContact || existingContact.length === 0) {
-        existingContact = await db.query(
-          `SELECT id FROM contacts WHERE tenant_id = $1 AND contact_type = 'Vendor' AND (name ILIKE $2 OR company_name ILIKE $2) LIMIT 1`,
+      if (!existingVendor || existingVendor.length === 0) {
+        existingVendor = await db.query(
+          `SELECT id FROM vendors WHERE tenant_id = $1 AND (name ILIKE $2 OR company_name ILIKE $2) LIMIT 1`,
           [req.tenantId, `%${supplierCompany}%`]
         );
       }
 
-      if (existingContact && existingContact.length > 0) {
-        contactId = existingContact[0].id;
+      if (existingVendor && existingVendor.length > 0) {
+        vendorId = existingVendor[0].id;
       } else {
-        // Create a new contact for this supplier using registered supplier info
-        const newContactId = `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        // Create a new vendor for this supplier using registered supplier info
+        const newVendorId = `vendor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         await db.query(
-          `INSERT INTO contacts (id, name, company_name, phone, address, contact_type, tenant_id, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, 'Vendor', $6, NOW(), NOW())`,
-          [newContactId, supplierName, supplierCompany, supplierContactNo, supplierAddress, req.tenantId]
+          `INSERT INTO vendors (id, name, company_name, contact_no, address, is_active, tenant_id, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, TRUE, $6, NOW(), NOW())`,
+          [newVendorId, supplierName, supplierCompany, supplierContactNo, supplierAddress, req.tenantId]
         );
-        contactId = newContactId as any;
-        console.log(`Created new vendor contact for supplier: ${supplierCompany} (${newContactId})`);
+        vendorId = newVendorId as any;
+        console.log(`Created new vendor for supplier: ${supplierCompany} (${newVendorId})`);
       }
 
       // Generate bill number
@@ -388,7 +388,7 @@ router.put('/:id/approve', async (req: TenantRequest, res) => {
       // Create bill in bills table
       const billResult = await db.query(
         `INSERT INTO bills (
-          id, tenant_id, bill_number, contact_id, amount, paid_amount, status,
+          id, tenant_id, bill_number, vendor_id, amount, paid_amount, status,
           issue_date, due_date, description, category_id, project_id,
           user_id, created_at, updated_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
@@ -397,7 +397,7 @@ router.put('/:id/approve', async (req: TenantRequest, res) => {
           billId,
           req.tenantId,
           billNumber,
-          contactId,
+          vendorId,
           parseFloat(invoice.amount) || 0,
           0, // paid_amount starts at 0
           'Unpaid', // UNPAID status

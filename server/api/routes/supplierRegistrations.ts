@@ -269,7 +269,7 @@ router.get('/my-requests', async (req: TenantRequest, res) => {
  * On Approve (after commit), this handler:
  * 1. Changes the registration request status to APPROVED
  * 2. Creates/updates an entry in registered_suppliers (buyer_tenant_id + supplier_tenant_id) so the supplier appears in the buyer dashboard list
- * 3. Adds the supplier to the buyer's vendor list (contacts) using registration request fields:
+ * 3. Adds the supplier to the buyer's vendor list (vendors table) using registration request fields:
  *    - Full name <- reg_supplier_name
  *    - Company name <- reg_supplier_company
  *    - Phone number <- reg_supplier_contact_no
@@ -342,7 +342,7 @@ router.put('/:id/approve', async (req: TenantRequest, res) => {
          request.reg_supplier_address ?? null, request.reg_supplier_description ?? null]
       );
 
-      // 3) Add supplier to buyer's vendor list (contacts): extract correct fields from registration request (DB uses snake_case)
+      // 3) Add supplier to buyer's vendor list (vendors table): extract correct fields from registration request (DB uses snake_case)
       const fullName = (request.reg_supplier_name ?? request.reg_supplier_company ?? 'Supplier').toString().trim();
       const companyName = (request.reg_supplier_company ?? 'Supplier').toString().trim();
       const phoneNumber = (request.reg_supplier_contact_no ?? '').toString().trim();
@@ -350,37 +350,37 @@ router.put('/:id/approve', async (req: TenantRequest, res) => {
       const requestNote = (request.reg_supplier_description ?? '').toString().trim();
       const noteDescription = [requestNote, 'Supplier has been added from Biz Planet.'].filter(Boolean).join('\n');
 
-      const existingContactResult = await client.query(
-        `SELECT id FROM contacts WHERE tenant_id = $1 AND type = 'Vendor' AND company_name = $2 LIMIT 1`,
+      const existingVendorResult = await client.query(
+        `SELECT id FROM vendors WHERE tenant_id = $1 AND company_name = $2 LIMIT 1`,
         [buyerTenantId, companyName]
       );
-      const existingContact = existingContactResult.rows || existingContactResult;
+      const existingVendor = existingVendorResult.rows || existingVendorResult;
 
-      if (existingContact && existingContact.length > 0) {
+      if (existingVendor && existingVendor.length > 0) {
         await client.query(
-          `UPDATE contacts SET 
+          `UPDATE vendors SET 
             name = $1, contact_no = $2, address = $3, description = $4, updated_at = NOW()
            WHERE id = $5`,
-          [fullName, phoneNumber, businessAddress, noteDescription || null, existingContact[0].id]
+          [fullName, phoneNumber, businessAddress, noteDescription || null, existingVendor[0].id]
         );
-        const sel = await client.query('SELECT * FROM contacts WHERE id = $1', [existingContact[0].id]);
+        const sel = await client.query('SELECT * FROM vendors WHERE id = $1', [existingVendor[0].id]);
         savedContact = (sel.rows || sel).length > 0 ? (sel.rows || sel)[0] : null;
       } else {
-        const contactId = `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        const insertContactResult = await client.query(
-          `INSERT INTO contacts (id, tenant_id, name, type, description, contact_no, company_name, address, created_at, updated_at)
-           VALUES ($1, $2, $3, 'Vendor', $4, $5, $6, $7, NOW(), NOW())
+        const vendorId = `vendor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const insertVendorResult = await client.query(
+          `INSERT INTO vendors (id, tenant_id, name, description, contact_no, company_name, address, is_active, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, NOW(), NOW())
            RETURNING *`,
-          [contactId, buyerTenantId, fullName, noteDescription || null, phoneNumber, companyName, businessAddress]
+          [vendorId, buyerTenantId, fullName, noteDescription || null, phoneNumber, companyName, businessAddress]
         );
-        const inserted = (insertContactResult.rows || insertContactResult);
+        const inserted = (insertVendorResult.rows || insertVendorResult);
         savedContact = inserted && inserted.length > 0 ? inserted[0] : null;
       }
     });
 
     // Emit WebSocket so buyer Vendor Directory updates in real time
     if (savedContact) {
-      emitToTenant(buyerTenantId, WS_EVENTS.CONTACT_CREATED, { contact: savedContact });
+      emitToTenant(buyerTenantId, WS_EVENTS.VENDOR_CREATED, { vendor: savedContact });
     }
 
     // Emit WebSocket event to buyer (Org B) so Registered suppliers panel refreshes

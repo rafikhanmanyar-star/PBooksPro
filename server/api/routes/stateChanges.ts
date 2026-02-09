@@ -1,7 +1,12 @@
 /**
  * Incremental state changes endpoint for bi-directional sync.
- * GET /api/state/changes?since=ISO8601
+ * GET /api/state/changes?since=ISO8601&limit=500&cursor=ISO8601
  * Returns entities updated after the given timestamp (incremental pull).
+ *
+ * Supports cursor-based pagination:
+ * - `limit`: max records per entity per page (default 500)
+ * - `cursor`: resume from this timestamp (use `next_cursor` from previous response)
+ * - `has_more`: indicates if more pages are available
  */
 
 import { Router } from 'express';
@@ -10,6 +15,9 @@ import { getDatabaseService } from '../../services/databaseService.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
+
+const DEFAULT_LIMIT = 500;
+const MAX_LIMIT = 2000;
 
 // Tables we support for incremental sync (tenant_id column, updated_at column)
 const ENTITY_QUERIES: { key: string; table: string; tenantColumn: string }[] = [
@@ -33,9 +41,11 @@ const ENTITY_QUERIES: { key: string; table: string; tenantColumn: string }[] = [
   { key: 'documents', table: 'documents', tenantColumn: 'tenant_id' },
   { key: 'recurring_invoice_templates', table: 'recurring_invoice_templates', tenantColumn: 'tenant_id' },
   { key: 'pm_cycle_allocations', table: 'pm_cycle_allocations', tenantColumn: 'tenant_id' },
-  { key: 'rental_agreements', table: 'rental_agreements', tenantColumn: 'org_id' },
+  // NOTE: rental_agreements.org_id was renamed to tenant_id in schema v7
+  { key: 'rental_agreements', table: 'rental_agreements', tenantColumn: 'tenant_id' },
   { key: 'project_agreements', table: 'project_agreements', tenantColumn: 'tenant_id' },
   { key: 'installment_plans', table: 'installment_plans', tenantColumn: 'tenant_id' },
+  { key: 'vendors', table: 'vendors', tenantColumn: 'tenant_id' },
 ];
 
 function snakeToCamel(str: string): string {
@@ -50,7 +60,7 @@ function rowToCamel(row: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
-// GET /api/state/changes?since=ISO8601
+// GET /api/state/changes?since=ISO8601&limit=500
 router.get('/changes', async (req: TenantRequest, res) => {
   try {
     const since = (req.query.since as string) || '1970-01-01T00:00:00.000Z';
@@ -59,20 +69,65 @@ router.get('/changes', async (req: TenantRequest, res) => {
       return res.status(401).json({ error: 'Tenant required' });
     }
 
+    // Parse pagination params
+    let limit = parseInt(req.query.limit as string) || DEFAULT_LIMIT;
+    if (limit > MAX_LIMIT) limit = MAX_LIMIT;
+    if (limit < 1) limit = DEFAULT_LIMIT;
+
     const db = getDb();
     const result: Record<string, unknown[]> = {};
+    let hasMore = false;
 
     for (const { key, table, tenantColumn } of ENTITY_QUERIES) {
       try {
+        // Fetch limit + 1 to detect if there are more records
         const rows = await db.query(
-          `SELECT * FROM ${table} WHERE ${tenantColumn} = $1 AND updated_at > $2 ORDER BY updated_at ASC`,
-          [tenantId, since]
+          `SELECT * FROM ${table} WHERE ${tenantColumn} = $1 AND updated_at > $2 ORDER BY updated_at ASC LIMIT $3`,
+          [tenantId, since, limit + 1]
         );
-        result[key] = (rows as any[]).map((row) => rowToCamel(row));
+
+        const rowArray = rows as any[];
+        if (rowArray.length > limit) {
+          // More records available for this entity
+          hasMore = true;
+          result[key] = rowArray.slice(0, limit).map((row) => rowToCamel(row));
+        } else {
+          result[key] = rowArray.map((row) => rowToCamel(row));
+        }
       } catch (err) {
-        // Table might not exist in older DBs
-        console.warn(`[stateChanges] Skip ${table}:`, (err as Error).message);
-        result[key] = [];
+        // Table might not exist in older DBs — try fallback for rental_agreements.org_id
+        if (table === 'rental_agreements' && tenantColumn === 'tenant_id') {
+          try {
+            const fallbackRows = await db.query(
+              `SELECT * FROM ${table} WHERE org_id = $1 AND updated_at > $2 ORDER BY updated_at ASC LIMIT $3`,
+              [tenantId, since, limit + 1]
+            );
+            const rowArray = fallbackRows as any[];
+            if (rowArray.length > limit) {
+              hasMore = true;
+              result[key] = rowArray.slice(0, limit).map((row) => rowToCamel(row));
+            } else {
+              result[key] = rowArray.map((row) => rowToCamel(row));
+            }
+          } catch {
+            console.warn(`[stateChanges] Skip ${table} (both tenant_id and org_id failed)`);
+            result[key] = [];
+          }
+        } else {
+          console.warn(`[stateChanges] Skip ${table}:`, (err as Error).message);
+          result[key] = [];
+        }
+      }
+    }
+
+    // Compute the next cursor: the max updated_at across all returned records
+    let latestTimestamp = since;
+    for (const items of Object.values(result)) {
+      for (const item of items as any[]) {
+        const ts = item.updatedAt || item.updated_at;
+        if (ts && ts > latestTimestamp) {
+          latestTimestamp = ts;
+        }
       }
     }
 
@@ -80,6 +135,9 @@ router.get('/changes', async (req: TenantRequest, res) => {
       since,
       updatedAt: new Date().toISOString(),
       entities: result,
+      has_more: hasMore,
+      next_cursor: hasMore ? latestTimestamp : null,
+      limit,
     });
   } catch (error) {
     console.error('Error fetching state changes:', error);
