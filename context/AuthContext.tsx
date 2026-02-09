@@ -718,6 +718,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         logger.logCategory('auth', '✅ Unified login completed successfully');
 
+        // Load license immediately so features enable without waiting for LicenseContext effect
+        checkLicenseStatus()
+          .then((licenseStatus) => {
+            if (typeof window !== 'undefined' && licenseStatus && ('licenseType' in licenseStatus || 'licenseStatus' in licenseStatus)) {
+              window.dispatchEvent(new CustomEvent('license-status-loaded', { detail: licenseStatus }));
+            }
+          })
+          .catch((err) => logger.warnCategory('auth', 'Post-login license fetch failed (will retry in context):', err));
+
         // Sync pending operations after successful login
         try {
           const { isMobileDevice } = await import('../utils/platformDetection');
@@ -805,6 +814,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading: false,
         error: null,
       });
+
+      // Load license immediately so features enable without waiting for LicenseContext effect
+      checkLicenseStatus()
+        .then((licenseStatus) => {
+          if (typeof window !== 'undefined' && licenseStatus && ('licenseType' in licenseStatus || 'licenseStatus' in licenseStatus)) {
+            window.dispatchEvent(new CustomEvent('license-status-loaded', { detail: licenseStatus }));
+          }
+        })
+        .catch((err) => logger.warnCategory('auth', 'Post-login license fetch failed (will retry in context):', err));
     } catch (error: any) {
       const errorMessage = error.error || error.message || 'Login failed';
       setState({
@@ -816,7 +834,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       throw error;
     }
-  }, []);
+  }, [checkLicenseStatus]);
 
   /**
    * Register a new tenant (self-signup with free trial)
@@ -872,23 +890,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   /**
-   * Check license status
+   * Check license status. Throws on error so callers (e.g. LicenseContext) don't treat fallback as valid data.
    */
   const checkLicenseStatus = useCallback(async () => {
-    try {
-      const response = await apiClient.get<{
-        isValid: boolean;
-        daysRemaining?: number;
-        type?: string;
-        status?: string;
-        modules?: string[];
-      }>('/tenants/license-status');
-
-      return response;
-    } catch (error: any) {
-      logger.errorCategory('auth', 'License check error:', error);
-      return { isValid: false, modules: [] };
-    }
+    const response = await apiClient.get<{
+      isValid?: boolean;
+      licenseType?: string;
+      licenseStatus?: string;
+      expiryDate?: string | null;
+      daysRemaining?: number;
+      isExpired?: boolean;
+      modules?: string[];
+    }>('/tenants/license-status');
+    return response;
   }, []);
 
   return (
