@@ -5,7 +5,7 @@
  * This is used when the app is in cloud mode (authenticated with tenant).
  */
 
-import { AppState, InvoiceStatus, ProjectAgreementStatus, ContractStatus, SalesReturnStatus, SalesReturnReason, PMCycleAllocation, Quotation, Document, Vendor } from '../../types';
+import { AppState, InvoiceStatus, ProjectAgreementStatus, ContractStatus, SalesReturnStatus, SalesReturnReason, PMCycleAllocation, Quotation, Document, Vendor, RecurringInvoiceTemplate } from '../../types';
 import { AccountsApiRepository } from './repositories/accountsApi';
 import { ContactsApiRepository } from './repositories/contactsApi';
 import { TransactionsApiRepository } from './repositories/transactionsApi';
@@ -764,7 +764,26 @@ export class AppStateApiService {
           uploadedAt: d.uploaded_at ?? d.uploadedAt,
           uploadedBy: d.uploaded_by ?? d.uploadedBy ?? d.user_id ?? d.userId,
         })),
-        recurringInvoiceTemplates: recurringInvoiceTemplates || [],
+        // Normalize recurring invoice templates from API (transform snake_case to camelCase)
+        // The server returns snake_case fields, but the client expects camelCase
+        recurringInvoiceTemplates: (recurringInvoiceTemplates || []).map((t: any) => ({
+          id: t.id,
+          contactId: t.contact_id ?? t.contactId ?? '',
+          propertyId: t.property_id ?? t.propertyId ?? '',
+          buildingId: t.building_id ?? t.buildingId ?? '',
+          amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount ?? '0')),
+          descriptionTemplate: t.description_template ?? t.descriptionTemplate ?? '',
+          dayOfMonth: typeof t.day_of_month === 'number' ? t.day_of_month : parseInt(String(t.day_of_month ?? t.dayOfMonth ?? '1')),
+          nextDueDate: t.next_due_date ?? t.nextDueDate ?? '',
+          active: t.active === true || t.active === 1 || t.active === 'true',
+          agreementId: t.agreement_id ?? t.agreementId ?? undefined,
+          invoiceType: t.invoice_type ?? t.invoiceType ?? 'Rental',
+          frequency: t.frequency ?? 'Monthly',
+          autoGenerate: t.auto_generate === true || t.auto_generate === 1 || t.autoGenerate === true,
+          maxOccurrences: t.max_occurrences ?? t.maxOccurrences ?? undefined,
+          generatedCount: typeof t.generated_count === 'number' ? t.generated_count : (typeof t.generatedCount === 'number' ? t.generatedCount : parseInt(String(t.generated_count ?? t.generatedCount ?? '0'))),
+          lastGeneratedDate: t.last_generated_date ?? t.lastGeneratedDate ?? undefined,
+        })),
         pmCycleAllocations: pmCycleAllocations || [],
         transactionLog: transactionLog || [],
         vendors: normalizedVendors || [],
@@ -848,6 +867,25 @@ export class AppStateApiService {
    */
   async deleteVendor(id: string): Promise<void> {
     return this.vendorsRepo.delete(id);
+  }
+
+  /**
+   * Save recurring invoice template to API
+   */
+  async saveRecurringTemplate(template: Partial<RecurringInvoiceTemplate>): Promise<RecurringInvoiceTemplate> {
+    const templateWithId = {
+      ...template,
+      id: template.id || `recurring_template_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+    logger.logCategory('sync', `💾 Syncing recurring template (POST upsert): ${templateWithId.id}`);
+    return await this.recurringInvoiceTemplatesRepo.create(templateWithId);
+  }
+
+  /**
+   * Delete recurring invoice template from API
+   */
+  async deleteRecurringTemplate(id: string): Promise<void> {
+    return this.recurringInvoiceTemplatesRepo.delete(id);
   }
 
   /**

@@ -205,6 +205,8 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
                 active: true,
                 agreementId: invoice.agreementId,
                 invoiceType: invoice.invoiceType,
+                autoGenerate: true,
+                frequency: 'Monthly',
             };
             dispatch({ type: 'ADD_RECURRING_TEMPLATE', payload: newTemplate });
             showToast('Memorized for recurring.', 'success');

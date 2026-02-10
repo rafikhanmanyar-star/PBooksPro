@@ -88,11 +88,12 @@ const BrokerFeeReport: React.FC = () => {
                 const date = new Date(ra.startDate);
                 if (date >= start && date <= end) {
                     const property = state.properties.find(p => p.id === ra.propertyId);
+                    const feeAmount = typeof ra.brokerFee === 'string' ? parseFloat(ra.brokerFee as any) : Number(ra.brokerFee);
                     items.push({
                         date: ra.startDate,
                         brokerId: ra.brokerId,
                         particulars: `Fee for ${property?.name || 'Unit'} (Agr #${ra.agreementNumber})`,
-                        fee: ra.brokerFee || 0,
+                        fee: isNaN(feeAmount) ? 0 : feeAmount,
                         paid: 0
                     });
                 }

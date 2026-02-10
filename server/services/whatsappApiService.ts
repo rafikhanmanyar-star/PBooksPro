@@ -57,7 +57,7 @@ export interface MessageStatusResponse {
  */
 export class WhatsAppApiService {
   private db = getDatabaseService();
-  private readonly apiBaseUrl = 'https://graph.facebook.com';
+  private readonly apiBaseUrl = process.env.META_GRAPH_URL || 'https://graph.facebook.com';
   private readonly apiVersion = process.env.META_API_VERSION || 'v21.0';
 
   /**
@@ -959,11 +959,29 @@ export class WhatsAppApiService {
         return;
       }
 
+      // Check if auto-reply menu is enabled -- if so, mark message as read immediately
+      let isAutoReplyEnabled = false;
+      try {
+        const menuConfigRows = await this.db.query<{ value: any }>(
+          `SELECT value FROM app_settings WHERE tenant_id = $1 AND key = 'whatsapp_auto_menu'`,
+          [tenantId]
+        );
+        if (menuConfigRows.length > 0) {
+          const menuCfg = typeof menuConfigRows[0].value === 'string'
+            ? JSON.parse(menuConfigRows[0].value)
+            : menuConfigRows[0].value;
+          isAutoReplyEnabled = !!(menuCfg && menuCfg.enabled);
+        }
+      } catch (menuCheckErr) {
+        // Non-critical -- proceed without auto-reply flag
+      }
+
       console.log(`[WhatsApp API Service] [${messageId}] Saving message to database`, {
         dbMessageId,
         phoneNumber: phoneNumber.substring(0, 5) + '***',
         hasMedia: !!mediaUrl,
         mediaType: mediaType || null,
+        isAutoReplyEnabled,
       });
 
       try {
@@ -971,8 +989,8 @@ export class WhatsAppApiService {
           `INSERT INTO whatsapp_messages (
             id, tenant_id, contact_id, phone_number, message_id, wam_id,
             direction, status, message_text, media_url, media_type,
-            media_caption, timestamp
-          ) VALUES ($1, $2, $3, $4, $5, $6, 'incoming', 'received', $7, $8, $9, $10, $11)`,
+            media_caption, timestamp${isAutoReplyEnabled ? ', read_at' : ''}
+          ) VALUES ($1, $2, $3, $4, $5, $6, 'incoming', 'received', $7, $8, $9, $10, $11${isAutoReplyEnabled ? ', NOW()' : ''})`,
           [
             dbMessageId,
             tenantId,
@@ -1030,6 +1048,7 @@ export class WhatsAppApiService {
         mediaUrl,
         mediaType,
         timestamp,
+        autoReplied: isAutoReplyEnabled,
       });
 
       console.log(`[WhatsApp API Service] [${messageId}] WebSocket event emitted`, {
@@ -1037,6 +1056,13 @@ export class WhatsAppApiService {
         event: WS_EVENTS.WHATSAPP_MESSAGE_RECEIVED,
         timestamp: new Date().toISOString(),
       });
+
+      // Handle auto-reply menu -- await to ensure session is created before returning
+      try {
+        await this.handleAutoReplyMenu(tenantId, phoneNumber, messageText, contactId);
+      } catch (autoReplyErr: any) {
+        console.error(`[WhatsApp API Service] [${messageId}] Auto-reply menu error (non-blocking):`, autoReplyErr.message);
+      }
     } catch (error: any) {
       const duration = Date.now() - startTime;
       console.error(`[WhatsApp API Service] [${messageId}] ❌❌❌ ERROR PROCESSING INCOMING MESSAGE ❌❌❌`, {
@@ -1283,6 +1309,60 @@ export class WhatsAppApiService {
   }
 
   /**
+   * Get unread conversations grouped by phone number
+   * Returns latest unread message per phone number with count
+   */
+  async getUnreadConversations(tenantId: string): Promise<{
+    phoneNumber: string;
+    contactId: string | null;
+    contactName: string | null;
+    unreadCount: number;
+    lastMessage: string;
+    lastTimestamp: string;
+  }[]> {
+    try {
+      const result = await this.db.query<{
+        phone_number: string;
+        contact_id: string | null;
+        contact_name: string | null;
+        unread_count: string;
+        last_message: string;
+        last_timestamp: string;
+      }>(
+        `SELECT
+           m.phone_number,
+           m.contact_id,
+           c.name as contact_name,
+           COUNT(*) as unread_count,
+           (SELECT message_text FROM whatsapp_messages m2
+            WHERE m2.phone_number = m.phone_number AND m2.tenant_id = $1
+              AND m2.direction = 'incoming' AND m2.read_at IS NULL
+            ORDER BY m2.timestamp DESC LIMIT 1) as last_message,
+           MAX(m.timestamp) as last_timestamp
+         FROM whatsapp_messages m
+         LEFT JOIN contacts c ON c.id = m.contact_id AND c.tenant_id = $1
+         WHERE m.tenant_id = $1 AND m.direction = 'incoming' AND m.read_at IS NULL
+         GROUP BY m.phone_number, m.contact_id, c.name
+         ORDER BY MAX(m.timestamp) DESC
+         LIMIT 50`,
+        [tenantId]
+      );
+
+      return result.map(row => ({
+        phoneNumber: row.phone_number,
+        contactId: row.contact_id || null,
+        contactName: row.contact_name || null,
+        unreadCount: parseInt(row.unread_count || '0', 10),
+        lastMessage: row.last_message || 'New message',
+        lastTimestamp: row.last_timestamp,
+      }));
+    } catch (error) {
+      console.error('Error getting unread conversations:', error);
+      return [];
+    }
+  }
+
+  /**
    * Mark message as read
    */
   async markAsRead(tenantId: string, messageId: string): Promise<void> {
@@ -1439,6 +1519,204 @@ export class WhatsAppApiService {
       });
 
       return { ok: false, error: apiErrorMessage || 'Connection failed' };
+    }
+  }
+
+  // ================================================================
+  // WhatsApp Auto-Reply Menu
+  // ================================================================
+
+  /**
+   * Format a numbered menu into a text message string.
+   * E.g.:
+   *   Welcome! Please select an option:
+   *
+   *   1. Our Services
+   *   2. Support
+   */
+  private formatMenuText(headerMessage: string, items: Array<{ number: string; label: string }>): string {
+    let text = headerMessage + '\n';
+    for (const item of items) {
+      text += `\n${item.number}. ${item.label}`;
+    }
+    return text;
+  }
+
+  /**
+   * Handle auto-reply menu logic after receiving an incoming message.
+   * - Loads menu config from app_settings
+   * - Checks / creates / updates conversation session
+   * - Sends the appropriate reply via sendTextMessage()
+   */
+  private async handleAutoReplyMenu(
+    tenantId: string,
+    phoneNumber: string,
+    messageText: string,
+    contactId: string | null
+  ): Promise<void> {
+    const logId = `auto_menu_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
+    try {
+      // 1. Load menu config from app_settings
+      const configRows = await this.db.query<{ value: any }>(
+        `SELECT value FROM app_settings WHERE tenant_id = $1 AND key = 'whatsapp_auto_menu'`,
+        [tenantId]
+      );
+
+      if (configRows.length === 0) {
+        return; // No menu configured
+      }
+
+      const menuConfig = typeof configRows[0].value === 'string'
+        ? JSON.parse(configRows[0].value)
+        : configRows[0].value;
+
+      if (!menuConfig || !menuConfig.enabled) {
+        return; // Menu disabled
+      }
+
+      const timeoutMinutes = menuConfig.sessionTimeoutMinutes || 30;
+      const userInput = messageText.trim();
+      const menuItems: Array<{ id: string; number: string; label: string; type: string; replyText: string | null; subMenu: any }> = menuConfig.menuItems || [];
+
+      console.log(`[WhatsApp Auto-Reply] [${logId}] Processing incoming message`, {
+        tenantId,
+        phoneNumber: phoneNumber.substring(0, 5) + '***',
+        userInput,
+        menuItemCount: menuItems.length,
+        timeoutMinutes,
+      });
+
+      // 2. Load existing ACTIVE session (expiry check done in SQL to avoid timezone issues)
+      const sessionRows = await this.db.query<{
+        id: string;
+        current_menu_path: string;
+      }>(
+        `SELECT id, current_menu_path FROM whatsapp_menu_sessions
+         WHERE tenant_id = $1 AND phone_number = $2
+         AND last_interaction_at >= NOW() - CAST($3 || ' minutes' AS INTERVAL)`,
+        [tenantId, phoneNumber, String(timeoutMinutes)]
+      );
+
+      const session = sessionRows.length > 0 ? sessionRows[0] : null;
+
+      console.log(`[WhatsApp Auto-Reply] [${logId}] Session lookup`, {
+        found: !!session,
+        currentMenuPath: session?.current_menu_path || null,
+        phoneNumber: phoneNumber.substring(0, 5) + '***',
+      });
+
+      // 3. Determine what to send
+      let replyText: string | null = null;
+      let newMenuPath: string | null = null; // null = delete session, string = upsert
+
+      if (!session) {
+        // No active session -- send main menu
+        console.log(`[WhatsApp Auto-Reply] [${logId}] No active session, sending main menu`);
+        replyText = this.formatMenuText(menuConfig.welcomeMessage, menuItems);
+        newMenuPath = 'root';
+      } else if (session.current_menu_path === 'root') {
+        // User is at root menu -- match input against menu item numbers
+        const matched = menuItems.find((item: any) => String(item.number).trim() === userInput);
+
+        console.log(`[WhatsApp Auto-Reply] [${logId}] Root menu matching`, {
+          userInput,
+          availableNumbers: menuItems.map(i => i.number),
+          matched: matched ? { number: matched.number, label: matched.label, type: matched.type } : null,
+        });
+
+        if (!matched) {
+          replyText = menuConfig.invalidOptionMessage || 'Invalid option. Please reply with a valid number.';
+          newMenuPath = 'root'; // stay at root
+        } else if (matched.type === 'reply') {
+          replyText = matched.replyText || 'Thank you!';
+          newMenuPath = null; // conversation done, clear session
+        } else if (matched.type === 'submenu' && matched.subMenu) {
+          replyText = this.formatMenuText(
+            matched.subMenu.message || `${matched.label}:`,
+            matched.subMenu.items || []
+          );
+          newMenuPath = matched.id; // track which submenu we're in
+        } else {
+          replyText = menuConfig.invalidOptionMessage || 'Invalid option. Please reply with a valid number.';
+          newMenuPath = 'root';
+        }
+      } else {
+        // User is inside a sub-menu -- find the parent item
+        const parentItem = menuItems.find((item: any) => item.id === session.current_menu_path);
+
+        console.log(`[WhatsApp Auto-Reply] [${logId}] Sub-menu matching`, {
+          currentMenuPath: session.current_menu_path,
+          parentFound: !!parentItem,
+          userInput,
+        });
+
+        if (!parentItem || !parentItem.subMenu) {
+          // Invalid state, reset to main menu
+          replyText = this.formatMenuText(menuConfig.welcomeMessage, menuItems);
+          newMenuPath = 'root';
+        } else {
+          const subItems: Array<{ id: string; number: string; label: string; type: string; replyText: string | null }> = parentItem.subMenu.items || [];
+          const matched = subItems.find((si: any) => String(si.number).trim() === userInput);
+          if (!matched) {
+            replyText = menuConfig.invalidOptionMessage || 'Invalid option. Please reply with a valid number.';
+            newMenuPath = session.current_menu_path; // stay in submenu
+          } else if (matched.type === 'back') {
+            // Go back to main menu
+            replyText = this.formatMenuText(menuConfig.welcomeMessage, menuItems);
+            newMenuPath = 'root';
+          } else if (matched.type === 'reply') {
+            replyText = matched.replyText || 'Thank you!';
+            newMenuPath = null; // conversation done
+          } else {
+            replyText = menuConfig.invalidOptionMessage || 'Invalid option. Please reply with a valid number.';
+            newMenuPath = session.current_menu_path;
+          }
+        }
+      }
+
+      console.log(`[WhatsApp Auto-Reply] [${logId}] Decision`, {
+        action: newMenuPath === null ? 'END_CONVERSATION' : newMenuPath === 'root' ? 'MAIN_MENU' : 'SUB_MENU',
+        newMenuPath,
+        replyLength: replyText?.length || 0,
+        replyPreview: replyText ? replyText.substring(0, 80) : null,
+      });
+
+      // 4. Update / create / delete session FIRST (before sending reply)
+      if (newMenuPath !== null) {
+        // Upsert session
+        const sessionId = session?.id || `session_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+        await this.db.query(
+          `INSERT INTO whatsapp_menu_sessions (id, tenant_id, phone_number, current_menu_path, last_interaction_at, created_at)
+           VALUES ($1, $2, $3, $4, NOW(), NOW())
+           ON CONFLICT (tenant_id, phone_number)
+           DO UPDATE SET current_menu_path = EXCLUDED.current_menu_path, last_interaction_at = NOW()`,
+          [sessionId, tenantId, phoneNumber, newMenuPath]
+        );
+        console.log(`[WhatsApp Auto-Reply] [${logId}] Session upserted`, { newMenuPath });
+      } else if (session) {
+        // Delete session (conversation complete)
+        await this.db.query(
+          `DELETE FROM whatsapp_menu_sessions WHERE tenant_id = $1 AND phone_number = $2`,
+          [tenantId, phoneNumber]
+        );
+        console.log(`[WhatsApp Auto-Reply] [${logId}] Session deleted (conversation complete)`);
+      }
+
+      // 5. Send the reply
+      if (replyText) {
+        await this.sendTextMessage(tenantId, phoneNumber, replyText, contactId || undefined);
+        console.log(`[WhatsApp Auto-Reply] [${logId}] Reply sent successfully`);
+      }
+    } catch (error: any) {
+      console.error(`[WhatsApp Auto-Reply] [${logId}] Error in auto-reply menu`, {
+        error: error.message,
+        errorStack: error.stack?.substring(0, 500),
+        tenantId,
+        phoneNumber: phoneNumber.substring(0, 5) + '***',
+        messageText: messageText.substring(0, 50),
+      });
+      // Don't re-throw -- auto-reply errors should not break incoming message processing
     }
   }
 }

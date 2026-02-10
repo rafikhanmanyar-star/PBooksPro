@@ -110,8 +110,19 @@ const OwnerPayoutsReport: React.FC = () => {
 
         const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
         const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
+        const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
 
         if (!rentalIncomeCategory) return [];
+
+        // Build set of broker fee transaction IDs to exclude from expenses (avoid double-counting with agreement fees)
+        const brokerFeeTxIds = new Set<string>();
+        if (brokerFeeCategory) {
+            state.transactions.forEach(tx => {
+                if (tx.type === TransactionType.EXPENSE && tx.categoryId === brokerFeeCategory.id) {
+                    brokerFeeTxIds.add(tx.id);
+                }
+            });
+        }
 
         const items: any[] = [];
 
@@ -161,12 +172,15 @@ const OwnerPayoutsReport: React.FC = () => {
                 }
             });
 
-        // 2. Expenses (Payouts, Fees, Repairs, General Property Expenses)
+        // 2. Expenses (Payouts, Repairs, General Property Expenses — excludes broker fee payments)
         state.transactions
             .filter(tx => tx.type === TransactionType.EXPENSE)
             .forEach(tx => {
                 const date = new Date(tx.date);
                 if (date >= start && date <= end) {
+                    // Skip broker fee payment transactions (broker fees are shown from agreements below)
+                    if (brokerFeeTxIds.has(tx.id)) return;
+
                     let isRelevant = false;
                     let ownerId = tx.contactId;
                     let propertyId = tx.propertyId;
@@ -219,13 +233,47 @@ const OwnerPayoutsReport: React.FC = () => {
                             propertyName: propertyName,
                             particulars: tx.description || 'Expense/Payout',
                             rentIn: 0,
-                            paidOut: tx.amount,
+                            paidOut: typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount),
                             entityType: 'transaction' as const,
                             entityId: tx.id
                         });
                     }
                 }
             });
+
+        // 3. Broker Fee Deductions from Rental Agreements (same approach as BrokerFeeReport)
+        // This ensures broker fees always show as explicit deductions from owner income
+        state.rentalAgreements.forEach(ra => {
+            if (!ra.brokerId || !ra.brokerFee || ra.brokerFee <= 0) return;
+            if (!ra.propertyId) return;
+
+            const raDate = new Date(ra.startDate);
+            if (raDate < start || raDate > end) return;
+
+            const property = state.properties.find(p => p.id === ra.propertyId);
+            if (!property) return;
+
+            const ownerId = property.ownerId;
+            const ownerContact = state.contacts.find(c => c.id === ownerId);
+            const buildingId = property.buildingId;
+
+            // Apply Filters
+            if (selectedOwnerId !== 'all' && ownerId !== selectedOwnerId) return;
+            if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
+
+            const brokerFeeAmount = typeof ra.brokerFee === 'string' ? parseFloat(ra.brokerFee) : Number(ra.brokerFee);
+            items.push({
+                id: `broker-fee-${ra.id}`,
+                date: ra.startDate,
+                ownerName: ownerContact?.name || 'Unknown',
+                propertyName: property.name,
+                particulars: `Broker Fee: ${property.name} (Agr #${ra.agreementNumber})`,
+                rentIn: 0,
+                paidOut: isNaN(brokerFeeAmount) ? 0 : brokerFeeAmount,
+                entityType: 'transaction' as const,
+                entityId: ra.id
+            });
+        });
 
         // Default Sort
         items.sort((a, b) => {

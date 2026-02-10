@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mock WhatsApp</title>
+  <style>
+    :root {
+      --wa-green: #00a884;
+      --wa-green-dk: #008f72;
+      --wa-teal: #25d366;
+      --wa-bg: #efeae2;
+      --wa-panel: #fff;
+      --wa-bubble-me: #d9fdd3;
+      --wa-bubble-them: #fff;
+      --wa-sidebar: #f0f2f5;
+      --wa-text: #111b21;
+      --wa-muted: #667781;
+      --wa-border: #e9edef;
+      --wa-shadow: rgba(11,20,26,0.08);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI',system-ui,-apple-system,sans-serif; background: #ddd; height: 100vh; overflow: hidden; }
+    .topbar { height: 128px; background: var(--wa-teal); }
+    .shell { position: absolute; top: 20px; left: 0; right: 0; bottom: 0; max-width: 1400px; margin: 0 auto; display: flex; box-shadow: 0 6px 18px rgba(0,0,0,.12); }
+
+    /* ===== SIDEBAR ===== */
+    .sb { width: 400px; min-width: 300px; background: var(--wa-panel); display: flex; flex-direction: column; border-right: 1px solid var(--wa-border); }
+    .sb-head { height: 60px; padding: 0 16px; background: var(--wa-sidebar); display: flex; align-items: center; gap: 10px; }
+    .sb-av { width: 40px; height: 40px; border-radius: 50%; background: var(--wa-teal); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; flex-shrink: 0; }
+    .sb-info { flex: 1; min-width: 0; }
+    .sb-title { font-size: 15px; font-weight: 600; }
+    .sb-num { font-size: 12px; color: var(--wa-muted); }
+    .sb-btn { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border: none; border-radius: 6px; background: var(--wa-green); color: #fff; font-size: 13px; font-weight: 500; cursor: pointer; text-decoration: none; }
+    .sb-btn:hover { background: var(--wa-green-dk); color: #fff; }
+    .sb-new { padding: 8px 12px; border-bottom: 1px solid var(--wa-border); display: flex; gap: 8px; align-items: center; }
+    .sb-new input { flex: 1; border: none; padding: 8px 12px; border-radius: 8px; background: var(--wa-sidebar); font-size: 14px; outline: none; }
+    .sb-new input::placeholder { color: var(--wa-muted); }
+    .sb-list { flex: 1; overflow-y: auto; }
+    .ci { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; border-bottom: 1px solid var(--wa-border); }
+    .ci:hover { background: var(--wa-sidebar); }
+    .ci.on { background: var(--wa-border); }
+    .ci-av { width: 50px; height: 50px; border-radius: 50%; background: #dfe5e7; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; }
+    .ci-av svg { width: 50px; height: 50px; }
+    .ci-body { flex: 1; min-width: 0; }
+    .ci-name { font-size: 16px; font-weight: 500; }
+    .ci-last { font-size: 14px; color: var(--wa-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ci-time { font-size: 12px; color: var(--wa-muted); flex-shrink: 0; }
+    .sb-empty { padding: 40px 16px; text-align: center; color: var(--wa-muted); font-size: 14px; line-height: 1.6; }
+
+    /* ===== CHAT AREA ===== */
+    .chat { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--wa-bg); background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23d1d7db' fill-opacity='.12'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/svg%3E"); }
+    .chat-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--wa-muted); text-align: center; padding: 40px; }
+    .chat-empty h2 { font-size: 28px; font-weight: 300; color: var(--wa-text); margin-bottom: 12px; }
+    .chat-empty p { max-width: 420px; font-size: 14px; line-height: 1.6; }
+
+    .chat-on { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    .ch-head { height: 60px; padding: 0 20px; background: var(--wa-sidebar); border-bottom: 1px solid var(--wa-border); display: flex; align-items: center; gap: 14px; }
+    .ch-av { width: 40px; height: 40px; border-radius: 50%; background: #dfe5e7; color: var(--wa-muted); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600; }
+    .ch-name { font-size: 16px; font-weight: 600; }
+    .ch-sub { font-size: 12px; color: var(--wa-muted); }
+    .ch-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-left: 6px; }
+    .ch-badge.you { background: var(--wa-teal); color: #fff; }
+    .ch-badge.biz { background: #e3f2fd; color: #1976d2; }
+
+    .msgs { flex: 1; overflow-y: auto; padding: 16px 60px; display: flex; flex-direction: column; gap: 3px; }
+    .bub { max-width: 60%; padding: 6px 10px 2px; border-radius: 8px; font-size: 14.5px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; box-shadow: 0 1px .5px var(--wa-shadow); }
+    .bub.me { align-self: flex-end; background: var(--wa-bubble-me); border-top-right-radius: 0; }
+    .bub.them { align-self: flex-start; background: var(--wa-bubble-them); border-top-left-radius: 0; }
+    .bub .bt { font-size: 11px; color: var(--wa-muted); text-align: right; margin-top: 2px; padding-bottom: 2px; }
+    .bub .blabel { font-size: 11px; font-weight: 600; margin-bottom: 2px; }
+    .bub.me .blabel { color: var(--wa-green-dk); }
+    .bub.them .blabel { color: #1976d2; }
+
+    .ibar { padding: 10px 20px 20px; background: var(--wa-sidebar); display: flex; gap: 10px; align-items: flex-end; }
+    .ibar textarea { flex: 1; min-height: 42px; max-height: 120px; padding: 10px 14px; border: none; border-radius: 8px; background: #fff; font-size: 15px; font-family: inherit; resize: none; line-height: 1.4; outline: none; }
+    .ibar textarea::placeholder { color: var(--wa-muted); }
+    .ibar-label { font-size: 12px; color: var(--wa-muted); padding: 0 0 6px 4px; }
+    .sendbtn { width: 48px; height: 48px; border: none; border-radius: 50%; background: var(--wa-teal); color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+    .sendbtn:hover { background: var(--wa-green); }
+
+    .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); padding: 10px 20px; border-radius: 8px; background: #333; color: #fff; font-size: 14px; z-index: 9999; opacity: 0; transition: all .25s; pointer-events: none; }
+    .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+    .toast.err { background: #d32f2f; }
+  </style>
+</head>
+<body>
+  <div class="topbar"></div>
+  <div class="shell">
+    <!-- SIDEBAR -->
+    <aside class="sb">
+      <div class="sb-head">
+        <div class="sb-av">B</div>
+        <div class="sb-info">
+          <div class="sb-title">Business number</div>
+          <div class="sb-num" id="bizNum">Loading...</div>
+        </div>
+        <a href="/config" class="sb-btn">Config</a>
+      </div>
+      <div class="sb-new">
+        <input type="text" id="phoneIn" placeholder="Customer phone (e.g. 923001234567)" />
+        <button type="button" class="sb-btn" id="newBtn">New chat</button>
+      </div>
+      <div class="sb-list" id="list">
+        <div class="sb-empty">No conversations yet.<br>Enter a customer phone number above and click <b>New chat</b>.</div>
+      </div>
+    </aside>
+
+    <!-- CHAT -->
+    <main class="chat">
+      <div class="chat-empty" id="empty">
+        <h2>Mock WhatsApp</h2>
+        <p>You are the <b>business</b> (one number). Customers message you from different numbers. Enter a customer phone and click <b>New chat</b> to simulate a conversation.</p>
+        <p style="margin-top:12px">When you type a message, it simulates that customer sending to the main app. When the main app replies, it appears as the business reply.</p>
+      </div>
+      <div class="chat-on" id="chatOn" style="display:none">
+        <div class="ch-head">
+          <div class="ch-av" id="chAv">C</div>
+          <div style="flex:1">
+            <div><span class="ch-name" id="chName">Customer</span></div>
+            <div class="ch-sub" id="chSub">Sending as this customer to the business</div>
+          </div>
+        </div>
+        <div class="msgs" id="msgs"></div>
+        <div class="ibar">
+          <div style="flex:1">
+            <div class="ibar-label" id="ibarLabel">Sending as +customer...</div>
+            <textarea id="msgIn" placeholder="Type a message as this customer..." rows="1"></textarea>
+          </div>
+          <button type="button" class="sendbtn" id="sendBtn">&#10148;</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    var BASE = location.origin;
+    var cfg = {};
+    var msgs = [];
+    var curPhone = null; // current customer phone
+    var timer = null;
+    var AVATAR_SVG = '<svg viewBox="0 0 212 212" width="50" height="50"><path fill="#DFE5E7" d="M106.251.5C164.653.5 212 47.846 212 106.25S164.653 212 106.25 212C47.846 212 .5 164.654.5 106.25S47.846.5 106.251.5z"/><path fill="#FFF" d="M173.561 171.615a62.8 62.8 0 00-2.065-2.955 67.7 67.7 0 00-17.907-18.127 57 57 0 00-5.898-3.49 59.5 59.5 0 00-11.537-4.47c7.008-5.86 11.467-14.588 11.467-24.349 0-17.67-14.32-31.99-31.99-31.99s-31.99 14.32-31.99 31.99c0 9.761 4.459 18.489 11.467 24.35a59.5 59.5 0 00-11.537 4.469 57 57 0 00-5.898 3.49 67.7 67.7 0 00-17.907 18.128 62.8 62.8 0 00-2.065 2.955A56.4 56.4 0 0146.6 169.15c8.38-12.735 19.694-23.096 33.18-30.066-5.5-5.501-8.912-13.1-8.912-21.468 0-16.782 13.616-30.398 30.398-30.398s30.398 13.616 30.398 30.398c0 8.368-3.412 15.967-8.912 21.468 13.486 6.97 24.8 17.33 33.18 30.066a56.4 56.4 0 01-1.678 2.462z"/></svg>';
+
+    function norm(v) { return String(v||'').replace(/\D/g,''); }
+    function esc(s) { var d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+    function bizNum() { return norm(cfg.displayPhoneNumber)||'15550000000'; }
+
+    function toast(t,err) {
+      var e=document.getElementById('toast');
+      if(!e) return;
+      e.textContent=t;
+      e.className='toast show'+(err?' err':'');
+      clearTimeout(e._t);
+      e._t=setTimeout(function(){e.className='toast';},3000);
+    }
+
+    function api(m,p,b) {
+      var o={method:m,headers:{'Content-Type':'application/json'}};
+      if(b) o.body=JSON.stringify(b);
+      return fetch(BASE+p,o).then(function(r){
+        return r.json().then(function(d){
+          if(!r.ok) throw new Error(d.error||d.message||r.statusText);
+          return d;
+        });
+      });
+    }
+
+    // -- Data helpers --
+    function customers() {
+      var me=bizNum(), s={};
+      msgs.forEach(function(m){
+        var f=norm(m.from),t=norm(m.to);
+        if(f&&f!==me) s[f]=1;
+        if(t&&t!==me) s[t]=1;
+      });
+      return Object.keys(s);
+    }
+
+    function convo(phone) {
+      var me=bizNum(), c=norm(phone);
+      return msgs.filter(function(m){
+        var f=norm(m.from),t=norm(m.to);
+        return (f===c&&t===me)||(f===me&&t===c);
+      }).sort(function(a,b){ return new Date(a.timestamp)-new Date(b.timestamp); });
+    }
+
+    function last(phone) { var l=convo(phone); return l.length?l[l.length-1]:null; }
+
+    function fmtTime(ts) {
+      var d=new Date(ts),n=new Date();
+      if(d.toDateString()===n.toDateString()) return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      return d.toLocaleDateString([],{month:'short',day:'numeric'});
+    }
+
+    // -- Render sidebar --
+    function renderList() {
+      var cl=customers();
+      if(curPhone&&cl.indexOf(curPhone)===-1) cl.unshift(curPhone);
+      var el=document.getElementById('list');
+      if(!cl.length){ el.innerHTML='<div class="sb-empty">No conversations yet.<br>Enter a customer phone number above and click <b>New chat</b>.</div>'; return; }
+      var h='';
+      cl.forEach(function(ph){
+        var lm=last(ph);
+        var prev=lm?((lm.direction==='out'?'Business: ':'')+((lm.text||'').substring(0,40))):'No messages yet';
+        var tm=lm?fmtTime(lm.timestamp):'';
+        var act=curPhone===ph?' on':'';
+        h+='<div class="ci'+act+'" data-ph="'+ph+'">'
+          +'<div class="ci-av">'+AVATAR_SVG+'</div>'
+          +'<div class="ci-body"><div class="ci-name">+'+ph+'</div><div class="ci-last">'+esc(prev)+'</div></div>'
+          +'<div class="ci-time">'+esc(tm)+'</div>'
+          +'</div>';
+      });
+      el.innerHTML=h;
+      el.querySelectorAll('.ci').forEach(function(n){
+        n.onclick=function(){ openChat(n.getAttribute('data-ph')); };
+      });
+    }
+
+    // -- Render messages --
+    function renderMsgs() {
+      if(!curPhone) return;
+      var list=convo(curPhone);
+      var el=document.getElementById('msgs');
+      if(!list.length){
+        el.innerHTML='<div style="text-align:center;color:var(--wa-muted);padding:40px;font-size:14px;">No messages yet. Type below to send as +'+curPhone+' to the business.</div>';
+        return;
+      }
+      var me=bizNum(), h='';
+      list.forEach(function(m){
+        // direction 'in' = customer sent (I typed) → MY bubble (right, green)
+        // direction 'out' = business replied (main app sent) → THEIR bubble (left, white)
+        var isMe = m.direction==='in';
+        var cls = isMe ? 'me' : 'them';
+        var label = isMe ? '+'+norm(m.from) : 'Business (+'+me+')';
+        var t=new Date(m.timestamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+        h+='<div class="bub '+cls+'">'
+          +'<div class="blabel">'+esc(label)+'</div>'
+          +esc(m.text||'')
+          +'<div class="bt">'+esc(t)+'</div></div>';
+      });
+      el.innerHTML=h;
+      el.scrollTop=el.scrollHeight;
+    }
+
+    // -- Open a chat --
+    function openChat(phone) {
+      var p=norm(phone);
+      if(!p) return;
+      curPhone=p;
+      document.getElementById('empty').style.display='none';
+      document.getElementById('chatOn').style.display='flex';
+      document.getElementById('chName').textContent='+'+p;
+      document.getElementById('chAv').textContent=p.charAt(p.length-1);
+      document.getElementById('chSub').textContent='You are typing as +'+p+' → Business (+'+bizNum()+')';
+      document.getElementById('ibarLabel').textContent='Sending as +'+p+' to Business (+'+bizNum()+')';
+      document.getElementById('msgIn').placeholder='Type as +'+p+'...';
+      renderMsgs();
+      renderList();
+      var inp=document.getElementById('msgIn');
+      if(inp) inp.focus();
+    }
+
+    // -- Actions --
+    function doNew() {
+      var inp=document.getElementById('phoneIn');
+      var ph=norm(inp?inp.value:'');
+      if(!ph||ph.length<4){ toast('Enter a valid customer phone number',true); return; }
+      if(ph===bizNum()){ toast('That is the business number! Enter a different customer number.',true); return; }
+      inp.value='';
+      openChat(ph);
+      toast('Chat opened as +'+ph);
+    }
+
+    function doSend() {
+      var inp=document.getElementById('msgIn');
+      var txt=inp?inp.value.trim():'';
+      if(!txt||!curPhone) return;
+      inp.value='';
+      api('POST','/mock/simulate/incoming',{from:curPhone,text:txt})
+        .then(function(){ toast('Sent to main app as +'+curPhone); return loadMsgs(); })
+        .then(function(){ renderMsgs(); })
+        .catch(function(e){ toast(e.message||'Send failed',true); });
+    }
+
+    function loadCfg() {
+      return api('GET','/mock/config').then(function(c){
+        cfg=c;
+        var el=document.getElementById('bizNum');
+        if(el) el.textContent=c.displayPhoneNumber||c.phoneNumberId||'Not set';
+      }).catch(function(){
+        var el=document.getElementById('bizNum');
+        if(el) el.textContent='Error';
+      });
+    }
+
+    function loadMsgs() {
+      return api('GET','/mock/messages?limit=300').then(function(d){
+        msgs=d.messages||[];
+        renderList();
+        if(curPhone) renderMsgs();
+      }).catch(function(){ msgs=[]; });
+    }
+
+    // -- Init --
+    document.addEventListener('DOMContentLoaded',function(){
+      var nb=document.getElementById('newBtn');
+      if(nb) nb.onclick=doNew;
+      var pi=document.getElementById('phoneIn');
+      if(pi) pi.onkeydown=function(e){ if(e.key==='Enter'){e.preventDefault();doNew();} };
+      var sb=document.getElementById('sendBtn');
+      if(sb) sb.onclick=doSend;
+      var mi=document.getElementById('msgIn');
+      if(mi) mi.onkeydown=function(e){ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();doSend();} };
+
+      var params=new URLSearchParams(location.search);
+      var op=params.get('open');
+      if(op&&norm(op).length>0){ openChat(norm(op)); history.replaceState({},'','/'); }
+
+      loadCfg().then(function(){return loadMsgs();});
+      timer=setInterval(loadMsgs,3000);
+    });
+    document.addEventListener('visibilitychange',function(){
+      if(document.visibilityState==='visible') loadCfg().then(function(){return loadMsgs();});
+    });
+  </script>
+</body>
+</html>

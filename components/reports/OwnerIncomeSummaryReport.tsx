@@ -91,6 +91,16 @@ const OwnerIncomeSummaryReport: React.FC = () => {
 
         if (!rentalIncomeCategory) return [];
 
+        // Build a set of broker fee transaction IDs for quick lookup (to exclude from expenses)
+        const brokerFeeTxIds = new Set<string>();
+        if (brokerFeeCategory) {
+            state.transactions.forEach(tx => {
+                if (tx.type === TransactionType.EXPENSE && tx.categoryId === brokerFeeCategory.id) {
+                    brokerFeeTxIds.add(tx.id);
+                }
+            });
+        }
+
         // 1. Filter owners
         const filteredOwners = state.contacts.filter(c =>
             (c.type === ContactType.OWNER || c.type === ContactType.CLIENT) &&
@@ -117,6 +127,19 @@ const OwnerIncomeSummaryReport: React.FC = () => {
 
             let generalPayouts = 0;
 
+            // Derive broker fees from rental agreements (same approach as BrokerFeeReport)
+            // This is the most reliable source - shows fee accrued per property from agreements
+            state.rentalAgreements.forEach(ra => {
+                if (!ra.brokerId || !(ra.brokerFee) || ra.brokerFee <= 0) return;
+                if (!ra.propertyId || !unitData[ra.propertyId]) return;
+
+                const raDate = new Date(ra.startDate);
+                if (raDate < start || raDate > end) return;
+
+                const fee = typeof ra.brokerFee === 'string' ? parseFloat(ra.brokerFee) : Number(ra.brokerFee);
+                if (!isNaN(fee)) unitData[ra.propertyId].brokerFee += fee;
+            });
+
             // Process transactions for this owner
             state.transactions.forEach(tx => {
                 const txDate = new Date(tx.date);
@@ -140,14 +163,12 @@ const OwnerIncomeSummaryReport: React.FC = () => {
                     // Exclude Security/Tenant items (same as OwnerPayoutsPage)
                     if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) return;
 
+                    // Skip broker fee payment transactions (broker fee is derived from agreements above)
+                    if (brokerFeeTxIds.has(tx.id)) return;
+
                     // A. Property-linked Expense
                     if (tx.propertyId && unitData[tx.propertyId]) {
-                        // Separate broker fees from other expenses
-                        if (brokerFeeCategory && tx.categoryId === brokerFeeCategory.id) {
-                            unitData[tx.propertyId].brokerFee += amount;
-                        } else {
-                            unitData[tx.propertyId].expenses += amount;
-                        }
+                        unitData[tx.propertyId].expenses += amount;
                     }
                     // B. Direct Owner Payout or General Expense
                     else if (tx.contactId === owner.id) {

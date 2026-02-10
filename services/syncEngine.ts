@@ -297,6 +297,9 @@ class SyncEngine {
       case 'vendor':
         await this.syncVendor(item);
         break;
+      case 'recurring_invoice_template':
+        await this.syncRecurringTemplate(item);
+        break;
       case 'user':
       case 'users':
         // Users are handled by the validation check above
@@ -583,6 +586,20 @@ class SyncEngine {
         break;
       case 'delete':
         await this.apiService.deleteVendor(item.data.id);
+        break;
+    }
+  }
+
+  private async syncRecurringTemplate(item: SyncQueueItem): Promise<void> {
+    switch (item.action) {
+      case 'create':
+        await this.apiService.saveRecurringTemplate(item.data);
+        break;
+      case 'update':
+        await this.apiService.saveRecurringTemplate(item.data);
+        break;
+      case 'delete':
+        await this.apiService.deleteRecurringTemplate(item.data.id);
         break;
     }
   }

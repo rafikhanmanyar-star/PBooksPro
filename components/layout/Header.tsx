@@ -3,7 +3,7 @@ import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import SearchModal from './SearchModal';
 import HelpModal from './HelpModal';
-import { WhatsAppChatService, WhatsAppMessage, normalizePhoneForMatch } from '../../services/whatsappChatService';
+import { WhatsAppChatService, WhatsAppMessage, UnreadConversation, normalizePhoneForMatch } from '../../services/whatsappChatService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import ConnectionStatusIndicator from '../ui/ConnectionStatusIndicator';
 import SyncStatusIndicator from '../ui/SyncStatusIndicator';
@@ -44,7 +44,10 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     timestamp: string;
   }[]>([]);
   const { openChat } = useWhatsApp();
+  const [isWhatsappDropdownOpen, setIsWhatsappDropdownOpen] = useState(false);
+  const [unreadConversations, setUnreadConversations] = useState<UnreadConversation[]>([]);
   const notificationsRef = useRef<HTMLDivElement>(null);
+  const whatsappDropdownRef = useRef<HTMLDivElement>(null);
   const usersForNotifications = orgUsers.length > 0 ? orgUsers : state.users;
 
   type NotificationBadgeTone = 'blue' | 'green' | 'red' | 'orange' | 'slate';
@@ -315,25 +318,9 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       }
     }));
 
-    const whatsappItems: NotificationItem[] = (whatsappNotifications || []).map(item => ({
-      id: item.id,
-      title: item.contactName ? `WhatsApp from ${item.contactName}` : `WhatsApp from ${item.phoneNumber}`,
-      message: item.messageText,
-      time: item.timestamp,
-      badge: {
-        label: 'WhatsApp',
-        tone: 'green'
-      },
-      action: {
-        type: 'whatsapp',
-        phoneNumber: item.phoneNumber,
-        contactId: item.contactId,
-        contactName: item.contactName
-      }
-    }));
-
     // Filter out dismissed notifications - ensure they never reappear
-    const activeNotifications = [...items, ...bizPlanetItems, ...whatsappItems].filter(item => {
+    // Note: WhatsApp notifications are excluded from bell icon - they use the dedicated WhatsApp icon
+    const activeNotifications = [...items, ...bizPlanetItems].filter(item => {
       const isDismissed = dismissedNotifications.has(item.id);
       if (isDismissed) {
         console.log('[NOTIFICATIONS] Filtering out dismissed notification:', item.id);
@@ -351,7 +338,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     });
 
     return activeNotifications.sort((a, b) => b.time.localeCompare(a.time));
-  }, [state.currentUser, state.installmentPlans, state.contacts, state.projects, state.units, usersForNotifications, dismissedNotifications, bizPlanetNotifications, whatsappNotifications]);
+  }, [state.currentUser, state.installmentPlans, state.contacts, state.projects, state.units, usersForNotifications, dismissedNotifications, bizPlanetNotifications]);
 
   const handleNotificationClick = useCallback((notification: NotificationItem) => {
     console.log('[NOTIFICATION CLICK] Opening notification:', notification.id);
@@ -399,15 +386,17 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (!isNotificationsOpen) return;
-      if (notificationsRef.current && !notificationsRef.current.contains(event.target as Node)) {
+      if (isNotificationsOpen && notificationsRef.current && !notificationsRef.current.contains(event.target as Node)) {
         setIsNotificationsOpen(false);
+      }
+      if (isWhatsappDropdownOpen && whatsappDropdownRef.current && !whatsappDropdownRef.current.contains(event.target as Node)) {
+        setIsWhatsappDropdownOpen(false);
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isNotificationsOpen]);
+  }, [isNotificationsOpen, isWhatsappDropdownOpen]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -439,48 +428,128 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   }, []);
 
   // Load WhatsApp unread count - only when authenticated
+  // Load WhatsApp unread data (count + conversations)
+  const loadWhatsAppUnreadData = useCallback(async () => {
+    try {
+      const [count, conversations] = await Promise.all([
+        WhatsAppChatService.getUnreadCount(),
+        WhatsAppChatService.getUnreadConversations(),
+      ]);
+      setWhatsappUnreadCount(count);
+      setUnreadConversations(conversations);
+    } catch (error) {
+      // Silently fail if WhatsApp is not configured
+      setWhatsappUnreadCount(0);
+      setUnreadConversations([]);
+    }
+  }, []);
+
   useEffect(() => {
     // Skip if not authenticated to prevent 401 errors
     if (!isAuthenticated) {
       setWhatsappUnreadCount(0);
+      setUnreadConversations([]);
       return;
     }
 
-    const loadUnreadCount = async () => {
-      try {
-        const count = await WhatsAppChatService.getUnreadCount();
-        setWhatsappUnreadCount(count);
-      } catch (error) {
-        // Silently fail if WhatsApp is not configured
-        setWhatsappUnreadCount(0);
-      }
-    };
-
-    loadUnreadCount();
+    loadWhatsAppUnreadData();
     // Refresh every 30 seconds
-    const interval = setInterval(loadUnreadCount, 30000);
+    const interval = setInterval(loadWhatsAppUnreadData, 30000);
 
     // Listen for real-time WhatsApp message events to update unread count immediately
     const wsClient = getWebSocketClient();
-    const handleWhatsAppMessageReceived = (data?: WhatsAppMessage) => {
-      // Refresh unread count when a new message is received
-      loadUnreadCount();
+    const handleWhatsAppMessageReceived = (data?: WhatsAppMessage & { autoReplied?: boolean }) => {
+      // If message was handled by auto-reply, skip notification and unread refresh
+      if (data?.autoReplied) return;
+      // Refresh unread data when a new message is received
+      loadWhatsAppUnreadData();
       addWhatsAppNotification(data);
     };
 
+    // Listen for messages being read (e.g. when chat panel opens) to refresh badge
+    const handleMessagesRead = () => {
+      loadWhatsAppUnreadData();
+    };
+
     wsClient.on('whatsapp:message:received', handleWhatsAppMessageReceived);
+    window.addEventListener('whatsapp:messages:read', handleMessagesRead);
 
     return () => {
       clearInterval(interval);
       wsClient.off('whatsapp:message:received', handleWhatsAppMessageReceived);
+      window.removeEventListener('whatsapp:messages:read', handleMessagesRead);
     };
-  }, [isAuthenticated, addWhatsAppNotification]);
+  }, [isAuthenticated, addWhatsAppNotification, loadWhatsAppUnreadData]);
+
+  // Merge real-time whatsapp notifications with pre-existing unread conversations
+  // Real-time notifications take priority (they have the freshest data)
+  const mergedWhatsappItems = useMemo(() => {
+    // Start with real-time notifications
+    const items: {
+      id: string;
+      phoneNumber: string;
+      contactId?: string;
+      contactName?: string;
+      messageText: string;
+      timestamp: string;
+      unreadCount?: number;
+      source: 'realtime' | 'db';
+    }[] = whatsappNotifications.map(n => ({
+      ...n,
+      source: 'realtime' as const,
+    }));
+
+    // Add unread conversations from DB that don't overlap with real-time notifications
+    const realtimePhones = new Set(
+      whatsappNotifications.map(n => normalizePhoneForMatch(n.phoneNumber)).filter(Boolean)
+    );
+
+    for (const conv of unreadConversations) {
+      const normPhone = normalizePhoneForMatch(conv.phoneNumber);
+      if (normPhone && !realtimePhones.has(normPhone)) {
+        items.push({
+          id: `unread-conv:${conv.phoneNumber}`,
+          phoneNumber: conv.phoneNumber,
+          contactId: conv.contactId || undefined,
+          contactName: conv.contactName || undefined,
+          messageText: conv.lastMessage,
+          timestamp: conv.lastTimestamp,
+          unreadCount: conv.unreadCount,
+          source: 'db',
+        });
+      }
+    }
+
+    // Sort by timestamp descending (newest first)
+    return items.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  }, [whatsappNotifications, unreadConversations]);
 
   const handleWhatsAppNotificationClick = useCallback(() => {
-    // Open chat window - if there are unread messages, we could show a list
-    // For now, just open the chat window (user can select contact)
-    openChat();
-  }, [openChat]);
+    if (mergedWhatsappItems.length > 0) {
+      // Toggle dropdown to show WhatsApp message notifications
+      setIsWhatsappDropdownOpen(prev => !prev);
+    } else {
+      // No unread messages - open chat directly
+      openChat();
+    }
+  }, [openChat, mergedWhatsappItems.length]);
+
+  const handleWhatsAppNotificationItemClick = useCallback((item: typeof mergedWhatsappItems[0]) => {
+    // Dismiss real-time notification if applicable
+    if (item.source === 'realtime') {
+      dismissNotification(item.id);
+    }
+    // Close dropdown
+    setIsWhatsappDropdownOpen(false);
+    // Open chat with the contact or phone number
+    const contact =
+      (item.contactId ? state.contacts.find(c => c.id === item.contactId) : null)
+      || findContactByPhone(item.phoneNumber)
+      || null;
+    setTimeout(() => {
+      openChat(contact, item.phoneNumber);
+    }, 0);
+  }, [dismissNotification, openChat, state.contacts, findContactByPhone]);
 
   // Format breadcrumbs based on current page
   const getBreadcrumbs = () => {
@@ -630,19 +699,82 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
               )}
             </div>
 
-            <button
-              onClick={handleWhatsAppNotificationClick}
-              className="p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors relative group min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
-              title={whatsappUnreadCount > 0 ? `${whatsappUnreadCount} unread WhatsApp messages` : 'WhatsApp Messages'}
-              aria-label="WhatsApp Messages"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"></path></svg>
-              {whatsappUnreadCount > 0 && (
-                <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1.5 bg-green-500 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center">
-                  {whatsappUnreadCount > 99 ? '99+' : whatsappUnreadCount}
-                </span>
+            <div className="relative" ref={whatsappDropdownRef}>
+              <button
+                onClick={handleWhatsAppNotificationClick}
+                className="p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-green-600 transition-colors relative group min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
+                title={whatsappUnreadCount > 0 ? `${whatsappUnreadCount} unread WhatsApp messages` : 'WhatsApp Messages'}
+                aria-label="WhatsApp Messages"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"></path></svg>
+                {whatsappUnreadCount > 0 && (
+                  <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1.5 bg-green-500 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center">
+                    {whatsappUnreadCount > 99 ? '99+' : whatsappUnreadCount}
+                  </span>
+                )}
+              </button>
+              {isWhatsappDropdownOpen && mergedWhatsappItems.length > 0 && (
+                <div className="absolute right-0 mt-2 w-96 max-w-[90vw] bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden z-40">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-green-50">
+                    <div className="flex items-center gap-2">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-green-600"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"></path></svg>
+                      <h3 className="text-sm font-bold text-green-800">WhatsApp Messages</h3>
+                      <span className="text-xs text-green-600">({whatsappUnreadCount})</span>
+                    </div>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto">
+                    {mergedWhatsappItems.map(item => (
+                      <div
+                        key={item.id}
+                        className="group relative hover:bg-green-50 border-b border-slate-100 last:border-b-0"
+                      >
+                        <button
+                          onClick={() => handleWhatsAppNotificationItemClick(item)}
+                          className="w-full text-left px-4 py-3"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="w-9 h-9 bg-green-500 rounded-full flex items-center justify-center text-white flex-shrink-0 mt-0.5">
+                              <span className="text-sm font-bold">
+                                {(item.contactName || item.phoneNumber).charAt(0).toUpperCase()}
+                              </span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm font-semibold text-slate-800 truncate">
+                                  {item.contactName || item.phoneNumber}
+                                </p>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  {formatNotificationTime(item.timestamp) && (
+                                    <span className="text-[11px] text-slate-400">{formatNotificationTime(item.timestamp)}</span>
+                                  )}
+                                  {item.unreadCount && item.unreadCount > 1 && (
+                                    <span className="min-w-[20px] h-[20px] px-1.5 bg-green-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                                      {item.unreadCount}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <p className="text-xs text-slate-500 mt-0.5 truncate">{item.messageText}</p>
+                            </div>
+                          </div>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="border-t border-slate-100 px-4 py-2 bg-slate-50">
+                    <button
+                      onClick={() => {
+                        setIsWhatsappDropdownOpen(false);
+                        openChat();
+                      }}
+                      className="w-full text-center text-xs text-green-700 hover:text-green-800 font-medium hover:underline py-1"
+                    >
+                      Open WhatsApp Chat
+                    </button>
+                  </div>
+                </div>
               )}
-            </button>
+            </div>
 
             <button
               onClick={() => setIsHelpModalOpen(true)}
