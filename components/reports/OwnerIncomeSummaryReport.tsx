@@ -136,7 +136,8 @@ const OwnerIncomeSummaryReport: React.FC = () => {
                 const raDate = new Date(ra.startDate);
                 if (raDate < start || raDate > end) return;
 
-                unitData[ra.propertyId].brokerFee += ra.brokerFee;
+                const fee = typeof ra.brokerFee === 'string' ? parseFloat(ra.brokerFee) : Number(ra.brokerFee);
+                if (!isNaN(fee)) unitData[ra.propertyId].brokerFee += fee;
             });
 
             // Process transactions for this owner

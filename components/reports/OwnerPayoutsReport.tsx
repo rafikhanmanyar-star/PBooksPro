@@ -261,6 +261,7 @@ const OwnerPayoutsReport: React.FC = () => {
             if (selectedOwnerId !== 'all' && ownerId !== selectedOwnerId) return;
             if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
 
+            const brokerFeeAmount = typeof ra.brokerFee === 'string' ? parseFloat(ra.brokerFee) : Number(ra.brokerFee);
             items.push({
                 id: `broker-fee-${ra.id}`,
                 date: ra.startDate,
@@ -268,7 +269,7 @@ const OwnerPayoutsReport: React.FC = () => {
                 propertyName: property.name,
                 particulars: `Broker Fee: ${property.name} (Agr #${ra.agreementNumber})`,
                 rentIn: 0,
-                paidOut: ra.brokerFee,
+                paidOut: isNaN(brokerFeeAmount) ? 0 : brokerFeeAmount,
                 entityType: 'transaction' as const,
                 entityId: ra.id
             });
