@@ -60,7 +60,9 @@ export default defineConfig({
   },
   // Handle CommonJS modules
   build: {
-    cssCodeSplit: false,
+    // PERFORMANCE: Enable CSS code splitting so each lazy-loaded chunk gets its own CSS.
+    // Previously all CSS was bundled into a single file loaded upfront.
+    cssCodeSplit: true,
     commonjsOptions: {
       include: [/sql\.js/, /socket\.io-client/, /node_modules/],
       transformMixedEsModules: true,

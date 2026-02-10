@@ -406,7 +406,14 @@ const App: React.FC = () => {
     };
   }, []);
 
+  // PERFORMANCE: Limit persistent pages to reduce memory and re-render overhead.
+  // Previously ALL visited pages stayed mounted forever, causing memory leaks and
+  // cascading re-renders from context changes. Now we keep only the 3 most recently
+  // visited pages mounted (LRU eviction). This prevents 10+ pages from accumulating
+  // in the DOM with their effects, event listeners, and state all active.
+  const MAX_PERSISTENT_PAGES = 3;
   const [visitedGroups, setVisitedGroups] = useState<Set<string>>(new Set());
+  const visitOrderRef = useRef<string[]>([]);
 
   const activeGroup = useMemo(() => {
     for (const [group, pages] of Object.entries(PAGE_GROUPS)) {
@@ -417,10 +424,18 @@ const App: React.FC = () => {
 
   useEffect(() => {
     setVisitedGroups(prev => {
-      if (!prev.has(activeGroup)) {
-        return new Set(prev).add(activeGroup);
+      // Update visit order (move to front if already visited)
+      const order = visitOrderRef.current.filter(g => g !== activeGroup);
+      order.unshift(activeGroup);
+      visitOrderRef.current = order;
+
+      // Keep only the most recent N pages
+      const keepSet = new Set(order.slice(0, MAX_PERSISTENT_PAGES));
+      // Check if the set actually changed to avoid unnecessary re-renders
+      if (keepSet.size === prev.size && [...keepSet].every(g => prev.has(g))) {
+        return prev;
       }
-      return prev;
+      return keepSet;
     });
   }, [activeGroup]);
 
