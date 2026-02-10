@@ -1578,6 +1578,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 'ADD_BILL',
                 'UPDATE_BILL',
                 'DELETE_BILL',
+                // Recurring Invoice Templates
+                'ADD_RECURRING_TEMPLATE',
+                'UPDATE_RECURRING_TEMPLATE',
+                'DELETE_RECURRING_TEMPLATE',
                 // Budgets
                 'ADD_BUDGET',
                 'UPDATE_BUDGET',
@@ -1639,6 +1643,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         return { type: 'invoice', id: action.payload as string };
                     case 'DELETE_TRANSACTION':
                         return { type: 'transaction', id: action.payload as string };
+                    case 'DELETE_RECURRING_TEMPLATE':
+                        return { type: 'recurring_invoice_template', id: action.payload as string };
                     default:
                         return null;
                 }
@@ -2101,6 +2107,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         }
                     }
 
+                    // Handle recurring invoice template changes
+                    if (action.type === 'ADD_RECURRING_TEMPLATE' || action.type === 'UPDATE_RECURRING_TEMPLATE') {
+                        const template = action.payload;
+                        try {
+                            await apiService.saveRecurringTemplate(template);
+                            logger.logCategory('sync', `✅ Synced recurring template ${action.type === 'UPDATE_RECURRING_TEMPLATE' ? 'update' : ''} to API: ${template.id}`);
+                        } catch (err: any) {
+                            logger.errorCategory('sync', `❌ FAILED to sync recurring template ${template.id} to API:`, err);
+                            await queueOperationForSync(action);
+                        }
+                    } else if (action.type === 'DELETE_RECURRING_TEMPLATE') {
+                        const templateId = action.payload as string;
+                        try {
+                            await apiService.deleteRecurringTemplate(templateId);
+                            logger.logCategory('sync', '✅ Synced recurring template deletion to API:', templateId);
+                        } catch (err: any) {
+                            logger.errorCategory('sync', `❌ FAILED to sync recurring template deletion ${templateId} to API:`, err);
+                            await queueOperationForSync(action);
+                        }
+                    }
+
                     // Handle budget changes
                     if (action.type === 'ADD_BUDGET') {
                         const budget = action.payload;
@@ -2406,6 +2433,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         return { type: 'bill', action: 'update', data: action.payload };
                     case 'DELETE_BILL':
                         return { type: 'bill', action: 'delete', data: { id: action.payload } };
+                    case 'ADD_RECURRING_TEMPLATE':
+                        return { type: 'recurring_invoice_template', action: 'create', data: action.payload };
+                    case 'UPDATE_RECURRING_TEMPLATE':
+                        return { type: 'recurring_invoice_template', action: 'update', data: action.payload };
+                    case 'DELETE_RECURRING_TEMPLATE':
+                        return { type: 'recurring_invoice_template', action: 'delete', data: { id: action.payload } };
                     case 'ADD_ACCOUNT':
                         return { type: 'account', action: 'create', data: action.payload };
                     case 'UPDATE_ACCOUNT':

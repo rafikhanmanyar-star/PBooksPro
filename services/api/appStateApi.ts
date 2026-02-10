@@ -5,7 +5,7 @@
  * This is used when the app is in cloud mode (authenticated with tenant).
  */
 
-import { AppState, InvoiceStatus, ProjectAgreementStatus, ContractStatus, SalesReturnStatus, SalesReturnReason, PMCycleAllocation, Quotation, Document, Vendor } from '../../types';
+import { AppState, InvoiceStatus, ProjectAgreementStatus, ContractStatus, SalesReturnStatus, SalesReturnReason, PMCycleAllocation, Quotation, Document, Vendor, RecurringInvoiceTemplate } from '../../types';
 import { AccountsApiRepository } from './repositories/accountsApi';
 import { ContactsApiRepository } from './repositories/contactsApi';
 import { TransactionsApiRepository } from './repositories/transactionsApi';
@@ -848,6 +848,25 @@ export class AppStateApiService {
    */
   async deleteVendor(id: string): Promise<void> {
     return this.vendorsRepo.delete(id);
+  }
+
+  /**
+   * Save recurring invoice template to API
+   */
+  async saveRecurringTemplate(template: Partial<RecurringInvoiceTemplate>): Promise<RecurringInvoiceTemplate> {
+    const templateWithId = {
+      ...template,
+      id: template.id || `recurring_template_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+    logger.logCategory('sync', `💾 Syncing recurring template (POST upsert): ${templateWithId.id}`);
+    return await this.recurringInvoiceTemplatesRepo.create(templateWithId);
+  }
+
+  /**
+   * Delete recurring invoice template from API
+   */
+  async deleteRecurringTemplate(id: string): Promise<void> {
+    return this.recurringInvoiceTemplatesRepo.delete(id);
   }
 
   /**

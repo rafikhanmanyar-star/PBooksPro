@@ -57,7 +57,7 @@ export interface MessageStatusResponse {
  */
 export class WhatsAppApiService {
   private db = getDatabaseService();
-  private readonly apiBaseUrl = 'https://graph.facebook.com';
+  private readonly apiBaseUrl = process.env.META_GRAPH_URL || 'https://graph.facebook.com';
   private readonly apiVersion = process.env.META_API_VERSION || 'v21.0';
 
   /**
