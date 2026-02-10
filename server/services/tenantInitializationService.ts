@@ -54,6 +54,12 @@ const SYSTEM_CATEGORIES = [
   { id: 'sys-cat-sal-exp', name: 'Salary Expenses', type: 'Expense', isPermanent: true },
 ];
 
+// PERFORMANCE: In-memory cache to avoid re-checking system accounts/categories on every GET.
+// Previously, GET /accounts ran 5 SELECTs + up to 5 INSERTs, and GET /categories ran 27+
+// SELECTs + up to 27 INSERTs, on EVERY single request. Now we check once per server process.
+let systemAccountsInitialized = false;
+let systemCategoriesInitialized = false;
+
 export class TenantInitializationService {
   private db: DatabaseService;
 
@@ -116,53 +122,68 @@ export class TenantInitializationService {
   }
 
   /**
-   * Ensure system accounts exist (used when fetching accounts)
+   * Ensure system accounts exist (used when fetching accounts).
+   * PERFORMANCE: Uses in-memory flag to skip after first successful check per server process.
+   * Uses a single batch INSERT instead of N sequential SELECT+INSERT pairs.
    */
   async ensureSystemAccounts(tenantId: string): Promise<void> {
-    for (const account of SYSTEM_ACCOUNTS) {
-      const existing = await this.db.query(
-        'SELECT id FROM accounts WHERE id = $1 AND tenant_id IS NULL',
-        [account.id]
+    if (systemAccountsInitialized) return;
+
+    try {
+      // Single batch upsert instead of N sequential queries
+      const values = SYSTEM_ACCOUNTS.map((a, i) => {
+        const base = i * 6;
+        return `($${base+1}, NULL, $${base+2}, $${base+3}, $${base+4}, $${base+5}, $${base+6}, NOW(), NOW())`;
+      }).join(', ');
+
+      const params = SYSTEM_ACCOUNTS.flatMap(a => [
+        a.id, a.name, a.type, a.balance, a.isPermanent, a.description
+      ]);
+
+      await this.db.query(
+        `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
+         VALUES ${values}
+         ON CONFLICT (id) DO NOTHING`,
+        params
       );
 
-      if (existing.length === 0) {
-        await this.db.query(
-          `INSERT INTO accounts (id, tenant_id, name, type, balance, is_permanent, description, created_at, updated_at)
-           VALUES ($1, NULL, $2, $3, $4, $5, $6, NOW(), NOW())
-           ON CONFLICT (id) DO NOTHING`,
-          [account.id, account.name, account.type, account.balance, account.isPermanent, account.description]
-        );
-        console.log(`✅ Auto-created missing global system account: ${account.name} (${account.id})`);
-      }
+      systemAccountsInitialized = true;
+    } catch (error) {
+      console.error('Failed to ensure system accounts:', error);
+      // Don't set the flag so it retries next time
     }
   }
 
   /**
-   * Ensure system categories exist (used when fetching categories)
+   * Ensure system categories exist (used when fetching categories).
+   * PERFORMANCE: Uses in-memory flag to skip after first successful check per server process.
+   * Uses a single batch INSERT instead of N sequential SELECT+INSERT pairs.
    */
   async ensureSystemCategories(tenantId: string): Promise<void> {
-    for (const category of SYSTEM_CATEGORIES) {
-      const existing = await this.db.query(
-        'SELECT id FROM categories WHERE id = $1 AND tenant_id IS NULL',
-        [category.id]
+    if (systemCategoriesInitialized) return;
+
+    try {
+      // Single batch upsert instead of N sequential queries
+      const values = SYSTEM_CATEGORIES.map((c, i) => {
+        const base = i * 6;
+        return `($${base+1}, NULL, $${base+2}, $${base+3}, $${base+4}, $${base+5}, $${base+6}, NOW(), NOW())`;
+      }).join(', ');
+
+      const params = SYSTEM_CATEGORIES.flatMap(c => [
+        c.id, c.name, c.type, c.isPermanent, c.isRental || false, (c as any).description || null
+      ]);
+
+      await this.db.query(
+        `INSERT INTO categories (id, tenant_id, name, type, is_permanent, is_rental, description, created_at, updated_at)
+         VALUES ${values}
+         ON CONFLICT (id) DO NOTHING`,
+        params
       );
 
-      if (existing.length === 0) {
-        await this.db.query(
-          `INSERT INTO categories (id, tenant_id, name, type, is_permanent, is_rental, description, created_at, updated_at)
-           VALUES ($1, NULL, $2, $3, $4, $5, $6, NOW(), NOW())
-           ON CONFLICT (id) DO NOTHING`,
-          [
-            category.id,
-            category.name,
-            category.type,
-            category.isPermanent,
-            category.isRental || false,
-            (category as any).description || null
-          ]
-        );
-        console.log(`✅ Auto-created missing global system category: ${category.name} (${category.id})`);
-      }
+      systemCategoriesInitialized = true;
+    } catch (error) {
+      console.error('Failed to ensure system categories:', error);
+      // Don't set the flag so it retries next time
     }
   }
 }

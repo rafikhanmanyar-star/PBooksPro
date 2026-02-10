@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useReducer, useEffect, useCallback, useState, useRef } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { AppState, AppAction, Transaction, TransactionType, Account, Category, AccountType, LoanSubtype, InvoiceStatus, TransactionLogEntry, Page, ContractStatus, User, UserRole, ProjectAgreementStatus, Bill, SalesReturn, SalesReturnStatus, SalesReturnReason, Contact, Vendor, Invoice } from '../types';
 import useDatabaseState from '../hooks/useDatabaseState';
 import { useDatabaseStateFallback } from '../hooks/useDatabaseStateFallback';
@@ -14,6 +14,53 @@ import InitializationScreen from '../components/InitializationScreen';
 import { getSyncQueue } from '../services/syncQueue';
 import { getConnectionMonitor } from '../services/connectionMonitor';
 import { SyncOperationType } from '../types/sync';
+
+// PERFORMANCE: Module-level constant set of action types that trigger API sync.
+// Previously this 60+ entry Set was re-created on EVERY dispatch call inside useCallback.
+const SYNC_TO_API_ACTIONS = new Set<string>([
+    // Financial transactions
+    'ADD_TRANSACTION', 'UPDATE_TRANSACTION', 'DELETE_TRANSACTION', 'BATCH_ADD_TRANSACTIONS', 'RESTORE_TRANSACTION',
+    // Accounts
+    'ADD_ACCOUNT', 'UPDATE_ACCOUNT', 'DELETE_ACCOUNT',
+    // Contacts
+    'ADD_CONTACT', 'UPDATE_CONTACT', 'DELETE_CONTACT',
+    // Vendors
+    'ADD_VENDOR', 'UPDATE_VENDOR', 'DELETE_VENDOR',
+    // Categories
+    'ADD_CATEGORY', 'UPDATE_CATEGORY', 'DELETE_CATEGORY',
+    // Projects & Properties
+    'ADD_PROJECT', 'UPDATE_PROJECT', 'DELETE_PROJECT',
+    'ADD_BUILDING', 'UPDATE_BUILDING', 'DELETE_BUILDING',
+    'ADD_PROPERTY', 'UPDATE_PROPERTY', 'DELETE_PROPERTY',
+    'ADD_UNIT', 'UPDATE_UNIT', 'DELETE_UNIT',
+    // Invoices & Bills
+    'ADD_INVOICE', 'UPDATE_INVOICE', 'DELETE_INVOICE',
+    'ADD_BILL', 'UPDATE_BILL', 'DELETE_BILL',
+    // Recurring Invoice Templates
+    'ADD_RECURRING_TEMPLATE', 'UPDATE_RECURRING_TEMPLATE', 'DELETE_RECURRING_TEMPLATE',
+    // Budgets
+    'ADD_BUDGET', 'UPDATE_BUDGET', 'DELETE_BUDGET',
+    // Agreements
+    'ADD_RENTAL_AGREEMENT', 'UPDATE_RENTAL_AGREEMENT', 'DELETE_RENTAL_AGREEMENT',
+    'ADD_PROJECT_AGREEMENT', 'UPDATE_PROJECT_AGREEMENT', 'DELETE_PROJECT_AGREEMENT', 'CANCEL_PROJECT_AGREEMENT',
+    // Sales Returns
+    'ADD_SALES_RETURN', 'UPDATE_SALES_RETURN', 'DELETE_SALES_RETURN', 'MARK_RETURN_REFUNDED',
+    // Contracts
+    'ADD_CONTRACT', 'UPDATE_CONTRACT', 'DELETE_CONTRACT',
+    // Organization settings
+    'UPDATE_AGREEMENT_SETTINGS', 'UPDATE_PROJECT_AGREEMENT_SETTINGS',
+    'UPDATE_RENTAL_INVOICE_SETTINGS', 'UPDATE_PROJECT_INVOICE_SETTINGS',
+    'UPDATE_PRINT_SETTINGS', 'UPDATE_WHATSAPP_TEMPLATES',
+    'ADD_INSTALLMENT_PLAN', 'UPDATE_INSTALLMENT_PLAN', 'DELETE_INSTALLMENT_PLAN',
+    'ADD_PLAN_AMENITY', 'UPDATE_PLAN_AMENITY', 'DELETE_PLAN_AMENITY',
+    'ADD_INVENTORY_ITEM', 'UPDATE_INVENTORY_ITEM', 'DELETE_INVENTORY_ITEM',
+    'UPDATE_PM_COST_PERCENTAGE',
+    // General settings
+    'TOGGLE_SYSTEM_TRANSACTIONS', 'TOGGLE_COLOR_CODING', 'TOGGLE_BEEP_ON_SAVE', 'TOGGLE_DATE_PRESERVATION',
+    'UPDATE_DEFAULT_PROJECT', 'UPDATE_DASHBOARD_CONFIG',
+    // PM Cycle Allocations
+    'ADD_PM_CYCLE_ALLOCATION', 'UPDATE_PM_CYCLE_ALLOCATION', 'DELETE_PM_CYCLE_ALLOCATION',
+]);
 
 // Lazy import AppStateRepository to avoid initialization issues during module load
 // It will be imported when actually needed
@@ -1536,103 +1583,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             // Only trigger API sync for organization data actions
             // User preferences (enableBeepOnSave, dashboardConfig, defaultProjectId, etc.) are NOT synced
-            const SYNC_TO_API_ACTIONS = new Set<AppAction['type']>([
-                // Financial transactions
-                'ADD_TRANSACTION',
-                'UPDATE_TRANSACTION',
-                'DELETE_TRANSACTION',
-                'BATCH_ADD_TRANSACTIONS',
-                'RESTORE_TRANSACTION',
-                // Accounts
-                'ADD_ACCOUNT',
-                'UPDATE_ACCOUNT',
-                'DELETE_ACCOUNT',
-                // Contacts
-                'ADD_CONTACT',
-                'UPDATE_CONTACT',
-                'DELETE_CONTACT',
-                // Vendors
-                'ADD_VENDOR',
-                'UPDATE_VENDOR',
-                'DELETE_VENDOR',
-                // Categories
-                'ADD_CATEGORY',
-                'UPDATE_CATEGORY',
-                'DELETE_CATEGORY',
-                // Projects & Properties
-                'ADD_PROJECT',
-                'UPDATE_PROJECT',
-                'DELETE_PROJECT',
-                'ADD_BUILDING',
-                'UPDATE_BUILDING',
-                'DELETE_BUILDING',
-                'ADD_PROPERTY',
-                'UPDATE_PROPERTY',
-                'DELETE_PROPERTY',
-                'ADD_UNIT',
-                'UPDATE_UNIT',
-                'DELETE_UNIT',
-                // Invoices & Bills
-                'ADD_INVOICE',
-                'UPDATE_INVOICE',
-                'DELETE_INVOICE',
-                'ADD_BILL',
-                'UPDATE_BILL',
-                'DELETE_BILL',
-                // Recurring Invoice Templates
-                'ADD_RECURRING_TEMPLATE',
-                'UPDATE_RECURRING_TEMPLATE',
-                'DELETE_RECURRING_TEMPLATE',
-                // Budgets
-                'ADD_BUDGET',
-                'UPDATE_BUDGET',
-                'DELETE_BUDGET',
-                // Agreements
-                'ADD_RENTAL_AGREEMENT',
-                'UPDATE_RENTAL_AGREEMENT',
-                'DELETE_RENTAL_AGREEMENT',
-                'ADD_PROJECT_AGREEMENT',
-                'UPDATE_PROJECT_AGREEMENT',
-                'DELETE_PROJECT_AGREEMENT',
-                'CANCEL_PROJECT_AGREEMENT',
-                // Sales Returns
-                'ADD_SALES_RETURN',
-                'UPDATE_SALES_RETURN',
-                'DELETE_SALES_RETURN',
-                'MARK_RETURN_REFUNDED',
-                // Contracts
-                'ADD_CONTRACT',
-                'UPDATE_CONTRACT',
-                'DELETE_CONTRACT',
-                // Organization settings (communication settings)
-                'UPDATE_AGREEMENT_SETTINGS',
-                'UPDATE_PROJECT_AGREEMENT_SETTINGS',
-                'UPDATE_RENTAL_INVOICE_SETTINGS',
-                'UPDATE_PROJECT_INVOICE_SETTINGS',
-                'UPDATE_PRINT_SETTINGS',
-                'UPDATE_WHATSAPP_TEMPLATES',
-                'ADD_INSTALLMENT_PLAN',
-                'UPDATE_INSTALLMENT_PLAN',
-                'DELETE_INSTALLMENT_PLAN',
-                'ADD_PLAN_AMENITY',
-                'UPDATE_PLAN_AMENITY',
-                'DELETE_PLAN_AMENITY',
-                'ADD_INVENTORY_ITEM',
-                'UPDATE_INVENTORY_ITEM',
-                'DELETE_INVENTORY_ITEM',
-                'UPDATE_PM_COST_PERCENTAGE',
-                // General settings (user-based settings in organization)
-                'TOGGLE_SYSTEM_TRANSACTIONS',
-                'TOGGLE_COLOR_CODING',
-                'TOGGLE_BEEP_ON_SAVE',
-                'TOGGLE_DATE_PRESERVATION',
-                'UPDATE_DEFAULT_PROJECT',
-                'UPDATE_DASHBOARD_CONFIG',
-                // PM Cycle Allocations
-                'ADD_PM_CYCLE_ALLOCATION',
-                'UPDATE_PM_CYCLE_ALLOCATION',
-                'DELETE_PM_CYCLE_ALLOCATION',
-            ]);
+            // PERFORMANCE: SYNC_TO_API_ACTIONS is now a module-level constant (avoids
+            // re-creating a 60+ entry Set on every dispatch call)
 
             if (!SYNC_TO_API_ACTIONS.has(action.type)) {
                 return newState;
@@ -2645,10 +2597,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
      * This makes different users on the same tenant see the same contacts.
      */
     // Track latest state to avoid stale captures in async effects
+    // PERFORMANCE: Assign synchronously during render instead of via useEffect.
+    // This avoids an extra effect cycle on every state change.
     const stateRef = useRef(state);
-    useEffect(() => {
-        stateRef.current = state;
-    }, [state]);
+    stateRef.current = state;
 
     const refreshFromApi = useCallback(async () => {
         if (!isAuthenticated) return;
@@ -3675,61 +3627,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         prevAuthRef.current = isAuthenticated;
     }, [isAuthenticated, isInitializing]);
 
-    // Reload data from API when user becomes authenticated (to ensure synchronization)
-    useEffect(() => {
-        // When user becomes authenticated, reload data from API to ensure all users see same data
-        if (isAuthenticated && !prevAuthRef.current && !isInitializing) {
-            const reloadDataFromApi = async () => {
-                try {
-                    logger.logCategory('sync', '🔄 User authenticated, reloading data from API for current tenant...');
-                    const apiService = getAppStateApiService();
-                    const apiState = await apiService.loadState();
-
-                    // Build updates from API data for this tenant (server filters by JWT tenant_id)
-                    const apiUpdates = {
-                        accounts: apiState.accounts || [],
-                        contacts: apiState.contacts || [],
-                        transactions: apiState.transactions || [],
-                        categories: apiState.categories || [],
-                        projects: apiState.projects || [],
-                        buildings: apiState.buildings || [],
-                        properties: apiState.properties || [],
-                        units: apiState.units || [],
-                        invoices: apiState.invoices || [],
-                        bills: apiState.bills || [],
-                        budgets: apiState.budgets || [],
-                        rentalAgreements: apiState.rentalAgreements || [],
-                        projectAgreements: apiState.projectAgreements || [],
-                        contracts: apiState.contracts || [],
-                        vendors: (apiState.vendors || []).map((v: any) => ({
-                            ...v,
-                            isActive: v.isActive ?? v.is_active ?? true
-                        })),
-                        installmentPlans: apiState.installmentPlans || [],
-                        planAmenities: apiState.planAmenities || [],
-                    };
-
-                    // Update stored state (persistence layer)
-                    setStoredState(prev => ({ ...prev, ...apiUpdates }));
-
-                    // Also dispatch to reducer so UI components see the data immediately
-                    dispatch({ type: 'SET_STATE', payload: { ...stateRef.current, ...apiUpdates }, _isRemote: true } as any);
-
-                    logger.logCategory('sync', '✅ Reloaded data from API:', {
-                        contacts: apiState.contacts?.length || 0,
-                        vendors: apiState.vendors?.length || 0,
-                        projects: apiState.projects?.length || 0,
-                        transactions: apiState.transactions?.length || 0,
-                    });
-                } catch (error) {
-                    logger.errorCategory('sync', '⚠️ Failed to reload data from API:', error);
-                }
-            };
-
-            // Delay reload slightly to ensure token is fully set and reducer has synced
-            setTimeout(reloadDataFromApi, 300);
-        }
-    }, [isAuthenticated, isInitializing]);
+    // PERFORMANCE: Removed duplicate "reload data from API" effect that was dead code.
+    // The condition `!prevAuthRef.current` could never be true here because the preceding
+    // useEffect (auto-sync) already sets `prevAuthRef.current = isAuthenticated` before
+    // this effect runs (React runs effects in declaration order).
+    // The actual API load is handled by the refreshFromApi effect at line ~2738.
 
     // Clear local database when tenant changes (to prevent data leakage between tenants)
     useEffect(() => {
@@ -3841,8 +3743,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         );
     }
 
+    // PERFORMANCE: Memoize the context value to prevent cascading re-renders.
+    // Without this, every render of AppProvider creates a new { state, dispatch } object,
+    // causing ALL 155+ context consumers to re-render even when nothing changed.
+    const contextValue = useMemo(() => ({ state, dispatch }), [state, dispatch]);
+
     return (
-        <AppContext.Provider value={{ state, dispatch }}>
+        <AppContext.Provider value={contextValue}>
             {children}
         </AppContext.Provider>
     );

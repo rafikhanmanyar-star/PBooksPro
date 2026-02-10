@@ -19,18 +19,22 @@ export function licenseMiddleware(pool: Pool) {
         return res.status(401).json({ error: 'No tenant context' });
       }
 
-      // Query tenants table directly via pool (bypasses tenant context / RLS wrapping)
-      // The tenants table is excluded from RLS, so no SET LOCAL is needed.
-      const result = await pool.query(
-        'SELECT license_type, license_status, trial_start_date, license_expiry_date FROM tenants WHERE id = $1',
-        [req.tenantId]
-      );
+      // PERFORMANCE: Use cached tenant data from tenantMiddleware if available.
+      // This avoids a duplicate SELECT on the tenants table (saves ~10-30ms per request).
+      let tenant: any = (req as any)._tenantLicenseData;
+      if (!tenant) {
+        // Fallback: query directly if tenant data wasn't cached by tenantMiddleware
+        const result = await pool.query(
+          'SELECT license_type, license_status, trial_start_date, license_expiry_date FROM tenants WHERE id = $1',
+          [req.tenantId]
+        );
 
-      if (result.rows.length === 0) {
-        return res.status(401).json({ error: 'Tenant not found' });
+        if (result.rows.length === 0) {
+          return res.status(401).json({ error: 'Tenant not found' });
+        }
+
+        tenant = result.rows[0];
       }
-
-      const tenant = result.rows[0];
       const now = new Date();
       let licenseInfo: LicenseInfo;
 

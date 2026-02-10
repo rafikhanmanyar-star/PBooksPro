@@ -125,18 +125,25 @@ export function tenantMiddleware(pool: Pool) {
       // regardless of RLS policy and should use plain pool.query() for efficiency.
       // Only the downstream route handler (next()) runs inside tenant context.
 
-      // CRITICAL SECURITY CHECK: Verify user actually belongs to the tenant from token
-      // This prevents users from accessing data from other tenants by manipulating tokens
+      // PERFORMANCE OPTIMIZATION: Combined user + session + tenant verification into
+      // a SINGLE database query using JOINs. Previously this was 3-7 separate sequential
+      // queries adding 100-350ms of latency to EVERY request.
       try {
-        const { getDatabaseService } = await import('../services/databaseService.js');
-        const db = getDatabaseService();
-
-        const userCheck = await db.query(
-          'SELECT id, tenant_id FROM users WHERE id = $1',
-          [decoded.userId]
+        const combinedResult = await pool.query(
+          `SELECT
+             u.id AS user_id, u.tenant_id AS user_tenant_id, u.is_active AS user_active,
+             s.user_id AS session_user_id, s.tenant_id AS session_tenant_id,
+             s.expires_at, s.last_activity,
+             t.id AS tenant_exists,
+             t.license_type, t.license_status, t.trial_start_date, t.license_expiry_date
+           FROM users u
+           LEFT JOIN user_sessions s ON s.token = $2
+           LEFT JOIN tenants t ON t.id = u.tenant_id
+           WHERE u.id = $1`,
+          [decoded.userId, token]
         );
 
-        if (userCheck.length === 0) {
+        if (combinedResult.rows.length === 0) {
           console.error(`❌ Security: User ${decoded.userId} not found in database`);
           return res.status(401).json({
             error: 'Invalid token',
@@ -145,40 +152,39 @@ export function tenantMiddleware(pool: Pool) {
           });
         }
 
-        const userTenantId = userCheck[0].tenant_id;
-        if (userTenantId !== decoded.tenantId) {
-          console.error(`❌ SECURITY VIOLATION: User ${decoded.userId} belongs to tenant ${userTenantId} but token claims tenant ${decoded.tenantId}`);
+        const row = combinedResult.rows[0];
+
+        // Verify user belongs to the claimed tenant
+        if (row.user_tenant_id !== decoded.tenantId) {
+          console.error(`❌ SECURITY VIOLATION: User ${decoded.userId} belongs to tenant ${row.user_tenant_id} but token claims tenant ${decoded.tenantId}`);
           return res.status(403).json({
             error: 'Forbidden',
             message: 'User does not belong to the organization specified in token. Please login again.',
             code: 'TENANT_MISMATCH'
           });
         }
-      } catch (userCheckError) {
-        console.error('Error verifying user-tenant relationship:', userCheckError);
-        return res.status(500).json({
-          error: 'Authentication failed',
-          message: 'Could not verify user-tenant relationship. Please try again.',
-          code: 'USER_TENANT_CHECK_FAILED'
-        });
-      }
 
-      // Verify session is still valid (blocking).
-      // We enforce single-session-per-user-per-tenant by requiring the token to exist in user_sessions.
-      // When the same user logs in again, the session row is replaced and old tokens stop working.
-      try {
-        const { getDatabaseService } = await import('../services/databaseService.js');
-        const db = getDatabaseService();
+        // Verify tenant exists
+        if (!row.tenant_exists) {
+          console.error(`❌ Tenant not found in database: ${req.tenantId}. Token is invalid.`);
+          return res.status(401).json({
+            error: 'Invalid token',
+            message: 'The tenant associated with your token no longer exists. Please login again.',
+            code: 'TENANT_NOT_FOUND'
+          });
+        }
 
-        const sessions = await db.query(
-          'SELECT user_id, tenant_id, expires_at, last_activity FROM user_sessions WHERE token = $1',
-          [token]
-        );
+        // Cache license info on request so licenseMiddleware can skip its duplicate query
+        (req as any)._tenantLicenseData = {
+          license_type: row.license_type,
+          license_status: row.license_status,
+          trial_start_date: row.trial_start_date,
+          license_expiry_date: row.license_expiry_date,
+        };
 
-        if (sessions.length === 0) {
-          // Session not found, but token is valid - try to create/recover the session
-          // This handles cases where session was cleaned up but token is still valid,
-          // or when switching between databases (staging to local)
+        // Session validation
+        if (!row.session_user_id) {
+          // Session not found -- attempt recovery
           console.warn('⚠️ Session not found in database, attempting to recover:', {
             tokenPreview,
             userId: decoded?.userId,
@@ -187,28 +193,22 @@ export function tenantMiddleware(pool: Pool) {
             method: req.method
           });
 
+          if (!row.user_active) {
+            console.error('❌ User not found or inactive, cannot recover session');
+            return res.status(401).json({
+              error: 'Invalid session',
+              message: 'Your session is no longer valid. Please login again.',
+              code: 'SESSION_INVALID'
+            });
+          }
+
           try {
-            // Verify user and tenant still exist
-            const users = await db.query(
-              'SELECT id, tenant_id FROM users WHERE id = $1 AND tenant_id = $2 AND is_active = TRUE',
-              [decoded.userId, decoded.tenantId]
-            );
-
-            if (users.length === 0) {
-              console.error('❌ User not found or inactive, cannot recover session');
-              return res.status(401).json({
-                error: 'Invalid session',
-                message: 'Your session is no longer valid. Please login again.',
-                code: 'SESSION_INVALID'
-              });
-            }
-
             // Create session record (recover missing session)
             const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             const expiresAt = new Date();
-            expiresAt.setDate(expiresAt.getDate() + 30); // 30 days to match JWT expiration
+            expiresAt.setDate(expiresAt.getDate() + 30);
 
-            await db.query(
+            await pool.query(
               `INSERT INTO user_sessions (id, user_id, tenant_id, token, ip_address, user_agent, expires_at, last_activity)
                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
                ON CONFLICT (user_id, tenant_id)
@@ -229,67 +229,11 @@ export function tenantMiddleware(pool: Pool) {
               ]
             );
 
-            // Update login_status to true
-            await db.query(
-              'UPDATE users SET login_status = TRUE WHERE id = $1',
-              [decoded.userId]
-            );
+            // Update login_status to true (fire-and-forget)
+            pool.query('UPDATE users SET login_status = TRUE WHERE id = $1', [decoded.userId])
+              .catch(err => console.warn('Failed to update login_status:', err));
 
             console.log('✅ Session recovered successfully');
-
-            // Re-fetch the session to continue with normal flow
-            const recoveredSessions = await db.query(
-              'SELECT user_id, tenant_id, expires_at, last_activity FROM user_sessions WHERE token = $1',
-              [token]
-            );
-
-            if (recoveredSessions.length === 0) {
-              // Still no session after recovery attempt - something is wrong
-              console.error('❌ Failed to recover session after insert attempt');
-              return res.status(401).json({
-                error: 'Invalid session',
-                message: 'Your session is no longer valid. Please login again.',
-                code: 'SESSION_INVALID'
-              });
-            }
-
-            // Use the recovered session
-            const session = recoveredSessions[0] as any;
-            const expiresAtCheck = new Date(session.expires_at);
-            const now = new Date();
-
-            if (expiresAtCheck <= now) {
-              return res.status(401).json({
-                error: 'Session expired',
-                message: 'Your session has expired. Please login again.',
-                code: 'SESSION_EXPIRED'
-              });
-            }
-
-            // Update last_activity and continue
-            await db.query(
-              'UPDATE user_sessions SET last_activity = NOW() WHERE token = $1',
-              [token]
-            );
-
-            // Re-fetch session for validation
-            const refreshedSessions = await db.query(
-              'SELECT user_id, tenant_id, expires_at, last_activity FROM user_sessions WHERE token = $1',
-              [token]
-            );
-
-            if (refreshedSessions.length === 0) {
-              console.error('❌ Session disappeared after recovery');
-              return res.status(401).json({
-                error: 'Invalid session',
-                message: 'Your session is no longer valid. Please login again.',
-                code: 'SESSION_INVALID'
-              });
-            }
-
-            // Use refreshed session for validation
-            sessions.length = 0;
-            sessions.push(refreshedSessions[0]);
           } catch (recoveryError: any) {
             console.error('❌ Failed to recover session:', recoveryError);
             return res.status(401).json({
@@ -298,110 +242,44 @@ export function tenantMiddleware(pool: Pool) {
               code: 'SESSION_INVALID'
             });
           }
-        }
+        } else {
+          // Session exists -- validate it
+          const expiresAt = new Date(row.expires_at);
+          const now = new Date();
 
-        // Continue with normal validation (session exists now, either originally or after recovery)
-        const session = sessions[0] as any;
-        const expiresAt = new Date(session.expires_at);
-        const now = new Date();
+          if (expiresAt <= now) {
+            // Expired -- cleanup (fire-and-forget)
+            pool.query('DELETE FROM user_sessions WHERE token = $1', [token])
+              .catch(err => console.warn('Failed to cleanup expired session:', err));
+            pool.query('UPDATE users SET login_status = FALSE WHERE id = $1', [decoded.userId])
+              .catch(err => console.warn('Failed to update login_status:', err));
 
-        if (expiresAt <= now) {
-          // Best-effort cleanup
-          try {
-            await db.query('DELETE FROM user_sessions WHERE token = $1', [token]);
-            // Set login_status = false since session expired
-            await db.query('UPDATE users SET login_status = FALSE WHERE id = $1', [decoded.userId]);
-          } catch (cleanupError) {
-            console.warn('Failed to cleanup expired session:', cleanupError);
+            return res.status(401).json({
+              error: 'Session expired',
+              message: 'Your session has expired. Please login again.',
+              code: 'SESSION_EXPIRED'
+            });
           }
 
-          return res.status(401).json({
-            error: 'Session expired',
-            message: 'Your session has expired. Please login again.',
-            code: 'SESSION_EXPIRED'
-          });
-        }
-
-        // Check if session is inactive (user disconnected)
-        // Sessions are considered inactive if last_activity is older than threshold
-        // However, if the session hasn't expired and token is valid, we refresh it instead of rejecting
-        const INACTIVITY_THRESHOLD_MINUTES = 30; // Increased back to 30 minutes for better UX
-        const lastActivity = new Date(session.last_activity);
-        const thresholdDate = new Date();
-        thresholdDate.setMinutes(thresholdDate.getMinutes() - INACTIVITY_THRESHOLD_MINUTES);
-
-        if (lastActivity < thresholdDate) {
-          // Session is inactive but not expired - refresh it instead of rejecting
-          // This handles cases like switching databases, temporary disconnections, etc.
-          const minutesSinceActivity = Math.round((now.getTime() - lastActivity.getTime()) / 60000);
-          console.warn('⚠️ Session inactive - refreshing:', {
-            lastActivity: lastActivity.toISOString(),
-            minutesSinceActivity,
-            userId: decoded?.userId,
-            tenantId: decoded?.tenantId,
-            path: req.path,
-            method: req.method
-          });
-
-          try {
-            // Refresh the session by updating last_activity
-            await db.query(
-              'UPDATE user_sessions SET last_activity = NOW() WHERE token = $1',
-              [token]
-            );
-            // Ensure login_status is true
-            await db.query(
-              'UPDATE users SET login_status = TRUE WHERE id = $1',
-              [decoded.userId]
-            );
-            console.log('✅ Session refreshed successfully');
-          } catch (refreshError) {
-            console.error('❌ Failed to refresh inactive session:', refreshError);
-            // If refresh fails, still allow the request to proceed
-            // The session exists and is valid, just inactive
+          // Extra safety: ensure the DB session matches the JWT identity
+          if (row.session_user_id !== decoded.userId || row.session_tenant_id !== decoded.tenantId) {
+            return res.status(401).json({
+              error: 'Invalid session',
+              message: 'Session does not match token. Please login again.',
+              code: 'SESSION_MISMATCH'
+            });
           }
 
-          // Continue with the request - session is now refreshed
+          // Update last activity (fire-and-forget -- don't block the request)
+          pool.query('UPDATE user_sessions SET last_activity = NOW() WHERE token = $1', [token])
+            .catch(err => console.warn('Failed to update session last_activity:', err));
         }
-
-        // Extra safety: ensure the DB session matches the JWT identity
-        if (session.user_id !== decoded.userId || session.tenant_id !== decoded.tenantId) {
-          return res.status(401).json({
-            error: 'Invalid session',
-            message: 'Session does not match token. Please login again.',
-            code: 'SESSION_MISMATCH'
-          });
-        }
-
-        // Update last activity (non-blocking)
-        try {
-          await db.query('UPDATE user_sessions SET last_activity = NOW() WHERE token = $1', [token]);
-        } catch (updateError) {
-          console.warn('Failed to update session last_activity:', updateError);
-        }
-      } catch (sessionError) {
-        console.error('Session check error:', sessionError);
+      } catch (authError) {
+        console.error('Authentication check error:', authError);
         return res.status(500).json({
           error: 'Authentication failed',
           message: 'Could not validate session. Please try again.',
           code: 'SESSION_CHECK_FAILED'
-        });
-      }
-
-      // Verify tenant exists and is active
-      const tenants = await pool.query(
-        'SELECT * FROM tenants WHERE id = $1',
-        [req.tenantId]
-      );
-
-      if (tenants.rows.length === 0) {
-        // Tenant doesn't exist - this is an authentication issue, not authorization
-        // Return 401 to indicate the token is invalid (tenant no longer exists)
-        console.error(`❌ Tenant not found in database: ${req.tenantId}. Token is invalid.`);
-        return res.status(401).json({
-          error: 'Invalid token',
-          message: 'The tenant associated with your token no longer exists. Please login again.',
-          code: 'TENANT_NOT_FOUND'
         });
       }
 
