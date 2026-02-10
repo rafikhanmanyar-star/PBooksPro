@@ -615,6 +615,7 @@ export interface RecurringInvoiceTemplate {
   nextDueDate: string;
   active: boolean;
   agreementId?: string;
+  invoiceType?: InvoiceType;
   frequency?: RecurringFrequency;
   autoGenerate?: boolean;
   maxOccurrences?: number;

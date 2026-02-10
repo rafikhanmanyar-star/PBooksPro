@@ -26,7 +26,7 @@ interface InvoiceBillFormProps {
   initialContactId?: string;
   initialVendorId?: string;
   rentalContext?: boolean;
-  onDuplicate?: (data: Partial<Bill>) => void;
+  onDuplicate?: (data: Partial<Invoice | Bill>) => void;
   initialData?: Partial<Invoice | Bill>;
   projectContext?: boolean; // When true, bill form is opened from project management - simplifies to project-only allocation
 }
@@ -1024,9 +1024,10 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   const handleDuplicateClick = async () => {
     if (onDuplicate) {
       const currentData = getFormData();
+      const label = type === 'invoice' ? 'invoice' : 'bill';
 
       if (isDirty && itemToEdit) {
-        const confirmSave = await showConfirm("You have unsaved changes on this bill. Do you want to save them before duplicating?", {
+        const confirmSave = await showConfirm(`You have unsaved changes on this ${label}. Do you want to save them before duplicating?`, {
           title: "Save Changes?",
           confirmLabel: "Save & Duplicate",
           cancelLabel: "Cancel"
@@ -1848,17 +1849,15 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         </div>
 
         <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 pt-3 border-t border-gray-200 mt-3 flex-shrink-0">
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {itemToEdit && (
               <Button type="button" variant="danger" onClick={handleDelete} disabled={isAgreementCancelled} className="w-full sm:w-auto text-sm py-2">
                 Delete
               </Button>
             )}
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-            {itemToEdit && type === 'bill' && onDuplicate && (
+            {itemToEdit && onDuplicate && (
               <Button type="button" variant="secondary" onClick={handleDuplicateClick} className="text-indigo-600 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 w-full sm:w-auto text-sm py-2">
-                Duplicate Bill
+                {type === 'invoice' ? 'Duplicate Invoice' : 'Duplicate Bill'}
               </Button>
             )}
             {type === 'bill' && billPrintData && (
@@ -1867,6 +1866,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                 Print
               </Button>
             )}
+          </div>
+          <div className="flex gap-2 w-full sm:w-auto sm:ml-auto">
             <Button type="button" variant="secondary" onClick={onClose} className="w-full sm:w-auto text-sm py-2">Cancel</Button>
             <Button type="submit" disabled={!!numberError || isAgreementCancelled} className="w-full sm:w-auto text-sm py-2">{itemToEdit ? 'Update' : 'Save'}</Button>
           </div>

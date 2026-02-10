@@ -177,10 +177,10 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
 
     // Recurring Invoice Logic
     const recurringTemplate = useMemo(() => {
-        if (invoice.invoiceType !== InvoiceType.RENTAL) return null;
+        if (![InvoiceType.RENTAL, InvoiceType.SERVICE_CHARGE, InvoiceType.INSTALLMENT].includes(invoice.invoiceType)) return null;
         return state.recurringInvoiceTemplates.find(t => 
-            (invoice.agreementId && t.agreementId === invoice.agreementId) ||
-            (!invoice.agreementId && t.propertyId === invoice.propertyId && t.contactId === invoice.contactId)
+            (invoice.agreementId && t.agreementId === invoice.agreementId && (t.invoiceType || InvoiceType.RENTAL) === invoice.invoiceType) ||
+            (!invoice.agreementId && t.propertyId === invoice.propertyId && t.contactId === invoice.contactId && (t.invoiceType || InvoiceType.RENTAL) === invoice.invoiceType)
         );
     }, [invoice, state.recurringInvoiceTemplates]);
 
@@ -204,6 +204,7 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
                 nextDueDate: nextMonth.toISOString().split('T')[0],
                 active: true,
                 agreementId: invoice.agreementId,
+                invoiceType: invoice.invoiceType,
             };
             dispatch({ type: 'ADD_RECURRING_TEMPLATE', payload: newTemplate });
             showToast('Memorized for recurring.', 'success');

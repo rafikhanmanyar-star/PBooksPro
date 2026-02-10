@@ -50,6 +50,7 @@ const RecurringInvoicesList: React.FC = () => {
     const [editFrequency, setEditFrequency] = useState<RecurringFrequency>('Monthly');
     const [editTotalTransactions, setEditTotalTransactions] = useState('');
     const [editGeneratedCount, setEditGeneratedCount] = useState(0);
+    const [editInvoiceType, setEditInvoiceType] = useState<InvoiceType>(InvoiceType.RENTAL);
 
     // --- Data Preparation ---
 
@@ -281,11 +282,12 @@ const RecurringInvoicesList: React.FC = () => {
 
         const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
 
+        const templateInvoiceType = template.invoiceType || InvoiceType.RENTAL;
         const newInvoice: Invoice = {
             id: `inv-rec-${Date.now()}`,
             invoiceNumber,
             contactId: template.contactId,
-            invoiceType: InvoiceType.RENTAL,
+            invoiceType: templateInvoiceType,
             propertyId: template.propertyId,
             buildingId: template.buildingId,
             amount: template.amount,
@@ -352,6 +354,7 @@ const RecurringInvoicesList: React.FC = () => {
         setEditFrequency(template.frequency || 'Monthly');
         setEditTotalTransactions(template.maxOccurrences ? String(template.maxOccurrences) : '');
         setEditGeneratedCount(template.generatedCount || 0);
+        setEditInvoiceType(template.invoiceType || InvoiceType.RENTAL);
         
         setIsEditModalOpen(true);
     };
@@ -365,6 +368,7 @@ const RecurringInvoicesList: React.FC = () => {
             dayOfMonth: parseInt(editDay) || 1,
             nextDueDate: editNextDate,
             descriptionTemplate: editDesc,
+            invoiceType: editInvoiceType,
             autoGenerate: editAutoGenerate,
             frequency: editFrequency,
             maxOccurrences: editTotalTransactions ? parseInt(editTotalTransactions) : undefined
@@ -426,7 +430,7 @@ const RecurringInvoicesList: React.FC = () => {
                     id: `inv-rec-${Date.now()}-${createdCount}`,
                     invoiceNumber,
                     contactId: updated.contactId,
-                    invoiceType: InvoiceType.RENTAL,
+                    invoiceType: updated.invoiceType || InvoiceType.RENTAL,
                     propertyId: updated.propertyId,
                     buildingId: updated.buildingId,
                     amount: updated.amount,
@@ -478,6 +482,7 @@ const RecurringInvoicesList: React.FC = () => {
                  ...templateToEdit,
                  amount: parseFloat(editAmount) || 0,
                  descriptionTemplate: editDesc,
+                 invoiceType: editInvoiceType,
                  frequency: editFrequency,
                  nextDueDate: editNextDate
             };
@@ -610,9 +615,18 @@ const RecurringInvoicesList: React.FC = () => {
             
             <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Edit Recurring Template">
                 <div className="space-y-4">
-                    {/* Top Row: Amount & Frequency Type */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <Input label="Rent Amount" type="number" value={editAmount} onChange={e => setEditAmount(e.target.value)} />
+                    {/* Top Row: Amount, Invoice Type & Mode */}
+                    <div className="grid grid-cols-3 gap-4">
+                        <Input label="Amount" type="number" value={editAmount} onChange={e => setEditAmount(e.target.value)} />
+                        <Select
+                            label="Invoice Type"
+                            value={editInvoiceType}
+                            onChange={(e) => setEditInvoiceType(e.target.value as InvoiceType)}
+                        >
+                            <option value={InvoiceType.RENTAL}>Rental</option>
+                            <option value={InvoiceType.SERVICE_CHARGE}>Service Charge</option>
+                            <option value={InvoiceType.INSTALLMENT}>Installment</option>
+                        </Select>
                         <div>
                              <label className="block text-sm font-medium text-slate-700 mb-1">Mode</label>
                              <div className="flex gap-2">

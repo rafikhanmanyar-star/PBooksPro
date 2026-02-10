@@ -561,6 +561,7 @@ CREATE TABLE IF NOT EXISTS recurring_invoice_templates (
     next_due_date TEXT NOT NULL,
     active INTEGER NOT NULL DEFAULT 1,
     agreement_id TEXT,
+    invoice_type TEXT DEFAULT 'Rental',
     frequency TEXT,
     auto_generate INTEGER NOT NULL DEFAULT 0,
     max_occurrences INTEGER,

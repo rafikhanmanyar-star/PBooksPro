@@ -198,6 +198,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
     // Invoice History & Detail View State
     const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null);
     const [invoiceToEdit, setInvoiceToEdit] = useState<Invoice | null>(null);
+    const [duplicateInvoiceData, setDuplicateInvoiceData] = useState<Partial<Invoice> | null>(null);
     const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
     const [warningModalState, setWarningModalState] = useState<{ isOpen: boolean; transaction: Transaction | null; action: 'edit' | 'delete' | null; }>({ isOpen: false, transaction: null, action: null });
 
@@ -739,6 +740,13 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
         setViewInvoice(null);
     };
 
+    const handleDuplicateInvoice = (data: Partial<Invoice>) => {
+        const { id, paidAmount, status, ...rest } = data as any;
+        setDuplicateInvoiceData({ ...rest, paidAmount: 0, status: undefined });
+        setInvoiceToEdit(null);
+        setIsCreateModalOpen(true);
+    };
+
     const handleShowDeleteWarning = (tx: Transaction) => {
         setWarningModalState({ isOpen: true, transaction: tx, action: 'delete' });
     };
@@ -1089,12 +1097,13 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                 </div>
             </div>
 
-            <Modal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setPrepopulatedContactId(undefined); }} title="Create New Invoice">
+            <Modal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setPrepopulatedContactId(undefined); setDuplicateInvoiceData(null); }} title={duplicateInvoiceData ? "Duplicate Invoice" : "Create New Invoice"}>
                 <InvoiceBillForm
-                    onClose={() => { setIsCreateModalOpen(false); setPrepopulatedContactId(undefined); }}
+                    onClose={() => { setIsCreateModalOpen(false); setPrepopulatedContactId(undefined); setDuplicateInvoiceData(null); }}
                     type="invoice"
                     invoiceTypeForNew={invoiceTypeFilter}
                     initialContactId={prepopulatedContactId}
+                    initialData={duplicateInvoiceData || undefined}
                 />
             </Modal>
 
@@ -1165,6 +1174,7 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                     onClose={() => setInvoiceToEdit(null)}
                     type="invoice"
                     itemToEdit={invoiceToEdit || undefined}
+                    onDuplicate={handleDuplicateInvoice}
                 />
             </Modal>
 
