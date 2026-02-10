@@ -47,6 +47,15 @@ export interface UnreadCountResponse {
   count: number;
 }
 
+export interface UnreadConversation {
+  phoneNumber: string;
+  contactId: string | null;
+  contactName: string | null;
+  unreadCount: number;
+  lastMessage: string;
+  lastTimestamp: string;
+}
+
 /**
  * Normalize phone for matching (must mirror server logic).
  * Used so WebSocket incoming/outgoing match contact.contactNo regardless of format.
@@ -189,6 +198,22 @@ export class WhatsAppChatService {
     } catch (error: any) {
       console.error('Error getting unread count:', error);
       return 0;
+    }
+  }
+
+  /**
+   * Get unread conversations grouped by phone number
+   */
+  static async getUnreadConversations(): Promise<UnreadConversation[]> {
+    try {
+      if (!apiClient.getToken()) {
+        return [];
+      }
+      const response = await apiClient.get<UnreadConversation[]>('/whatsapp/unread-conversations');
+      return response;
+    } catch (error: any) {
+      console.error('Error getting unread conversations:', error);
+      return [];
     }
   }
 

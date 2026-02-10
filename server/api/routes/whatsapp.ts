@@ -621,6 +621,7 @@ router.post('/messages/:messageId/read', async (req: TenantRequest, res) => {
 /**
  * POST /api/whatsapp/messages/read-all
  * Mark all messages from a phone number as read
+ * Note: No config check needed - this is a local DB operation
  */
 router.post('/messages/read-all', async (req: TenantRequest, res) => {
   try {
@@ -634,14 +635,7 @@ router.post('/messages/read-all', async (req: TenantRequest, res) => {
       return res.status(401).json({ error: 'Tenant ID is required' });
     }
 
-    // Check if WhatsApp is configured before trying to mark as read
     const whatsappService = getWhatsAppApiService();
-    const config = await whatsappService.getConfig(req.tenantId);
-    
-    if (!config) {
-      // WhatsApp not configured - return success silently (not an error)
-      return res.json({ success: true, message: 'WhatsApp not configured' });
-    }
 
     // Pass contactId if provided to ensure we only mark messages for this specific contact
     await whatsappService.markAllAsRead(req.tenantId, phoneNumber, contactId);
@@ -666,6 +660,21 @@ router.get('/unread-count', async (req: TenantRequest, res) => {
   } catch (error: any) {
     console.error('Error getting unread count:', error);
     res.status(500).json({ error: 'Failed to get unread count' });
+  }
+});
+
+/**
+ * GET /api/whatsapp/unread-conversations
+ * Get unread conversations grouped by phone number
+ */
+router.get('/unread-conversations', async (req: TenantRequest, res) => {
+  try {
+    const whatsappService = getWhatsAppApiService();
+    const conversations = await whatsappService.getUnreadConversations(req.tenantId!);
+    res.json(conversations);
+  } catch (error: any) {
+    console.error('Error getting unread conversations:', error);
+    res.status(500).json({ error: 'Failed to get unread conversations' });
   }
 });
 

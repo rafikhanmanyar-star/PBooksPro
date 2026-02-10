@@ -15,6 +15,7 @@ import TransactionLogViewer from './TransactionLogViewer';
 import MessagingTemplatesForm from './MessagingTemplatesForm';
 import PrintTemplateForm from './PrintTemplateForm';
 import WhatsAppConfigForm from './WhatsAppConfigForm';
+import WhatsAppMenuForm from './WhatsAppMenuForm';
 import HelpSection from './HelpSection';
 import Modal from '../ui/Modal';
 import { useNotification } from '../../context/NotificationContext';
@@ -112,7 +113,7 @@ const SettingsPage: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [isErrorLogOpen, setIsErrorLogOpen] = useState(false);
     const [isTransactionLogOpen, setIsTransactionLogOpen] = useState(false);
-    const [activePreferenceModal, setActivePreferenceModal] = useState<'messaging' | 'print' | 'whatsapp' | null>(null);
+    const [activePreferenceModal, setActivePreferenceModal] = useState<'messaging' | 'print' | 'whatsapp' | 'whatsapp-menu' | null>(null);
     const [activePreferenceTab, setActivePreferenceTab] = useState<string>('General');
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'default', direction: 'asc' });
     const [ledgerModalState, setLedgerModalState] = useState<{ isOpen: boolean; entityId: string; entityType: 'account' | 'category' | 'contact' | 'project' | 'building' | 'property' | 'unit'; entityName: string } | null>(null);
@@ -691,6 +692,7 @@ const SettingsPage: React.FC = () => {
             {renderActionCard('Messaging Templates', 'Configure WhatsApp templates for invoices, receipts, and greetings.', <div className="w-6 h-6">{ICONS.whatsapp}</div>, () => setActivePreferenceModal('messaging'))}
             {renderActionCard('WhatsApp Integration', 'Configure WhatsApp Business API credentials and settings.', <div className="w-6 h-6">{ICONS.whatsapp}</div>, () => setActivePreferenceModal('whatsapp'))}
             {renderActionCard('Print Settings', 'Customize company details, logo, and footer for printed reports.', <div className="w-6 h-6">{ICONS.fileText}</div>, () => setActivePreferenceModal('print'))}
+            {renderActionCard('WhatsApp Menu', 'Design auto-reply menus for incoming WhatsApp messages.', <div className="w-6 h-6">{ICONS.whatsapp}</div>, () => setActivePreferenceModal('whatsapp-menu'))}
         </div>
     );
 
@@ -979,6 +981,10 @@ const SettingsPage: React.FC = () => {
 
             <Modal isOpen={activePreferenceModal === 'print'} onClose={() => setActivePreferenceModal(null)} title="Print Settings" size="xl">
                 <PrintTemplateForm />
+            </Modal>
+
+            <Modal isOpen={activePreferenceModal === 'whatsapp-menu'} onClose={() => setActivePreferenceModal(null)} title="WhatsApp Auto-Reply Menu" size="xl">
+                <WhatsAppMenuForm />
             </Modal>
 
             <Modal isOpen={isMigrationWizardOpen} onClose={() => setIsMigrationWizardOpen(false)} title="Data Migration Wizard" size="xl">

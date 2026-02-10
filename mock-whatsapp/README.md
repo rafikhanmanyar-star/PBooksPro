@@ -21,7 +21,15 @@ npm run dev
 
 Server runs at **http://localhost:9999** by default.
 
+**Web UI**: Open **http://localhost:9999** in your browser to:
+- Set webhook URL and sender config
+- Send a simulated incoming message to the main app
+- Simulate status updates (sent/delivered/read)
+- View the message log
+
 ## Using with the main app
+
+**Full local setup (mock + API + client on your machine):** see **[doc/WHATSAPP_MOCK_LOCAL_SETUP.md](../doc/WHATSAPP_MOCK_LOCAL_SETUP.md)** for step-by-step configuration.
 
 ### 1. Point the main app at the mock
 

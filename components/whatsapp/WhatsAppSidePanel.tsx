@@ -63,9 +63,10 @@ const WhatsAppSidePanel: React.FC<WhatsAppSidePanelProps> = ({
   }, [isOpen]);
 
   // Load messages when panel opens
+  // Note: Loading messages and marking as read are DB operations - they don't require WhatsApp API config
   useEffect(() => {
     const loadMessages = async () => {
-      if (!isOpen || !phoneNumber || !isConfigured) {
+      if (!isOpen || !phoneNumber) {
         setMessages([]);
         return;
       }
@@ -73,24 +74,24 @@ const WhatsAppSidePanel: React.FC<WhatsAppSidePanelProps> = ({
       setIsLoading(true);
       try {
         const loadedMessages = await WhatsAppChatService.getMessages(phoneNumber, 100, 0);
-        setMessages(loadedMessages.reverse()); // Reverse to show oldest first
-        // Mark messages as read when opening chat (silently fail if not configured)
+        setMessages(loadedMessages); // Server already returns in chronological order (oldest first)
+        // Mark messages as read when opening chat
         try {
           await WhatsAppChatService.markAllAsRead(phoneNumber);
+          // Notify header to refresh unread count badge immediately
+          window.dispatchEvent(new CustomEvent('whatsapp:messages:read'));
         } catch (markReadError: any) {
-          // Silently fail - this is not critical, just log it
           console.warn('Could not mark messages as read:', markReadError);
         }
       } catch (error: any) {
         console.error('Error loading messages:', error);
-        // Don't show alert for loading errors, just log
       } finally {
         setIsLoading(false);
       }
     };
 
     loadMessages();
-  }, [isOpen, phoneNumber, isConfigured]);
+  }, [isOpen, phoneNumber]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -156,6 +157,10 @@ const WhatsAppSidePanel: React.FC<WhatsAppSidePanelProps> = ({
             ];
           }
         });
+        // Message arrived while chat is open - mark as read immediately
+        WhatsAppChatService.markAllAsRead(phoneNumber).then(() => {
+          window.dispatchEvent(new CustomEvent('whatsapp:messages:read'));
+        }).catch(() => {});
       }
     };
 
@@ -310,58 +315,64 @@ const WhatsAppSidePanel: React.FC<WhatsAppSidePanelProps> = ({
 
   return (
     <>
-      {/* Backdrop - semi-transparent, non-blocking */}
+      {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/20 z-[9998] transition-opacity duration-300"
+        className="fixed inset-0 bg-black/30 z-[9998] transition-opacity duration-300"
         onClick={onClose}
       />
 
-      {/* Side Panel */}
+      {/* Side Panel - WhatsApp Style */}
       <div
-        className={`fixed right-0 top-0 h-full w-full sm:w-[420px] bg-white shadow-2xl z-[9999] flex flex-col transform transition-transform duration-300 ease-out ${isOpen ? 'translate-x-0' : 'translate-x-full'
-          }`}
+        className={`fixed right-0 top-0 h-full w-full sm:w-[420px] shadow-2xl z-[9999] flex flex-col transform transition-transform duration-300 ease-out ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex-shrink-0 border-b border-slate-200 bg-white px-4 py-3 flex items-center justify-between">
+        {/* Header - WhatsApp teal */}
+        <div className="flex-shrink-0 bg-[#075E54] px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white flex-shrink-0">
-              {ICONS.whatsapp}
+            <button
+              onClick={onClose}
+              className="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors flex-shrink-0"
+              aria-label="Back"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            </button>
+            <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white flex-shrink-0">
+              <span className="text-lg font-bold">{(displayName || '?').charAt(0).toUpperCase()}</span>
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-slate-800 truncate">{displayName}</h3>
-              <p className="text-xs text-slate-500 font-mono truncate">{phoneNumber}</p>
+              <h3 className="font-semibold text-white truncate text-[15px]">{displayName}</h3>
+              <p className="text-xs text-white/70 font-mono truncate">{phoneNumber}</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="ml-2 text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors flex-shrink-0"
-            aria-label="Close"
-          >
-            <div className="w-5 h-5">{ICONS.x}</div>
-          </button>
         </div>
 
-        {/* Messages Container */}
+        {/* Messages Container - WhatsApp chat wallpaper */}
         <div
           ref={messagesContainerRef}
-          className="flex-1 overflow-y-auto space-y-4 px-4 py-4 bg-slate-50"
-          style={{ minHeight: 0 }}
+          className="flex-1 overflow-y-auto px-3 py-3 flex flex-col"
+          style={{
+            minHeight: 0,
+            backgroundColor: '#ECE5DD',
+            backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'200\' height=\'200\' viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'%23d5cec3\' fill-opacity=\'0.3\'%3E%3Ccircle cx=\'10\' cy=\'10\' r=\'1\'/%3E%3Ccircle cx=\'50\' cy=\'30\' r=\'1\'/%3E%3Ccircle cx=\'90\' cy=\'10\' r=\'1\'/%3E%3Ccircle cx=\'130\' cy=\'40\' r=\'1\'/%3E%3Ccircle cx=\'170\' cy=\'20\' r=\'1\'/%3E%3Ccircle cx=\'30\' cy=\'60\' r=\'1\'/%3E%3Ccircle cx=\'70\' cy=\'70\' r=\'1\'/%3E%3Ccircle cx=\'110\' cy=\'60\' r=\'1\'/%3E%3Ccircle cx=\'150\' cy=\'80\' r=\'1\'/%3E%3Ccircle cx=\'190\' cy=\'60\' r=\'1\'/%3E%3Ccircle cx=\'20\' cy=\'110\' r=\'1\'/%3E%3Ccircle cx=\'60\' cy=\'100\' r=\'1\'/%3E%3Ccircle cx=\'100\' cy=\'120\' r=\'1\'/%3E%3Ccircle cx=\'140\' cy=\'100\' r=\'1\'/%3E%3Ccircle cx=\'180\' cy=\'130\' r=\'1\'/%3E%3Ccircle cx=\'10\' cy=\'150\' r=\'1\'/%3E%3Ccircle cx=\'50\' cy=\'140\' r=\'1\'/%3E%3Ccircle cx=\'90\' cy=\'160\' r=\'1\'/%3E%3Ccircle cx=\'130\' cy=\'150\' r=\'1\'/%3E%3Ccircle cx=\'170\' cy=\'170\' r=\'1\'/%3E%3Ccircle cx=\'40\' cy=\'190\' r=\'1\'/%3E%3Ccircle cx=\'80\' cy=\'180\' r=\'1\'/%3E%3Ccircle cx=\'120\' cy=\'190\' r=\'1\'/%3E%3Ccircle cx=\'160\' cy=\'180\' r=\'1\'/%3E%3C/g%3E%3C/svg%3E")',
+          }}
         >
           {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="text-slate-500">Loading messages...</div>
+            <div className="flex items-center justify-center py-8 flex-1">
+              <div className="bg-white rounded-lg px-4 py-2 shadow-sm text-slate-500 text-sm">Loading messages...</div>
             </div>
           ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mb-4">
-                {ICONS.whatsapp}
+            <div className="flex flex-col items-center justify-center py-12 text-center flex-1">
+              <div className="bg-white/90 rounded-xl px-6 py-6 shadow-sm">
+                <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#25D366" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"></path></svg>
+                </div>
+                <p className="text-slate-700 font-medium text-sm">No messages yet</p>
+                <p className="text-xs text-slate-500 mt-1">Send a message to start the conversation</p>
               </div>
-              <p className="text-slate-600 font-medium">No messages yet</p>
-              <p className="text-sm text-slate-500 mt-1">Start a conversation by sending a message</p>
             </div>
           ) : (
             <>
+              <div className="flex-1" />
               {messages.map((message, index) => {
                 const prevMessage = index > 0 ? messages[index - 1] : null;
                 const currentDate = formatDate(message.timestamp);
@@ -371,29 +382,28 @@ const WhatsAppSidePanel: React.FC<WhatsAppSidePanelProps> = ({
                 return (
                   <React.Fragment key={message.id || `msg-${index}`}>
                     {showDateSeparator && (
-                      <div className="flex items-center justify-center my-4">
-                        <div className="px-3 py-1 bg-slate-200 text-slate-600 text-xs rounded-full">
+                      <div className="flex items-center justify-center my-3">
+                        <div className="px-3 py-1 bg-white/90 text-slate-600 text-[11px] rounded-md shadow-sm font-medium">
                           {currentDate}
                         </div>
                       </div>
                     )}
                     <div
-                      className={`flex ${message.direction === 'outgoing' ? 'justify-end' : 'justify-start'}`}
+                      className={`flex mb-1 ${message.direction === 'outgoing' ? 'justify-end' : 'justify-start'}`}
                     >
                       <div
-                        className={`max-w-[75%] rounded-lg px-3 py-2 ${message.direction === 'outgoing'
-                          ? 'bg-green-500 text-white'
-                          : 'bg-white text-slate-800 border border-slate-200'
+                        className={`max-w-[80%] rounded-lg px-3 py-1.5 shadow-sm relative ${message.direction === 'outgoing'
+                          ? 'bg-[#DCF8C6] text-slate-800'
+                          : 'bg-white text-slate-800'
                           }`}
                       >
-                        <p className="text-sm whitespace-pre-wrap break-words">{message.messageText}</p>
+                        <p className="text-[13px] whitespace-pre-wrap break-words leading-relaxed">{message.messageText}</p>
                         <div
-                          className={`flex items-center gap-1 mt-1 ${message.direction === 'outgoing' ? 'justify-end text-green-100' : 'justify-start text-slate-500'
-                            }`}
+                          className={`flex items-center gap-1 mt-0.5 ${message.direction === 'outgoing' ? 'justify-end' : 'justify-start'}`}
                         >
-                          <span className="text-xs">{formatTime(message.timestamp)}</span>
+                          <span className="text-[11px] text-slate-500">{formatTime(message.timestamp)}</span>
                           {message.direction === 'outgoing' && (
-                            <span className="text-xs">{getStatusIcon(message.status)}</span>
+                            <span className="text-[11px]">{getStatusIcon(message.status)}</span>
                           )}
                         </div>
                       </div>
@@ -406,40 +416,44 @@ const WhatsAppSidePanel: React.FC<WhatsAppSidePanelProps> = ({
           )}
         </div>
 
-        {/* Input Area */}
-        <div className="flex-shrink-0 border-t border-slate-200 bg-white p-3">
+        {/* Input Area - WhatsApp Style */}
+        <div className="flex-shrink-0 bg-[#F0F0F0] px-3 py-2">
           {!isConfigured ? (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center mb-3">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-center mb-2">
               <p className="text-xs text-amber-800">
                 WhatsApp API not configured. Messages will open in WhatsApp Web.
               </p>
             </div>
           ) : null}
-          <div className="flex gap-2">
-            <textarea
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
-              className="flex-1 px-3 py-2 border border-slate-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500 text-sm"
-              rows={3}
-              disabled={isSending || !phoneNumber}
-            />
-            <Button
+          <div className="flex items-end gap-2">
+            <div className="flex-1 bg-white rounded-3xl px-4 py-2 shadow-sm">
+              <textarea
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Type a message"
+                className="w-full resize-none focus:outline-none text-sm text-slate-800 placeholder-slate-400 leading-5"
+                rows={1}
+                disabled={isSending || !phoneNumber}
+                style={{ maxHeight: '100px', minHeight: '20px' }}
+                onInput={(e) => {
+                  const target = e.target as HTMLTextAreaElement;
+                  target.style.height = '20px';
+                  target.style.height = Math.min(target.scrollHeight, 100) + 'px';
+                }}
+              />
+            </div>
+            <button
               onClick={handleSend}
               disabled={isSending || !newMessage.trim() || !phoneNumber}
-              className="self-end bg-green-500 hover:bg-green-600"
-              size="icon"
+              className="w-10 h-10 bg-[#075E54] hover:bg-[#064E46] text-white rounded-full flex items-center justify-center flex-shrink-0 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
             >
               {isSending ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="22" y1="2" x2="11" y2="13"></line>
-                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
               )}
-            </Button>
+            </button>
           </div>
         </div>
       </div>

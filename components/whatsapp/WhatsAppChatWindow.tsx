@@ -57,9 +57,10 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
   }, [isOpen, showAlert]);
 
   // Load messages when window opens or contact changes
+  // Note: Loading messages and marking as read are DB operations - they don't require WhatsApp API config
   useEffect(() => {
     const loadMessages = async () => {
-      if (!isOpen || !phoneNumber || !isConfigured) {
+      if (!isOpen || !phoneNumber) {
         setMessages([]);
         return;
       }
@@ -72,9 +73,6 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
           contactName: contact?.name || null,
         });
         
-        // Pass both contactId and phoneNumber to ensure messages are filtered correctly
-        // This prevents showing messages from other contacts with the same phone number
-        // in different organizations (tenant_id is handled by API automatically)
         const loadedMessages = await WhatsAppChatService.getMessages(phoneNumber, 50, 0, contact?.id);
         
         console.log('[WhatsAppChatWindow] Messages loaded', {
@@ -83,13 +81,14 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
           hasOutgoing: loadedMessages.some(m => m.direction === 'outgoing'),
         });
         
-        setMessages(loadedMessages.reverse()); // Reverse to show oldest first
+        setMessages(loadedMessages); // Server already returns in chronological order (oldest first)
         
         // Mark messages as read when opening chat (also pass contactId for proper filtering)
         try {
           await WhatsAppChatService.markAllAsRead(phoneNumber, contact?.id);
+          // Notify header to refresh unread count badge immediately
+          window.dispatchEvent(new CustomEvent('whatsapp:messages:read'));
         } catch (readError) {
-          // Non-critical error, just log it
           console.warn('[WhatsAppChatWindow] Error marking messages as read:', readError);
         }
       } catch (error: any) {
@@ -101,7 +100,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
     };
 
     loadMessages();
-  }, [isOpen, phoneNumber, contact?.id, isConfigured, showAlert]);
+  }, [isOpen, phoneNumber, contact?.id, showAlert]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -222,6 +221,10 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
             return newMessages;
           }
         });
+        // Message arrived while chat is open - mark as read immediately
+        WhatsAppChatService.markAllAsRead(phoneNumber, contact?.id).then(() => {
+          window.dispatchEvent(new CustomEvent('whatsapp:messages:read'));
+        }).catch(() => {});
       } else {
         console.log('[WhatsAppChatWindow] Message not for current conversation, ignoring', {
           phoneMatches,

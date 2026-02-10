@@ -2,6 +2,8 @@
 
 Use the **Mock WhatsApp** server to test WhatsApp send/receive and webhooks without a real Meta account.
 
+**Run all three locally (mock + API + client):** see **[WHATSAPP_MOCK_LOCAL_SETUP.md](./WHATSAPP_MOCK_LOCAL_SETUP.md)** for step-by-step configuration.
+
 ## What it does
 
 - Exposes a **Meta WhatsApp Cloud API–compatible** API (same paths and request/response shapes).
@@ -16,7 +18,8 @@ Use the **Mock WhatsApp** server to test WhatsApp send/receive and webhooks with
    npm install
    npm run dev
    ```
-   Default: http://localhost:9999
+   Default: http://localhost:9999  
+   Open **http://localhost:9999** in your browser for the **web UI** (configure webhook, send messages to main app, view log).
 
 2. **Point the main app at the mock**
    In your server environment (e.g. `.env`):
