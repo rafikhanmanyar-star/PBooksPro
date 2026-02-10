@@ -2597,10 +2597,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
      * This makes different users on the same tenant see the same contacts.
      */
     // Track latest state to avoid stale captures in async effects
-    // PERFORMANCE: Assign synchronously during render instead of via useEffect.
-    // This avoids an extra effect cycle on every state change.
     const stateRef = useRef(state);
-    stateRef.current = state;
+    useEffect(() => {
+        stateRef.current = state;
+    }, [state]);
 
     const refreshFromApi = useCallback(async () => {
         if (!isAuthenticated) return;
@@ -3732,6 +3732,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         prevTenantIdRef.current = currentTenantId;
     }, [auth.tenant?.id, isAuthenticated, isInitializing, setStoredState, saveNow]);
 
+    // PERFORMANCE: Memoize the context value to prevent cascading re-renders.
+    // Without this, every render of AppProvider creates a new { state, dispatch } object,
+    // causing ALL 155+ context consumers to re-render even when nothing changed.
+    // IMPORTANT: This useMemo MUST be called before any conditional returns below,
+    // because React hooks must be called in the same order on every render.
+    const contextValue = useMemo(() => ({ state, dispatch }), [state, dispatch]);
+
     // Show loading/initialization state
     if (isInitializing) {
         return (
@@ -3742,11 +3749,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             />
         );
     }
-
-    // PERFORMANCE: Memoize the context value to prevent cascading re-renders.
-    // Without this, every render of AppProvider creates a new { state, dispatch } object,
-    // causing ALL 155+ context consumers to re-render even when nothing changed.
-    const contextValue = useMemo(() => ({ state, dispatch }), [state, dispatch]);
 
     return (
         <AppContext.Provider value={contextValue}>
