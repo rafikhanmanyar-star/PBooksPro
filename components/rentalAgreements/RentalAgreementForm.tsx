@@ -288,7 +288,8 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                 dayOfMonth: parseInt(rentDueDate) || 1,
                 nextDueDate: nextMonthDate.toISOString().split('T')[0],
                 active: true,
-                agreementId: agreementToEdit.id
+                agreementId: agreementToEdit.id,
+                invoiceType: InvoiceType.RENTAL
             };
             dispatch({ type: 'ADD_RECURRING_TEMPLATE', payload: recurringTemplate });
         }
@@ -477,7 +478,8 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                         dayOfMonth: agreementData.rentDueDate,
                         nextDueDate: nextMonthDate.toISOString().split('T')[0],
                         active: true,
-                        agreementId: newAgreementId
+                        agreementId: newAgreementId,
+                        invoiceType: InvoiceType.RENTAL
                     };
                     dispatch({ type: 'ADD_RECURRING_TEMPLATE', payload: recurringTemplate });
 
@@ -617,7 +619,8 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                         dayOfMonth: agreementData.rentDueDate,
                         nextDueDate: nextMonthDate.toISOString().split('T')[0],
                         active: true,
-                        agreementId: id
+                        agreementId: id,
+                        invoiceType: InvoiceType.RENTAL
                     };
                     dispatch({ type: 'ADD_RECURRING_TEMPLATE', payload: recurringTemplate });
                 }

@@ -2225,7 +2225,8 @@ export const runImportProcess = async (
                             dayOfMonth: parseInt(row.dayOfMonth),
                             nextDueDate: new Date(row.nextDueDate).toISOString().split('T')[0],
                             active: row.active === true || String(row.active).toLowerCase() === 'true',
-                            agreementId: resolveId(maps.rentalAgreements, row, 'agreementNumber', 'AgreementNumber', 'agreementId')
+                            agreementId: resolveId(maps.rentalAgreements, row, 'agreementNumber', 'AgreementNumber', 'agreementId'),
+                            invoiceType: (row.invoiceType as InvoiceType) || InvoiceType.RENTAL
                         };
 
                         tempState.recurringInvoiceTemplates.push(t);

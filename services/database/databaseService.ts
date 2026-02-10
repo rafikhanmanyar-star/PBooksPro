@@ -261,6 +261,8 @@ class DatabaseService {
                     this.ensureContractColumnsExist();
                     // Ensure vendor_id columns exist
                     this.ensureVendorIdColumnsExist();
+                    // Ensure recurring template has invoice_type column
+                    this.ensureRecurringTemplateColumnsExist();
                 } catch (tenantIdError) {
                     // Old database without tenant_id support - recreate it
                     logger.logCategory('database', '🔄 Detected old database format, recreating with new schema...');
@@ -1073,6 +1075,8 @@ class DatabaseService {
                     this.ensureContractColumnsExist();
                     // Ensure vendor_id columns exist
                     this.ensureVendorIdColumnsExist();
+                    // Ensure recurring template has invoice_type column
+                    this.ensureRecurringTemplateColumnsExist();
 
                     // Run version-specific migrations
                     if (currentVersion < 3) {
@@ -1332,6 +1336,35 @@ class DatabaseService {
     }
 
     /**
+     * Ensure recurring_invoice_templates table has the invoice_type column
+     * This is needed for existing databases that were created before this column was added
+     */
+    ensureRecurringTemplateColumnsExist(): void {
+        if (!this.db || !this.isInitialized) return;
+
+        try {
+            const tableExists = this.query<{ name: string }>(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='recurring_invoice_templates'"
+            ).length > 0;
+
+            if (!tableExists) return;
+
+            const columns = this.query<{ name: string }>('PRAGMA table_info(recurring_invoice_templates)');
+            const columnNames = new Set(columns.map(col => col.name));
+
+            if (!columnNames.has('invoice_type')) {
+                console.log('🔄 Adding invoice_type column to recurring_invoice_templates table...');
+                this.execute("ALTER TABLE recurring_invoice_templates ADD COLUMN invoice_type TEXT DEFAULT 'Rental'");
+                // Update existing rows to have the default value
+                this.execute("UPDATE recurring_invoice_templates SET invoice_type = 'Rental' WHERE invoice_type IS NULL");
+                console.log('✅ Added invoice_type column to recurring_invoice_templates');
+            }
+        } catch (error) {
+            console.error('❌ Error ensuring recurring template columns exist:', error);
+        }
+    }
+
+    /**
      * Ensure sync_outbox and sync_metadata exist (run first so no "no such table" during schema split)
      */
     private ensureSyncTablesExist(): void {
@@ -1480,6 +1513,7 @@ class DatabaseService {
         this.ensureAllTablesExist();
         this.ensureContractColumnsExist();
         this.ensureVendorIdColumnsExist();
+        this.ensureRecurringTemplateColumnsExist();
 
         // Clear repository column caches so they pick up the new columns
         // This is critical - otherwise repositories will filter out new columns when saving
