@@ -12,6 +12,7 @@ import Tabs from '../ui/Tabs';
 import BrokerPayouts from './BrokerPayouts';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
+import ReceiveFromOwnerModal from '../rentalManagement/ReceiveFromOwnerModal';
 
 export interface OwnerBalance {
     ownerId: string;
@@ -30,6 +31,7 @@ const OwnerPayoutsPage: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [transactionToEdit, setTransactionToEdit] = useState<Transaction | undefined>(undefined);
+    const [receiveOwner, setReceiveOwner] = useState<{ ownerId: string; ownerName: string; amount: number } | null>(null);
 
     // Reset building filter when owner changes
     useEffect(() => {
@@ -45,6 +47,7 @@ const OwnerPayoutsPage: React.FC = () => {
         }
 
         const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
+        const ownerSvcPayCategory = state.categories.find(c => c.name === 'Owner Service Charge Payment');
         
         const ownerData: { [ownerId: string]: { collected: number; paid: number } } = {};
 
@@ -87,6 +90,20 @@ const OwnerPayoutsPage: React.FC = () => {
                 console.warn(`⚠️ Rental income transaction ${tx.id} (${tx.description || 'no desc'}) has no propertyId`);
             }
         });
+
+        // 1b. Add Owner Service Charge Payments (money received from owner to cover service charges)
+        if (ownerSvcPayCategory) {
+            state.transactions
+                .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === ownerSvcPayCategory.id)
+                .forEach(tx => {
+                    if (tx.contactId && ownerData[tx.contactId]) {
+                        const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                        if (!isNaN(amount) && amount > 0) {
+                            ownerData[tx.contactId].collected += amount;
+                        }
+                    }
+                });
+        }
         
         // 2. Subtract Owner Payouts and Property Expenses
         const expenseTxs = state.transactions.filter(tx => tx.type === TransactionType.EXPENSE);
@@ -237,6 +254,7 @@ const OwnerPayoutsPage: React.FC = () => {
         const secDepCategory = state.categories.find(c => c.name === 'Security Deposit');
         const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
         const ownerSecPayoutCategory = state.categories.find(c => c.name === 'Owner Security Payout');
+        const ownerSvcPayCategoryLocal = state.categories.find(c => c.name === 'Owner Service Charge Payment');
         
         let collected = 0;
         let paid = 0;
@@ -270,7 +288,17 @@ const OwnerPayoutsPage: React.FC = () => {
                              collected += amount;
                          }
                      }
-                } else if (tx.type === TransactionType.EXPENSE) {
+                }
+                // Owner Service Charge Payment (money received from owner)
+                else if (tx.type === TransactionType.INCOME && ownerSvcPayCategoryLocal && tx.categoryId === ownerSvcPayCategoryLocal.id) {
+                    if (tx.contactId === selectedOwnerId) {
+                        const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                        if (!isNaN(amount) && amount > 0) {
+                            collected += amount;
+                        }
+                    }
+                }
+                else if (tx.type === TransactionType.EXPENSE) {
                     // Payouts specifically tagged to this building for this owner
                     if (tx.contactId === selectedOwnerId && tx.categoryId === ownerPayoutCategory?.id) {
                         const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
@@ -436,6 +464,18 @@ const OwnerPayoutsPage: React.FC = () => {
                                     {displayedOwnerData.balance > 0 && (
                                         <Button onClick={() => { setTransactionToEdit(undefined); setIsModalOpen(true); }}>Pay Owner</Button>
                                     )}
+                                    {displayedOwnerData.balance < -0.01 && payoutType === 'Rent' && (
+                                        <Button 
+                                            variant="secondary"
+                                            onClick={() => setReceiveOwner({
+                                                ownerId: selectedOwnerId!,
+                                                ownerName: selectedOwnerContact?.name || 'Unknown',
+                                                amount: Math.abs(displayedOwnerData.balance)
+                                            })}
+                                        >
+                                            Receive from Owner
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
                             <div className="mt-4 grid grid-cols-3 gap-4 text-center">
@@ -448,8 +488,12 @@ const OwnerPayoutsPage: React.FC = () => {
                                     <p className="font-semibold text-lg text-slate-700">{CURRENCY} {formatCurrency(displayedOwnerData.paid)}</p>
                                 </div>
                                 <div>
-                                    <p className="text-sm text-slate-500">Balance Held {selectedBuildingId !== 'all' ? '(Selected)' : ''}</p>
-                                    <p className="font-bold text-xl text-danger">{CURRENCY} {formatCurrency(displayedOwnerData.balance)}</p>
+                                    <p className="text-sm text-slate-500">
+                                        {displayedOwnerData.balance >= 0 ? 'Balance Held' : 'Owner Owes'} {selectedBuildingId !== 'all' ? '(Selected)' : ''}
+                                    </p>
+                                    <p className={`font-bold text-xl ${displayedOwnerData.balance < -0.01 ? 'text-red-600' : 'text-danger'}`}>
+                                        {displayedOwnerData.balance < -0.01 ? '-' : ''}{CURRENCY} {formatCurrency(Math.abs(displayedOwnerData.balance))}
+                                    </p>
                                 </div>
                             </div>
                         </Card>
@@ -484,6 +528,16 @@ const OwnerPayoutsPage: React.FC = () => {
                     payoutType={payoutType}
                     preSelectedBuildingId={selectedBuildingId === 'all' ? undefined : selectedBuildingId}
                     transactionToEdit={transactionToEdit}
+                />
+            )}
+
+            {receiveOwner && (
+                <ReceiveFromOwnerModal
+                    isOpen={!!receiveOwner}
+                    onClose={() => setReceiveOwner(null)}
+                    ownerId={receiveOwner.ownerId}
+                    ownerName={receiveOwner.ownerName}
+                    suggestedAmount={receiveOwner.amount}
                 />
             )}
         </div>

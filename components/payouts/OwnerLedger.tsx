@@ -42,6 +42,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             if (!rentalIncomeCategory) return [];
 
             const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
+            const ownerSvcPayCategory = state.categories.find(c => c.name === 'Owner Service Charge Payment');
             
             // 1. Rental Income (Credit) - Must match filtered property list
             // Include both positive (rent collected) and negative (service charge deductions) amounts
@@ -74,6 +75,30 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                     });
                 }
             });
+
+            // 1b. Owner Service Charge Payments (Credit) - money received from owner to cover service charges
+            if (ownerSvcPayCategory) {
+                const ownerPayments = state.transactions.filter(tx =>
+                    tx.type === TransactionType.INCOME &&
+                    tx.categoryId === ownerSvcPayCategory.id &&
+                    tx.contactId === ownerId &&
+                    (!buildingId || tx.buildingId === buildingId)
+                );
+
+                ownerPayments.forEach(tx => {
+                    const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    if (isNaN(amount) || amount <= 0) return;
+
+                    items.push({
+                        id: `own-svc-${tx.id}`,
+                        date: tx.date,
+                        particulars: tx.description || 'Owner Service Charge Payment',
+                        debit: 0,
+                        credit: amount,
+                        type: 'Owner Payment'
+                    });
+                });
+            }
 
             // 2. Expenses (Debit)
             // A. Direct Payouts to Owner

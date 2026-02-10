@@ -24,6 +24,7 @@ interface InvoicesPageProps {
     invoiceTypeFilter?: InvoiceType;
     hideTitleAndGoBack?: boolean;
     showCreateButton?: boolean;
+    onTreeSelectionChange?: (selection: { id: string; type: 'group' | 'subgroup' | 'invoice'; parentId?: string | null; groupBy: string } | null) => void;
 }
 
 type InvoiceTreeSelectionType = 'group' | 'subgroup' | 'invoice' | null;
@@ -166,7 +167,7 @@ const InvoiceTreeSidebar: React.FC<{
     );
 };
 
-const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitleAndGoBack, showCreateButton = true }) => {
+const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitleAndGoBack, showCreateButton = true, onTreeSelectionChange }) => {
     const { state, dispatch } = useAppContext();
     const { showConfirm, showToast, showAlert } = useNotification();
 
@@ -214,6 +215,17 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
     useEffect(() => {
         setTreeFilter(null);
     }, [groupBy, buildingFilter, projectFilter]);
+
+    // Notify parent of tree selection changes
+    useEffect(() => {
+        if (onTreeSelectionChange) {
+            if (treeFilter) {
+                onTreeSelectionChange({ ...treeFilter, groupBy });
+            } else {
+                onTreeSelectionChange(null);
+            }
+        }
+    }, [treeFilter, groupBy, onTreeSelectionChange]);
 
     // Close context menu on outside click
     useEffect(() => {

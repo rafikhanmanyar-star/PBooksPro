@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { useNotification } from '../../context/NotificationContext';
-import { Transaction, TransactionType, Category } from '../../types';
+import { Transaction, TransactionType, Category, RentalAgreementStatus } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -22,11 +22,22 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({ isO
     const [propertyId, setPropertyId] = useState('');
     const [amount, setAmount] = useState('');
 
-    // Filter properties
-    const propertyItems = useMemo(() => state.properties.map(p => ({ 
-        id: p.id, 
-        name: `${p.name} (Owner: ${state.contacts.find(c => c.id === p.ownerId)?.name || 'Unknown'})` 
-    })), [state.properties, state.contacts]);
+    // Helper to check rental status
+    const getPropertyStatus = (propId: string): 'Rented' | 'Vacant' => {
+        return state.rentalAgreements.some(
+            a => a.propertyId === propId && a.status === RentalAgreementStatus.ACTIVE
+        ) ? 'Rented' : 'Vacant';
+    };
+
+    // Filter properties - show status and owner
+    const propertyItems = useMemo(() => state.properties.map(p => {
+        const owner = state.contacts.find(c => c.id === p.ownerId)?.name || 'Unknown';
+        const status = getPropertyStatus(p.id);
+        return { 
+            id: p.id, 
+            name: `${p.name} [${status}] (Owner: ${owner})` 
+        };
+    }), [state.properties, state.contacts, state.rentalAgreements]);
 
     // Auto-fill amount when property changes
     useEffect(() => {
@@ -150,7 +161,7 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({ isO
         <Modal isOpen={isOpen} onClose={onClose} title="Manual Service Charges Deduction">
             <div className="space-y-4">
                 <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-sm text-blue-800">
-                    This will deduct the amount from the Owner's Rental Income and add it to the Building Service Fund for the selected month.
+                    This will deduct the service charge from the Owner's balance and add it to the Building Service Fund, regardless of whether the property is rented or vacant.
                 </div>
 
                 <Input 
@@ -170,6 +181,19 @@ const ManualServiceChargeModal: React.FC<ManualServiceChargeModalProps> = ({ isO
                     required
                     allowAddNew={false}
                 />
+
+                {propertyId && (() => {
+                    const status = getPropertyStatus(propertyId);
+                    return (
+                        <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
+                            status === 'Rented' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
+                        }`}>
+                            <span className={`inline-block w-2 h-2 rounded-full ${status === 'Rented' ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
+                            Property is <strong>{status}</strong>
+                            {status === 'Vacant' && ' — owner will be charged with no rental income offset'}
+                        </div>
+                    );
+                })()}
 
                 <Input 
                     label="Charges Amount" 

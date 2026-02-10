@@ -62,6 +62,7 @@ const SYSTEM_CATEGORIES: Category[] = [
     { id: 'sys-cat-unit-sell', name: 'Unit Selling Income', type: TransactionType.INCOME, isPermanent: true },
     { id: 'sys-cat-penalty-inc', name: 'Penalty Income', type: TransactionType.INCOME, isPermanent: true },
     { id: 'sys-cat-own-eq', name: 'Owner Equity', type: TransactionType.INCOME, isPermanent: true },
+    { id: 'sys-cat-own-svc-pay', name: 'Owner Service Charge Payment', type: TransactionType.INCOME, isPermanent: true, isRental: true },
 
     // Expense
     { id: 'sys-cat-sal-adv', name: 'Salary Advance', type: TransactionType.EXPENSE, isPermanent: true },
@@ -2972,6 +2973,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     };
                 };
 
+                // Helper: normalize recurring invoice template from event payload
+                const normalizeRecurringTemplateFromEvent = (t: any) => {
+                    if (!t) return null;
+                    return {
+                        id: t.id,
+                        contactId: t.contact_id ?? t.contactId ?? '',
+                        propertyId: t.property_id ?? t.propertyId ?? '',
+                        buildingId: t.building_id ?? t.buildingId ?? '',
+                        amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount ?? '0')),
+                        descriptionTemplate: t.description_template ?? t.descriptionTemplate ?? '',
+                        dayOfMonth: typeof t.day_of_month === 'number' ? t.day_of_month : parseInt(String(t.day_of_month ?? t.dayOfMonth ?? '1')),
+                        nextDueDate: t.next_due_date ?? t.nextDueDate ?? '',
+                        active: t.active === true || t.active === 1 || t.active === 'true',
+                        agreementId: t.agreement_id ?? t.agreementId ?? undefined,
+                        invoiceType: t.invoice_type ?? t.invoiceType ?? 'Rental',
+                        frequency: t.frequency ?? 'Monthly',
+                        autoGenerate: t.auto_generate === true || t.auto_generate === 1 || t.autoGenerate === true,
+                        maxOccurrences: t.max_occurrences ?? t.maxOccurrences ?? undefined,
+                        generatedCount: typeof t.generated_count === 'number' ? t.generated_count : (typeof t.generatedCount === 'number' ? t.generatedCount : parseInt(String(t.generated_count ?? t.generatedCount ?? '0'))),
+                        lastGeneratedDate: t.last_generated_date ?? t.lastGeneratedDate ?? undefined,
+                    };
+                };
+
                 const events = [
                     'transaction:created', 'transaction:updated', 'transaction:deleted',
                     'bill:created', 'bill:updated', 'bill:deleted',
@@ -2991,7 +3015,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     'unit:created', 'unit:updated', 'unit:deleted',
                     'loan_advance_record:created', 'loan_advance_record:updated', 'loan_advance_record:deleted',
                     'installment_plan:created', 'installment_plan:updated', 'installment_plan:deleted',
-                    'plan_amenity:created', 'plan_amenity:updated', 'plan_amenity:deleted'
+                    'plan_amenity:created', 'plan_amenity:updated', 'plan_amenity:deleted',
+                    'recurring_invoice_template:created', 'recurring_invoice_template:updated', 'recurring_invoice_template:deleted'
                 ];
 
                 // Generic fallback subscription → schedule a full refresh
@@ -3172,6 +3197,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     if (!id) return;
                     dispatch({
                         type: 'DELETE_RENTAL_AGREEMENT',
+                        payload: id,
+                        _isRemote: true
+                    } as any);
+                }));
+
+                // Recurring Invoice Template events (so schedules sync immediately across devices)
+                unsubSpecific.push(ws.on('recurring_invoice_template:created', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const payloadTemplate = data?.template ?? data;
+                    const normalized = normalizeRecurringTemplateFromEvent(payloadTemplate);
+                    if (!normalized) return;
+                    const exists = stateRef.current.recurringInvoiceTemplates.some(t => t.id === normalized.id);
+                    if (!exists) {
+                        dispatch({
+                            type: 'ADD_RECURRING_TEMPLATE',
+                            payload: normalized,
+                            _isRemote: true
+                        } as any);
+                    }
+                }));
+                unsubSpecific.push(ws.on('recurring_invoice_template:updated', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const payloadTemplate = data?.template ?? data;
+                    const normalized = normalizeRecurringTemplateFromEvent(payloadTemplate);
+                    if (!normalized) return;
+                    const existing = stateRef.current.recurringInvoiceTemplates.find(t => t.id === normalized.id);
+                    const merged = existing ? { ...existing, ...normalized } : normalized;
+                    dispatch({
+                        type: existing ? 'UPDATE_RECURRING_TEMPLATE' : 'ADD_RECURRING_TEMPLATE',
+                        payload: merged,
+                        _isRemote: true
+                    } as any);
+                }));
+                unsubSpecific.push(ws.on('recurring_invoice_template:deleted', (data: any) => {
+                    if (data?.userId && currentUserId && data.userId === currentUserId) return;
+                    const id = data?.templateId ?? data?.id;
+                    if (!id) return;
+                    dispatch({
+                        type: 'DELETE_RECURRING_TEMPLATE',
                         payload: id,
                         _isRemote: true
                     } as any);

@@ -23,6 +23,7 @@ const SYSTEM_CATEGORIES = [
   { id: 'sys-cat-unit-sell', name: 'Unit Selling Income', type: 'Income', isPermanent: true },
   { id: 'sys-cat-penalty-inc', name: 'Penalty Income', type: 'Income', isPermanent: true },
   { id: 'sys-cat-own-eq', name: 'Owner Equity', type: 'Income', isPermanent: true },
+  { id: 'sys-cat-own-svc-pay', name: 'Owner Service Charge Payment', type: 'Income', isPermanent: true, isRental: true },
 
   // Expense
   { id: 'sys-cat-sal-adv', name: 'Salary Advance', type: 'Expense', isPermanent: true },
