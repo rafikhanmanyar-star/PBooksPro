@@ -70,11 +70,21 @@ export async function migrateRentalTenantIdToContactId(db: any): Promise<{ succe
 
                 const hasContactId = columns.some((col: any) => col.name === 'contact_id');
                 const hasTenantId = columns.some((col: any) => col.name === 'tenant_id');
+                const hasOrgId = columns.some((col: any) => col.name === 'org_id');
 
                 if (hasContactId && !hasTenantId) {
                   // Already migrated - table has contact_id but not tenant_id
                   db.run('COMMIT');
                   resolve({ success: true, message: 'Migration already completed - contact_id column exists, tenant_id not found' });
+                  return;
+                }
+
+                if (hasContactId && hasTenantId) {
+                  // Both columns exist - table is already in the correct final state
+                  // (contact_id for renter/contact, tenant_id for org multi-tenancy)
+                  // No migration needed.
+                  db.run('COMMIT');
+                  resolve({ success: true, message: 'Migration not needed - both contact_id and tenant_id exist (current schema)' });
                   return;
                 }
 

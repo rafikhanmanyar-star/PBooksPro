@@ -27,8 +27,8 @@ const TABLES_WITH_TENANT_ID = [
     'budgets',
     'quotations',
     'documents',
-    // Note: rental_agreements uses org_id (for organization) and contact_id (for tenant contact), NOT tenant_id
-    // Do NOT include 'rental_agreements' here - it's handled separately
+    // Note: rental_agreements now uses tenant_id (for organization) and contact_id (for renter contact)
+    // It is handled by schema.ts and v7 migration - do NOT include here to avoid double-migration
     'project_agreements',
     'contracts',
     'vendors',
@@ -64,40 +64,15 @@ function addTenantIdColumn(tableName: string): void {
             // Continue to try adding the column
         }
 
-        const hasTenantId = columns.some(col => col.name === 'org_id' || col.name === 'tenant_id');
+        const hasTenantId = columns.some(col => col.name === 'tenant_id');
 
         if (hasTenantId) {
-            // Column already exists, check if it's the right name
-            const hasOrgId = columns.some(col => col.name === 'org_id');
-            const hasLegacyOrgTenantId = columns.some(col => col.name === 'org_tenant_id');
-            if (!hasOrgId && columns.some(col => col.name === 'tenant_id')) {
-                // For rental_agreements, tenant_id refers to contact, so we need org_id
-                if (tableName === 'rental_agreements') {
-                    try {
-                        db.execute(`ALTER TABLE ${tableName} ADD COLUMN org_id TEXT`);
-                        console.log(`✅ Added org_id column to ${tableName}`);
-                    } catch (addError: any) {
-                        // Column might already exist, ignore
-                        if (!addError?.message?.includes('duplicate column')) {
-                            console.warn(`⚠️ Could not add org_id to ${tableName}:`, addError);
-                        }
-                    }
-                }
-            }
-            // Backfill org_id from legacy org_tenant_id if available
-            if (tableName === 'rental_agreements' && hasLegacyOrgTenantId) {
-                try {
-                    db.execute(`UPDATE ${tableName} SET org_id = org_tenant_id WHERE org_id IS NULL`);
-                    console.log(`✅ Backfilled org_id from org_tenant_id in ${tableName}`);
-                } catch (backfillError: any) {
-                    console.warn(`⚠️ Could not backfill org_id in ${tableName}:`, backfillError);
-                }
-            }
+            // Column already exists
             return;
         }
 
-        // Add tenant_id column (use org_id for rental_agreements to avoid conflict)
-        const columnName = tableName === 'rental_agreements' ? 'org_id' : 'tenant_id';
+        // Add tenant_id column
+        const columnName = 'tenant_id';
         let columnAdded = false;
 
         try {

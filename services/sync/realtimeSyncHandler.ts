@@ -1050,8 +1050,8 @@ class RealtimeSyncHandler {
   /**
    * Normalize rental agreement payload to match local SQLite schema.
    * Local schema uses:
-   * - tenant_id for contact tenant ID (rental tenant)
-   * - org_id for organization tenant ID
+   * - contact_id for the renter/tenant contact
+   * - tenant_id for organization tenant ID (multi-tenancy)
    */
   private normalizeRentalAgreementForLocal(payload: any): Record<string, any> {
     const contactId =
@@ -1059,7 +1059,7 @@ class RealtimeSyncHandler {
       payload?.contact_id ??
       payload?.tenantId; // Backward compatibility
 
-    const orgId =
+    const tenantId =
       payload?.org_id ??
       payload?.orgId ??
       payload?.org_tenant_id ??
@@ -1081,7 +1081,7 @@ class RealtimeSyncHandler {
       broker_id: payload?.broker_id ?? payload?.brokerId,
       broker_fee: payload?.broker_fee ?? payload?.brokerFee,
       owner_id: payload?.owner_id ?? payload?.ownerId,
-      org_id: orgId,
+      tenant_id: tenantId,
       user_id: payload?.user_id ?? payload?.userId,
       created_at: payload?.created_at ?? payload?.createdAt,
       updated_at: payload?.updated_at ?? payload?.updatedAt,
