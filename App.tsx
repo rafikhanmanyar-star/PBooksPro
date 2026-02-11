@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useMemo, Suspense, useCallback, useTransition } from 'react';
+import React, { useEffect, useState, useMemo, useRef, Suspense, useCallback, useTransition } from 'react';
 import Header from './components/layout/Header';
 import Footer from './components/layout/Footer';
 import Sidebar from './components/layout/Sidebar';
