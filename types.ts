@@ -94,6 +94,7 @@ export enum InvoiceStatus {
 
 export enum InvoiceType {
   RENTAL = 'Rental',
+  SECURITY_DEPOSIT = 'Security Deposit',
   SERVICE_CHARGE = 'Service Charge',
   INSTALLMENT = 'Installment',
 }
@@ -432,6 +433,8 @@ export interface Invoice {
   rentalMonth?: string;
 }
 
+export type ExpenseBearerType = 'owner' | 'building' | 'tenant';
+
 export interface Bill {
   id: string;
   billNumber: string;
@@ -450,6 +453,7 @@ export interface Bill {
   projectAgreementId?: string;
   contractId?: string;
   staffId?: string;
+  expenseBearerType?: ExpenseBearerType; // 'owner' | 'building' | 'tenant' - who bears the expense
   expenseCategoryItems?: ContractExpenseCategoryItem[]; // New: expense category tracking with units and prices
   documentPath?: string; // Path to uploaded document file (legacy/local)
   documentId?: string; // Reference to documents table (local + cloud)
@@ -505,6 +509,7 @@ export interface RentalAgreement {
   brokerId?: string;
   brokerFee?: number;
   ownerId?: string; // Optional: stores owner at time of agreement (for historical accuracy after property transfer)
+  previousAgreementId?: string; // Links to the previous agreement in a renewal chain
 }
 
 export interface ProjectAgreement {
@@ -634,6 +639,8 @@ export interface InvoiceSettings {
   prefix: string;
   nextNumber: number;
   padding: number;
+  /** When true, newly created rental invoices are sent via WhatsApp automatically (default: false) */
+  autoSendInvoiceWhatsApp?: boolean;
 }
 
 /** Print template configuration from Settings - used by PrintLayout and form templates */
@@ -691,7 +698,12 @@ export interface WhatsAppTemplates {
   invoiceReminder: string;
   invoiceReceipt: string;
   billPayment: string;
+  billToOwner?: string;
+  billToTenant?: string;
   vendorGreeting: string;
+  ownerPayoutLedger?: string;
+  brokerPayoutLedger?: string;
+  payoutConfirmation?: string;
 }
 
 export interface DashboardConfig {

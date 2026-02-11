@@ -44,7 +44,10 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
     const unit = state.units.find(u => u.id === unitId);
     
     const balance = amount - paidAmount;
-    const isRental = invoiceType === InvoiceType.RENTAL;
+    const isRental = invoiceType === InvoiceType.RENTAL || invoiceType === InvoiceType.SECURITY_DEPOSIT;
+    const isSecurityDepositOnly = invoiceType === InvoiceType.SECURITY_DEPOSIT ||
+        (invoiceType === InvoiceType.RENTAL && (invoice.securityDepositCharge || 0) > 0 &&
+            Math.abs(amount - (invoice.securityDepositCharge || 0) - (invoice.serviceCharges || 0)) < 0.01);
 
     const projectAgreement = agreementId ? state.projectAgreements.find(pa => pa.id === agreementId) : undefined;
     const isAgreementCancelled = projectAgreement?.status === ProjectAgreementStatus.CANCELLED;
@@ -177,7 +180,7 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
 
     // Recurring Invoice Logic
     const recurringTemplate = useMemo(() => {
-        if (![InvoiceType.RENTAL, InvoiceType.SERVICE_CHARGE, InvoiceType.INSTALLMENT].includes(invoice.invoiceType)) return null;
+        if (![InvoiceType.RENTAL, InvoiceType.SECURITY_DEPOSIT, InvoiceType.SERVICE_CHARGE, InvoiceType.INSTALLMENT].includes(invoice.invoiceType)) return null;
         return state.recurringInvoiceTemplates.find(t => 
             (invoice.agreementId && t.agreementId === invoice.agreementId && (t.invoiceType || InvoiceType.RENTAL) === invoice.invoiceType) ||
             (!invoice.agreementId && t.propertyId === invoice.propertyId && t.contactId === invoice.contactId && (t.invoiceType || InvoiceType.RENTAL) === invoice.invoiceType)
@@ -238,7 +241,7 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
                     <DetailRow label="Issue Date" value={formatDate(issueDate)} />
                     <DetailRow label="Due Date" value={formatDate(dueDate)} />
-                    <DetailRow label="Type" value={<span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{invoiceType}</span>} />
+                    <DetailRow label="Type" value={<span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{isSecurityDepositOnly ? 'Security Deposit' : invoiceType}</span>} />
                     {property && <DetailRow label="Property" value={`${property.name} (${building?.name || 'N/A'})`} className="col-span-2 md:col-span-3" />}
                     {unit && !property && <DetailRow label="Unit" value={unit.name} />}
                 </div>
@@ -296,7 +299,7 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
                 )}
             </div>
 
-            {isRental && !invoice.description?.includes('[Security]') && (
+            {isRental && !isSecurityDepositOnly && !invoice.description?.includes('[Security]') && (
                 <div className="mt-4 p-3 bg-indigo-50 rounded-md border border-indigo-100">
                     <label className="flex items-center gap-3 cursor-pointer">
                         <input 

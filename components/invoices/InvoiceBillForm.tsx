@@ -31,7 +31,7 @@ interface InvoiceBillFormProps {
   projectContext?: boolean; // When true, bill form is opened from project management - simplifies to project-only allocation
 }
 
-type BillAllocationType = 'project' | 'building' | 'owner' | 'staff';
+type BillAllocationType = 'project' | 'building' | 'owner' | 'tenant' | 'staff';
 type RootBillType = 'project' | 'building' | 'staff';
 
 const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemToEdit, invoiceTypeForNew, agreementForInvoice, initialContactId, initialVendorId, rentalContext, onDuplicate, initialData, projectContext = false }) => {
@@ -81,13 +81,10 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     if (type === 'bill' && defaults) {
       const bill = defaults as Bill;
       if (bill.staffId) return 'staff';
-      // Check if projectAgreementId is a rental agreement
+      // Check if projectAgreementId is a rental agreement (tenant-borne expense)
       if (bill.projectAgreementId) {
         const rentalAgreement = state.rentalAgreements.find(ra => ra.id === bill.projectAgreementId);
-        if (rentalAgreement) {
-          // Tenant bills are removed, default to building (service)
-          return 'building';
-        }
+        if (rentalAgreement) return 'tenant';
         // It's a project agreement, so it's a project bill (not tenant in building context)
         return 'project';
       }
@@ -351,7 +348,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   const isPartiallyPaid = itemToEdit ? itemToEdit.paidAmount > 0 : false;
 
-  const initialRentForEdit = useMemo(() => (defaults && 'invoiceType' in defaults && defaults.invoiceType === InvoiceType.RENTAL)
+  const initialRentForEdit = useMemo(() => (defaults && 'invoiceType' in defaults && (defaults.invoiceType === InvoiceType.RENTAL || defaults.invoiceType === InvoiceType.SECURITY_DEPOSIT))
     ? String(defaults.amount! - (defaults.securityDepositCharge || 0))
     : '0', [defaults]);
 
@@ -482,7 +479,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   // Auto-set issue date to agreement start date if this is the first invoice for the agreement
   useEffect(() => {
-    if (!defaults.id && invoiceType === InvoiceType.RENTAL && agreementId) {
+    if (!defaults.id && (invoiceType === InvoiceType.RENTAL || invoiceType === InvoiceType.SECURITY_DEPOSIT) && agreementId) {
       const agreement = state.rentalAgreements.find(ra => ra.id === agreementId);
       if (agreement) {
         const hasInvoices = state.invoices.some(inv => inv.agreementId === agreement.id);
@@ -494,7 +491,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   }, [agreementId, invoiceType, defaults, state.rentalAgreements, state.invoices]);
 
   useEffect(() => {
-    if (invoiceTypeForNew === InvoiceType.RENTAL || (defaults as Invoice)?.invoiceType === InvoiceType.RENTAL) setAmount(calculatedAmount.toString());
+    if (invoiceTypeForNew === InvoiceType.RENTAL || invoiceTypeForNew === InvoiceType.SECURITY_DEPOSIT || (defaults as Invoice)?.invoiceType === InvoiceType.RENTAL || (defaults as Invoice)?.invoiceType === InvoiceType.SECURITY_DEPOSIT) setAmount(calculatedAmount.toString());
     else if (agreementForInvoice) setAmount(agreementBalance.toString());
   }, [calculatedAmount, invoiceTypeForNew, defaults, agreementForInvoice, agreementBalance]);
 
@@ -666,15 +663,15 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   };
 
   const tenantAgreements = useMemo(() => {
-    if (!contactId && invoiceType === InvoiceType.RENTAL) return [];
-    const targetId = invoiceType === InvoiceType.RENTAL ? contactId : tenantId;
+    if (!contactId && (invoiceType === InvoiceType.RENTAL || invoiceType === InvoiceType.SECURITY_DEPOSIT)) return [];
+    const targetId = (invoiceType === InvoiceType.RENTAL || invoiceType === InvoiceType.SECURITY_DEPOSIT) ? contactId : tenantId;
     if (!targetId) return [];
     return state.rentalAgreements.filter(ra => ra.contactId === targetId);
   }, [contactId, tenantId, invoiceType, state.rentalAgreements]);
 
   useEffect(() => {
     if (itemToEdit) return;
-    if (invoiceType !== InvoiceType.RENTAL) return;
+    if (invoiceType !== InvoiceType.RENTAL && invoiceType !== InvoiceType.SECURITY_DEPOSIT) return;
 
     const selectedAgreement = state.rentalAgreements.find(ra => ra.id === agreementId);
     if (!selectedAgreement) {
@@ -812,7 +809,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   // Function to gather current form data
   const getFormData = () => {
     let finalAmount: number;
-    if (invoiceType === InvoiceType.RENTAL) {
+    if (invoiceType === InvoiceType.RENTAL || invoiceType === InvoiceType.SECURITY_DEPOSIT) {
       finalAmount = calculatedAmount;
     } else if (type === 'bill' && expenseCategoryItems.length > 0) {
       finalAmount = totalAmountFromItems;
@@ -840,7 +837,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       serviceCharges: undefined,
       staffId: staffId || undefined,
       contractId: contractId || undefined,
-      rentalMonth: (invoiceType === InvoiceType.RENTAL) ? new Date(issueDate).toISOString().slice(0, 7) : undefined,
+      rentalMonth: invoiceType === InvoiceType.RENTAL ? new Date(issueDate).toISOString().slice(0, 7) : undefined,
       expenseCategoryItems: (type === 'bill' && expenseCategoryItems.length > 0) ? expenseCategoryItems : undefined,
       // Note: documentPath is handled separately in handleSubmit
     };
@@ -857,6 +854,18 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     // Check if expense category items are required for Bills
     if (type === 'bill' && expenseCategoryItems.length === 0) {
       await showAlert('Please add at least one expense category item.');
+      return;
+    }
+
+    // Validate tenant bill has agreement selected
+    if (type === 'bill' && rentalContext && billAllocationType === 'tenant' && !agreementId) {
+      await showAlert('Please select a tenant and agreement for tenant-borne expenses.');
+      return;
+    }
+
+    // Validate owner bill has property selected
+    if (type === 'bill' && rentalContext && billAllocationType === 'owner' && !propertyId) {
+      await showAlert('Please select a property for owner-borne expenses.');
       return;
     }
 
@@ -891,7 +900,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     }
 
     let finalAmount: number;
-    if (invoiceType === InvoiceType.RENTAL) {
+    if (invoiceType === InvoiceType.RENTAL || invoiceType === InvoiceType.SECURITY_DEPOSIT) {
       finalAmount = calculatedAmount;
     } else if (type === 'bill' && expenseCategoryItems.length > 0) {
       finalAmount = totalAmountFromItems;
@@ -921,30 +930,44 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     if (itemToEdit) {
       if (type === 'invoice') {
         // For rental invoices, always use Rental Income category for the rent portion
-        // Security deposit is tracked separately via securityDepositCharge field
+        // For security deposit invoices, use Security Deposit category
         const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
+        const securityDepositCategory = state.categories.find(c => c.name === 'Security Deposit');
 
-        // Ensure category exists for rental invoices
         if (invoiceType === InvoiceType.RENTAL && !rentalIncomeCategory) {
           await showAlert("Critical Error: 'Rental Income' category not found. Please check settings.");
           return;
         }
+        if (invoiceType === InvoiceType.SECURITY_DEPOSIT && !securityDepositCategory) {
+          await showAlert("Critical Error: 'Security Deposit' category not found. Please check settings.");
+          return;
+        }
+
+        const resolvedCategoryId = invoiceType === InvoiceType.SECURITY_DEPOSIT
+          ? securityDepositCategory?.id
+          : invoiceType === InvoiceType.RENTAL
+            ? rentalIncomeCategory!.id
+            : (categoryId || undefined);
 
         const updatedInvoice: Invoice = {
           ...(itemToEdit as Invoice),
           ...formData,
-          // For rental invoices: categoryId = Rental Income (for rent portion)
-          // Security deposit portion is tracked via securityDepositCharge field
-          categoryId: invoiceType === InvoiceType.RENTAL ? rentalIncomeCategory!.id : (categoryId || undefined),
+          categoryId: resolvedCategoryId,
         };
         dispatch({ type: 'UPDATE_INVOICE', payload: updatedInvoice });
         showToast("Invoice updated successfully");
       } else {
+        // Compute expenseBearerType for rental bills
+        const expenseBearerType = (rentalContext && type === 'bill' && rootAllocationType === 'building' && ['building', 'owner', 'tenant'].includes(billAllocationType))
+          ? (billAllocationType as 'building' | 'owner' | 'tenant') : undefined;
+
         // Ensure all bill fields are preserved when updating
         const updatedBill: Bill = {
           ...(itemToEdit as Bill),
           ...formData,
-          projectAgreementId: agreementId || undefined,
+          projectAgreementId: billAllocationType === 'tenant' ? (agreementId || undefined) : undefined,
+          propertyId: (billAllocationType === 'owner' || billAllocationType === 'tenant') ? (propertyId || undefined) : undefined,
+          expenseBearerType,
           documentPath: type === 'bill' ? (finalDocumentPath || (itemToEdit as Bill).documentPath || undefined) : undefined,
           documentId: type === 'bill' ? (finalDocumentId ?? (itemToEdit as Bill).documentId) : undefined,
           expenseCategoryItems: (type === 'bill' && expenseCategoryItems.length > 0) ? expenseCategoryItems : ((itemToEdit as Bill).expenseCategoryItems || undefined),
@@ -981,30 +1004,41 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           dispatch({ type: updateType as any, payload: settingsToUpdate });
         }
 
-        // For rental invoices, always use Rental Income category for the rent portion
-        // Security deposit is tracked separately via securityDepositCharge field
+        // For rental invoices: categoryId = Rental Income; for security deposit: Security Deposit category
         const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
         const securityDepositCategory = state.categories.find(c => c.name === 'Security Deposit');
 
-        // Ensure categories exist for rental invoices
         if (invoiceType === InvoiceType.RENTAL && !rentalIncomeCategory) {
           await showAlert("Critical Error: 'Rental Income' category not found. Please check settings.");
           return;
         }
+        if (invoiceType === InvoiceType.SECURITY_DEPOSIT && !securityDepositCategory) {
+          await showAlert("Critical Error: 'Security Deposit' category not found. Please check settings.");
+          return;
+        }
+
+        const resolvedCategoryId = invoiceType === InvoiceType.SECURITY_DEPOSIT
+          ? securityDepositCategory!.id
+          : invoiceType === InvoiceType.RENTAL
+            ? rentalIncomeCategory!.id
+            : (categoryId || undefined);
 
         const newInvoice: Invoice = {
           ...newData,
           invoiceType: invoiceType!,
-          // For rental invoices: categoryId = Rental Income (for rent portion)
-          // Security deposit portion is tracked via securityDepositCharge field
-          categoryId: invoiceType === InvoiceType.RENTAL ? rentalIncomeCategory!.id : (categoryId || undefined),
+          categoryId: resolvedCategoryId,
         };
         dispatch({ type: 'ADD_INVOICE', payload: newInvoice });
         showToast("Invoice created successfully");
       } else {
+        const expenseBearerType = (rentalContext && type === 'bill' && rootAllocationType === 'building' && ['building', 'owner', 'tenant'].includes(billAllocationType))
+          ? (billAllocationType as 'building' | 'owner' | 'tenant') : undefined;
+
         const newBill: Bill = {
           ...newData,
-          projectAgreementId: agreementId || undefined,
+          projectAgreementId: billAllocationType === 'tenant' ? (agreementId || undefined) : undefined,
+          propertyId: (billAllocationType === 'owner' || billAllocationType === 'tenant') ? (propertyId || undefined) : undefined,
+          expenseBearerType,
           documentPath: type === 'bill' ? (finalDocumentPath || undefined) : undefined,
           documentId: type === 'bill' ? finalDocumentId : undefined
         };
@@ -1055,12 +1089,22 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       };
     }
     const tenantList = state.contacts.filter(c => c.type === ContactType.TENANT && (c.isActive !== false || c.id === contactId));
-    if (invoiceType === InvoiceType.RENTAL) return { contactLabel: 'Tenant', filteredContacts: tenantList, fixedContactTypeForNew: ContactType.TENANT };
+    if (invoiceType === InvoiceType.RENTAL || invoiceType === InvoiceType.SECURITY_DEPOSIT) return { contactLabel: 'Tenant', filteredContacts: tenantList, fixedContactTypeForNew: ContactType.TENANT };
     const owners = state.contacts.filter(c => (c.type === ContactType.CLIENT || c.type === ContactType.OWNER) && (c.isActive !== false || c.id === contactId));
     return { contactLabel: 'Owner', filteredContacts: owners, fixedContactTypeForNew: ContactType.OWNER };
   }, [type, invoiceType, state.contacts, state.vendors, contactId, vendorId]);
 
   const agreementItems = useMemo(() => tenantAgreements.map(a => ({ id: a.id, name: `${a.agreementNumber} - ${state.properties.find(p => p.id === a.propertyId)?.name}` })), [tenantAgreements, state.properties]);
+
+  // For tenant bill allocation: filter agreements to current building only
+  const tenantBillAgreementItems = useMemo(() => {
+    if (billAllocationType !== 'tenant' || !buildingId) return agreementItems;
+    const buildingPropertyIds = new Set(state.properties.filter(p => p.buildingId === buildingId).map(p => p.id));
+    return agreementItems.filter(a => {
+      const ra = state.rentalAgreements.find(r => r.id === a.id);
+      return ra && buildingPropertyIds.has(ra.propertyId);
+    });
+  }, [agreementItems, billAllocationType, buildingId, state.properties, state.rentalAgreements]);
 
   const handleContactSelect = (item: { id: string; name: string } | null, newName?: string) => {
     if (newName) { setNewItemName(newName); setIsContactModalOpen(true); }
@@ -1483,16 +1527,24 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                   {buildingId && (
                     <>
                       <div className="flex flex-col">
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Type</label>
-                        <div className="flex gap-2">
-                          <button type="button" onClick={() => setBillAllocationType('building')} className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${billAllocationType === 'building' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}>Service</button>
-                          <button type="button" onClick={() => setBillAllocationType('owner')} className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${billAllocationType === 'owner' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}>Owner</button>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Expense Bearer</label>
+                        <div className="flex gap-2 flex-wrap">
+                          <button type="button" onClick={() => { setBillAllocationType('building'); setPropertyId(''); setAgreementId(''); setTenantId(''); }} className={`flex-1 min-w-[80px] px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${billAllocationType === 'building' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`} title="Deduct from building management funds">Building</button>
+                          <button type="button" onClick={() => { setBillAllocationType('owner'); setAgreementId(''); setTenantId(''); }} className={`flex-1 min-w-[80px] px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${billAllocationType === 'owner' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`} title="Deduct from owner income">Owner</button>
+                          <button type="button" onClick={() => { setBillAllocationType('tenant'); setPropertyId(''); }} className={`flex-1 min-w-[80px] px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${billAllocationType === 'tenant' ? 'bg-amber-50 border-amber-500 text-amber-700' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`} title="Deduct from tenant security deposit">Tenant</button>
                         </div>
                       </div>
 
                       {billAllocationType === 'owner' && (
                         <div className="animate-fade-in">
                           <ComboBox label="Property" items={propertyItems} selectedId={propertyId || ''} onSelect={(item) => setPropertyId(item?.id || '')} placeholder="Search properties..." allowAddNew={false} />
+                        </div>
+                      )}
+
+                      {billAllocationType === 'tenant' && (
+                        <div className="animate-fade-in space-y-2">
+                          <ComboBox label="Tenant" items={filteredTenants} selectedId={tenantId || ''} onSelect={handleTenantSelect} placeholder="Search tenants..." allowAddNew={false} />
+                          {tenantId && <ComboBox label="Agreement" items={tenantBillAgreementItems} selectedId={agreementId || ''} onSelect={(item) => { setAgreementId(item?.id || ''); const ra = state.rentalAgreements.find(r => r.id === item?.id); if (ra) setPropertyId(ra.propertyId); }} placeholder="Select agreement..." allowAddNew={false} />}
                         </div>
                       )}
                     </>
@@ -1843,7 +1895,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         )}
         <div className="flex-grow min-h-0 overflow-y-auto pr-1 -mr-1">
           <div className="space-y-3">
-            {invoiceType === InvoiceType.RENTAL ? renderRentalInvoiceForm()
+            {(invoiceType === InvoiceType.RENTAL || invoiceType === InvoiceType.SECURITY_DEPOSIT) ? renderRentalInvoiceForm()
               : renderStandardForm()}
           </div>
         </div>

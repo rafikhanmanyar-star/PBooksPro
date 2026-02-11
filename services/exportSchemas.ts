@@ -388,7 +388,7 @@ const createExportSchemas = (): Record<string, ExportSchema> => {
     schemas.RentalBills = {
         sheetName: 'RentalBills',
         version: '1.1',
-        headers: ['id', 'billNumber', 'contactName', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'description', 'categoryName', 'buildingName', 'propertyName', 'staffName', 'staffId', 'expenseCategoryNames', 'expenseQuantities', 'expensePricePerUnits', 'expenseNetValues', 'expenseUnits'],
+        headers: ['id', 'billNumber', 'contactName', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'description', 'categoryName', 'buildingName', 'propertyName', 'staffName', 'staffId', 'expenseBearerType', 'expenseCategoryNames', 'expenseQuantities', 'expensePricePerUnits', 'expenseNetValues', 'expenseUnits'],
         transform: (state: AppState, maps: ExportMaps, helpers: ExportHelpers) => {
             return state.bills
                 .filter(b => getBillKind(state, b.id) === 'rental')
@@ -424,6 +424,7 @@ const createExportSchemas = (): Record<string, ExportSchema> => {
                         propertyName: helpers.getName(maps.propertiesById, b.propertyId),
                         staffName: helpers.getName(maps.contactsById, b.staffId),
                         staffId: b.staffId ?? '',
+                        expenseBearerType: b.expenseBearerType ?? '',
                         expenseCategoryNames: expenseCategoryNames.join(', '),
                         expenseQuantities: expenseQuantities.join(', '),
                         expensePricePerUnits: expensePricePerUnits.join(', '),
@@ -438,7 +439,7 @@ const createExportSchemas = (): Record<string, ExportSchema> => {
     schemas.Bills = {
         sheetName: 'Bills',
         version: '1.1',
-        headers: ['id', 'billNumber', 'contactName', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'description', 'categoryName', 'projectName', 'buildingName', 'propertyName', 'projectAgreementId', 'agreementNumber', 'contractId', 'contractNumber', 'staffId', 'expenseCategoryNames', 'expenseQuantities', 'expensePricePerUnits', 'expenseNetValues', 'expenseUnits'],
+        headers: ['id', 'billNumber', 'contactName', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'description', 'categoryName', 'projectName', 'buildingName', 'propertyName', 'projectAgreementId', 'agreementNumber', 'contractId', 'contractNumber', 'staffId', 'expenseBearerType', 'expenseCategoryNames', 'expenseQuantities', 'expensePricePerUnits', 'expenseNetValues', 'expenseUnits'],
         transform: (state: AppState, maps: ExportMaps, helpers: ExportHelpers) => {
             return state.bills
                 .filter(b => getBillKind(state, b.id) === 'rental') // Only rental bills to avoid duplication
@@ -478,6 +479,7 @@ const createExportSchemas = (): Record<string, ExportSchema> => {
                         projectAgreementId: b.projectAgreementId ?? '',
                         contractId: b.contractId ?? '',
                         staffId: b.staffId ?? '',
+                        expenseBearerType: b.expenseBearerType ?? '',
                         expenseCategoryNames: expenseCategoryNames.join(', '),
                         expenseQuantities: expenseQuantities.join(', '),
                         expensePricePerUnits: expensePricePerUnits.join(', '),
@@ -494,7 +496,7 @@ const createExportSchemas = (): Record<string, ExportSchema> => {
         const inv = state.invoices.find(x => x.id === invoiceId);
         if (!inv) return 'unknown';
         if (inv.invoiceType === InvoiceType.INSTALLMENT) return 'project';
-        if (inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SERVICE_CHARGE) return 'rental';
+        if (inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SECURITY_DEPOSIT || inv.invoiceType === InvoiceType.SERVICE_CHARGE) return 'rental';
         const rentalAgreementIds = new Set(state.rentalAgreements.map(a => a.id));
         const projectAgreementIds = new Set(state.projectAgreements.map(a => a.id));
         if (inv.agreementId) {

@@ -1,533 +1,803 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { ContactType, TransactionType, InvoiceType, Transaction } from '../../types';
+import { ContactType, TransactionType, Transaction, Contact } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatCurrency } from '../../utils/numberUtils';
 import OwnerPayoutModal from './OwnerPayoutModal';
 import OwnerLedger from './OwnerLedger';
+import BrokerLedger from './BrokerLedger';
+import BrokerPayoutModal from './BrokerPayoutModal';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
-import Tabs from '../ui/Tabs';
-import BrokerPayouts from './BrokerPayouts';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 import ReceiveFromOwnerModal from '../rentalManagement/ReceiveFromOwnerModal';
+import { WhatsAppService } from '../../services/whatsappService';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 
-export interface OwnerBalance {
-    ownerId: string;
-    ownerName: string;
-    collected: number;
-    paid: number;
-    balance: number;
+// --- Types ---
+
+type PayoutCategory = 'all' | 'ownerIncome' | 'brokerCommission' | 'securityDeposit';
+
+interface PayeeRow {
+    id: string;
+    name: string;
+    type: 'Owner' | 'Broker';
+    category: 'ownerIncome' | 'brokerCommission' | 'securityDeposit';
+    categoryLabel: string;
+    collected: number;   // For owners: rent collected / security collected. For brokers: total earned
+    paid: number;        // For owners: payouts + expenses. For brokers: paid commissions
+    balance: number;     // collected - paid (positive = due to payee)
+    contact: Contact;
+    properties?: string; // comma-separated property names for display
 }
+
+type SortKey = 'name' | 'category' | 'collected' | 'paid' | 'balance';
+
+// --- Component ---
 
 const OwnerPayoutsPage: React.FC = () => {
     const { state } = useAppContext();
-    const [activeTab, setActiveTab] = useState('Property Owners');
-    const [payoutType, setPayoutType] = useState<'Rent' | 'Security'>('Rent');
-    const [selectedOwnerId, setSelectedOwnerId] = useState<string | null>(null);
-    const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
-    const [isModalOpen, setIsModalOpen] = useState(false);
+    const { openChat } = useWhatsApp();
+
+    // UI state
+    const [activeCategory, setActiveCategory] = useState<PayoutCategory>('all');
     const [searchQuery, setSearchQuery] = useState('');
-    const [transactionToEdit, setTransactionToEdit] = useState<Transaction | undefined>(undefined);
-    const [receiveOwner, setReceiveOwner] = useState<{ ownerId: string; ownerName: string; amount: number } | null>(null);
+    const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
+    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'balance', direction: 'desc' });
+    const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
-    // Reset building filter when owner changes
+    // Modal state
+    const [ownerPayoutModal, setOwnerPayoutModal] = useState<{
+        isOpen: boolean;
+        owner: Contact | null;
+        balanceDue: number;
+        payoutType: 'Rent' | 'Security';
+        buildingId?: string;
+        transactionToEdit?: Transaction;
+    }>({ isOpen: false, owner: null, balanceDue: 0, payoutType: 'Rent' });
+
+    const [brokerPayoutModal, setBrokerPayoutModal] = useState<{
+        isOpen: boolean;
+        broker: Contact | null;
+        balanceDue: number;
+    }>({ isOpen: false, broker: null, balanceDue: 0 });
+
+    const [receiveOwner, setReceiveOwner] = useState<{
+        ownerId: string;
+        ownerName: string;
+        amount: number;
+    } | null>(null);
+
+    // Reset expanded row when category changes
     useEffect(() => {
-        setSelectedBuildingId('all');
-    }, [selectedOwnerId]);
+        setExpandedRowId(null);
+    }, [activeCategory]);
 
-    // --- Rental Income Balances (Global List) ---
-    const ownerRentalBalances = useMemo<OwnerBalance[]>(() => {
+    // --- Owner Rental Income Balances ---
+    const ownerRentalBalances = useMemo(() => {
         const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
-        if (!rentalIncomeCategory) {
-            console.warn('⚠️ Rental Income category not found. Available categories:', state.categories.map(c => c.name));
-            return [];
-        }
+        if (!rentalIncomeCategory) return [];
 
         const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
         const ownerSvcPayCategory = state.categories.find(c => c.name === 'Owner Service Charge Payment');
-        
-        const ownerData: { [ownerId: string]: { collected: number; paid: number } } = {};
+
+        const ownerData: Record<string, { collected: number; paid: number }> = {};
 
         state.contacts.filter(c => c.type === ContactType.OWNER).forEach(owner => {
             ownerData[owner.id] = { collected: 0, paid: 0 };
         });
 
-        // 1. Add Rental Income
-        const rentalIncomeTxs = state.transactions.filter(tx => 
-            tx.type === TransactionType.INCOME && 
+        // Rental Income
+        state.transactions.filter(tx =>
+            tx.type === TransactionType.INCOME &&
             tx.categoryId === rentalIncomeCategory.id
-        );
-        
-        // Debug logging
-        if (rentalIncomeTxs.length > 0) {
-            console.log(`📊 Found ${rentalIncomeTxs.length} rental income transactions`);
-        }
-        
-        rentalIncomeTxs.forEach(tx => {
+        ).forEach(tx => {
             if (tx.propertyId) {
                 const property = state.properties.find(p => p.id === tx.propertyId);
-                if (property && property.ownerId && ownerData[property.ownerId]) {
+                if (property?.ownerId && ownerData[property.ownerId]) {
                     const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                    if (!isNaN(amount)) {
-                        // Include both positive (rent collected) and negative (service charge deductions) amounts
-                        ownerData[property.ownerId].collected += amount;
-                    }
-                } else {
-                    // Debug: log transactions that couldn't be matched
-                    if (tx.propertyId && !property) {
-                        console.warn(`⚠️ Transaction ${tx.id} has propertyId ${tx.propertyId} but property not found`);
-                    } else if (property && !property.ownerId) {
-                        console.warn(`⚠️ Property ${property.name} (${tx.propertyId}) has no ownerId`);
-                    } else if (property && property.ownerId && !ownerData[property.ownerId]) {
-                        console.warn(`⚠️ Owner ${property.ownerId} not found in ownerData`);
-                    }
+                    if (!isNaN(amount)) ownerData[property.ownerId].collected += amount;
                 }
-            } else {
-                // Debug: log transactions without propertyId
-                console.warn(`⚠️ Rental income transaction ${tx.id} (${tx.description || 'no desc'}) has no propertyId`);
             }
         });
 
-        // 1b. Add Owner Service Charge Payments (money received from owner to cover service charges)
+        // Owner Service Charge Payments
         if (ownerSvcPayCategory) {
             state.transactions
                 .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === ownerSvcPayCategory.id)
                 .forEach(tx => {
                     if (tx.contactId && ownerData[tx.contactId]) {
                         const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                        if (!isNaN(amount) && amount > 0) {
-                            ownerData[tx.contactId].collected += amount;
-                        }
+                        if (!isNaN(amount) && amount > 0) ownerData[tx.contactId].collected += amount;
                     }
                 });
         }
-        
-        // 2. Subtract Owner Payouts and Property Expenses
-        const expenseTxs = state.transactions.filter(tx => tx.type === TransactionType.EXPENSE);
-        
-        expenseTxs.forEach(tx => {
-             let isOwnerPayout = false;
 
-             // Case A: Direct Owner Expense (Payouts)
-             if (tx.categoryId === ownerPayoutCategory?.id) {
-                 isOwnerPayout = true;
-                 if (tx.contactId && ownerData[tx.contactId]) {
-                     const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                     if (!isNaN(amount) && amount > 0) {
-                         ownerData[tx.contactId].paid += amount;
-                     }
-                 }
-             }
-             
-             // Case B: Property-linked Expense (Repairs, Bills, etc) - Deduct from Property Owner
-             // If NOT a Payout, NOT Security related, NOT Tenant related -> It is an Owner Expense
-             if (!isOwnerPayout && tx.propertyId) {
-                 const category = state.categories.find(c => c.id === tx.categoryId);
-                 const catName = category?.name || '';
+        // Expenses
+        state.transactions.filter(tx => tx.type === TransactionType.EXPENSE).forEach(tx => {
+            let isOwnerPayout = false;
 
-                 // Exclude Security/Tenant items
-                 if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) return;
+            if (tx.categoryId === ownerPayoutCategory?.id) {
+                isOwnerPayout = true;
+                if (tx.contactId && ownerData[tx.contactId]) {
+                    const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    if (!isNaN(amount) && amount > 0) ownerData[tx.contactId].paid += amount;
+                }
+            }
 
-                 const property = state.properties.find(p => p.id === tx.propertyId);
-                 if (property && property.ownerId && ownerData[property.ownerId]) {
-                     const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                     if (!isNaN(amount) && amount > 0) {
-                         ownerData[property.ownerId].paid += amount;
-                     }
-                 }
-             }
+            if (!isOwnerPayout && tx.propertyId) {
+                const category = state.categories.find(c => c.id === tx.categoryId);
+                const catName = category?.name || '';
+                if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) return;
+
+                const property = state.properties.find(p => p.id === tx.propertyId);
+                if (property?.ownerId && ownerData[property.ownerId]) {
+                    const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    if (!isNaN(amount) && amount > 0) ownerData[property.ownerId].paid += amount;
+                }
+            }
         });
-        
-        return Object.entries(ownerData).map(([ownerId, data]) => {
-            const owner = state.contacts.find(c => c.id === ownerId);
-            return {
-                ownerId,
-                ownerName: owner?.name || 'Unknown Owner',
-                ...data,
-                balance: data.collected - data.paid,
-            };
-        }).filter(item => Math.abs(item.balance) > 0.01 || item.collected > 0 || item.paid > 0).sort((a,b) => b.balance - a.balance);
 
+        return Object.entries(ownerData)
+            .map(([ownerId, data]) => ({ ownerId, ...data, balance: data.collected - data.paid }))
+            .filter(item => Math.abs(item.balance) > 0.01 || item.collected > 0 || item.paid > 0);
     }, [state.transactions, state.categories, state.properties, state.contacts]);
 
-    // --- Security Deposit Balances (Global List) ---
-    const ownerSecurityBalances = useMemo<OwnerBalance[]>(() => {
+    // --- Owner Security Deposit Balances ---
+    const ownerSecurityBalances = useMemo(() => {
         const secDepCategory = state.categories.find(c => c.name === 'Security Deposit');
         const secRefCategory = state.categories.find(c => c.name === 'Security Deposit Refund');
         const ownerSecPayoutCategory = state.categories.find(c => c.name === 'Owner Security Payout');
-
         if (!secDepCategory) return [];
 
-        const ownerData: { [ownerId: string]: { collected: number; paid: number } } = {};
+        const ownerData: Record<string, { collected: number; paid: number }> = {};
 
         state.contacts.filter(c => c.type === ContactType.OWNER).forEach(owner => {
             ownerData[owner.id] = { collected: 0, paid: 0 };
         });
 
-        // 1. Inflows (Security Deposit Income)
-        const incomeTxs = state.transactions.filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === secDepCategory.id);
-        incomeTxs.forEach(tx => {
-             if (tx.propertyId) {
+        // Security Deposit Income
+        state.transactions.filter(tx =>
+            tx.type === TransactionType.INCOME && tx.categoryId === secDepCategory.id
+        ).forEach(tx => {
+            if (tx.propertyId) {
                 const property = state.properties.find(p => p.id === tx.propertyId);
-                if (property && property.ownerId && ownerData[property.ownerId]) {
+                if (property?.ownerId && ownerData[property.ownerId]) {
                     const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                    if (!isNaN(amount) && amount > 0) {
-                        ownerData[property.ownerId].collected += amount;
-                    }
+                    if (!isNaN(amount) && amount > 0) ownerData[property.ownerId].collected += amount;
                 }
             }
         });
 
-        // 2. Outflows (Refunds to Tenant OR Payouts to Owner)
-        const expenseTxs = state.transactions.filter(tx => tx.type === TransactionType.EXPENSE);
-        expenseTxs.forEach(tx => {
+        // Security Outflows
+        state.transactions.filter(tx => tx.type === TransactionType.EXPENSE).forEach(tx => {
             let ownerId = '';
-            
-            // Direct Payout to Owner (Security Payout)
             if (tx.contactId && ownerData[tx.contactId] && ownerSecPayoutCategory && tx.categoryId === ownerSecPayoutCategory.id) {
                 ownerId = tx.contactId;
-            }
-            // Property-based expenses (Refunds to Tenant or Payouts linked to property)
-            else if (tx.propertyId) {
+            } else if (tx.propertyId) {
                 const property = state.properties.find(p => p.id === tx.propertyId);
                 if (property) ownerId = property.ownerId;
             }
 
             if (ownerId && ownerData[ownerId]) {
-                // Check categories
-                if ( (secRefCategory && tx.categoryId === secRefCategory.id) || 
-                     (ownerSecPayoutCategory && tx.categoryId === ownerSecPayoutCategory.id) ) {
-                     const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                     if (!isNaN(amount) && amount > 0) {
-                         ownerData[ownerId].paid += amount;
-                     }
+                if ((secRefCategory && tx.categoryId === secRefCategory.id) ||
+                    (ownerSecPayoutCategory && tx.categoryId === ownerSecPayoutCategory.id)) {
+                    const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    if (!isNaN(amount) && amount > 0) ownerData[ownerId].paid += amount;
                 }
             }
         });
 
-        return Object.entries(ownerData).map(([ownerId, data]) => {
-            const owner = state.contacts.find(c => c.id === ownerId);
-            return {
-                ownerId,
-                ownerName: owner?.name || 'Unknown Owner',
-                ...data,
-                balance: data.collected - data.paid,
-            };
-        }).filter(item => Math.abs(item.balance) > 0.01 || item.collected > 0 || item.paid > 0).sort((a,b) => b.balance - a.balance);
-
+        return Object.entries(ownerData)
+            .map(([ownerId, data]) => ({ ownerId, ...data, balance: data.collected - data.paid }))
+            .filter(item => Math.abs(item.balance) > 0.01 || item.collected > 0 || item.paid > 0);
     }, [state.transactions, state.categories, state.properties, state.contacts]);
 
-    // Determine which list to use
-    const currentBalances = payoutType === 'Rent' ? ownerRentalBalances : ownerSecurityBalances;
+    // --- Broker Commission Balances ---
+    const brokerCommissionBalances = useMemo(() => {
+        const brokerFeeCategory = state.categories.find(c => c.name === 'Broker Fee');
+        const rebateCategory = state.categories.find(c => c.name === 'Rebate Amount');
+        const relevantCategoryIds = [brokerFeeCategory?.id, rebateCategory?.id].filter(Boolean) as string[];
 
-    const filteredOwnerBalances = useMemo(() => {
-        if (!searchQuery) return currentBalances;
-        const lower = searchQuery.toLowerCase();
-        return currentBalances.filter(ob => {
-            // Match Owner Name
-            if (ob.ownerName.toLowerCase().includes(lower)) return true;
-            // Match Property Names owned by this owner
-            const properties = state.properties.filter(p => p.ownerId === ob.ownerId);
-            if (properties.some(p => p.name.toLowerCase().includes(lower))) return true;
-            return false;
-        });
-    }, [currentBalances, searchQuery, state.properties]);
+        const brokerData: Record<string, { earned: number; paid: number }> = {};
 
-    // --- Specific Building Calculation Logic ---
-    const availableBuildingsForOwner = useMemo(() => {
-        if (!selectedOwnerId) return [];
-        const propertyIds = new Set(state.properties.filter(p => p.ownerId === selectedOwnerId).map(p => p.buildingId));
-        return state.buildings.filter(b => propertyIds.has(b.id));
-    }, [selectedOwnerId, state.properties, state.buildings]);
+        state.contacts
+            .filter(c => c.type === ContactType.BROKER || c.type === ContactType.DEALER)
+            .forEach(broker => { brokerData[broker.id] = { earned: 0, paid: 0 }; });
 
-    // Calculate Data for Selected Owner (optionally filtered by building)
-    const displayedOwnerData = useMemo(() => {
-        const globalData = currentBalances.find(ob => ob.ownerId === selectedOwnerId);
-        if (!globalData) return null;
-        if (selectedBuildingId === 'all') return globalData;
-
-        // Recalculate based on specific building
-        const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
-        const secDepCategory = state.categories.find(c => c.name === 'Security Deposit');
-        const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
-        const ownerSecPayoutCategory = state.categories.find(c => c.name === 'Owner Security Payout');
-        const ownerSvcPayCategoryLocal = state.categories.find(c => c.name === 'Owner Service Charge Payment');
-        
-        let collected = 0;
-        let paid = 0;
-
-        const ownerPropertiesInBuilding = new Set(
-            state.properties
-                .filter(p => p.ownerId === selectedOwnerId && p.buildingId === selectedBuildingId)
-                .map(p => p.id)
-        );
-
-        state.transactions.forEach(tx => {
-            // Filter by Building Context
-            let txBuildingId = tx.buildingId;
-            // Try to resolve building from property if direct link missing
-            if (!txBuildingId && tx.propertyId) {
-                const prop = state.properties.find(p => p.id === tx.propertyId);
-                if (prop) txBuildingId = prop.buildingId;
-            }
-
-            // Must match selected building (Directly or via Property)
-            if (txBuildingId !== selectedBuildingId) return;
-
-            // --- RENT MODE ---
-            if (payoutType === 'Rent') {
-                if (tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory?.id) {
-                     // Check ownership via property
-                     if (tx.propertyId && ownerPropertiesInBuilding.has(tx.propertyId)) {
-                         const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                         if (!isNaN(amount)) {
-                             // Include both positive (rent collected) and negative (service charge deductions) amounts
-                             collected += amount;
-                         }
-                     }
-                }
-                // Owner Service Charge Payment (money received from owner)
-                else if (tx.type === TransactionType.INCOME && ownerSvcPayCategoryLocal && tx.categoryId === ownerSvcPayCategoryLocal.id) {
-                    if (tx.contactId === selectedOwnerId) {
-                        const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                        if (!isNaN(amount) && amount > 0) {
-                            collected += amount;
-                        }
-                    }
-                }
-                else if (tx.type === TransactionType.EXPENSE) {
-                    // Payouts specifically tagged to this building for this owner
-                    if (tx.contactId === selectedOwnerId && tx.categoryId === ownerPayoutCategory?.id) {
-                        const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                        if (!isNaN(amount) && amount > 0) {
-                            paid += amount;
-                        }
-                    }
-                    // Property Expenses
-                    if (tx.propertyId && ownerPropertiesInBuilding.has(tx.propertyId)) {
-                         const category = state.categories.find(c => c.id === tx.categoryId);
-                         const catName = category?.name || '';
-                         
-                         // Exclude Payouts (handled above), Security, Tenant
-                         if (tx.categoryId === ownerPayoutCategory?.id) return;
-                         if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout') return;
-                         if (catName.includes('(Tenant)')) return;
-
-                         const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                         if (!isNaN(amount) && amount > 0) {
-                             paid += amount;
-                         }
-                    }
-                }
-            } 
-            // --- SECURITY MODE ---
-            else {
-                 if (tx.type === TransactionType.INCOME && tx.categoryId === secDepCategory?.id) {
-                     if (tx.propertyId && ownerPropertiesInBuilding.has(tx.propertyId)) {
-                         const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                         if (!isNaN(amount) && amount > 0) {
-                             collected += amount;
-                         }
-                     }
-                 } else if (tx.type === TransactionType.EXPENSE) {
-                     // Security Payouts tagged to building
-                     if (tx.contactId === selectedOwnerId && tx.categoryId === ownerSecPayoutCategory?.id) {
-                         const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                         if (!isNaN(amount) && amount > 0) {
-                             paid += amount;
-                         }
-                     }
-                     // Refunds / Deductions
-                     if (tx.propertyId && ownerPropertiesInBuilding.has(tx.propertyId)) {
-                         const catName = state.categories.find(c => c.id === tx.categoryId)?.name || '';
-                         if (catName === 'Security Deposit Refund' || catName.includes('(Tenant)')) {
-                             // Note: Tenant deductions technically don't reduce owner liability to tenant, but reduce CASH held.
-                             // However, usually we track "Liability to Owner" or "Liability to Tenant". 
-                             // Keeping consistent with global calculation logic.
-                             const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                             if (!isNaN(amount) && amount > 0) {
-                                 paid += amount;
-                             }
-                         }
-                     }
-                 }
+        // From Rental Agreements
+        state.rentalAgreements.forEach(ra => {
+            if (ra.brokerId && (ra.brokerFee || 0) > 0) {
+                if (!brokerData[ra.brokerId]) brokerData[ra.brokerId] = { earned: 0, paid: 0 };
+                brokerData[ra.brokerId].earned += (ra.brokerFee || 0);
             }
         });
 
-        return {
-            ...globalData,
-            collected,
-            paid,
-            balance: collected - paid
-        };
+        // Payments
+        state.transactions
+            .filter(tx =>
+                tx.type === TransactionType.EXPENSE &&
+                tx.contactId &&
+                tx.categoryId && relevantCategoryIds.includes(tx.categoryId) &&
+                !tx.projectId // Only rental context
+            )
+            .filter(tx => {
+                const category = state.categories.find(c => c.id === tx.categoryId);
+                return category?.name !== 'Rebate Amount';
+            })
+            .forEach(tx => {
+                if (tx.contactId && brokerData[tx.contactId]) {
+                    brokerData[tx.contactId].paid += tx.amount;
+                }
+            });
 
-    }, [selectedOwnerId, selectedBuildingId, payoutType, currentBalances, state.transactions, state.properties, state.categories]);
-    
-    const selectedOwnerContact = state.contacts.find(c => c.id === selectedOwnerId);
+        return Object.entries(brokerData)
+            .map(([brokerId, data]) => ({ brokerId, ...data, balance: data.earned - data.paid }))
+            .filter(item => Math.abs(item.balance) > 0.01 || item.earned > 0 || item.paid > 0);
+    }, [state.rentalAgreements, state.transactions, state.contacts, state.categories]);
 
-    const renderOwnersView = () => (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 h-full overflow-hidden">
-            <Card className="md:col-span-1 h-full flex flex-col overflow-hidden">
-                <div className="flex-shrink-0 mb-4">
-                    <div className="flex space-x-1 bg-slate-100 p-1 rounded-lg mb-4">
-                        <button
-                            onClick={() => { setPayoutType('Rent'); setSelectedOwnerId(null); }}
-                            className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                                payoutType === 'Rent' ? 'bg-white text-accent shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                            }`}
-                        >
-                            Rental Income
-                        </button>
-                        <button
-                            onClick={() => { setPayoutType('Security'); setSelectedOwnerId(null); }}
-                            className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                                payoutType === 'Security' ? 'bg-white text-accent shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                            }`}
-                        >
-                            Security Deposit
-                        </button>
+    // --- Unified Payee Rows ---
+    const allPayeeRows = useMemo<PayeeRow[]>(() => {
+        const rows: PayeeRow[] = [];
+
+        // Owner Income rows
+        ownerRentalBalances.forEach(ob => {
+            const contact = state.contacts.find(c => c.id === ob.ownerId);
+            if (!contact) return;
+            const ownerProperties = state.properties.filter(p => p.ownerId === ob.ownerId);
+            rows.push({
+                id: `owner-income-${ob.ownerId}`,
+                name: contact.name,
+                type: 'Owner',
+                category: 'ownerIncome',
+                categoryLabel: 'Owner Income',
+                collected: ob.collected,
+                paid: ob.paid,
+                balance: ob.balance,
+                contact,
+                properties: ownerProperties.map(p => p.name).slice(0, 3).join(', ') + (ownerProperties.length > 3 ? ` +${ownerProperties.length - 3}` : ''),
+            });
+        });
+
+        // Broker Commission rows
+        brokerCommissionBalances.forEach(bb => {
+            const contact = state.contacts.find(c => c.id === bb.brokerId);
+            if (!contact) return;
+            const brokerAgreements = state.rentalAgreements.filter(ra => ra.brokerId === bb.brokerId);
+            const propertyNames = brokerAgreements
+                .map(ra => state.properties.find(p => p.id === ra.propertyId)?.name)
+                .filter(Boolean)
+                .slice(0, 3);
+            rows.push({
+                id: `broker-${bb.brokerId}`,
+                name: contact.name,
+                type: 'Broker',
+                category: 'brokerCommission',
+                categoryLabel: 'Commission',
+                collected: bb.earned,
+                paid: bb.paid,
+                balance: bb.balance,
+                contact,
+                properties: propertyNames.join(', ') + (brokerAgreements.length > 3 ? ` +${brokerAgreements.length - 3}` : ''),
+            });
+        });
+
+        // Owner Security Deposit rows
+        ownerSecurityBalances.forEach(ob => {
+            const contact = state.contacts.find(c => c.id === ob.ownerId);
+            if (!contact) return;
+            const ownerProperties = state.properties.filter(p => p.ownerId === ob.ownerId);
+            rows.push({
+                id: `owner-security-${ob.ownerId}`,
+                name: contact.name,
+                type: 'Owner',
+                category: 'securityDeposit',
+                categoryLabel: 'Security Deposit',
+                collected: ob.collected,
+                paid: ob.paid,
+                balance: ob.balance,
+                contact,
+                properties: ownerProperties.map(p => p.name).slice(0, 3).join(', ') + (ownerProperties.length > 3 ? ` +${ownerProperties.length - 3}` : ''),
+            });
+        });
+
+        return rows;
+    }, [ownerRentalBalances, brokerCommissionBalances, ownerSecurityBalances, state.contacts, state.properties, state.rentalAgreements]);
+
+    // --- Filtering ---
+    const filteredRows = useMemo(() => {
+        let rows = allPayeeRows;
+
+        // Category filter
+        if (activeCategory !== 'all') {
+            rows = rows.filter(r => r.category === activeCategory);
+        }
+
+        // Building filter (applies to owner rows only)
+        if (selectedBuildingId !== 'all') {
+            const propertiesInBuilding = new Set(
+                state.properties.filter(p => p.buildingId === selectedBuildingId).map(p => p.id)
+            );
+            const ownerIdsInBuilding = new Set(
+                state.properties.filter(p => p.buildingId === selectedBuildingId && p.ownerId).map(p => p.ownerId)
+            );
+            rows = rows.filter(r => {
+                if (r.type === 'Broker') return true; // brokers not filtered by building
+                return ownerIdsInBuilding.has(r.contact.id);
+            });
+        }
+
+        // Search filter
+        if (searchQuery) {
+            const lower = searchQuery.toLowerCase();
+            rows = rows.filter(r => {
+                if (r.name.toLowerCase().includes(lower)) return true;
+                if (r.properties?.toLowerCase().includes(lower)) return true;
+                if (r.categoryLabel.toLowerCase().includes(lower)) return true;
+                return false;
+            });
+        }
+
+        // Sort
+        rows = [...rows].sort((a, b) => {
+            let valA: any = a[sortConfig.key];
+            let valB: any = b[sortConfig.key];
+            if (typeof valA === 'string') { valA = valA.toLowerCase(); valB = (valB || '').toLowerCase(); }
+            if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        return rows;
+    }, [allPayeeRows, activeCategory, selectedBuildingId, searchQuery, sortConfig, state.properties]);
+
+    // --- Summary Totals ---
+    const summaryTotals = useMemo(() => {
+        const ownerIncome = ownerRentalBalances.reduce((sum, ob) => sum + Math.max(0, ob.balance), 0);
+        const ownerIncomeCount = ownerRentalBalances.filter(ob => ob.balance > 0.01).length;
+        const brokerComm = brokerCommissionBalances.reduce((sum, bb) => sum + Math.max(0, bb.balance), 0);
+        const brokerCount = brokerCommissionBalances.filter(bb => bb.balance > 0.01).length;
+        const security = ownerSecurityBalances.reduce((sum, ob) => sum + Math.max(0, ob.balance), 0);
+        const securityCount = ownerSecurityBalances.filter(ob => ob.balance > 0.01).length;
+        return { ownerIncome, ownerIncomeCount, brokerComm, brokerCount, security, securityCount };
+    }, [ownerRentalBalances, brokerCommissionBalances, ownerSecurityBalances]);
+
+    // --- Helpers ---
+    const handleSort = (key: SortKey) => {
+        setSortConfig(current => ({
+            key,
+            direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+        }));
+    };
+
+    const handleCategoryClick = (cat: PayoutCategory) => {
+        setActiveCategory(prev => prev === cat ? 'all' : cat);
+    };
+
+    const handlePay = (row: PayeeRow) => {
+        if (row.type === 'Broker') {
+            setBrokerPayoutModal({ isOpen: true, broker: row.contact, balanceDue: row.balance });
+        } else if (row.category === 'securityDeposit') {
+            setOwnerPayoutModal({
+                isOpen: true,
+                owner: row.contact,
+                balanceDue: row.balance,
+                payoutType: 'Security',
+                buildingId: selectedBuildingId !== 'all' ? selectedBuildingId : undefined,
+            });
+        } else {
+            setOwnerPayoutModal({
+                isOpen: true,
+                owner: row.contact,
+                balanceDue: row.balance,
+                payoutType: 'Rent',
+                buildingId: selectedBuildingId !== 'all' ? selectedBuildingId : undefined,
+            });
+        }
+    };
+
+    const handleReceiveFromOwner = (row: PayeeRow) => {
+        setReceiveOwner({
+            ownerId: row.contact.id,
+            ownerName: row.contact.name,
+            amount: Math.abs(row.balance),
+        });
+    };
+
+    const handleWhatsApp = (row: PayeeRow) => {
+        const templates = state.whatsAppTemplates;
+        let message = '';
+
+        if (row.type === 'Broker') {
+            const template = templates.brokerPayoutLedger || 'Dear {contactName}, your commission balance is {balance}.';
+            message = WhatsAppService.generateBrokerPayoutLedger(
+                template, row.contact, row.collected, row.paid, row.balance
+            );
+        } else {
+            const payoutType = row.category === 'securityDeposit' ? 'Security Deposit' : 'Rental Income';
+            const template = templates.ownerPayoutLedger || 'Dear {contactName}, your {payoutType} balance is {balance}.';
+            const expenses = row.category === 'ownerIncome' ? row.paid : 0;
+            const paidToOwner = row.category === 'ownerIncome' ? 0 : row.paid;
+            message = WhatsAppService.generateOwnerPayoutLedger(
+                template, row.contact, row.collected, expenses, paidToOwner, row.balance, payoutType
+            );
+        }
+
+        const phoneNumber = row.contact.contactNo || '';
+        openChat(row.contact, phoneNumber, message);
+    };
+
+    const handleExpandToggle = (rowId: string) => {
+        setExpandedRowId(prev => prev === rowId ? null : rowId);
+    };
+
+    const SortIcon = ({ column }: { column: SortKey }) => (
+        <span className="ml-1 text-[10px] text-slate-400 inline-block">
+            {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
+        </span>
+    );
+
+    const getCategoryBadgeClasses = (category: PayeeRow['category']) => {
+        switch (category) {
+            case 'ownerIncome': return 'bg-emerald-100 text-emerald-700';
+            case 'brokerCommission': return 'bg-blue-100 text-blue-700';
+            case 'securityDeposit': return 'bg-amber-100 text-amber-700';
+        }
+    };
+
+    // --- Expanded row detail ---
+    const renderExpandedDetail = (row: PayeeRow) => {
+        const ownerId = row.contact.id;
+        if (row.type === 'Broker') {
+            return (
+                <div className="p-4 bg-slate-50 border-t border-slate-200">
+                    <div className="flex justify-between items-center mb-3">
+                        <h4 className="font-semibold text-slate-700">Commission Ledger - {row.name}</h4>
                     </div>
-
-                    <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                            <div className="w-4 h-4">{ICONS.search}</div>
-                        </div>
-                        <Input 
-                            placeholder="Search owner..." 
-                            value={searchQuery} 
-                            onChange={(e) => setSearchQuery(e.target.value)} 
-                            className="pl-9 py-1.5 text-sm"
-                        />
-                        {searchQuery && (
-                            <button 
-                                onClick={() => setSearchQuery('')} 
-                                className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
-                            >
-                                <div className="w-4 h-4">{ICONS.x}</div>
-                            </button>
-                        )}
-                    </div>
+                    <BrokerLedger brokerId={ownerId} context="Rental" />
                 </div>
-                
-                <div className="overflow-y-auto flex-grow -mx-2 px-2">
-                    {filteredOwnerBalances.length > 0 ? (
-                        <div className="divide-y divide-slate-100">
-                            {filteredOwnerBalances.map(owner => (
-                                <button 
-                                    key={owner.ownerId} 
-                                    onClick={() => setSelectedOwnerId(owner.ownerId)} 
-                                    className={`w-full text-left p-2 rounded-md flex justify-between items-center gap-2 ${selectedOwnerId === owner.ownerId ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}
-                                >
-                                    <span className={`font-semibold truncate ${selectedOwnerId === owner.ownerId ? 'text-accent' : 'text-slate-800'}`}>
-                                        {owner.ownerName}
-                                    </span>
-                                    <span className="text-sm text-slate-600 whitespace-nowrap">
-                                        {CURRENCY} {formatCurrency(owner.balance)}
-                                    </span>
-                                </button>
-                            ))}
+            );
+        }
+
+        const ledgerType = row.category === 'securityDeposit' ? 'Security' : 'Rent';
+        const buildingIdForLedger = selectedBuildingId === 'all' ? undefined : selectedBuildingId;
+
+        return (
+            <div className="p-4 bg-slate-50 border-t border-slate-200">
+                <div className="flex justify-between items-center mb-3">
+                    <h4 className="font-semibold text-slate-700">
+                        {row.category === 'securityDeposit' ? 'Security Deposit' : 'Rental Income'} Ledger - {row.name}
+                    </h4>
+                </div>
+                <OwnerLedger
+                    ownerId={ownerId}
+                    ledgerType={ledgerType}
+                    buildingId={buildingIdForLedger}
+                    onPayoutClick={(transaction) => {
+                        setOwnerPayoutModal({
+                            isOpen: true,
+                            owner: row.contact,
+                            balanceDue: row.balance,
+                            payoutType: ledgerType === 'Security' ? 'Security' : 'Rent',
+                            buildingId: buildingIdForLedger,
+                            transactionToEdit: transaction,
+                        });
+                    }}
+                />
+            </div>
+        );
+    };
+
+    return (
+        <div className="flex flex-col h-full overflow-hidden">
+            {/* Summary Cards */}
+            <div className="flex-shrink-0 grid grid-cols-1 md:grid-cols-3 gap-4 p-4 pb-0">
+                {/* Owner Income Card */}
+                <button
+                    onClick={() => handleCategoryClick('ownerIncome')}
+                    className={`text-left p-4 rounded-xl border-2 transition-all ${
+                        activeCategory === 'ownerIncome'
+                            ? 'border-emerald-500 bg-emerald-50 shadow-md'
+                            : 'border-slate-200 bg-white hover:border-emerald-300 hover:shadow-sm'
+                    }`}
+                >
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                                activeCategory === 'ownerIncome' ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-600'
+                            }`}>
+                                <div className="w-4 h-4">{ICONS.users}</div>
+                            </div>
+                            <span className="text-sm font-medium text-slate-600">Owner Income</span>
                         </div>
-                    ) : (
-                        <p className="text-sm text-slate-500 text-center py-4">
-                            {searchQuery ? 'No owners found matching your search.' : `No pending ${payoutType === 'Rent' ? 'rental' : 'security'} payouts.`}
-                        </p>
+                        <span className="text-xs text-slate-400">{summaryTotals.ownerIncomeCount} owners</span>
+                    </div>
+                    <p className="text-2xl font-bold text-emerald-700">{CURRENCY} {formatCurrency(summaryTotals.ownerIncome)}</p>
+                    <p className="text-xs text-slate-500 mt-1">Due to property owners</p>
+                </button>
+
+                {/* Broker Commission Card */}
+                <button
+                    onClick={() => handleCategoryClick('brokerCommission')}
+                    className={`text-left p-4 rounded-xl border-2 transition-all ${
+                        activeCategory === 'brokerCommission'
+                            ? 'border-blue-500 bg-blue-50 shadow-md'
+                            : 'border-slate-200 bg-white hover:border-blue-300 hover:shadow-sm'
+                    }`}
+                >
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                                activeCategory === 'brokerCommission' ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-600'
+                            }`}>
+                                <div className="w-4 h-4">{ICONS.dollarSign}</div>
+                            </div>
+                            <span className="text-sm font-medium text-slate-600">Broker Commission</span>
+                        </div>
+                        <span className="text-xs text-slate-400">{summaryTotals.brokerCount} brokers</span>
+                    </div>
+                    <p className="text-2xl font-bold text-blue-700">{CURRENCY} {formatCurrency(summaryTotals.brokerComm)}</p>
+                    <p className="text-xs text-slate-500 mt-1">Due to brokers</p>
+                </button>
+
+                {/* Security Deposit Card */}
+                <button
+                    onClick={() => handleCategoryClick('securityDeposit')}
+                    className={`text-left p-4 rounded-xl border-2 transition-all ${
+                        activeCategory === 'securityDeposit'
+                            ? 'border-amber-500 bg-amber-50 shadow-md'
+                            : 'border-slate-200 bg-white hover:border-amber-300 hover:shadow-sm'
+                    }`}
+                >
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                                activeCategory === 'securityDeposit' ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-600'
+                            }`}>
+                                <div className="w-4 h-4">{ICONS.wallet}</div>
+                            </div>
+                            <span className="text-sm font-medium text-slate-600">Security Deposits</span>
+                        </div>
+                        <span className="text-xs text-slate-400">{summaryTotals.securityCount} owners</span>
+                    </div>
+                    <p className="text-2xl font-bold text-amber-700">{CURRENCY} {formatCurrency(summaryTotals.security)}</p>
+                    <p className="text-xs text-slate-500 mt-1">Held for property owners</p>
+                </button>
+            </div>
+
+            {/* Filter Bar */}
+            <div className="flex-shrink-0 flex flex-wrap items-center gap-3 px-4 py-3">
+                {/* Category chips */}
+                <div className="flex gap-1.5">
+                    {(['all', 'ownerIncome', 'brokerCommission', 'securityDeposit'] as PayoutCategory[]).map(cat => {
+                        const labels: Record<PayoutCategory, string> = {
+                            all: 'All',
+                            ownerIncome: 'Owner Income',
+                            brokerCommission: 'Broker Commission',
+                            securityDeposit: 'Security Deposit',
+                        };
+                        return (
+                            <button
+                                key={cat}
+                                onClick={() => setActiveCategory(cat)}
+                                className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                                    activeCategory === cat
+                                        ? 'bg-accent text-white'
+                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                }`}
+                            >
+                                {labels[cat]}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                <div className="h-5 w-px bg-slate-200 hidden md:block" />
+
+                {/* Building filter */}
+                <div className="w-44">
+                    <Select
+                        value={selectedBuildingId}
+                        onChange={(e) => setSelectedBuildingId(e.target.value)}
+                        className="text-xs py-1"
+                    >
+                        <option value="all">All Buildings</option>
+                        {state.buildings.map(b => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                    </Select>
+                </div>
+
+                {/* Search */}
+                <div className="relative flex-grow max-w-xs ml-auto">
+                    <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400">
+                        <div className="w-3.5 h-3.5">{ICONS.search}</div>
+                    </div>
+                    <Input
+                        placeholder="Search payee or property..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-8 py-1 text-xs"
+                    />
+                    {searchQuery && (
+                        <button
+                            onClick={() => setSearchQuery('')}
+                            className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
+                        >
+                            <div className="w-3.5 h-3.5">{ICONS.x}</div>
+                        </button>
                     )}
                 </div>
-            </Card>
-
-            <div className="md:col-span-3 h-full overflow-y-auto space-y-4 pb-4">
-                {displayedOwnerData && selectedOwnerContact ? (
-                    <>
-                        <Card>
-                            <div className="flex justify-between items-center mb-4">
-                                <div>
-                                    <h3 className="text-xl font-bold">{selectedOwnerContact.name}</h3>
-                                    <p className="text-sm text-slate-500">{payoutType} Payout</p>
-                                </div>
-                                <div className="flex gap-2 items-center">
-                                    {/* Building Filter */}
-                                    <div className="w-48">
-                                        <Select
-                                            value={selectedBuildingId}
-                                            onChange={(e) => setSelectedBuildingId(e.target.value)}
-                                            className="text-sm py-1.5"
-                                        >
-                                            <option value="all">All Buildings</option>
-                                            {availableBuildingsForOwner.map(b => (
-                                                <option key={b.id} value={b.id}>{b.name}</option>
-                                            ))}
-                                        </Select>
-                                    </div>
-                                    {displayedOwnerData.balance > 0 && (
-                                        <Button onClick={() => { setTransactionToEdit(undefined); setIsModalOpen(true); }}>Pay Owner</Button>
-                                    )}
-                                    {displayedOwnerData.balance < -0.01 && payoutType === 'Rent' && (
-                                        <Button 
-                                            variant="secondary"
-                                            onClick={() => setReceiveOwner({
-                                                ownerId: selectedOwnerId!,
-                                                ownerName: selectedOwnerContact?.name || 'Unknown',
-                                                amount: Math.abs(displayedOwnerData.balance)
-                                            })}
-                                        >
-                                            Receive from Owner
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="mt-4 grid grid-cols-3 gap-4 text-center">
-                                <div>
-                                    <p className="text-sm text-slate-500">Collected {selectedBuildingId !== 'all' ? '(Selected)' : ''}</p>
-                                    <p className="font-semibold text-lg text-success">{CURRENCY} {formatCurrency(displayedOwnerData.collected)}</p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-slate-500">Paid/Expenses {selectedBuildingId !== 'all' ? '(Selected)' : ''}</p>
-                                    <p className="font-semibold text-lg text-slate-700">{CURRENCY} {formatCurrency(displayedOwnerData.paid)}</p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-slate-500">
-                                        {displayedOwnerData.balance >= 0 ? 'Balance Held' : 'Owner Owes'} {selectedBuildingId !== 'all' ? '(Selected)' : ''}
-                                    </p>
-                                    <p className={`font-bold text-xl ${displayedOwnerData.balance < -0.01 ? 'text-red-600' : 'text-danger'}`}>
-                                        {displayedOwnerData.balance < -0.01 ? '-' : ''}{CURRENCY} {formatCurrency(Math.abs(displayedOwnerData.balance))}
-                                    </p>
-                                </div>
-                            </div>
-                        </Card>
-                        <Card>
-                            <h3 className="text-lg font-semibold mb-3">Transaction Ledger ({payoutType})</h3>
-                            <OwnerLedger 
-                                ownerId={selectedOwnerId} 
-                                ledgerType={payoutType} 
-                                buildingId={selectedBuildingId === 'all' ? undefined : selectedBuildingId}
-                                onPayoutClick={(transaction) => {
-                                    setTransactionToEdit(transaction);
-                                    setIsModalOpen(true);
-                                }}
-                            />
-                        </Card>
-                    </>
-                ) : (
-                    <Card>
-                        <div className="text-center py-20">
-                            <p className="text-slate-500">Select an owner to view details and payment history.</p>
-                        </div>
-                    </Card>
-                )}
             </div>
-            
-            {displayedOwnerData && selectedOwnerContact && (
-                 <OwnerPayoutModal
-                    isOpen={isModalOpen}
-                    onClose={() => { setIsModalOpen(false); setTransactionToEdit(undefined); }}
-                    owner={selectedOwnerContact}
-                    balanceDue={displayedOwnerData.balance}
-                    payoutType={payoutType}
-                    preSelectedBuildingId={selectedBuildingId === 'all' ? undefined : selectedBuildingId}
-                    transactionToEdit={transactionToEdit}
+
+            {/* Payees Table */}
+            <div className="flex-grow overflow-auto px-4 pb-4">
+                <Card className="overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-slate-200">
+                            <thead className="bg-slate-50">
+                                <tr>
+                                    <th className="w-8 px-3 py-3"></th>
+                                    <th
+                                        onClick={() => handleSort('name')}
+                                        className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none"
+                                    >
+                                        Payee <SortIcon column="name" />
+                                    </th>
+                                    <th
+                                        onClick={() => handleSort('category')}
+                                        className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none"
+                                    >
+                                        Type <SortIcon column="category" />
+                                    </th>
+                                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider hidden lg:table-cell">
+                                        Properties / Agreements
+                                    </th>
+                                    <th
+                                        onClick={() => handleSort('collected')}
+                                        className="px-3 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none"
+                                    >
+                                        Collected <SortIcon column="collected" />
+                                    </th>
+                                    <th
+                                        onClick={() => handleSort('paid')}
+                                        className="px-3 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none"
+                                    >
+                                        Paid / Expenses <SortIcon column="paid" />
+                                    </th>
+                                    <th
+                                        onClick={() => handleSort('balance')}
+                                        className="px-3 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none"
+                                    >
+                                        Amount Due <SortIcon column="balance" />
+                                    </th>
+                                    <th className="px-3 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                                        Actions
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {filteredRows.length > 0 ? (
+                                    filteredRows.map(row => (
+                                        <React.Fragment key={row.id}>
+                                            <tr
+                                                className={`transition-colors hover:bg-slate-50 cursor-pointer ${
+                                                    expandedRowId === row.id ? 'bg-slate-50' : ''
+                                                }`}
+                                                onClick={() => handleExpandToggle(row.id)}
+                                            >
+                                                <td className="px-3 py-3 text-slate-400">
+                                                    <div className={`w-4 h-4 transition-transform ${expandedRowId === row.id ? 'rotate-90' : ''}`}>
+                                                        {ICONS.chevronRight}
+                                                    </div>
+                                                </td>
+                                                <td className="px-3 py-3">
+                                                    <div className="font-semibold text-sm text-slate-800">{row.name}</div>
+                                                    <div className="text-xs text-slate-400">{row.type}</div>
+                                                </td>
+                                                <td className="px-3 py-3">
+                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${getCategoryBadgeClasses(row.category)}`}>
+                                                        {row.categoryLabel}
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 py-3 text-xs text-slate-500 max-w-[200px] truncate hidden lg:table-cell" title={row.properties}>
+                                                    {row.properties || '-'}
+                                                </td>
+                                                <td className="px-3 py-3 text-right text-sm text-slate-600">
+                                                    {formatCurrency(row.collected)}
+                                                </td>
+                                                <td className="px-3 py-3 text-right text-sm text-slate-600">
+                                                    {formatCurrency(row.paid)}
+                                                </td>
+                                                <td className="px-3 py-3 text-right">
+                                                    <span className={`text-base font-bold ${
+                                                        row.balance > 0.01 ? 'text-red-600' : row.balance < -0.01 ? 'text-emerald-600' : 'text-slate-400'
+                                                    }`}>
+                                                        {row.balance < -0.01 && '-'}
+                                                        {CURRENCY} {formatCurrency(Math.abs(row.balance))}
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        {row.balance > 0.01 && (
+                                                            <button
+                                                                onClick={() => handlePay(row)}
+                                                                className="px-2.5 py-1 text-xs font-medium rounded-md bg-accent text-white hover:bg-accent/90 transition-colors"
+                                                                title="Record Payment"
+                                                            >
+                                                                Pay
+                                                            </button>
+                                                        )}
+                                                        {row.balance < -0.01 && row.type === 'Owner' && row.category === 'ownerIncome' && (
+                                                            <button
+                                                                onClick={() => handleReceiveFromOwner(row)}
+                                                                className="px-2.5 py-1 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                                                                title="Receive from Owner"
+                                                            >
+                                                                Receive
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            onClick={() => handleWhatsApp(row)}
+                                                            className="p-1.5 rounded-md text-green-600 hover:bg-green-50 transition-colors"
+                                                            title="Send Ledger via WhatsApp"
+                                                        >
+                                                            <div className="w-4 h-4">{ICONS.whatsapp}</div>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {expandedRowId === row.id && (
+                                                <tr>
+                                                    <td colSpan={8} className="p-0">
+                                                        {renderExpandedDetail(row)}
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan={8} className="px-3 py-16 text-center">
+                                            <p className="text-slate-400 text-sm">
+                                                {searchQuery
+                                                    ? 'No payees match your search.'
+                                                    : activeCategory !== 'all'
+                                                        ? 'No pending payouts in this category.'
+                                                        : 'No pending payouts found.'
+                                                }
+                                            </p>
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </Card>
+            </div>
+
+            {/* Modals */}
+            {ownerPayoutModal.owner && (
+                <OwnerPayoutModal
+                    isOpen={ownerPayoutModal.isOpen}
+                    onClose={() => setOwnerPayoutModal({ isOpen: false, owner: null, balanceDue: 0, payoutType: 'Rent' })}
+                    owner={ownerPayoutModal.owner}
+                    balanceDue={ownerPayoutModal.balanceDue}
+                    payoutType={ownerPayoutModal.payoutType}
+                    preSelectedBuildingId={ownerPayoutModal.buildingId}
+                    transactionToEdit={ownerPayoutModal.transactionToEdit}
+                />
+            )}
+
+            {brokerPayoutModal.broker && (
+                <BrokerPayoutModal
+                    isOpen={brokerPayoutModal.isOpen}
+                    onClose={() => setBrokerPayoutModal({ isOpen: false, broker: null, balanceDue: 0 })}
+                    broker={brokerPayoutModal.broker}
+                    balanceDue={brokerPayoutModal.balanceDue}
+                    context="Rental"
                 />
             )}
 
@@ -540,21 +810,6 @@ const OwnerPayoutsPage: React.FC = () => {
                     suggestedAmount={receiveOwner.amount}
                 />
             )}
-        </div>
-    );
-
-    return (
-        <div className="flex flex-col h-full">
-            <div className="flex-shrink-0">
-                <Tabs variant="browser" tabs={['Property Owners', 'Brokers']} activeTab={activeTab} onTabClick={setActiveTab} />
-            </div>
-            <div className="flex-grow overflow-hidden bg-white rounded-b-lg -mt-px">
-                {activeTab === 'Property Owners' ? renderOwnersView() : (
-                    <div className="h-full overflow-y-auto">
-                        <BrokerPayouts context="Rental" />
-                    </div>
-                )}
-            </div>
         </div>
     );
 };

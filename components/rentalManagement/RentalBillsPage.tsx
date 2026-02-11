@@ -1,15 +1,11 @@
-import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import InvoiceBillForm from '../invoices/InvoiceBillForm';
 import Button from '../ui/Button';
-import Input from '../ui/Input';
 import { ICONS, CURRENCY } from '../../constants';
 import Modal from '../ui/Modal';
 import TransactionForm from '../transactions/TransactionForm';
-import { TransactionType, Bill, InvoiceStatus, Transaction } from '../../types';
-import { BillTreeNode } from '../bills/BillTreeView';
-import ComboBox from '../ui/ComboBox';
-import DatePicker from '../ui/DatePicker';
+import { TransactionType, Bill, Transaction, ExpenseBearerType } from '../../types';
 import { formatDate } from '../../utils/dateUtils';
 import { useNotification } from '../../context/NotificationContext';
 import { WhatsAppService } from '../../services/whatsappService';
@@ -19,954 +15,566 @@ import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarn
 import { ImportType } from '../../services/importService';
 import BillBulkPaymentModal from '../bills/BillBulkPaymentModal';
 
-/** Premium tree sidebar: Directories, avatars, orange active, chevron (same style as Bills/Project Agreements) */
-const BillTreeSidebar: React.FC<{
-    nodes: BillTreeNode[];
-    selectedId: string | null;
-    selectedParentId: string | null;
-    onSelect: (id: string, type: 'group' | 'vendor', parentId?: string) => void;
-}> = ({ nodes, selectedId, selectedParentId, onSelect }) => {
-    const [sortConfig, setSortConfig] = useState<{ key: 'name' | 'balance'; direction: 'asc' | 'desc' }>({ key: 'balance', direction: 'desc' });
-    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(nodes.map(n => n.id)));
+/** Derive expense bearer type from bill data (for bills without expenseBearerType) */
+function getExpenseBearerType(bill: Bill, state: { rentalAgreements: { id: string }[] }): ExpenseBearerType {
+  if (bill.expenseBearerType) return bill.expenseBearerType;
+  if (bill.projectAgreementId && state.rentalAgreements?.some(ra => ra.id === bill.projectAgreementId))
+    return 'tenant';
+  if (bill.propertyId) return 'owner';
+  if (bill.buildingId) return 'building';
+  return 'building';
+}
 
-    useEffect(() => {
-        setExpandedIds(prev => {
-            const next = new Set(prev);
-            nodes.forEach(n => next.add(n.id));
-            return next;
-        });
-    }, [nodes]);
-
-    const handleSort = (key: 'name' | 'balance') => {
-        setSortConfig(current => ({
-            key,
-            direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
-        }));
-    };
-
-    const sortNodes = useCallback((items: BillTreeNode[]): BillTreeNode[] => {
-        const sorted = [...items].sort((a, b) => {
-            let aVal: any = a[sortConfig.key];
-            let bVal: any = b[sortConfig.key];
-
-            if (sortConfig.key === 'name') {
-                aVal = aVal.toLowerCase();
-                bVal = bVal.toLowerCase();
-            }
-
-            if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-            if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-            return 0;
-        });
-
-        return sorted.map(node => ({
-            ...node,
-            children: node.children ? sortNodes(node.children) : []
-        }));
-    }, [sortConfig]);
-
-    const sortedNodes = useMemo(() => sortNodes(nodes), [nodes, sortNodes]);
-
-    const SortIcon = ({ column }: { column: 'name' | 'balance' }) => {
-        if (sortConfig.key !== column) return <span className="text-slate-300 opacity-50 ml-1 text-[10px]">↕</span>;
-        return <span className="text-orange-600 ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
-    };
-
-    const toggleExpanded = (id: string) => {
-        setExpandedIds(prev => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-        });
-    };
-
-    const renderNode = (node: BillTreeNode, level: number, parentId?: string) => {
-        const hasChildren = node.children && node.children.length > 0;
-        const isExpanded = expandedIds.has(node.id);
-        const isSelected = selectedId === node.id && (node.type === 'group' || selectedParentId === parentId);
-
-        return (
-            <div key={node.id} className={level > 0 ? 'ml-4 border-l border-slate-200/80 pl-3' : ''}>
-                <div
-                    className={`group flex items-center gap-2 py-1.5 px-2 rounded-lg -mx-0.5 transition-all cursor-pointer ${isSelected ? 'bg-orange-500/10 text-orange-700' : 'hover:bg-slate-100/80 text-slate-700 hover:text-slate-900'
-                        }`}
-                    onClick={() => onSelect(node.id, node.type, parentId)}
-                >
-                    {hasChildren ? (
-                        <button
-                            onClick={(e) => { e.stopPropagation(); toggleExpanded(node.id); }}
-                            className={`flex-shrink-0 w-5 h-5 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
-                        >
-                            <div className="w-3.5 h-3.5">{ICONS.chevronRight}</div>
-                        </button>
-                    ) : (
-                        <span className="w-5 flex-shrink-0" />
-                    )}
-                    <span className="flex-1 text-xs font-medium truncate">{node.name}</span>
-                    {node.balance > 0 && (
-                        <span className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded border flex-shrink-0 ${isSelected ? 'bg-orange-500 text-white border-orange-600' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
-                            {node.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                        </span>
-                    )}
-                </div>
-                {hasChildren && isExpanded && (
-                    <div className="mt-0.5">
-                        {node.children.map(child => renderNode(child, level + 1, node.id))}
-                    </div>
-                )}
-            </div>
-        );
-    };
-
-    if (!nodes || nodes.length === 0) {
-        return <div className="text-xs text-slate-400 italic p-2">No directories match your search</div>;
-    }
-
-    return (
-        <div className="flex flex-col h-full">
-            {/* Sort Header */}
-            <div className="flex items-center justify-between px-2 py-1.5 border-b border-slate-100 mb-1 bg-slate-50/50 rounded-md">
-                <button
-                    onClick={() => handleSort('name')}
-                    className="flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-wider hover:text-slate-900 transition-colors"
-                >
-                    Entity <SortIcon column="name" />
-                </button>
-                <button
-                    onClick={() => handleSort('balance')}
-                    className="flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-wider hover:text-slate-900 transition-colors"
-                >
-                    Payable <SortIcon column="balance" />
-                </button>
-            </div>
-
-            <div className="space-y-0.5">
-                {sortedNodes.map(node => renderNode(node, 0))}
-            </div>
-        </div>
-    );
-};
-
-type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
-type SortKey = 'issueDate' | 'entityName' | 'dueDate' | 'amount' | 'status' | 'balance' | 'vendorName' | 'billNumber' | 'contract';
+type ExpenseBearerFilter = 'all' | ExpenseBearerType;
+type SortKey = 'issueDate' | 'billNumber' | 'vendorName' | 'expenseBearer' | 'propertyName' | 'buildingName' | 'amount' | 'balance' | 'status' | 'dueDate';
 
 const RentalBillsPage: React.FC = () => {
-    const { state, dispatch } = useAppContext();
-    const { showToast, showAlert } = useNotification();
-    const { openChat } = useWhatsApp();
+  const { state, dispatch } = useAppContext();
+  const { showToast, showAlert } = useNotification();
+  const { openChat } = useWhatsApp();
 
-    // --- State: Toolbar & Filters ---
-    const [searchQuery, setSearchQuery] = useState('');
-    const [dateRange, setDateRange] = useState<DateRangeOption>('all');
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [buildingFilter, setBuildingFilter] = useState<string>('all');
+  // Filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expenseBearerFilter, setExpenseBearerFilter] = useLocalStorage<ExpenseBearerFilter>('rentalBills_expenseBearer', 'all');
+  const [statusFilter, setStatusFilter] = useLocalStorage<string>('rentalBills_statusFilter', 'all');
+  const [dateRangeStart, setDateRangeStart] = useState('');
+  const [dateRangeEnd, setDateRangeEnd] = useState('');
+  const [vendorFilter, setVendorFilter] = useState<string>('all');
+  const [propertyFilter, setPropertyFilter] = useState<string>('all');
+  const [buildingFilter, setBuildingFilter] = useState<string>('all');
 
-    // --- State: View & Selection ---
-    const [selectedNode, setSelectedNode] = useState<{ id: string; type: 'group' | 'vendor'; parentId?: string } | null>(null);
-    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'issueDate', direction: 'desc' });
-    const [expandedBillIds, setExpandedBillIds] = useState<Set<string>>(new Set());
-    const [selectedBillIds, setSelectedBillIds] = useState<Set<string>>(new Set());
-    const [isBulkPayModalOpen, setIsBulkPayModalOpen] = useState(false);
+  // View & selection
+  const [sortConfig, setSortConfig] = useLocalStorage<{ key: SortKey; direction: 'asc' | 'desc' }>('rentalBills_sort', { key: 'issueDate', direction: 'desc' });
+  const [expandedBillIds, setExpandedBillIds] = useState<Set<string>>(new Set());
+  const [selectedBillIds, setSelectedBillIds] = useState<Set<string>>(new Set());
+  const [isBulkPayModalOpen, setIsBulkPayModalOpen] = useState(false);
 
-    // --- State: Modals ---
-    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-    const [paymentBill, setPaymentBill] = useState<Bill | null>(null);
-    const [duplicateBillData, setDuplicateBillData] = useState<Partial<Bill> | null>(null);
-    const [billToEdit, setBillToEdit] = useState<Bill | null>(null);
+  // Modals
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [paymentBill, setPaymentBill] = useState<Bill | null>(null);
+  const [duplicateBillData, setDuplicateBillData] = useState<Partial<Bill> | null>(null);
+  const [billToEdit, setBillToEdit] = useState<Bill | null>(null);
+  const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
+  const [warningModalState, setWarningModalState] = useState<{ isOpen: boolean; transaction: Transaction | null; action: 'delete' | null }>({ isOpen: false, transaction: null, action: null });
+  const [whatsAppMenuBillId, setWhatsAppMenuBillId] = useState<string | null>(null);
+  const whatsAppMenuRef = useRef<HTMLDivElement>(null);
 
-    // Transaction Editing State
-    const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
-    const [warningModalState, setWarningModalState] = useState<{ isOpen: boolean; transaction: Transaction | null; action: 'delete' | null }>({ isOpen: false, transaction: null, action: null });
-
-    // Persistent UI State & Sidebar (container-relative resize 150–600px, same as Project Agreements)
-    const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('rental_bills_sidebarWidth', 280);
-    const [treeSearchQuery, setTreeSearchQuery] = useState('');
-    const [isResizing, setIsResizing] = useState(false);
-    const containerRef = useRef<HTMLDivElement>(null);
-
-    // --- Computed: Buildings List for Dropdown ---
-    const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
-
-    // --- Date Range Logic ---
-    const handleRangeChange = (option: DateRangeOption) => {
-        setDateRange(option);
-        const now = new Date();
-        if (option === 'all') {
-            setStartDate('');
-            setEndDate('');
-        } else if (option === 'thisMonth') {
-            const first = new Date(now.getFullYear(), now.getMonth(), 1);
-            const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-            setStartDate(first.toISOString().split('T')[0]);
-            setEndDate(last.toISOString().split('T')[0]);
-        } else if (option === 'lastMonth') {
-            const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-            const last = new Date(now.getFullYear(), now.getMonth(), 0);
-            setStartDate(first.toISOString().split('T')[0]);
-            setEndDate(last.toISOString().split('T')[0]);
-        }
+  // Close WhatsApp dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (whatsAppMenuRef.current && !whatsAppMenuRef.current.contains(e.target as Node)) {
+        setWhatsAppMenuBillId(null);
+      }
     };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
-    const handleCustomDateChange = (start: string, end: string) => {
-        setStartDate(start);
-        setEndDate(end);
-        setDateRange('custom');
-    };
+  // Base bills: rental only (no projectId)
+  const baseBills = useMemo(() => state.bills.filter(b => !b.projectId), [state.bills]);
 
-    // --- Filter Logic (Raw Bills) ---
-    const baseBills = useMemo(() => {
-        // Context: Rental Bills
-        // We include bills that are NOT linked to a project.
-        // They might be linked to a Building or Property, or general overhead.
-        return state.bills.filter(b => !b.projectId);
-    }, [state.bills]);
+  // Vendors with bills (for filter dropdown)
+  const vendorsWithBills = useMemo(() => {
+    const vendorIds = new Set(baseBills.map(b => b.vendorId).filter(Boolean));
+    return (state.vendors || []).filter(v => vendorIds.has(v.id));
+  }, [baseBills, state.vendors]);
 
-    // --- Tree Data Generation ---
-    const treeData = useMemo<BillTreeNode[]>(() => {
-        const groupMap = new Map<string, BillTreeNode>();
+  // Filtered bills
+  const filteredBills = useMemo(() => {
+    let result = baseBills;
 
-        // Initialize with Buildings
-        state.buildings.forEach(b => {
-            groupMap.set(b.id, {
-                id: b.id,
-                name: b.name,
-                type: 'group',
-                children: [],
-                count: 0,
-                amount: 0,
-                balance: 0
-            });
-        });
+    if (expenseBearerFilter !== 'all') {
+      result = result.filter(b => getExpenseBearerType(b, state) === expenseBearerFilter);
+    }
+    if (vendorFilter !== 'all') result = result.filter(b => b.vendorId === vendorFilter);
+    if (propertyFilter !== 'all') result = result.filter(b => b.propertyId === propertyFilter);
+    if (buildingFilter !== 'all') {
+      result = result.filter(b => {
+        if (b.buildingId === buildingFilter) return true;
+        const prop = b.propertyId ? state.properties.find(p => p.id === b.propertyId) : null;
+        return prop?.buildingId === buildingFilter;
+      });
+    }
+    if (statusFilter !== 'all') result = result.filter(b => b.status === statusFilter);
+    if (dateRangeStart) result = result.filter(b => b.issueDate >= dateRangeStart);
+    if (dateRangeEnd) result = result.filter(b => b.issueDate <= dateRangeEnd);
 
-        // Add "General/Unassigned" group
-        groupMap.set('unassigned', {
-            id: 'unassigned',
-            name: 'General / Unassigned',
-            type: 'group',
-            children: [],
-            count: 0,
-            amount: 0,
-            balance: 0
-        });
-
-        baseBills.forEach(bill => {
-            let groupId = bill.buildingId;
-            if (!groupId && bill.propertyId) {
-                const prop = state.properties.find(p => p.id === bill.propertyId);
-                if (prop) groupId = prop.buildingId;
-            }
-            if (!groupId) groupId = 'unassigned';
-
-            const group = groupMap.get(groupId);
-            const balance = bill.amount - bill.paidAmount;
-
-            if (group) {
-                group.count++;
-                group.amount += bill.amount;
-                group.balance += balance;
-
-                // Find or create Vendor node
-                const vendorId = bill.vendorId;
-                if (!vendorId) return;
-
-                let vendorNode = group.children.find(c => c.id === vendorId);
-                if (!vendorNode) {
-                    const vendor = state.vendors?.find(v => v.id === vendorId);
-                    vendorNode = {
-                        id: vendorId,
-                        name: vendor?.name || 'Unknown Vendor',
-                        type: 'vendor',
-                        children: [],
-                        count: 0,
-                        amount: 0,
-                        balance: 0
-                    };
-                    group.children.push(vendorNode);
-                }
-                vendorNode.count++;
-                vendorNode.amount += bill.amount;
-                vendorNode.balance += balance;
-            }
-        });
-
-        return Array.from(groupMap.values())
-            .filter(g => g.count > 0) // Only show groups with bills
-            .sort((a, b) => a.name.localeCompare(b.name));
-
-    }, [baseBills, state.buildings, state.properties, state.vendors]);
-
-    // --- Grid Data Logic ---
-    const filteredBills = useMemo(() => {
-        let result = baseBills;
-
-        // 1. Tree Selection Filter
-        if (selectedNode) {
-            if (selectedNode.type === 'group') {
-                if (selectedNode.id === 'unassigned') {
-                    result = result.filter(b => !b.buildingId && !b.propertyId);
-                } else {
-                    // Match building ID or property belonging to building
-                    result = result.filter(b => {
-                        if (b.buildingId === selectedNode.id) return true;
-                        if (b.propertyId) {
-                            const prop = state.properties.find(p => p.id === b.propertyId);
-                            return prop && prop.buildingId === selectedNode.id;
-                        }
-                        return false;
-                    });
-                }
-            } else if (selectedNode.type === 'vendor') {
-                // Filter by Vendor within context of parent group
-                const parentGroupId = selectedNode.parentId || 'unassigned';
-                if (parentGroupId === 'unassigned') {
-                    result = result.filter(b => (b.vendorId) === selectedNode.id);
-                } else {
-                    result = result.filter(b => {
-                        if (b.vendorId !== selectedNode.id) return false;
-                        if (b.buildingId === parentGroupId) return true;
-                        if (b.propertyId) {
-                            const prop = state.properties.find(p => p.id === b.propertyId);
-                            return prop && prop.buildingId === parentGroupId;
-                        }
-                        return false;
-                    });
-                }
-            }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(b => {
+        if (b.billNumber?.toLowerCase().includes(q)) return true;
+        const vendor = state.vendors?.find(v => v.id === b.vendorId);
+        if (vendor?.name?.toLowerCase().includes(q)) return true;
+        if (b.description?.toLowerCase().includes(q)) return true;
+        if (b.propertyId) {
+          const prop = state.properties.find(p => p.id === b.propertyId);
+          if (prop?.name?.toLowerCase().includes(q)) return true;
         }
+        const prop = b.propertyId ? state.properties.find(p => p.id === b.propertyId) : null;
+        const bld = prop ? state.buildings.find(bl => bl.id === prop.buildingId) : b.buildingId ? state.buildings.find(bl => bl.id === b.buildingId) : null;
+        if (bld?.name?.toLowerCase().includes(q)) return true;
+        return false;
+      });
+    }
 
-        // 2. Toolbar Building Filter
-        if (buildingFilter !== 'all') {
-            result = result.filter(b => {
-                if (b.buildingId === buildingFilter) return true;
-                if (b.propertyId) {
-                    const prop = state.properties.find(p => p.id === b.propertyId);
-                    return prop && prop.buildingId === buildingFilter;
-                }
-                return false;
-            });
-        }
+    return result.sort((a, b) => {
+      let valA: any, valB: any;
+      const getBearer = (x: Bill) => getExpenseBearerType(x, state);
+      const getPropertyName = (x: Bill) => state.properties.find(p => p.id === x.propertyId)?.name || '';
+      const getBldName = (x: Bill) => {
+        if (x.buildingId) return state.buildings.find(b => b.id === x.buildingId)?.name || '';
+        const prop = x.propertyId ? state.properties.find(p => p.id === x.propertyId) : null;
+        return prop ? state.buildings.find(b => b.id === prop.buildingId)?.name || '' : '';
+      };
+      switch (sortConfig.key) {
+        case 'issueDate': valA = new Date(a.issueDate).getTime(); valB = new Date(b.issueDate).getTime(); break;
+        case 'dueDate': valA = a.dueDate ? new Date(a.dueDate).getTime() : 0; valB = b.dueDate ? new Date(b.dueDate).getTime() : 0; break;
+        case 'amount': valA = a.amount; valB = b.amount; break;
+        case 'balance': valA = a.amount - a.paidAmount; valB = b.amount - b.paidAmount; break;
+        case 'status': valA = a.status; valB = b.status; break;
+        case 'billNumber': valA = a.billNumber.toLowerCase(); valB = b.billNumber.toLowerCase(); break;
+        case 'vendorName': valA = state.vendors?.find(v => v.id === a.vendorId)?.name?.toLowerCase() || ''; valB = state.vendors?.find(v => v.id === b.vendorId)?.name?.toLowerCase() || ''; break;
+        case 'expenseBearer': valA = getBearer(a); valB = getBearer(b); break;
+        case 'propertyName': valA = getPropertyName(a).toLowerCase(); valB = getPropertyName(b).toLowerCase(); break;
+        case 'buildingName': valA = getBldName(a).toLowerCase(); valB = getBldName(b).toLowerCase(); break;
+        default: valA = a.issueDate; valB = b.issueDate;
+      }
+      if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [baseBills, expenseBearerFilter, vendorFilter, propertyFilter, buildingFilter, statusFilter, dateRangeStart, dateRangeEnd, searchQuery, sortConfig, state]);
 
-        // 3. Date Range Filter
-        if (startDate && endDate) {
-            const start = new Date(startDate);
-            start.setHours(0, 0, 0, 0);
-            const end = new Date(endDate);
-            end.setHours(23, 59, 59, 999);
+  // Summary stats (4 cards matching invoice page)
+  const summaryStats = useMemo(() => {
+    const unpaid = filteredBills.filter(b => b.status === 'Unpaid' || b.status === 'Overdue');
+    const paid = filteredBills.filter(b => b.status === 'Paid');
+    const overdue = filteredBills.filter(b => b.status === 'Overdue' || (b.dueDate && new Date(b.dueDate) < new Date() && b.status !== 'Paid'));
+    const totalPending = filteredBills
+      .filter(b => b.status !== 'Paid')
+      .reduce((sum, b) => sum + Math.max(0, b.amount - b.paidAmount), 0);
 
-            result = result.filter(b => {
-                const d = new Date(b.issueDate);
-                return d >= start && d <= end;
-            });
-        }
-
-        // 4. Search
-        if (searchQuery) {
-            const q = searchQuery.toLowerCase();
-            result = result.filter(b => {
-                const vendorId = b.vendorId;
-                const vendor = state.vendors?.find(v => v.id === vendorId);
-                return (
-                    b.billNumber.toLowerCase().includes(q) ||
-                    (b.description && b.description.toLowerCase().includes(q)) ||
-                    vendor?.name.toLowerCase().includes(q)
-                );
-            });
-        }
-
-        // 5. Sorting
-        return result.sort((a, b) => {
-            let valA: any = '';
-            let valB: any = '';
-
-            switch (sortConfig.key) {
-                case 'issueDate': valA = new Date(a.issueDate).getTime(); valB = new Date(b.issueDate).getTime(); break;
-                case 'dueDate': valA = a.dueDate ? new Date(a.dueDate).getTime() : 0; valB = b.dueDate ? new Date(b.dueDate).getTime() : 0; break;
-                case 'amount': valA = a.amount; valB = b.amount; break;
-                case 'balance': valA = a.amount - a.paidAmount; valB = b.amount - b.paidAmount; break;
-                case 'status': valA = a.status; valB = b.status; break;
-                case 'entityName': {
-                    // Resolve Building Name
-                    const getBName = (bill: Bill) => {
-                        if (bill.buildingId) return state.buildings.find(b => b.id === bill.buildingId)?.name || '';
-                        if (bill.propertyId) {
-                            const prop = state.properties.find(p => p.id === bill.propertyId);
-                            return state.buildings.find(b => b.id === prop?.buildingId)?.name || '';
-                        }
-                        return 'General';
-                    };
-                    valA = getBName(a).toLowerCase(); valB = getBName(b).toLowerCase();
-                    break;
-                }
-                case 'vendorName': {
-                    const vendorIdA = a.vendorId;
-                    const vendorIdB = b.vendorId;
-                    const vA = state.vendors?.find(v => v.id === vendorIdA)?.name || '';
-                    const vB = state.vendors?.find(v => v.id === vendorIdB)?.name || '';
-                    valA = vA.toLowerCase(); valB = vB.toLowerCase();
-                    break;
-                }
-                case 'billNumber': {
-                    valA = a.billNumber.toLowerCase(); valB = b.billNumber.toLowerCase();
-                    break;
-                }
-                case 'contract': {
-                    const cA = state.contracts.find(c => c.id === a.contractId)?.contractNumber || '';
-                    const cB = state.contracts.find(c => c.id === b.contractId)?.contractNumber || '';
-                    valA = cA.toLowerCase(); valB = cB.toLowerCase();
-                    break;
-                }
-                default: valA = a.issueDate; valB = b.issueDate;
-            }
-
-            if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
-            if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
-            return 0;
-        });
-
-    }, [baseBills, selectedNode, buildingFilter, startDate, endDate, searchQuery, sortConfig, state.buildings, state.properties, state.vendors, state.contracts]);
-
-    // Sidebar resize: container-relative width (150–600px)
-    const handleMouseMove = useCallback((e: MouseEvent) => {
-        if (!containerRef.current) return;
-        const containerLeft = containerRef.current.getBoundingClientRect().left;
-        const newWidth = e.clientX - containerLeft;
-        if (newWidth > 150 && newWidth < 600) {
-            setSidebarWidth(newWidth);
-        }
-    }, [setSidebarWidth]);
-
-    useEffect(() => {
-        if (!isResizing) return;
-        const handleUp = () => {
-            setIsResizing(false);
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-        };
-        document.body.style.cursor = 'col-resize';
-        document.body.style.userSelect = 'none';
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', handleUp);
-        return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleUp);
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-        };
-    }, [isResizing, handleMouseMove]);
-
-    const startResizing = useCallback((e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsResizing(true);
-    }, []);
-
-    // Filter tree by sidebar search (by name)
-    const filterBillTree = useCallback((nodes: BillTreeNode[], q: string): BillTreeNode[] => {
-        if (!q.trim()) return nodes;
-        const lower = q.toLowerCase();
-        return nodes
-            .map(node => {
-                const nameMatch = node.name.toLowerCase().includes(lower);
-                const filteredChildren = node.children?.length ? filterBillTree(node.children, q) : [];
-                const childMatch = filteredChildren.length > 0;
-                if (nameMatch && !filteredChildren.length) return node;
-                if (childMatch) return { ...node, children: filteredChildren };
-                if (nameMatch) return node;
-                return null;
-            })
-            .filter((n): n is BillTreeNode => n != null);
-    }, []);
-
-    const filteredTreeData = useMemo(() => filterBillTree(treeData, treeSearchQuery), [treeData, treeSearchQuery, filterBillTree]);
-
-    const handleSort = (key: SortKey) => {
-        setSortConfig(current => ({
-            key,
-            direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
-        }));
+    return {
+      unpaidCount: unpaid.length,
+      unpaidAmount: unpaid.reduce((s, b) => s + Math.max(0, b.amount - b.paidAmount), 0),
+      paidCount: paid.length,
+      paidAmount: paid.reduce((s, b) => s + b.paidAmount, 0),
+      overdueCount: overdue.length,
+      overdueAmount: overdue.reduce((s, b) => s + Math.max(0, b.amount - b.paidAmount), 0),
+      totalPending,
     };
+  }, [filteredBills]);
 
-    const toggleExpand = (e: React.MouseEvent, id: string) => {
-        e.stopPropagation();
-        setExpandedBillIds(prev => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-        });
+  const handleSort = (key: SortKey) => {
+    setSortConfig(c => ({ key, direction: c.key === key && c.direction === 'asc' ? 'desc' : 'asc' }));
+  };
+  const SortIcon = ({ column }: { column: SortKey }) => {
+    if (sortConfig.key !== column) return <span className="text-slate-300 opacity-50 ml-1 text-[10px]">↕</span>;
+    return <span className="text-accent ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
+  };
+
+  const handleRecordPayment = (bill: Bill) => { setPaymentBill(bill); setIsPaymentModalOpen(true); };
+  const handleEdit = (bill: Bill) => { setBillToEdit(bill); setDuplicateBillData(null); setIsCreateModalOpen(true); };
+  const handleDuplicate = (data: Partial<Bill>) => {
+    const { id, paidAmount, status, ...rest } = data;
+    setDuplicateBillData({ ...rest, paidAmount: 0, status: undefined });
+    setBillToEdit(null);
+    setIsCreateModalOpen(true);
+  };
+  const handleBulkPaymentComplete = () => { setSelectedBillIds(new Set()); setIsBulkPayModalOpen(false); };
+  const selectedBillsList = useMemo(() => state.bills.filter(b => selectedBillIds.has(b.id)), [state.bills, selectedBillIds]);
+
+  const paymentTransactionData = useMemo(() => {
+    if (!paymentBill) return { id: '', type: TransactionType.EXPENSE, amount: 0, date: new Date().toISOString().split('T')[0], accountId: '' } as any;
+    let tenantId: string | undefined;
+    let tenantCategoryId: string | undefined;
+    if (paymentBill.projectAgreementId) {
+      const ra = state.rentalAgreements.find(ra => ra.id === paymentBill.projectAgreementId);
+      if (ra) tenantId = ra.contactId;
+    }
+    if (tenantId && paymentBill.categoryId) {
+      const orig = state.categories.find(c => c.id === paymentBill.categoryId);
+      if (orig) {
+        const tenantCat = state.categories.find(c => c.name === `${orig.name} (Tenant)` && c.type === TransactionType.EXPENSE);
+        tenantCategoryId = tenantCat?.id || paymentBill.categoryId;
+      }
+    }
+    return {
+      id: '', type: TransactionType.EXPENSE,
+      amount: paymentBill.amount - paymentBill.paidAmount,
+      date: paymentBill.issueDate ? new Date(paymentBill.issueDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      accountId: '', billId: paymentBill.id,
+      contactId: tenantId || paymentBill.contactId,
+      projectId: paymentBill.projectId, buildingId: paymentBill.buildingId, propertyId: paymentBill.propertyId,
+      categoryId: tenantCategoryId || paymentBill.categoryId,
+      contractId: paymentBill.contractId,
+      description: paymentBill.description || `Payment for Bill #${paymentBill.billNumber}`,
+    } as any;
+  }, [paymentBill, state.rentalAgreements, state.categories]);
+
+  const toggleExpand = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setExpandedBillIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  };
+
+  const getPropertyOrUnitLabel = (bill: Bill) => {
+    if (bill.propertyId) return state.properties.find(p => p.id === bill.propertyId)?.name || '-';
+    if (bill.buildingId && !bill.propertyId) return 'Building-wide';
+    return '-';
+  };
+  const getBuildingName = (bill: Bill) => {
+    if (bill.buildingId) return state.buildings.find(b => b.id === bill.buildingId)?.name || 'Unknown';
+    const prop = bill.propertyId ? state.properties.find(p => p.id === bill.propertyId) : null;
+    return prop ? state.buildings.find(b => b.id === prop.buildingId)?.name || 'Unknown' : 'General';
+  };
+
+  const handleSendWhatsApp = (e: React.MouseEvent, bill: Bill, recipient: 'vendor' | 'owner' | 'tenant') => {
+    e.stopPropagation();
+    setWhatsAppMenuBillId(null);
+    let contact: { name: string; contactNo?: string } | null = null;
+    let message = '';
+
+    if (recipient === 'vendor') {
+      const vendor = state.vendors?.find(v => v.id === bill.vendorId);
+      if (!vendor?.contactNo) { showAlert('Vendor does not have a phone number saved.'); return; }
+      contact = vendor;
+      message = WhatsAppService.generateBillPayment(state.whatsAppTemplates.billPayment, vendor, bill.billNumber, bill.paidAmount);
+    } else if (recipient === 'owner') {
+      const prop = bill.propertyId ? state.properties.find(p => p.id === bill.propertyId) : null;
+      const owner = prop?.ownerId ? state.contacts.find(c => c.id === prop.ownerId) : null;
+      if (!owner?.contactNo) { showAlert('Owner does not have a phone number saved.'); return; }
+      contact = owner;
+      const billToOwner = (state.whatsAppTemplates as any).billToOwner || state.whatsAppTemplates.billPayment;
+      message = WhatsAppService.replaceTemplateVariables(billToOwner, { contactName: owner.name, billNumber: bill.billNumber, amount: `${CURRENCY} ${bill.amount.toLocaleString()}` });
+    } else if (recipient === 'tenant') {
+      const ra = bill.projectAgreementId ? state.rentalAgreements.find(ra => ra.id === bill.projectAgreementId) : null;
+      const tenant = ra?.contactId ? state.contacts.find(c => c.id === ra.contactId) : null;
+      if (!tenant?.contactNo) { showAlert('Tenant does not have a phone number saved.'); return; }
+      contact = tenant;
+      const billToTenant = (state.whatsAppTemplates as any).billToTenant || state.whatsAppTemplates.billPayment;
+      message = WhatsAppService.replaceTemplateVariables(billToTenant, { contactName: tenant.name, billNumber: bill.billNumber, amount: `${CURRENCY} ${bill.amount.toLocaleString()}`, note: 'This amount will be deducted from your security deposit.' });
+    }
+    if (contact && message) openChat(contact, contact.contactNo!, message);
+  };
+
+  const getWhatsAppOptions = (bill: Bill) => {
+    const opts: { id: 'vendor' | 'owner' | 'tenant'; label: string }[] = [];
+    const vendor = state.vendors?.find(v => v.id === bill.vendorId);
+    if (vendor?.contactNo) opts.push({ id: 'vendor', label: 'Send to Vendor' });
+    const prop = bill.propertyId ? state.properties.find(p => p.id === bill.propertyId) : null;
+    const owner = prop?.ownerId ? state.contacts.find(c => c.id === prop.ownerId) : null;
+    if (owner?.contactNo && getExpenseBearerType(bill, state) === 'owner') opts.push({ id: 'owner', label: 'Send to Owner' });
+    const ra = bill.projectAgreementId ? state.rentalAgreements.find(ra => ra.id === bill.projectAgreementId) : null;
+    const tenant = ra?.contactId ? state.contacts.find(c => c.id === ra.contactId) : null;
+    if (tenant?.contactNo && getExpenseBearerType(bill, state) === 'tenant') opts.push({ id: 'tenant', label: 'Send to Tenant' });
+    return opts;
+  };
+
+  const getStatusBadge = (status: string) => {
+    const colors: Record<string, string> = {
+      'Paid': 'bg-emerald-100 text-emerald-800',
+      'Unpaid': 'bg-rose-100 text-rose-800',
+      'Partially Paid': 'bg-amber-100 text-amber-800',
+      'Overdue': 'bg-red-100 text-red-900',
+      'Draft': 'bg-slate-100 text-slate-800'
     };
+    return <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${colors[status] || 'bg-gray-100'}`}>{status}</span>;
+  };
 
-    const SortIcon = ({ column }: { column: SortKey }) => {
-        if (sortConfig.key !== column) return <span className="text-slate-300 opacity-50 ml-1 text-[10px]">↕</span>;
-        return <span className="text-accent ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
-    };
+  const getExpenseBearerBadge = (bearer: ExpenseBearerType) => {
+    const styles = { owner: 'bg-indigo-100 text-indigo-800', building: 'bg-emerald-100 text-emerald-800', tenant: 'bg-amber-100 text-amber-800' };
+    const labels = { owner: 'Owner', building: 'Building', tenant: 'Tenant' };
+    return <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${styles[bearer]}`}>{labels[bearer]}</span>;
+  };
 
-    const handleRecordPayment = (bill: Bill) => {
-        setPaymentBill(bill);
-        setIsPaymentModalOpen(true);
-    };
+  const filterInputClass =
+    'w-full pl-3 py-2 text-sm border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-accent/50 focus:border-accent bg-white';
 
-    // Prepare transaction data for bill payment, handling tenant-allocated bills
-    const paymentTransactionData = useMemo(() => {
-        if (!paymentBill) {
-            return {
-                id: '',
-                type: TransactionType.EXPENSE,
-                amount: 0,
-                date: new Date().toISOString().split('T')[0],
-                accountId: '',
-            } as any;
-        }
+  return (
+    <div className="flex flex-col h-full bg-slate-50/50 p-4 sm:p-6 gap-4">
+      {/* Action Bar */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button onClick={() => { setDuplicateBillData(null); setBillToEdit(null); setIsCreateModalOpen(true); }} size="sm">
+          <div className="w-4 h-4 mr-2">{ICONS.plus}</div>
+          New Bill
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={() => {
+            dispatch({ type: 'SET_INITIAL_IMPORT_TYPE', payload: ImportType.RENTAL_BILLS });
+            dispatch({ type: 'SET_PAGE', payload: 'import' });
+          }}
+          size="sm"
+        >
+          <div className="w-4 h-4 mr-2">{ICONS.download}</div>
+          Bulk Import
+        </Button>
+        {selectedBillIds.size > 0 && (
+          <Button onClick={() => setIsBulkPayModalOpen(true)} size="sm">
+            Pay Selected ({selectedBillIds.size})
+          </Button>
+        )}
+      </div>
 
-        // Check if this is a tenant-allocated bill
-        let tenantId: string | undefined = undefined;
-        let tenantCategoryId: string | undefined = undefined;
-
-        // Check if bill has a rental agreement (tenant bill)
-        if (paymentBill.projectAgreementId) {
-            const rentalAgreement = state.rentalAgreements.find(ra => ra.id === paymentBill.projectAgreementId);
-            if (rentalAgreement) {
-                tenantId = rentalAgreement.contactId;
-            }
-        }
-
-        // If this is a tenant-allocated bill, update category to include "(Tenant)" suffix
-        if (tenantId && paymentBill.categoryId) {
-            const originalCategory = state.categories.find(c => c.id === paymentBill.categoryId);
-            if (originalCategory) {
-                // Find or use category with "(Tenant)" suffix
-                const tenantCategoryName = `${originalCategory.name} (Tenant)`;
-                let tenantCategory = state.categories.find(c =>
-                    c.name === tenantCategoryName && c.type === TransactionType.EXPENSE
-                );
-
-                // If category doesn't exist, use the original category ID
-                // The system will identify it as tenant charge based on contactId being tenant
-                tenantCategoryId = tenantCategory?.id || paymentBill.categoryId;
-            }
-        }
-
-        return {
-            id: '',
-            type: TransactionType.EXPENSE,
-            amount: paymentBill.amount - paymentBill.paidAmount,
-            date: paymentBill.issueDate ? new Date(paymentBill.issueDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-            accountId: '',
-            billId: paymentBill.id,
-            // For tenant-allocated bills, use tenant contactId; otherwise use vendor contactId
-            contactId: tenantId || paymentBill.contactId,
-            projectId: paymentBill.projectId,
-            buildingId: paymentBill.buildingId,
-            propertyId: paymentBill.propertyId,
-            // Use tenant category if available, otherwise use original category
-            categoryId: tenantCategoryId || paymentBill.categoryId,
-            contractId: paymentBill.contractId,
-            description: paymentBill.description || `Payment for Bill #${paymentBill.billNumber}`,
-        } as any;
-    }, [paymentBill, state.rentalAgreements, state.categories]);
-
-    const handleDuplicate = (data: Partial<Bill>) => {
-        const { id, paidAmount, status, ...rest } = data;
-        setDuplicateBillData({ ...rest, paidAmount: 0, status: undefined });
-        setBillToEdit(null);
-        setIsCreateModalOpen(true);
-    };
-
-    const handleEdit = (bill: Bill) => {
-        setBillToEdit(bill);
-        setDuplicateBillData(null);
-        setIsCreateModalOpen(true);
-    };
-
-    const handleBulkPaymentComplete = () => {
-        setSelectedBillIds(new Set());
-        setIsBulkPayModalOpen(false);
-    };
-
-    const selectedBillsList = useMemo(() =>
-        state.bills.filter(b => selectedBillIds.has(b.id)),
-        [state.bills, selectedBillIds]);
-
-    const handleSendWhatsApp = (e: React.MouseEvent, bill: Bill) => {
-        e.stopPropagation();
-        const vendor = state.contacts.find(c => c.id === bill.contactId);
-        if (!vendor?.contactNo) {
-            showAlert("This vendor does not have a phone number saved.");
-            return;
-        }
-
-        try {
-            const { whatsAppTemplates } = state;
-            const message = WhatsAppService.generateBillPayment(
-                whatsAppTemplates.billPayment,
-                vendor,
-                bill.billNumber,
-                bill.paidAmount
-            );
-
-            // Open WhatsApp side panel with pre-filled message
-            openChat(vendor, vendor.contactNo, message);
-        } catch (error) {
-            showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
-        }
-    };
-
-    const getStatusBadge = (status: string) => {
-        const colors: Record<string, string> = {
-            'Paid': 'bg-emerald-100 text-emerald-800',
-            'Unpaid': 'bg-rose-100 text-rose-800',
-            'Partially Paid': 'bg-amber-100 text-amber-800',
-            'Overdue': 'bg-red-100 text-red-900',
-            'Draft': 'bg-slate-100 text-slate-800'
-        };
-        return <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${colors[status] || 'bg-gray-100'}`}>{status}</span>;
-    };
-
-    return (
-        <div className="flex flex-col h-full space-y-4">
-
-            {/* Toolbar */}
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between flex-shrink-0">
-
-                <div className="flex flex-wrap gap-3 items-center w-full lg:w-auto">
-                    {/* Date Filter */}
-                    <div className="flex bg-slate-100 p-1 rounded-lg flex-shrink-0">
-                        {(['all', 'thisMonth', 'lastMonth', 'custom'] as DateRangeOption[]).map(opt => (
-                            <button
-                                key={opt}
-                                onClick={() => handleRangeChange(opt)}
-                                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap capitalize ${dateRange === opt
-                                    ? 'bg-white text-accent shadow-sm font-bold'
-                                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
-                                    }`}
-                            >
-                                {opt === 'all' ? 'All Time' : opt.replace(/([A-Z])/g, ' $1')}
-                            </button>
-                        ))}
-                    </div>
-
-                    {dateRange === 'custom' && (
-                        <div className="flex items-center gap-2 animate-fade-in">
-                            <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(d.toISOString().split('T')[0], endDate)} />
-                            <span className="text-slate-400">-</span>
-                            <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, d.toISOString().split('T')[0])} />
-                        </div>
-                    )}
-
-                    {/* Building Dropdown */}
-                    <div className="w-48 flex-shrink-0">
-                        <ComboBox
-                            items={buildings}
-                            selectedId={buildingFilter}
-                            onSelect={(item) => setBuildingFilter(item?.id || 'all')}
-                            allowAddNew={false}
-                            placeholder="Filter by Building"
-                        />
-                    </div>
-
-                    {/* Search */}
-                    <div className="relative w-full sm:w-48">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                            <span className="h-4 w-4">{ICONS.search}</span>
-                        </div>
-                        <Input
-                            placeholder="Search bills..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className={`pl-9 py-1.5 text-sm ${searchQuery ? 'pr-9' : ''}`}
-                        />
-                        {searchQuery && (
-                            <button
-                                onClick={() => setSearchQuery('')}
-                                className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600 transition-colors"
-                                type="button"
-                                aria-label="Clear search"
-                            >
-                                <div className="w-4 h-4">{ICONS.x}</div>
-                            </button>
-                        )}
-                    </div>
-                </div>
-
-                <div className="flex gap-2 flex-wrap w-full lg:w-auto justify-end">
-                    {selectedBillIds.size > 0 && (
-                        <Button
-                            onClick={() => setIsBulkPayModalOpen(true)}
-                            className="animate-fade-in"
-                        >
-                            Pay ({selectedBillIds.size})
-                        </Button>
-                    )}
-                    <Button
-                        variant="secondary"
-                        onClick={() => {
-                            dispatch({ type: 'SET_INITIAL_IMPORT_TYPE', payload: ImportType.RENTAL_BILLS });
-                            dispatch({ type: 'SET_PAGE', payload: 'import' });
-                        }}
-                    >
-                        <div className="w-4 h-4 mr-2">{ICONS.download}</div> Bulk Import
-                    </Button>
-                    <Button onClick={() => { setDuplicateBillData(null); setBillToEdit(null); setIsCreateModalOpen(true); }}>
-                        <div className="w-4 h-4 mr-2">{ICONS.plus}</div> New Bill
-                    </Button>
-                </div>
-            </div>
-
-            {/* Main Content: container-relative resize */}
-            <div ref={containerRef} className="flex-grow flex flex-col md:flex-row overflow-hidden min-h-0">
-                {/* Left: Resizable Tree Sidebar */}
-                <aside
-                    className="hidden md:flex flex-col flex-shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
-                    style={{ width: `${sidebarWidth}px` }}
-                >
-                    <div className="flex-shrink-0 p-3 border-b border-slate-100 bg-slate-50/50">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Directories</span>
-                    </div>
-                    <div className="flex-shrink-0 px-2 pt-2 pb-1 border-b border-slate-100">
-                        <div className="relative">
-                            <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-slate-400">
-                                <div className="w-3.5 h-3.5">{ICONS.search}</div>
-                            </div>
-                            <input
-                                type="text"
-                                placeholder="Search buildings, vendors..."
-                                value={treeSearchQuery}
-                                onChange={(e) => setTreeSearchQuery(e.target.value)}
-                                className="w-full pl-8 pr-6 py-1.5 text-xs border border-slate-200 rounded-lg bg-slate-50/80 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 placeholder:text-slate-400 transition-all"
-                            />
-                            {treeSearchQuery && (
-                                <button
-                                    type="button"
-                                    onClick={() => setTreeSearchQuery('')}
-                                    className="absolute inset-y-0 right-2 flex items-center text-slate-400 hover:text-rose-500"
-                                >
-                                    <div className="w-3.5 h-3.5">{ICONS.x}</div>
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                    <div className="flex-grow overflow-y-auto overflow-x-hidden p-2 min-h-0">
-                        <BillTreeSidebar
-                            nodes={filteredTreeData}
-                            selectedId={selectedNode?.id || null}
-                            selectedParentId={selectedNode?.parentId || null}
-                            onSelect={(id, type, parentId) => setSelectedNode({ id, type, parentId })}
-                        />
-                    </div>
-                </aside>
-
-                {/* Resize Handle */}
-                <div
-                    className="hidden md:flex items-center justify-center flex-shrink-0 w-2 cursor-col-resize select-none touch-none group hover:bg-blue-500/10 transition-colors"
-                    onMouseDown={startResizing}
-                    title="Drag to resize sidebar"
-                >
-                    <div className="w-0.5 h-12 rounded-full bg-slate-200 group-hover:bg-blue-500 group-hover:w-1 transition-all" />
-                </div>
-
-                {/* Right Data Grid */}
-                <div className="flex-1 min-w-0 overflow-hidden flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm">
-                    <div className="flex-grow overflow-y-auto">
-                        <table className="min-w-full divide-y divide-slate-100 text-sm">
-                            <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
-                                <tr>
-                                    <th className="px-4 py-3 w-10"></th>
-                                    <th onClick={() => handleSort('issueDate')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Date <SortIcon column="issueDate" /></th>
-                                    <th onClick={() => handleSort('entityName')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Building <SortIcon column="entityName" /></th>
-                                    <th onClick={() => handleSort('billNumber')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Bill No <SortIcon column="billNumber" /></th>
-                                    <th onClick={() => handleSort('vendorName')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Vendor <SortIcon column="vendorName" /></th>
-                                    <th onClick={() => handleSort('contract')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Contract <SortIcon column="contract" /></th>
-                                    <th onClick={() => handleSort('dueDate')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Due Date <SortIcon column="dueDate" /></th>
-                                    <th onClick={() => handleSort('amount')} className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Amount <SortIcon column="amount" /></th>
-                                    <th onClick={() => handleSort('status')} className="px-4 py-3 text-center font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Status <SortIcon column="status" /></th>
-                                    <th onClick={() => handleSort('balance')} className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Balance <SortIcon column="balance" /></th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {filteredBills.length > 0 ? filteredBills.map((bill, rowIndex) => {
-                                    const balance = bill.amount - bill.paidAmount;
-                                    let buildingName = 'General';
-                                    if (bill.buildingId) buildingName = state.buildings.find(b => b.id === bill.buildingId)?.name || 'Unknown';
-                                    else if (bill.propertyId) {
-                                        const prop = state.properties.find(p => p.id === bill.propertyId);
-                                        buildingName = state.buildings.find(b => b.id === prop?.buildingId)?.name || 'Unknown';
-                                    }
-
-                                    const vendorId = bill.vendorId;
-                                    const vendor = state.vendors?.find(v => v.id === vendorId);
-                                    const contract = state.contracts.find(c => c.id === bill.contractId);
-
-                                    const isExpanded = expandedBillIds.has(bill.id);
-                                    const hasPayments = bill.paidAmount > 0;
-                                    const payments = hasPayments ? state.transactions.filter(t => t.billId === bill.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
-
-                                    return (
-                                        <React.Fragment key={bill.id}>
-                                            <tr
-                                                className={`cursor-pointer transition-colors group ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-slate-100`}
-                                                onClick={() => handleEdit(bill)}
-                                            >
-                                                <td className="px-4 py-3 w-10" onClick={(e) => e.stopPropagation()}>
-                                                    <input
-                                                        type="checkbox"
-                                                        className="rounded text-accent focus:ring-accent w-4 h-4 border-gray-300 cursor-pointer"
-                                                        checked={selectedBillIds.has(bill.id)}
-                                                        onChange={(e) => {
-                                                            e.stopPropagation();
-                                                            setSelectedBillIds(prev => {
-                                                                const next = new Set(prev);
-                                                                if (next.has(bill.id)) next.delete(bill.id);
-                                                                else next.add(bill.id);
-                                                                return next;
-                                                            });
-                                                        }}
-                                                    />
-                                                </td>
-                                                <td className="px-4 py-3 whitespace-nowrap text-slate-700 flex items-center gap-2">
-                                                    {hasPayments && (
-                                                        <button
-                                                            onClick={(e) => toggleExpand(e, bill.id)}
-                                                            className={`p-1 rounded hover:bg-slate-200 text-slate-400 transform transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-                                                        >
-                                                            <div className="w-3 h-3">{ICONS.chevronRight}</div>
-                                                        </button>
-                                                    )}
-                                                    {formatDate(bill.issueDate)}
-                                                </td>
-                                                <td className="px-4 py-3 text-slate-800 font-medium">{buildingName}</td>
-                                                <td className="px-4 py-3 text-slate-600 font-mono text-xs">{bill.billNumber}</td>
-                                                <td className="px-4 py-3 text-slate-600 truncate max-w-[150px]">{vendor?.name || 'Unknown'}</td>
-                                                <td className="px-4 py-3 text-slate-600 font-mono text-xs">{contract ? contract.contractNumber : '-'}</td>
-                                                <td className="px-4 py-3 text-slate-500">{bill.dueDate ? formatDate(bill.dueDate) : '-'}</td>
-                                                <td className="px-4 py-3 text-right font-mono font-semibold text-slate-800">{CURRENCY} {bill.amount.toLocaleString()}</td>
-                                                <td className="px-4 py-3 text-center">
-                                                    <div className="flex items-center justify-center gap-2">
-                                                        {getStatusBadge(bill.status)}
-                                                        {bill.paidAmount > 0 && (
-                                                            <button
-                                                                onClick={(e) => handleSendWhatsApp(e, bill)}
-                                                                className="text-green-600 hover:text-green-800 p-1 rounded-full hover:bg-green-50 transition-colors opacity-0 group-hover:opacity-100"
-                                                                title="Send Payment Notification via WhatsApp"
-                                                            >
-                                                                <div className="w-4 h-4">{ICONS.whatsapp}</div>
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-3 text-right">
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        <span className={`font-mono font-bold ${balance > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                                            {CURRENCY} {balance.toLocaleString()}
-                                                        </span>
-                                                        {balance > 0 && (
-                                                            <Button
-                                                                size="sm"
-                                                                onClick={(e) => { e.stopPropagation(); handleRecordPayment(bill); }}
-                                                                className="opacity-0 group-hover:opacity-100 transition-opacity h-6 text-[10px] px-2"
-                                                            >
-                                                                Pay
-                                                            </Button>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                            {isExpanded && hasPayments && (
-                                                <tr className="!bg-indigo-50/30">
-                                                    <td colSpan={10} className="p-0 border-b border-slate-100">
-                                                        <div className="border-l-4 border-indigo-200 ml-8 my-2 pl-4 py-2 space-y-1">
-                                                            {payments.length > 0 ? payments.map((pay) => (
-                                                                <div
-                                                                    key={pay.id}
-                                                                    className="flex items-center text-xs text-slate-600 hover:bg-slate-100 p-1 rounded cursor-pointer group"
-                                                                    onClick={() => setTransactionToEdit(pay)}
-                                                                >
-                                                                    <div className="w-24 flex-shrink-0 text-slate-500">{formatDate(pay.date)}</div>
-                                                                    <div className="flex-grow truncate font-medium text-slate-700">{pay.description || 'Payment'}</div>
-                                                                    <div className="w-32 flex-shrink-0 text-right">{state.accounts.find(a => a.id === pay.accountId)?.name}</div>
-                                                                    <div className="w-24 text-right font-mono text-emerald-600 tabular-nums">{CURRENCY} {pay.amount.toLocaleString()}</div>
-                                                                    <div className="w-6 flex justify-center opacity-0 group-hover:opacity-100 text-indigo-600">
-                                                                        <div className="w-3 h-3">{ICONS.edit}</div>
-                                                                    </div>
-                                                                </div>
-                                                            )) : <div className="text-xs text-slate-400 italic">No transaction records found.</div>}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </React.Fragment>
-                                    )
-                                }) : (
-                                    <tr>
-                                        <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
-                                            No bills found matching selected criteria.
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                    <div className="p-3 border-t border-slate-200 bg-slate-50 flex justify-between items-center text-sm font-bold text-slate-700">
-                        <span>Total Bills: {filteredBills.length}</span>
-                        <span>Total Amount: {CURRENCY} {filteredBills.reduce((sum, b) => sum + b.amount, 0).toLocaleString()}</span>
-                    </div>
-                </div>
-            </div>
-
-            {/* Modals */}
-            <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title={duplicateBillData ? "New Bill (Duplicate)" : billToEdit ? "Edit Bill" : "Record New Bill"} size="xl">
-                <InvoiceBillForm
-                    onClose={() => setIsCreateModalOpen(false)}
-                    type="bill"
-                    rentalContext={true}
-                    itemToEdit={billToEdit || undefined}
-                    initialData={duplicateBillData || undefined}
-                    onDuplicate={handleDuplicate}
-                />
-            </Modal>
-
-            <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title={paymentBill ? `Pay Bill #${paymentBill.billNumber}` : "Pay Bill"}>
-                <TransactionForm
-                    onClose={() => setIsPaymentModalOpen(false)}
-                    transactionTypeForNew={TransactionType.EXPENSE}
-                    transactionToEdit={paymentTransactionData}
-                    onShowDeleteWarning={() => { }}
-                />
-            </Modal>
-
-            <Modal isOpen={!!transactionToEdit} onClose={() => setTransactionToEdit(null)} title="Edit Payment">
-                <TransactionForm
-                    onClose={() => setTransactionToEdit(null)}
-                    transactionToEdit={transactionToEdit}
-                    onShowDeleteWarning={(tx) => {
-                        setTransactionToEdit(null);
-                        setWarningModalState({ isOpen: true, transaction: tx, action: 'delete' });
-                    }}
-                />
-            </Modal>
-
-            <LinkedTransactionWarningModal
-                isOpen={warningModalState.isOpen}
-                onClose={() => setWarningModalState({ isOpen: false, transaction: null, action: null })}
-                onConfirm={() => {
-                    if (warningModalState.transaction) dispatch({ type: 'DELETE_TRANSACTION', payload: warningModalState.transaction.id });
-                    setWarningModalState({ isOpen: false, transaction: null, action: null });
-                    showToast("Payment deleted successfully");
-                }}
-                action="delete"
-                linkedItemName="this bill"
-            />
-
-            <BillBulkPaymentModal
-                isOpen={isBulkPayModalOpen}
-                onClose={() => { setIsBulkPayModalOpen(false); }}
-                selectedBills={selectedBillsList}
-                onPaymentComplete={handleBulkPaymentComplete}
-            />
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+          <p className="text-xs font-semibold text-slate-500 uppercase">Unpaid</p>
+          <p className="text-lg font-bold text-slate-800">{summaryStats.unpaidCount}</p>
+          <p className="text-sm text-slate-600">
+            {CURRENCY} {summaryStats.unpaidAmount.toLocaleString()}
+          </p>
         </div>
-    );
+        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+          <p className="text-xs font-semibold text-slate-500 uppercase">Paid</p>
+          <p className="text-lg font-bold text-emerald-700">{summaryStats.paidCount}</p>
+          <p className="text-sm text-slate-600">
+            {CURRENCY} {summaryStats.paidAmount.toLocaleString()}
+          </p>
+        </div>
+        <div className="bg-white rounded-xl border border-rose-200 p-4 shadow-sm">
+          <p className="text-xs font-semibold text-rose-600 uppercase">Overdue</p>
+          <p className="text-lg font-bold text-rose-700">{summaryStats.overdueCount}</p>
+          <p className="text-sm text-slate-600">
+            {CURRENCY} {summaryStats.overdueAmount.toLocaleString()}
+          </p>
+        </div>
+        <div className="bg-white rounded-xl border border-indigo-200 p-4 shadow-sm">
+          <p className="text-xs font-semibold text-indigo-600 uppercase">Total Pending</p>
+          <p className="text-lg font-bold text-indigo-700">
+            {CURRENCY} {summaryStats.totalPending.toLocaleString()}
+          </p>
+        </div>
+      </div>
+
+      {/* Filter Bar */}
+      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 flex-wrap">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-slate-500 uppercase">Status:</span>
+          {['All', 'Unpaid', 'Paid', 'Partially Paid', 'Overdue'].map(s => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s === 'All' ? 'all' : s)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                (s === 'All' && statusFilter === 'all') || statusFilter === s
+                  ? 'bg-accent text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-slate-500 uppercase">Bearer:</span>
+          {[
+            { id: 'all', label: 'All' },
+            { id: 'owner', label: 'Owner' },
+            { id: 'building', label: 'Building' },
+            { id: 'tenant', label: 'Tenant' },
+          ].map(opt => (
+            <button
+              key={opt.id}
+              onClick={() => setExpenseBearerFilter(opt.id as ExpenseBearerFilter)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                expenseBearerFilter === opt.id
+                  ? 'bg-accent text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <select
+          value={vendorFilter}
+          onChange={e => setVendorFilter(e.target.value)}
+          className={filterInputClass}
+          style={{ width: '160px' }}
+        >
+          <option value="all">All Vendors</option>
+          {vendorsWithBills.map(v => (
+            <option key={v.id} value={v.id}>{v.name}</option>
+          ))}
+        </select>
+        <select
+          value={buildingFilter}
+          onChange={e => setBuildingFilter(e.target.value)}
+          className={filterInputClass}
+          style={{ width: '160px' }}
+        >
+          <option value="all">All Buildings</option>
+          {state.buildings.map(b => (
+            <option key={b.id} value={b.id}>{b.name}</option>
+          ))}
+        </select>
+        <select
+          value={propertyFilter}
+          onChange={e => setPropertyFilter(e.target.value)}
+          className={filterInputClass}
+          style={{ width: '160px' }}
+        >
+          <option value="all">All Properties</option>
+          {state.properties.map(p => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={dateRangeStart}
+            onChange={e => setDateRangeStart(e.target.value)}
+            placeholder="From"
+            className={filterInputClass}
+            style={{ width: '140px' }}
+          />
+          <input
+            type="date"
+            value={dateRangeEnd}
+            onChange={e => setDateRangeEnd(e.target.value)}
+            placeholder="To"
+            className={filterInputClass}
+            style={{ width: '140px' }}
+          />
+        </div>
+        <div className="relative flex-1 min-w-[200px]">
+          <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">
+            <div className="w-4 h-4">{ICONS.search}</div>
+          </div>
+          <input
+            type="text"
+            placeholder="Search bill #, vendor, property..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="pl-9 pr-4 py-2 w-full text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-accent/50 focus:border-accent"
+          />
+        </div>
+      </div>
+
+      {/* Bills Table */}
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+        <div className="flex-1 overflow-auto bg-white rounded-xl border border-slate-200 shadow-sm">
+          <table className="min-w-full divide-y divide-slate-100 text-sm">
+            <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+              <tr>
+                <th className="px-4 py-3 w-10"></th>
+                <th onClick={() => handleSort('issueDate')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Date <SortIcon column="issueDate" /></th>
+                <th onClick={() => handleSort('billNumber')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Bill # <SortIcon column="billNumber" /></th>
+                <th onClick={() => handleSort('vendorName')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Vendor <SortIcon column="vendorName" /></th>
+                <th onClick={() => handleSort('expenseBearer')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Bearer <SortIcon column="expenseBearer" /></th>
+                <th onClick={() => handleSort('propertyName')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Property <SortIcon column="propertyName" /></th>
+                <th onClick={() => handleSort('buildingName')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Building <SortIcon column="buildingName" /></th>
+                <th onClick={() => handleSort('amount')} className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Amount <SortIcon column="amount" /></th>
+                <th className="px-4 py-3 text-right font-semibold text-slate-600">Paid</th>
+                <th onClick={() => handleSort('balance')} className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Balance <SortIcon column="balance" /></th>
+                <th onClick={() => handleSort('status')} className="px-4 py-3 text-center font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Status <SortIcon column="status" /></th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600 w-28">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredBills.length > 0 ? filteredBills.map((bill, idx) => {
+                const balance = bill.amount - bill.paidAmount;
+                const bearer = getExpenseBearerType(bill, state);
+                const vendor = state.vendors?.find(v => v.id === bill.vendorId);
+                const isExpanded = expandedBillIds.has(bill.id);
+                const hasPayments = bill.paidAmount > 0;
+                const payments = hasPayments ? state.transactions.filter(t => t.billId === bill.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
+                const whatsAppOpts = getWhatsAppOptions(bill);
+
+                return (
+                  <React.Fragment key={bill.id}>
+                    <tr className={`cursor-pointer transition-colors group ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-slate-100`} onClick={() => handleEdit(bill)}>
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <input type="checkbox" className="rounded text-accent focus:ring-accent w-4 h-4 border-gray-300 cursor-pointer" checked={selectedBillIds.has(bill.id)}
+                          onChange={(e) => { e.stopPropagation(); setSelectedBillIds(prev => { const n = new Set(prev); n.has(bill.id) ? n.delete(bill.id) : n.add(bill.id); return n; }); }} />
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-slate-700">
+                        <div className="flex items-center gap-1">
+                          {hasPayments && <button onClick={(e) => toggleExpand(e, bill.id)} className={`p-1 rounded hover:bg-slate-200 text-slate-400 inline-flex ${isExpanded ? 'rotate-90' : ''}`}><span className="w-3.5 h-3.5">{ICONS.chevronRight}</span></button>}
+                          {formatDate(bill.issueDate)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs">{bill.billNumber}</td>
+                      <td className="px-4 py-3 truncate max-w-[120px]">{vendor?.name || '-'}</td>
+                      <td className="px-4 py-3">{getExpenseBearerBadge(bearer)}</td>
+                      <td className="px-4 py-3 text-slate-600">{getPropertyOrUnitLabel(bill)}</td>
+                      <td className="px-4 py-3 text-slate-600">{getBuildingName(bill)}</td>
+                      <td className="px-4 py-3 text-right font-mono font-semibold">{CURRENCY} {bill.amount.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right font-mono text-emerald-600">{CURRENCY} {bill.paidAmount.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={`font-mono font-bold ${balance > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{CURRENCY} {balance.toLocaleString()}</span>
+                        {balance > 0 && <Button size="sm" onClick={(e) => { e.stopPropagation(); handleRecordPayment(bill); }} className="ml-2 opacity-0 group-hover:opacity-100 h-6 text-[10px] px-2">Pay</Button>}
+                      </td>
+                      <td className="px-4 py-3 text-center">{getStatusBadge(bill.status)}</td>
+                      <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => handleEdit(bill)} className="p-1.5 rounded hover:bg-slate-200 text-slate-500" title="Edit"><span className="w-4 h-4">{ICONS.edit}</span></button>
+                          {whatsAppOpts.length > 0 && (
+                            <div className="relative" ref={whatsAppMenuBillId === bill.id ? whatsAppMenuRef : null}>
+                              <button onClick={(e) => { e.stopPropagation(); setWhatsAppMenuBillId(prev => prev === bill.id ? null : bill.id); }} className="p-1.5 rounded text-green-600 hover:bg-green-50" title="Send via WhatsApp"><span className="w-4 h-4">{ICONS.whatsapp}</span></button>
+                              {whatsAppMenuBillId === bill.id && (
+                                <div className="absolute right-0 mt-1 py-1 bg-white border border-slate-200 rounded-lg shadow-lg z-20 min-w-[140px]">
+                                  {whatsAppOpts.map(opt => (
+                                    <button key={opt.id} onClick={(e) => handleSendWhatsApp(e, bill, opt.id)} className="block w-full text-left px-3 py-2 text-xs hover:bg-slate-50">{opt.label}</button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                    {isExpanded && hasPayments && (
+                      <tr className="!bg-indigo-50/30">
+                        <td colSpan={12} className="p-0 border-b border-slate-100">
+                          <div className="border-l-4 border-indigo-200 ml-8 my-2 pl-4 py-2 space-y-1">
+                            {payments.map((pay) => (
+                              <div key={pay.id} className="flex items-center text-xs text-slate-600 hover:bg-slate-100 p-1 rounded cursor-pointer" onClick={() => setTransactionToEdit(pay)}>
+                                <span className="w-24 flex-shrink-0 text-slate-500">{formatDate(pay.date)}</span>
+                                <span className="flex-grow truncate font-medium">{pay.description || 'Payment'}</span>
+                                <span className="w-32 flex-shrink-0 text-right">{state.accounts.find(a => a.id === pay.accountId)?.name}</span>
+                                <span className="w-24 text-right font-mono text-emerald-600">{CURRENCY} {pay.amount.toLocaleString()}</span>
+                                <span className="w-6 inline-flex opacity-0 group-hover:opacity-100"><span className="w-3 h-3">{ICONS.edit}</span></span>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              }) : (
+                <tr><td colSpan={12} className="px-4 py-12 text-center text-slate-500">No bills found matching selected criteria.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="p-3 border-t border-slate-200 bg-white rounded-b-xl flex justify-between items-center text-sm font-bold text-slate-700">
+          <span>Total Bills: {filteredBills.length}</span>
+          <span>Total Amount: {CURRENCY} {filteredBills.reduce((s, b) => s + b.amount, 0).toLocaleString()}</span>
+          <span>Total Payable: {CURRENCY} {filteredBills.reduce((s, b) => s + Math.max(0, b.amount - b.paidAmount), 0).toLocaleString()}</span>
+        </div>
+      </div>
+
+      {/* Modals */}
+      <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title={duplicateBillData ? 'New Bill (Duplicate)' : billToEdit ? 'Edit Bill' : 'Record New Bill'} size="xl">
+        <InvoiceBillForm onClose={() => setIsCreateModalOpen(false)} type="bill" rentalContext={true} itemToEdit={billToEdit || undefined} initialData={duplicateBillData || undefined} onDuplicate={handleDuplicate} />
+      </Modal>
+      <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title={paymentBill ? `Pay Bill #${paymentBill.billNumber}` : 'Pay Bill'}>
+        <TransactionForm onClose={() => setIsPaymentModalOpen(false)} transactionTypeForNew={TransactionType.EXPENSE} transactionToEdit={paymentTransactionData} onShowDeleteWarning={() => {}} />
+      </Modal>
+      <Modal isOpen={!!transactionToEdit} onClose={() => setTransactionToEdit(null)} title="Edit Payment">
+        <TransactionForm onClose={() => setTransactionToEdit(null)} transactionToEdit={transactionToEdit} onShowDeleteWarning={(tx) => { setTransactionToEdit(null); setWarningModalState({ isOpen: true, transaction: tx, action: 'delete' }); }} />
+      </Modal>
+      <LinkedTransactionWarningModal isOpen={warningModalState.isOpen} onClose={() => setWarningModalState({ isOpen: false, transaction: null, action: null })} onConfirm={() => {
+        if (warningModalState.transaction) dispatch({ type: 'DELETE_TRANSACTION', payload: warningModalState.transaction.id });
+        setWarningModalState({ isOpen: false, transaction: null, action: null });
+        showToast('Payment deleted successfully');
+      }} action="delete" linkedItemName="this bill" />
+      <BillBulkPaymentModal isOpen={isBulkPayModalOpen} onClose={() => setIsBulkPayModalOpen(false)} selectedBills={selectedBillsList} onPaymentComplete={handleBulkPaymentComplete} />
+    </div>
+  );
 };
 
 export default RentalBillsPage;

@@ -279,6 +279,9 @@ DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='bills' AND column_name='document_id') THEN
         ALTER TABLE bills ADD COLUMN document_id TEXT;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='bills' AND column_name='expense_bearer_type') THEN
+        ALTER TABLE bills ADD COLUMN expense_bearer_type TEXT;
+    END IF;
 END $$;
 
 CREATE TABLE IF NOT EXISTS rental_agreements (
@@ -291,6 +294,7 @@ CREATE TABLE IF NOT EXISTS rental_agreements (
     end_date DATE NOT NULL,
     monthly_rent DECIMAL(15, 2) NOT NULL,
     status TEXT NOT NULL,
+    previous_agreement_id TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     UNIQUE(org_id, agreement_number)
 );
@@ -653,6 +657,73 @@ CREATE TABLE IF NOT EXISTS quotations (
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+-- ============================================================================
+-- 11b. RECURRING INVOICE TEMPLATES
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS recurring_invoice_templates (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id TEXT,
+    contact_id TEXT NOT NULL,
+    property_id TEXT NOT NULL,
+    building_id TEXT,
+    amount DECIMAL(15, 2) NOT NULL,
+    description_template TEXT NOT NULL,
+    day_of_month INTEGER NOT NULL,
+    next_due_date TEXT NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    agreement_id TEXT,
+    invoice_type TEXT DEFAULT 'Rental',
+    frequency TEXT,
+    auto_generate BOOLEAN NOT NULL DEFAULT FALSE,
+    max_occurrences INTEGER,
+    generated_count INTEGER NOT NULL DEFAULT 0,
+    last_generated_date TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Fix: Drop overly-strict FK constraints on recurring_invoice_templates if they exist.
+-- The client sends empty-string building_id when no building is selected, which violates FK.
+-- SQLite never enforced these FKs so the app was designed without strict FK compliance.
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN (
+        SELECT conname
+        FROM pg_constraint
+        WHERE conrelid = 'recurring_invoice_templates'::regclass
+          AND contype = 'f'
+          AND conname != 'recurring_invoice_templates_tenant_id_fkey'
+    )
+    LOOP
+        EXECUTE format('ALTER TABLE recurring_invoice_templates DROP CONSTRAINT %I', r.conname);
+    END LOOP;
+EXCEPTION
+    WHEN undefined_table THEN NULL; -- table doesn't exist yet, ignore
+END $$;
+
+-- Fix: Make building_id nullable (buildings aren't always selected)
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'recurring_invoice_templates'
+          AND column_name = 'building_id'
+          AND is_nullable = 'NO'
+    ) THEN
+        ALTER TABLE recurring_invoice_templates ALTER COLUMN building_id DROP NOT NULL;
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_recurring_templates_tenant ON recurring_invoice_templates(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_recurring_templates_contact ON recurring_invoice_templates(contact_id);
+CREATE INDEX IF NOT EXISTS idx_recurring_templates_property ON recurring_invoice_templates(property_id);
 
 -- ============================================================================
 -- 12. ROW LEVEL SECURITY

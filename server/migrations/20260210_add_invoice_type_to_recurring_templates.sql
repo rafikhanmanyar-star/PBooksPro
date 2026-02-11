@@ -7,7 +7,9 @@ BEGIN;
 
 DO $$
 BEGIN
-    IF NOT EXISTS (
+    -- Only add column if table exists (table may be created in a later migration)
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'recurring_invoice_templates')
+       AND NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_name = 'recurring_invoice_templates' AND column_name = 'invoice_type'
     ) THEN

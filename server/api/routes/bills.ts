@@ -118,9 +118,9 @@ router.post('/', async (req: TenantRequest, res) => {
       `INSERT INTO bills (
         id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status,
         issue_date, due_date, description, category_id, project_id, building_id,
-        property_id, project_agreement_id, contract_id, staff_id,
+        property_id, project_agreement_id, contract_id, staff_id, expense_bearer_type,
         expense_category_items, document_path, document_id, user_id, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23,
                 COALESCE((SELECT created_at FROM bills WHERE id = $1), NOW()), NOW())
       ON CONFLICT (id) 
       DO UPDATE SET
@@ -140,6 +140,7 @@ router.post('/', async (req: TenantRequest, res) => {
         project_agreement_id = EXCLUDED.project_agreement_id,
         contract_id = EXCLUDED.contract_id,
         staff_id = EXCLUDED.staff_id,
+        expense_bearer_type = EXCLUDED.expense_bearer_type,
         expense_category_items = EXCLUDED.expense_category_items,
         document_path = EXCLUDED.document_path,
         document_id = EXCLUDED.document_id,
@@ -165,6 +166,7 @@ router.post('/', async (req: TenantRequest, res) => {
         bill.projectAgreementId || null,
         bill.contractId || null,
         bill.staffId || null,
+        bill.expenseBearerType || null,
         bill.expenseCategoryItems ? JSON.stringify(bill.expenseCategoryItems) : null,
         bill.documentPath || null,
         bill.documentId || null,
@@ -218,9 +220,9 @@ router.put('/:id', async (req: TenantRequest, res) => {
        SET bill_number = $1, contact_id = $2, vendor_id = $3, amount = $4, paid_amount = $5, 
            status = $6, issue_date = $7, due_date = $8, description = $9, 
            category_id = $10, project_id = $11, building_id = $12, property_id = $13,
-           project_agreement_id = $14, contract_id = $15, staff_id = $16,
-           expense_category_items = $17, document_path = $18, document_id = $19, user_id = $20, updated_at = NOW()
-       WHERE id = $21 AND tenant_id = $22
+           project_agreement_id = $14, contract_id = $15, staff_id = $16, expense_bearer_type = $17,
+           expense_category_items = $18, document_path = $19, document_id = $20, user_id = $21, updated_at = NOW()
+       WHERE id = $22 AND tenant_id = $23
        RETURNING *`,
       [
         bill.billNumber,
@@ -239,6 +241,7 @@ router.put('/:id', async (req: TenantRequest, res) => {
         bill.projectAgreementId || null,
         bill.contractId || null,
         bill.staffId || null,
+        bill.expenseBearerType || null,
         bill.expenseCategoryItems ? JSON.stringify(bill.expenseCategoryItems) : null,
         bill.documentPath || null,
         bill.documentId || null,
