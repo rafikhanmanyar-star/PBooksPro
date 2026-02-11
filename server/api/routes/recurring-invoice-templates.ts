@@ -42,6 +42,23 @@ router.post('/', async (req: TenantRequest, res) => {
     const db = getDb();
     const template = req.body;
     const templateId = template.id || `recurring_template_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Sanitize: convert empty strings to null for optional FK fields
+    const contactId = template.contactId || null;
+    const propertyId = template.propertyId || null;
+    const buildingId = template.buildingId || null;
+    const agreementId = template.agreementId || null;
+    const userId = req.user?.userId || null;
+
+    // Validate required fields
+    if (!contactId || !propertyId) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        message: 'contactId and propertyId are required',
+        received: { contactId: template.contactId, propertyId: template.propertyId }
+      });
+    }
+
     const existing = await db.query(
       'SELECT id FROM recurring_invoice_templates WHERE id = $1 AND tenant_id = $2',
       [templateId, req.tenantId]
@@ -66,10 +83,11 @@ router.post('/', async (req: TenantRequest, res) => {
         user_id = EXCLUDED.user_id, updated_at = NOW()
       RETURNING *`,
       [
-        templateId, req.tenantId, req.user?.userId || null,
-        template.contactId, template.propertyId, template.buildingId,
-        template.amount, template.descriptionTemplate, template.dayOfMonth,
-        template.nextDueDate, template.active !== false, template.agreementId || null,
+        templateId, req.tenantId, userId,
+        contactId, propertyId, buildingId,
+        template.amount, template.descriptionTemplate || '', template.dayOfMonth || 1,
+        template.nextDueDate || new Date().toISOString().split('T')[0],
+        template.active !== false, agreementId,
         template.invoiceType || 'Rental', template.frequency || null, template.autoGenerate || false,
         template.maxOccurrences || null, template.generatedCount || 0,
         template.lastGeneratedDate || null
@@ -81,8 +99,21 @@ router.post('/', async (req: TenantRequest, res) => {
     });
     res.status(201).json(result[0]);
   } catch (error: any) {
-    console.error('Error creating/updating recurring invoice template:', error);
-    res.status(500).json({ error: 'Failed to create/update recurring invoice template', message: error.message });
+    console.error('Error creating/updating recurring invoice template:', {
+      message: error.message,
+      code: error.code,
+      detail: error.detail,
+      constraint: error.constraint,
+      table: error.table,
+      column: error.column,
+      body: req.body,
+    });
+    res.status(500).json({
+      error: 'Failed to create/update recurring invoice template',
+      message: error.message,
+      code: error.code,
+      detail: error.detail,
+    });
   }
 });
 

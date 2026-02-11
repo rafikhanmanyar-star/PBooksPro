@@ -2158,16 +2158,16 @@ export const runImportProcess = async (
                 else if (sheetName === 'RentalBills') {
                     if (maps.bills.has(normalizeNameForComparison(row.billNumber))) continue;
 
-                    const contactId = resolveId(maps.contacts, row, 'contactName', 'ContactName', 'contact', 'Contact');
+                    const vendorId = resolveId(maps.vendors, row, 'contactName', 'ContactName', 'contact', 'Contact') || resolveId(maps.contacts, row, 'contactName', 'ContactName', 'contact', 'Contact');
                     const categoryId = resolveId(maps.categories, row, 'categoryName', 'CategoryName', 'category', 'Category');
                     const buildingId = resolveId(maps.buildings, row, 'buildingName', 'BuildingName', 'building', 'Building');
                     const propertyId = resolveId(maps.properties, row, 'propertyName', 'PropertyName', 'property', 'Property');
                     const staffId = resolveId(maps.contacts, row, 'staffName', 'StaffName', 'staff', 'Staff', 'staffId');
 
                     const invalidRefs: { field: string; value: string; suggestions?: string[] }[] = [];
-                    if (!contactId) {
+                    if (!vendorId) {
                         const contactValue = row.contactName || row.ContactName || row.contact || row.Contact || '';
-                        invalidRefs.push({ field: 'Contact', value: contactValue, suggestions: findSimilarNames(contactValue, maps.contacts) });
+                        invalidRefs.push({ field: 'Vendor/Contact', value: contactValue, suggestions: findSimilarNames(contactValue, maps.vendors) });
                     }
                     // For rental bills, at least one context is recommended; we don't hard-require it but we resolve if present.
                     if (invalidRefs.length > 0) {
@@ -2189,14 +2189,18 @@ export const runImportProcess = async (
 
                     const expenseCategoryItems = parseExpenseCategoryItems(row, maps, normalizeNameForComparison);
 
+                    const expenseBearerType = (row.expenseBearerType && ['owner', 'building', 'tenant'].includes(String(row.expenseBearerType).toLowerCase()))
+                        ? String(row.expenseBearerType).toLowerCase() as 'owner' | 'building' | 'tenant' : undefined;
+
                     const newBill: Bill = {
                         id: billId,
                         billNumber: row.billNumber,
-                        contactId: contactId!,
+                        vendorId: vendorId!,
                         categoryId,
                         buildingId,
                         propertyId,
                         staffId,
+                        expenseBearerType,
                         amount: parseFloat(row.amount),
                         paidAmount: 0,
                         status: InvoiceStatus.UNPAID,
@@ -2348,7 +2352,7 @@ export const runImportProcess = async (
                         if (!inv) return 'unknown';
                         // Strong signals
                         if (inv.invoiceType === InvoiceType.INSTALLMENT) return 'project';
-                        if (inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SERVICE_CHARGE) return 'rental';
+                        if (inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SECURITY_DEPOSIT || inv.invoiceType === InvoiceType.SERVICE_CHARGE) return 'rental';
                         // Agreement linkage
                         if (inv.agreementId) {
                             if (tempState.rentalAgreements.some(a => a.id === inv.agreementId)) return 'rental';

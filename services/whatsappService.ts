@@ -214,6 +214,64 @@ export class WhatsAppService {
   }
 
   /**
+   * Generates owner payout ledger summary message from template
+   */
+  static generateOwnerPayoutLedger(
+    template: string,
+    contact: Contact | Vendor,
+    collected: number,
+    expenses: number,
+    paid: number,
+    balance: number,
+    payoutType?: string
+  ): string {
+    return this.replaceTemplateVariables(template, {
+      contactName: contact.name,
+      collected: `${CURRENCY} ${collected.toLocaleString()}`,
+      expenses: `${CURRENCY} ${expenses.toLocaleString()}`,
+      paid: `${CURRENCY} ${paid.toLocaleString()}`,
+      balance: `${CURRENCY} ${Math.abs(balance).toLocaleString()}`,
+      payoutType: payoutType || 'Rental Income'
+    });
+  }
+
+  /**
+   * Generates broker payout ledger summary message from template
+   */
+  static generateBrokerPayoutLedger(
+    template: string,
+    contact: Contact | Vendor,
+    earned: number,
+    paid: number,
+    balance: number
+  ): string {
+    return this.replaceTemplateVariables(template, {
+      contactName: contact.name,
+      earned: `${CURRENCY} ${earned.toLocaleString()}`,
+      paid: `${CURRENCY} ${paid.toLocaleString()}`,
+      balance: `${CURRENCY} ${Math.abs(balance).toLocaleString()}`
+    });
+  }
+
+  /**
+   * Generates payout confirmation message from template
+   */
+  static generatePayoutConfirmation(
+    template: string,
+    contact: Contact | Vendor,
+    amount: number,
+    payoutType: string,
+    reference?: string
+  ): string {
+    return this.replaceTemplateVariables(template, {
+      contactName: contact.name,
+      amount: `${CURRENCY} ${amount.toLocaleString()}`,
+      payoutType,
+      reference: reference || 'N/A'
+    });
+  }
+
+  /**
    * Future: Send message via WhatsApp Business API
    * This method will be implemented when Business API is integrated
    */

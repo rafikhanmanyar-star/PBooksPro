@@ -589,6 +589,7 @@ const RecurringInvoicesList: React.FC = () => {
                                     onChange={(e) => setEditInvoiceType(e.target.value as InvoiceType)}
                                 >
                                     <option value={InvoiceType.RENTAL}>Rental</option>
+                                    <option value={InvoiceType.SECURITY_DEPOSIT}>Security Deposit</option>
                                     <option value={InvoiceType.SERVICE_CHARGE}>Service Charge</option>
                                     <option value={InvoiceType.INSTALLMENT}>Installment</option>
                                 </Select>

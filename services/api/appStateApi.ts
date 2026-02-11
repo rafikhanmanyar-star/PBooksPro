@@ -433,6 +433,7 @@ export class AppStateApiService {
         projectAgreementId: b.project_agreement_id || b.projectAgreementId || undefined,
         contractId: b.contract_id || b.contractId || undefined,
         staffId: b.staff_id || b.staffId || undefined,
+        expenseBearerType: b.expense_bearer_type || b.expenseBearerType || undefined,
         documentPath: b.document_path || b.documentPath || undefined,
         documentId: b.document_id || b.documentId || undefined,
         vendorId: b.vendor_id || b.vendorId || undefined,

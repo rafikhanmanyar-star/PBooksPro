@@ -5,9 +5,11 @@ import { Contact, TransactionType, Transaction, AccountType, Category } from '..
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
-import { CURRENCY } from '../../constants';
+import { CURRENCY, ICONS } from '../../constants';
 import ComboBox from '../ui/ComboBox';
 import { useNotification } from '../../context/NotificationContext';
+import { WhatsAppService } from '../../services/whatsappService';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 
 interface OwnerPayoutModalProps {
     isOpen: boolean;
@@ -22,6 +24,7 @@ interface OwnerPayoutModalProps {
 const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, owner, balanceDue, payoutType = 'Rent', preSelectedBuildingId, transactionToEdit }) => {
     const { state, dispatch } = useAppContext();
     const { showAlert, showToast } = useNotification();
+    const { openChat } = useWhatsApp();
 
     const isEditMode = !!transactionToEdit;
 
@@ -32,6 +35,9 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
     const [reference, setReference] = useState('');
     const [notes, setNotes] = useState('');
     const [error, setError] = useState('');
+    const [showWhatsAppConfirm, setShowWhatsAppConfirm] = useState(false);
+    const [lastPaidAmount, setLastPaidAmount] = useState(0);
+    const [lastReference, setLastReference] = useState('');
     
     // Filter for Bank Accounts (exclude Internal Clearing)
     const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
@@ -162,10 +168,31 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
         if (isEditMode) {
             dispatch({ type: 'UPDATE_TRANSACTION', payload: payoutTransaction });
             showToast(`${payoutType} payout updated successfully.`, 'success');
+            onClose();
         } else {
             dispatch({ type: 'ADD_TRANSACTION', payload: payoutTransaction });
             showToast(`${payoutType} payout recorded successfully.`, 'success');
+            // Show WhatsApp confirmation step
+            setLastPaidAmount(parseFloat(amount));
+            setLastReference(reference);
+            setShowWhatsAppConfirm(true);
         }
+    };
+
+    const handleSendWhatsAppConfirmation = () => {
+        if (!owner) return;
+        const payoutLabel = payoutType === 'Security' ? 'Security Deposit Payout' : 'Owner Income Payout';
+        const template = state.whatsAppTemplates.payoutConfirmation || 'Dear {contactName}, a {payoutType} payment of {amount} has been made to you. Reference: {reference}';
+        const message = WhatsAppService.generatePayoutConfirmation(
+            template, owner, lastPaidAmount, payoutLabel, lastReference
+        );
+        openChat(owner, owner.contactNo || '', message);
+        setShowWhatsAppConfirm(false);
+        onClose();
+    };
+
+    const handleSkipWhatsApp = () => {
+        setShowWhatsAppConfirm(false);
         onClose();
     };
     
@@ -175,6 +202,42 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
         ...acc,
         name: `${acc.name} (${CURRENCY} ${acc.balance.toLocaleString()})`
     }));
+
+    // WhatsApp confirmation step
+    if (showWhatsAppConfirm) {
+        return (
+            <Modal isOpen={isOpen} onClose={handleSkipWhatsApp} title="Payment Recorded">
+                <div className="space-y-4">
+                    <div className="p-4 bg-emerald-50 rounded-lg text-center">
+                        <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
+                            <div className="w-6 h-6 text-emerald-600">{ICONS.check}</div>
+                        </div>
+                        <p className="font-semibold text-emerald-800">
+                            {CURRENCY} {lastPaidAmount.toLocaleString()} paid to {owner.name}
+                        </p>
+                        <p className="text-sm text-emerald-600 mt-1">
+                            {payoutType === 'Security' ? 'Security Deposit' : 'Owner Income'} Payout
+                        </p>
+                    </div>
+                    <p className="text-sm text-slate-600 text-center">
+                        Would you like to send a payment confirmation via WhatsApp?
+                    </p>
+                    <div className="flex justify-center gap-3 pt-2">
+                        <Button type="button" variant="secondary" onClick={handleSkipWhatsApp}>
+                            Skip
+                        </Button>
+                        <button
+                            onClick={handleSendWhatsAppConfirmation}
+                            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg text-white bg-green-600 hover:bg-green-700 transition-colors"
+                        >
+                            <div className="w-4 h-4">{ICONS.whatsapp}</div>
+                            Send via WhatsApp
+                        </button>
+                    </div>
+                </div>
+            </Modal>
+        );
+    }
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={isEditMode ? `Edit Payout - ${owner.name} (${payoutType})` : `Pay ${owner.name} (${payoutType})`}>

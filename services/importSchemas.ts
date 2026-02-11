@@ -322,7 +322,7 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         optionalFields: [
             'contactName', 'contact', 'paidAmount', 'status', 'dueDate', 'description',
             'categoryName', 'buildingName', 'building', 'propertyName', 'property',
-            'staffName', 'staff', 'staffId',
+            'staffName', 'staff', 'staffId', 'expenseBearerType',
             'expenseCategoryItems', 'ExpenseCategoryItems', 'expenseCategoryNames', 'ExpenseCategoryNames',
             'expenseQuantities', 'ExpenseQuantities', 'expensePricePerUnits', 'ExpensePricePerUnits',
             'expenseNetValues', 'ExpenseNetValues', 'expenseUnits', 'ExpenseUnits'
@@ -330,7 +330,7 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         allowedFields: new Set([
             'billNumber', 'contactName', 'contact', 'amount', 'paidAmount', 'status',
             'issueDate', 'dueDate', 'description', 'categoryName', 'buildingName', 'building',
-            'propertyName', 'property', 'staffName', 'staff', 'staffId',
+            'propertyName', 'property', 'staffName', 'staff', 'staffId', 'expenseBearerType',
             'expenseCategoryItems', 'ExpenseCategoryItems', 'expenseCategoryNames', 'ExpenseCategoryNames',
             'expenseQuantities', 'ExpenseQuantities', 'expensePricePerUnits', 'ExpensePricePerUnits',
             'expenseNetValues', 'ExpenseNetValues', 'expenseUnits', 'ExpenseUnits'

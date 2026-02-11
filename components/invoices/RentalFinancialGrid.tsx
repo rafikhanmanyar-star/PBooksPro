@@ -383,9 +383,9 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onIn
                                 const inv = record.raw as Invoice;
                                 const isSecurity = (inv.securityDepositCharge || 0) > 0 || (inv.description || '').toLowerCase().includes('security');
 
-                                if (inv.invoiceType === InvoiceType.RENTAL) {
-                                    displayType = isSecurity ? 'Security' : 'Rent';
-                                    typeStyle = isSecurity
+                                if (inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SECURITY_DEPOSIT) {
+                                    displayType = (inv.invoiceType === InvoiceType.SECURITY_DEPOSIT || isSecurity) ? 'Security' : 'Rent';
+                                    typeStyle = (inv.invoiceType === InvoiceType.SECURITY_DEPOSIT || isSecurity)
                                         ? 'bg-amber-50 text-amber-700 border-amber-100'
                                         : 'bg-sky-50 text-sky-700 border-sky-100';
                                 } else if (inv.invoiceType === InvoiceType.INSTALLMENT) {

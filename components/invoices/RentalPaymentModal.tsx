@@ -121,6 +121,8 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
             if (!categoryId) {
                 if (invoice.invoiceType === InvoiceType.RENTAL) {
                     categoryId = rentalIncomeCategory?.id;
+                } else if (invoice.invoiceType === InvoiceType.SECURITY_DEPOSIT) {
+                    categoryId = securityDepositCategory?.id;
                 } else if (invoice.invoiceType === InvoiceType.SERVICE_CHARGE) {
                     const serviceChargeCategory = state.categories.find(c => c.name === 'Service Charge Income');
                     categoryId = serviceChargeCategory?.id;
@@ -233,18 +235,27 @@ const RentalPaymentModal: React.FC<RentalPaymentModalProps> = ({ isOpen, onClose
                     required
                 />
 
-                <Input
-                    label={`${invoice.invoiceType === InvoiceType.RENTAL ? 'Rent' : 'Payment'} Amount (Due: ${CURRENCY} ${rentRemaining.toLocaleString()})`}
-                    type="text"
-                    inputMode="decimal"
-                    min="0"
-                    value={rentPaidAmount}
-                    onChange={e => setRentPaidAmount(e.target.value)}
-                />
+                {rentRemaining > 0 && (
+                    <Input
+                        label={`Rent Amount (Due: ${CURRENCY} ${rentRemaining.toLocaleString()})`}
+                        type="text"
+                        inputMode="decimal"
+                        min="0"
+                        value={rentPaidAmount}
+                        onChange={e => setRentPaidAmount(e.target.value)}
+                    />
+                )}
 
-                {(invoice.securityDepositCharge || 0) > 0 &&
-                    <Input label={`Security Deposit Paid (Due: ${CURRENCY} ${securityDepositRemaining.toLocaleString()})`} type="text" inputMode="decimal" min="0" value={securityDepositPaidAmount} onChange={e => setSecurityDepositPaidAmount(e.target.value)} />
-                }
+                {(invoice.securityDepositCharge || 0) > 0 && (
+                    <Input
+                        label={`Security Deposit Paid (Due: ${CURRENCY} ${securityDepositRemaining.toLocaleString()})`}
+                        type="text"
+                        inputMode="decimal"
+                        min="0"
+                        value={securityDepositPaidAmount}
+                        onChange={e => setSecurityDepositPaidAmount(e.target.value)}
+                    />
+                )}
                 <DatePicker label="Payment Date" value={paymentDate} onChange={d => setPaymentDate(d.toISOString().split('T')[0])} required />
 
                 {error && <p className="text-sm text-danger">{error}</p>}

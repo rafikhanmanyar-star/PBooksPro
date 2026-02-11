@@ -67,6 +67,32 @@ const MessagingTemplatesForm: React.FC = () => {
           placeholders={['{contactName}']}
         />
       </div>
+
+      {/* Payout Templates */}
+      <div className="border-t border-slate-200 pt-4">
+        <h3 className="text-sm font-semibold text-slate-700 mb-3">Payout Templates</h3>
+        <div className="space-y-4">
+          <TemplateField
+            label="Owner Payout Ledger"
+            value={templates.ownerPayoutLedger || ''}
+            onChange={(val) => handleTemplateChange('ownerPayoutLedger', val)}
+            placeholders={['{contactName}', '{payoutType}', '{collected}', '{expenses}', '{paid}', '{balance}']}
+          />
+          <TemplateField
+            label="Broker Commission Ledger"
+            value={templates.brokerPayoutLedger || ''}
+            onChange={(val) => handleTemplateChange('brokerPayoutLedger', val)}
+            placeholders={['{contactName}', '{earned}', '{paid}', '{balance}']}
+          />
+          <TemplateField
+            label="Payout Confirmation"
+            value={templates.payoutConfirmation || ''}
+            onChange={(val) => handleTemplateChange('payoutConfirmation', val)}
+            placeholders={['{contactName}', '{amount}', '{payoutType}', '{reference}']}
+          />
+        </div>
+      </div>
+
       <div className="flex justify-end">
         <Button onClick={handleSave}>Save Templates</Button>
       </div>

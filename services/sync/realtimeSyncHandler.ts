@@ -388,8 +388,11 @@ function normalizeBill(data: any): any {
     projectAgreementId: data.project_agreement_id ?? data.projectAgreementId ?? undefined,
     contractId: data.contract_id ?? data.contractId ?? undefined,
     staffId: data.staff_id ?? data.staffId ?? undefined,
+    expenseBearerType: data.expense_bearer_type ?? data.expenseBearerType ?? undefined,
+    vendorId: data.vendor_id ?? data.vendorId ?? undefined,
     expenseCategoryItems: data.expense_category_items ?? data.expenseCategoryItems ?? undefined,
     documentPath: data.document_path ?? data.documentPath ?? undefined,
+    documentId: data.document_id ?? data.documentId ?? undefined,
     version: data.version ?? 1,
   };
 }

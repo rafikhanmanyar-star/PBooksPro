@@ -2,9 +2,11 @@
 import React, { useMemo, useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import { TransactionType, InvoiceType, ContactType } from '../../types';
-import { CURRENCY } from '../../constants';
+import { CURRENCY, ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
 import { formatCurrency } from '../../utils/numberUtils';
+import { WhatsAppService } from '../../services/whatsappService';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 
 interface OwnerLedgerProps {
     ownerId: string | null;
@@ -17,6 +19,7 @@ type SortKey = 'date' | 'particulars' | 'credit' | 'debit' | 'balance';
 
 const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent', buildingId, onPayoutClick }) => {
     const { state } = useAppContext();
+    const { openChat } = useWhatsApp();
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
 
     const handleSort = (key: SortKey) => {
@@ -266,6 +269,23 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
         return <p className="text-slate-500 text-center py-8">No {ledgerType === 'Rent' ? 'rental' : 'security deposit'} activity found.</p>;
     }
 
+    const handleSendWhatsApp = () => {
+        if (!ownerId) return;
+        const ownerContact = state.contacts.find(c => c.id === ownerId);
+        if (!ownerContact) return;
+
+        const totalCollected = ledgerItems.reduce((sum, item) => sum + item.credit, 0);
+        const totalPaid = ledgerItems.reduce((sum, item) => sum + item.debit, 0);
+        const finalBalance = totalCollected - totalPaid;
+        const payoutType = ledgerType === 'Security' ? 'Security Deposit' : 'Rental Income';
+
+        const template = state.whatsAppTemplates.ownerPayoutLedger || 'Dear {contactName}, your {payoutType} balance is {balance}.';
+        const message = WhatsAppService.generateOwnerPayoutLedger(
+            template, ownerContact, totalCollected, totalPaid, 0, finalBalance, payoutType
+        );
+        openChat(ownerContact, ownerContact.contactNo || '', message);
+    };
+
     return (
         <div className="flow-root">
             <div className="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
@@ -315,6 +335,16 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                         </tbody>
                     </table>
                 </div>
+            </div>
+            {/* WhatsApp Send Ledger Button */}
+            <div className="flex justify-end mt-3 pt-3 border-t border-slate-200">
+                <button
+                    onClick={handleSendWhatsApp}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md text-green-700 bg-green-50 hover:bg-green-100 transition-colors"
+                >
+                    <div className="w-3.5 h-3.5">{ICONS.whatsapp}</div>
+                    Send Ledger via WhatsApp
+                </button>
             </div>
         </div>
     );

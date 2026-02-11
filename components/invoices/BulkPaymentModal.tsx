@@ -50,7 +50,7 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
 
     // Determine if this is a Rental context
     const isRentalContext = useMemo(() => {
-        return selectedInvoices.some(inv => inv.invoiceType === InvoiceType.RENTAL);
+        return selectedInvoices.some(inv => inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SECURITY_DEPOSIT);
     }, [selectedInvoices]);
 
     // Initialize payments with full remaining balance

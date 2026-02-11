@@ -666,10 +666,49 @@ const SettingsPage: React.FC = () => {
         </div>
     );
 
+    const RentalInvoiceSettingsBlock: React.FC = () => {
+        const settings = state.rentalInvoiceSettings || { prefix: 'INV-', nextNumber: 1, padding: 5, autoSendInvoiceWhatsApp: false };
+        const [localSettings, setLocalSettings] = useState(settings);
+        const handleChange = (field: string, val: string | number | boolean) => setLocalSettings(prev => ({ ...prev, [field]: val }));
+        const handleSave = () => {
+            const payload = { ...localSettings, nextNumber: parseInt(String(localSettings.nextNumber)) || 1, padding: parseInt(String(localSettings.padding)) || 4 };
+            dispatch({ type: 'UPDATE_RENTAL_INVOICE_SETTINGS', payload });
+            showToast('Rental Invoices updated!', 'success');
+        };
+        return (
+            <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex justify-between items-center mb-4">
+                    <h4 className="font-bold text-slate-700">Rental Invoices</h4>
+                    <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded text-slate-500">
+                        {localSettings.prefix}{String(localSettings.nextNumber).padStart(localSettings.padding, '0')}
+                    </span>
+                </div>
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                    <Input id="rental-inv-prefix" name="rental-inv-prefix" label="Prefix" value={localSettings.prefix} onChange={e => handleChange('prefix', e.target.value)} className="text-sm" />
+                    <Input id="rental-inv-next-num" name="rental-inv-next-num" label="Next #" type="number" value={localSettings.nextNumber.toString()} onChange={e => handleChange('nextNumber', e.target.value)} className="text-sm" />
+                    <Input id="rental-inv-padding" name="rental-inv-padding" label="Padding" type="number" value={localSettings.padding.toString()} onChange={e => handleChange('padding', e.target.value)} className="text-sm" />
+                </div>
+                <div className="mb-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={!!localSettings.autoSendInvoiceWhatsApp}
+                            onChange={e => handleChange('autoSendInvoiceWhatsApp', e.target.checked)}
+                            className="rounded text-accent focus:ring-accent h-4 w-4"
+                        />
+                        <span className="text-sm font-medium text-slate-700">Auto-send invoice via WhatsApp when created</span>
+                    </label>
+                    <p className="text-xs text-slate-500 mt-1 ml-6">When enabled, newly created rental/security deposit invoices are sent to the tenant via WhatsApp automatically.</p>
+                </div>
+                <Button variant="secondary" onClick={handleSave} className="mt-1 w-full">Update Settings</Button>
+            </div>
+        );
+    };
+
     const renderIDSequences = () => (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <IDSequenceSettingsBlock title="Rental Agreements" settings={state.agreementSettings} type="UPDATE_AGREEMENT_SETTINGS" />
-            <IDSequenceSettingsBlock title="Rental Invoices" settings={state.rentalInvoiceSettings || { prefix: 'INV-', nextNumber: 1, padding: 5 }} type="UPDATE_RENTAL_INVOICE_SETTINGS" />
+            <RentalInvoiceSettingsBlock />
             <IDSequenceSettingsBlock title="Project Agreements" settings={state.projectAgreementSettings} type="UPDATE_PROJECT_AGREEMENT_SETTINGS" />
             <IDSequenceSettingsBlock title="Project Invoices" settings={state.projectInvoiceSettings || { prefix: 'P-INV-', nextNumber: 1, padding: 5 }} type="UPDATE_PROJECT_INVOICE_SETTINGS" />
         </div>

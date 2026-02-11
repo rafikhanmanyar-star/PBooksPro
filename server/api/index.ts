@@ -1,4 +1,4 @@
-// Load environment variables FIRST, before any other imports
+﻿// Load environment variables FIRST, before any other imports
 import dotenv from 'dotenv';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -756,4 +756,3 @@ httpServer.listen(port, host, () => {
 });
 
 export default app;
-

@@ -22,6 +22,7 @@ export async function exportToExcel(state: AppState, filename: string, progress:
         // --- Lookups (ID -> Friendly) ---
         const accountsById = new Map(s.accounts.map(a => [a.id, a.name]));
         const contactsById = new Map(s.contacts.map(c => [c.id, c.name]));
+        const vendorsById = new Map((s.vendors || []).map(v => [v.id, v.name]));
         const categoriesById = new Map(s.categories.map(c => [c.id, c.name]));
         const projectsById = new Map(s.projects.map(p => [p.id, p.name]));
         const buildingsById = new Map(s.buildings.map(b => [b.id, b.name]));
@@ -157,7 +158,7 @@ export async function exportToExcel(state: AppState, filename: string, progress:
         const rentalAgreementsRows = s.rentalAgreements.map(a => ({
             id: a.id,
             agreementNumber: a.agreementNumber,
-            tenantName: getName(contactsById, a.tenantId),
+            tenantName: getName(contactsById, a.contactId),
             propertyName: getName(propertiesById, a.propertyId),
             startDate: a.startDate,
             endDate: a.endDate,
@@ -351,7 +352,7 @@ export async function exportToExcel(state: AppState, filename: string, progress:
                 return {
                     id: b.id,
                     billNumber: b.billNumber,
-                    contactName: getName(contactsById, b.contactId),
+                    contactName: getName(vendorsById, b.vendorId) || getName(contactsById, b.contactId),
                     amount: b.amount,
                     paidAmount: b.paidAmount ?? 0,
                     status: b.status,
@@ -363,6 +364,7 @@ export async function exportToExcel(state: AppState, filename: string, progress:
                     propertyName: getName(propertiesById, b.propertyId),
                     staffName: getName(contactsById, b.staffId),
                     staffId: b.staffId ?? '',
+                    expenseBearerType: b.expenseBearerType ?? '',
                     expenseCategoryNames: expenseCategoryNames.join(', '),
                     expenseQuantities: expenseQuantities.join(', '),
                     expensePricePerUnits: expensePricePerUnits.join(', '),
@@ -395,7 +397,7 @@ export async function exportToExcel(state: AppState, filename: string, progress:
                 return {
                     id: b.id,
                     billNumber: b.billNumber,
-                    contactName: getName(contactsById, b.contactId),
+                    contactName: getName(vendorsById, b.vendorId) || getName(contactsById, b.contactId),
                     amount: b.amount,
                     paidAmount: b.paidAmount ?? 0,
                     status: b.status,
@@ -411,6 +413,7 @@ export async function exportToExcel(state: AppState, filename: string, progress:
                     projectAgreementId: b.projectAgreementId ?? '',
                     contractId: b.contractId ?? '',
                     staffId: b.staffId ?? '',
+                    expenseBearerType: b.expenseBearerType ?? '',
                     expenseCategoryNames: expenseCategoryNames.join(', '),
                     expenseQuantities: expenseQuantities.join(', '),
                     expensePricePerUnits: expensePricePerUnits.join(', '),
@@ -439,7 +442,7 @@ export async function exportToExcel(state: AppState, filename: string, progress:
             const inv = s.invoices.find(x => x.id === invoiceId);
             if (!inv) return 'unknown';
             if (inv.invoiceType === InvoiceType.INSTALLMENT) return 'project';
-            if (inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SERVICE_CHARGE) return 'rental';
+            if (inv.invoiceType === InvoiceType.RENTAL || inv.invoiceType === InvoiceType.SECURITY_DEPOSIT || inv.invoiceType === InvoiceType.SERVICE_CHARGE) return 'rental';
             if (inv.agreementId) {
                 if (rentalAgreementIds.has(inv.agreementId)) return 'rental';
                 if (projectAgreementIds.has(inv.agreementId)) return 'project';
@@ -607,8 +610,8 @@ export async function exportToExcel(state: AppState, filename: string, progress:
             { name: 'RecurringTemplates', headers: ['id', 'contactName', 'propertyName', 'buildingName', 'agreementNumber', 'amount', 'descriptionTemplate', 'dayOfMonth', 'nextDueDate', 'active'], rows: recurringRows },
             { name: 'Invoices', headers: ['id', 'invoiceNumber', 'contactName', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'invoiceType', 'description', 'projectName', 'buildingName', 'propertyName', 'unitName', 'categoryName', 'agreementNumber', 'securityDepositCharge', 'serviceCharges', 'rentalMonth'], rows: invoicesRows },
             { name: 'ProjectBills', headers: ['id', 'billNumber', 'contactName', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'description', 'categoryName', 'projectName', 'contractNumber', 'agreementNumber', 'projectAgreementId', 'expenseCategoryNames', 'expenseQuantities', 'expensePricePerUnits', 'expenseNetValues', 'expenseUnits'], rows: projectBillsRows },
-            { name: 'RentalBills', headers: ['id', 'billNumber', 'contactName', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'description', 'categoryName', 'buildingName', 'propertyName', 'staffName', 'staffId', 'expenseCategoryNames', 'expenseQuantities', 'expensePricePerUnits', 'expenseNetValues', 'expenseUnits'], rows: rentalBillsRows },
-            { name: 'Bills', headers: ['id', 'billNumber', 'contactName', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'description', 'categoryName', 'projectName', 'buildingName', 'propertyName', 'projectAgreementId', 'agreementNumber', 'contractId', 'contractNumber', 'staffId', 'expenseCategoryNames', 'expenseQuantities', 'expensePricePerUnits', 'expenseNetValues', 'expenseUnits'], rows: billsRows },
+            { name: 'RentalBills', headers: ['id', 'billNumber', 'contactName', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'description', 'categoryName', 'buildingName', 'propertyName', 'staffName', 'staffId', 'expenseBearerType', 'expenseCategoryNames', 'expenseQuantities', 'expensePricePerUnits', 'expenseNetValues', 'expenseUnits'], rows: rentalBillsRows },
+            { name: 'Bills', headers: ['id', 'billNumber', 'contactName', 'amount', 'paidAmount', 'status', 'issueDate', 'dueDate', 'description', 'categoryName', 'projectName', 'buildingName', 'propertyName', 'projectAgreementId', 'agreementNumber', 'contractId', 'contractNumber', 'staffId', 'expenseBearerType', 'expenseCategoryNames', 'expenseQuantities', 'expensePricePerUnits', 'expenseNetValues', 'expenseUnits'], rows: billsRows },
             { name: 'RentalInvoicePayments', headers: ['id', 'amount', 'date', 'description', 'accountName', 'invoiceNumber'], rows: rentalInvoicePaymentsRows },
             { name: 'ProjectInvoicePayments', headers: ['id', 'amount', 'date', 'description', 'accountName', 'invoiceNumber'], rows: projectInvoicePaymentsRows },
             { name: 'RentalBillPayments', headers: ['id', 'amount', 'date', 'description', 'accountName', 'billNumber'], rows: rentalBillPaymentsRows },

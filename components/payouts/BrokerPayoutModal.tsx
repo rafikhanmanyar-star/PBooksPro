@@ -5,9 +5,11 @@ import { Contact, TransactionType, Transaction, AccountType } from '../../types'
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
-import { CURRENCY } from '../../constants';
+import { CURRENCY, ICONS } from '../../constants';
 import ComboBox from '../ui/ComboBox';
 import { useNotification } from '../../context/NotificationContext';
+import { WhatsAppService } from '../../services/whatsappService';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 
 interface BrokerPayoutModalProps {
     isOpen: boolean;
@@ -33,9 +35,12 @@ interface CommissionItem {
 const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, broker, context }) => {
     const { state, dispatch } = useAppContext();
     const { showAlert } = useNotification();
+    const { openChat } = useWhatsApp();
     const [items, setItems] = useState<CommissionItem[]>([]);
     const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
     const [accountId, setAccountId] = useState('');
+    const [showWhatsAppConfirm, setShowWhatsAppConfirm] = useState(false);
+    const [lastPaidAmount, setLastPaidAmount] = useState(0);
     
     // Filter for Bank Accounts (exclude Internal Clearing)
     const userSelectableAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
@@ -186,6 +191,24 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, 
             dispatch({ type: 'ADD_TRANSACTION', payload: { ...payoutTransaction, id: Date.now().toString() + Math.random() } });
         });
 
+        // Show WhatsApp confirmation
+        setLastPaidAmount(totalToPay);
+        setShowWhatsAppConfirm(true);
+    };
+
+    const handleSendWhatsAppConfirmation = () => {
+        if (!broker) return;
+        const template = state.whatsAppTemplates.payoutConfirmation || 'Dear {contactName}, a {payoutType} payment of {amount} has been made to you. Reference: {reference}';
+        const message = WhatsAppService.generatePayoutConfirmation(
+            template, broker, lastPaidAmount, 'Broker Commission'
+        );
+        openChat(broker, broker.contactNo || '', message);
+        setShowWhatsAppConfirm(false);
+        onClose();
+    };
+
+    const handleSkipWhatsApp = () => {
+        setShowWhatsAppConfirm(false);
         onClose();
     };
     
@@ -195,6 +218,40 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({ isOpen, onClose, 
         ...acc,
         name: `${acc.name} (${CURRENCY} ${acc.balance.toLocaleString()})`
     }));
+
+    // WhatsApp confirmation step
+    if (showWhatsAppConfirm) {
+        return (
+            <Modal isOpen={isOpen} onClose={handleSkipWhatsApp} title="Commission Payment Recorded">
+                <div className="space-y-4">
+                    <div className="p-4 bg-emerald-50 rounded-lg text-center">
+                        <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
+                            <div className="w-6 h-6 text-emerald-600">{ICONS.check}</div>
+                        </div>
+                        <p className="font-semibold text-emerald-800">
+                            {CURRENCY} {lastPaidAmount.toLocaleString()} paid to {broker.name}
+                        </p>
+                        <p className="text-sm text-emerald-600 mt-1">Broker Commission Payment</p>
+                    </div>
+                    <p className="text-sm text-slate-600 text-center">
+                        Would you like to send a payment confirmation via WhatsApp?
+                    </p>
+                    <div className="flex justify-center gap-3 pt-2">
+                        <Button type="button" variant="secondary" onClick={handleSkipWhatsApp}>
+                            Skip
+                        </Button>
+                        <button
+                            onClick={handleSendWhatsAppConfirmation}
+                            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg text-white bg-green-600 hover:bg-green-700 transition-colors"
+                        >
+                            <div className="w-4 h-4">{ICONS.whatsapp}</div>
+                            Send via WhatsApp
+                        </button>
+                    </div>
+                </div>
+            </Modal>
+        );
+    }
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`Pay Commissions: ${broker.name}`} size="xl">

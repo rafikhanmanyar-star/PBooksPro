@@ -63,5 +63,55 @@ export class RentalAgreementsApiRepository {
     const agreement = await this.findById(id);
     return agreement !== null;
   }
+
+  /**
+   * Get all invoices linked to a rental agreement
+   */
+  async getAgreementInvoices(id: string): Promise<any[]> {
+    return apiClient.get<any[]>(`/rental-agreements/${id}/invoices`);
+  }
+
+  /**
+   * Renew a rental agreement (server-side logic)
+   */
+  async renewAgreement(id: string, data: {
+    newAgreementId: string;
+    agreementNumber: string;
+    startDate: string;
+    endDate: string;
+    monthlyRent: number;
+    rentDueDate: number;
+    securityDeposit?: number;
+    brokerId?: string;
+    brokerFee?: number;
+    description?: string;
+    ownerId?: string;
+    generateInvoices: boolean;
+    invoiceSettings?: { prefix: string; padding: number; nextNumber: number };
+  }): Promise<{
+    oldAgreement: RentalAgreement;
+    newAgreement: RentalAgreement;
+    generatedInvoices: any[];
+    nextInvoiceNumber?: number;
+  }> {
+    return apiClient.post(`/rental-agreements/${id}/renew`, data);
+  }
+
+  /**
+   * Terminate a rental agreement (server-side logic)
+   */
+  async terminateAgreement(id: string, data: {
+    endDate: string;
+    status: 'Terminated' | 'Expired';
+    refundAction: 'COMPANY_REFUND' | 'OWNER_DIRECT' | 'NONE';
+    refundAmount?: number;
+    refundAccountId?: string;
+    notes?: string;
+  }): Promise<{
+    agreement: RentalAgreement;
+    refundTransaction: any;
+  }> {
+    return apiClient.post(`/rental-agreements/${id}/terminate`, data);
+  }
 }
 
