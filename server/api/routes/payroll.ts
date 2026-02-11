@@ -319,19 +319,33 @@ router.post('/runs', async (req: TenantRequest, res) => {
 
     const { month, year } = req.body;
 
-    // Get active employees count
+    // Calculate period start and end dates
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'];
+    const monthIndex = monthNames.indexOf(month);
+    if (monthIndex === -1) {
+      return res.status(400).json({ error: `Invalid month: ${month}` });
+    }
+    
+    const periodStart = new Date(year, monthIndex, 1);
+    const periodEnd = new Date(year, monthIndex + 1, 0); // Last day of month
+
+    // Get active employees count who should be included in this payroll
     const empCount = await getDb().query(
       `SELECT COUNT(*) as count FROM payroll_employees 
-       WHERE tenant_id = $1 AND status = 'ACTIVE'`,
-      [tenantId]
+       WHERE tenant_id = $1 AND status = 'ACTIVE'
+       AND joining_date <= $2
+       AND (termination_date IS NULL OR termination_date >= $3)`,
+      [tenantId, periodEnd.toISOString().split('T')[0], periodStart.toISOString().split('T')[0]]
     );
 
     const result = await getDb().query(
       `INSERT INTO payroll_runs 
-       (tenant_id, month, year, status, employee_count, created_by)
-       VALUES ($1, $2, $3, 'DRAFT', $4, $5)
+       (tenant_id, month, year, period_start, period_end, status, employee_count, created_by)
+       VALUES ($1, $2, $3, $4, $5, 'DRAFT', $6, $7)
        RETURNING *`,
-      [tenantId, month, year, empCount[0].count, userId]
+      [tenantId, month, year, periodStart.toISOString().split('T')[0], 
+       periodEnd.toISOString().split('T')[0], empCount[0].count, userId]
     );
 
     emitToTenant(tenantId, 'payroll_run_created', { id: result[0].id });
@@ -387,11 +401,20 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
 
     // Validation before approval
     if (status === 'APPROVED') {
-      // Get all active employees
+      // Calculate period dates for this run
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'];
+      const monthIndex = monthNames.indexOf(currentRun[0].month);
+      const periodStart = new Date(currentRun[0].year, monthIndex, 1);
+      const periodEnd = new Date(currentRun[0].year, monthIndex + 1, 0);
+      
+      // Get all active employees who should be included in this payroll period
       const activeEmployees = await getDb().query(
         `SELECT COUNT(*) as count FROM payroll_employees 
-         WHERE tenant_id = $1 AND status = 'ACTIVE'`,
-        [tenantId]
+         WHERE tenant_id = $1 AND status = 'ACTIVE'
+         AND joining_date <= $2
+         AND (termination_date IS NULL OR termination_date >= $3)`,
+        [tenantId, periodEnd.toISOString().split('T')[0], periodStart.toISOString().split('T')[0]]
       );
       const activeCount = parseInt(activeEmployees[0].count);
 
@@ -562,6 +585,21 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
     }
 
     try {
+      // Get the payroll run to determine the period
+      const run = runCheck[0];
+      
+      // Calculate period start and end dates
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'];
+      const monthIndex = monthNames.indexOf(run.month);
+      if (monthIndex === -1) {
+        throw new Error(`Invalid month: ${run.month}`);
+      }
+      
+      const periodStart = new Date(run.year, monthIndex, 1);
+      const periodEnd = new Date(run.year, monthIndex + 1, 0); // Last day of month
+      const daysInMonth = periodEnd.getDate();
+
       // Get employees who already have payslips for this run
       const existingPayslips = await getDb().query(
         `SELECT employee_id, net_pay FROM payslips 
@@ -573,14 +611,17 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
       const existingTotalAmount = existingPayslips.reduce((sum: number, p: any) => sum + parseFloat(p.net_pay || 0), 0);
 
       // Get active employees who DON'T already have a payslip for this run
+      // AND whose joining_date is on or before the last day of the payroll period
       const employees = await getDb().query(
         `SELECT * FROM payroll_employees 
        WHERE tenant_id = $1 AND status = 'ACTIVE'
+       AND joining_date <= $2
+       AND (termination_date IS NULL OR termination_date >= $3)
        AND id NOT IN (
          SELECT employee_id FROM payslips 
-         WHERE payroll_run_id = $2 AND tenant_id = $1
+         WHERE payroll_run_id = $4 AND tenant_id = $1
        )`,
-        [tenantId, id]
+        [tenantId, periodEnd.toISOString().split('T')[0], periodStart.toISOString().split('T')[0], id]
       );
 
       let newTotalAmount = 0;
@@ -589,7 +630,33 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
       // Generate payslips only for new employees (those without existing payslips)
       for (const emp of employees) {
         const salary = emp.salary;
-        const basic = roundToTwo(salary.basic || 0);
+        
+        // Calculate pro-rata factor if employee joined mid-month
+        const joiningDate = new Date(emp.joining_date);
+        let proRataFactor = 1.0;
+        let workedDays = daysInMonth;
+        
+        // Check if employee joined within this payroll month
+        if (joiningDate >= periodStart && joiningDate <= periodEnd) {
+          // Calculate days worked from joining date to end of month
+          workedDays = periodEnd.getDate() - joiningDate.getDate() + 1;
+          proRataFactor = workedDays / daysInMonth;
+          console.log(`📅 Pro-rata calculation for ${emp.name}: Joined ${emp.joining_date}, worked ${workedDays}/${daysInMonth} days, factor: ${proRataFactor.toFixed(4)}`);
+        }
+        
+        // Check if employee terminated mid-month
+        if (emp.termination_date) {
+          const terminationDate = new Date(emp.termination_date);
+          if (terminationDate >= periodStart && terminationDate <= periodEnd) {
+            // Calculate days worked from start of month to termination date
+            workedDays = terminationDate.getDate();
+            proRataFactor = workedDays / daysInMonth;
+            console.log(`📅 Pro-rata calculation for ${emp.name}: Terminated ${emp.termination_date}, worked ${workedDays}/${daysInMonth} days, factor: ${proRataFactor.toFixed(4)}`);
+          }
+        }
+        
+        // Apply pro-rata to basic salary
+        const basic = roundToTwo((salary.basic || 0) * proRataFactor);
 
         // Calculate allowances (filter out "Basic Pay" if it exists in legacy data)
         // All amounts rounded to 2 decimal places
@@ -600,7 +667,9 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
             return name !== 'basic pay' && name !== 'basic salary';
           })
           .forEach((a: any) => {
-            totalAllowances += calculateAmount(basic, a.amount, a.is_percentage);
+            // Apply pro-rata to allowances as well
+            const allowanceAmount = calculateAmount(salary.basic || 0, a.amount, a.is_percentage);
+            totalAllowances += roundToTwo(allowanceAmount * proRataFactor);
           });
         totalAllowances = roundToTwo(totalAllowances);
 
@@ -1726,6 +1795,204 @@ router.get('/departments/stats', async (req: TenantRequest, res) => {
   } catch (error) {
     console.error('Error fetching department stats:', error);
     res.status(500).json({ error: 'Failed to fetch department statistics' });
+  }
+});
+
+// =====================================================
+// MISSING PAYSLIPS DETECTION & GENERATION
+// =====================================================
+
+// GET /payroll/missing-payslips - Detect employees with missing payslips
+router.get('/missing-payslips', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Tenant ID is required' });
+    }
+
+    // Get all payroll runs
+    const runs = await getDb().query(
+      `SELECT id, month, year, period_start, period_end FROM payroll_runs 
+       WHERE tenant_id = $1 AND status != 'CANCELLED'
+       ORDER BY year DESC, month DESC`,
+      [tenantId]
+    );
+
+    const missingPayslips: any[] = [];
+
+    for (const run of runs) {
+      // Calculate period dates if not set
+      let periodStart = run.period_start;
+      let periodEnd = run.period_end;
+      
+      if (!periodStart || !periodEnd) {
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+          'July', 'August', 'September', 'October', 'November', 'December'];
+        const monthIndex = monthNames.indexOf(run.month);
+        periodStart = new Date(run.year, monthIndex, 1).toISOString().split('T')[0];
+        periodEnd = new Date(run.year, monthIndex + 1, 0).toISOString().split('T')[0];
+      }
+
+      // Find employees who should have payslips but don't
+      const missing = await getDb().query(
+        `SELECT e.id, e.name, e.employee_code, e.joining_date, e.designation, e.department
+         FROM payroll_employees e
+         WHERE e.tenant_id = $1 
+         AND e.status = 'ACTIVE'
+         AND e.joining_date <= $2
+         AND (e.termination_date IS NULL OR e.termination_date >= $3)
+         AND NOT EXISTS (
+           SELECT 1 FROM payslips p 
+           WHERE p.employee_id = e.id 
+           AND p.payroll_run_id = $4
+           AND p.tenant_id = $1
+         )`,
+        [tenantId, periodEnd, periodStart, run.id]
+      );
+
+      if (missing.length > 0) {
+        missingPayslips.push({
+          run_id: run.id,
+          month: run.month,
+          year: run.year,
+          period_start: periodStart,
+          period_end: periodEnd,
+          missing_employees: missing
+        });
+      }
+    }
+
+    res.json({
+      total_runs_checked: runs.length,
+      runs_with_missing_payslips: missingPayslips.length,
+      missing_payslips: missingPayslips
+    });
+  } catch (error) {
+    console.error('Error detecting missing payslips:', error);
+    res.status(500).json({ error: 'Failed to detect missing payslips' });
+  }
+});
+
+// POST /payroll/generate-missing-payslips - Generate missing payslips for backdated employees
+router.post('/generate-missing-payslips', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    const userId = req.userId;
+
+    if (!tenantId || !userId) {
+      return res.status(400).json({ error: 'Authentication required' });
+    }
+
+    const { employee_id, run_ids } = req.body;
+
+    if (!employee_id && !run_ids) {
+      return res.status(400).json({ 
+        error: 'Either employee_id or run_ids must be provided' 
+      });
+    }
+
+    let generatedCount = 0;
+    const results: any[] = [];
+
+    // Get target runs
+    let targetRuns;
+    if (run_ids && run_ids.length > 0) {
+      targetRuns = await getDb().query(
+        `SELECT id, month, year, period_start, period_end, status FROM payroll_runs 
+         WHERE tenant_id = $1 AND id = ANY($2) AND status != 'CANCELLED'`,
+        [tenantId, run_ids]
+      );
+    } else {
+      // Get all runs for the employee's tenure
+      const employee = await getDb().query(
+        `SELECT joining_date, termination_date FROM payroll_employees 
+         WHERE id = $1 AND tenant_id = $2`,
+        [employee_id, tenantId]
+      );
+
+      if (employee.length === 0) {
+        return res.status(404).json({ error: 'Employee not found' });
+      }
+
+      targetRuns = await getDb().query(
+        `SELECT id, month, year, period_start, period_end, status FROM payroll_runs 
+         WHERE tenant_id = $1 AND status != 'CANCELLED'
+         ORDER BY year, month`,
+        [tenantId]
+      );
+    }
+
+    // Process each run
+    for (const run of targetRuns) {
+      // Skip approved or paid runs unless explicitly requested
+      if (run.status === 'APPROVED' || run.status === 'PAID') {
+        results.push({
+          run_id: run.id,
+          month: run.month,
+          year: run.year,
+          status: 'skipped',
+          reason: `Run is ${run.status} - cannot modify`
+        });
+        continue;
+      }
+
+      // Temporarily set status to PROCESSING
+      await getDb().query(
+        `UPDATE payroll_runs SET status = 'PROCESSING' WHERE id = $1 AND tenant_id = $2`,
+        [run.id, tenantId]
+      );
+
+      try {
+        // Use the existing process endpoint logic by calling it
+        const processResponse = await fetch(`http://localhost:${process.env.PORT || 3000}/api/payroll/runs/${run.id}/process`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-tenant-id': tenantId,
+            'x-user-id': userId
+          }
+        });
+
+        if (processResponse.ok) {
+          const processResult = await processResponse.json() as any;
+          generatedCount += processResult.processing_summary?.new_payslips_generated || 0;
+          results.push({
+            run_id: run.id,
+            month: run.month,
+            year: run.year,
+            status: 'success',
+            new_payslips: processResult.processing_summary?.new_payslips_generated || 0
+          });
+        } else {
+          results.push({
+            run_id: run.id,
+            month: run.month,
+            year: run.year,
+            status: 'error',
+            error: 'Failed to process run'
+          });
+        }
+      } catch (error) {
+        console.error(`Error processing run ${run.id}:`, error);
+        results.push({
+          run_id: run.id,
+          month: run.month,
+          year: run.year,
+          status: 'error',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      total_runs_processed: targetRuns.length,
+      total_payslips_generated: generatedCount,
+      results
+    });
+  } catch (error) {
+    console.error('Error generating missing payslips:', error);
+    res.status(500).json({ error: 'Failed to generate missing payslips' });
   }
 });
 
