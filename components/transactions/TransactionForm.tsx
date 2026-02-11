@@ -237,9 +237,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
             const txId = `txn-bill-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
             const payload = { ...baseTx, id: txId };
             try {
+                // Ensure the bill exists on the server before recording payment (fixes "Bill not found"
+                // when the bill was created locally but sync to API was skipped or failed).
+                const bill = state.bills.find(b => b.id === linkedBillId);
+                if (bill) {
+                    await getAppStateApiService().saveBill(bill);
+                }
                 const saved = await getAppStateApiService().saveTransaction(payload) as Transaction;
                 dispatch({ type: 'ADD_TRANSACTION', payload: saved });
-                const bill = state.bills.find(b => b.id === linkedBillId);
                 if (bill) {
                     const newPaidAmount = (bill.paidAmount || 0) + numAmount;
                     const newStatus = newPaidAmount >= bill.amount - 0.01

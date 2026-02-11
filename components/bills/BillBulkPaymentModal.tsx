@@ -157,6 +157,17 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
             const savedTransactions: Transaction[] = [];
             const failedBills: { bill: Bill; error: any }[] = [];
 
+            // Ensure all bills exist on the server before recording payments (fixes "Bill not found"
+            // when bills were created locally but sync to API was skipped or failed).
+            for (const bill of selectedBills) {
+                try {
+                    await apiService.saveBill(bill);
+                } catch (e) {
+                    // Log but continue; saveTransaction may still work if bill was already synced
+                    console.warn('Could not ensure bill on server before bulk payment:', bill.billNumber, e);
+                }
+            }
+
             // Process each transaction individually to handle errors per bill
             for (const tx of transactions) {
                 try {
