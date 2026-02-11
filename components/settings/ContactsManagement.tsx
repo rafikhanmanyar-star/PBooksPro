@@ -171,11 +171,6 @@ const ContactsManagement: React.FC = () => {
             return;
         }
 
-        if (!email.trim()) {
-            showToast('Email is required', 'error');
-            return;
-        }
-
         const contactData: Omit<Contact, 'id'> = {
             name: name.trim(),
             type: selectedType,
@@ -440,12 +435,11 @@ const ContactsManagement: React.FC = () => {
                             </div>
                             <div className="sm:col-span-2 lg:col-span-1">
                                 <Input
-                                    label="Email *"
+                                    label="Email"
                                     type="email"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
-                                    placeholder="john@example.com"
-                                    required
+                                    placeholder="john@example.com (optional)"
                                     className="text-sm border-slate-300 border-2 focus:border-indigo-500"
                                 />
                             </div>

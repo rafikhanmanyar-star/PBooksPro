@@ -7,6 +7,7 @@ import InvoiceDetailView from '../invoices/InvoiceDetailView';
 import RentalPaymentModal from '../invoices/RentalPaymentModal';
 import InvoiceBillForm from '../invoices/InvoiceBillForm';
 import BulkPaymentModal from '../invoices/BulkPaymentModal';
+import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarningModal';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { useNotification } from '../../context/NotificationContext';
@@ -51,6 +52,8 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isBulkPayModalOpen, setIsBulkPayModalOpen] = useState(false);
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(new Set());
+  const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
+  const [paymentDeleteModal, setPaymentDeleteModal] = useState<{ isOpen: boolean; transaction: Transaction | null }>({ isOpen: false, transaction: null });
 
   const { overdueCount, handleGenerateAllDue, isGenerating } = useGenerateDueInvoices();
 
@@ -307,6 +310,32 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
     setViewInvoice(null);
   }, []);
 
+  const handlePaymentClick = useCallback((tx: Transaction) => {
+    if (!tx?.id) return;
+    setTransactionToEdit(tx);
+  }, []);
+
+  const handleShowDeleteWarning = useCallback((tx: Transaction) => {
+    setPaymentDeleteModal({ isOpen: true, transaction: tx });
+  }, []);
+
+  const handleConfirmPaymentDelete = useCallback(() => {
+    const { transaction } = paymentDeleteModal;
+    if (transaction) {
+      dispatch({ type: 'DELETE_TRANSACTION', payload: transaction.id });
+      showToast('Payment deleted. Invoice status updated.');
+    }
+    setPaymentDeleteModal({ isOpen: false, transaction: null });
+    setTransactionToEdit(null);
+  }, [paymentDeleteModal, dispatch, showToast]);
+
+  const getLinkedItemName = useCallback((tx: Transaction | null): string => {
+    if (!tx) return '';
+    if (tx.invoiceId) return 'an Invoice';
+    if (tx.billId) return 'a Bill';
+    return 'linked item';
+  }, []);
+
   const handleDeleteInvoice = useCallback(async (invoice: Invoice) => {
     if (invoice.paidAmount > 0) {
       await showAlert('This invoice has payments. Delete payments first.', { title: 'Cannot Delete' });
@@ -518,7 +547,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
         <RentalFinancialGrid
           records={financialRecords}
           onInvoiceClick={handleInvoiceClick}
-          onPaymentClick={() => {}}
+          onPaymentClick={handlePaymentClick}
           selectedIds={selectedInvoiceIds}
           onToggleSelect={toggleSelection}
           onNewClick={onCreateRentalClick}
@@ -531,6 +560,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
           selectedCount={selectedInvoiceIds.size}
           onEditInvoice={handleEditInvoice}
           onReceivePayment={handleRecordPayment}
+          onEditPayment={handlePaymentClick}
         />
       </div>
 
@@ -567,17 +597,18 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
         )}
       </Modal>
 
-      {/* Payment Modal */}
-      {paymentInvoice && (
-        <RentalPaymentModal
-          isOpen={isPaymentModalOpen}
-          onClose={() => {
-            setIsPaymentModalOpen(false);
-            setPaymentInvoice(null);
-          }}
-          invoice={paymentInvoice}
-        />
-      )}
+      {/* Payment Modal - for both recording new payments and editing existing payments */}
+      <RentalPaymentModal
+        isOpen={isPaymentModalOpen || !!transactionToEdit}
+        onClose={() => {
+          setIsPaymentModalOpen(false);
+          setPaymentInvoice(null);
+          setTransactionToEdit(null);
+        }}
+        invoice={paymentInvoice}
+        transactionToEdit={transactionToEdit}
+        onShowDeleteWarning={transactionToEdit ? handleShowDeleteWarning : undefined}
+      />
 
       {/* Bulk Payment Modal */}
       <BulkPaymentModal
@@ -588,6 +619,15 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
           setSelectedInvoiceIds(new Set());
           setIsBulkPayModalOpen(false);
         }}
+      />
+
+      {/* Delete Payment Confirmation */}
+      <LinkedTransactionWarningModal
+        isOpen={paymentDeleteModal.isOpen}
+        onClose={() => setPaymentDeleteModal({ isOpen: false, transaction: null })}
+        onConfirm={handleConfirmPaymentDelete}
+        linkedItemName={getLinkedItemName(paymentDeleteModal.transaction)}
+        action="delete"
       />
     </div>
   );

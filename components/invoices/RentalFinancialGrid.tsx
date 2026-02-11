@@ -35,11 +35,12 @@ interface RentalFinancialGridProps {
     selectedCount?: number;
     onEditInvoice?: (invoice: Invoice) => void;
     onReceivePayment?: (invoice: Invoice) => void;
+    onEditPayment?: (transaction: Transaction) => void;
 }
 
 type SortKey = 'type' | 'reference' | 'date' | 'accountName' | 'amount' | 'remainingAmount' | 'description';
 
-const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onInvoiceClick, onPaymentClick, selectedIds, onToggleSelect, onNewClick, onBulkImportClick, showButtons, onBulkPaymentClick, selectedCount, onEditInvoice, onReceivePayment }) => {
+const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onInvoiceClick, onPaymentClick, selectedIds, onToggleSelect, onNewClick, onBulkImportClick, showButtons, onBulkPaymentClick, selectedCount, onEditInvoice, onReceivePayment, onEditPayment }) => {
     const { state } = useAppContext();
     const { showToast, showAlert } = useNotification();
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
@@ -512,6 +513,18 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({ records, onIn
                                                     </div>
                                                 );
                                             })()}
+                                            {record.type === 'Payment' && !isBulk && onEditPayment && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onEditPayment(record.raw as Transaction);
+                                                    }}
+                                                    className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-colors"
+                                                    title="Edit Payment"
+                                                >
+                                                    <div className="w-4 h-4">{ICONS.edit}</div>
+                                                </button>
+                                            )}
                                         </td>
                                     </tr>
                                     {isExpanded && hasChildren && (
