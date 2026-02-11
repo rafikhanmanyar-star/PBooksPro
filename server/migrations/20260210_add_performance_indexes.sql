@@ -67,9 +67,13 @@ CREATE INDEX IF NOT EXISTS idx_user_sessions_last_activity ON user_sessions(last
 CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
 
 -- ============================================================
--- 5. Recurring templates and WhatsApp indexes
+-- 5. Recurring templates and WhatsApp indexes (skip if tables don't exist yet)
 -- ============================================================
-CREATE INDEX IF NOT EXISTS idx_recurring_templates_tenant ON recurring_invoice_templates(tenant_id);
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'recurring_invoice_templates') THEN
+        CREATE INDEX IF NOT EXISTS idx_recurring_templates_tenant ON recurring_invoice_templates(tenant_id);
+    END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_tenant ON whatsapp_messages(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_tenant_phone ON whatsapp_messages(tenant_id, phone_number);
 CREATE INDEX IF NOT EXISTS idx_whatsapp_messages_tenant_unread ON whatsapp_messages(tenant_id, direction, read_at) WHERE direction = 'incoming' AND read_at IS NULL;
