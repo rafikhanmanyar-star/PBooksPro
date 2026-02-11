@@ -1954,7 +1954,7 @@ router.post('/generate-missing-payslips', async (req: TenantRequest, res) => {
         });
 
         if (processResponse.ok) {
-          const processResult = await processResponse.json();
+          const processResult = await processResponse.json() as any;
           generatedCount += processResult.processing_summary?.new_payslips_generated || 0;
           results.push({
             run_id: run.id,
