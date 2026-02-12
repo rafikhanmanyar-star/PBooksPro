@@ -81,11 +81,36 @@ class SyncManager {
       return;
     }
 
-    // Deduplication: Remove any existing pending operations for the same entity+entityId
-    // This prevents duplicate sync operations if the same record is modified multiple times
+    // Prevent queue from growing too large (max 1000 operations)
+    // This prevents localStorage quota issues
+    if (this.queue.length >= 1000) {
+      console.warn(`[SyncManager] ⚠️ Queue is full (${this.queue.length} operations). Cleaning up old failed operations...`);
+      // Remove old failed operations to make room
+      const beforeCount = this.queue.length;
+      this.queue = this.queue.filter(op =>
+        op.status !== 'failed' || op.retries < this.maxRetries
+      );
+
+      // If still too many, remove oldest pending operations
+      if (this.queue.length >= 1000) {
+        this.queue = this.queue
+          .sort((a, b) => b.timestamp - a.timestamp)
+          .slice(0, 900); // Keep newest 900
+      }
+
+      console.warn(`[SyncManager] Cleaned up queue: ${beforeCount} -> ${this.queue.length} operations`);
+    }
+
+    // Deduplication: Remove any existing pending OR failed operations for the same entity+entityId
+    // This prevents the queue from growing with multiple failed attempts for the same record
+    const beforeDedupe = this.queue.length;
     this.queue = this.queue.filter(op =>
-      !(op.entity === entity && op.entityId === entityId && op.status === 'pending')
+      !(op.entity === entity && op.entityId === entityId && (op.status === 'pending' || op.status === 'failed'))
     );
+
+    if (this.queue.length !== beforeDedupe) {
+      console.debug(`[SyncManager] Removed ${beforeDedupe - this.queue.length} existing operations for ${entity}:${entityId}`);
+    }
 
     // Get current tenant for scoping
     const currentTenantId = this.getCurrentTenantId();
@@ -225,7 +250,11 @@ class SyncManager {
     }
 
     // Get pending operations
-    let pendingOps = this.queue.filter(op => op.status === 'pending' || op.status === 'failed');
+    // Only pick up operations that haven't failed too many times
+    let pendingOps = this.queue.filter(op =>
+      op.status === 'pending' ||
+      (op.status === 'failed' && op.retries < this.maxRetries)
+    );
 
     // SECURITY: Filter out operations that don't belong to the current tenant
     const currentTenant = this.getCurrentTenantId();
@@ -238,7 +267,12 @@ class SyncManager {
     }
 
     if (pendingOps.length === 0) {
-      console.log('[SyncManager] ℹ️ No pending operations to sync');
+      const failedCount = this.queue.filter(op => op.status === 'failed' && op.retries >= this.maxRetries).length;
+      if (failedCount > 0) {
+        console.log(`[SyncManager] ℹ️ No runnable operations. ${failedCount} operations have reached max retries and will be skipped.`);
+      } else {
+        console.log('[SyncManager] ℹ️ No pending operations to sync');
+      }
       return; // Nothing to sync
     }
 
@@ -248,7 +282,7 @@ class SyncManager {
 
     this.isSyncing = true;
 
-    console.log(`[SyncManager] 🚀 Starting sync batch: ${batchToSync.length} operations in parallel (${remainingCount} remaining in queue)`);
+    console.log(`[SyncManager] 🚀 Starting sync batch: ${batchToSync.length} operations in parallel (${remainingCount} remaining runnable)`);
 
     try {
       // Mark operations as syncing with timestamp
@@ -558,12 +592,68 @@ class SyncManager {
   /**
    * Save sync queue to localStorage (tenant-scoped)
    * SECURITY: Queue is keyed by tenant to prevent cross-tenant data leaks.
+   * Handles quota exceeded errors by cleaning up old operations.
    */
   private saveSyncQueue(): void {
     try {
-      localStorage.setItem(this.getSyncQueueKey(), JSON.stringify(this.queue));
-    } catch (error) {
-      console.error('[SyncManager] Failed to save sync queue:', error);
+      const queueData = JSON.stringify(this.queue);
+      const queueSizeKB = Math.round(queueData.length / 1024);
+
+      // Warn if queue is getting large (> 500KB)
+      if (queueSizeKB > 500) {
+        console.warn(`[SyncManager] ⚠️ Sync queue is large: ${queueSizeKB}KB (${this.queue.length} operations)`);
+      }
+
+      localStorage.setItem(this.getSyncQueueKey(), queueData);
+    } catch (error: any) {
+      // Check if it's a quota exceeded error
+      const isQuotaError = error?.name === 'QuotaExceededError' ||
+        error?.code === 22 ||
+        error?.code === 1014 ||
+        error?.message?.includes('quota');
+
+      if (isQuotaError) {
+        console.error(`[SyncManager] ❌ localStorage quota exceeded! Queue has ${this.queue.length} operations. Cleaning up...`);
+
+        // Emergency cleanup: Remove old failed operations and keep only recent pending ones
+        const beforeCount = this.queue.length;
+
+        // 1. Remove all failed operations that have exceeded max retries
+        this.queue = this.queue.filter(op =>
+          !(op.status === 'failed' && op.retries >= this.maxRetries)
+        );
+
+        // 2. If still too many, keep only the most recent 100 pending operations
+        if (this.queue.length > 100) {
+          const pending = this.queue.filter(op => op.status === 'pending')
+            .sort((a, b) => b.timestamp - a.timestamp)
+            .slice(0, 100);
+          const syncing = this.queue.filter(op => op.status === 'syncing');
+          this.queue = [...pending, ...syncing];
+        }
+
+        console.warn(`[SyncManager] Cleaned up queue: ${beforeCount} -> ${this.queue.length} operations`);
+
+        // Try saving again
+        try {
+          localStorage.setItem(this.getSyncQueueKey(), JSON.stringify(this.queue));
+          console.log('[SyncManager] ✅ Queue saved after cleanup');
+        } catch (retryError) {
+          console.error('[SyncManager] ❌ Still failed after cleanup. Clearing queue to prevent data loss:', retryError);
+          // Last resort: clear the queue to prevent app from breaking
+          this.queue = [];
+          try {
+            localStorage.removeItem(this.getSyncQueueKey());
+          } catch { /* ignore */ }
+        }
+      } else {
+        console.error('[SyncManager] Failed to save sync queue:', {
+          error: error?.message || String(error),
+          name: error?.name,
+          code: error?.code,
+          queueLength: this.queue.length
+        });
+      }
     }
   }
 
