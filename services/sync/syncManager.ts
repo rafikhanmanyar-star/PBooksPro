@@ -81,6 +81,26 @@ class SyncManager {
       return;
     }
 
+    // Prevent queue from growing too large (max 1000 operations)
+    // This prevents localStorage quota issues
+    if (this.queue.length >= 1000) {
+      console.warn(`[SyncManager] ⚠️ Queue is full (${this.queue.length} operations). Cleaning up old failed operations...`);
+      // Remove old failed operations to make room
+      const beforeCount = this.queue.length;
+      this.queue = this.queue.filter(op =>
+        op.status !== 'failed' || op.retries < this.maxRetries
+      );
+
+      // If still too many, remove oldest pending operations
+      if (this.queue.length >= 1000) {
+        this.queue = this.queue
+          .sort((a, b) => b.timestamp - a.timestamp)
+          .slice(0, 900); // Keep newest 900
+      }
+
+      console.warn(`[SyncManager] Cleaned up queue: ${beforeCount} -> ${this.queue.length} operations`);
+    }
+
     // Deduplication: Remove any existing pending operations for the same entity+entityId
     // This prevents duplicate sync operations if the same record is modified multiple times
     this.queue = this.queue.filter(op =>
@@ -558,12 +578,68 @@ class SyncManager {
   /**
    * Save sync queue to localStorage (tenant-scoped)
    * SECURITY: Queue is keyed by tenant to prevent cross-tenant data leaks.
+   * Handles quota exceeded errors by cleaning up old operations.
    */
   private saveSyncQueue(): void {
     try {
-      localStorage.setItem(this.getSyncQueueKey(), JSON.stringify(this.queue));
-    } catch (error) {
-      console.error('[SyncManager] Failed to save sync queue:', error);
+      const queueData = JSON.stringify(this.queue);
+      const queueSizeKB = Math.round(queueData.length / 1024);
+
+      // Warn if queue is getting large (> 500KB)
+      if (queueSizeKB > 500) {
+        console.warn(`[SyncManager] ⚠️ Sync queue is large: ${queueSizeKB}KB (${this.queue.length} operations)`);
+      }
+
+      localStorage.setItem(this.getSyncQueueKey(), queueData);
+    } catch (error: any) {
+      // Check if it's a quota exceeded error
+      const isQuotaError = error?.name === 'QuotaExceededError' ||
+        error?.code === 22 ||
+        error?.code === 1014 ||
+        error?.message?.includes('quota');
+
+      if (isQuotaError) {
+        console.error(`[SyncManager] ❌ localStorage quota exceeded! Queue has ${this.queue.length} operations. Cleaning up...`);
+
+        // Emergency cleanup: Remove old failed operations and keep only recent pending ones
+        const beforeCount = this.queue.length;
+
+        // 1. Remove all failed operations that have exceeded max retries
+        this.queue = this.queue.filter(op =>
+          !(op.status === 'failed' && op.retries >= this.maxRetries)
+        );
+
+        // 2. If still too many, keep only the most recent 100 pending operations
+        if (this.queue.length > 100) {
+          const pending = this.queue.filter(op => op.status === 'pending')
+            .sort((a, b) => b.timestamp - a.timestamp)
+            .slice(0, 100);
+          const syncing = this.queue.filter(op => op.status === 'syncing');
+          this.queue = [...pending, ...syncing];
+        }
+
+        console.warn(`[SyncManager] Cleaned up queue: ${beforeCount} -> ${this.queue.length} operations`);
+
+        // Try saving again
+        try {
+          localStorage.setItem(this.getSyncQueueKey(), JSON.stringify(this.queue));
+          console.log('[SyncManager] ✅ Queue saved after cleanup');
+        } catch (retryError) {
+          console.error('[SyncManager] ❌ Still failed after cleanup. Clearing queue to prevent data loss:', retryError);
+          // Last resort: clear the queue to prevent app from breaking
+          this.queue = [];
+          try {
+            localStorage.removeItem(this.getSyncQueueKey());
+          } catch { /* ignore */ }
+        }
+      } else {
+        console.error('[SyncManager] Failed to save sync queue:', {
+          error: error?.message || String(error),
+          name: error?.name,
+          code: error?.code,
+          queueLength: this.queue.length
+        });
+      }
     }
   }
 
