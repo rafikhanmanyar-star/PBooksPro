@@ -417,6 +417,18 @@ class SyncManager {
         }
       }
 
+      // Handle 400 PAYMENT_OVERPAYMENT for transaction sync - non-retriable
+      // Invoice/bill is already fully paid on server (likely from invoice sync or prior sync).
+      // Retrying will never succeed. Treat as success and remove from queue to stop error spam.
+      if (error?.status === 400 && (operation.entity === 'transaction' || operation.entity === 'transactions')) {
+        const msg = String(error?.message || error?.error || '');
+        const code = (error as any)?.code;
+        if (code === 'PAYMENT_OVERPAYMENT' || msg.includes('Overpayment') || msg.includes('would exceed')) {
+          console.log(`[SyncManager] ⏭️ PAYMENT_OVERPAYMENT for ${operation.entityId} - invoice/bill already paid on server, skipping (non-retriable)`);
+          return; // Success - payment already reflected, no need to retry
+        }
+      }
+
       // Re-throw other errors
       throw new Error(`Failed to sync ${operation.type} for ${operation.entity}: ${error instanceof Error ? error.message : String(error)}`);
     }

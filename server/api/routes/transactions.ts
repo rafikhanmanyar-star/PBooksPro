@@ -436,6 +436,16 @@ router.post('/', async (req: TenantRequest, res) => {
         }
       }
 
+      // Check if transaction with this ID already exists (BEFORE overpayment checks)
+      // Idempotent: if transaction exists, we update - no need to validate overpayment again
+      const existing = await client.query(
+        'SELECT * FROM transactions WHERE id = $1 AND tenant_id = $2',
+        [transactionId, req.tenantId]
+      );
+      if (existing.rows.length > 0) {
+        wasUpdate = true;
+      }
+
       // If transaction is linked to a bill, lock the bill row first to prevent concurrent payments
       if (transaction.billId && !wasUpdate) {
         try {
@@ -533,15 +543,9 @@ router.post('/', async (req: TenantRequest, res) => {
         }
       }
 
-      // Check if transaction with this ID already exists
-      const existing = await client.query(
-        'SELECT * FROM transactions WHERE id = $1 AND tenant_id = $2',
-        [transactionId, req.tenantId]
-      );
-
+      // Use existing check from earlier (wasUpdate already set if exists)
       if (existing.rows.length > 0) {
         // Update existing transaction
-        wasUpdate = true;
         oldValues = existing.rows[0];
         console.log('🔄 POST /transactions - Updating existing transaction:', transactionId);
         const updateResult = await client.query(

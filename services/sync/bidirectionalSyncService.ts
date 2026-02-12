@@ -190,8 +190,22 @@ class BidirectionalSyncService {
         pushed++;
         syncManager.removeByEntity(item.entity_type, item.entity_id);
       } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : String(error);
-        const status = (error as { status?: number })?.status;
+        const err = error as { status?: number; code?: string; message?: string; error?: string };
+        const msg = error instanceof Error ? error.message : String(err?.message || err?.error || error);
+        const status = err?.status;
+
+        // Handle 400 PAYMENT_OVERPAYMENT for transactions - treat as success (invoice/bill already paid)
+        if (status === 400 && (item.entity_type === 'transactions' || item.entity_type === 'transaction')) {
+          const code = err?.code;
+          const errMsg = String(msg || '');
+          if (code === 'PAYMENT_OVERPAYMENT' || errMsg.includes('Overpayment') || errMsg.includes('would exceed')) {
+            logger.logCategory('sync', `⏭️ PAYMENT_OVERPAYMENT for ${item.entity_type}:${item.entity_id} - already paid on server, marking synced`);
+            outbox.markSynced(item.id);
+            pushed++;
+            syncManager.removeByEntity(item.entity_type, item.entity_id);
+            continue;
+          }
+        }
 
         // Handle 409 Conflict (version mismatch / optimistic locking failure)
         if (status === 409) {
