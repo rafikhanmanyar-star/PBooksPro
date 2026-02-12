@@ -412,7 +412,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                     const bill = state.bills.find(b => b.id === payment.billId);
                     if (!bill || !baseBills.includes(bill)) return; // Only include payments for bills in our base list
 
-                    const project = state.projects.find(p => p.id === payment.projectId || bill.projectId);
+                    const project = state.projects.find(p => p.id === bill.projectId);
                     const vendorId = payment.vendorId || bill.vendorId;
                     const vendor = state.vendors?.find(v => v.id === vendorId);
                     const contract = state.contracts.find(c => c.id === payment.contractId || bill.contractId);
@@ -445,7 +445,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         if (selectedNode) {
             if (selectedNode.type === 'group') {
                 result = result.filter(row => {
-                    const projectId = row.bill?.projectId || row.payment?.projectId;
+                    const projectId = row.bill?.projectId ?? row.payment?.projectId;
                     return projectId === selectedNode.id || (selectedNode.id === 'unassigned' && !projectId);
                 });
             } else if (selectedNode.type === 'vendor') {

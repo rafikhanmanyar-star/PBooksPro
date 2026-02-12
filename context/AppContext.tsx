@@ -3571,8 +3571,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     if (navigator.storage && navigator.storage.getDirectory) {
                                         try {
                                             const root = await navigator.storage.getDirectory();
-                                            const handle = await root.getFileHandle('finance_db.sqlite', { create: false });
-                                            await handle.remove();
+                                            await root.removeEntry('finance_db.sqlite');
                                             console.log('✅ OPFS database cleared');
                                         } catch (opfsError) {
                                             console.log('ℹ️ OPFS file not found or already cleared');

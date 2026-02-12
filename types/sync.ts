@@ -27,7 +27,8 @@ export type SyncOperationType =
   | 'pm_cycle_allocation'
   | 'vendor'
   | 'user'
-  | 'users';
+  | 'users'
+  | 'setting';
 
 export type SyncAction = 'create' | 'update' | 'delete';
 

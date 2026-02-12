@@ -22,7 +22,7 @@ async function checkConnection() {
 
   const dbUrl = process.env.DATABASE_URL;
   console.log('🔍 Checking DATABASE_URL...');
-  
+
   // Validate format
   if (!dbUrl.startsWith('postgresql://') && !dbUrl.startsWith('postgres://')) {
     console.error('❌ Invalid DATABASE_URL format');
@@ -39,7 +39,7 @@ async function checkConnection() {
     console.log('   Port:', url.port || '5432 (default)');
     console.log('   Database:', url.pathname.substring(1));
     console.log('   Username:', url.username);
-    
+
     if (!url.hostname || url.hostname === 'base') {
       console.error('❌ Invalid hostname in DATABASE_URL');
       console.error('   Hostname cannot be "base" or empty');
@@ -52,9 +52,15 @@ async function checkConnection() {
 
   // Test connection
   console.log('\n🔗 Testing database connection...');
+
+  // Enable SSL for production, staging, and any Render database URLs
+  const shouldUseSSL = process.env.NODE_ENV === 'production' ||
+    process.env.NODE_ENV === 'staging' ||
+    (dbUrl && dbUrl.includes('.render.com'));
+
   const pool = new Pool({
     connectionString: dbUrl,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    ssl: shouldUseSSL ? { rejectUnauthorized: false } : false,
   });
 
   try {
@@ -62,7 +68,7 @@ async function checkConnection() {
     console.log('✅ Database connection successful!');
     console.log('   Current time:', result.rows[0].current_time);
     console.log('   PostgreSQL version:', result.rows[0].pg_version.split(' ')[0] + ' ' + result.rows[0].pg_version.split(' ')[1]);
-    
+
     // Check if database exists and has tables
     const tablesResult = await pool.query(`
       SELECT table_name 
@@ -70,7 +76,7 @@ async function checkConnection() {
       WHERE table_schema = 'public' 
       ORDER BY table_name
     `);
-    
+
     if (tablesResult.rows.length > 0) {
       console.log(`\n📊 Found ${tablesResult.rows.length} tables in database:`);
       tablesResult.rows.slice(0, 10).forEach(row => {
@@ -83,7 +89,7 @@ async function checkConnection() {
       console.log('\n📊 Database is empty (no tables found)');
       console.log('   Run migration: npm run migrate');
     }
-    
+
   } catch (error: any) {
     console.error('❌ Database connection failed:', error.message);
     if (error.code === 'ENOTFOUND') {
