@@ -101,11 +101,16 @@ class SyncManager {
       console.warn(`[SyncManager] Cleaned up queue: ${beforeCount} -> ${this.queue.length} operations`);
     }
 
-    // Deduplication: Remove any existing pending operations for the same entity+entityId
-    // This prevents duplicate sync operations if the same record is modified multiple times
+    // Deduplication: Remove any existing pending OR failed operations for the same entity+entityId
+    // This prevents the queue from growing with multiple failed attempts for the same record
+    const beforeDedupe = this.queue.length;
     this.queue = this.queue.filter(op =>
-      !(op.entity === entity && op.entityId === entityId && op.status === 'pending')
+      !(op.entity === entity && op.entityId === entityId && (op.status === 'pending' || op.status === 'failed'))
     );
+
+    if (this.queue.length !== beforeDedupe) {
+      console.debug(`[SyncManager] Removed ${beforeDedupe - this.queue.length} existing operations for ${entity}:${entityId}`);
+    }
 
     // Get current tenant for scoping
     const currentTenantId = this.getCurrentTenantId();
@@ -245,7 +250,11 @@ class SyncManager {
     }
 
     // Get pending operations
-    let pendingOps = this.queue.filter(op => op.status === 'pending' || op.status === 'failed');
+    // Only pick up operations that haven't failed too many times
+    let pendingOps = this.queue.filter(op =>
+      op.status === 'pending' ||
+      (op.status === 'failed' && op.retries < this.maxRetries)
+    );
 
     // SECURITY: Filter out operations that don't belong to the current tenant
     const currentTenant = this.getCurrentTenantId();
@@ -258,7 +267,12 @@ class SyncManager {
     }
 
     if (pendingOps.length === 0) {
-      console.log('[SyncManager] ℹ️ No pending operations to sync');
+      const failedCount = this.queue.filter(op => op.status === 'failed' && op.retries >= this.maxRetries).length;
+      if (failedCount > 0) {
+        console.log(`[SyncManager] ℹ️ No runnable operations. ${failedCount} operations have reached max retries and will be skipped.`);
+      } else {
+        console.log('[SyncManager] ℹ️ No pending operations to sync');
+      }
       return; // Nothing to sync
     }
 
@@ -268,7 +282,7 @@ class SyncManager {
 
     this.isSyncing = true;
 
-    console.log(`[SyncManager] 🚀 Starting sync batch: ${batchToSync.length} operations in parallel (${remainingCount} remaining in queue)`);
+    console.log(`[SyncManager] 🚀 Starting sync batch: ${batchToSync.length} operations in parallel (${remainingCount} remaining runnable)`);
 
     try {
       // Mark operations as syncing with timestamp
