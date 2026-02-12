@@ -2668,6 +2668,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (apiState.properties) updates.properties = mergeById(currentState.properties, apiState.properties);
             if (apiState.units) updates.units = mergeById(currentState.units, apiState.units);
             if (apiState.vendors) updates.vendors = mergeById(currentState.vendors || [], apiState.vendors);
+            if (apiState.recurringInvoiceTemplates) updates.recurringInvoiceTemplates = mergeById(currentState.recurringInvoiceTemplates || [], apiState.recurringInvoiceTemplates);
 
             if (Object.keys(updates).length === 0) return;
 
@@ -3703,6 +3704,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 })),
                                 installmentPlans: apiState.installmentPlans || [],
                                 planAmenities: apiState.planAmenities || [],
+                                recurringInvoiceTemplates: apiState.recurringInvoiceTemplates || [],
+                                salesReturns: apiState.salesReturns || [],
+                                quotations: apiState.quotations || [],
+                                documents: apiState.documents || [],
+                                pmCycleAllocations: apiState.pmCycleAllocations || [],
                             };
 
                             setStoredState(fullState);

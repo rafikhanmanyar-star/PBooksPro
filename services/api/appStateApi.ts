@@ -767,7 +767,8 @@ export class AppStateApiService {
         })),
         // Normalize recurring invoice templates from API (transform snake_case to camelCase)
         // The server returns snake_case fields, but the client expects camelCase
-        recurringInvoiceTemplates: (recurringInvoiceTemplates || []).map((t: any) => ({
+        // Ensure we always have an array (API may return [] or wrapped format)
+        recurringInvoiceTemplates: (Array.isArray(recurringInvoiceTemplates) ? recurringInvoiceTemplates : []).map((t: any) => ({
           id: t.id,
           contactId: t.contact_id ?? t.contactId ?? '',
           propertyId: t.property_id ?? t.propertyId ?? '',

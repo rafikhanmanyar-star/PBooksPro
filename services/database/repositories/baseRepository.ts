@@ -589,6 +589,7 @@ export abstract class BaseRepository<T> {
             // and avoids cross-tenant collisions for system IDs (e.g., sys-acc-*, sys-cat-*)
             const useInsertOrReplace = this.tableName === 'users'
                 || this.tableName === 'salary_components'
+                || this.tableName === 'invoices'
                 || this.tableName === 'bills'
                 || this.tableName === 'accounts'
                 || this.tableName === 'categories'
