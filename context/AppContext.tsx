@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useState, useRef, useMemo } from 'react';
-import { AppState, AppAction, Transaction, TransactionType, Account, Category, AccountType, LoanSubtype, InvoiceStatus, TransactionLogEntry, Page, ContractStatus, User, UserRole, ProjectAgreementStatus, Bill, SalesReturn, SalesReturnStatus, SalesReturnReason, Contact, Vendor, Invoice } from '../types';
+import { AppState, AppAction, Transaction, TransactionType, Account, Category, AccountType, LoanSubtype, InvoiceStatus, TransactionLogEntry, Page, ContractStatus, User, UserRole, ProjectAgreementStatus, Bill, SalesReturn, SalesReturnStatus, SalesReturnReason, Contact, Vendor, Invoice, RecurringInvoiceTemplate } from '../types';
 import useDatabaseState from '../hooks/useDatabaseState';
 import { useDatabaseStateFallback } from '../hooks/useDatabaseStateFallback';
 import { runAllMigrations, needsMigration } from '../services/database/migration';
@@ -1261,6 +1261,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             let offlineAccounts: Account[] = [];
                             let offlineCategories: Category[] = [];
                             let offlineVendors: Vendor[] = [];
+                            let offlineRecurringTemplates: RecurringInvoiceTemplate[] = [];
 
                             try {
                                 const syncQueue = getSyncQueue();
@@ -1285,6 +1286,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                             offlineCategories.push(item.data as Category);
                                         } else if (item.type === 'vendor' && item.action === 'create') {
                                             offlineVendors.push(item.data as Vendor);
+                                        } else if (item.type === 'recurring_invoice_template' && item.action === 'create') {
+                                            offlineRecurringTemplates.push(item.data as RecurringInvoiceTemplate);
                                         }
                                     }
 
@@ -1295,7 +1298,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                         bills: offlineBills.length,
                                         accounts: offlineAccounts.length,
                                         categories: offlineCategories.length,
-                                        vendors: offlineVendors.length
+                                        vendors: offlineVendors.length,
+                                        recurringTemplates: offlineRecurringTemplates.length
                                     });
                                 }
                             } catch (syncQueueError) {
@@ -1401,6 +1405,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 apiVendorsMap.set(offlineVendor.id, offlineVendor);
                             }
 
+                            // Merge offline recurring templates with API data (offline takes precedence)
+                            const apiRecurringTemplatesMap = new Map((apiState.recurringInvoiceTemplates || []).map(t => [t.id, t]));
+                            for (const offlineTemplate of offlineRecurringTemplates) {
+                                apiRecurringTemplatesMap.set(offlineTemplate.id, offlineTemplate);
+                            }
+                            const mergedRecurringTemplates = Array.from(apiRecurringTemplatesMap.values());
+
                             logger.logCategory('sync', `✅ Merged offline data with API data:`, {
                                 transactions: apiTransactionsMap.size,
                                 contacts: apiContactsMap.size,
@@ -1435,7 +1446,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     salesReturns: apiState.salesReturns || [],
                                     quotations: apiState.quotations || [],
                                     documents: apiState.documents || [],
-                                    recurringInvoiceTemplates: apiState.recurringInvoiceTemplates || [],
+                                    recurringInvoiceTemplates: mergedRecurringTemplates,
                                     pmCycleAllocations: apiState.pmCycleAllocations || [],
                                     vendors: Array.from(apiVendorsMap.values()),
                                     transactionLog: apiState.transactionLog || [],

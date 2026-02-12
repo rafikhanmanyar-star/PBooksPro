@@ -18,6 +18,8 @@
     "verify-rental-migration": "tsx scripts/verify-rental-agreements-migration.ts",
     "verify-schema-parity": "tsx scripts/verify-schema-parity.ts",
     "generate-production-upgrade": "tsx scripts/generate-production-upgrade-from-staging.ts",
+    "drop-production-only-tables": "tsx scripts/drop-production-only-tables.ts",
+    "drop-production-only-columns": "tsx scripts/drop-production-only-columns.ts",
     "clean-staging": "tsx scripts/clean-staging-db.ts",
     "generate-diff": "tsx scripts/generate-production-diff.ts"
   },

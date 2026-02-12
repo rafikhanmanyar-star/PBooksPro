@@ -187,20 +187,36 @@ const InvoiceDetailView: React.FC<InvoiceDetailViewProps> = ({ invoice, onRecord
         );
     }, [invoice, state.recurringInvoiceTemplates]);
 
-    const toggleRecurring = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const toggleRecurring = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const isChecked = e.target.checked;
         
         if (isChecked) {
-            // Logic to add
-             const nextMonth = new Date(invoice.issueDate);
+            // Resolve propertyId: from invoice, or from rental agreement if linked
+            let resolvedPropertyId = invoice.propertyId;
+            if (!resolvedPropertyId && invoice.agreementId) {
+                const agreement = state.rentalAgreements.find(ra => ra.id === invoice.agreementId);
+                resolvedPropertyId = agreement?.propertyId;
+            }
+            if (!resolvedPropertyId) {
+                await showAlert('Cannot schedule: this invoice has no property linked. Add a property to the invoice first.');
+                e.target.checked = false;
+                return;
+            }
+            if (!invoice.contactId) {
+                await showAlert('Cannot schedule: this invoice has no contact.');
+                e.target.checked = false;
+                return;
+            }
+
+            const nextMonth = new Date(invoice.issueDate);
             nextMonth.setMonth(nextMonth.getMonth() + 1);
             const rentAmount = invoice.amount - (invoice.securityDepositCharge || 0) - (invoice.serviceCharges || 0);
 
             const newTemplate: RecurringInvoiceTemplate = {
                 id: `rec-${Date.now()}`,
                 contactId: invoice.contactId,
-                propertyId: invoice.propertyId || '',
-                buildingId: invoice.buildingId || '',
+                propertyId: resolvedPropertyId,
+                buildingId: invoice.buildingId || (state.properties.find(p => p.id === resolvedPropertyId)?.buildingId ?? ''),
                 amount: rentAmount,
                 descriptionTemplate: `Rent for {Month}`,
                 dayOfMonth: new Date(invoice.issueDate).getDate(),
