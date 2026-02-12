@@ -22,6 +22,7 @@ import {
 import { migrateTenantColumns } from '../tenantMigration';
 import { BaseRepository } from './baseRepository';
 import { getSyncManager } from '../../sync/syncManager';
+import { devLogger } from '../../../utils/devLogger';
 
 export class AppStateRepository {
     private db = getDatabaseService();
@@ -85,7 +86,7 @@ export class AppStateRepository {
             const { runRentalTenantIdToContactIdMigration } = await import('../migrations/migrate-rental-tenant-id-to-contact-id');
             const migrationResult = await runRentalTenantIdToContactIdMigration();
             if (migrationResult.success && migrationResult.message.includes('Successfully migrated')) {
-                console.log('✅ Rental agreements migration completed:', migrationResult.message);
+                devLogger.log('✅ Rental agreements migration completed:', migrationResult.message);
             }
         } catch (migrationError) {
             console.warn('⚠️ Rental agreements migration failed during loadState (continuing):', migrationError);
@@ -95,7 +96,7 @@ export class AppStateRepository {
         try {
             const migrationResult = migrateBudgetsToNewStructure();
             if (migrationResult.success && migrationResult.migrated > 0) {
-                console.log(`✅ Migrated ${migrationResult.migrated} budgets from old format`);
+                devLogger.log(`✅ Migrated ${migrationResult.migrated} budgets from old format`);
             }
         } catch (migrationError) {
             console.error('⚠️ Budget migration failed, continuing anyway:', migrationError);

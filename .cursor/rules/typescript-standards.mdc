@@ -1,0 +1,27 @@
+---
+description: TypeScript coding standards
+globs: "**/*.ts"
+alwaysApply: false
+---
+
+# TypeScript Standards
+
+## Error Handling
+
+```typescript
+// ❌ BAD – silent catch
+try { await fetchData(); } catch (e) {}
+
+// ✅ GOOD – log and rethrow or handle
+try {
+  await fetchData();
+} catch (e) {
+  console.error('Failed to fetch', { error: e });
+  throw new Error('Unable to retrieve data', { cause: e });
+}
+```
+
+## Types
+- Prefer explicit return types on exported functions
+- Use `interface` for object shapes; avoid `any` unless for third-party interop
+- Leverage shared types in `types/` (e.g. `accounting.ts`, `pos.ts`, `sync.ts`)

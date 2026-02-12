@@ -1,0 +1,24 @@
+---
+description: Core project conventions for PBooks Pro
+alwaysApply: true
+---
+
+# PBooks Pro – Project Conventions
+
+## Tech Stack
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS
+- **Backend**: Express, PostgreSQL (production), SQLite (local/dev)
+- **Build**: `@/*` path alias maps to project root
+
+## Imports
+- Prefer relative imports (`../../services/`, `../../hooks/`) for consistency with existing codebase
+- Path alias `@/*` is available in tsconfig; use when refactoring deep paths
+
+## Multi-Tenant
+- All tenant-scoped data must use `tenant_id` or org context
+- Server routes use `tenantMiddleware` → `req.tenantId`, `req.userId` available
+- Use `runWithTenantContext` when executing tenant-scoped DB operations
+
+## Environments
+- Staging and production are separate; migrations in `server/migrations/`
+- Feature flags: check `doc/` for dual-environment setup plans

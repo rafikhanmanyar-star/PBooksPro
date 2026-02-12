@@ -1,0 +1,20 @@
+---
+description: React component and UI patterns
+globs: "**/*.tsx"
+alwaysApply: false
+---
+
+# React Patterns
+
+## Components
+- Use functional components with hooks
+- Extract reusable logic into custom hooks in `hooks/`
+- Colocate component-specific styles with the component
+
+## Styling
+- Use Tailwind CSS; avoid inline `style` props except for dynamic values
+- Lucide React (`lucide-react`) for icons
+
+## Services
+- API calls via `services/api/`; use `apiClient` or specific services (e.g. `WhatsAppService`, `appStateApi`)
+- Use `useEntityFormModal` from `hooks/useEntityFormModal` for entity CRUD modals

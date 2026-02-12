@@ -1,0 +1,16 @@
+---
+description: SQL migration conventions
+globs: "server/migrations/**/*.sql"
+alwaysApply: false
+---
+
+# SQL Migration Conventions
+
+## Structure
+- Name: `YYYYMMDD_descriptive_name.sql` (e.g. `20260214_add_tenant_updated_indexes.sql`)
+- Idempotent where possible: use `IF NOT EXISTS`, `IF EXISTS` for schema changes
+- Do not drop columns/tables without explicit migration plan and backup
+
+## Multi-Tenant
+- Prefer indexes on `tenant_id` and `(tenant_id, ...)` for tenant-scoped tables
+- Document staging vs production differences in migration or `doc/`

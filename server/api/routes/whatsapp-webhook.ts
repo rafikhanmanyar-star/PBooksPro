@@ -5,6 +5,7 @@ import { getWhatsAppApiService } from '../../services/whatsappApiService.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
+const DEBUG_WHATSAPP = process.env.DEBUG_WHATSAPP === 'true';
 
 /**
  * GET /api/whatsapp/webhook
@@ -30,9 +31,6 @@ router.get('/', async (req: Request, res: Response) => {
     // include tenant ID in the webhook URL path or use a different method
     const db = getDb();
     
-    // Log the token Meta sent (first 10 chars for security)
-    console.log(`[Webhook Verification] Meta sent token: ${token ? token.substring(0, 10) + '...' : 'MISSING'}`);
-    
     const configs = await db.query<{ tenant_id: string; verify_token: string }>(
       'SELECT tenant_id, verify_token FROM whatsapp_configs WHERE verify_token = $1 AND is_active = TRUE',
       [token]
@@ -44,20 +42,9 @@ router.get('/', async (req: Request, res: Response) => {
         'SELECT tenant_id, verify_token FROM whatsapp_configs WHERE is_active = TRUE'
       );
       
-      if (allConfigs.length === 0) {
-        console.log('[Webhook Verification] No active WhatsApp configurations found in database');
-      } else {
-        console.log(`[Webhook Verification] Token mismatch. Database has ${allConfigs.length} active config(s) with different token(s)`);
-        // Log first 10 chars of stored tokens for debugging (without exposing full tokens)
-        allConfigs.forEach((config, idx) => {
-          console.log(`[Webhook Verification] Config ${idx + 1} token: ${config.verify_token.substring(0, 10)}... (tenant: ${config.tenant_id})`);
-        });
-      }
       return res.status(403).send('Forbidden');
     }
 
-    // Return challenge to verify webhook
-    console.log('Webhook verified successfully for tenant:', configs[0].tenant_id);
     res.status(200).send(challenge);
   } catch (error: any) {
     console.error('Error verifying webhook:', error);
@@ -71,16 +58,7 @@ router.get('/', async (req: Request, res: Response) => {
  */
 router.post('/', async (req: Request, res: Response) => {
   try {
-    // Log every incoming webhook (helps debug "test sent but no logs")
     const payload = req.body;
-    const payloadKeys = payload && typeof payload === 'object' ? Object.keys(payload) : [];
-    console.log('[WhatsApp Webhook] POST received', {
-      at: new Date().toISOString(),
-      hasPayload: !!payload,
-      payloadKeys,
-      hasEntry: !!(payload && payload.entry),
-      entryLength: payload?.entry?.length ?? 0,
-    });
 
     // Verify webhook signature (if provided)
     const signature = req.headers['x-hub-signature-256'] as string;
@@ -96,33 +74,13 @@ router.post('/', async (req: Request, res: Response) => {
     let tenantId: string | null = null;
 
     if (payload && payload.entry && Array.isArray(payload.entry)) {
-      console.log('[WhatsApp Webhook] Processing entries', {
-        entryCount: payload.entry.length,
-      });
-
       for (const entry of payload.entry) {
-        console.log('[WhatsApp Webhook] Processing entry', {
-          id: entry.id,
-          hasChanges: !!(entry.changes && Array.isArray(entry.changes)),
-          changeCount: entry.changes?.length || 0,
-        });
-
         if (entry.changes && Array.isArray(entry.changes)) {
           for (const change of entry.changes) {
-            console.log('[WhatsApp Webhook] Processing change', {
-              field: change.field,
-              hasValue: !!change.value,
-              hasMetadata: !!(change.value && change.value.metadata),
-              hasMessages: !!(change.value && change.value.messages),
-              hasStatuses: !!(change.value && change.value.statuses),
-            });
-
             if (change.value && change.value.metadata) {
               const phoneNumberId = change.value.metadata.phone_number_id;
               
-              console.log('[WhatsApp Webhook] Found phone number ID in metadata', {
-                phoneNumberId,
-              });
+              if (DEBUG_WHATSAPP) console.log('[WhatsApp Webhook] Found phone number ID in metadata', { phoneNumberId });
               
               // Find tenant by phone number ID
               const db = getDb();
@@ -131,44 +89,13 @@ router.post('/', async (req: Request, res: Response) => {
                 [phoneNumberId]
               );
 
-              console.log('[WhatsApp Webhook] Config lookup result', {
-                phoneNumberId,
-                configCount: configs.length,
-                tenantId: configs.length > 0 ? configs[0].tenant_id : null,
-              });
 
               if (configs.length > 0) {
                 tenantId = configs[0].tenant_id;
-                console.log('[WhatsApp Webhook] Tenant ID found', {
-                  tenantId,
-                });
                 break;
               }
             }
 
-            // Log status updates if present
-            if (change.value && change.value.statuses && Array.isArray(change.value.statuses)) {
-              console.log('[WhatsApp Webhook] Found status updates', {
-                statusCount: change.value.statuses.length,
-                statuses: change.value.statuses.map((s: any) => ({
-                  id: s.id,
-                  status: s.status,
-                  recipientId: s.recipient_id ? s.recipient_id.substring(0, 5) + '***' : null,
-                })),
-              });
-            }
-
-            // Log incoming messages if present
-            if (change.value && change.value.messages && Array.isArray(change.value.messages)) {
-              console.log('[WhatsApp Webhook] Found incoming messages', {
-                messageCount: change.value.messages.length,
-                messages: change.value.messages.map((m: any) => ({
-                  id: m.id,
-                  from: m.from ? m.from.substring(0, 5) + '***' : null,
-                  type: m.type,
-                })),
-              });
-            }
           }
           if (tenantId) break;
         }
@@ -182,26 +109,12 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(200).json({ received: true });
     }
 
-    console.log('[WhatsApp Webhook] Processing for tenant:', tenantId, {
-      payloadSummary: {
-        entryCount: payload?.entry?.length || 0,
-        hasMessages: !!(payload?.entry?.[0]?.changes?.[0]?.value?.messages),
-        hasStatuses: !!(payload?.entry?.[0]?.changes?.[0]?.value?.statuses),
-      },
-    });
-
     // Process webhook
     const whatsappService = getWhatsAppApiService();
     const processStartTime = Date.now();
     
     try {
       await whatsappService.processWebhook(tenantId, payload);
-      const processDuration = Date.now() - processStartTime;
-      
-      console.log('[WhatsApp Webhook] Processed successfully for tenant:', tenantId, {
-        duration: `${processDuration}ms`,
-        timestamp: new Date().toISOString(),
-      });
     } catch (processError: any) {
       const processDuration = Date.now() - processStartTime;
       console.error('[WhatsApp Webhook] Error processing webhook for tenant:', tenantId, {

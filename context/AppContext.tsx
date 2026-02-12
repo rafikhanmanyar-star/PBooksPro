@@ -14,6 +14,8 @@ import InitializationScreen from '../components/InitializationScreen';
 import { getSyncQueue } from '../services/syncQueue';
 import { getConnectionMonitor } from '../services/connectionMonitor';
 import { SyncOperationType } from '../types/sync';
+import { getLastSyncTimestamp, setLastSyncTimestamp, isLastSyncRecent, clearLastSyncTimestamp } from '../utils/lastSyncStorage';
+import { devLogger } from '../utils/devLogger';
 
 // PERFORMANCE: Module-level constant set of action types that trigger API sync.
 // Previously this 60+ entry Set was re-created on EVERY dispatch call inside useCallback.
@@ -1073,13 +1075,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Hooks must be called unconditionally - always call both hooks
     // Then use the appropriate one based on useFallback state
     // Add error boundary logging before hooks
-    console.log('[AppContext] About to initialize database hooks...');
-    console.log('[AppContext] initialState keys:', Object.keys(initialState));
+    devLogger.log('[AppContext] About to initialize database hooks...');
+    devLogger.log('[AppContext] initialState keys:', Object.keys(initialState));
 
     const [dbState, setDbState, dbStateHelpers] = useDatabaseState<AppState>('finance_app_state_v4', initialState);
     const [fallbackState, setFallbackState] = useDatabaseStateFallback<AppState>('finance_app_state_v4', initialState);
 
-    console.log('[AppContext] Database hooks initialized successfully');
+    devLogger.log('[AppContext] Database hooks initialized successfully');
 
     // Initialize storedState safely - use initialState as fallback if hooks aren't ready
     const storedState = (useFallback ? fallbackState : dbState) || initialState;
@@ -1118,7 +1120,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setStoredState(prev => {
             if (prev.currentUser && (isAppRelaunched || versionChanged)) {
                 const reason = versionChanged ? `Version changed (${storedVersion} -> ${currentVersion})` : 'Application relaunched';
-                console.log(`🔄 ${reason} - logging out user`);
+                devLogger.log(`🔄 ${reason} - logging out user`);
                 return { ...prev, currentUser: null };
             }
             return prev;
@@ -1167,7 +1169,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const runMigration = async () => {
             try {
-                console.log('🚀 Starting app initialization...');
+                devLogger.log('🚀 Starting app initialization...');
 
                 // Safety timeout - if initialization takes more than 30 seconds, show error
                 timeoutId = setTimeout(() => {
@@ -1213,7 +1215,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             if (isMounted) setIsInitializing(false);
                         }, 2000);
                     } else if (result.migrated) {
-                        console.log('Migration completed successfully:', result.recordCounts);
+                        devLogger.log('Migration completed successfully:', result.recordCounts);
                         const recordCount = Object.values(result.recordCounts || {}).reduce((a, b) => a + b, 0);
 
                         // Reload state after migration
@@ -1319,7 +1321,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     const currentTenantId = auth.tenant?.id || auth.user?.tenantId;
 
                                     if (currentTenantId && localTenantId && currentTenantId !== localTenantId) {
-                                        console.log(`🔄 Tenant switch detected: ${localTenantId} -> ${currentTenantId}. Clearing local data...`);
+                                        devLogger.log(`🔄 Tenant switch detected: ${localTenantId} -> ${currentTenantId}. Clearing local data...`);
 
                                         const { ContactsRepository, TransactionsRepository, AccountsRepository,
                                             CategoriesRepository, ProjectsRepository, BuildingsRepository,
@@ -1347,7 +1349,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                         }
 
                                         await settingsRepo.set('tenantId', currentTenantId);
-                                        console.log('🗑️ Cleared local database data to prevent cross-tenant leakage');
+                                        devLogger.log('🗑️ Cleared local database data to prevent cross-tenant leakage');
                                     } else if (currentTenantId && !localTenantId) {
                                         // First time initialization - set the tenant ID
                                         await settingsRepo.set('tenantId', currentTenantId);
@@ -1358,7 +1360,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             }
 
                             const apiService = getAppStateApiService();
-                            const apiState = await apiService.loadState();
+                            let apiState: Partial<AppState>;
+
+                            // Incremental sync: use when we have local baseline and recent lastSync (< 24h)
+                            try {
+                                const dbService = getDatabaseService();
+                                let baseline: Partial<AppState> | null = null;
+                                if (dbService.isReady()) {
+                                    const appStateRepo = await getAppStateRepository();
+                                    baseline = await appStateRepo.loadState();
+                                }
+                                const lastSync = currentTenantId ? getLastSyncTimestamp(currentTenantId) : null;
+                                const hasBaseline = baseline && (
+                                    (baseline.projects?.length ?? 0) > 0 ||
+                                    (baseline.transactions?.length ?? 0) > 0 ||
+                                    (baseline.contacts?.length ?? 0) > 0
+                                );
+
+                                if (
+                                    currentTenantId &&
+                                    lastSync &&
+                                    hasBaseline &&
+                                    isLastSyncRecent(currentTenantId)
+                                ) {
+                                    apiState = await apiService.loadStateViaIncrementalSync(lastSync, baseline as Partial<AppState>);
+                                    logger.logCategory('sync', '📥 Used incremental sync (returning user)');
+                                } else {
+                                    apiState = await apiService.loadState();
+                                }
+                            } catch (incrementalError) {
+                                logger.warnCategory('sync', '⚠️ Incremental sync failed, falling back to full load:', incrementalError);
+                                if (currentTenantId) clearLastSyncTimestamp(currentTenantId);
+                                apiState = await apiService.loadState();
+                            }
+
+                            if (currentTenantId) {
+                                setLastSyncTimestamp(currentTenantId, new Date().toISOString());
+                            }
 
                             // Merge offline data with API data - offline data takes precedence for conflicts
                             // Create maps for efficient lookup
@@ -1468,7 +1506,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                         console.warn('⚠️ Could not save API data to local database:', saveError);
                                     }
                                 }
-                                console.log('✅ Loaded and merged data from API + offline sync queue:', {
+                                devLogger.log('✅ Loaded and merged data from API + offline sync queue:', {
                                     accounts: Array.from(apiAccountsMap.values()).length,
                                     contacts: Array.from(apiContactsMap.values()).length,
                                     transactions: Array.from(apiTransactionsMap.values()).length,
@@ -1564,7 +1602,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 setTimeout(() => {
                     if (isMounted) {
                         setIsInitializing(false);
-                        console.log('✅ App continuing with localStorage fallback');
+                        devLogger.log('✅ App continuing with localStorage fallback');
                     }
                 }, 2000);
             }
@@ -2588,7 +2626,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // Sync if database has more data or has user data when current doesn't
             // Only sync once during initialization to avoid infinite loops
             if ((storedHasMoreData || (storedHasUserData && !currentHasUserData)) && !reducerInitializedRef.current) {
-                console.log('🔄 Syncing reducer state with loaded database state:', {
+                devLogger.log('🔄 Syncing reducer state with loaded database state:', {
                     storedContacts: currentStoredState.contacts.length,
                     currentContacts: state.contacts.length,
                     storedTransactions: currentStoredState.transactions.length,
@@ -2718,7 +2756,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const cloudSettings = event.detail;
             if (!cloudSettings || typeof cloudSettings !== 'object') return;
 
-            console.log('📥 Received cloud settings, applying to state...');
+            devLogger.log('📥 Received cloud settings, applying to state...');
 
             // Apply settings to state
             if (cloudSettings.printSettings) {
@@ -2758,7 +2796,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 dispatch({ type: 'UPDATE_PROJECT_INVOICE_SETTINGS', payload: cloudSettings.projectInvoiceSettings });
             }
 
-            console.log('✅ Cloud settings applied to state');
+            devLogger.log('✅ Cloud settings applied to state');
         };
 
         window.addEventListener('load-cloud-settings', handleCloudSettingsLoaded as EventListener);
@@ -2790,10 +2828,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const syncStatus = await apiClient.get<{ shouldEnableSync: boolean; userCount: number }>('/tenants/should-enable-sync');
                     shouldEnableSync = syncStatus.shouldEnableSync;
                     if (!shouldEnableSync) {
-                        console.log(`⏭️ Skipping WebSocket connection - organization has only ${syncStatus.userCount} user(s). Real-time sync is disabled for single-user organizations.`);
+                        devLogger.log(`⏭️ Skipping WebSocket connection - organization has only ${syncStatus.userCount} user(s). Real-time sync is disabled for single-user organizations.`);
                         return;
                     }
-                    console.log(`✅ Enabling real-time sync - organization has ${syncStatus.userCount} active user(s)`);
+                    devLogger.log(`✅ Enabling real-time sync - organization has ${syncStatus.userCount} active user(s)`);
                 } catch (syncCheckError) {
                     // If check fails, log warning but don't block - allow connection to proceed
                     // This ensures sync still works even if the endpoint is temporarily unavailable
@@ -2815,7 +2853,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const currentUser = stateRef.current.currentUser;
                     if (eventData?.userId && currentUser?.id) {
                         if (eventData.userId === currentUser.id) {
-                            console.log('🔄 Skipping WebSocket refresh - event from current user:', eventData.userId);
+                            devLogger.log('🔄 Skipping WebSocket refresh - event from current user:', eventData.userId);
                             return;
                         }
                     }
@@ -3465,7 +3503,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const doSave = async () => {
                         try {
                             await saveNow(state);
-                            console.log('✅ State saved immediately after data change:', {
+                            devLogger.log('✅ State saved immediately after data change:', {
                                 contacts: state.contacts.length,
                                 transactions: state.transactions.length,
                                 bills: state.bills.length,
@@ -3501,7 +3539,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (auth.user && auth.isAuthenticated) {
             // User is authenticated - sync to state if not already synced
             if (!state.currentUser || state.currentUser.id !== auth.user.id) {
-                console.log('[AppContext] 🔄 Syncing authenticated user to state:', {
+                devLogger.log('[AppContext] 🔄 Syncing authenticated user to state:', {
                     authUserId: auth.user.id,
                     authUsername: auth.user.username,
                     currentStateUserId: state.currentUser?.id
@@ -3518,7 +3556,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
         } else if (!auth.isAuthenticated && state.currentUser) {
             // User logged out - clear from state
-            console.log('[AppContext] 🚪 User logged out, clearing from state');
+            devLogger.log('[AppContext] 🚪 User logged out, clearing from state');
             dispatch({ type: 'LOGOUT' });
         }
     }, [auth.user, auth.isAuthenticated, state.currentUser]);
@@ -3528,14 +3566,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const saveTimer = setTimeout(async () => {
                 try {
                     await saveNow(state);
-                    console.log('✅ State saved after login');
+                    devLogger.log('✅ State saved after login');
                 } catch (error) {
                     console.error('Failed to save state after login:', error);
                     // Check if it's a missing table error
                     const errorMsg = error instanceof Error ? error.message : String(error);
                     if (errorMsg.includes('no such table')) {
                         console.error('❌ CRITICAL: Missing database table!', errorMsg);
-                        console.log('💡 To fix this issue, clear both localStorage AND OPFS storage');
+                        devLogger.log('💡 To fix this issue, clear both localStorage AND OPFS storage');
 
                         // Show user-friendly error
                         const errorDiv = document.createElement('div');
@@ -3565,20 +3603,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 try {
                                     // Clear localStorage
                                     localStorage.removeItem('finance_db');
-                                    console.log('✅ localStorage cleared');
+                                    devLogger.log('✅ localStorage cleared');
 
                                     // Clear OPFS if supported
                                     if (navigator.storage && navigator.storage.getDirectory) {
                                         try {
                                             const root = await navigator.storage.getDirectory();
                                             await root.removeEntry('finance_db.sqlite');
-                                            console.log('✅ OPFS database cleared');
+                                            devLogger.log('✅ OPFS database cleared');
                                         } catch (opfsError) {
-                                            console.log('ℹ️ OPFS file not found or already cleared');
+                                            devLogger.log('ℹ️ OPFS file not found or already cleared');
                                         }
                                     }
 
-                                    console.log('🔄 Reloading to recreate database...');
+                                    devLogger.log('🔄 Reloading to recreate database...');
                                     setTimeout(() => location.reload(), 500);
                                 } catch (error) {
                                     console.error('Error during fix:', error);
