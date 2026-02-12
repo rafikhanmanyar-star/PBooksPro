@@ -12,6 +12,7 @@ export interface ApiError {
   error: string;
   message?: string;
   status?: number;
+  code?: string;
 }
 
 export class ApiClient {
@@ -390,6 +391,7 @@ export class ApiClient {
           error: data.error || data.message || 'Request failed',
           message: data.message || data.error,
           status: response.status,
+          ...(data.code && { code: data.code }),
         };
         console.error('API Error:', error);
         throw error;
