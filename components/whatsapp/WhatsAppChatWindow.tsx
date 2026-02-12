@@ -7,6 +7,7 @@ import { getWebSocketClient } from '../../services/websocketClient';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { ICONS } from '../../constants';
+import { devLogger } from '../../utils/devLogger';
 
 interface WhatsAppChatWindowProps {
   isOpen: boolean;
@@ -67,7 +68,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
 
       setIsLoading(true);
       try {
-        console.log('[WhatsAppChatWindow] Loading messages', {
+        devLogger.log('[WhatsAppChatWindow] Loading messages', {
           phoneNumber: phoneNumber.substring(0, 5) + '***',
           contactId: contact?.id || null,
           contactName: contact?.name || null,
@@ -75,7 +76,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
         
         const loadedMessages = await WhatsAppChatService.getMessages(phoneNumber, 50, 0, contact?.id);
         
-        console.log('[WhatsAppChatWindow] Messages loaded', {
+        devLogger.log('[WhatsAppChatWindow] Messages loaded', {
           count: loadedMessages.length,
           hasIncoming: loadedMessages.some(m => m.direction === 'incoming'),
           hasOutgoing: loadedMessages.some(m => m.direction === 'outgoing'),
@@ -112,7 +113,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
     if (!isOpen || !phoneNumber) return;
 
     const handleWhatsAppMessageSent = (data: WhatsAppMessage) => {
-      console.log('[WhatsAppChatWindow] WebSocket: Message sent received', {
+      devLogger.log('[WhatsAppChatWindow] WebSocket: Message sent received', {
         messageId: data.id,
         phoneNumber: data.phoneNumber,
         currentPhoneNumber: phoneNumber,
@@ -152,7 +153,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
     };
 
     const handleWhatsAppMessageReceived = (data: WhatsAppMessage) => {
-      console.log('[WhatsAppChatWindow] WebSocket: Message received', {
+      devLogger.log('[WhatsAppChatWindow] WebSocket: Message received', {
         messageId: data.id,
         phoneNumber: data.phoneNumber,
         currentPhoneNumber: phoneNumber,
@@ -171,7 +172,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
       const contactMatches = !contact?.id || !data.contactId || data.contactId === contact.id;
       
       if (phoneMatches && contactMatches && data.direction === 'incoming') {
-        console.log('[WhatsAppChatWindow] Adding incoming message to UI', {
+        devLogger.log('[WhatsAppChatWindow] Adding incoming message to UI', {
           messageId: data.id,
           phoneNumber: data.phoneNumber.substring(0, 5) + '***',
         });
@@ -186,7 +187,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
           
           if (existingIndex >= 0) {
             // Update existing message
-            console.log('[WhatsAppChatWindow] Updating existing message in UI', {
+            devLogger.log('[WhatsAppChatWindow] Updating existing message in UI', {
               existingIndex,
               messageId: data.id,
             });
@@ -200,7 +201,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
             return updated;
           } else {
             // Add new message (insert in chronological order)
-            console.log('[WhatsAppChatWindow] Adding new message to UI', {
+            devLogger.log('[WhatsAppChatWindow] Adding new message to UI', {
               messageId: data.id,
               currentMessageCount: prev.length,
             });
@@ -226,7 +227,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
           window.dispatchEvent(new CustomEvent('whatsapp:messages:read'));
         }).catch(() => {});
       } else {
-        console.log('[WhatsAppChatWindow] Message not for current conversation, ignoring', {
+        devLogger.log('[WhatsAppChatWindow] Message not for current conversation, ignoring', {
           phoneMatches,
           contactMatches,
           dataContactId: data.contactId,
@@ -236,7 +237,7 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
     };
 
     const handleWhatsAppMessageStatus = (data: { messageId: string; status: string; timestamp?: Date }) => {
-      console.log('[WhatsAppChatWindow] WebSocket: Status update received', {
+      devLogger.log('[WhatsAppChatWindow] WebSocket: Status update received', {
         messageId: data.messageId,
         status: data.status,
       });

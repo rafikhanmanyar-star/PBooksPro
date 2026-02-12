@@ -18,6 +18,8 @@ interface LogEntry {
   timestamp: Date;
 }
 
+const isProduction = typeof import.meta !== 'undefined' && !import.meta.env?.DEV;
+
 class Logger {
   private enabled = true;
   private allowedCategories = new Set<string>([
@@ -36,9 +38,11 @@ class Logger {
 
   /**
    * Check if a log message should be displayed
+   * In production, only errors and critical warnings are shown (no sync/auth/db success logs)
    */
   private shouldLog(message: string, category?: string): boolean {
     if (!this.enabled) return false;
+    if (isProduction) return false;
 
     const lowerMessage = message.toLowerCase();
     
@@ -131,22 +135,17 @@ class Logger {
   }
 
   /**
-   * Error message (always shown, but filtered for relevance)
+   * Error message (always shown)
    */
   error(message: string, ...args: any[]): void {
-    // Always show errors related to auth, db, or sync
-    if (this.shouldLog(message) || message.toLowerCase().includes('error')) {
-      console.error(this.formatMessage('error', message), ...args);
-    }
+    console.error(this.formatMessage('error', message), ...args);
   }
 
   /**
    * Error with category
    */
   errorCategory(category: string, message: string, ...args: any[]): void {
-    if (this.shouldLog(message, category) || message.toLowerCase().includes('error')) {
-      console.error(this.formatMessage('error', message, category), ...args);
-    }
+    console.error(this.formatMessage('error', message, category), ...args);
   }
 
   /**

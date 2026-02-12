@@ -22,6 +22,7 @@ import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
 import Card from '../ui/Card';
 import { ICONS } from '../../constants';
+import { devLogger } from '../../utils/devLogger';
 import { useNotification } from '../../context/NotificationContext';
 import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
 import { usePrintContext } from '../../context/PrintContext';
@@ -339,15 +340,15 @@ const MarketingPage: React.FC = () => {
     useEffect(() => {
         const loadOrgUsers = async () => {
             try {
-                console.log('[ORG USERS] Loading organization users from API...');
+                devLogger.log('[ORG USERS] Loading organization users from API...');
                 const data = await apiClient.get<{ id: string; name: string; username: string; role: string }[]>('/users');
-                console.log('[ORG USERS] Loaded users:', {
+                devLogger.log('[ORG USERS] Loaded users:', {
                     count: data?.length || 0,
                     users: data?.map(u => ({ id: u.id, username: u.username, name: u.name, role: u.role }))
                 });
                 setOrgUsers(data || []);
             } catch (error) {
-                console.error('[ORG USERS] Failed to load organization users', error);
+                devLogger.error('[ORG USERS] Failed to load organization users', error);
                 setOrgUsers([]);
             }
         };
@@ -357,7 +358,7 @@ const MarketingPage: React.FC = () => {
     const usersForApproval = orgUsers.length > 0 ? orgUsers : state.users;
     const approvers = useMemo(
         () => {
-            console.log('[APPROVERS] Building approvers list...', {
+            devLogger.log('[APPROVERS] Building approvers list...', {
                 currentUserId: state.currentUser?.id,
                 currentUsername: state.currentUser?.username,
                 usersForApprovalCount: usersForApproval.length,
@@ -368,7 +369,7 @@ const MarketingPage: React.FC = () => {
                 .filter(user => {
                     const hasRole = user.role && user.role.toLowerCase() === 'admin';
                     const isNotCurrentUser = user.id !== state.currentUser?.id; // Don't include yourself
-                    console.log('[APPROVERS] Checking user:', {
+                    devLogger.log('[APPROVERS] Checking user:', {
                         id: user.id,
                         username: user.username,
                         name: user.name,
@@ -381,7 +382,7 @@ const MarketingPage: React.FC = () => {
                 })
                 .map(user => ({ id: user.id, name: user.name || user.username }));
             
-            console.log('[APPROVAL DEBUG] Final approvers list:', {
+            devLogger.log('[APPROVAL DEBUG] Final approvers list:', {
                 totalUsers: usersForApproval.length,
                 approversCount: filtered.length,
                 approvers: filtered,
@@ -424,7 +425,7 @@ const MarketingPage: React.FC = () => {
             if (!value) return false;
             const normalizedValue = value.toString().toLowerCase();
             const matches = candidates.includes(normalizedValue);
-            console.log('[APPROVAL DEBUG] Matching check:', {
+            devLogger.log('[APPROVAL DEBUG] Matching check:', {
                 value,
                 normalizedValue,
                 candidates,
@@ -438,7 +439,7 @@ const MarketingPage: React.FC = () => {
     // Debug logging for approval workflow
     useEffect(() => {
         if (selectedPlanId && activePlan) {
-            console.log('[APPROVAL DEBUG] Active plan approval state:', {
+            devLogger.log('[APPROVAL DEBUG] Active plan approval state:', {
                 planId: activePlan.id,
                 status: activePlan.status,
                 approvalRequestedToId: activePlan.approvalRequestedToId,
@@ -653,7 +654,7 @@ const MarketingPage: React.FC = () => {
 
         // Debug logging for approval submission
         if (mode === 'submitApproval') {
-            console.log('[APPROVAL DEBUG] Submitting plan for approval:', {
+            devLogger.log('[APPROVAL DEBUG] Submitting plan for approval:', {
                 currentUserId: state.currentUser?.id,
                 currentUsername: state.currentUser?.username,
                 approvalRequestedBy,
@@ -821,10 +822,10 @@ const MarketingPage: React.FC = () => {
 
     useEffect(() => {
         if (state.editingEntity?.type === 'INSTALLMENT_PLAN' && state.editingEntity.id) {
-            console.log('[MARKETING PAGE] Editing entity received:', state.editingEntity.id);
+            devLogger.log('[MARKETING PAGE] Editing entity received:', state.editingEntity.id);
             const plan = (state.installmentPlans || []).find(p => p.id === state.editingEntity?.id);
             if (plan) {
-                console.log('[MARKETING PAGE] Plan found, opening for edit:', plan.id);
+                devLogger.log('[MARKETING PAGE] Plan found, opening for edit:', plan.id);
                 handleEdit(plan);
             } else {
                 console.warn('[MARKETING PAGE] Plan not found:', state.editingEntity.id);
@@ -1034,14 +1035,14 @@ const MarketingPage: React.FC = () => {
 
                         showToast('Plan sent via WhatsApp!');
                     } catch (error: any) {
-                        console.error('Error sending plan via WhatsApp:', error);
+                        devLogger.error('Error sending plan via WhatsApp:', error);
                         await showAlert(`Failed to send plan: ${error.message || 'Unknown error'}`);
                     }
                 };
                 reader.readAsDataURL(blob);
             }, 'image/png');
         } catch (error: any) {
-            console.error('Error in handleSendWhatsApp:', error);
+            devLogger.error('Error in handleSendWhatsApp:', error);
             await showAlert(`Failed to send plan via WhatsApp: ${error.message || 'Unknown error'}`);
         }
     };
@@ -1270,7 +1271,7 @@ const MarketingPage: React.FC = () => {
             };
             
             // Dispatch the update - this will sync to cloud and local DB
-            console.log('🔄 Dispatching plan status update:', {
+            devLogger.log('🔄 Dispatching plan status update:', {
                 planId: plan.id,
                 oldStatus: plan.status,
                 newStatus: 'Sale Recognized',
@@ -1293,7 +1294,7 @@ const MarketingPage: React.FC = () => {
             }
 
             // Log conversion to console for debugging
-            console.log('✅ Conversion completed:', {
+            devLogger.log('✅ Conversion completed:', {
                 planId: plan.id,
                 agreementId: agreementId,
                 agreementNumber: agreementNumber,
@@ -1315,7 +1316,7 @@ const MarketingPage: React.FC = () => {
 
             resetForm();
         } catch (error) {
-            console.error('Error converting plan to agreement:', error);
+            devLogger.error('Error converting plan to agreement:', error);
             await showAlert(`Failed to convert plan to agreement: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     };

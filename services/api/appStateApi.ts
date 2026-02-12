@@ -38,6 +38,9 @@ export interface StateChangesResponse {
   since: string;
   updatedAt: string;
   entities: Record<string, unknown[]>;
+  has_more?: boolean;
+  next_cursor?: string | null;
+  limit?: number;
 }
 
 export class AppStateApiService {
@@ -101,6 +104,71 @@ export class AppStateApiService {
     const endpoint = `/state/changes?since=${encodeURIComponent(since)}`;
     const data = await apiClient.get<StateChangesResponse>(endpoint);
     return data;
+  }
+
+  /**
+   * Map stateChanges entity keys (snake_case) to AppState keys (camelCase)
+   */
+  private static ENTITY_KEY_MAP: Record<string, keyof AppState> = {
+    accounts: 'accounts',
+    contacts: 'contacts',
+    categories: 'categories',
+    projects: 'projects',
+    buildings: 'buildings',
+    properties: 'properties',
+    units: 'units',
+    transactions: 'transactions',
+    invoices: 'invoices',
+    bills: 'bills',
+    budgets: 'budgets',
+    plan_amenities: 'planAmenities',
+    contracts: 'contracts',
+    sales_returns: 'salesReturns',
+    quotations: 'quotations',
+    documents: 'documents',
+    recurring_invoice_templates: 'recurringInvoiceTemplates',
+    pm_cycle_allocations: 'pmCycleAllocations',
+    rental_agreements: 'rentalAgreements',
+    project_agreements: 'projectAgreements',
+    installment_plans: 'installmentPlans',
+    vendors: 'vendors',
+  };
+
+  /**
+   * Load state via incremental sync when baseline exists and since is recent.
+   * Merges API changes into the baseline and returns merged state.
+   */
+  async loadStateViaIncrementalSync(
+    since: string,
+    baseline: Partial<AppState>
+  ): Promise<Partial<AppState>> {
+    logger.logCategory('sync', `📡 Incremental sync since ${since}...`);
+    const response = await this.loadStateChanges(since);
+    const merged = { ...baseline } as Partial<AppState>;
+
+    for (const [apiKey, rows] of Object.entries(response.entities || {})) {
+      const stateKey = AppStateApiService.ENTITY_KEY_MAP[apiKey];
+      if (!stateKey || !Array.isArray(rows)) continue;
+
+      const baselineArr = (merged[stateKey] as unknown[]) || [];
+      const map = new Map<string, unknown>();
+      for (const item of baselineArr) {
+        const id = (item as { id?: string })?.id;
+        if (id) map.set(id, item);
+      }
+      for (const row of rows) {
+        const id = (row as { id?: string })?.id;
+        if (id) map.set(id, row);
+      }
+      (merged as Record<string, unknown>)[stateKey] = Array.from(map.values());
+    }
+
+    const totalChanges = Object.values(response.entities || {}).reduce(
+      (sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0),
+      0
+    );
+    logger.logCategory('sync', `✅ Incremental sync merged ${totalChanges} changed record(s)`);
+    return merged;
   }
 
   /**

@@ -1,0 +1,22 @@
+---
+description: Server API routes and middleware conventions
+globs: "server/**/*.ts"
+alwaysApply: false
+---
+
+# Server API Conventions
+
+## Routes
+- Each route file: `import { Router } from 'express'`; export `router`
+- Use `getDatabaseService()` or equivalent for DB access (lazy init)
+- Return JSON: `res.status(code).json({ error?, ...data })`
+
+## Auth & Tenant
+- Apply `tenantMiddleware(pool)` for tenant-scoped routes
+- `req.tenantId`, `req.userId`, `req.user` available after middleware
+- Admin routes use `adminAuthMiddleware` / `adminOnlyMiddleware`
+
+## Errors
+- Validate input; return 400 with clear message for bad requests
+- Use rate limiting for public endpoints (e.g. login, lookup)
+- Log failures with `console.error`; avoid exposing internals to client

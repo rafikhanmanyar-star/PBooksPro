@@ -4,6 +4,7 @@ import { useNotification } from '../../context/NotificationContext';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import { ICONS } from '../../constants';
+import { devLogger } from '../../utils/devLogger';
 
 interface WhatsAppConfig {
   id?: string;
@@ -87,7 +88,7 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
     const loadId = `load_msgs_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     
     try {
-      console.log(`[WhatsApp Client] [${loadId}] Loading received messages`, {
+      devLogger.log(`[WhatsApp Client] [${loadId}] Loading received messages`, {
         testPhoneNumber: testPhoneNumber || 'all',
         timestamp: new Date().toISOString(),
       });
@@ -130,7 +131,7 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
       
       setReceivedMessages(sorted);
       
-      console.log(`[WhatsApp Client] [${loadId}] ✅ Messages loaded successfully`, {
+      devLogger.log(`[WhatsApp Client] [${loadId}] ✅ Messages loaded successfully`, {
         totalMessages: messages.length,
         displayedCount: sorted.length,
         testPhoneNumber: testPhoneNumber || 'all',
@@ -156,7 +157,7 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
     const startTime = Date.now();
     
     try {
-      console.log(`[WhatsApp Client] [${loadId}] Loading configuration`, {
+      devLogger.log(`[WhatsApp Client] [${loadId}] Loading configuration`, {
         timestamp: new Date().toISOString(),
       });
       
@@ -164,7 +165,7 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
       const response = await apiClient.get<WhatsAppConfig>('/whatsapp/config');
       
       const duration = Date.now() - startTime;
-      console.log(`[WhatsApp Client] [${loadId}] Configuration loaded from server`, {
+      devLogger.log(`[WhatsApp Client] [${loadId}] Configuration loaded from server`, {
         configured: response.configured,
         hasApiKey: response.hasApiKey,
         phoneNumberId: response.phoneNumberId || null,
@@ -179,7 +180,7 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
       // Check if configuration exists
       if (response.configured === false) {
         // No config yet - this is normal for new tenants
-        console.log(`[WhatsApp Client] [${loadId}] No configuration found (new tenant)`, {
+        devLogger.log(`[WhatsApp Client] [${loadId}] No configuration found (new tenant)`, {
           timestamp: new Date().toISOString(),
         });
         setConfig(null);
@@ -196,14 +197,14 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
       // If API key exists in DB, show placeholder
       if (response.hasApiKey) {
         setApiKey('••••••••••••••••'); // Placeholder to show key exists
-        console.log(`[WhatsApp Client] [${loadId}] API key exists in database (showing placeholder)`, {
+        devLogger.log(`[WhatsApp Client] [${loadId}] API key exists in database (showing placeholder)`, {
           timestamp: new Date().toISOString(),
         });
       }
       
       // Auto-test connection status if config exists
       if (response.hasApiKey) {
-        console.log(`[WhatsApp Client] [${loadId}] Auto-testing connection status`, {
+        devLogger.log(`[WhatsApp Client] [${loadId}] Auto-testing connection status`, {
           timestamp: new Date().toISOString(),
         });
         testConnectionStatus();
@@ -228,14 +229,14 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
     const startTime = Date.now();
     
     try {
-      console.log(`[WhatsApp Client] [${testId}] Testing connection status`, {
+      devLogger.log(`[WhatsApp Client] [${testId}] Testing connection status`, {
         timestamp: new Date().toISOString(),
       });
       
       const response = await apiClient.post('/whatsapp/test-connection');
       
       const duration = Date.now() - startTime;
-      console.log(`[WhatsApp Client] [${testId}] Connection test successful`, {
+      devLogger.log(`[WhatsApp Client] [${testId}] Connection test successful`, {
         success: response.success,
         message: response.message,
         duration: `${duration}ms`,
@@ -263,7 +264,7 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
     // If API key is placeholder, test with existing config
     if (apiKey === '••••••••••••••••' && config?.hasApiKey) {
       try {
-        console.log(`[WhatsApp Client] [${testId}] Testing connection with stored API key`, {
+        devLogger.log(`[WhatsApp Client] [${testId}] Testing connection with stored API key`, {
           phoneNumberId,
           businessAccountId: businessAccountId || null,
           timestamp: new Date().toISOString(),
@@ -273,7 +274,7 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
         const response = await apiClient.post('/whatsapp/test-connection');
         
         const duration = Date.now() - startTime;
-        console.log(`[WhatsApp Client] [${testId}] Connection test successful (stored key)`, {
+        devLogger.log(`[WhatsApp Client] [${testId}] Connection test successful (stored key)`, {
           success: response.success,
           message: response.message,
           duration: `${duration}ms`,
@@ -311,7 +312,7 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
     }
 
     try {
-      console.log(`[WhatsApp Client] [${testId}] Testing connection with new credentials`, {
+      devLogger.log(`[WhatsApp Client] [${testId}] Testing connection with new credentials`, {
         hasApiKey: !!apiKey,
         apiKeyLength: apiKey.length,
         phoneNumberId,
@@ -323,7 +324,7 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
       setTesting(true);
       
       // Save config temporarily to test
-      console.log(`[WhatsApp Client] [${testId}] Saving configuration before test`, {
+      devLogger.log(`[WhatsApp Client] [${testId}] Saving configuration before test`, {
         timestamp: new Date().toISOString(),
       });
       
@@ -336,7 +337,7 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
         webhookUrl: webhookUrl || undefined,
       });
 
-      console.log(`[WhatsApp Client] [${testId}] Configuration saved, testing connection`, {
+      devLogger.log(`[WhatsApp Client] [${testId}] Configuration saved, testing connection`, {
         timestamp: new Date().toISOString(),
       });
 
@@ -344,7 +345,7 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
       const response = await apiClient.post('/whatsapp/test-connection');
       
       const duration = Date.now() - startTime;
-      console.log(`[WhatsApp Client] [${testId}] Connection test successful (new credentials)`, {
+      devLogger.log(`[WhatsApp Client] [${testId}] Connection test successful (new credentials)`, {
         success: response.success,
         message: response.message,
         duration: `${duration}ms`,
@@ -480,7 +481,7 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
     }
 
     try {
-      console.log(`[WhatsApp Client] [${sendId}] Sending test message`, {
+      devLogger.log(`[WhatsApp Client] [${sendId}] Sending test message`, {
         phoneNumber: cleanPhone.substring(0, 5) + '***',
         phoneNumberLength: cleanPhone.length,
         messageLength: testMessage.length,
@@ -496,7 +497,7 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
       });
       
       const duration = Date.now() - startTime;
-      console.log(`[WhatsApp Client] [${sendId}] Test message sent successfully`, {
+      devLogger.log(`[WhatsApp Client] [${sendId}] Test message sent successfully`, {
         messageId: response.messageId || null,
         wamId: response.wamId || null,
         status: response.status || null,

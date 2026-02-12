@@ -5,29 +5,7 @@ import { getDatabaseService } from '../../services/databaseService.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
-
-// Add logging middleware for all WhatsApp routes
-router.use((req, res, next) => {
-  const requestId = `whatsapp_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-
-  console.log(`[WhatsApp Router] [${requestId}] ===== REQUEST RECEIVED =====`, {
-    method: req.method,
-    path: req.path,
-    originalUrl: req.originalUrl,
-    url: req.url,
-    hasBody: !!req.body,
-    bodyKeys: req.body ? Object.keys(req.body) : [],
-    query: req.query,
-    params: req.params,
-    headers: {
-      'content-type': req.headers['content-type'],
-      'authorization': req.headers['authorization'] ? 'Bearer ***' : 'missing',
-    },
-    timestamp: new Date().toISOString(),
-  });
-  
-  next();
-});
+const DEBUG_WHATSAPP = process.env.DEBUG_WHATSAPP === 'true';
 
 /**
  * GET /api/whatsapp/config
@@ -35,10 +13,6 @@ router.use((req, res, next) => {
  */
 router.get('/config', async (req: TenantRequest, res) => {
   try {
-    console.log('[WhatsApp Config] GET /config request received', {
-      tenantId: req.tenantId,
-    });
-
     if (!req.tenantId) {
       console.error('[WhatsApp Config] Missing tenantId in request');
       return res.status(401).json({
@@ -51,7 +25,6 @@ router.get('/config', async (req: TenantRequest, res) => {
     const config = await whatsappService.getConfig(req.tenantId);
 
     if (!config) {
-      console.log('[WhatsApp Config] No configuration found for tenant:', req.tenantId);
       // Return 200 with configured: false instead of 404
       // This is a valid state - tenant simply hasn't configured WhatsApp yet
       return res.status(200).json({ 
@@ -86,13 +59,6 @@ router.get('/config', async (req: TenantRequest, res) => {
  */
 router.post('/config', async (req: TenantRequest, res) => {
   try {
-    // Log request for debugging
-    console.log('[WhatsApp Config] POST /config request received', {
-      tenantId: req.tenantId,
-      hasBody: !!req.body,
-      bodyKeys: req.body ? Object.keys(req.body) : [],
-    });
-
     if (!req.tenantId) {
       console.error('[WhatsApp Config] Missing tenantId in request');
       return res.status(401).json({
@@ -139,7 +105,7 @@ router.post('/config', async (req: TenantRequest, res) => {
     });
 
     // Return config without sensitive data
-    console.log('[WhatsApp Config] Configuration saved successfully', {
+    if (DEBUG_WHATSAPP) console.log('[WhatsApp Config] Configuration saved successfully', {
       tenantId: config.tenantId,
       phoneNumberId: config.phoneNumberId,
     });
@@ -191,7 +157,7 @@ router.post('/test-connection', async (req: TenantRequest, res) => {
   const startTime = Date.now();
   
   try {
-    console.log(`[WhatsApp Test Connection] [${requestId}] Request received`, {
+    if (DEBUG_WHATSAPP) console.log(`[WhatsApp Test Connection] [${requestId}] Request received`, {
       tenantId: req.tenantId,
       timestamp: new Date().toISOString(),
     });
@@ -208,7 +174,7 @@ router.post('/test-connection', async (req: TenantRequest, res) => {
     }
 
     const whatsappService = getWhatsAppApiService();
-    console.log(`[WhatsApp Test Connection] [${requestId}] Calling testConnection service`, {
+    if (DEBUG_WHATSAPP) console.log(`[WhatsApp Test Connection] [${requestId}] Calling testConnection service`, {
       tenantId: req.tenantId,
     });
     
@@ -217,7 +183,7 @@ router.post('/test-connection', async (req: TenantRequest, res) => {
     const duration = Date.now() - startTime;
     
     if (result.ok) {
-      console.log(`[WhatsApp Test Connection] [${requestId}] Connection test successful`, {
+      if (DEBUG_WHATSAPP) console.log(`[WhatsApp Test Connection] [${requestId}] Connection test successful`, {
         tenantId: req.tenantId,
         duration: `${duration}ms`,
         timestamp: new Date().toISOString(),
@@ -262,7 +228,7 @@ router.post('/send', async (req: TenantRequest, res) => {
   const startTime = Date.now();
   
   // Log immediately when route handler is called
-  console.log(`[WhatsApp Send] [${requestId}] ===== ROUTE HANDLER CALLED =====`, {
+  if (DEBUG_WHATSAPP) console.log(`[WhatsApp Send] [${requestId}] ===== ROUTE HANDLER CALLED =====`, {
     method: req.method,
     path: req.path,
     url: req.url,
@@ -290,7 +256,7 @@ router.post('/send', async (req: TenantRequest, res) => {
       });
     }
 
-    console.log(`[WhatsApp Send] [${requestId}] Request validated - tenant ID present`, {
+    if (DEBUG_WHATSAPP) console.log(`[WhatsApp Send] [${requestId}] Request validated - tenant ID present`, {
       tenantId: req.tenantId,
       hasPhoneNumber: !!req.body?.phoneNumber,
       hasMessage: !!req.body?.message,
@@ -316,7 +282,7 @@ router.post('/send', async (req: TenantRequest, res) => {
       });
     }
 
-    console.log(`[WhatsApp Send] [${requestId}] ✅ Fields validated, calling sendTextMessage service`, {
+    if (DEBUG_WHATSAPP) console.log(`[WhatsApp Send] [${requestId}] ✅ Fields validated, calling sendTextMessage service`, {
       tenantId: req.tenantId,
       phoneNumber: phoneNumber.substring(0, 5) + '***',
       phoneNumberLength: phoneNumber.length,
@@ -327,7 +293,7 @@ router.post('/send', async (req: TenantRequest, res) => {
     });
 
     const whatsappService = getWhatsAppApiService();
-    console.log(`[WhatsApp Send] [${requestId}] Service instance obtained, calling sendTextMessage`, {
+    if (DEBUG_WHATSAPP) console.log(`[WhatsApp Send] [${requestId}] Service instance obtained, calling sendTextMessage`, {
       timestamp: new Date().toISOString(),
     });
     
@@ -339,7 +305,7 @@ router.post('/send', async (req: TenantRequest, res) => {
     );
 
     const duration = Date.now() - startTime;
-    console.log(`[WhatsApp Send] [${requestId}] ✅✅✅ MESSAGE SENT SUCCESSFULLY ✅✅✅`, {
+    if (DEBUG_WHATSAPP) console.log(`[WhatsApp Send] [${requestId}] ✅✅✅ MESSAGE SENT SUCCESSFULLY ✅✅✅`, {
       messageId: result.messageId,
       wamId: result.wamId,
       status: result.status,
@@ -347,14 +313,14 @@ router.post('/send', async (req: TenantRequest, res) => {
       timestamp: new Date().toISOString(),
     });
 
-    console.log(`[WhatsApp Send] [${requestId}] Sending success response to client`, {
+    if (DEBUG_WHATSAPP) console.log(`[WhatsApp Send] [${requestId}] Sending success response to client`, {
       responseData: JSON.stringify(result).substring(0, 200),
       timestamp: new Date().toISOString(),
     });
 
     res.json(result);
     
-    console.log(`[WhatsApp Send] [${requestId}] ✅ Response sent to client`, {
+    if (DEBUG_WHATSAPP) console.log(`[WhatsApp Send] [${requestId}] ✅ Response sent to client`, {
       timestamp: new Date().toISOString(),
     });
   } catch (error: any) {
@@ -409,7 +375,7 @@ router.get('/messages', async (req: TenantRequest, res) => {
   try {
     const { contactId, phoneNumber, limit, offset } = req.query;
 
-    console.log(`[WhatsApp Messages] [${requestId}] Getting messages`, {
+    if (DEBUG_WHATSAPP) console.log(`[WhatsApp Messages] [${requestId}] Getting messages`, {
       tenantId: req.tenantId,
       contactId: contactId || null,
       phoneNumber: phoneNumber ? (phoneNumber as string).substring(0, 5) + '***' : null,
@@ -426,7 +392,7 @@ router.get('/messages', async (req: TenantRequest, res) => {
       offset: offset ? parseInt(offset as string, 10) : undefined,
     });
 
-    console.log(`[WhatsApp Messages] [${requestId}] ✅ Messages retrieved`, {
+    if (DEBUG_WHATSAPP) console.log(`[WhatsApp Messages] [${requestId}] ✅ Messages retrieved`, {
       count: messages.length,
       hasIncoming: messages.some(m => m.direction === 'incoming'),
       hasOutgoing: messages.some(m => m.direction === 'outgoing'),
@@ -474,7 +440,7 @@ router.get('/messages/:messageId/status', async (req: TenantRequest, res) => {
   try {
     const { messageId } = req.params;
 
-    console.log(`[WhatsApp Status] [${requestId}] Getting message status`, {
+    if (DEBUG_WHATSAPP) console.log(`[WhatsApp Status] [${requestId}] Getting message status`, {
       messageId,
       tenantId: req.tenantId,
       timestamp: new Date().toISOString(),
@@ -497,7 +463,7 @@ router.get('/messages/:messageId/status', async (req: TenantRequest, res) => {
     }
 
     const message = messages[0];
-    console.log(`[WhatsApp Status] [${requestId}] Message status retrieved`, {
+    if (DEBUG_WHATSAPP) console.log(`[WhatsApp Status] [${requestId}] Message status retrieved`, {
       messageId,
       status: message.status,
       wamId: message.wam_id || message.message_id,
@@ -538,7 +504,7 @@ router.get('/messages/:messageId/check-meta', async (req: TenantRequest, res) =>
   try {
     const { messageId } = req.params;
 
-    console.log(`[WhatsApp Meta Check] [${requestId}] Checking message status from Meta API`, {
+    if (DEBUG_WHATSAPP) console.log(`[WhatsApp Meta Check] [${requestId}] Checking message status from Meta API`, {
       messageId,
       tenantId: req.tenantId,
       timestamp: new Date().toISOString(),
@@ -573,7 +539,7 @@ router.get('/messages/:messageId/check-meta', async (req: TenantRequest, res) =>
 
     // Note: Meta doesn't have a direct status check endpoint for individual messages
     // Status updates come via webhooks. We'll return what we know from database.
-    console.log(`[WhatsApp Meta Check] [${requestId}] Message info retrieved`, {
+    if (DEBUG_WHATSAPP) console.log(`[WhatsApp Meta Check] [${requestId}] Message info retrieved`, {
       wamId,
       dbStatus: dbMessage.status,
       phoneNumber: dbMessage.phone_number?.substring(0, 5) + '***',
@@ -703,7 +669,7 @@ router.post('/send-document', async (req: TenantRequest, res) => {
       });
     }
 
-    console.log(`[WhatsApp Send Document] [${requestId}] Sending document`, {
+    if (DEBUG_WHATSAPP) console.log(`[WhatsApp Send Document] [${requestId}] Sending document`, {
       tenantId: req.tenantId,
       phoneNumber: phoneNumber.substring(0, 5) + '***',
       filename,
@@ -722,7 +688,7 @@ router.post('/send-document', async (req: TenantRequest, res) => {
     );
 
     const duration = Date.now() - startTime;
-    console.log(`[WhatsApp Send Document] [${requestId}] ✅ Document sent successfully`, {
+    if (DEBUG_WHATSAPP) console.log(`[WhatsApp Send Document] [${requestId}] ✅ Document sent successfully`, {
       messageId: result.messageId,
       duration: `${duration}ms`,
       timestamp: new Date().toISOString(),

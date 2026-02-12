@@ -18,6 +18,9 @@ interface RequestMetrics {
 const requestHistory: RequestMetrics[] = [];
 const MAX_HISTORY_SIZE = 1000;
 
+// Threshold (ms) above which we log slow API requests for performance diagnostics
+const SLOW_REQUEST_THRESHOLD_MS = 1000;
+
 // Middleware to track request metrics
 export function trackRequestMetrics(req: any, res: any, next: any) {
     const startTime = Date.now();
@@ -32,6 +35,14 @@ export function trackRequestMetrics(req: any, res: any, next: any) {
             path: req.path
         });
 
+        // Log slow requests for performance diagnostics (transactions, bills, invoices, etc.)
+        if (responseTime >= SLOW_REQUEST_THRESHOLD_MS && req.path?.startsWith('/api/')) {
+            const path = req.path || req.originalUrl || req.url || 'unknown';
+            console.warn(
+                `[PERF] Slow request: ${req.method} ${path} - ${responseTime}ms (status ${res.statusCode})`
+            );
+        }
+
         // Keep only recent history
         if (requestHistory.length > MAX_HISTORY_SIZE) {
             requestHistory.shift();
@@ -44,7 +55,6 @@ export function trackRequestMetrics(req: any, res: any, next: any) {
 // Get system metrics
 router.get('/', async (req: AdminRequest, res) => {
     try {
-        console.log('📊 System metrics requested by admin:', req.adminId);
         const db = getDb();
         const pool = db.getPool();
 
@@ -86,6 +96,23 @@ router.get('/', async (req: AdminRequest, res) => {
         const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
         const recentRequests = requestHistory.filter(r => r.timestamp > fiveMinutesAgo);
 
+        const slowRequests = recentRequests.filter(r => r.responseTime >= SLOW_REQUEST_THRESHOLD_MS);
+        const pathResponseTimes = recentRequests.reduce((acc: Record<string, number[]>, r) => {
+            const key = `${r.method} ${r.path}`;
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(r.responseTime);
+            return acc;
+        }, {});
+        const slowestPaths = Object.entries(pathResponseTimes)
+            .map(([path, times]) => ({
+                path,
+                count: times.length,
+                avgMs: Math.round(times.reduce((a, b) => a + b, 0) / times.length),
+                maxMs: Math.max(...times)
+            }))
+            .sort((a, b) => b.avgMs - a.avgMs)
+            .slice(0, 10);
+
         const requestMetrics = {
             totalRequests: recentRequests.length,
             requestsPerMinute: recentRequests.length / 5,
@@ -105,7 +132,10 @@ router.get('/', async (req: AdminRequest, res) => {
             methodDistribution: recentRequests.reduce((acc: Record<string, number>, r) => {
                 acc[r.method] = (acc[r.method] || 0) + 1;
                 return acc;
-            }, {})
+            }, {}),
+            slowRequestThresholdMs: SLOW_REQUEST_THRESHOLD_MS,
+            slowRequestCount: slowRequests.length,
+            slowestPaths
         };
 
         // 3. Database Metrics
@@ -262,7 +292,6 @@ router.get('/', async (req: AdminRequest, res) => {
             clients: clientMetrics
         };
 
-        console.log('✅ System metrics generated');
         res.json(metrics);
     } catch (error: any) {
         console.error('❌ Error fetching system metrics:', error);
