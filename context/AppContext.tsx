@@ -1497,23 +1497,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                         console.warn('⚠️ Could not save API data to local database:', saveError);
                                     }
                                 }
-                                    accounts: Array.from(apiAccountsMap.values()).length,
-                                    contacts: Array.from(apiContactsMap.values()).length,
-                                    transactions: Array.from(apiTransactionsMap.values()).length,
-                                    offlineTransactionsRestored: offlineTransactions.length,
-                                    categories: Array.from(apiCategoriesMap.values()).length,
-                                    projects: apiState.projects?.length || 0,
-                                    buildings: apiState.buildings?.length || 0,
-                                    properties: apiState.properties?.length || 0,
-                                    units: apiState.units?.length || 0,
-                                    invoices: Array.from(apiInvoicesMap.values()).length,
-                                    bills: Array.from(apiBillsMap.values()).length,
-                                    budgets: apiState.budgets?.length || 0,
-                                    vendors: Array.from(apiVendorsMap.values()).length,
-                                    rentalAgreements: apiState.rentalAgreements?.length || 0,
-                                    projectAgreements: apiState.projectAgreements?.length || 0,
-                                    contracts: apiState.contracts?.length || 0,
-                                });
                                 setInitProgress(80);
                             }
                         } catch (apiError) {
@@ -3534,10 +3517,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (auth.user && auth.isAuthenticated) {
             // User is authenticated - sync to state if not already synced
             if (!state.currentUser || state.currentUser.id !== auth.user.id) {
-                    authUserId: auth.user.id,
-                    authUsername: auth.user.username,
-                    currentStateUserId: state.currentUser?.id
-                });
                 dispatch({
                     type: 'LOGIN',
                     payload: {
