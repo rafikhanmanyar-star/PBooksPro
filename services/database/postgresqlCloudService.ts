@@ -9,6 +9,7 @@
  */
 
 import { getCloudDatabaseConnectionString, isCloudPostgreSQLEnabled } from '../../config/database';
+import { getApiBaseUrl } from '../../config/apiUrl';
 
 export interface CloudPostgreSQLConfig {
   connectionString: string;
@@ -21,14 +22,14 @@ class PostgreSQLLocalService {
   private isInitialized = false;
   private initializationError: Error | null = null;
   private apiBaseUrl: string;
+  private lastHealthCheckError: string | null = null;
+  private lastHealthCheckErrorTime = 0;
+  private static readonly HEALTH_CHECK_ERROR_THROTTLE_MS = 60_000;
 
   constructor() {
-    // Use API base URL for cloud database operations
-    // The actual PostgreSQL connection happens server-side via API
-    this.apiBaseUrl = process.env.VITE_API_BASE_URL || 
-                     (typeof window !== 'undefined' ? 
-                       `${window.location.protocol}//${window.location.hostname}:3000` : 
-                       'http://localhost:3000');
+    // Use same API URL as apiClient (VITE_API_URL) - critical for correct health check URL
+    // when deployed (e.g. pbookspro-api-staging.onrender.com, not client URL)
+    this.apiBaseUrl = getApiBaseUrl();
   }
 
   /**
@@ -41,16 +42,6 @@ class PostgreSQLLocalService {
     }
 
     try {
-      // For client-side, we don't need the database connection string
-      // The client connects via API, so we only need the API base URL
-      // Check if API base URL is available instead of database connection string
-      if (!this.apiBaseUrl) {
-        console.warn('⚠️ API base URL not configured, cloud PostgreSQL service will use default');
-        this.apiBaseUrl = typeof window !== 'undefined' 
-          ? `${window.location.protocol}//${window.location.hostname}:3000`
-          : 'http://localhost:3000';
-      }
-
       // Try to get connection string if available (for reference only, not used for connection)
       let connectionString: string | undefined;
       try {
@@ -156,13 +147,26 @@ class PostgreSQLLocalService {
       
       return true;
     } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      const now = Date.now();
+      const throttleExpired = now - this.lastHealthCheckErrorTime >= PostgreSQLLocalService.HEALTH_CHECK_ERROR_THROTTLE_MS;
+      const isSameError = this.lastHealthCheckError === errMsg;
+      const shouldLog = !isSameError || throttleExpired;
+      if (shouldLog) {
+        this.lastHealthCheckError = errMsg;
+        this.lastHealthCheckErrorTime = now;
+      }
       // If it's a timeout or network error, but browser says online, 
       // assume we're online (the API might be slow but working)
       if (typeof navigator !== 'undefined' && navigator.onLine) {
-        console.warn('[CloudPostgreSQL] Health check failed but browser is online, assuming online:', error);
+        if (shouldLog) {
+          console.warn('[CloudPostgreSQL] Health check failed but browser is online, assuming online:', error);
+        }
         return true; // Optimistic - data operations will fail gracefully if actually offline
       }
-      console.warn('[CloudPostgreSQL] Health check failed:', error);
+      if (shouldLog) {
+        console.warn('[CloudPostgreSQL] Health check failed:', error);
+      }
       return false;
     }
   }

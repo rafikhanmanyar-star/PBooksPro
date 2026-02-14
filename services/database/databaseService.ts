@@ -78,6 +78,86 @@ class OpfsStorage {
     }
 }
 
+const IDB_DB_NAME = 'PBooksPro_DB';
+const IDB_STORE_NAME = 'finance';
+const IDB_KEY = 'finance_db';
+
+/**
+ * IndexedDB storage adapter.
+ * Provides much larger quota than localStorage (~50MB+ vs ~5MB).
+ * Use as fallback when OPFS fails to avoid QuotaExceededError.
+ */
+class IndexedDBStorage {
+    private dbPromise: Promise<IDBDatabase> | null = null;
+
+    private getDb(): Promise<IDBDatabase> {
+        if (!this.dbPromise) {
+            this.dbPromise = new Promise((resolve, reject) => {
+                if (typeof indexedDB === 'undefined') {
+                    reject(new Error('IndexedDB not supported'));
+                    return;
+                }
+                const req = indexedDB.open(IDB_DB_NAME, 1);
+                req.onerror = () => reject(req.error);
+                req.onsuccess = () => resolve(req.result);
+                req.onupgradeneeded = (e) => {
+                    (e.target as IDBOpenDBRequest).result.createObjectStore(IDB_STORE_NAME);
+                };
+            });
+        }
+        return this.dbPromise;
+    }
+
+    async isSupported(): Promise<boolean> {
+        return typeof indexedDB !== 'undefined';
+    }
+
+    async load(): Promise<Uint8Array | null> {
+        if (!(await this.isSupported())) return null;
+        try {
+            const db = await this.getDb();
+            const result = await new Promise<ArrayBuffer | undefined>((resolve, reject) => {
+                const tx = db.transaction(IDB_STORE_NAME, 'readonly');
+                const req = tx.objectStore(IDB_STORE_NAME).get(IDB_KEY);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+            if (!result || !(result instanceof ArrayBuffer)) return null;
+            const arr = new Uint8Array(result);
+            return arr.length > 0 ? arr : null;
+        } catch {
+            return null;
+        }
+    }
+
+    async save(data: Uint8Array): Promise<void> {
+        if (!(await this.isSupported())) return;
+        const db = await this.getDb();
+        const buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+        await new Promise<void>((resolve, reject) => {
+            const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+            const req = tx.objectStore(IDB_STORE_NAME).put(buffer, IDB_KEY);
+            req.onsuccess = () => resolve();
+            req.onerror = () => reject(req.error);
+        });
+    }
+
+    async clear(): Promise<void> {
+        if (!(await this.isSupported())) return;
+        try {
+            const db = await this.getDb();
+            await new Promise<void>((resolve, reject) => {
+                const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+                const req = tx.objectStore(IDB_STORE_NAME).delete(IDB_KEY);
+                req.onsuccess = () => resolve();
+                req.onerror = () => reject(req.error);
+            });
+        } catch {
+            // Ignore
+        }
+    }
+}
+
 function errorToString(error: unknown): string {
     if (error instanceof Error) return error.message;
     return String(error ?? 'Unknown error');
@@ -99,7 +179,8 @@ class DatabaseService {
     private inTransaction = false;
     private sqlJsModule: any = null;
     private opfs = new OpfsStorage();
-    private storageMode: 'opfs' | 'localStorage' = 'localStorage';
+    private indexedDBStorage = new IndexedDBStorage();
+    private storageMode: 'opfs' | 'indexedDB' | 'localStorage' = 'localStorage';
     private saveLock: Promise<void> = Promise.resolve(); // Lock to prevent concurrent saves
     private lastPersistenceError: string | null = null;
     private lastPersistenceErrorTime = 0;
@@ -198,7 +279,22 @@ class DatabaseService {
                 }
             }
 
-            // 2. Fallback to localStorage
+            // 2. Fallback to IndexedDB (larger quota than localStorage)
+            if (!this.db && (await this.indexedDBStorage.isSupported())) {
+                const idbData = await this.indexedDBStorage.load();
+                if (idbData) {
+                    try {
+                        this.db = new SQL.Database(idbData);
+                        this.storageMode = 'indexedDB';
+                        logger.logCategory('database', '✅ Loaded existing database from IndexedDB');
+                        loadedData = idbData;
+                    } catch (parseError) {
+                        logger.warnCategory('database', '⚠️ Failed to parse IndexedDB database, trying localStorage:', parseError);
+                    }
+                }
+            }
+
+            // 3. Fallback to localStorage
             if (!this.db) {
                 const savedDb = localStorage.getItem('finance_db');
                 if (typeof savedDb === 'string') {
@@ -286,35 +382,49 @@ class DatabaseService {
                         throw recreateError;
                     }
 
-                    // Clear old storage
+                    // Clear old storage (OPFS, IndexedDB, localStorage)
                     try {
                         localStorage.removeItem('finance_db');
                         if (await this.opfs.isSupported()) {
-                            // Clear OPFS storage by overwriting with empty file
-                            const root = await (navigator as any).storage.getDirectory();
                             try {
+                                const root = await (navigator as any).storage.getDirectory();
                                 const handle = await root.getFileHandle('finance_db.sqlite', { create: true });
                                 const writable = await handle.createWritable();
                                 await writable.write(new Uint8Array(0));
                                 await writable.close();
-                            } catch (opfsClearError) {
+                            } catch {
                                 // Ignore - will be overwritten on save anyway
                             }
                         }
-                    } catch (clearError) {
+                        if (await this.indexedDBStorage.isSupported()) {
+                            await this.indexedDBStorage.clear();
+                        }
+                    } catch {
                         // Ignore - will be overwritten anyway
                     }
                 }
             }
 
-            // Migrate to OPFS if available
-            if (this.storageMode === 'localStorage' && (await this.opfs.isSupported())) {
-                try {
-                    await this.opfs.save(this.db.export());
-                    this.storageMode = 'opfs';
-                    logger.logCategory('database', '✅ Copied database to OPFS for durability');
-                } catch (copyError) {
-                    logger.warnCategory('database', '⚠️ Failed to copy database to OPFS, continuing with localStorage:', copyError);
+            // Migrate to OPFS or IndexedDB if available (both have larger quota than localStorage)
+            if (this.storageMode === 'localStorage') {
+                const exported = this.db.export();
+                if (await this.opfs.isSupported()) {
+                    try {
+                        await this.opfs.save(exported);
+                        this.storageMode = 'opfs';
+                        logger.logCategory('database', '✅ Copied database to OPFS for durability');
+                    } catch (copyError) {
+                        logger.warnCategory('database', '⚠️ Failed to copy database to OPFS, trying IndexedDB:', copyError);
+                    }
+                }
+                if (this.storageMode === 'localStorage' && (await this.indexedDBStorage.isSupported())) {
+                    try {
+                        await this.indexedDBStorage.save(exported);
+                        this.storageMode = 'indexedDB';
+                        logger.logCategory('database', '✅ Copied database to IndexedDB (avoids localStorage quota)');
+                    } catch (copyError) {
+                        logger.warnCategory('database', '⚠️ Failed to copy database to IndexedDB, continuing with localStorage:', copyError);
+                    }
                 }
             }
 
@@ -1617,12 +1727,29 @@ class DatabaseService {
                 } catch (opfsError) {
                     const errMsg = errorToString(opfsError);
                     if (this.shouldLogPersistenceError(`OPFS: ${errMsg}`)) {
-                        logger.warnCategory('database', `OPFS unavailable, using localStorage: ${errMsg}`);
+                        logger.warnCategory('database', `OPFS unavailable, trying IndexedDB: ${errMsg}`);
                     }
                 }
             }
 
-            // Fallback: localStorage
+            // Try IndexedDB (much larger quota than localStorage, avoids QuotaExceededError)
+            if (await this.indexedDBStorage.isSupported()) {
+                try {
+                    await this.indexedDBStorage.save(data);
+                    this.storageMode = 'indexedDB';
+                    this.lastPersistenceError = null; // Clear on success
+                    logger.logCategory('database', '✅ Database saved to IndexedDB');
+                    resolveLock!();
+                    return;
+                } catch (idbError) {
+                    const errMsg = errorToString(idbError);
+                    if (this.shouldLogPersistenceError(`IndexedDB: ${errMsg}`)) {
+                        logger.warnCategory('database', `IndexedDB save failed, falling back to localStorage: ${errMsg}`);
+                    }
+                }
+            }
+
+            // Fallback: localStorage (smallest quota, may throw QuotaExceededError)
             try {
                 const buffer = Array.from(data);
                 localStorage.setItem('finance_db', JSON.stringify(buffer));
@@ -1653,5 +1780,42 @@ export const getDatabaseService = (config?: DatabaseConfig): DatabaseService => 
     }
     return dbServiceInstance;
 };
+
+/**
+ * Clear all database storage (localStorage, OPFS, IndexedDB).
+ * Used by Fix button and console commands to fully reset local DB.
+ */
+export async function clearAllDatabaseStorage(): Promise<void> {
+    localStorage.removeItem('finance_db');
+    if (typeof navigator !== 'undefined' && navigator.storage?.getDirectory) {
+        try {
+            const root = await navigator.storage.getDirectory();
+            await root.removeEntry('finance_db.sqlite');
+        } catch {
+            // Ignore
+        }
+    }
+    if (typeof indexedDB !== 'undefined') {
+        try {
+            const db = await new Promise<IDBDatabase>((resolve, reject) => {
+                const req = indexedDB.open(IDB_DB_NAME, 1);
+                req.onerror = () => reject(req.error);
+                req.onsuccess = () => resolve(req.result);
+                req.onupgradeneeded = (e) => {
+                    (e.target as IDBOpenDBRequest).result.createObjectStore(IDB_STORE_NAME);
+                };
+            });
+            await new Promise<void>((resolve, reject) => {
+                const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+                const req = tx.objectStore(IDB_STORE_NAME).delete(IDB_KEY);
+                req.onsuccess = () => resolve();
+                req.onerror = () => reject(req.error);
+            });
+            db.close();
+        } catch {
+            // Ignore
+        }
+    }
+}
 
 export default DatabaseService;

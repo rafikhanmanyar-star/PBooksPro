@@ -3637,20 +3637,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 fixButton.style.cursor = 'wait';
 
                                 try {
-                                    // Clear localStorage
-                                    localStorage.removeItem('finance_db');
-                                    devLogger.log('✅ localStorage cleared');
-
-                                    // Clear OPFS if supported
-                                    if (navigator.storage && navigator.storage.getDirectory) {
-                                        try {
-                                            const root = await navigator.storage.getDirectory();
-                                            await root.removeEntry('finance_db.sqlite');
-                                            devLogger.log('✅ OPFS database cleared');
-                                        } catch (opfsError) {
-                                            devLogger.log('ℹ️ OPFS file not found or already cleared');
-                                        }
-                                    }
+                                    const { clearAllDatabaseStorage } = await import('../services/database/databaseService');
+                                    await clearAllDatabaseStorage();
+                                    devLogger.log('✅ localStorage, OPFS, and IndexedDB cleared');
 
                                     devLogger.log('🔄 Reloading to recreate database...');
                                     setTimeout(() => location.reload(), 500);
