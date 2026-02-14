@@ -116,14 +116,21 @@ class IndexedDBStorage {
         if (!(await this.isSupported())) return null;
         try {
             const db = await this.getDb();
-            const result = await new Promise<ArrayBuffer | undefined>((resolve, reject) => {
+            const result = await new Promise<ArrayBuffer | Blob | undefined>((resolve, reject) => {
                 const tx = db.transaction(IDB_STORE_NAME, 'readonly');
                 const req = tx.objectStore(IDB_STORE_NAME).get(IDB_KEY);
                 req.onsuccess = () => resolve(req.result);
                 req.onerror = () => reject(req.error);
             });
-            if (!result || !(result instanceof ArrayBuffer)) return null;
-            const arr = new Uint8Array(result);
+            if (!result) return null;
+            let arr: Uint8Array;
+            if (result instanceof Blob) {
+                arr = new Uint8Array(await result.arrayBuffer());
+            } else if (result instanceof ArrayBuffer) {
+                arr = new Uint8Array(result);
+            } else {
+                return null;
+            }
             return arr.length > 0 ? arr : null;
         } catch {
             return null;
@@ -133,10 +140,11 @@ class IndexedDBStorage {
     async save(data: Uint8Array): Promise<void> {
         if (!(await this.isSupported())) return;
         const db = await this.getDb();
-        const buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+        // Use Blob instead of ArrayBuffer - better large-data support in Safari/private mode
+        const blob = new Blob([data]);
         await new Promise<void>((resolve, reject) => {
             const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
-            const req = tx.objectStore(IDB_STORE_NAME).put(buffer, IDB_KEY);
+            const req = tx.objectStore(IDB_STORE_NAME).put(blob, IDB_KEY);
             req.onsuccess = () => resolve();
             req.onerror = () => reject(req.error);
         });
@@ -1743,13 +1751,30 @@ class DatabaseService {
                     return;
                 } catch (idbError) {
                     const errMsg = errorToString(idbError);
+                    const isQuotaError = errMsg.includes('QuotaExceeded') || errMsg.includes('quota');
                     if (this.shouldLogPersistenceError(`IndexedDB: ${errMsg}`)) {
-                        logger.warnCategory('database', `IndexedDB save failed, falling back to localStorage: ${errMsg}`);
+                        console.warn('[DATABASE] IndexedDB save failed:', idbError);
+                    }
+                    // If IndexedDB hit quota, localStorage will fail too - skip it and throw
+                    if (isQuotaError) {
+                        const sizeMB = (data.length / (1024 * 1024)).toFixed(1);
+                        throw new Error(
+                            `Storage quota exceeded (DB ~${sizeMB}MB). Please clear site data: DevTools → Application → Storage → Clear site data, then reload.`
+                        );
                     }
                 }
             }
 
-            // Fallback: localStorage (smallest quota, may throw QuotaExceededError)
+            // Fallback: localStorage only for small DBs (~4MB limit typical)
+            const estimatedJsonSize = data.length * 2.5; // JSON overhead for number array
+            const localStorageLimit = 4 * 1024 * 1024; // ~4MB
+            if (estimatedJsonSize > localStorageLimit) {
+                const sizeMB = (data.length / (1024 * 1024)).toFixed(1);
+                throw new Error(
+                    `Database too large for localStorage (~${sizeMB}MB). IndexedDB failed. Clear site data and reload, or use a different browser.`
+                );
+            }
+
             try {
                 const buffer = Array.from(data);
                 localStorage.setItem('finance_db', JSON.stringify(buffer));
@@ -1757,7 +1782,13 @@ class DatabaseService {
                 this.lastPersistenceError = null; // Clear on success
                 logger.logCategory('database', '✅ Database saved to localStorage');
             } catch (lsError) {
-                throw lsError; // Let outer catch log once
+                const errMsg = errorToString(lsError);
+                if (errMsg.includes('QuotaExceeded') || errMsg.includes('quota')) {
+                    throw new Error(
+                        'Storage quota exceeded. Clear site data: DevTools → Application → Storage → Clear site data, then reload.'
+                    );
+                }
+                throw lsError;
             }
         } catch (error) {
             const errMsg = errorToString(error);
