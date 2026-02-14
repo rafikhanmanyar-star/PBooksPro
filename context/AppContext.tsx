@@ -15,9 +15,6 @@ import { getSyncQueue } from '../services/syncQueue';
 import { getConnectionMonitor } from '../services/connectionMonitor';
 import { SyncOperationType } from '../types/sync';
 import { getLastSyncTimestamp, setLastSyncTimestamp, isLastSyncRecent, clearLastSyncTimestamp } from '../utils/lastSyncStorage';
-import { devLogger } from '../utils/devLogger';
-import { navPerfLog } from '../utils/navPerfLogger';
-
 // PERFORMANCE: Module-level constant set of action types that trigger API sync.
 // Previously this 60+ entry Set was re-created on EVERY dispatch call inside useCallback.
 const SYNC_TO_API_ACTIONS = new Set<string>([
@@ -1077,13 +1074,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Hooks must be called unconditionally - always call both hooks
     // Then use the appropriate one based on useFallback state
     // Add error boundary logging before hooks
-    devLogger.log('[AppContext] About to initialize database hooks...');
-    devLogger.log('[AppContext] initialState keys:', Object.keys(initialState));
 
     const [dbState, setDbState, dbStateHelpers] = useDatabaseState<AppState>('finance_app_state_v4', initialState);
     const [fallbackState, setFallbackState] = useDatabaseStateFallback<AppState>('finance_app_state_v4', initialState);
 
-    devLogger.log('[AppContext] Database hooks initialized successfully');
 
     // Initialize storedState safely - use initialState as fallback if hooks aren't ready
     const storedState = (useFallback ? fallbackState : dbState) || initialState;
@@ -1122,7 +1116,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setStoredState(prev => {
             if (prev.currentUser && (isAppRelaunched || versionChanged)) {
                 const reason = versionChanged ? `Version changed (${storedVersion} -> ${currentVersion})` : 'Application relaunched';
-                devLogger.log(`🔄 ${reason} - logging out user`);
                 return { ...prev, currentUser: null };
             }
             return prev;
@@ -1171,7 +1164,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const runMigration = async () => {
             try {
-                devLogger.log('🚀 Starting app initialization...');
 
                 // Safety timeout - if initialization takes more than 30 seconds, show error
                 timeoutId = setTimeout(() => {
@@ -1217,7 +1209,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             if (isMounted) setIsInitializing(false);
                         }, 2000);
                     } else if (result.migrated) {
-                        devLogger.log('Migration completed successfully:', result.recordCounts);
                         const recordCount = Object.values(result.recordCounts || {}).reduce((a, b) => a + b, 0);
 
                         // Reload state after migration
@@ -1323,7 +1314,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     const currentTenantId = auth.tenant?.id || auth.user?.tenantId;
 
                                     if (currentTenantId && localTenantId && currentTenantId !== localTenantId) {
-                                        devLogger.log(`🔄 Tenant switch detected: ${localTenantId} -> ${currentTenantId}. Clearing local data...`);
 
                                         const { ContactsRepository, TransactionsRepository, AccountsRepository,
                                             CategoriesRepository, ProjectsRepository, BuildingsRepository,
@@ -1351,7 +1341,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                         }
 
                                         await settingsRepo.set('tenantId', currentTenantId);
-                                        devLogger.log('🗑️ Cleared local database data to prevent cross-tenant leakage');
                                     } else if (currentTenantId && !localTenantId) {
                                         // First time initialization - set the tenant ID
                                         await settingsRepo.set('tenantId', currentTenantId);
@@ -1508,7 +1497,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                         console.warn('⚠️ Could not save API data to local database:', saveError);
                                     }
                                 }
-                                devLogger.log('✅ Loaded and merged data from API + offline sync queue:', {
                                     accounts: Array.from(apiAccountsMap.values()).length,
                                     contacts: Array.from(apiContactsMap.values()).length,
                                     transactions: Array.from(apiTransactionsMap.values()).length,
@@ -1604,7 +1592,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 setTimeout(() => {
                     if (isMounted) {
                         setIsInitializing(false);
-                        devLogger.log('✅ App continuing with localStorage fallback');
                     }
                 }, 2000);
             }
@@ -1621,8 +1608,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 2. Wrap Reducer to Persist - OPTIMIZED: Skip sync for navigation actions
     const reducerWithPersistence = useCallback((state: AppState, action: AppAction) => {
-        const navPerfStart = action.type === 'SET_PAGE' ? performance.now() : 0;
-        if (action.type === 'SET_PAGE') navPerfLog('SET_PAGE reducer start', { page: action.payload });
         const newState = reducer(state, action);
 
         // Optimization: If state didn't change (e.g. duplicate add), do nothing (no sync, no persistence)
@@ -2586,10 +2571,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // No peer-to-peer sync needed
         }
 
-        if (action.type === 'SET_PAGE' && navPerfStart > 0) {
-            const navPerfDuration = performance.now() - navPerfStart;
-            navPerfLog('SET_PAGE reducer done', { page: action.payload, durationMs: Math.round(navPerfDuration) });
-        }
         return newState;
     }, [isAuthenticated]);
 
@@ -2634,14 +2615,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // Sync if database has more data or has user data when current doesn't
             // Only sync once during initialization to avoid infinite loops
             if ((storedHasMoreData || (storedHasUserData && !currentHasUserData)) && !reducerInitializedRef.current) {
-                devLogger.log('🔄 Syncing reducer state with loaded database state:', {
-                    storedContacts: currentStoredState.contacts.length,
-                    currentContacts: state.contacts.length,
-                    storedTransactions: currentStoredState.transactions.length,
-                    currentTransactions: state.transactions.length,
-                    storedInvoices: currentStoredState.invoices.length,
-                    currentInvoices: state.invoices.length
-                });
                 dispatch({ type: 'SET_STATE', payload: currentStoredState, _isRemote: true } as any);
                 reducerInitializedRef.current = true;
             } else if (storedHasUserData && currentHasUserData) {
@@ -2665,7 +2638,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, [state]);
 
     const refreshFromApi = useCallback(async (onCriticalLoaded?: () => void) => {
-        navPerfLog('refreshFromApi called');
         if (!isAuthenticated) return;
         const apiService = getAppStateApiService();
 
@@ -2779,7 +2751,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const cloudSettings = event.detail;
             if (!cloudSettings || typeof cloudSettings !== 'object') return;
 
-            devLogger.log('📥 Received cloud settings, applying to state...');
 
             // Apply settings to state
             if (cloudSettings.printSettings) {
@@ -2819,7 +2790,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 dispatch({ type: 'UPDATE_PROJECT_INVOICE_SETTINGS', payload: cloudSettings.projectInvoiceSettings });
             }
 
-            devLogger.log('✅ Cloud settings applied to state');
         };
 
         window.addEventListener('load-cloud-settings', handleCloudSettingsLoaded as EventListener);
@@ -2851,10 +2821,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const syncStatus = await apiClient.get<{ shouldEnableSync: boolean; userCount: number }>('/tenants/should-enable-sync');
                     shouldEnableSync = syncStatus.shouldEnableSync;
                     if (!shouldEnableSync) {
-                        devLogger.log(`⏭️ Skipping WebSocket connection - organization has only ${syncStatus.userCount} user(s). Real-time sync is disabled for single-user organizations.`);
                         return;
                     }
-                    devLogger.log(`✅ Enabling real-time sync - organization has ${syncStatus.userCount} active user(s)`);
                 } catch (syncCheckError) {
                     // If check fails, log warning but don't block - allow connection to proceed
                     // This ensures sync still works even if the endpoint is temporarily unavailable
@@ -2876,7 +2844,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const currentUser = stateRef.current.currentUser;
                     if (eventData?.userId && currentUser?.id) {
                         if (eventData.userId === currentUser.id) {
-                            devLogger.log('🔄 Skipping WebSocket refresh - event from current user:', eventData.userId);
                             return;
                         }
                     }
@@ -3461,7 +3428,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // Fast check: Skip if only navigation changed (most common case)
             if (prevCurrentPageRef.current !== state.currentPage) {
                 prevCurrentPageRef.current = state.currentPage;
-                navPerfLog('persist effect: skip (nav only)', { page: state.currentPage });
                 // Navigation change - skip save (performance optimization)
                 return;
             }
@@ -3482,7 +3448,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             // Only persist if data changed
             if (dataChanged) {
-                navPerfLog('persist effect: saving state (data changed)');
                 // Update refs
                 prevContactsLengthRef.current = state.contacts.length;
                 prevTransactionsLengthRef.current = state.transactions.length;
@@ -3539,12 +3504,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const doSave = async () => {
                         try {
                             await saveNow(state);
-                            devLogger.log('✅ State saved immediately after data change:', {
-                                contacts: state.contacts.length,
-                                transactions: state.transactions.length,
-                                bills: state.bills.length,
-                                invoices: state.invoices.length,
-                            });
                         } catch (error) {
                             console.error('❌ Failed to save state after data change:', error);
                             const { getErrorLogger } = await import('../services/errorLogger');
@@ -3575,7 +3534,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (auth.user && auth.isAuthenticated) {
             // User is authenticated - sync to state if not already synced
             if (!state.currentUser || state.currentUser.id !== auth.user.id) {
-                devLogger.log('[AppContext] 🔄 Syncing authenticated user to state:', {
                     authUserId: auth.user.id,
                     authUsername: auth.user.username,
                     currentStateUserId: state.currentUser?.id
@@ -3592,7 +3550,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
         } else if (!auth.isAuthenticated && state.currentUser) {
             // User logged out - clear from state
-            devLogger.log('[AppContext] 🚪 User logged out, clearing from state');
             dispatch({ type: 'LOGOUT' });
         }
     }, [auth.user, auth.isAuthenticated, state.currentUser]);
@@ -3602,14 +3559,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const saveTimer = setTimeout(async () => {
                 try {
                     await saveNow(state);
-                    devLogger.log('✅ State saved after login');
                 } catch (error) {
                     console.error('Failed to save state after login:', error);
                     // Check if it's a missing table error
                     const errorMsg = error instanceof Error ? error.message : String(error);
                     if (errorMsg.includes('no such table')) {
                         console.error('❌ CRITICAL: Missing database table!', errorMsg);
-                        devLogger.log('💡 To fix this issue, clear both localStorage AND OPFS storage');
 
                         // Show user-friendly error
                         const errorDiv = document.createElement('div');
@@ -3639,9 +3594,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 try {
                                     const { clearAllDatabaseStorage } = await import('../services/database/databaseService');
                                     await clearAllDatabaseStorage();
-                                    devLogger.log('✅ localStorage, OPFS, and IndexedDB cleared');
 
-                                    devLogger.log('🔄 Reloading to recreate database...');
                                     setTimeout(() => location.reload(), 500);
                                 } catch (error) {
                                     console.error('Error during fix:', error);

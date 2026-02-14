@@ -51,7 +51,6 @@ class PostgreSQLLocalService {
       } catch (error) {
         // Connection string not available on client-side - this is OK
         // Client connects via API, not directly to database
-        console.log('ℹ️ Database connection string not available on client (this is normal)');
       }
 
       // For client-side, we don't establish direct connection
@@ -84,21 +83,17 @@ class PostgreSQLLocalService {
           throw new Error(`Health check failed: ${msg} (${status})`);
         }
       } catch (error) {
-        console.warn('⚠️ Cloud database health check failed, but continuing:', error);
         // Don't throw - allow service to be used even if health check fails.
         // 503 is common when the backend is cold-starting (e.g. on Render).
       }
 
       this.isInitialized = true;
-      console.log('✅ Cloud PostgreSQL service initialized (via API)');
     } catch (error) {
       // Don't throw - allow app to continue even if cloud service init fails
       // The app can still work with local database or API calls will handle errors
-      console.warn('⚠️ Cloud PostgreSQL service initialization had issues (non-critical):', error);
       // Still mark as initialized so the service can be used (API calls will handle connection)
       this.isInitialized = true;
       this.initializationError = null; // Clear error so service is considered ready
-      console.log('✅ Cloud PostgreSQL service initialized (degraded mode - API calls will handle connection)');
     }
   }
 
@@ -141,7 +136,6 @@ class PostgreSQLLocalService {
       });
       
       if (!response.ok) {
-        console.warn(`[CloudPostgreSQL] Health check returned ${response.status}`);
         return false;
       }
       
