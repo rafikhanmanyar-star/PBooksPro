@@ -69,7 +69,8 @@ const IMPORT_ORDER = [
   { name: 'Units', dependencies: ['Projects', 'Contacts'], description: 'Import units (depends on Projects and Contacts)' },
   { name: 'Properties', dependencies: ['Contacts', 'Buildings'], description: 'Import properties (depends on Contacts and Buildings)' },
   { name: 'RentalAgreements', dependencies: ['Properties', 'Contacts'], description: 'Import rental agreements (depends on Properties and Contacts)' },
-  { name: 'RentalInvoices', dependencies: ['RentalAgreements', 'Contacts', 'Properties'], description: 'Import rental invoices (depends on Rental Agreements, Contacts, and Properties)' }
+  { name: 'RentalInvoices', dependencies: ['RentalAgreements', 'Contacts', 'Properties'], description: 'Import rental invoices (depends on Rental Agreements, Contacts, and Properties)' },
+  { name: 'LoanTransactions', dependencies: ['Accounts'], description: 'Import loan transactions (Give/Receive/Repay/Collect); link account and contact by name' }
 ];
 
 const ImportExportWizard: React.FC = () => {
@@ -474,7 +475,7 @@ const ImportExportWizard: React.FC = () => {
               <h4 className="font-semibold text-blue-900 mb-2">💡 Quick Start</h4>
               <p className="text-sm text-blue-800">
                 You can <strong>directly import your Excel file</strong> without downloading a template first. 
-                Just make sure your Excel file has sheets named: <strong>Contacts, Projects, Buildings, Properties, Units, Categories, Accounts</strong> 
+                Just make sure your Excel file has sheets named: <strong>Contacts, Projects, Buildings, Properties, Units, Categories, Accounts, LoanTransactions</strong> 
                 with the correct column headers. Click "Import Data" to get started.
               </p>
             </div>
@@ -506,7 +507,7 @@ const ImportExportWizard: React.FC = () => {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
               <h3 className="font-semibold text-blue-900 mb-2">Template Information</h3>
               <p className="text-sm text-blue-800">
-                The template includes sheets for: Contacts, Projects, Buildings, Properties, Units, Categories, and Accounts.
+                The template includes sheets for: Contacts, Projects, Buildings, Properties, Units, Categories, Accounts, and Loan Transactions.
                 Each sheet contains column headers. Fill in your data and import the file.
               </p>
             </div>

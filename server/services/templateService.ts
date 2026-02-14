@@ -17,7 +17,8 @@ export const IMPORT_ORDER = [
   { name: 'Units', dependencies: ['Projects', 'Contacts'], description: 'Import units (depends on Projects and Contacts)' },
   { name: 'Properties', dependencies: ['Contacts', 'Buildings'], description: 'Import properties (depends on Contacts and Buildings)' },
   { name: 'RentalAgreements', dependencies: ['Properties', 'Contacts'], description: 'Import rental agreements (depends on Properties and Contacts)' },
-  { name: 'RentalInvoices', dependencies: ['RentalAgreements', 'Contacts', 'Properties'], description: 'Import rental invoices (depends on Rental Agreements, Contacts, and Properties)' }
+  { name: 'RentalInvoices', dependencies: ['RentalAgreements', 'Contacts', 'Properties'], description: 'Import rental invoices (depends on Rental Agreements, Contacts, and Properties)' },
+  { name: 'LoanTransactions', dependencies: ['Accounts'], description: 'Import loan transactions (Give/Receive/Repay/Collect); optionally link account and contact by name' }
 ];
 
 /**
@@ -219,6 +220,37 @@ export async function generateTemplate(options: TemplateOptions): Promise<Buffer
           [options.tenantId]
         );
         return invoices.length > 0 ? [invoices[0]] : [];
+      }
+    },
+    {
+      name: 'LoanTransactions',
+      headers: ['subtype', 'amount', 'date', 'description', 'accountName', 'contactName'],
+      required: ['subtype', 'amount', 'date'],
+      getSampleData: async () => {
+        if (!options.includeSampleData) return [];
+        const rows = await db.query(
+          `SELECT 
+            t.subtype,
+            t.amount,
+            t.date,
+            t.description,
+            a.name as account_name,
+            c.name as contact_name
+          FROM transactions t
+          LEFT JOIN accounts a ON t.account_id = a.id
+          LEFT JOIN contacts c ON t.contact_id = c.id
+          WHERE t.tenant_id = $1 AND t.type = 'Loan' LIMIT 1`,
+          [options.tenantId]
+        );
+        if (rows.length === 0) return [];
+        return [{
+          subtype: rows[0].subtype,
+          amount: rows[0].amount,
+          date: rows[0].date,
+          description: rows[0].description || '',
+          accountName: rows[0].account_name || '',
+          contactName: rows[0].contact_name || ''
+        }];
       }
     }
   ];

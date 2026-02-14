@@ -4,6 +4,7 @@ import { useProgress } from '../../context/ProgressContext';
 import { useNotification } from '../../context/NotificationContext';
 import { createBackup, restoreBackup, createProjectBackup, createBuildingBackup, restoreProjectBuildingBackup, createLoansInvestorsPMBackup, restoreLoansInvestorsPMBackup } from '../../services/backupService';
 import { exportToExcel } from '../../services/exportService';
+import { getApiBaseUrl } from '../../config/apiUrl';
 import { ICONS } from '../../constants';
 import Button from '../ui/Button';
 import Modal from '../ui/Modal';
@@ -22,6 +23,7 @@ const BackupRestorePage: React.FC = () => {
     const [isProjectPickerOpen, setIsProjectPickerOpen] = useState(false);
     const [isBuildingPickerOpen, setIsBuildingPickerOpen] = useState(false);
     const [isExportDataModalOpen, setIsExportDataModalOpen] = useState(false);
+    const [isTemplateDownloading, setIsTemplateDownloading] = useState(false);
     
     const fullBackupFileRef = useRef<HTMLInputElement>(null);
     const projectBackupFileRef = useRef<HTMLInputElement>(null);
@@ -91,6 +93,48 @@ const BackupRestorePage: React.FC = () => {
     };
     
     const handleImportExcel = () => dispatch({ type: 'SET_PAGE', payload: 'import' });
+    
+    const handleDownloadTemplate = async () => {
+        try {
+            setIsTemplateDownloading(true);
+            const baseUrl = getApiBaseUrl();
+            const token = localStorage.getItem('auth_token') || '';
+            const tenantId = localStorage.getItem('tenant_id') || '';
+            if (!token || !tenantId) {
+                showToast('Please log in to download the template.', 'error');
+                return;
+            }
+            const response = await fetch(`${baseUrl}/data-import-export/template`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-Tenant-ID': tenantId
+                }
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.message || err.error || response.statusText);
+            }
+            const blob = await response.blob();
+            if (blob.type === 'application/json') {
+                const err = await blob.text().then(t => JSON.parse(t));
+                throw new Error(err.message || err.error || 'Failed to download template');
+            }
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `import-template-${new Date().toISOString().split('T')[0]}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            showToast('Template downloaded. Fill in your data and use Bulk Import.', 'success');
+        } catch (e: any) {
+            showToast(e?.message || 'Failed to download template', 'error');
+        } finally {
+            setIsTemplateDownloading(false);
+        }
+    };
     
     const handleExportExcel = () => {
         const filename = `MyAccountant_Data_${new Date().toISOString().split('T')[0]}.xlsx`;
@@ -291,12 +335,15 @@ const BackupRestorePage: React.FC = () => {
                     Excel Data Import & Export
                 </h4>
                 <p className="text-sm text-slate-600 mb-4">Import and export data in Excel or CSV format for easy editing and bulk operations.</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                    <button onClick={handleDownloadTemplate} disabled={isTemplateDownloading} className="p-3 bg-white border border-slate-200 rounded-lg hover:bg-blue-50 hover:border-blue-200 hover:shadow-sm transition-all text-left group disabled:opacity-70">
+                        <div className="font-semibold text-slate-700 group-hover:text-blue-700 mb-1">Download Template</div>
+                        <p className="text-xs text-slate-500">Get Excel template for contacts, accounts, loan transactions, and more</p>
+                    </button>
                     <button onClick={handleImportExcel} className="p-3 bg-white border border-slate-200 rounded-lg hover:bg-emerald-50 hover:border-emerald-200 hover:shadow-sm transition-all text-left group">
                         <div className="font-semibold text-slate-700 group-hover:text-emerald-700 mb-1">Bulk Import</div>
-                        <p className="text-xs text-slate-500">Bulk import accounts & transactions from Excel</p>
+                        <p className="text-xs text-slate-500">Import contacts, accounts, loan transactions, and more from Excel</p>
                     </button>
-
                     <button onClick={handleExportExcel} className="p-3 bg-white border border-slate-200 rounded-lg hover:bg-emerald-50 hover:border-emerald-200 hover:shadow-sm transition-all text-left group">
                         <div className="font-semibold text-slate-700 group-hover:text-emerald-700 mb-1">Export All to Excel</div>
                         <p className="text-xs text-slate-500">Download all data as .xlsx file</p>

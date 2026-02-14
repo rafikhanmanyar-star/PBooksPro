@@ -71,7 +71,7 @@ export async function importData(
   let duplicateRows = 0;
 
   // Define import order with dependencies
-  // Order: Accounts → Contacts → Categories → Projects → Buildings → Units → Properties → RentalAgreements → RentalInvoices
+  // Order: Accounts → Contacts → ... → RentalInvoices → LoanTransactions
   const importOrder = [
     { name: 'Accounts', dependencies: [] },
     { name: 'Contacts', dependencies: [] },
@@ -81,7 +81,8 @@ export async function importData(
     { name: 'Units', dependencies: ['Projects', 'Contacts'] }, // Contacts is optional
     { name: 'Properties', dependencies: ['Contacts', 'Buildings'] },
     { name: 'RentalAgreements', dependencies: ['Properties', 'Contacts'] },
-    { name: 'RentalInvoices', dependencies: ['RentalAgreements', 'Contacts', 'Properties'] }
+    { name: 'RentalInvoices', dependencies: ['RentalAgreements', 'Contacts', 'Properties'] },
+    { name: 'LoanTransactions', dependencies: ['Accounts'] }
   ];
 
   // If single sheet import, filter to that sheet only
@@ -151,6 +152,7 @@ export async function importData(
     accounts: any[];
     rentalAgreements: any[];
     rentalInvoices: any[];
+    loanTransactions: any[];
   } = {
     contacts: [],
     projects: [],
@@ -160,7 +162,8 @@ export async function importData(
     categories: [],
     accounts: [],
     rentalAgreements: [],
-    rentalInvoices: []
+    rentalInvoices: [],
+    loanTransactions: []
   };
 
   const sheetErrors: { [sheetName: string]: ValidationError[] } = {};
@@ -242,7 +245,8 @@ export async function importData(
     categories: { count: 0, skipped: 0 },
     accounts: { count: 0, skipped: 0 },
     rentalAgreements: { count: 0, skipped: 0 },
-    rentalInvoices: { count: 0, skipped: 0 }
+    rentalInvoices: { count: 0, skipped: 0 },
+    loanTransactions: { count: 0, skipped: 0 }
   };
 
   const sheetResults: SheetResult[] = [];
@@ -488,6 +492,31 @@ export async function importData(
               importedRows++;
             }
             break;
+
+          case 'LoanTransactions':
+            for (const tx of validatedData.loanTransactions) {
+              const txId = `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              await client.query(
+                `INSERT INTO transactions (
+                  id, tenant_id, user_id, type, subtype, amount, date, description, account_id, contact_id,
+                  from_account_id, to_account_id, category_id, vendor_id, project_id, building_id, property_id, unit_id,
+                  invoice_id, bill_id, payslip_id, contract_id, agreement_id, batch_id, is_system, created_at, updated_at
+                ) VALUES ($1, $2, $3, 'Loan', $4, $5, $6, $7, $8, $9, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, false, NOW(), NOW())`,
+                [txId, tenantId, userId, tx.subtype, tx.amount, tx.date, tx.description, tx.account_id, tx.contact_id]
+              );
+              if (tx.account_id) {
+                const isPositive = tx.subtype === 'Receive Loan' || tx.subtype === 'Collect Loan';
+                const delta = isPositive ? tx.amount : -tx.amount;
+                await client.query(
+                  'UPDATE accounts SET balance = balance + $1, updated_at = NOW() WHERE id = $2 AND (tenant_id = $3 OR tenant_id IS NULL)',
+                  [delta, tx.account_id, tenantId]
+                );
+              }
+              imported.loanTransactions.count++;
+              sheetImported++;
+              importedRows++;
+            }
+            break;
         }
 
         // Record sheet result
@@ -592,6 +621,9 @@ async function validateSheet(
         break;
       case 'RentalInvoices':
         await validateRentalInvoiceRow(row, excelRow, db, tenantId, validatedData.rentalInvoices, validationErrors, duplicates);
+        break;
+      case 'LoanTransactions':
+        await validateLoanTransactionRow(row, excelRow, db, tenantId, validatedData.loanTransactions, validationErrors);
         break;
     }
   }
@@ -1516,5 +1548,122 @@ async function validateRentalInvoiceRow(
     security_deposit_charge: row.security_deposit_charge ? parseFloat(row.security_deposit_charge.toString()) || null : null,
     service_charges: row.service_charges ? parseFloat(row.service_charges.toString()) || null : null,
     description: row.description ? row.description.toString().trim() : null
+  });
+}
+
+const VALID_LOAN_SUBTYPES = ['Give Loan', 'Receive Loan', 'Repay Loan', 'Collect Loan'];
+
+async function validateLoanTransactionRow(
+  row: any,
+  excelRow: number,
+  db: any,
+  tenantId: string,
+  validatedData: any[],
+  errors: ValidationError[]
+): Promise<void> {
+  const subtypeRaw = (row.subtype ?? row.Subtype ?? '').toString().trim();
+  if (!subtypeRaw) {
+    errors.push({
+      sheet: 'LoanTransactions',
+      row: excelRow,
+      field: 'subtype',
+      value: row.subtype,
+      message: 'Subtype is required (Give Loan, Receive Loan, Repay Loan, or Collect Loan)'
+    });
+    return;
+  }
+  if (!VALID_LOAN_SUBTYPES.includes(subtypeRaw)) {
+    errors.push({
+      sheet: 'LoanTransactions',
+      row: excelRow,
+      field: 'subtype',
+      value: subtypeRaw,
+      message: `Invalid subtype. Use one of: ${VALID_LOAN_SUBTYPES.join(', ')}`
+    });
+    return;
+  }
+
+  const amount = parseFloat((row.amount ?? row.Amount ?? '').toString());
+  if (isNaN(amount) || amount <= 0) {
+    errors.push({
+      sheet: 'LoanTransactions',
+      row: excelRow,
+      field: 'amount',
+      value: row.amount,
+      message: 'Amount is required and must be a positive number'
+    });
+    return;
+  }
+
+  if (!row.date && row.Date === undefined) {
+    errors.push({
+      sheet: 'LoanTransactions',
+      row: excelRow,
+      field: 'date',
+      value: row.date,
+      message: 'Date is required (YYYY-MM-DD)'
+    });
+    return;
+  }
+  const dateVal = new Date((row.date ?? row.Date).toString());
+  if (isNaN(dateVal.getTime())) {
+    errors.push({
+      sheet: 'LoanTransactions',
+      row: excelRow,
+      field: 'date',
+      value: row.date,
+      message: 'Invalid date format (use YYYY-MM-DD)'
+    });
+    return;
+  }
+
+  const accountName = (row.accountName ?? row.AccountName ?? '').toString().trim();
+  const contactName = (row.contactName ?? row.ContactName ?? '').toString().trim();
+  let account_id: string | null = null;
+  let contact_id: string | null = null;
+
+  if (accountName) {
+    const acc = await db.query(
+      'SELECT id FROM accounts WHERE (tenant_id = $1 OR tenant_id IS NULL) AND LOWER(TRIM(name)) = LOWER($2)',
+      [tenantId, accountName]
+    );
+    if (acc.length === 0) {
+      errors.push({
+        sheet: 'LoanTransactions',
+        row: excelRow,
+        field: 'accountName',
+        value: accountName,
+        message: `Account "${accountName}" not found. Import Accounts first or use an existing account name.`
+      });
+      return;
+    }
+    account_id = acc[0].id;
+  }
+
+  if (contactName) {
+    const contact = await db.query(
+      'SELECT id FROM contacts WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+      [tenantId, contactName]
+    );
+    if (contact.length === 0) {
+      errors.push({
+        sheet: 'LoanTransactions',
+        row: excelRow,
+        field: 'contactName',
+        value: contactName,
+        message: `Contact "${contactName}" not found. Import Contacts first or leave contact blank.`
+      });
+      return;
+    }
+    contact_id = contact[0].id;
+  }
+
+  validatedData.push({
+    subtype: subtypeRaw,
+    amount,
+    date: dateVal.toISOString().split('T')[0],
+    description: (row.description ?? row.Description ?? '').toString().trim() || null,
+    account_id,
+    contact_id
   });
 }
