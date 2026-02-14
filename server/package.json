@@ -21,6 +21,7 @@
     "drop-production-only-tables": "tsx scripts/drop-production-only-tables.ts",
     "drop-production-only-columns": "tsx scripts/drop-production-only-columns.ts",
     "clean-staging": "tsx scripts/clean-staging-db.ts",
+    "copy-production-to-staging": "tsx scripts/copy-production-to-staging.ts",
     "generate-diff": "tsx scripts/generate-production-diff.ts"
   },
   "dependencies": {

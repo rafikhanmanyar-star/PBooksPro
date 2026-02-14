@@ -141,52 +141,50 @@ class SyncManager {
   }
 
   /**
-   * Sync on login - called explicitly when user logs in
+   * Sync on login - delegates to BidirectionalSyncService (outbox is source of truth).
    */
   async syncOnLogin(): Promise<void> {
     if (isMobileDevice()) {
       return; // No sync needed on mobile
     }
 
-    // Check authentication
     const authenticated = await this.isAuthenticated();
     if (!authenticated) {
       devLogger.log('[SyncManager] Cannot sync on login: User not authenticated');
       return;
     }
 
-    // Sync pending operations
-    const pendingCount = this.queue.filter(op => op.status === 'pending' || op.status === 'failed').length;
-    if (pendingCount > 0) {
-      devLogger.log(`[SyncManager] User logged in, syncing ${pendingCount} pending operations...`);
-      await this.syncQueueBatch();
+    const tenantId = this.getCurrentTenantId();
+    if (tenantId) {
+      devLogger.log('[SyncManager] User logged in, triggering bi-directional sync...');
+      const { getBidirectionalSyncService } = await import('./bidirectionalSyncService');
+      await getBidirectionalSyncService().runSync(tenantId);
     } else {
-      devLogger.log('[SyncManager] User logged in, no pending operations to sync');
+      await this.syncQueueBatch(); // Fallback for legacy SyncManager queue (if any)
     }
   }
 
   /**
-   * Sync on reconnection - called when connection is restored
+   * Sync on reconnection - delegates to BidirectionalSyncService (outbox is source of truth).
    */
   async syncOnReconnection(): Promise<void> {
     if (isMobileDevice()) {
       return; // No sync needed on mobile
     }
 
-    // Check authentication
     const authenticated = await this.isAuthenticated();
     if (!authenticated) {
       devLogger.log('[SyncManager] Cannot sync on reconnection: User not authenticated');
       return;
     }
 
-    // Sync pending operations
-    const pendingCount = this.queue.filter(op => op.status === 'pending' || op.status === 'failed').length;
-    if (pendingCount > 0) {
-      devLogger.log(`[SyncManager] Connection restored, syncing ${pendingCount} pending operations...`);
-      await this.syncQueueBatch();
+    const tenantId = this.getCurrentTenantId();
+    if (tenantId) {
+      devLogger.log('[SyncManager] Connection restored, triggering bi-directional sync...');
+      const { getBidirectionalSyncService } = await import('./bidirectionalSyncService');
+      await getBidirectionalSyncService().runSync(tenantId);
     } else {
-      devLogger.log('[SyncManager] Connection restored, no pending operations to sync');
+      await this.syncQueueBatch(); // Fallback for legacy SyncManager queue (if any)
     }
   }
 

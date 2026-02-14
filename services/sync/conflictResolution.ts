@@ -133,17 +133,17 @@ export class TieredConflictResolver implements IConflictResolver {
   }
 
   /**
-   * Financial entities: if versions diverged significantly, flag for manual review.
-   * Otherwise attempt field-level merge.
+   * Financial entities: if versions diverged significantly, do NOT auto-apply remote.
+   * Keep local and flag for manual review (enterprise data safety).
    */
   private resolveFinancial<T>(ctx: ConflictContext<T>): ConflictResult<T> {
     const localVer = ctx.localVersion ?? getVersion(ctx.local as { version?: number });
     const remoteVer = ctx.remoteVersion ?? getVersion(ctx.remote as { version?: number });
 
-    // If versions diverged by more than 1, multiple concurrent edits happened — flag for manual review
+    // If versions diverged by more than 1, multiple concurrent edits happened — block auto-apply
     if (localVer > 0 && remoteVer > 0 && Math.abs(remoteVer - localVer) > 1) {
       return {
-        use: 'remote', // Apply remote for now, but flag
+        use: 'local', // Keep local, do not overwrite with remote
         needsManualReview: true,
         resolution: 'pending_review',
       };

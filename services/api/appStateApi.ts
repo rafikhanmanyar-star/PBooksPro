@@ -172,6 +172,41 @@ export class AppStateApiService {
   }
 
   /**
+   * Load critical state only (accounts, contacts, categories, projects, buildings, properties, units)
+   * for first paint; then load full state in background.
+   */
+  async loadStateCritical(): Promise<Partial<AppState>> {
+    try {
+      const raw = await apiClient.get<Record<string, any[]>>('/state/critical');
+      return this.normalizeLoadedState(raw);
+    } catch (error) {
+      logger.errorCategory('sync', '❌ Error loading critical state:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Load complete application state from API in one request (fewer round-trips, better LCP/INP).
+   * Prefer over loadState() for initial load when the backend supports GET /state/bulk.
+   */
+  async loadStateBulk(): Promise<Partial<AppState>> {
+    try {
+      logger.logCategory('sync', '📡 Loading state from API (bulk)...');
+      const raw = await apiClient.get<Record<string, any[]>>('/state/bulk');
+      const state = this.normalizeLoadedState(raw);
+      logger.logCategory('sync', '✅ Loaded from API (bulk):', {
+        accounts: (raw.accounts || []).length,
+        contacts: (raw.contacts || []).length,
+        transactions: (raw.transactions || []).length,
+      });
+      return state;
+    } catch (error) {
+      logger.errorCategory('sync', '❌ Error loading state from API (bulk):', error);
+      throw error;
+    }
+  }
+
+  /**
    * Load complete application state from API
    * Loads all entities that have API endpoints
    */
@@ -331,19 +366,76 @@ export class AppStateApiService {
         vendors: vendors.length,
       });
 
-      const parseJsonSafe = <T,>(value: any, fallback: T): T => {
-        if (value == null) return fallback;
-        if (typeof value === 'string') {
-          try {
-            return JSON.parse(value) as T;
-          } catch {
-            return fallback;
-          }
-        }
-        return value as T;
-      };
+      return this.normalizeLoadedState({
+        accounts,
+        contacts,
+        transactions,
+        categories,
+        projects,
+        buildings,
+        properties,
+        units,
+        invoices,
+        bills,
+        budgets,
+        planAmenities,
+        installmentPlans,
+        rentalAgreements,
+        projectAgreements,
+        contracts,
+        salesReturns,
+        quotations,
+        documents,
+        recurringInvoiceTemplates,
+        pmCycleAllocations,
+        transactionLog,
+        vendors,
+      });
+    } catch (error) {
+      logger.errorCategory('sync', '❌ Error loading state from API:', error);
+      throw error;
+    }
+  }
 
-      // Normalize properties from API (transform snake_case to camelCase)
+  /** Shared normalizer for loadState() and loadStateBulk() raw response */
+  private normalizeLoadedState(raw: Record<string, any>): Partial<AppState> {
+    const accounts = raw.accounts || [];
+    const contacts = raw.contacts || [];
+    const transactions = raw.transactions || [];
+    const categories = raw.categories || [];
+    const projects = raw.projects || [];
+    const buildings = raw.buildings || [];
+    const properties = raw.properties || [];
+    const units = raw.units || [];
+    const invoices = raw.invoices || [];
+    const bills = raw.bills || [];
+    const budgets = raw.budgets || [];
+    const planAmenities = raw.planAmenities || [];
+    const installmentPlans = raw.installmentPlans || [];
+    const rentalAgreements = raw.rentalAgreements || [];
+    const projectAgreements = raw.projectAgreements || [];
+    const contracts = raw.contracts || [];
+    const salesReturns = raw.salesReturns || [];
+    const quotations = raw.quotations || [];
+    const documents = raw.documents || [];
+    const recurringInvoiceTemplates = raw.recurringInvoiceTemplates || [];
+    const pmCycleAllocations = raw.pmCycleAllocations || [];
+    const transactionLog = raw.transactionLog || [];
+    const vendors = raw.vendors || [];
+
+    const parseJsonSafe = <T,>(value: any, fallback: T): T => {
+      if (value == null) return fallback;
+      if (typeof value === 'string') {
+        try {
+          return JSON.parse(value) as T;
+        } catch {
+          return fallback;
+        }
+      }
+      return value as T;
+    };
+
+    // Normalize properties from API (transform snake_case to camelCase)
       // The server returns snake_case fields, but the client expects camelCase
       const normalizedProperties = properties.map((p: any) => {
         // Normalize property to ensure all fields are properly mapped
@@ -858,10 +950,6 @@ export class AppStateApiService {
         transactionLog: transactionLog || [],
         vendors: normalizedVendors || [],
       };
-    } catch (error) {
-      logger.errorCategory('sync', '❌ Error loading state from API:', error);
-      throw error;
-    }
   }
 
   /**

@@ -48,6 +48,38 @@ const ENTITY_QUERIES: { key: string; table: string; tenantColumn: string }[] = [
   { key: 'vendors', table: 'vendors', tenantColumn: 'tenant_id' },
 ];
 
+// Full bulk load: response keys match client AppState (camelCase). Used by GET /api/state/bulk.
+const BULK_ENTITIES: { responseKey: string; table: string; tenantColumn: string }[] = [
+  { responseKey: 'accounts', table: 'accounts', tenantColumn: 'tenant_id' },
+  { responseKey: 'contacts', table: 'contacts', tenantColumn: 'tenant_id' },
+  { responseKey: 'categories', table: 'categories', tenantColumn: 'tenant_id' },
+  { responseKey: 'projects', table: 'projects', tenantColumn: 'tenant_id' },
+  { responseKey: 'buildings', table: 'buildings', tenantColumn: 'tenant_id' },
+  { responseKey: 'properties', table: 'properties', tenantColumn: 'tenant_id' },
+  { responseKey: 'units', table: 'units', tenantColumn: 'tenant_id' },
+  { responseKey: 'transactions', table: 'transactions', tenantColumn: 'tenant_id' },
+  { responseKey: 'invoices', table: 'invoices', tenantColumn: 'tenant_id' },
+  { responseKey: 'bills', table: 'bills', tenantColumn: 'tenant_id' },
+  { responseKey: 'budgets', table: 'budgets', tenantColumn: 'tenant_id' },
+  { responseKey: 'planAmenities', table: 'plan_amenities', tenantColumn: 'tenant_id' },
+  { responseKey: 'installmentPlans', table: 'installment_plans', tenantColumn: 'tenant_id' },
+  { responseKey: 'rentalAgreements', table: 'rental_agreements', tenantColumn: 'tenant_id' },
+  { responseKey: 'projectAgreements', table: 'project_agreements', tenantColumn: 'tenant_id' },
+  { responseKey: 'contracts', table: 'contracts', tenantColumn: 'tenant_id' },
+  { responseKey: 'salesReturns', table: 'sales_returns', tenantColumn: 'tenant_id' },
+  { responseKey: 'quotations', table: 'quotations', tenantColumn: 'tenant_id' },
+  { responseKey: 'documents', table: 'documents', tenantColumn: 'tenant_id' },
+  { responseKey: 'recurringInvoiceTemplates', table: 'recurring_invoice_templates', tenantColumn: 'tenant_id' },
+  { responseKey: 'pmCycleAllocations', table: 'pm_cycle_allocations', tenantColumn: 'tenant_id' },
+  { responseKey: 'vendors', table: 'vendors', tenantColumn: 'tenant_id' },
+];
+
+// Critical subset for first paint (accounts, contacts, categories, projects, buildings, properties, units)
+const CRITICAL_ENTITIES = BULK_ENTITIES.filter(
+  (e) =>
+    ['accounts', 'contacts', 'categories', 'projects', 'buildings', 'properties', 'units'].indexOf(e.responseKey) >= 0
+);
+
 function snakeToCamel(str: string): string {
   return str.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 }
@@ -148,6 +180,103 @@ router.get('/changes', async (req: TenantRequest, res) => {
   } catch (error) {
     console.error('Error fetching state changes:', error);
     res.status(500).json({ error: 'Failed to fetch state changes' });
+  }
+});
+
+async function fetchTable(
+  db: ReturnType<typeof getDb>,
+  tenantId: string,
+  table: string,
+  tenantColumn: string
+): Promise<Record<string, unknown>[]> {
+  try {
+    const rows = await db.query(
+      `SELECT * FROM ${table} WHERE ${tenantColumn} = $1`,
+      [tenantId]
+    );
+    return (rows as any[]).map((row) => rowToCamel(row));
+  } catch (err) {
+    if (table === 'rental_agreements' && tenantColumn === 'tenant_id') {
+      try {
+        const fallbackRows = await db.query(
+          `SELECT * FROM ${table} WHERE org_id = $1`,
+          [tenantId]
+        );
+        return (fallbackRows as any[]).map((row) => rowToCamel(row));
+      } catch {
+        console.warn(`[state/bulk] Skip ${table} (both tenant_id and org_id failed)`);
+        return [];
+      }
+    }
+    if (table === 'transaction_audit_log') {
+      console.warn(`[state/bulk] Skip ${table}:`, (err as Error).message);
+      return [];
+    }
+    console.warn(`[state/bulk] Skip ${table}:`, (err as Error).message);
+    return [];
+  }
+}
+
+// GET /api/state/bulk — full state in one response (reduces round-trips vs 22 separate GETs)
+router.get('/bulk', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Tenant required' });
+    }
+
+    const db = getDb();
+    const result: Record<string, unknown[]> = {};
+
+    const bulkPromises = BULK_ENTITIES.map(async ({ responseKey, table, tenantColumn }) => {
+      const rows = await fetchTable(db, tenantId, table, tenantColumn);
+      return { responseKey, rows };
+    });
+
+    const transactionLogPromise = fetchTable(db, tenantId, 'transaction_audit_log', 'tenant_id');
+
+    const [bulkResults, transactionLog] = await Promise.all([
+      Promise.all(bulkPromises),
+      transactionLogPromise,
+    ]);
+
+    for (const { responseKey, rows } of bulkResults) {
+      result[responseKey] = rows;
+    }
+    result.transactionLog = transactionLog;
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching state bulk:', error);
+    res.status(500).json({ error: 'Failed to fetch state' });
+  }
+});
+
+// GET /api/state/critical — minimal state for first paint (then load full in background)
+router.get('/critical', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Tenant required' });
+    }
+
+    const db = getDb();
+    const result: Record<string, unknown[]> = {};
+
+    const promises = CRITICAL_ENTITIES.map(async ({ responseKey, table, tenantColumn }) => {
+      const rows = await fetchTable(db, tenantId, table, tenantColumn);
+      return { responseKey, rows };
+    });
+
+    const results = await Promise.all(promises);
+    for (const { responseKey, rows } of results) {
+      result[responseKey] = rows;
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching state critical:', error);
+    res.status(500).json({ error: 'Failed to fetch state' });
   }
 });
 

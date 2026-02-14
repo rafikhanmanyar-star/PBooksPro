@@ -1,4 +1,4 @@
-﻿// Load environment variables FIRST, before any other imports
+// Load environment variables FIRST, before any other imports
 import dotenv from 'dotenv';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -650,9 +650,9 @@ app.get('/mock-payment', (req, res) => {
 // Protected routes (tenant + license authentication required)
 app.use('/api', tenantMiddleware(pool));
 
-// Idempotency middleware: prevent duplicate processing of sync push operations
+// Idempotency middleware: prevent duplicate processing of sync push operations (durable via PostgreSQL)
 import { idempotencyMiddleware } from '../middleware/idempotencyMiddleware.js';
-app.use('/api', idempotencyMiddleware);
+app.use('/api', idempotencyMiddleware(pool));
 
 // Payment routes (require tenant context but allow expired licenses)
 app.use('/api/payments', (req: any, res: Response, next: NextFunction) => {

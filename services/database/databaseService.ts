@@ -72,10 +72,15 @@ class OpfsStorage {
             await writable.write(buffer);
             await writable.close();
         } catch (error) {
-            logger.warnCategory('database', 'OPFS save failed:', error);
+            // Re-throw only; caller logs when falling back to avoid duplicate logs
             throw error;
         }
     }
+}
+
+function errorToString(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    return String(error ?? 'Unknown error');
 }
 
 export interface DatabaseConfig {
@@ -96,6 +101,9 @@ class DatabaseService {
     private opfs = new OpfsStorage();
     private storageMode: 'opfs' | 'localStorage' = 'localStorage';
     private saveLock: Promise<void> = Promise.resolve(); // Lock to prevent concurrent saves
+    private lastPersistenceError: string | null = null;
+    private lastPersistenceErrorTime = 0;
+    private static readonly PERSISTENCE_ERROR_THROTTLE_MS = 60_000;
 
     constructor(config: DatabaseConfig = {}) {
         this.config = {
@@ -649,10 +657,8 @@ class DatabaseService {
      */
     save(): void {
         if (!this.db || !this.isInitialized) return;
-        // Fire and forget, but ensure it completes
-        this.persistToStorage().catch((error) => {
-            console.error('Failed to persist database:', error);
-        });
+        // Fire and forget; persistToStorage handles its own error logging (throttled)
+        this.persistToStorage().catch(() => { /* already logged in persistToStorage */ });
     }
 
     /**
@@ -1543,6 +1549,20 @@ class DatabaseService {
     }
 
     /**
+     * Throttle persistence error logs to avoid console spam when saves keep failing.
+     * Logs at most once per PERSISTENCE_ERROR_THROTTLE_MS for the same error.
+     */
+    private shouldLogPersistenceError(errMsg: string): boolean {
+        const now = Date.now();
+        const isSameError = this.lastPersistenceError === errMsg;
+        const throttleExpired = now - this.lastPersistenceErrorTime >= DatabaseService.PERSISTENCE_ERROR_THROTTLE_MS;
+        if (isSameError && !throttleExpired) return false;
+        this.lastPersistenceError = errMsg;
+        this.lastPersistenceErrorTime = now;
+        return true;
+    }
+
+    /**
      * Persist the database to storage (OPFS > localStorage)
      * Uses a lock to prevent concurrent saves that could cause corruption
      */
@@ -1590,11 +1610,15 @@ class DatabaseService {
                 try {
                     await this.opfs.save(data);
                     this.storageMode = 'opfs';
+                    this.lastPersistenceError = null; // Clear on success
                     logger.logCategory('database', '✅ Database saved to OPFS storage');
                     resolveLock!();
                     return;
                 } catch (opfsError) {
-                    logger.warnCategory('database', 'OPFS persistence failed, falling back to localStorage:', opfsError);
+                    const errMsg = errorToString(opfsError);
+                    if (this.shouldLogPersistenceError(`OPFS: ${errMsg}`)) {
+                        logger.warnCategory('database', `OPFS unavailable, using localStorage: ${errMsg}`);
+                    }
                 }
             }
 
@@ -1603,13 +1627,16 @@ class DatabaseService {
                 const buffer = Array.from(data);
                 localStorage.setItem('finance_db', JSON.stringify(buffer));
                 this.storageMode = 'localStorage';
+                this.lastPersistenceError = null; // Clear on success
                 logger.logCategory('database', '✅ Database saved to localStorage');
-            } catch (error) {
-                logger.errorCategory('database', 'Failed to save database:', error);
-                throw error;
+            } catch (lsError) {
+                throw lsError; // Let outer catch log once
             }
         } catch (error) {
-            logger.errorCategory('database', '❌ Database persistence failed:', error);
+            const errMsg = errorToString(error);
+            if (this.shouldLogPersistenceError(errMsg)) {
+                logger.errorCategory('database', `Database persistence failed: ${errMsg}`);
+            }
             throw error;
         } finally {
             resolveLock!();

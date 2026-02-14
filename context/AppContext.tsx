@@ -16,6 +16,7 @@ import { getConnectionMonitor } from '../services/connectionMonitor';
 import { SyncOperationType } from '../types/sync';
 import { getLastSyncTimestamp, setLastSyncTimestamp, isLastSyncRecent, clearLastSyncTimestamp } from '../utils/lastSyncStorage';
 import { devLogger } from '../utils/devLogger';
+import { navPerfLog } from '../utils/navPerfLogger';
 
 // PERFORMANCE: Module-level constant set of action types that trigger API sync.
 // Previously this 60+ entry Set was re-created on EVERY dispatch call inside useCallback.
@@ -328,7 +329,7 @@ const initialState: AppState = {
 
 // Create context - use any temporarily to avoid TDZ issues, then cast to proper type
 // This ensures the context is created even if types aren't fully initialized yet
-const AppContext = createContext<any>(undefined) as React.Context<{ state: AppState; dispatch: React.Dispatch<AppAction> } | undefined>;
+const AppContext = createContext<any>(undefined) as React.Context<{ state: AppState; dispatch: React.Dispatch<AppAction>; isInitialDataLoading?: boolean } | undefined>;
 
 // Helper to auto-update contract status based on payments
 const updateContractStatus = (state: AppState, contractId: string | undefined): AppState => {
@@ -1066,6 +1067,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, [isAuthenticated]);
 
     const [isInitializing, setIsInitializing] = useState(true);
+    const [isInitialDataLoading, setIsInitialDataLoading] = useState(false);
     const [initMessage, setInitMessage] = useState('Initializing application...');
     const [initProgress, setInitProgress] = useState(0);
     const [useFallback, setUseFallback] = useState(false);
@@ -1619,6 +1621,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 2. Wrap Reducer to Persist - OPTIMIZED: Skip sync for navigation actions
     const reducerWithPersistence = useCallback((state: AppState, action: AppAction) => {
+        const navPerfStart = action.type === 'SET_PAGE' ? performance.now() : 0;
+        if (action.type === 'SET_PAGE') navPerfLog('SET_PAGE reducer start', { page: action.payload });
         const newState = reducer(state, action);
 
         // Optimization: If state didn't change (e.g. duplicate add), do nothing (no sync, no persistence)
@@ -2582,6 +2586,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // No peer-to-peer sync needed
         }
 
+        if (action.type === 'SET_PAGE' && navPerfStart > 0) {
+            const navPerfDuration = performance.now() - navPerfStart;
+            navPerfLog('SET_PAGE reducer done', { page: action.payload, durationMs: Math.round(navPerfDuration) });
+        }
         return newState;
     }, [isAuthenticated]);
 
@@ -2656,35 +2664,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         stateRef.current = state;
     }, [state]);
 
-    const refreshFromApi = useCallback(async () => {
+    const refreshFromApi = useCallback(async (onCriticalLoaded?: () => void) => {
+        navPerfLog('refreshFromApi called');
         if (!isAuthenticated) return;
-        try {
-            const apiService = getAppStateApiService();
-            const apiState = await apiService.loadState();
+        const apiService = getAppStateApiService();
 
-            // Helper function to merge arrays by ID (preserves local changes that haven't been synced)
-            const mergeById = <T extends { id: string }>(current: T[], api: T[]): T[] => {
-                if (!api || api.length === 0) return current;
-                const apiMap = new Map(api.map(item => [item.id, item]));
-                const currentMap = new Map(current.map(item => [item.id, item]));
+        const mergeById = <T extends { id: string }>(current: T[], api: T[]): T[] => {
+            if (!api || api.length === 0) return current;
+            const merged = new Map<string, T>();
+            current.forEach(item => merged.set(item.id, item));
+            api.forEach(item => merged.set(item.id, item));
+            return Array.from(merged.values());
+        };
 
-                // Merge: API data takes precedence for existing items, but keep local items not in API
-                const merged = new Map<string, T>();
-
-                // First, add all current items (preserves local changes)
-                current.forEach(item => merged.set(item.id, item));
-
-                // Then, update with API data (overwrites with server version)
-                api.forEach(item => merged.set(item.id, item));
-
-                return Array.from(merged.values());
-            };
-
-            // Only apply slices we received, keep navigation/current page intact
-            // Merge arrays by ID to preserve local changes that haven't been synced yet
+        const applyApiState = (apiState: Partial<AppState>) => {
             const updates: Partial<AppState> = {};
             const currentState = stateRef.current;
-
             if (apiState.contacts) updates.contacts = mergeById(currentState.contacts, apiState.contacts);
             if (apiState.transactions) updates.transactions = mergeById(currentState.transactions, apiState.transactions);
             if (apiState.bills) updates.bills = mergeById(currentState.bills, apiState.bills);
@@ -2696,18 +2691,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (apiState.salesReturns) updates.salesReturns = mergeById(currentState.salesReturns, apiState.salesReturns);
             if (apiState.installmentPlans) updates.installmentPlans = mergeById(currentState.installmentPlans, apiState.installmentPlans);
             if (apiState.planAmenities) updates.planAmenities = mergeById(currentState.planAmenities || [], apiState.planAmenities);
-            // Merge categories: ensure system categories are always included
             if (apiState.categories) {
-                // First merge API categories with local
                 const mergedApiLocal = mergeById(currentState.categories, apiState.categories);
-                // Then ensure all system categories are included (they may be missing if not synced yet)
                 const systemCategoryIds = new Set(SYSTEM_CATEGORIES.map(c => c.id));
                 const userCategories = mergedApiLocal.filter(c => !systemCategoryIds.has(c.id));
                 const existingSystemCategories = mergedApiLocal.filter(c => systemCategoryIds.has(c.id));
-                // Combine: existing system categories (from API with latest data) + all defined system categories (in case API is missing some) + user categories
                 const allSystemCategories = SYSTEM_CATEGORIES.map(sysCat => {
                     const existing = existingSystemCategories.find(c => c.id === sysCat.id);
-                    return existing || sysCat; // Use API version if exists, otherwise use local definition
+                    return existing || sysCat;
                 });
                 updates.categories = [...allSystemCategories, ...userCategories];
             }
@@ -2718,20 +2709,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (apiState.units) updates.units = mergeById(currentState.units, apiState.units);
             if (apiState.vendors) updates.vendors = mergeById(currentState.vendors || [], apiState.vendors);
             if (apiState.recurringInvoiceTemplates) updates.recurringInvoiceTemplates = mergeById(currentState.recurringInvoiceTemplates || [], apiState.recurringInvoiceTemplates);
-
             if (Object.keys(updates).length === 0) return;
-
-            const mergedState = { ...currentState, ...updates };
-
-            dispatch({
-                type: 'SET_STATE',
-                payload: mergedState,
-                _isRemote: true
-            } as any);
-
+            const mergedState = { ...stateRef.current, ...updates };
+            dispatch({ type: 'SET_STATE', payload: mergedState, _isRemote: true } as any);
             setStoredState(prev => ({ ...prev, ...updates }));
+        };
+
+        try {
+            let critical: Partial<AppState> | null = null;
+            try {
+                critical = await apiService.loadStateCritical();
+            } catch (criticalErr: any) {
+                if (criticalErr?.status !== 404 && !criticalErr?.message?.includes('404')) {
+                    throw criticalErr;
+                }
+            }
+
+            if (critical && Object.keys(critical).length > 0) {
+                applyApiState(critical);
+                onCriticalLoaded?.();
+                apiService.loadStateBulk()
+                    .then(full => applyApiState(full))
+                    .catch(err => console.error('⚠️ Background full state load failed:', err));
+                return;
+            }
+
+            let apiState: Partial<AppState>;
+            try {
+                apiState = await apiService.loadStateBulk();
+            } catch (bulkErr: any) {
+                if (bulkErr?.status === 404 || bulkErr?.message?.includes('404')) {
+                    apiState = await apiService.loadState();
+                } else {
+                    throw bulkErr;
+                }
+            }
+            applyApiState(apiState);
+            onCriticalLoaded?.();
         } catch (err) {
             console.error('⚠️ Failed to refresh data from API:', err);
+            onCriticalLoaded?.();
         }
     }, [dispatch, isAuthenticated, setStoredState]);
 
@@ -2741,14 +2758,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         refreshFromApiRef.current = refreshFromApi;
     }, [refreshFromApi]);
 
-    // Initial/rehydration sync when auth status changes
+    // Initial/rehydration sync when auth status changes (show shell until critical/full data loaded for LCP/INP)
     useEffect(() => {
-        // Only refresh when authenticated to prevent unnecessary API calls
-        if (isAuthenticated) {
-            // Use ref to get latest refreshFromApi without adding it as dependency
-            refreshFromApiRef.current();
+        if (!isAuthenticated) {
+            setIsInitialDataLoading(false);
+            return;
         }
-    }, [isAuthenticated]); // Only depend on isAuthenticated, not refreshFromApi
+        setIsInitialDataLoading(true);
+        const promise = refreshFromApiRef.current(() => setIsInitialDataLoading(false));
+        if (promise && typeof (promise as Promise<void>).then === 'function') {
+            (promise as Promise<void>).finally(() => setIsInitialDataLoading(false));
+        } else {
+            setIsInitialDataLoading(false);
+        }
+    }, [isAuthenticated]);
 
     // Listen for cloud settings loaded after login
     useEffect(() => {
@@ -3026,8 +3049,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     'recurring_invoice_template:created', 'recurring_invoice_template:updated', 'recurring_invoice_template:deleted'
                 ];
 
-                // Generic fallback subscription → schedule a full refresh
-                const unsubFallback = events.map(evt => ws.on(evt, (data: any) => scheduleRefresh(data)));
+                // Events that have specific handlers below → we dispatch directly, no full refresh.
+                // Only schedule a full refresh for event types we don't handle specifically (avoids re-sync on every WS event / navigation).
+                const eventsWithSpecificHandlers = new Set([
+                    'bill:created', 'bill:updated', 'bill:deleted',
+                    'transaction:created', 'transaction:updated', 'transaction:deleted',
+                    'invoice:created', 'invoice:updated', 'invoice:deleted',
+                    'rental_agreement:created', 'rental_agreement:updated', 'rental_agreement:deleted',
+                    'recurring_invoice_template:created', 'recurring_invoice_template:updated', 'recurring_invoice_template:deleted',
+                    'contact:created', 'contact:updated', 'contact:deleted',
+                    'vendor:created', 'vendor:updated', 'vendor:deleted'
+                ]);
+                const fallbackEvents = events.filter(evt => !eventsWithSpecificHandlers.has(evt));
+                const unsubFallback = fallbackEvents.map(evt => ws.on(evt, (data: any) => scheduleRefresh(data)));
 
                 // Direct, immediate handlers to reflect payments across users without waiting for refresh
                 const currentUserId = stateRef.current.currentUser?.id;
@@ -3427,6 +3461,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // Fast check: Skip if only navigation changed (most common case)
             if (prevCurrentPageRef.current !== state.currentPage) {
                 prevCurrentPageRef.current = state.currentPage;
+                navPerfLog('persist effect: skip (nav only)', { page: state.currentPage });
                 // Navigation change - skip save (performance optimization)
                 return;
             }
@@ -3447,6 +3482,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             // Only persist if data changed
             if (dataChanged) {
+                navPerfLog('persist effect: saving state (data changed)');
                 // Update refs
                 prevContactsLengthRef.current = state.contacts.length;
                 prevTransactionsLengthRef.current = state.transactions.length;
@@ -3796,7 +3832,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // causing ALL 155+ context consumers to re-render even when nothing changed.
     // IMPORTANT: This useMemo MUST be called before any conditional returns below,
     // because React hooks must be called in the same order on every render.
-    const contextValue = useMemo(() => ({ state, dispatch }), [state, dispatch]);
+    const contextValue = useMemo(() => ({ state, dispatch, isInitialDataLoading }), [state, dispatch, isInitialDataLoading]);
 
     // Show loading/initialization state
     if (isInitializing) {

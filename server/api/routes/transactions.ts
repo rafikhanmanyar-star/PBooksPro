@@ -444,6 +444,32 @@ router.post('/', async (req: TenantRequest, res) => {
       );
       if (existing.rows.length > 0) {
         wasUpdate = true;
+        // Immutability: block updates to payment transactions linked to paid invoices/bills
+        const extxn = existing.rows[0];
+        if (extxn.invoice_id) {
+          const inv = await client.query(
+            'SELECT status FROM invoices WHERE id = $1 AND tenant_id = $2',
+            [extxn.invoice_id, req.tenantId]
+          );
+          if (inv.rows.length > 0 && inv.rows[0].status === 'Paid') {
+            throw {
+              code: 'TRANSACTION_IMMUTABLE',
+              message: 'Cannot modify a payment transaction linked to a paid invoice.',
+            };
+          }
+        }
+        if (extxn.bill_id) {
+          const bill = await client.query(
+            'SELECT status FROM bills WHERE id = $1 AND tenant_id = $2',
+            [extxn.bill_id, req.tenantId]
+          );
+          if (bill.rows.length > 0 && bill.rows[0].status === 'Paid') {
+            throw {
+              code: 'TRANSACTION_IMMUTABLE',
+              message: 'Cannot modify a payment transaction linked to a paid bill.',
+            };
+          }
+        }
       }
 
       // If transaction is linked to a bill, lock the bill row first to prevent concurrent payments
@@ -1207,7 +1233,14 @@ router.put('/:id', async (req: TenantRequest, res) => {
     });
 
     res.json(result);
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === 'TRANSACTION_IMMUTABLE') {
+      return res.status(403).json({
+        error: 'Immutable record',
+        message: error.message || 'Cannot modify this transaction.',
+        code: 'TRANSACTION_IMMUTABLE',
+      });
+    }
     console.error('Error updating transaction:', error);
     res.status(500).json({ error: 'Failed to update transaction' });
   }
@@ -1226,6 +1259,35 @@ router.delete('/:id', async (req: TenantRequest, res) => {
 
     if (oldTransaction.length === 0) {
       return res.status(404).json({ error: 'Transaction not found' });
+    }
+
+    // Immutability: reject deletion of payment transactions linked to paid invoices/bills
+    const txn = oldTransaction[0];
+    if (txn.invoice_id) {
+      const inv = await db.query(
+        'SELECT status FROM invoices WHERE id = $1 AND tenant_id = $2',
+        [txn.invoice_id, req.tenantId]
+      );
+      if (inv.length > 0 && inv[0].status === 'Paid') {
+        return res.status(403).json({
+          error: 'Immutable record',
+          message: 'Cannot delete a payment transaction linked to a paid invoice.',
+          code: 'TRANSACTION_LINKED_TO_PAID_INVOICE',
+        });
+      }
+    }
+    if (txn.bill_id) {
+      const bill = await db.query(
+        'SELECT status FROM bills WHERE id = $1 AND tenant_id = $2',
+        [txn.bill_id, req.tenantId]
+      );
+      if (bill.length > 0 && bill[0].status === 'Paid') {
+        return res.status(403).json({
+          error: 'Immutable record',
+          message: 'Cannot delete a payment transaction linked to a paid bill.',
+          code: 'TRANSACTION_LINKED_TO_PAID_BILL',
+        });
+      }
     }
 
     const result = await db.transaction(async (client) => {

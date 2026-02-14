@@ -21,7 +21,9 @@ import {
 
 import { migrateTenantColumns } from '../tenantMigration';
 import { BaseRepository } from './baseRepository';
-import { getSyncManager } from '../../sync/syncManager';
+import { getSyncOutboxService } from '../../sync/syncOutboxService';
+import { getCurrentTenantId } from '../tenantUtils';
+import { getCurrentUserId } from '../userUtils';
 import { devLogger } from '../../../utils/devLogger';
 
 export class AppStateRepository {
@@ -661,18 +663,22 @@ export class AppStateRepository {
 
                             if (pendingOps.length > 0) {
                                 console.log(`📦 Queueing ${pendingOps.length} sync operations after transaction commit...`);
-                                const syncManager = getSyncManager();
+                                const outbox = getSyncOutboxService();
+                                const tenantId = getCurrentTenantId();
+                                const userId = getCurrentUserId();
 
-                                // Queue each operation
-                                pendingOps.forEach(op => {
-                                    try {
-                                        syncManager.queueOperation(op.type, op.tableName, op.entityId, op.data || {});
-                                    } catch (syncError) {
-                                        console.error(`❌ Failed to queue sync for ${op.tableName}:${op.entityId}:`, syncError);
-                                    }
-                                });
-
-                                console.log(`✅ Queued ${pendingOps.length} sync operations`);
+                                if (tenantId) {
+                                    pendingOps.forEach(op => {
+                                        try {
+                                            outbox.enqueue(tenantId, op.tableName, op.type, op.entityId, op.data || {}, userId ?? undefined);
+                                        } catch (syncError) {
+                                            console.error(`❌ Failed to queue sync for ${op.tableName}:${op.entityId}:`, syncError);
+                                        }
+                                    });
+                                    console.log(`✅ Queued ${pendingOps.length} sync operations to outbox`);
+                                } else {
+                                    console.warn(`[AppStateRepository] No tenant context, skipping ${pendingOps.length} sync operations`);
+                                }
                             }
                         } catch (error) {
                             console.error('❌ Error queueing sync operations after commit:', error);

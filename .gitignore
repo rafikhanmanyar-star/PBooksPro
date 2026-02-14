@@ -50,6 +50,7 @@ mcp-server/.env
 *.db
 *.sqlite
 *.sqlite3
+*.dump
 
 # Server build outputs (built on Render)
 server/api/*.js

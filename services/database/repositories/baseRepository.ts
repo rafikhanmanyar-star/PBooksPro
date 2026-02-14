@@ -9,7 +9,6 @@ import { objectToDbFormat, dbToObjectFormat, camelToSnake } from '../columnMappe
 import { getCurrentTenantId, shouldFilterByTenant } from '../tenantUtils';
 import { getCurrentUserId, shouldTrackUserId } from '../userUtils';
 import { isMobileDevice } from '../../../utils/platformDetection';
-import { getSyncManager } from '../../sync/syncManager';
 import { getSyncOutboxService } from '../../sync/syncOutboxService';
 
 interface PendingSyncOperation {
@@ -90,8 +89,27 @@ export abstract class BaseRepository<T> {
     }
 
     /**
+     * Check if this table supports soft delete (has deleted_at column).
+     * Tables without deleted_at use hard delete.
+     */
+    protected tableSupportsSoftDelete(): boolean {
+        const columnsSet = this.ensureTableColumns();
+        return columnsSet.has('deleted_at');
+    }
+
+    /**
+     * Add soft-delete filter to SQL if table supports it.
+     * Returns SQL fragment and params to append.
+     */
+    private softDeleteFilter(): { sql: string; params: any[] } {
+        if (!this.tableSupportsSoftDelete()) return { sql: '', params: [] };
+        return { sql: ' AND (deleted_at IS NULL OR deleted_at = \'\')', params: [] };
+    }
+
+    /**
      * Find all records with options
      * Tenant isolation: if table is tenant-scoped but no tenant in context, return empty (never return other tenants' data).
+     * When soft delete is supported, excludes deleted records.
      */
     findAll(options: {
         limit?: number;
@@ -129,6 +147,13 @@ export abstract class BaseRepository<T> {
         if (condition) {
             whereConditions.push(condition);
             whereParams.push(...params);
+        }
+
+        // Exclude soft-deleted records when table supports it
+        const softFilter = this.softDeleteFilter();
+        if (softFilter.sql) {
+            whereConditions.push(softFilter.sql.trim().replace(/^AND\s+/, ''));
+            whereParams.push(...softFilter.params);
         }
 
         if (whereConditions.length > 0) {
@@ -180,6 +205,12 @@ export abstract class BaseRepository<T> {
             }
         }
 
+        // Exclude soft-deleted records when table supports it
+        const softFilter = this.softDeleteFilter();
+        if (softFilter.sql) {
+            sql += ` AND (deleted_at IS NULL OR deleted_at = '')`;
+        }
+
         const results = this.db.query<Record<string, any>>(sql, params);
         return results.length > 0 ? dbToObjectFormat<T>(results[0]) : null;
     }
@@ -203,6 +234,11 @@ export abstract class BaseRepository<T> {
                 sql += ` AND ${tenantColumn} = ?`;
                 queryParams.push(tenantId);
             }
+        }
+
+        // Exclude soft-deleted records when table supports it
+        if (this.tableSupportsSoftDelete()) {
+            sql += ` AND (deleted_at IS NULL OR deleted_at = '')`;
         }
 
         const results = this.db.query<Record<string, any>>(sql, queryParams);
@@ -423,24 +459,34 @@ export abstract class BaseRepository<T> {
     }
 
     /**
-     * Delete a record
+     * Delete a record.
+     * Uses soft delete (UPDATE SET deleted_at) when table has deleted_at column;
+     * otherwise uses hard delete (DELETE FROM).
      */
     delete(id: string): void {
         const primaryKeyColumn = camelToSnake(this.primaryKey);
-        let sql = `DELETE FROM ${this.tableName} WHERE ${primaryKeyColumn} = ?`;
-        const params: any[] = [id];
+        const tenantFilter = shouldFilterByTenant() && this.shouldFilterByTenant();
+        const tenantId = tenantFilter ? getCurrentTenantId() : null;
 
-        // Add tenant_id filter if tenant is logged in
-        if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
-            const tenantId = getCurrentTenantId();
+        if (this.tableSupportsSoftDelete()) {
+            // Soft delete: set deleted_at timestamp
+            let sql = `UPDATE ${this.tableName} SET deleted_at = datetime('now'), updated_at = datetime('now') WHERE ${primaryKeyColumn} = ?`;
+            const params: any[] = [id];
             if (tenantId) {
-                const tenantColumn = 'tenant_id';
-                sql += ` AND ${tenantColumn} = ?`;
+                sql += ` AND tenant_id = ?`;
                 params.push(tenantId);
             }
+            this.db.execute(sql, params);
+        } else {
+            // Hard delete for tables without deleted_at (e.g. users, metadata)
+            let sql = `DELETE FROM ${this.tableName} WHERE ${primaryKeyColumn} = ?`;
+            const params: any[] = [id];
+            if (tenantId) {
+                sql += ` AND tenant_id = ?`;
+                params.push(tenantId);
+            }
+            this.db.execute(sql, params);
         }
-
-        this.db.execute(sql, params);
 
         // Track or queue sync operation
         if (this.db.isInTransaction()) {
@@ -514,6 +560,10 @@ export abstract class BaseRepository<T> {
                 params.push(tenantId);
             }
         }
+        // Exclude soft-deleted records when table supports it
+        if (this.tableSupportsSoftDelete()) {
+            sql += (params.length > 0 ? ' AND' : ' WHERE') + ` (deleted_at IS NULL OR deleted_at = '')`;
+        }
 
         const results = this.db.query<{ count: number }>(sql, params);
         return results[0]?.count || 0;
@@ -536,24 +586,15 @@ export abstract class BaseRepository<T> {
         }
 
         try {
-            const syncManager = getSyncManager();
-            syncManager.queueOperation(type, this.tableName, entityId, data || {});
-
-            // Also persist to sync_outbox for bi-directional sync (if DB is ready)
+            // Single source of truth: sync_outbox (persistent, durable). SyncManager queue deprecated.
             const tenantId = getCurrentTenantId();
             const userId = getCurrentUserId();
             if (tenantId && this.db.isReady()) {
-                try {
-                    const outbox = getSyncOutboxService();
-                    outbox.enqueue(tenantId, this.tableName, type, entityId, data || {}, userId ?? undefined);
-                    console.log(`[BaseRepository] ✅ Queued to outbox: ${type} ${this.tableName}:${entityId}`);
-                } catch (outboxError) {
-                    console.warn(`[BaseRepository] ⚠️ Failed to queue to outbox (${this.tableName}:${entityId}):`, outboxError);
-                    // Continue - SyncManager queue is still there
-                }
+                const outbox = getSyncOutboxService();
+                outbox.enqueue(tenantId, this.tableName, type, entityId, data || {}, userId ?? undefined);
+                console.log(`[BaseRepository] ✅ Queued to outbox: ${type} ${this.tableName}:${entityId}`);
             }
         } catch (error) {
-            // Sync manager might not be initialized yet, that's okay
             console.debug(`[BaseRepository] Failed to queue sync for ${this.tableName}:${entityId}:`, error);
         }
     }
@@ -569,10 +610,12 @@ export abstract class BaseRepository<T> {
         }
 
         const primaryKeyColumn = camelToSnake(this.primaryKey);
-        const results = this.db.query<{ count: number }>(
-            `SELECT COUNT(*) as count FROM ${this.tableName} WHERE ${primaryKeyColumn} = ?`,
-            [id]
-        );
+        let sql = `SELECT COUNT(*) as count FROM ${this.tableName} WHERE ${primaryKeyColumn} = ?`;
+        const params: any[] = [id];
+        if (this.tableSupportsSoftDelete()) {
+            sql += ` AND (deleted_at IS NULL OR deleted_at = '')`;
+        }
+        const results = this.db.query<{ count: number }>(sql, params);
         return (results[0]?.count || 0) > 0;
     }
 

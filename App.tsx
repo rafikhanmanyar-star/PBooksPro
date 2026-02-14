@@ -35,6 +35,7 @@ import { createBackup, restoreBackup } from './services/backupService';
 import { useProgress } from './context/ProgressContext';
 import { usePagePreloader } from './hooks/usePagePreloader';
 import Loading from './components/ui/Loading';
+import LoadingShell from './components/ui/LoadingShell';
 import { OfflineProvider } from './context/OfflineContext';
 // import SyncNotification from './components/ui/SyncNotification'; // Removed per user request
 import MobileOfflineWarning from './components/ui/MobileOfflineWarning';
@@ -44,6 +45,7 @@ import { lazyWithRetry } from './utils/lazyWithRetry';
 import { ContactsApiRepository } from './services/api/repositories/contactsApi';
 import { VendorsApiRepository } from './services/api/repositories/vendorsApi';
 import { devLogger } from './utils/devLogger';
+import { navPerfLog } from './utils/navPerfLogger';
 
 
 // Lazy Load Components
@@ -112,7 +114,7 @@ const PAGE_GROUPS = {
 };
 
 const App: React.FC = () => {
-  const { state, dispatch } = useAppContext();
+  const { state, dispatch, isInitialDataLoading } = useAppContext();
   const { currentPage, currentUser } = state;
   const { isOpen: isCustomKeyboardOpen } = useKeyboard();
   const { isPanelOpen } = useKpis();
@@ -348,11 +350,17 @@ const App: React.FC = () => {
 
   // Optimized navigation handler - uses startTransition for non-blocking updates
   const handleSetPage = useCallback((page: Page) => {
+    navPerfLog('nav requested', { page });
     // Mark navigation as non-urgent to keep UI responsive
     startNavTransition(() => {
       dispatch({ type: 'SET_PAGE', payload: page });
     });
   }, [dispatch, startNavTransition]);
+
+  // Log when currentPage actually updates (to measure delay between request and commit)
+  useEffect(() => {
+    navPerfLog('currentPage updated', { page: currentPage });
+  }, [currentPage]);
 
 
 
@@ -585,6 +593,11 @@ const App: React.FC = () => {
   // BLOCK APP IF EXPIRED (only if authenticated)
   if (isAuthenticated && isExpired) {
     return <LicenseLockScreen />;
+  }
+
+  // Show loading shell while initial data loads (improves LCP/INP after login)
+  if (isAuthenticated && isInitialDataLoading) {
+    return <LoadingShell />;
   }
 
   const shouldHideSidebar = currentPage === 'posSales' && isPosFullScreen;
