@@ -319,6 +319,10 @@ router.post('/runs', async (req: TenantRequest, res) => {
 
     const { month, year } = req.body;
 
+    if (!month || !year) {
+      return res.status(400).json({ error: 'Month and year are required' });
+    }
+
     // Calculate period start and end dates
     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
       'July', 'August', 'September', 'October', 'November', 'December'];
@@ -326,9 +330,23 @@ router.post('/runs', async (req: TenantRequest, res) => {
     if (monthIndex === -1) {
       return res.status(400).json({ error: `Invalid month: ${month}` });
     }
-    
+
     const periodStart = new Date(year, monthIndex, 1);
     const periodEnd = new Date(year, monthIndex + 1, 0); // Last day of month
+
+    // Check for existing payroll run for this month/year (unique constraint)
+    const existingRun = await getDb().query(
+      `SELECT id, status FROM payroll_runs WHERE tenant_id = $1 AND month = $2 AND year = $3`,
+      [tenantId, month, year]
+    );
+
+    if (existingRun.length > 0) {
+      return res.status(409).json({
+        error: `A payroll run for ${month} ${year} already exists (status: ${existingRun[0].status})`,
+        existingRunId: existingRun[0].id,
+        existingStatus: existingRun[0].status
+      });
+    }
 
     // Get active employees count who should be included in this payroll
     const empCount = await getDb().query(
@@ -344,16 +362,28 @@ router.post('/runs', async (req: TenantRequest, res) => {
        (tenant_id, month, year, period_start, period_end, status, employee_count, created_by)
        VALUES ($1, $2, $3, $4, $5, 'DRAFT', $6, $7)
        RETURNING *`,
-      [tenantId, month, year, periodStart.toISOString().split('T')[0], 
-       periodEnd.toISOString().split('T')[0], empCount[0].count, userId]
+      [tenantId, month, year, periodStart.toISOString().split('T')[0],
+        periodEnd.toISOString().split('T')[0], empCount[0]?.count || 0, userId]
     );
 
     emitToTenant(tenantId, 'payroll_run_created', { id: result[0].id });
 
     res.status(201).json(result[0]);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating payroll run:', error);
-    res.status(500).json({ error: 'Failed to create payroll run' });
+    console.error('Error details:', { code: error.code, detail: error.detail, constraint: error.constraint, message: error.message });
+
+    // Handle unique constraint violation (duplicate month/year)
+    if (error.code === '23505' || error.constraint?.includes('payroll_runs_unique')) {
+      return res.status(409).json({ error: `A payroll run for this month/year already exists` });
+    }
+
+    // Handle RLS policy violation
+    if (error.code === '42501') {
+      return res.status(403).json({ error: 'Permission denied - tenant context issue' });
+    }
+
+    res.status(500).json({ error: 'Failed to create payroll run', details: error.message });
   }
 });
 
@@ -407,7 +437,7 @@ router.put('/runs/:id', async (req: TenantRequest, res) => {
       const monthIndex = monthNames.indexOf(currentRun[0].month);
       const periodStart = new Date(currentRun[0].year, monthIndex, 1);
       const periodEnd = new Date(currentRun[0].year, monthIndex + 1, 0);
-      
+
       // Get all active employees who should be included in this payroll period
       const activeEmployees = await getDb().query(
         `SELECT COUNT(*) as count FROM payroll_employees 
@@ -567,13 +597,18 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Payroll run not found' });
     }
 
-    // Prevent reprocessing approved or paid runs
+    // Prevent reprocessing PAID runs (final state)
+    // Allow APPROVED runs to be reprocessed for new backdated employees
     const currentStatus = runCheck[0].status;
-    if (currentStatus === 'APPROVED' || currentStatus === 'PAID') {
+    if (currentStatus === 'PAID') {
       return res.status(400).json({
-        error: `Cannot process payroll run with status ${currentStatus}. Please revert to DRAFT first if modifications are needed.`,
+        error: `Cannot process payroll run with status PAID. This is a final state.`,
         currentStatus
       });
+    }
+
+    if (currentStatus === 'APPROVED') {
+      console.log(`📋 Re-processing APPROVED payroll run ${id} to add new employees. Will revert to DRAFT for re-approval.`);
     }
 
     // Set status to PROCESSING while processing
@@ -587,7 +622,7 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
     try {
       // Get the payroll run to determine the period
       const run = runCheck[0];
-      
+
       // Calculate period start and end dates
       const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
         'July', 'August', 'September', 'October', 'November', 'December'];
@@ -595,7 +630,7 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
       if (monthIndex === -1) {
         throw new Error(`Invalid month: ${run.month}`);
       }
-      
+
       const periodStart = new Date(run.year, monthIndex, 1);
       const periodEnd = new Date(run.year, monthIndex + 1, 0); // Last day of month
       const daysInMonth = periodEnd.getDate();
@@ -630,12 +665,12 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
       // Generate payslips only for new employees (those without existing payslips)
       for (const emp of employees) {
         const salary = emp.salary;
-        
+
         // Calculate pro-rata factor if employee joined mid-month
         const joiningDate = new Date(emp.joining_date);
         let proRataFactor = 1.0;
         let workedDays = daysInMonth;
-        
+
         // Check if employee joined within this payroll month
         if (joiningDate >= periodStart && joiningDate <= periodEnd) {
           // Calculate days worked from joining date to end of month
@@ -643,7 +678,7 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
           proRataFactor = workedDays / daysInMonth;
           console.log(`📅 Pro-rata calculation for ${emp.name}: Joined ${emp.joining_date}, worked ${workedDays}/${daysInMonth} days, factor: ${proRataFactor.toFixed(4)}`);
         }
-        
+
         // Check if employee terminated mid-month
         if (emp.termination_date) {
           const terminationDate = new Date(emp.termination_date);
@@ -654,7 +689,7 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
             console.log(`📅 Pro-rata calculation for ${emp.name}: Terminated ${emp.termination_date}, worked ${workedDays}/${daysInMonth} days, factor: ${proRataFactor.toFixed(4)}`);
           }
         }
-        
+
         // Apply pro-rata to basic salary
         const basic = roundToTwo((salary.basic || 0) * proRataFactor);
 
@@ -714,16 +749,22 @@ router.post('/runs/:id/process', async (req: TenantRequest, res) => {
       const totalEmployeeCount = existingEmployeeIds.size + newPayslipsCount;
 
       // Update payroll run with combined totals
-      // Set status to DRAFT so it can be reviewed and approved
+      // If new payslips were generated, revert to DRAFT for re-approval
+      // Otherwise keep current status (no changes needed)
+      const newStatus = newPayslipsCount > 0 ? 'DRAFT' : currentStatus;
+      if (newPayslipsCount > 0 && currentStatus === 'APPROVED') {
+        console.log(`📋 Payroll run ${id} reverted from APPROVED to DRAFT: ${newPayslipsCount} new payslips added for backdated employees.`);
+      }
+
       const result = await getDb().query(
         `UPDATE payroll_runs SET
-          status = 'DRAFT',
-          total_amount = $1,
-          employee_count = $2,
-          updated_by = $3
-         WHERE id = $4 AND tenant_id = $5
+          status = $1,
+          total_amount = $2,
+          employee_count = $3,
+          updated_by = $4
+         WHERE id = $5 AND tenant_id = $6
          RETURNING *`,
-        [combinedTotalAmount, totalEmployeeCount, userId, id, tenantId]
+        [newStatus, combinedTotalAmount, totalEmployeeCount, userId, id, tenantId]
       );
 
       emitToTenant(tenantId, 'payroll_run_updated', { id });
@@ -1824,7 +1865,7 @@ router.get('/missing-payslips', async (req: TenantRequest, res) => {
       // Calculate period dates if not set
       let periodStart = run.period_start;
       let periodEnd = run.period_end;
-      
+
       if (!periodStart || !periodEnd) {
         const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
           'July', 'August', 'September', 'October', 'November', 'December'];
@@ -1886,8 +1927,8 @@ router.post('/generate-missing-payslips', async (req: TenantRequest, res) => {
     const { employee_id, run_ids } = req.body;
 
     if (!employee_id && !run_ids) {
-      return res.status(400).json({ 
-        error: 'Either employee_id or run_ids must be provided' 
+      return res.status(400).json({
+        error: 'Either employee_id or run_ids must be provided'
       });
     }
 

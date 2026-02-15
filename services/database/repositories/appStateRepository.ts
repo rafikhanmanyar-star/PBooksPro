@@ -926,7 +926,7 @@ export class AppStateRepository {
         if (existing) {
             r.update(id, data);
         } else {
-            r.create(data);
+            r.insert(data);
         }
     }
 

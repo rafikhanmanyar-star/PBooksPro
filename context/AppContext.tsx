@@ -1089,6 +1089,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Use a ref to track storedState to avoid initialization issues in dependency arrays
     // Initialize ref with initialState to ensure it's always defined
     const storedStateRef = useRef<AppState>(initialState);
+    // Ref for dispatch so init effect (declared before useReducer) can update reducer when background sync completes
+    const dispatchRef = useRef<React.Dispatch<AppAction> | null>(null);
     useEffect(() => {
         if (storedState) {
             storedStateRef.current = storedState;
@@ -1293,16 +1295,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 logger.warnCategory('sync', '⚠️ Could not load sync queue items:', syncQueueError);
                             }
 
-                            // Clear local database for previous tenant ONLY if tenant changed
+                            // Clear local database ONLY when tenant actually changed (not on every startup)
                             try {
                                 const dbService = getDatabaseService();
                                 if (dbService.isReady()) {
-                                    const { SettingsRepository } = await import('../services/database/repositories/index');
-                                    const settingsRepo = new SettingsRepository();
-                                    const localTenantId = await settingsRepo.get('tenantId');
-                                    const effectiveTenantId = auth.tenant?.id || auth.user?.tenantId;
+                                    const { AppSettingsRepository } = await import('../services/database/repositories/index');
+                                    const settingsRepo = new AppSettingsRepository();
+                                    const localTenantId = settingsRepo.getSetting('tenantId') ?? null;
+                                    const effectiveTenantId = (auth.tenant?.id || auth.user?.tenantId) ?? null;
 
-                                    if (effectiveTenantId && localTenantId && effectiveTenantId !== localTenantId) {
+                                    if (effectiveTenantId && localTenantId != null && String(localTenantId) !== String(effectiveTenantId)) {
+                                        logger.logCategory('sync', `🔄 Tenant changed (local: ${localTenantId} → current: ${effectiveTenantId}), clearing local DB for new tenant`);
                                         const { ContactsRepository, TransactionsRepository, AccountsRepository,
                                             CategoriesRepository, ProjectsRepository, BuildingsRepository,
                                             PropertiesRepository, UnitsRepository, InvoicesRepository,
@@ -1324,9 +1327,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                         for (const repo of repos) {
                                             await repo.deleteAllUnfiltered();
                                         }
-                                        await settingsRepo.set('tenantId', effectiveTenantId);
-                                    } else if (effectiveTenantId && !localTenantId) {
-                                        await settingsRepo.set('tenantId', effectiveTenantId);
+                                        settingsRepo.setSetting('tenantId', effectiveTenantId);
+                                    } else if (effectiveTenantId && (localTenantId == null || localTenantId === '')) {
+                                        settingsRepo.setSetting('tenantId', effectiveTenantId);
+                                        logger.logCategory('database', '✅ Set tenantId in local settings (first time or was unset)');
+                                    } else {
+                                        logger.logCategory('database', '✅ Same tenant, not clearing local DB — offline-first: using existing local data');
                                     }
                                 }
                             } catch (clearError) {
@@ -1450,9 +1456,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                             transactionLog: apiState.transactionLog || [],
                                         };
 
-                                        // Defer heavy state update and save so main thread stays responsive
+                                        // Defer heavy state update and save so main thread stays responsive.
+                                        // Must dispatch to reducer so UI (which reads from state) shows the data.
                                         const applyUpdate = () => {
                                             setStoredState(fullState);
+                                            dispatchRef.current?.({ type: 'SET_STATE', payload: fullState, _isRemote: true } as any);
                                             if (!useFallback && getDatabaseService().isReady() && saveNow) {
                                                 saveNow(fullState, { disableSyncQueueing: true }).catch((saveError: unknown) => {
                                                     console.warn('⚠️ Background sync: could not save to local database:', saveError);
@@ -2542,7 +2550,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // This avoids initialization issues with storedState
     const [state, dispatch] = useReducer(reducerWithPersistence, initialState);
 
-
+    useEffect(() => {
+        dispatchRef.current = dispatch;
+        return () => { dispatchRef.current = null; };
+    }, [dispatch]);
 
     // Sync reducer state with loaded database state (critical for first load)
     // Initialize with storedState when it's ready (after initialization)
@@ -2722,6 +2733,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         window.addEventListener('auth:login-success', handleLoginSuccess);
         return () => window.removeEventListener('auth:login-success', handleLoginSuccess);
     }, []);
+
+    // Reload AppContext from local DB when bidirectional sync completes (sync writes to DB but does not update React state)
+    useEffect(() => {
+        const handleBidirDownstreamComplete = async () => {
+            try {
+                const dbService = getDatabaseService();
+                if (!dbService.isReady()) return;
+                const appStateRepo = await getAppStateRepository();
+                const loadedState = await appStateRepo.loadState();
+                if (loadedState && (loadedState.transactions?.length > 0 || loadedState.contacts?.length > 0 || loadedState.invoices?.length > 0 || loadedState.accounts?.length > 0)) {
+                    dispatch({ type: 'SET_STATE', payload: loadedState, _isRemote: true } as any);
+                    setStoredState(loadedState as AppState);
+                    logger.logCategory('sync', '✅ Reloaded AppContext from DB after bidirectional sync', {
+                        transactions: loadedState.transactions?.length ?? 0,
+                        contacts: loadedState.contacts?.length ?? 0,
+                    });
+                }
+            } catch (err) {
+                logger.warnCategory('sync', '⚠️ Failed to reload state after bidir sync:', err);
+            }
+        };
+        window.addEventListener('sync:bidir-downstream-complete', handleBidirDownstreamComplete as EventListener);
+        return () => window.removeEventListener('sync:bidir-downstream-complete', handleBidirDownstreamComplete as EventListener);
+    }, [dispatch, setStoredState]);
 
     // Listen for cloud settings loaded after login
     useEffect(() => {
@@ -3621,17 +3656,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
     }, [state, useFallback, saveNow]);
 
-    // Auto-sync local data to API when user re-authenticates
+    // Auto-sync: on session restore, load from API when state is empty (init may have run before auth completed)
+    const sessionRestoreRefreshDoneRef = useRef(false);
     useEffect(() => {
-        // Detect when user transitions from not authenticated to authenticated
-        if (isAuthenticated && !prevAuthRef.current && !isInitializing) {
-            // Skip automatic bulk sync on re-authentication to avoid background API traffic.
-            // Sync will now occur only on explicit transaction actions.
+        // When authenticated and init done, if state has no records, load from API (session restore case)
+        if (isAuthenticated && !isInitializing && !sessionRestoreRefreshDoneRef.current) {
+            const hasData = (state.contacts?.length ?? 0) > 0 || (state.transactions?.length ?? 0) > 0 ||
+                (state.invoices?.length ?? 0) > 0 || (state.accounts?.length ?? 0) > 0;
+            if (!hasData) {
+                sessionRestoreRefreshDoneRef.current = true;
+                refreshFromApiRef.current(undefined);
+            }
+        }
+        if (!isAuthenticated) {
+            sessionRestoreRefreshDoneRef.current = false;
         }
 
         // Update previous auth state
         prevAuthRef.current = isAuthenticated;
-    }, [isAuthenticated, isInitializing]);
+    }, [isAuthenticated, isInitializing, state.contacts?.length, state.transactions?.length, state.invoices?.length, state.accounts?.length]);
 
     // PERFORMANCE: Removed duplicate "reload data from API" effect that was dead code.
     // The condition `!prevAuthRef.current` could never be true here because the preceding

@@ -136,6 +136,33 @@ class SyncManager {
   }
 
   /**
+   * Wait for database to be ready (with retries). Sync runs immediately on login,
+   * often before useDatabaseState/AppContext has finished initializing the DB.
+   */
+  private async waitForDatabaseReady(maxWaitMs: number = 8000): Promise<boolean> {
+    const dbService = getDatabaseService();
+    if (dbService.isReady()) return true;
+    try {
+      await dbService.initialize();
+      if (dbService.isReady()) return true;
+    } catch (err) {
+      console.warn('[SyncManager] DB init failed, will retry:', err);
+    }
+    const pollInterval = 300;
+    const deadline = Date.now() + maxWaitMs;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, pollInterval));
+      if (dbService.isReady()) return true;
+      try {
+        await dbService.initialize();
+      } catch {
+        // Ignore - keep polling
+      }
+    }
+    return dbService.isReady();
+  }
+
+  /**
    * Sync on login - delegates to BidirectionalSyncService (outbox is source of truth).
    */
   async syncOnLogin(): Promise<void> {
@@ -145,6 +172,14 @@ class SyncManager {
 
     const authenticated = await this.isAuthenticated();
     if (!authenticated) {
+      return;
+    }
+
+    // Sync runs in login handler before main app mounts - DB may not be ready yet.
+    // Wait up to 8s for DB, then let AuthContext's delayed bidir (5s) retry if needed.
+    const dbReady = await this.waitForDatabaseReady(8000);
+    if (!dbReady) {
+      console.warn('[SyncManager] Database not ready after wait, deferring to delayed bidir sync');
       return;
     }
 

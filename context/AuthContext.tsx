@@ -214,20 +214,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   /**
    * Start bi-directional sync when authenticated (connectivity-driven + run once).
-   * Fire-and-forget runSync so this effect does not block; sync runs in background.
+   * Delay so AppContext background sync (2s) can load and display data first; then run bidir in background.
    */
+  const bidirSyncTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!state.isAuthenticated || !state.tenant?.id) return;
+    const tenantId = state.tenant!.id;
+    bidirSyncTimeoutRef.current = null;
     (async () => {
       try {
         const { isMobileDevice } = await import('../utils/platformDetection');
         if (isMobileDevice()) return;
         const { getBidirectionalSyncService } = await import('../services/sync/bidirectionalSyncService');
         const bidir = getBidirectionalSyncService();
-        bidir.start(state.tenant!.id);
-        void bidir.runSync(state.tenant!.id);
+        bidir.start(tenantId);
+        const BIDIR_SYNC_DELAY_MS = 5000;
+        bidirSyncTimeoutRef.current = setTimeout(() => {
+          bidirSyncTimeoutRef.current = null;
+          void bidir.runSync(tenantId);
+        }, BIDIR_SYNC_DELAY_MS);
       } catch (_) { }
     })();
+    return () => {
+      if (bidirSyncTimeoutRef.current != null) {
+        clearTimeout(bidirSyncTimeoutRef.current);
+        bidirSyncTimeoutRef.current = null;
+      }
+    };
   }, [state.isAuthenticated, state.tenant?.id]);
 
   /**
@@ -624,17 +637,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           window.dispatchEvent(new CustomEvent('auth:login-success'));
         }
 
-        // Sync pending operations after successful login
+        // Sync runs after 2s delay so app can mount and DB can initialize (sync needs local SQLite)
         try {
           const { isMobileDevice } = await import('../utils/platformDetection');
           if (!isMobileDevice()) {
-            logger.logCategory('auth', '🔄 Syncing pending operations after login...');
-            const { getSyncManager } = await import('../services/sync/syncManager');
-            const syncManager = getSyncManager();
-            await syncManager.syncOnLogin();
+            const runSync = () => {
+              logger.logCategory('auth', '🔄 Syncing pending operations after login...');
+              import('../services/sync/syncManager').then(({ getSyncManager }) =>
+                getSyncManager().syncOnLogin().catch((e: unknown) =>
+                  logger.warnCategory('auth', '⚠️ Sync on login failed:', e))
+              );
+            };
+            setTimeout(runSync, 2000);
           }
         } catch (syncError) {
-          logger.warnCategory('auth', '⚠️ Failed to sync on login:', syncError);
+          logger.warnCategory('auth', '⚠️ Failed to schedule sync on login:', syncError);
         }
 
         // Load settings from cloud database after successful login
@@ -760,17 +777,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           })
           .catch((err) => logger.warnCategory('auth', 'Post-login license fetch failed (will retry in context):', err));
 
-        // Sync pending operations after successful login
+        // Sync runs after 2s delay so app can mount and DB can initialize (sync needs local SQLite)
         try {
           const { isMobileDevice } = await import('../utils/platformDetection');
           if (!isMobileDevice()) {
-            logger.logCategory('auth', '🔄 Syncing pending operations after login...');
-            const { getSyncManager } = await import('../services/sync/syncManager');
-            const syncManager = getSyncManager();
-            await syncManager.syncOnLogin();
+            const runSync = () => {
+              logger.logCategory('auth', '🔄 Syncing pending operations after login...');
+              import('../services/sync/syncManager').then(({ getSyncManager }) =>
+                getSyncManager().syncOnLogin().catch((e: unknown) =>
+                  logger.warnCategory('auth', '⚠️ Sync on login failed:', e))
+              );
+            };
+            setTimeout(runSync, 2000);
           }
         } catch (syncError) {
-          logger.warnCategory('auth', '⚠️ Failed to sync on login:', syncError);
+          logger.warnCategory('auth', '⚠️ Failed to schedule sync on login:', syncError);
         }
 
         // Load settings from cloud database after successful login
