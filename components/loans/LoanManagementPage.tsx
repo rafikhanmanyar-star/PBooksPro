@@ -11,6 +11,8 @@ import { formatDate } from '../../utils/dateUtils';
 import { exportJsonToExcel } from '../../services/exportService';
 import { useNotification } from '../../context/NotificationContext';
 import { WhatsAppService } from '../../services/whatsappService';
+import { usePrintContext } from '../../context/PrintContext';
+import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 
 interface LoanSummary {
     contactId: string;
@@ -28,10 +30,13 @@ type SortDirection = 'asc' | 'desc';
 const LoanManagementPage: React.FC = () => {
     const { state } = useAppContext();
     const { showAlert } = useNotification();
+    const { print: triggerPrint } = usePrintContext();
     const [searchQuery, setSearchQuery] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isReportOpen, setIsReportOpen] = useState(false);
     const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
+    const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
     // Sorting State
     const [accountSort, setAccountSort] = useState<{ key: 'name' | 'amount'; direction: SortDirection }>({ key: 'amount', direction: 'desc' });
@@ -41,7 +46,7 @@ const LoanManagementPage: React.FC = () => {
 
     const loanSummaries = useMemo(() => {
         const summary: Record<string, LoanSummary> = {};
-        
+
         state.transactions.filter(tx => tx.type === TransactionType.LOAN).forEach(tx => {
             const contactId = tx.contactId || 'unknown';
             if (!summary[contactId]) {
@@ -57,11 +62,11 @@ const LoanManagementPage: React.FC = () => {
                     netBalance: 0
                 };
             }
-            
+
             if (tx.subtype === LoanSubtype.RECEIVE) {
                 summary[contactId].received += tx.amount;
                 summary[contactId].netBalance += tx.amount;
-            } else { 
+            } else {
                 summary[contactId].given += tx.amount;
                 summary[contactId].netBalance -= tx.amount;
             }
@@ -72,7 +77,7 @@ const LoanManagementPage: React.FC = () => {
 
     const sortedSummaries = useMemo(() => {
         let items = [...loanSummaries];
-        
+
         // Filter
         if (searchQuery) {
             items = items.filter(s => s.contactName.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -105,7 +110,7 @@ const LoanManagementPage: React.FC = () => {
     const processedTransactions = useMemo(() => {
         if (!selectedContactId) return [];
         const rawTxs = state.transactions.filter(tx => tx.type === TransactionType.LOAN && tx.contactId === selectedContactId);
-        
+
         // Always calculate balance chronologically first
         rawTxs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -116,7 +121,7 @@ const LoanManagementPage: React.FC = () => {
             const give = isInflow ? 0 : tx.amount;
             // "Receive Loan" column = Inflow (Received/Collected)
             const receive = isInflow ? tx.amount : 0;
-            
+
             // Balance logic: Positive = Liability (We Owe), Negative = Asset (They Owe)
             // Receive increases Liability (+), Give decreases Liability (-)
             runningBalance += (receive - give);
@@ -179,17 +184,27 @@ const LoanManagementPage: React.FC = () => {
         }));
     };
 
+    const handleTransactionClick = (transactionId: string) => {
+        setSelectedTransactionId(transactionId);
+        setIsEditModalOpen(true);
+    };
+
+    const handleEditModalClose = () => {
+        setIsEditModalOpen(false);
+        setSelectedTransactionId(null);
+    };
+
     const handleWhatsApp = async () => {
         if (!selectedSummary) return;
         if (!selectedSummary.contactNo) {
             await showAlert("This contact does not have a phone number saved.");
             return;
         }
-        
+
         try {
             const balance = selectedSummary.netBalance;
             const status = balance > 0 ? "You Owe" : balance < 0 ? "Owes You" : "Settled";
-            
+
             let message = `*Loan Balance Statement*\n`;
             message += `Contact: ${selectedSummary.contactName}\n`;
             message += `Status: ${status}\n`;
@@ -229,7 +244,7 @@ const LoanManagementPage: React.FC = () => {
     };
 
     const handlePrint = () => {
-        window.print();
+        triggerPrint('REPORT', { elementId: 'printable-area' });
     };
 
     const SortIcon = ({ active, direction }: { active: boolean, direction: SortDirection }) => (
@@ -240,22 +255,23 @@ const LoanManagementPage: React.FC = () => {
 
     return (
         <div className="min-h-full flex flex-col space-y-3 md:space-y-4">
+            <style>{STANDARD_PRINT_STYLES}</style>
             {/* Top Bar */}
             <div className="flex flex-col sm:flex-row justify-between items-center gap-3 md:gap-4 bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex-shrink-0 no-print">
                 <div className="relative flex-grow w-full sm:w-auto sm:max-w-md">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                         <span className="h-5 w-5">{ICONS.search}</span>
                     </div>
-                    <Input 
-                        placeholder="Search loans..." 
-                        value={searchQuery} 
-                        onChange={(e) => setSearchQuery(e.target.value)} 
+                    <Input
+                        placeholder="Search loans..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
                         className="pl-10"
                     />
                     {searchQuery && (
-                        <button 
-                            type="button" 
-                            onClick={() => setSearchQuery('')} 
+                        <button
+                            type="button"
+                            onClick={() => setSearchQuery('')}
                             className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600"
                         >
                             <div className="w-5 h-5">{ICONS.x}</div>
@@ -278,16 +294,16 @@ const LoanManagementPage: React.FC = () => {
                     <div className="p-3 border-b bg-slate-50 flex items-center justify-between font-semibold text-slate-700">
                         <span>Loan Accounts</span>
                     </div>
-                    
+
                     {/* Sortable Header */}
                     <div className="grid grid-cols-2 bg-slate-100 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase tracking-wider select-none">
-                        <div 
+                        <div
                             className="p-3 cursor-pointer hover:bg-slate-200 transition-colors flex items-center"
                             onClick={() => handleAccountSort('name')}
                         >
                             Name <SortIcon active={accountSort.key === 'name'} direction={accountSort.direction} />
                         </div>
-                        <div 
+                        <div
                             className="p-3 text-right cursor-pointer hover:bg-slate-200 transition-colors flex items-center justify-end"
                             onClick={() => handleAccountSort('amount')}
                         >
@@ -301,8 +317,8 @@ const LoanManagementPage: React.FC = () => {
                         ) : (
                             <div className="divide-y divide-slate-100">
                                 {sortedSummaries.map(summary => (
-                                    <div 
-                                        key={summary.contactId} 
+                                    <div
+                                        key={summary.contactId}
                                         onClick={() => setSelectedContactId(summary.contactId)}
                                         className={`p-3 cursor-pointer hover:bg-slate-50 transition-colors grid grid-cols-2 items-center ${selectedContactId === summary.contactId ? 'bg-indigo-50 border-l-4 border-accent pl-2' : 'pl-3 border-l-4 border-transparent'}`}
                                     >
@@ -321,7 +337,7 @@ const LoanManagementPage: React.FC = () => {
                 </div>
 
                 {/* RIGHT PANEL: Transactions Detail */}
-                <div className="md:w-2/3 bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col overflow-hidden printable-area flex-grow">
+                <div id="printable-area" className="md:w-2/3 bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col overflow-hidden printable-area flex-grow">
                     {selectedContactId ? (
                         <>
                             <div className="p-3 border-b bg-slate-50 flex flex-col sm:flex-row justify-between items-center gap-3 flex-shrink-0">
@@ -347,17 +363,22 @@ const LoanManagementPage: React.FC = () => {
                                 <table className="min-w-full divide-y divide-slate-200 text-sm relative">
                                     <thead className="bg-slate-100 sticky top-0 z-10 shadow-sm">
                                         <tr>
-                                            <th onClick={() => handleTxSort('date')} className="px-3 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap">Date <SortIcon active={txSort.key === 'date'} direction={txSort.direction}/></th>
-                                            <th onClick={() => handleTxSort('account')} className="px-3 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap">Account <SortIcon active={txSort.key === 'account'} direction={txSort.direction}/></th>
-                                            <th onClick={() => handleTxSort('description')} className="px-3 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-200 select-none">Description <SortIcon active={txSort.key === 'description'} direction={txSort.direction}/></th>
-                                            <th onClick={() => handleTxSort('give')} className="px-3 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap">Give Loan <SortIcon active={txSort.key === 'give'} direction={txSort.direction}/></th>
-                                            <th onClick={() => handleTxSort('receive')} className="px-3 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap">Receive Loan <SortIcon active={txSort.key === 'receive'} direction={txSort.direction}/></th>
-                                            <th onClick={() => handleTxSort('balance')} className="px-3 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap">Balance <SortIcon active={txSort.key === 'balance'} direction={txSort.direction}/></th>
+                                            <th onClick={() => handleTxSort('date')} className="px-3 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap">Date <SortIcon active={txSort.key === 'date'} direction={txSort.direction} /></th>
+                                            <th onClick={() => handleTxSort('account')} className="px-3 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap">Account <SortIcon active={txSort.key === 'account'} direction={txSort.direction} /></th>
+                                            <th onClick={() => handleTxSort('description')} className="px-3 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-200 select-none">Description <SortIcon active={txSort.key === 'description'} direction={txSort.direction} /></th>
+                                            <th onClick={() => handleTxSort('give')} className="px-3 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap">Give Loan <SortIcon active={txSort.key === 'give'} direction={txSort.direction} /></th>
+                                            <th onClick={() => handleTxSort('receive')} className="px-3 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap">Receive Loan <SortIcon active={txSort.key === 'receive'} direction={txSort.direction} /></th>
+                                            <th onClick={() => handleTxSort('balance')} className="px-3 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap">Balance <SortIcon active={txSort.key === 'balance'} direction={txSort.direction} /></th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-200 bg-white">
                                         {processedTransactions.map((tx) => (
-                                            <tr key={tx.id} className="hover:bg-slate-50 transition-colors">
+                                            <tr
+                                                key={tx.id}
+                                                onClick={() => handleTransactionClick(tx.id)}
+                                                className="hover:bg-indigo-50 transition-colors cursor-pointer group"
+                                                title="Click to view/edit transaction"
+                                            >
                                                 <td className="px-3 py-2 whitespace-nowrap">{formatDate(tx.date)}</td>
                                                 <td className="px-3 py-2 whitespace-nowrap text-slate-600">{tx.accountName}</td>
                                                 <td className="px-3 py-2 text-slate-600 italic max-w-xs truncate" title={tx.description}>{tx.description || '-'}</td>
@@ -399,10 +420,10 @@ const LoanManagementPage: React.FC = () => {
             </div>
 
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Record Loan Transaction">
-                <TransactionForm 
-                    onClose={() => setIsModalOpen(false)} 
+                <TransactionForm
+                    onClose={() => setIsModalOpen(false)}
                     transactionTypeForNew={TransactionType.LOAN}
-                    onShowDeleteWarning={() => {}}
+                    onShowDeleteWarning={() => { }}
                 />
             </Modal>
 
@@ -414,15 +435,15 @@ const LoanManagementPage: React.FC = () => {
                     </div>
                 </div>
             </Modal>
-            
-            <style>{`
-                @media print {
-                    body * { visibility: hidden; }
-                    .printable-area, .printable-area * { visibility: visible; }
-                    .printable-area { position: absolute; left: 0; top: 0; width: 100%; height: 100%; z-index: 9999; background: white; }
-                    .no-print { display: none !important; }
-                }
-            `}</style>
+
+            <Modal isOpen={isEditModalOpen} onClose={handleEditModalClose} title="Edit Loan Transaction">
+                <TransactionForm
+                    onClose={handleEditModalClose}
+                    transactionTypeForNew={TransactionType.LOAN}
+                    transactionToEdit={selectedTransactionId ? state.transactions.find(t => t.id === selectedTransactionId) : undefined}
+                    onShowDeleteWarning={() => { }}
+                />
+            </Modal>
         </div>
     );
 };
