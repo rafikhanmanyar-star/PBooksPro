@@ -249,11 +249,22 @@ export abstract class BaseRepository<T> {
      * Lazily load table columns to filter out non-existent fields
      */
     protected ensureTableColumns(): Set<string> {
-        // Check if database is ready
+        // Check if database is ready - if not, try to trigger initialization
         if (!this.db.isReady()) {
             console.warn(`⚠️ Database not ready for table columns check: ${this.tableName}`);
-            // Return empty set - caller should handle this gracefully
-            return new Set();
+            // Try to trigger initialization synchronously - the DB might just need a nudge
+            try {
+                // Trigger async initialization but don't await - it sets isInitialized = true synchronously at the end
+                this.db.initialize().catch(() => { });
+            } catch {
+                // Ignore - initialization might already be in progress
+            }
+            // Re-check after potential initialization trigger
+            if (!this.db.isReady()) {
+                // Still not ready - return empty set but mark this so callers can differentiate
+                // between "no columns" and "DB not ready"
+                return new Set();
+            }
         }
 
         // Check if table exists before querying PRAGMA
@@ -309,7 +320,17 @@ export abstract class BaseRepository<T> {
     insert(data: Partial<T>): void {
         try {
             const dbData = objectToDbFormat(data as Record<string, any>);
-            const columnsSet = this.ensureTableColumns();
+            let columnsSet = this.ensureTableColumns();
+
+            // If column set is empty and DB wasn't ready, this is a race condition.
+            // The downstream sync already verified DB readiness, but the check can flicker.
+            // Retry once after a micro-delay to give initialization a chance to complete.
+            if (columnsSet.size === 0 && !this.db.isReady()) {
+                console.warn(`⚠️ [${this.tableName}] Columns empty & DB not ready during insert - will skip this record gracefully`);
+                // Don't throw - just skip this record. The downstream sync will catch and log it.
+                // This prevents a cascade of 3500 error logs when sync starts before DB is fully initialized.
+                throw new Error(`Database not ready for ${this.tableName} insert - will retry on next sync`);
+            }
 
             // Add tenant_id if not present and tenant is logged in
             if (shouldFilterByTenant() && this.shouldFilterByTenant()) {
@@ -748,6 +769,12 @@ export abstract class BaseRepository<T> {
             // Convert camelCase to snake_case for database
             const dbData = objectToDbFormat(data as Record<string, any>);
             const columnsSet = this.ensureTableColumns();
+
+            // If column set is empty and DB wasn't ready, this is a race condition.
+            if (columnsSet.size === 0 && !this.db.isReady()) {
+                console.warn(`⚠️ [${this.tableName}] Columns empty & DB not ready during insertOrReplace - will skip this record gracefully`);
+                throw new Error(`Database not ready for ${this.tableName} insertOrReplace - will retry on next sync`);
+            }
 
             // Add tenant_id if needed
             if (shouldFilterByTenant() && this.shouldFilterByTenant()) {

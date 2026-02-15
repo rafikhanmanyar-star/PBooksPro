@@ -603,6 +603,64 @@ CREATE TABLE IF NOT EXISTS payroll_salary_components (
 CREATE INDEX IF NOT EXISTS idx_payroll_components_tenant ON payroll_salary_components(tenant_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_payroll_components_unique ON payroll_salary_components(tenant_id, name, type);
 
+-- Fix-up: Drop erroneous FK constraints on audit columns (created_by, updated_by, approved_by)
+-- These were never intended to reference the users table
+ALTER TABLE payroll_runs DROP CONSTRAINT IF EXISTS payroll_runs_created_by_fkey;
+ALTER TABLE payroll_runs DROP CONSTRAINT IF EXISTS payroll_runs_updated_by_fkey;
+ALTER TABLE payroll_runs DROP CONSTRAINT IF EXISTS payroll_runs_approved_by_fkey;
+ALTER TABLE payroll_employees DROP CONSTRAINT IF EXISTS payroll_employees_created_by_fkey;
+ALTER TABLE payroll_employees DROP CONSTRAINT IF EXISTS payroll_employees_updated_by_fkey;
+
+-- Fix-up for payroll_runs table: ensure columns added after initial table creation exist
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payroll_runs' AND column_name='period_start') THEN
+        ALTER TABLE payroll_runs ADD COLUMN period_start DATE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payroll_runs' AND column_name='period_end') THEN
+        ALTER TABLE payroll_runs ADD COLUMN period_end DATE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payroll_runs' AND column_name='employee_count') THEN
+        ALTER TABLE payroll_runs ADD COLUMN employee_count INTEGER DEFAULT 0;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payroll_runs' AND column_name='total_amount') THEN
+        ALTER TABLE payroll_runs ADD COLUMN total_amount DECIMAL(15, 2) DEFAULT 0;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payroll_runs' AND column_name='approved_by') THEN
+        ALTER TABLE payroll_runs ADD COLUMN approved_by TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payroll_runs' AND column_name='approved_at') THEN
+        ALTER TABLE payroll_runs ADD COLUMN approved_at TIMESTAMP;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payroll_runs' AND column_name='paid_at') THEN
+        ALTER TABLE payroll_runs ADD COLUMN paid_at TIMESTAMP;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payroll_runs' AND column_name='created_by') THEN
+        ALTER TABLE payroll_runs ADD COLUMN created_by TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payroll_runs' AND column_name='updated_by') THEN
+        ALTER TABLE payroll_runs ADD COLUMN updated_by TEXT;
+    END IF;
+END $$;
+
+-- Fix-up for payroll_employees table
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payroll_employees' AND column_name='department_id') THEN
+        ALTER TABLE payroll_employees ADD COLUMN department_id TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payroll_employees' AND column_name='employee_code') THEN
+        ALTER TABLE payroll_employees ADD COLUMN employee_code TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payroll_employees' AND column_name='photo') THEN
+        ALTER TABLE payroll_employees ADD COLUMN photo TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payroll_employees' AND column_name='adjustments') THEN
+        ALTER TABLE payroll_employees ADD COLUMN adjustments JSONB DEFAULT '[]'::jsonb;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payroll_employees' AND column_name='projects') THEN
+        ALTER TABLE payroll_employees ADD COLUMN projects JSONB DEFAULT '[]'::jsonb;
+    END IF;
+END $$;
+
 -- ============================================================================
 -- 11. SYSTEMS & MODULES
 -- ============================================================================

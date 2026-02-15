@@ -3,11 +3,11 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  CheckCircle2, 
-  Clock, 
-  Lock, 
-  PlayCircle, 
+import {
+  CheckCircle2,
+  Clock,
+  Lock,
+  PlayCircle,
   Calculator,
   ShieldCheck,
   Loader2,
@@ -16,10 +16,10 @@ import {
   Printer,
   ArrowLeft
 } from 'lucide-react';
-import { 
-  PayrollStatus, 
-  EmploymentStatus, 
-  PayrollRun, 
+import {
+  PayrollStatus,
+  EmploymentStatus,
+  PayrollRun,
   PayrollEmployee,
   Payslip,
   PayrollProcessingSummary
@@ -62,7 +62,7 @@ const PayrollRunScreen: React.FC = () => {
 
   const refreshRuns = async () => {
     if (!tenantId) return;
-    
+
     try {
       // Fetch payroll runs from API first
       const apiRuns = await payrollApi.getPayrollRuns();
@@ -81,9 +81,9 @@ const PayrollRunScreen: React.FC = () => {
   useEffect(() => {
     const loadData = async () => {
       if (!tenantId) return;
-      
+
       await refreshRuns();
-      
+
       // Load employees from API first
       try {
         const apiEmployees = await payrollApi.getEmployees();
@@ -99,7 +99,7 @@ const PayrollRunScreen: React.FC = () => {
         setActiveEmployees(employees.filter(e => e.status === EmploymentStatus.ACTIVE));
       }
     };
-    
+
     loadData();
   }, [tenantId]);
 
@@ -133,23 +133,23 @@ const PayrollRunScreen: React.FC = () => {
     if (!tenantId || !userId) return;
     setCalculating(true);
     setProcessingSummary(null);
-    
+
     try {
       // Create payroll run via API
       const newRun = await payrollApi.createPayrollRun({
         month: newRunData.month,
         year: newRunData.year
       });
-      
+
       if (newRun) {
         // Process payroll to generate payslips (only for new employees)
         const processedRun = await payrollApi.processPayrollRun(newRun.id);
-        
+
         // Store the processing summary to show feedback
         if (processedRun?.processing_summary) {
           setProcessingSummary(processedRun.processing_summary);
         }
-        
+
         // Also cache in localStorage
         storageService.addPayrollRun(tenantId, newRun, userId);
       } else {
@@ -183,7 +183,7 @@ const PayrollRunScreen: React.FC = () => {
       };
       storageService.addPayrollRun(tenantId, localRun, userId);
     }
-    
+
     setCalculating(false);
     setIsCreating(false);
     await refreshRuns();
@@ -194,17 +194,17 @@ const PayrollRunScreen: React.FC = () => {
     if (!tenantId || !userId) return;
     setReprocessing(true);
     setProcessingSummary(null);
-    
+
     try {
       const processedRun = await payrollApi.processPayrollRun(run.id);
-      
+
       if (processedRun?.processing_summary) {
         setProcessingSummary(processedRun.processing_summary);
-        
+
         // Refresh payslips for the run
         const payslips = await payrollApi.getPayslipsByRun(run.id);
         setPayslipsForRun(payslips);
-        
+
         // Update run details
         if (processedRun) {
           setSelectedRunDetail({
@@ -214,7 +214,7 @@ const PayrollRunScreen: React.FC = () => {
           });
         }
       }
-      
+
       await refreshRuns();
     } catch (error) {
       console.error('Failed to reprocess payroll run:', error);
@@ -227,7 +227,7 @@ const PayrollRunScreen: React.FC = () => {
   const handleViewRunDetail = async (run: PayrollRun) => {
     setSelectedRunDetail(run);
     setLoadingPayslips(true);
-    
+
     try {
       const payslips = await payrollApi.getPayslipsByRun(run.id);
       setPayslipsForRun(payslips);
@@ -255,16 +255,16 @@ const PayrollRunScreen: React.FC = () => {
   const getStatusBadge = (status: PayrollStatus) => {
     switch (status) {
       case PayrollStatus.PAID:
-        return <span className="flex items-center gap-1 text-green-700 bg-green-100 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest"><CheckCircle2 size={12}/> Paid</span>;
+        return <span className="flex items-center gap-1 text-green-700 bg-green-100 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest"><CheckCircle2 size={12} /> Paid</span>;
       case PayrollStatus.APPROVED:
-        return <span className="flex items-center gap-1 text-blue-700 bg-blue-100 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest"><CheckCircle2 size={12}/> Approved</span>;
+        return <span className="flex items-center gap-1 text-blue-700 bg-blue-100 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest"><CheckCircle2 size={12} /> Approved</span>;
       case PayrollStatus.DRAFT:
-        return <span className="flex items-center gap-1 text-slate-600 bg-slate-100 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest"><Clock size={12}/> Draft</span>;
+        return <span className="flex items-center gap-1 text-slate-600 bg-slate-100 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest"><Clock size={12} /> Draft</span>;
       case PayrollStatus.PROCESSING:
-        return <span className="flex items-center gap-1 text-amber-600 bg-amber-100 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest"><Loader2 size={12} className="animate-spin"/> Processing</span>;
+        return <span className="flex items-center gap-1 text-amber-600 bg-amber-100 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest"><Loader2 size={12} className="animate-spin" /> Processing</span>;
       case PayrollStatus.CANCELLED:
-        return <span className="flex items-center gap-1 text-red-600 bg-red-100 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest"><Lock size={12}/> Cancelled</span>;
-      default: 
+        return <span className="flex items-center gap-1 text-red-600 bg-red-100 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest"><Lock size={12} /> Cancelled</span>;
+      default:
         return null;
     }
   };
@@ -295,9 +295,9 @@ const PayrollRunScreen: React.FC = () => {
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Target Month</label>
-                <select 
-                  value={newRunData.month} 
-                  onChange={e => setNewRunData({...newRunData, month: e.target.value})} 
+                <select
+                  value={newRunData.month}
+                  onChange={e => setNewRunData({ ...newRunData, month: e.target.value })}
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white font-bold"
                 >
                   {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map(m => (
@@ -307,9 +307,9 @@ const PayrollRunScreen: React.FC = () => {
               </div>
               <div>
                 <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Fiscal Year</label>
-                <select 
-                  value={newRunData.year} 
-                  onChange={e => setNewRunData({...newRunData, year: parseInt(e.target.value)})} 
+                <select
+                  value={newRunData.year}
+                  onChange={e => setNewRunData({ ...newRunData, year: parseInt(e.target.value) })}
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white font-bold"
                 >
                   {[2024, 2025, 2026, 2027].map(y => (
@@ -338,9 +338,9 @@ const PayrollRunScreen: React.FC = () => {
           </div>
         </div>
         <div className="flex justify-center pt-8">
-          <button 
-            disabled={calculating} 
-            onClick={handleStartRun} 
+          <button
+            disabled={calculating}
+            onClick={handleStartRun}
             className="px-12 py-4 bg-blue-600 text-white rounded-2xl font-black shadow-2xl shadow-blue-200 hover:bg-blue-700 hover:-translate-y-1 transition-all disabled:opacity-50 flex items-center gap-3"
           >
             {calculating ? (
@@ -395,8 +395,8 @@ const PayrollRunScreen: React.FC = () => {
                   </p>
                 )}
               </div>
-              <button 
-                onClick={() => setProcessingSummary(null)} 
+              <button
+                onClick={() => setProcessingSummary(null)}
                 className="text-blue-400 hover:text-blue-600 text-xs font-bold"
               >
                 Dismiss
@@ -408,9 +408,9 @@ const PayrollRunScreen: React.FC = () => {
         {/* Status Action Buttons */}
         {selectedRunDetail.status !== PayrollStatus.CANCELLED && (
           <div className="flex gap-3 justify-end no-print flex-wrap">
-            {/* Re-process button - to add payslips for new employees */}
-            {(selectedRunDetail.status === PayrollStatus.DRAFT || selectedRunDetail.status === PayrollStatus.PROCESSING) && (
-              <button 
+            {/* Re-process button - to add payslips for new employees (including backdated) */}
+            {(selectedRunDetail.status === PayrollStatus.DRAFT || selectedRunDetail.status === PayrollStatus.PROCESSING || selectedRunDetail.status === PayrollStatus.APPROVED) && (
+              <button
                 onClick={() => handleReprocessRun(selectedRunDetail)}
                 disabled={reprocessing}
                 className="px-6 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-200 transition-all disabled:opacity-50 flex items-center gap-2"
@@ -460,7 +460,7 @@ const PayrollRunScreen: React.FC = () => {
                     const employeeDept = (payslip as any).department || emp?.department || '—';
                     const employeeCode = emp?.employee_code || payslip.employee_id.substring(0, 8);
                     const isPaid = payslip.is_paid || false;
-                    
+
                     return (
                       <tr key={payslip.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-8 py-4">
@@ -486,11 +486,10 @@ const PayrollRunScreen: React.FC = () => {
                         </td>
                         <td className="px-8 py-4 text-right no-print">
                           {emp && (
-                            <button 
-                              onClick={() => setSelectedEmployeeForPayslip(emp)} 
-                              className={`font-black text-xs uppercase tracking-widest flex items-center gap-2 ml-auto px-3 py-1.5 rounded-lg transition-all ${
-                                isPaid ? 'text-slate-600 hover:bg-slate-100' : 'text-blue-600 hover:bg-blue-50'
-                              }`}
+                            <button
+                              onClick={() => setSelectedEmployeeForPayslip(emp)}
+                              className={`font-black text-xs uppercase tracking-widest flex items-center gap-2 ml-auto px-3 py-1.5 rounded-lg transition-all ${isPaid ? 'text-slate-600 hover:bg-slate-100' : 'text-blue-600 hover:bg-blue-50'
+                                }`}
                               title={isPaid ? 'View payslip' : 'View / Pay payslip'}
                             >
                               <Eye size={14} /> {isPaid ? 'View' : 'View / Pay'}
@@ -516,10 +515,10 @@ const PayrollRunScreen: React.FC = () => {
         </div>
 
         {selectedEmployeeForPayslip && selectedRunDetail && (
-          <PayslipModal 
-            isOpen={!!selectedEmployeeForPayslip} 
-            onClose={() => setSelectedEmployeeForPayslip(null)} 
-            employee={selectedEmployeeForPayslip} 
+          <PayslipModal
+            isOpen={!!selectedEmployeeForPayslip}
+            onClose={() => setSelectedEmployeeForPayslip(null)}
+            employee={selectedEmployeeForPayslip}
             run={selectedRunDetail}
             payslipData={getPayslipForEmployee(selectedEmployeeForPayslip.id)}
             onPaymentComplete={handlePayslipPaymentComplete}
@@ -537,8 +536,8 @@ const PayrollRunScreen: React.FC = () => {
           <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Payroll Cycles</h1>
           <p className="text-slate-500 text-xs sm:text-sm">Review, approve and disburse monthly workforce compensation.</p>
         </div>
-        <button 
-          onClick={() => setIsCreating(true)} 
+        <button
+          onClick={() => setIsCreating(true)}
           className="bg-blue-600 text-white px-6 sm:px-8 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl font-black hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-xl shadow-blue-100 text-sm"
         >
           <PlayCircle size={20} /> Run New Payroll
@@ -549,8 +548,8 @@ const PayrollRunScreen: React.FC = () => {
       <div className="block md:hidden space-y-3">
         {runs.length > 0 ? (
           runs.map((run) => (
-            <div 
-              key={run.id} 
+            <div
+              key={run.id}
               className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm"
               onClick={() => handleViewRunDetail(run)}
             >
@@ -603,8 +602,8 @@ const PayrollRunScreen: React.FC = () => {
                     </td>
                     <td className="px-6 lg:px-8 py-5">{getStatusBadge(run.status)}</td>
                     <td className="px-6 lg:px-8 py-5 text-right">
-                      <button 
-                        onClick={() => handleViewRunDetail(run)} 
+                      <button
+                        onClick={() => handleViewRunDetail(run)}
                         className="px-4 py-2 text-xs font-black bg-slate-100 text-slate-900 rounded-xl hover:bg-slate-200 transition-all flex items-center gap-2 ml-auto"
                       >
                         <Eye size={14} /> View Batch

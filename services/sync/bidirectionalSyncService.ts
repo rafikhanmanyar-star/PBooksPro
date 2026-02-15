@@ -49,6 +49,7 @@ const ENTITY_TO_ENDPOINT: Record<string, string> = {
   rental_agreements: '/rental-agreements',
   project_agreements: '/project-agreements',
   installment_plans: '/installment-plans',
+  vendors: '/vendors',
 };
 
 export interface BidirectionalSyncResult {
@@ -181,6 +182,14 @@ class BidirectionalSyncService {
         continue;
       }
 
+      // Skip API call for system entities (sys-acc-*, sys-cat-*) — server already has them; mark synced without POST
+      if (item.entity_id && String(item.entity_id).startsWith('sys-')) {
+        outbox.markSynced(item.id);
+        pushed++;
+        syncManager.removeByEntity(item.entity_type, item.entity_id);
+        continue;
+      }
+
       outbox.markSyncing(item.id);
       const endpoint = ENTITY_TO_ENDPOINT[item.entity_type] || `/${item.entity_type.replace(/_/g, '-')}`;
       const payload = item.payload_json ? JSON.parse(item.payload_json) : null;
@@ -223,8 +232,16 @@ class BidirectionalSyncService {
           }
         }
 
-        // Handle 409 Conflict (version mismatch / optimistic locking failure)
+        // Handle 409 Conflict: "Duplicate" / "already exists" = server has it, mark synced; else version conflict
         if (status === 409) {
+          const isDuplicate = /duplicate|already exists/i.test(msg || '');
+          if (isDuplicate) {
+            logger.logCategory('sync', `⏭️ Server already has ${item.entity_type}:${item.entity_id}, marking synced`);
+            outbox.markSynced(item.id);
+            pushed++;
+            syncManager.removeByEntity(item.entity_type, item.entity_id);
+            continue;
+          }
           logger.warnCategory('sync', `Version conflict for ${item.entity_type}:${item.entity_id}. Logging conflict.`);
           logConflict({
             tenantId,
@@ -232,7 +249,7 @@ class BidirectionalSyncService {
             entityId: item.entity_id,
             localVersion: entityVersion,
             localData: payload,
-            remoteData: null, // Will be fetched on next pull
+            remoteData: null,
             resolution: 'pending_review',
           });
           outbox.markFailed(item.id, `Version conflict (409): ${msg}`);
@@ -281,6 +298,31 @@ class BidirectionalSyncService {
   private static readonly DOWNSTREAM_CHUNK_SIZE = 200;
 
   private async runDownstream(tenantId: string): Promise<{ applied: number; skipped: number; conflicts: number }> {
+    // Ensure local database is ready before applying downstream (writes to SQLite)
+    const { getDatabaseService } = await import('../database/databaseService');
+    const dbService = getDatabaseService();
+    if (!dbService.isReady()) {
+      try {
+        await dbService.initialize();
+      } catch (err) {
+        logger.warnCategory('sync', 'Local database not ready for downstream, skipping apply:', err);
+        return { applied: 0, skipped: 0, conflicts: 0 };
+      }
+    }
+    if (!dbService.isReady()) {
+      logger.warnCategory('sync', 'Local database still not ready after init, skipping downstream');
+      return { applied: 0, skipped: 0, conflicts: 0 };
+    }
+
+    // CRITICAL: Ensure all tables exist before processing entities.
+    // The DB might be "ready" (initialized) but table creation via ensureAllTablesExist()
+    // may not have run yet, causing "No valid columns to insert" errors.
+    try {
+      dbService.ensureAllTablesExist();
+    } catch (tableErr) {
+      logger.warnCategory('sync', 'Could not ensure tables exist before downstream sync:', tableErr);
+    }
+
     const metadata = getSyncMetadataService();
     const api = getAppStateApiService();
     const since = metadata.getLastPullAt(tenantId);
@@ -390,6 +432,13 @@ class BidirectionalSyncService {
 
     metadata.setLastPullAt(tenantId, new Date().toISOString());
     logger.logCategory('sync', `Downstream: ${applied} applied, ${skipped} skipped, ${conflicts} conflicts logged`);
+
+    // Notify AppContext to reload state from local DB when we applied new records
+    // (Bidirectional sync writes to DB but does not update React state; UI stays empty otherwise)
+    if (applied > 0 && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sync:bidir-downstream-complete', { detail: { applied } }));
+    }
+
     return { applied, skipped, conflicts };
   }
 }
