@@ -276,8 +276,9 @@ class BidirectionalSyncService {
   /**
    * Downstream: pull incremental changes from cloud and apply to local with tiered conflict resolution.
    * Processes in chunks and yields to the main thread between chunks to keep UI responsive.
+   * Chunk size increased from 80 to 200 to reduce iteration count for large datasets while maintaining responsiveness.
    */
-  private static readonly DOWNSTREAM_CHUNK_SIZE = 80;
+  private static readonly DOWNSTREAM_CHUNK_SIZE = 200;
 
   private async runDownstream(tenantId: string): Promise<{ applied: number; skipped: number; conflicts: number }> {
     const metadata = getSyncMetadataService();
@@ -295,6 +296,8 @@ class BidirectionalSyncService {
 
     const entities = response?.entities ?? {};
     const entries: { entityKey: string; remote: Record<string, unknown> }[] = [];
+    let applied = 0;
+    let skipped = 0;
     let skippedTenant = 0;
     for (const [entityKey, items] of Object.entries(entities)) {
       if (!Array.isArray(items)) continue;
@@ -312,8 +315,7 @@ class BidirectionalSyncService {
     }
     skipped += skippedTenant;
 
-    let applied = 0;
-    let skipped = 0;
+
     const chunkSize = BidirectionalSyncService.DOWNSTREAM_CHUNK_SIZE;
 
     BaseRepository.disableSyncQueueing();

@@ -1069,6 +1069,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const [initProgress, setInitProgress] = useState(0);
     const [useFallback, setUseFallback] = useState(false);
     const [initError, setInitError] = useState<string | null>(null);
+    const [loadProgress, setLoadProgress] = useState<{ loaded: number; total: number } | null>(null);
 
     // 1. Initialize State with Database (with fallback to localStorage)
     // Hooks must be called unconditionally - always call both hooks
@@ -2671,24 +2672,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
 
         try {
-            let critical: Partial<AppState> | null = null;
+            // STEP 1: Load critical entities FIRST (accounts, contacts, categories, projects, buildings, properties, units)
+            // This allows the UI to become interactive in <10 seconds even with large datasets
+            setInitMessage('Loading critical data...');
             try {
-                critical = await apiService.loadStateCritical();
-            } catch (criticalErr: any) {
-                if (criticalErr?.status !== 404 && !criticalErr?.message?.includes('404')) {
-                    throw criticalErr;
+                const critical = await apiService.loadStateBulk('accounts,contacts,categories,projects,buildings,properties,units,vendors');
+                if (critical && Object.keys(critical).length > 0) {
+                    applyApiState(critical);
+                    onCriticalLoaded?.(); // UI becomes interactive here
+
+                    // STEP 2: Load remaining data in background (chunked, non-blocking)
+                    setInitMessage('Loading additional data...');
+                    apiService.loadStateBulkChunked((loaded, total) => {
+                        setLoadProgress({ loaded, total });
+                        setInitMessage(`Loading data: ${loaded}/${total} records`);
+                        if (total > 0) {
+                            setInitProgress(Math.round((loaded / total) * 100));
+                        }
+                    }, 200) // 200 records per chunk
+                        .then(full => {
+                            applyApiState(full);
+                            setLoadProgress(null);
+                            setInitMessage('Data loaded');
+                            setInitProgress(100);
+                            logger.logCategory('sync', '✅ Background data load complete');
+                        })
+                        .catch(err => {
+                            console.error('⚠️ Background chunked load failed:', err);
+                            setLoadProgress(null);
+                            // Fallback to regular bulk load if chunked fails
+                            logger.logCategory('sync', '⚠️ Chunked load failed, falling back to bulk');
+                            apiService.loadStateBulk()
+                                .then(full => applyApiState(full))
+                                .catch(bulkErr => console.error('⚠️ Bulk fallback also failed:', bulkErr));
+                        });
+                    return;
                 }
+            } catch (criticalErr: any) {
+                console.warn('⚠️ Critical load failed, falling back to full load:', criticalErr);
             }
 
-            if (critical && Object.keys(critical).length > 0) {
-                applyApiState(critical);
-                onCriticalLoaded?.();
-                apiService.loadStateBulk()
-                    .then(full => applyApiState(full))
-                    .catch(err => console.error('⚠️ Background full state load failed:', err));
-                return;
-            }
-
+            // STEP 3: Fallback to old behavior if critical endpoint fails
             let apiState: Partial<AppState>;
             try {
                 apiState = await apiService.loadStateBulk();
@@ -2705,7 +2729,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             console.error('⚠️ Failed to refresh data from API:', err);
             onCriticalLoaded?.();
         }
-    }, [dispatch, isAuthenticated, setStoredState]);
+    }, [dispatch, isAuthenticated, setStoredState, setInitMessage, setInitProgress, setLoadProgress]);
 
     // Store refreshFromApi in a ref so WebSocket handlers always use the latest version
     const refreshFromApiRef = useRef(refreshFromApi);

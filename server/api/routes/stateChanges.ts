@@ -228,12 +228,26 @@ router.get('/bulk', async (req: TenantRequest, res) => {
     const db = getDb();
     const result: Record<string, unknown[]> = {};
 
-    const bulkPromises = BULK_ENTITIES.map(async ({ responseKey, table, tenantColumn }) => {
+    // Support entity filtering for progressive loading
+    const entitiesParam = req.query.entities as string | undefined;
+    const requestedEntities = entitiesParam
+      ? new Set(entitiesParam.split(',').map(e => e.trim()))
+      : null;
+
+    const entitiesToLoad = requestedEntities
+      ? BULK_ENTITIES.filter(e => requestedEntities.has(e.responseKey))
+      : BULK_ENTITIES;
+
+    const bulkPromises = entitiesToLoad.map(async ({ responseKey, table, tenantColumn }) => {
       const rows = await fetchTable(db, tenantId, table, tenantColumn);
       return { responseKey, rows };
     });
 
-    const transactionLogPromise = fetchTable(db, tenantId, 'transaction_audit_log', 'tenant_id');
+    // Only load transaction log if not filtering or if explicitly requested
+    const shouldLoadTransactionLog = !requestedEntities || requestedEntities.has('transactionLog');
+    const transactionLogPromise = shouldLoadTransactionLog
+      ? fetchTable(db, tenantId, 'transaction_audit_log', 'tenant_id')
+      : Promise.resolve([]);
 
     const [bulkResults, transactionLog] = await Promise.all([
       Promise.all(bulkPromises),
@@ -243,11 +257,105 @@ router.get('/bulk', async (req: TenantRequest, res) => {
     for (const { responseKey, rows } of bulkResults) {
       result[responseKey] = rows;
     }
-    result.transactionLog = transactionLog;
+    if (shouldLoadTransactionLog) {
+      result.transactionLog = transactionLog;
+    }
 
     res.json(result);
   } catch (error) {
     console.error('Error fetching state bulk:', error);
+    res.status(500).json({ error: 'Failed to fetch state' });
+  }
+});
+
+// GET /api/state/bulk-chunked — paginated bulk state for progressive loading
+// Params: limit (records per page, default 100), offset (skip N records, default 0)
+// Returns: { entities: {...}, totals: {...}, has_more: boolean, next_offset: number }
+router.get('/bulk-chunked', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Tenant required' });
+    }
+
+    const db = getDb();
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 500); // Max 500 per request
+    const offset = parseInt(req.query.offset as string) || 0;
+
+    const result: Record<string, unknown[]> = {};
+    const totals: Record<string, number> = {};
+    let hasMore = false;
+
+    // Fetch each entity with LIMIT and OFFSET
+    const promises = BULK_ENTITIES.map(async ({ responseKey, table, tenantColumn }) => {
+      try {
+        // Get total count for this entity
+        const countResult = await db.query(
+          `SELECT COUNT(*) as count FROM ${table} WHERE ${tenantColumn} = $1`,
+          [tenantId]
+        );
+        const total = parseInt((countResult as any[])[0]?.count || '0');
+
+        // Get paginated rows
+        const rows = await db.query(
+          `SELECT * FROM ${table} WHERE ${tenantColumn} = $1 ORDER BY id LIMIT $2 OFFSET $3`,
+          [tenantId, limit, offset]
+        );
+
+        const camelRows = (rows as any[]).map(row => rowToCamel(row));
+
+        // Check if this entity has more records
+        const entityHasMore = offset + camelRows.length < total;
+        if (entityHasMore) hasMore = true;
+
+        return { responseKey, rows: camelRows, total };
+      } catch (err) {
+        // Fallback for rental_agreements with org_id
+        if (table === 'rental_agreements' && tenantColumn === 'tenant_id') {
+          try {
+            const countResult = await db.query(
+              `SELECT COUNT(*) as count FROM ${table} WHERE org_id = $1`,
+              [tenantId]
+            );
+            const total = parseInt((countResult as any[])[0]?.count || '0');
+
+            const fallbackRows = await db.query(
+              `SELECT * FROM ${table} WHERE org_id = $1 ORDER BY id LIMIT $2 OFFSET $3`,
+              [tenantId, limit, offset]
+            );
+            const camelRows = (fallbackRows as any[]).map(row => rowToCamel(row));
+
+            const entityHasMore = offset + camelRows.length < total;
+            if (entityHasMore) hasMore = true;
+
+            return { responseKey, rows: camelRows, total };
+          } catch {
+            console.warn(`[bulk-chunked] Skip ${table} (both tenant_id and org_id failed)`);
+            return { responseKey, rows: [], total: 0 };
+          }
+        }
+        console.warn(`[bulk-chunked] Skip ${table}:`, (err as Error).message);
+        return { responseKey, rows: [], total: 0 };
+      }
+    });
+
+    const results = await Promise.all(promises);
+
+    for (const { responseKey, rows, total } of results) {
+      result[responseKey] = rows;
+      totals[responseKey] = total;
+    }
+
+    res.json({
+      entities: result,
+      totals,
+      has_more: hasMore,
+      next_offset: hasMore ? offset + limit : null,
+      limit,
+      offset,
+    });
+  } catch (error) {
+    console.error('Error fetching state bulk-chunked:', error);
     res.status(500).json({ error: 'Failed to fetch state' });
   }
 });
