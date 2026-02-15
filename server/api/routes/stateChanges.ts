@@ -12,6 +12,7 @@
 import { Router } from 'express';
 import { TenantRequest } from '../../middleware/tenantMiddleware.js';
 import { getDatabaseService } from '../../services/databaseService.js';
+import { cacheMiddleware } from '../../middleware/cacheMiddleware.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
@@ -218,7 +219,8 @@ async function fetchTable(
 }
 
 // GET /api/state/bulk — full state in one response (reduces round-trips vs 22 separate GETs)
-router.get('/bulk', async (req: TenantRequest, res) => {
+// Cache for 2 minutes per tenant to reduce database load
+router.get('/bulk', cacheMiddleware(120, (req) => `__bulk__${(req as TenantRequest).tenantId}`), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {

@@ -115,6 +115,7 @@ import vendorsRouter from './routes/vendors.js';
 import { tenantMiddleware } from '../middleware/tenantMiddleware.js';
 import { licenseMiddleware } from '../middleware/licenseMiddleware.js';
 import { trackRequestMetrics } from './routes/admin/system-metrics.js';
+import timeout from 'connect-timeout';
 
 const app = express();
 const httpServer = createServer(app);
@@ -230,6 +231,17 @@ app.use(express.urlencoded({
     (req as any).rawBody = buf;
   }
 }));
+
+// Add request timeout middleware (30 seconds max)
+// This prevents requests from hanging indefinitely
+app.use(timeout('30s'));
+
+// Timeout error handler - must be before route handlers
+app.use((req, res, next) => {
+  if (!(req as any).timedout) {
+    next();
+  }
+});
 
 // Track system metrics (request stats)
 app.use(trackRequestMetrics);
@@ -722,7 +734,28 @@ app.use('/api/state', stateChangesRouter); // Incremental sync: GET /api/state/c
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Error:', err);
+  // Log error with context
+  console.error('❌ Unhandled error:', {
+    error: err.message,
+    code: err.code,
+    path: req.path,
+    method: req.method,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
+
+  // Handle specific error types
+  if (err.code === 'ETIMEDOUT' || (req as any).timedout) {
+    return res.status(504).json({
+      error: 'Request timeout',
+      message: 'The server took too long to process your request. Please try again.'
+    });
+  }
+
+  // Don't send response if headers already sent
+  if (res.headersSent) {
+    return next(err);
+  }
+
   res.status(err.status || 500).json({
     error: err.message || 'Internal server error',
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })

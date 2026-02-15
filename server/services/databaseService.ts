@@ -7,28 +7,31 @@ export class DatabaseService {
 
   constructor(connectionString: string) {
     this.connectionString = connectionString;
-    
+
     // Validate database URL format and warn if it looks like an internal URL
     if (connectionString && connectionString.includes('@dpg-') && !connectionString.includes('.render.com')) {
       console.warn('⚠️  WARNING: Database URL appears to be an internal URL (missing .render.com domain)');
       console.warn('   This may cause connection errors. Use the External Database URL from Render Dashboard.');
       console.warn('   Expected format: postgresql://user:pass@dpg-xxx-a.region-postgres.render.com:5432/dbname');
     }
-    
+
     // Enable SSL for production, staging, and any Render database URLs
-    const shouldUseSSL = process.env.NODE_ENV === 'production' || 
-                         process.env.NODE_ENV === 'staging' ||
-                         (connectionString && connectionString.includes('.render.com'));
-    
+    const shouldUseSSL = process.env.NODE_ENV === 'production' ||
+      process.env.NODE_ENV === 'staging' ||
+      (connectionString && connectionString.includes('.render.com'));
+
     this.pool = new Pool({
       connectionString,
       ssl: shouldUseSSL ? { rejectUnauthorized: false } : false,
       max: 20, // Maximum number of clients in the pool
+      min: 2,  // Minimum idle connections (improves cold start performance)
       idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
       connectionTimeoutMillis: 10000, // Increased to 10 seconds for Render cold starts
+      statement_timeout: 30000, // 30 seconds max query time (prevents runaway queries)
       // Retry configuration
       keepAlive: true,
       keepAliveInitialDelayMillis: 10000,
+      application_name: 'pbookspro-api', // For monitoring
     });
 
     // Handle pool errors
@@ -47,13 +50,25 @@ export class DatabaseService {
    * Execute a query with retry logic for transient errors
    */
   async query<T = any>(text: string, params?: any[], retries = 3): Promise<T[]> {
+    const startTime = Date.now();
     let lastError: any;
-    
+
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         const tenantId = getCurrentTenantId();
         if (!tenantId) {
           const result = await this.pool.query(text, params);
+          const duration = Date.now() - startTime;
+
+          // Log slow queries (>500ms)
+          if (duration > 500) {
+            console.warn(`🐌 SLOW QUERY (${duration}ms):`, {
+              query: text.substring(0, 100),
+              duration,
+              params: params?.length || 0
+            });
+          }
+
           return result.rows;
         }
 
@@ -70,6 +85,19 @@ export class DatabaseService {
           await client.query(`SET LOCAL app.current_tenant_id = '${safeTenantId}'`);
           const result = await client.query(text, params);
           await client.query('COMMIT');
+
+          const duration = Date.now() - startTime;
+
+          // Log slow queries (>500ms)
+          if (duration > 500) {
+            console.warn(`🐌 SLOW QUERY (${duration}ms):`, {
+              query: text.substring(0, 100),
+              duration,
+              params: params?.length || 0,
+              tenantId
+            });
+          }
+
           return result.rows;
         } catch (err) {
           try {
@@ -83,10 +111,10 @@ export class DatabaseService {
         }
       } catch (error: any) {
         lastError = error;
-        
+
         // Check if error is retryable
         const isRetryable = this.isRetryableError(error);
-        
+
         if (!isRetryable || attempt === retries) {
           // Not retryable or out of retries
           console.error('❌ Database query error:', {
@@ -95,7 +123,7 @@ export class DatabaseService {
             code: error.code,
             attempt
           });
-          
+
           // Provide helpful error message for ENOTFOUND errors
           if (error.code === 'ENOTFOUND' || error.message?.includes('getaddrinfo ENOTFOUND')) {
             const dbUrl = this.connectionString || '';
@@ -106,17 +134,17 @@ export class DatabaseService {
               console.error('   💡 Expected format: postgresql://user:pass@dpg-xxx-a.region-postgres.render.com:5432/dbname');
             }
           }
-          
+
           throw error;
         }
-        
+
         // Wait before retry (exponential backoff)
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
         console.warn(`⚠️ Database query failed (attempt ${attempt}/${retries}), retrying in ${delay}ms...`, error.message);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
-    
+
     throw lastError;
   }
 
@@ -125,7 +153,7 @@ export class DatabaseService {
    */
   private isRetryableError(error: any): boolean {
     if (!error || !error.code) return false;
-    
+
     // PostgreSQL error codes that are retryable
     const retryableCodes = [
       'ECONNREFUSED',      // Connection refused
@@ -140,7 +168,7 @@ export class DatabaseService {
       '08004',             // SQL server rejected connection
       '53300',             // Too many connections
     ];
-    
+
     return retryableCodes.includes(error.code);
   }
 
@@ -148,13 +176,23 @@ export class DatabaseService {
    * Execute a statement (INSERT, UPDATE, DELETE) with retry logic
    */
   async execute(text: string, params?: any[], retries = 3): Promise<void> {
+    const startTime = Date.now();
     let lastError: any;
-    
+
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         const tenantId = getCurrentTenantId();
         if (!tenantId) {
           await this.pool.query(text, params);
+
+          const duration = Date.now() - startTime;
+          if (duration > 500) {
+            console.warn(`🐌 SLOW EXECUTE (${duration}ms):`, {
+              query: text.substring(0, 100),
+              duration
+            });
+          }
+
           return;
         }
 
@@ -170,6 +208,16 @@ export class DatabaseService {
           await client.query(`SET LOCAL app.current_tenant_id = '${safeTenantId}'`);
           await client.query(text, params);
           await client.query('COMMIT');
+
+          const duration = Date.now() - startTime;
+          if (duration > 500) {
+            console.warn(`🐌 SLOW EXECUTE (${duration}ms):`, {
+              query: text.substring(0, 100),
+              duration,
+              tenantId
+            });
+          }
+
           return;
         } catch (err) {
           try {
@@ -184,9 +232,9 @@ export class DatabaseService {
         return;
       } catch (error: any) {
         lastError = error;
-        
+
         const isRetryable = this.isRetryableError(error);
-        
+
         if (!isRetryable || attempt === retries) {
           console.error('❌ Database execute error:', {
             query: text.substring(0, 100),
@@ -194,7 +242,7 @@ export class DatabaseService {
             code: error.code,
             attempt
           });
-          
+
           // Provide helpful error message for ENOTFOUND errors
           if (error.code === 'ENOTFOUND' || error.message?.includes('getaddrinfo ENOTFOUND')) {
             const dbUrl = this.connectionString || '';
@@ -205,16 +253,16 @@ export class DatabaseService {
               console.error('   💡 Expected format: postgresql://user:pass@dpg-xxx-a.region-postgres.render.com:5432/dbname');
             }
           }
-          
+
           throw error;
         }
-        
+
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
         console.warn(`⚠️ Database execute failed (attempt ${attempt}/${retries}), retrying in ${delay}ms...`, error.message);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
-    
+
     throw lastError;
   }
 
@@ -237,7 +285,7 @@ export class DatabaseService {
    */
   async transaction<T>(callback: (client: PoolClient) => Promise<T>, retries = 3): Promise<T> {
     let lastError: any;
-    
+
     for (let attempt = 1; attempt <= retries; attempt++) {
       const client = await this.pool.connect();
       try {
@@ -276,23 +324,23 @@ export class DatabaseService {
           console.error('❌ Error during rollback:', rollbackError);
         }
         client.release();
-        
+
         lastError = error;
-        
+
         // Check if error is retryable
         const isRetryable = this.isRetryableError(error);
-        
+
         if (!isRetryable || attempt === retries) {
           throw error;
         }
-        
+
         // Wait before retry (exponential backoff)
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
         console.warn(`⚠️ Transaction failed (attempt ${attempt}/${retries}), retrying in ${delay}ms...`, error.message);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
-    
+
     throw lastError;
   }
 
