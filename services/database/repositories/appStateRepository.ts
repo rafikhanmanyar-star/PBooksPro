@@ -21,8 +21,9 @@ import {
 
 import { migrateTenantColumns } from '../tenantMigration';
 import { BaseRepository } from './baseRepository';
-import { getSyncManager } from '../../sync/syncManager';
-import { devLogger } from '../../../utils/devLogger';
+import { getSyncOutboxService } from '../../sync/syncOutboxService';
+import { getCurrentTenantId } from '../tenantUtils';
+import { getCurrentUserId } from '../userUtils';
 
 export class AppStateRepository {
     private db = getDatabaseService();
@@ -86,7 +87,6 @@ export class AppStateRepository {
             const { runRentalTenantIdToContactIdMigration } = await import('../migrations/migrate-rental-tenant-id-to-contact-id');
             const migrationResult = await runRentalTenantIdToContactIdMigration();
             if (migrationResult.success && migrationResult.message.includes('Successfully migrated')) {
-                devLogger.log('✅ Rental agreements migration completed:', migrationResult.message);
             }
         } catch (migrationError) {
             console.warn('⚠️ Rental agreements migration failed during loadState (continuing):', migrationError);
@@ -96,7 +96,6 @@ export class AppStateRepository {
         try {
             const migrationResult = migrateBudgetsToNewStructure();
             if (migrationResult.success && migrationResult.migrated > 0) {
-                devLogger.log(`✅ Migrated ${migrationResult.migrated} budgets from old format`);
             }
         } catch (migrationError) {
             console.error('⚠️ Budget migration failed, continuing anyway:', migrationError);
@@ -141,11 +140,9 @@ export class AppStateRepository {
                 // Merge cloud settings with local settings (cloud takes precedence)
                 const localSettings = this.appSettingsRepo.loadAllSettings();
                 settings = { ...localSettings, ...cloudSettings };
-                console.log('✅ Loaded settings from cloud database');
             } else {
                 // Not authenticated, use local settings only
                 settings = this.appSettingsRepo.loadAllSettings();
-                console.log('💾 Loaded settings from local database (not authenticated)');
             }
         } catch (error) {
             // Fallback to local settings if cloud load fails
@@ -624,22 +621,11 @@ export class AppStateRepository {
                     console.warn('⚠️ Could not migrate budgets array, continuing anyway:', budgetMigrationError);
                 }
 
-                console.log('💾 Saving state to database:', {
-                    transactions: state.transactions.length,
-                    contacts: state.contacts.length,
-                    vendors: (state as any).vendors?.length || 0,
-                    bills: state.bills.length,
-                    invoices: state.invoices.length,
-                    quotations: state.quotations.length
-                });
-
                 // Disable sync queueing if requested (when syncing FROM cloud TO local)
                 if (disableSyncQueueing) {
                     BaseRepository.disableSyncQueueing();
-                    console.log('[AppStateRepository] Sync queueing disabled - syncing from cloud to local');
                 }
 
-                console.log('🔄 Starting database transaction...');
                 try {
                     // Post-commit callback to queue sync operations
                     const onCommit = () => {
@@ -653,26 +639,27 @@ export class AppStateRepository {
                             // Only queue sync operations if sync queueing is enabled
                             if (isSyncQueueingDisabled || disableSyncQueueing) {
                                 if (pendingOps.length > 0) {
-                                    console.log(`[AppStateRepository] Skipping sync queue for ${pendingOps.length} operations (syncing from cloud/migration)`);
                                 }
                                 // Clear the operations without queueing them
                                 return;
                             }
 
                             if (pendingOps.length > 0) {
-                                console.log(`📦 Queueing ${pendingOps.length} sync operations after transaction commit...`);
-                                const syncManager = getSyncManager();
+                                const outbox = getSyncOutboxService();
+                                const tenantId = getCurrentTenantId();
+                                const userId = getCurrentUserId();
 
-                                // Queue each operation
-                                pendingOps.forEach(op => {
-                                    try {
-                                        syncManager.queueOperation(op.type, op.tableName, op.entityId, op.data || {});
-                                    } catch (syncError) {
-                                        console.error(`❌ Failed to queue sync for ${op.tableName}:${op.entityId}:`, syncError);
-                                    }
-                                });
-
-                                console.log(`✅ Queued ${pendingOps.length} sync operations`);
+                                if (tenantId) {
+                                    pendingOps.forEach(op => {
+                                        try {
+                                            outbox.enqueue(tenantId, op.tableName, op.type, op.entityId, op.data || {}, userId ?? undefined);
+                                        } catch (syncError) {
+                                            console.error(`❌ Failed to queue sync for ${op.tableName}:${op.entityId}:`, syncError);
+                                        }
+                                    });
+                                } else {
+                                    console.warn(`[AppStateRepository] No tenant context, skipping ${pendingOps.length} sync operations`);
+                                }
                             }
                         } catch (error) {
                             console.error('❌ Error queueing sync operations after commit:', error);
@@ -681,7 +668,6 @@ export class AppStateRepository {
                             // Re-enable sync queueing if it was disabled
                             if (disableSyncQueueing && BaseRepository.isSyncQueueingDisabled()) {
                                 BaseRepository.enableSyncQueueing();
-                                console.log('[AppStateRepository] Sync queueing re-enabled');
                             }
                         }
                     };
@@ -689,11 +675,9 @@ export class AppStateRepository {
                     this.db.transaction([
                         () => {
                             // Save all entities with individual error handling
-                            console.log('💾 Starting to save entities...');
 
                             try {
                                 this.usersRepo.saveAll(state.users);
-                                console.log(`✅ Saved ${state.users.length} users`);
                             } catch (e) {
                                 console.error('❌ Failed to save users:', e);
                                 throw e;
@@ -701,22 +685,13 @@ export class AppStateRepository {
 
                             try {
                                 this.accountsRepo.saveAll(state.accounts);
-                                console.log(`✅ Saved ${state.accounts.length} accounts`);
                             } catch (e) {
                                 console.error('❌ Failed to save accounts:', e);
                                 throw e;
                             }
 
                             try {
-                                console.log(`💾 Saving ${state.contacts.length} contacts...`);
-                                if (state.contacts.length > 0) {
-                                    console.log('Sample contact data:', JSON.stringify(state.contacts[0], null, 2));
-                                    // Log what the contact will look like after column mapping
-                                    const sampleDbData = objectToDbFormat(state.contacts[0] as Record<string, any>);
-                                    console.log('Sample contact after column mapping:', sampleDbData);
-                                }
                                 this.contactsRepo.saveAll(state.contacts);
-                                console.log(`✅ Contacts saved successfully (${state.contacts.length} contacts)`);
                             } catch (e) {
                                 console.error('❌ Failed to save contacts:', e);
                                 console.error('Contact data that failed:', state.contacts);
@@ -728,7 +703,6 @@ export class AppStateRepository {
 
                             try {
                                 this.categoriesRepo.saveAll(state.categories);
-                                console.log(`✅ Saved ${state.categories.length} categories`);
                             } catch (e) {
                                 console.error('❌ Failed to save categories:', e);
                                 throw e;
@@ -871,11 +845,7 @@ export class AppStateRepository {
                             }
                         }
                     ], onCommit);
-                    console.log('✅ Database transaction completed successfully');
-
-                    // Verify contacts IMMEDIATELY after transaction (before persistence)
                     const contactsAfterTransaction = this.contactsRepo.findAll();
-                    console.log(`🔍 Contacts in database immediately after transaction: ${contactsAfterTransaction.length} (expected ${state.contacts.length})`);
                     if (contactsAfterTransaction.length !== state.contacts.length) {
                         console.error(`❌ CRITICAL: Contact count mismatch AFTER transaction but BEFORE persistence!`);
                         console.error('Expected:', state.contacts.map(c => ({ id: c.id, name: c.name })));
@@ -896,14 +866,8 @@ export class AppStateRepository {
 
                 // Persist to storage after transaction completes
                 // Use async save to ensure data is persisted
-                console.log('💾 Persisting database to storage...');
                 await this.db.saveAsync();
-                console.log('✅ Database persisted to storage');
-
-                // Verify contacts were saved (after persistence completes)
                 const savedContacts = this.contactsRepo.findAll();
-                console.log('✅ State saved successfully to database');
-                console.log(`📊 Verification: ${savedContacts.length} contacts in database (expected ${state.contacts.length})`);
 
                 if (savedContacts.length !== state.contacts.length) {
                     console.error(`❌ Contact count mismatch! Expected ${state.contacts.length}, found ${savedContacts.length}`);
@@ -921,8 +885,6 @@ export class AppStateRepository {
                             console.error('Could not check table schema:', schemaError);
                         }
                     }
-                } else {
-                    console.log('✅ Contact count matches! All contacts saved successfully.');
                 }
             } catch (error) {
                 console.error('❌ Error saving state to database:', error);
@@ -931,7 +893,6 @@ export class AppStateRepository {
                 // Always re-enable sync queueing if it was disabled, even on error
                 if (disableSyncQueueing && BaseRepository.isSyncQueueingDisabled()) {
                     BaseRepository.enableSyncQueueing();
-                    console.log('[AppStateRepository] Sync queueing re-enabled (after error)');
                 }
             }
         });

@@ -5,9 +5,9 @@
   "type": "module",
   "main": "api/index.js",
   "scripts": {
-    "dev": "tsx watch api/index.ts",
+    "dev": "node --max-old-space-size=1024 --import tsx --watch api/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/api/index.js",
+    "start": "node --max-old-space-size=1024 dist/api/index.js",
     "migrate": "tsx migrations/migrate-to-postgresql.ts",
     "check-db": "tsx scripts/check-database-connection.ts",
     "sync-staging": "tsx scripts/sync-staging-to-production.ts",
@@ -21,15 +21,18 @@
     "drop-production-only-tables": "tsx scripts/drop-production-only-tables.ts",
     "drop-production-only-columns": "tsx scripts/drop-production-only-columns.ts",
     "clean-staging": "tsx scripts/clean-staging-db.ts",
+    "copy-production-to-staging": "tsx scripts/copy-production-to-staging.ts",
     "generate-diff": "tsx scripts/generate-production-diff.ts"
   },
   "dependencies": {
     "axios": "^1.13.2",
     "bcryptjs": "^2.4.3",
+    "connect-timeout": "^1.9.1",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.2",
+    "node-cache": "^5.1.2",
     "pg": "^8.11.3",
     "socket.io": "^4.7.2",
     "xlsx": "^0.18.5"

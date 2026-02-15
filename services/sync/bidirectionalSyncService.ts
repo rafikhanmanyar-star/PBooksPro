@@ -23,6 +23,7 @@ import { apiClient } from '../api/client';
 import { getSyncManager } from './syncManager';
 import { isMobileDevice } from '../../utils/platformDetection';
 import { logger } from '../logger';
+import { navPerfLog } from '../../utils/navPerfLogger';
 import { BaseRepository } from '../database/repositories/baseRepository';
 import { AppStateRepository } from '../database/repositories/appStateRepository';
 
@@ -56,12 +57,16 @@ export interface BidirectionalSyncResult {
   success: boolean;
 }
 
+const SYNC_COOLDOWN_MS = 2 * 60 * 1000; // Don't run connection-triggered sync more than once per 2 minutes
+
 class BidirectionalSyncService {
   private connectionUnsubscribe: (() => void) | null = null;
   private isRunning = false;
+  private lastConnectionTriggeredSyncAt = 0;
 
   /**
    * Start listening for connectivity and run sync when online.
+   * Throttled so we don't re-sync on every tab focus / navigation (browser can fire 'online' repeatedly).
    */
   start(tenantId: string | null): void {
     if (isMobileDevice()) return;
@@ -69,12 +74,17 @@ class BidirectionalSyncService {
 
     const monitor = getConnectionMonitor();
     this.connectionUnsubscribe = monitor.subscribe((status) => {
-      if (status === 'online' && tenantId && !this.isRunning) {
-        logger.logCategory('sync', 'Online: starting bi-directional sync');
-        this.runSync(tenantId).catch((err) => {
-          logger.errorCategory('sync', 'Bidirectional sync error:', err);
-        });
+      if (status !== 'online' || !tenantId || this.isRunning) return;
+      const now = Date.now();
+      if (now - this.lastConnectionTriggeredSyncAt < SYNC_COOLDOWN_MS) {
+        logger.logCategory('sync', 'Skipping connection-triggered sync (cooldown)');
+        return;
       }
+      this.lastConnectionTriggeredSyncAt = now;
+      logger.logCategory('sync', 'Online: starting bi-directional sync');
+      this.runSync(tenantId).catch((err) => {
+        logger.errorCategory('sync', 'Bidirectional sync error:', err);
+      });
     });
   }
 
@@ -104,6 +114,7 @@ class BidirectionalSyncService {
       return { upstream: { pushed: 0, failed: 0 }, downstream: { applied: 0, skipped: 0, conflicts: 0 }, success: true };
     }
 
+    navPerfLog('runSync started', { tenantId });
     logger.logCategory('sync', 'Starting bi-directional sync for tenant:', tenantId);
     this.isRunning = true;
     const result: BidirectionalSyncResult = {
@@ -147,6 +158,11 @@ class BidirectionalSyncService {
 
     // Process sync_outbox items (persistent queue)
     const outboxPending = outbox.getPending(tenantId);
+    const syncMgrStatus = syncManager.getQueueStatus();
+    if (outboxPending.length === 0 && syncMgrStatus.pending === 0 && syncMgrStatus.failed === 0) {
+      logger.logCategory('sync', 'Upstream: nothing to push (outbox and SyncManager empty)');
+      return { pushed: 0, failed: 0 };
+    }
     for (const item of outboxPending) {
       // SECURITY: Verify outbox item belongs to the current tenant before pushing
       if (item.tenant_id !== tenantId) {
@@ -231,7 +247,6 @@ class BidirectionalSyncService {
 
     // ALSO process SyncManager queue (in case outbox wasn't populated yet)
     logger.logCategory('sync', 'Checking SyncManager queue...');
-    const syncMgrStatus = syncManager.getQueueStatus();
     logger.logCategory('sync', `SyncManager status: ${syncMgrStatus.total} total, ${syncMgrStatus.pending} pending, ${syncMgrStatus.syncing} syncing, ${syncMgrStatus.failed} failed`);
 
     if (syncMgrStatus.pending > 0 || syncMgrStatus.failed > 0) {
@@ -253,10 +268,18 @@ class BidirectionalSyncService {
     return { pushed, failed };
   }
 
+  /** Yield to main thread so UI stays responsive during long sync */
+  private yieldToMain(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
   /**
    * Downstream: pull incremental changes from cloud and apply to local with tiered conflict resolution.
-   * Features: tenant validation, version comparison, conflict logging.
+   * Processes in chunks and yields to the main thread between chunks to keep UI responsive.
+   * Chunk size increased from 80 to 200 to reduce iteration count for large datasets while maintaining responsiveness.
    */
+  private static readonly DOWNSTREAM_CHUNK_SIZE = 200;
+
   private async runDownstream(tenantId: string): Promise<{ applied: number; skipped: number; conflicts: number }> {
     const metadata = getSyncMetadataService();
     const api = getAppStateApiService();
@@ -272,27 +295,39 @@ class BidirectionalSyncService {
     }
 
     const entities = response?.entities ?? {};
+    const entries: { entityKey: string; remote: Record<string, unknown> }[] = [];
     let applied = 0;
     let skipped = 0;
+    let skippedTenant = 0;
+    for (const [entityKey, items] of Object.entries(entities)) {
+      if (!Array.isArray(items)) continue;
+      for (const remote of items) {
+        const id = (remote as { id?: string }).id;
+        if (!id) continue;
+        const remoteTenantId = (remote as { tenant_id?: string }).tenant_id;
+        if (remoteTenantId && remoteTenantId !== tenantId) {
+          logger.errorCategory('sync', `SECURITY: Pull received data for tenant ${remoteTenantId}, expected ${tenantId}. Discarding ${entityKey}/${id}.`);
+          skippedTenant++;
+          continue;
+        }
+        entries.push({ entityKey, remote: remote as Record<string, unknown> });
+      }
+    }
+    skipped += skippedTenant;
+
+
+    const chunkSize = BidirectionalSyncService.DOWNSTREAM_CHUNK_SIZE;
 
     BaseRepository.disableSyncQueueing();
     try {
       const appStateRepo = new AppStateRepository();
       const resolver = getConflictResolver();
 
-      for (const [entityKey, items] of Object.entries(entities)) {
-        if (!Array.isArray(items)) continue;
-        for (const remote of items) {
-          const id = (remote as { id?: string }).id;
+      for (let i = 0; i < entries.length; i += chunkSize) {
+        const chunk = entries.slice(i, i + chunkSize);
+        for (const { entityKey, remote } of chunk) {
+          const id = remote.id as string;
           if (!id) continue;
-
-          // SECURITY: Validate that pulled data belongs to the current tenant.
-          const remoteTenantId = (remote as { tenant_id?: string }).tenant_id;
-          if (remoteTenantId && remoteTenantId !== tenantId) {
-            logger.errorCategory('sync', `SECURITY: Pull received data for tenant ${remoteTenantId}, expected ${tenantId}. Discarding ${entityKey}/${id}.`);
-            skipped++;
-            continue;
-          }
 
           try {
             const local = appStateRepo.getEntityById(entityKey, id);
@@ -300,12 +335,11 @@ class BidirectionalSyncService {
               entityKey,
               id,
               local ?? {},
-              remote as Record<string, unknown>,
+              remote,
               tenantId
             );
             const resolution: ConflictResult = resolver.resolve(context);
 
-            // Log conflicts when there's an actual data difference
             if (local && resolution.resolution && resolution.resolution !== 'remote_wins') {
               logConflict({
                 tenantId,
@@ -320,7 +354,6 @@ class BidirectionalSyncService {
               conflicts++;
             }
 
-            // Log for manual review if flagged
             if (resolution.needsManualReview) {
               logConflict({
                 tenantId,
@@ -346,6 +379,9 @@ class BidirectionalSyncService {
             logger.warnCategory('sync', `Downstream apply ${entityKey}/${id}:`, err);
             skipped++;
           }
+        }
+        if (i + chunkSize < entries.length) {
+          await this.yieldToMain();
         }
       }
     } finally {

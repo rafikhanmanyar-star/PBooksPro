@@ -172,6 +172,126 @@ export class AppStateApiService {
   }
 
   /**
+   * Load critical state only (accounts, contacts, categories, projects, buildings, properties, units)
+   * for first paint; then load full state in background.
+   */
+  async loadStateCritical(): Promise<Partial<AppState>> {
+    try {
+      const raw = await apiClient.get<Record<string, any[]>>('/state/critical');
+      return this.normalizeLoadedState(raw);
+    } catch (error) {
+      logger.errorCategory('sync', '❌ Error loading critical state:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Load complete application state from API in one request (fewer round-trips, better LCP/INP).
+   * Prefer over loadState() for initial load when the backend supports GET /state/bulk.
+   * @param entities Optional comma-separated list of entities to load (e.g., 'accounts,contacts,categories')
+   */
+  async loadStateBulk(entities?: string): Promise<Partial<AppState>> {
+    try {
+      logger.logCategory('sync', '📡 Loading state from API (bulk)...');
+      const endpoint = entities ? `/state/bulk?entities=${encodeURIComponent(entities)}` : '/state/bulk';
+      const raw = await apiClient.get<Record<string, any[]>>(endpoint);
+      const state = this.normalizeLoadedState(raw);
+      logger.logCategory('sync', '✅ Loaded from API (bulk):', {
+        accounts: (raw.accounts || []).length,
+        contacts: (raw.contacts || []).length,
+        transactions: (raw.transactions || []).length,
+      });
+      return state;
+    } catch (error) {
+      logger.errorCategory('sync', '❌ Error loading state from API (bulk):', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Load state progressively in chunks with progress tracking.
+   * This enables loading large datasets without blocking the UI.
+   * @param onProgress Callback for progress updates (loaded, total)
+   * @param chunkSize Number of records per chunk (default 200, max 500)
+   */
+  async loadStateBulkChunked(
+    onProgress?: (loaded: number, total: number) => void,
+    chunkSize: number = 200
+  ): Promise<Partial<AppState>> {
+    try {
+      logger.logCategory('sync', '📡 Loading state from API (chunked)...');
+
+      const CHUNK_SIZE = Math.min(chunkSize, 500);
+      let offset = 0;
+      let hasMore = true;
+      const accumulated: Record<string, any[]> = {};
+      let totalRecordCount = 0;
+
+      while (hasMore) {
+        const endpoint = `/state/bulk-chunked?limit=${CHUNK_SIZE}&offset=${offset}`;
+        const chunk = await apiClient.get<{
+          entities: Record<string, any[]>;
+          totals: Record<string, number>;
+          has_more: boolean;
+          next_offset: number | null;
+        }>(endpoint);
+
+        // Merge chunk into accumulated state
+        for (const [key, records] of Object.entries(chunk.entities)) {
+          if (!accumulated[key]) {
+            accumulated[key] = [];
+          }
+          accumulated[key].push(...records);
+        }
+
+        hasMore = chunk.has_more;
+        offset = chunk.next_offset || offset + CHUNK_SIZE;
+
+        // Calculate total from first chunk
+        if (totalRecordCount === 0 && chunk.totals) {
+          totalRecordCount = Object.values(chunk.totals).reduce((sum, count) => sum + count, 0);
+        }
+
+        // Report progress
+        if (onProgress) {
+          const loaded = Object.values(accumulated).reduce((sum, arr) => sum + arr.length, 0);
+          onProgress(loaded, totalRecordCount);
+        }
+
+        // Yield to main thread every chunk to keep UI responsive
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+
+      logger.logCategory('sync', `✅ Loaded ${Object.values(accumulated).reduce((sum, arr) => sum + arr.length, 0)} records in chunks`);
+
+      // Normalize data (potentially offloading to background)
+      return this.normalizeLoadedStateOffThread(accumulated);
+    } catch (error) {
+      logger.errorCategory('sync', '❌ Error loading state (chunked):', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Normalize loaded state with background processing to avoid blocking UI.
+   * Uses requestIdleCallback when available for better performance.
+   */
+  private async normalizeLoadedStateOffThread(raw: Record<string, any>): Promise<Partial<AppState>> {
+    return new Promise((resolve) => {
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(() => {
+          resolve(this.normalizeLoadedState(raw));
+        }, { timeout: 5000 });
+      } else {
+        // Fallback: use setTimeout to at least yield to  main thread
+        setTimeout(() => {
+          resolve(this.normalizeLoadedState(raw));
+        }, 0);
+      }
+    });
+  }
+
+  /**
    * Load complete application state from API
    * Loads all entities that have API endpoints
    */
@@ -331,537 +451,590 @@ export class AppStateApiService {
         vendors: vendors.length,
       });
 
-      const parseJsonSafe = <T,>(value: any, fallback: T): T => {
-        if (value == null) return fallback;
-        if (typeof value === 'string') {
-          try {
-            return JSON.parse(value) as T;
-          } catch {
-            return fallback;
-          }
-        }
-        return value as T;
-      };
-
-      // Normalize properties from API (transform snake_case to camelCase)
-      // The server returns snake_case fields, but the client expects camelCase
-      const normalizedProperties = properties.map((p: any) => {
-        // Normalize property to ensure all fields are properly mapped
-        // Handle both camelCase and snake_case field names for backward compatibility
-        // Preserve null/undefined values explicitly to prevent data loss
-        const normalizedProperty = {
-          id: p.id || '',
-          name: p.name ?? p.name ?? '',
-          ownerId: p.ownerId ?? p.owner_id ?? '',
-          buildingId: p.buildingId ?? p.building_id ?? '',
-          description: (p.description) || undefined,
-          monthlyServiceCharge: (() => {
-            const charge = p.monthlyServiceCharge ?? p.monthly_service_charge;
-            if (charge == null) return undefined;
-            return typeof charge === 'number' ? charge : parseFloat(String(charge));
-          })()
-        };
-
-        // Debug: Log properties that seem to be missing critical data
-        if (!normalizedProperty.name || !normalizedProperty.ownerId || !normalizedProperty.buildingId) {
-          console.warn('⚠️ Property normalization warning - missing critical fields:', {
-            id: normalizedProperty.id,
-            name: normalizedProperty.name,
-            ownerId: normalizedProperty.ownerId,
-            buildingId: normalizedProperty.buildingId,
-            rawProperty: p
-          });
-        }
-
-        return normalizedProperty;
+      return this.normalizeLoadedState({
+        accounts,
+        contacts,
+        transactions,
+        categories,
+        projects,
+        buildings,
+        properties,
+        units,
+        invoices,
+        bills,
+        budgets,
+        planAmenities,
+        installmentPlans,
+        rentalAgreements,
+        projectAgreements,
+        contracts,
+        salesReturns,
+        quotations,
+        documents,
+        recurringInvoiceTemplates,
+        pmCycleAllocations,
+        transactionLog,
+        vendors,
       });
-
-      // Normalize units from API (transform snake_case to camelCase)
-      // The server returns snake_case fields, but the client expects camelCase
-      const normalizedUnits = units.map((u: any) => ({
-        id: u.id,
-        name: u.name || '',
-        projectId: u.project_id || u.projectId || '',
-        contactId: u.contact_id || u.contactId || undefined,
-        salePrice: (() => {
-          const price = u.sale_price || u.salePrice;
-          if (price == null) return undefined;
-          return typeof price === 'number' ? price : parseFloat(String(price));
-        })(),
-        description: u.description || undefined,
-        type: u.type || undefined,
-        area: (() => {
-          const areaValue = u.area;
-          if (areaValue == null) return undefined;
-          return typeof areaValue === 'number' ? areaValue : parseFloat(String(areaValue));
-        })(),
-        floor: u.floor || undefined
-      }));
-
-      // Normalize plan amenities from API (transform snake_case to camelCase)
-      const normalizedPlanAmenities = planAmenities.map((a: any) => ({
-        id: a.id,
-        name: a.name || '',
-        price: typeof a.price === 'number' ? a.price : parseFloat(String(a.price || '0')),
-        isPercentage: a.is_percentage ?? a.isPercentage ?? false,
-        isActive: a.is_active ?? a.isActive ?? true,
-        description: a.description ?? undefined,
-        createdAt: a.created_at ?? a.createdAt ?? undefined,
-        updatedAt: a.updated_at ?? a.updatedAt ?? undefined
-      }));
-
-      // Normalize categories from API (transform snake_case to camelCase)
-      // The server returns snake_case fields, but the client expects camelCase
-      const normalizedCategories = categories.map((c: any) => ({
-        id: c.id,
-        name: c.name || '',
-        type: c.type,
-        description: c.description || undefined,
-        isPermanent: c.is_permanent === true || c.is_permanent === 1 || c.isPermanent === true || false,
-        isRental: c.is_rental === true || c.is_rental === 1 || c.isRental === true || false,
-        parentCategoryId: c.parent_category_id || c.parentCategoryId || undefined
-      }));
-
-      // Normalize project agreements from API (transform snake_case to camelCase)
-      // The server returns snake_case fields, but the client expects camelCase
-      const normalizedProjectAgreements = projectAgreements.map((pa: any) => ({
-        id: pa.id,
-        agreementNumber: pa.agreement_number || pa.agreementNumber || '',
-        clientId: pa.client_id || pa.clientId || '',
-        projectId: pa.project_id || pa.projectId || '',
-        unitIds: (() => {
-          const ids = pa.unit_ids || pa.unitIds;
-          if (!ids) return [];
-          if (Array.isArray(ids)) return ids;
-          if (typeof ids === 'string') {
-            try {
-              return JSON.parse(ids);
-            } catch {
-              return [];
-            }
-          }
-          return [];
-        })(),
-        listPrice: typeof pa.list_price === 'number' ? pa.list_price : (typeof pa.listPrice === 'number' ? pa.listPrice : parseFloat(pa.list_price || pa.listPrice || '0')),
-        customerDiscount: typeof pa.customer_discount === 'number' ? pa.customer_discount : (typeof pa.customerDiscount === 'number' ? pa.customerDiscount : parseFloat(pa.customer_discount || pa.customerDiscount || '0')),
-        floorDiscount: typeof pa.floor_discount === 'number' ? pa.floor_discount : (typeof pa.floorDiscount === 'number' ? pa.floorDiscount : parseFloat(pa.floor_discount || pa.floorDiscount || '0')),
-        lumpSumDiscount: typeof pa.lump_sum_discount === 'number' ? pa.lump_sum_discount : (typeof pa.lumpSumDiscount === 'number' ? pa.lumpSumDiscount : parseFloat(pa.lump_sum_discount || pa.lumpSumDiscount || '0')),
-        miscDiscount: typeof pa.misc_discount === 'number' ? pa.misc_discount : (typeof pa.miscDiscount === 'number' ? pa.miscDiscount : parseFloat(pa.misc_discount || pa.miscDiscount || '0')),
-        sellingPrice: typeof pa.selling_price === 'number' ? pa.selling_price : (typeof pa.sellingPrice === 'number' ? pa.sellingPrice : parseFloat(pa.selling_price || pa.sellingPrice || '0')),
-        rebateAmount: (() => {
-          const amount = pa.rebate_amount || pa.rebateAmount;
-          if (amount == null) return undefined;
-          return typeof amount === 'number' ? amount : parseFloat(String(amount));
-        })(),
-        rebateBrokerId: pa.rebate_broker_id || pa.rebateBrokerId || undefined,
-        issueDate: pa.issue_date || pa.issueDate || new Date().toISOString().split('T')[0],
-        description: pa.description || undefined,
-        status: pa.status || 'Active',
-        cancellationDetails: (() => {
-          const details = pa.cancellation_details || pa.cancellationDetails;
-          if (!details) return undefined;
-          if (typeof details === 'string') {
-            try {
-              return JSON.parse(details);
-            } catch {
-              return undefined;
-            }
-          }
-          if (typeof details === 'object') return details;
-          return undefined;
-        })(),
-        listPriceCategoryId: pa.list_price_category_id || pa.listPriceCategoryId || undefined,
-        customerDiscountCategoryId: pa.customer_discount_category_id || pa.customerDiscountCategoryId || undefined,
-        floorDiscountCategoryId: pa.floor_discount_category_id || pa.floorDiscountCategoryId || undefined,
-        lumpSumDiscountCategoryId: pa.lump_sum_discount_category_id || pa.lumpSumDiscountCategoryId || undefined,
-        miscDiscountCategoryId: pa.misc_discount_category_id || pa.miscDiscountCategoryId || undefined,
-        sellingPriceCategoryId: pa.selling_price_category_id || pa.sellingPriceCategoryId || undefined,
-        rebateCategoryId: pa.rebate_category_id || pa.rebateCategoryId || undefined,
-        userId: pa.user_id || pa.userId || undefined,
-        createdAt: pa.created_at || pa.createdAt || undefined,
-        updatedAt: pa.updated_at || pa.updatedAt || undefined
-      }));
-
-      // Normalize bills from API (transform snake_case to camelCase)
-      // The server returns snake_case fields, but the client expects camelCase
-      const normalizedBills = bills.map((b: any) => ({
-        id: b.id,
-        billNumber: b.bill_number || b.billNumber,
-        contactId: b.contact_id || b.contactId,
-        amount: typeof b.amount === 'number' ? b.amount : parseFloat(b.amount || '0'),
-        paidAmount: typeof b.paid_amount === 'number' ? b.paid_amount : (typeof b.paidAmount === 'number' ? b.paidAmount : parseFloat(b.paid_amount || b.paidAmount || '0')),
-        status: b.status || 'Unpaid',
-        issueDate: b.issue_date || b.issueDate,
-        dueDate: b.due_date || b.dueDate || undefined,
-        description: b.description || undefined,
-        categoryId: b.category_id || b.categoryId || undefined,
-        projectId: b.project_id || b.projectId || undefined,
-        buildingId: b.building_id || b.buildingId || undefined,
-        propertyId: b.property_id || b.propertyId || undefined,
-        projectAgreementId: b.project_agreement_id || b.projectAgreementId || undefined,
-        contractId: b.contract_id || b.contractId || undefined,
-        staffId: b.staff_id || b.staffId || undefined,
-        expenseBearerType: b.expense_bearer_type || b.expenseBearerType || undefined,
-        documentPath: b.document_path || b.documentPath || undefined,
-        documentId: b.document_id || b.documentId || undefined,
-        vendorId: b.vendor_id || b.vendorId || undefined,
-        expenseCategoryItems: (() => {
-          const items = b.expense_category_items || b.expenseCategoryItems;
-          if (!items) return undefined;
-          if (typeof items === 'string' && items.trim().length > 0) {
-            try {
-              return JSON.parse(items);
-            } catch {
-              return undefined;
-            }
-          }
-          if (Array.isArray(items)) return items;
-          return undefined;
-        })()
-      }));
-
-      // Normalize invoices from API (transform snake_case to camelCase)
-      // The server returns snake_case fields, but the client expects camelCase
-      const normalizedInvoices = invoices.map((inv: any) => ({
-        id: inv.id,
-        invoiceNumber: inv.invoice_number || inv.invoiceNumber || `INV-${inv.id}`,
-        contactId: inv.contact_id || inv.contactId || '',
-        amount: typeof inv.amount === 'number' ? inv.amount : parseFloat(inv.amount || '0'),
-        paidAmount: typeof inv.paid_amount === 'number' ? inv.paid_amount : (typeof inv.paidAmount === 'number' ? inv.paidAmount : parseFloat(inv.paid_amount || inv.paidAmount || '0')),
-        status: inv.status || 'Unpaid',
-        issueDate: inv.issue_date || inv.issueDate || new Date().toISOString().split('T')[0],
-        dueDate: inv.due_date || inv.dueDate || undefined,
-        invoiceType: inv.invoice_type || inv.invoiceType || 'Rental',
-        description: inv.description || undefined,
-        projectId: inv.project_id || inv.projectId || undefined,
-        buildingId: inv.building_id || inv.buildingId || undefined,
-        propertyId: inv.property_id || inv.propertyId || undefined,
-        unitId: inv.unit_id || inv.unitId || undefined,
-        categoryId: inv.category_id || inv.categoryId || undefined,
-        agreementId: inv.agreement_id || inv.agreementId || undefined,
-        securityDepositCharge: inv.security_deposit_charge !== undefined && inv.security_deposit_charge !== null
-          ? (typeof inv.security_deposit_charge === 'number' ? inv.security_deposit_charge : (typeof inv.securityDepositCharge === 'number' ? inv.securityDepositCharge : parseFloat(inv.security_deposit_charge || inv.securityDepositCharge || '0')))
-          : undefined,
-        serviceCharges: inv.service_charges !== undefined && inv.service_charges !== null
-          ? (typeof inv.service_charges === 'number' ? inv.service_charges : (typeof inv.serviceCharges === 'number' ? inv.serviceCharges : parseFloat(inv.service_charges || inv.serviceCharges || '0')))
-          : undefined,
-        rentalMonth: inv.rental_month || inv.rentalMonth || undefined
-      }));
-
-      // Normalize sales returns from API (transform snake_case to camelCase)
-      // The server returns snake_case fields, but the client expects camelCase
-      const normalizedSalesReturns = salesReturns.map((sr: any) => ({
-        id: sr.id,
-        returnNumber: sr.return_number || sr.returnNumber || '',
-        agreementId: sr.agreement_id || sr.agreementId || '',
-        returnDate: sr.return_date || sr.returnDate || new Date().toISOString().split('T')[0],
-        reason: sr.reason || '',
-        reasonNotes: sr.reason_notes || sr.reasonNotes || undefined,
-        penaltyPercentage: typeof sr.penalty_percentage === 'number' ? sr.penalty_percentage : (typeof sr.penaltyPercentage === 'number' ? sr.penaltyPercentage : parseFloat(sr.penalty_percentage || sr.penaltyPercentage || '0')),
-        penaltyAmount: typeof sr.penalty_amount === 'number' ? sr.penalty_amount : (typeof sr.penaltyAmount === 'number' ? sr.penaltyAmount : parseFloat(sr.penalty_amount || sr.penaltyAmount || '0')),
-        refundAmount: typeof sr.refund_amount === 'number' ? sr.refund_amount : (typeof sr.refundAmount === 'number' ? sr.refundAmount : parseFloat(sr.refund_amount || sr.refundAmount || '0')),
-        status: sr.status || 'Pending',
-        processedDate: sr.processed_date || sr.processedDate || undefined,
-        refundedDate: sr.refunded_date || sr.refundedDate || undefined,
-        refundBillId: sr.refund_bill_id || sr.refundBillId || undefined,
-        createdBy: sr.created_by || sr.createdBy || undefined,
-        notes: sr.notes || undefined
-      }));
-
-      // Normalize contracts from API (transform snake_case to camelCase)
-      // The server returns snake_case fields, but the client expects camelCase
-      const normalizedContracts = contracts.map((c: any) => ({
-        id: c.id,
-        contractNumber: c.contract_number || c.contractNumber,
-        name: c.name || '',
-        projectId: c.project_id || c.projectId || '',
-        vendorId: c.vendor_id || c.vendorId || '',
-        totalAmount: typeof c.total_amount === 'number' ? c.total_amount : (typeof c.totalAmount === 'number' ? c.totalAmount : parseFloat(c.total_amount || c.totalAmount || '0')),
-        area: c.area !== undefined && c.area !== null
-          ? (typeof c.area === 'number' ? c.area : parseFloat(c.area || '0'))
-          : undefined,
-        rate: c.rate !== undefined && c.rate !== null
-          ? (typeof c.rate === 'number' ? c.rate : parseFloat(c.rate || '0'))
-          : undefined,
-        startDate: c.start_date || c.startDate,
-        endDate: c.end_date || c.endDate,
-        status: c.status || 'Active',
-        categoryIds: (() => {
-          const ids = c.category_ids || c.categoryIds;
-          if (!ids) return [];
-          if (typeof ids === 'string' && ids.trim().length > 0) {
-            try {
-              return JSON.parse(ids);
-            } catch {
-              return [];
-            }
-          }
-          if (Array.isArray(ids)) return ids;
-          return [];
-        })(),
-        expenseCategoryItems: (() => {
-          const items = c.expense_category_items || c.expenseCategoryItems;
-          if (!items) return undefined;
-          if (typeof items === 'string' && items.trim().length > 0) {
-            try {
-              return JSON.parse(items);
-            } catch {
-              return undefined;
-            }
-          }
-          if (Array.isArray(items)) return items;
-          return undefined;
-        })(),
-        termsAndConditions: c.terms_and_conditions || c.termsAndConditions || undefined,
-        paymentTerms: c.payment_terms || c.paymentTerms || undefined,
-        description: c.description || undefined,
-        documentPath: c.document_path || c.documentPath || undefined,
-        documentId: c.document_id || c.documentId || undefined
-      }));
-
-      // Normalize transactions from API (transform snake_case to camelCase)
-      // The server returns snake_case fields, but the client expects camelCase
-      const normalizedTransactions = transactions.map((t: any) => ({
-        id: t.id,
-        type: t.type,
-        subtype: t.subtype || undefined,
-        amount: typeof t.amount === 'number' ? t.amount : parseFloat(t.amount || '0'),
-        date: t.date,
-        description: t.description || undefined,
-        accountId: t.account_id || t.accountId,
-        fromAccountId: t.from_account_id || t.fromAccountId || undefined,
-        toAccountId: t.to_account_id || t.toAccountId || undefined,
-        categoryId: t.category_id || t.categoryId || undefined,
-        contactId: t.contact_id || t.contactId || undefined,
-        vendorId: t.vendor_id || t.vendorId || undefined,
-        projectId: t.project_id || t.projectId || undefined,
-        buildingId: t.building_id || t.buildingId || undefined,
-        propertyId: t.property_id || t.propertyId || undefined,
-        unitId: t.unit_id || t.unitId || undefined,
-        invoiceId: t.invoice_id || t.invoiceId || undefined,
-        billId: t.bill_id || t.billId || undefined,
-        contractId: t.contract_id || t.contractId || undefined,
-        agreementId: t.agreement_id || t.agreementId || undefined,
-        batchId: t.batch_id || t.batchId || undefined,
-        isSystem: t.is_system === true || t.is_system === 1 || t.isSystem === true || false,
-        userId: t.user_id || t.userId || undefined,
-        payslipId: t.payslip_id || t.payslipId || undefined,
-        reference: t.reference || undefined,
-        children: t.children || undefined
-      }));
-
-      // Normalize accounts from API
-      const normalizedAccounts = accounts.map((a: any) => ({
-        id: a.id,
-        name: a.name || '',
-        type: a.type,
-        balance: typeof a.balance === 'number' ? a.balance : parseFloat(String(a.balance || '0')),
-        isPermanent: a.is_permanent === true || a.is_permanent === 1 || a.isPermanent === true || false,
-        description: a.description || undefined,
-        parentAccountId: a.parent_account_id || a.parentAccountId || undefined
-      }));
-
-      // Normalize contacts from API
-      const normalizedContacts = contacts.map((c: any) => ({
-        id: c.id,
-        name: c.name || '',
-        type: c.type,
-        description: c.description || undefined,
-        contactNo: c.contact_no || c.contactNo || undefined,
-        companyName: c.company_name || c.companyName || undefined,
-        address: c.address || undefined,
-        userId: c.user_id || c.userId || undefined,
-        createdAt: c.created_at || c.createdAt || undefined,
-        updatedAt: c.updated_at || c.updatedAt || undefined
-      }));
-
-      // Normalize vendors from API (transform snake_case to camelCase)
-      const normalizedVendors = vendors.map((v: any) => ({
-        id: v.id,
-        name: v.name || '',
-        description: v.description || undefined,
-        contactNo: v.contact_no || v.contactNo || undefined,
-        companyName: v.company_name || v.companyName || undefined,
-        isActive: v.is_active ?? v.isActive ?? true,
-        address: v.address || undefined,
-        tenantId: v.tenant_id || v.tenantId || undefined,
-        userId: v.user_id || v.userId || undefined,
-        createdAt: v.created_at || v.createdAt || undefined,
-        updatedAt: v.updated_at || v.updatedAt || undefined
-      }));
-
-      // Normalize projects from API
-      const normalizedProjects = projects.map((p: any) => ({
-        id: p.id,
-        name: p.name || '',
-        description: p.description || undefined,
-        color: p.color || undefined,
-        status: p.status || 'Active',
-        installmentConfig: (() => {
-          const config = p.installment_config || p.installmentConfig;
-          if (!config) return undefined;
-          if (typeof config === 'string') {
-            try {
-              return JSON.parse(config);
-            } catch {
-              return undefined;
-            }
-          }
-          return config;
-        })(),
-        pmConfig: (() => {
-          const config = p.pm_config || p.pmConfig;
-          if (!config) return undefined;
-          if (typeof config === 'string') {
-            try {
-              return JSON.parse(config);
-            } catch {
-              return undefined;
-            }
-          }
-          return config;
-        })()
-      }));
-
-      // Normalize buildings from API
-      const normalizedBuildings = buildings.map((b: any) => ({
-        id: b.id,
-        name: b.name || '',
-        description: b.description || undefined,
-        color: b.color || undefined
-      }));
-
-      // Normalize budgets from API
-      const normalizedBudgets = budgets.map((b: any) => ({
-        id: b.id,
-        categoryId: b.category_id || b.categoryId || '',
-        amount: typeof b.amount === 'number' ? b.amount : parseFloat(String(b.amount || '0')),
-        projectId: b.project_id || b.projectId || undefined
-      }));
-
-      // Normalize installment plans from API (transform snake_case to camelCase)
-      const normalizedInstallmentPlans = installmentPlans.map((p: any) => ({
-        id: p.id,
-        projectId: p.project_id || p.projectId || '',
-        leadId: p.lead_id || p.leadId || '',
-        unitId: p.unit_id || p.unitId || '',
-        durationYears: p.duration_years || p.durationYears || 1,
-        downPaymentPercentage: typeof p.down_payment_percentage === 'number' ? p.down_payment_percentage : (typeof p.downPaymentPercentage === 'number' ? p.downPaymentPercentage : parseFloat(String(p.down_payment_percentage || p.downPaymentPercentage || '0'))),
-        frequency: p.frequency || 'Monthly',
-        listPrice: typeof p.list_price === 'number' ? p.list_price : (typeof p.listPrice === 'number' ? p.listPrice : parseFloat(String(p.list_price || p.listPrice || '0'))),
-        discounts: (() => {
-          if (p.discounts) {
-            if (typeof p.discounts === 'string') {
-              try {
-                return JSON.parse(p.discounts);
-              } catch {
-                return [];
-              }
-            }
-            return Array.isArray(p.discounts) ? p.discounts : [];
-          }
-          return [];
-        })(),
-        netValue: typeof p.net_value === 'number' ? p.net_value : (typeof p.netValue === 'number' ? p.netValue : parseFloat(String(p.net_value || p.netValue || '0'))),
-        downPaymentAmount: typeof p.down_payment_amount === 'number' ? p.down_payment_amount : (typeof p.downPaymentAmount === 'number' ? p.downPaymentAmount : parseFloat(String(p.down_payment_amount || p.downPaymentAmount || '0'))),
-        installmentAmount: typeof p.installment_amount === 'number' ? p.installment_amount : (typeof p.installmentAmount === 'number' ? p.installmentAmount : parseFloat(String(p.installment_amount || p.installmentAmount || '0'))),
-        totalInstallments: p.total_installments || p.totalInstallments || 0,
-        description: p.description || undefined,
-        introText: p.intro_text || p.introText || undefined,
-        version: p.version || 1,
-        rootId: p.root_id || p.rootId || undefined,
-        status: p.status || 'Draft',
-        approvalRequestedById: p.approval_requested_by || p.approvalRequestedById || undefined,
-        approvalRequestedToId: p.approval_requested_to || p.approvalRequestedToId || undefined,
-        approvalRequestedAt: p.approval_requested_at || p.approvalRequestedAt || undefined,
-        approvalReviewedById: p.approval_reviewed_by || p.approvalReviewedById || undefined,
-        approvalReviewedAt: p.approval_reviewed_at || p.approvalReviewedAt || undefined,
-        userId: p.user_id || p.userId || undefined,
-        selectedAmenities: (() => {
-          if (p.selected_amenities) {
-            if (typeof p.selected_amenities === 'string') {
-              try {
-                return JSON.parse(p.selected_amenities);
-              } catch {
-                return [];
-              }
-            }
-            return Array.isArray(p.selected_amenities) ? p.selected_amenities : (p.selectedAmenities || []);
-          }
-          return p.selectedAmenities || [];
-        })(),
-        amenitiesTotal: typeof p.amenities_total === 'number' ? p.amenities_total : (typeof p.amenitiesTotal === 'number' ? p.amenitiesTotal : parseFloat(String(p.amenities_total || p.amenitiesTotal || '0'))),
-        createdAt: p.created_at || p.createdAt,
-        updatedAt: p.updated_at || p.updatedAt
-      }));
-
-      // Normalize rental agreements from API (transform snake_case to camelCase)
-      const normalizedRentalAgreements = rentalAgreements.map((ra: any) => this.normalizeRentalAgreement(ra));
-
-
-      // Return partial state with API-loaded data
-      // Other entities will remain from initial state or be loaded separately
-      return {
-        accounts: normalizedAccounts,
-        contacts: normalizedContacts,
-        transactions: normalizedTransactions,
-        categories: normalizedCategories,
-        projects: normalizedProjects,
-        buildings: normalizedBuildings,
-        properties: normalizedProperties,
-        units: normalizedUnits,
-        invoices: normalizedInvoices,
-        bills: normalizedBills,
-        budgets: normalizedBudgets,
-        planAmenities: normalizedPlanAmenities || [],
-        installmentPlans: normalizedInstallmentPlans,
-        rentalAgreements: normalizedRentalAgreements,
-        projectAgreements: normalizedProjectAgreements,
-        contracts: normalizedContracts,
-        salesReturns: normalizedSalesReturns,
-        quotations: quotations || [],
-        documents: (documents || []).map((d: any) => ({
-          id: d.id,
-          name: d.name,
-          type: d.type,
-          entityId: d.entity_id ?? d.entityId,
-          entityType: d.entity_type ?? d.entityType,
-          fileData: d.file_data ?? d.fileData,
-          fileName: d.file_name ?? d.fileName,
-          fileSize: d.file_size ?? d.fileSize,
-          mimeType: d.mime_type ?? d.mimeType,
-          uploadedAt: d.uploaded_at ?? d.uploadedAt,
-          uploadedBy: d.uploaded_by ?? d.uploadedBy ?? d.user_id ?? d.userId,
-        })),
-        // Normalize recurring invoice templates from API (transform snake_case to camelCase)
-        // The server returns snake_case fields, but the client expects camelCase
-        // Ensure we always have an array (API may return [] or wrapped format)
-        recurringInvoiceTemplates: (Array.isArray(recurringInvoiceTemplates) ? recurringInvoiceTemplates : []).map((t: any) => ({
-          id: t.id,
-          contactId: t.contact_id ?? t.contactId ?? '',
-          propertyId: t.property_id ?? t.propertyId ?? '',
-          buildingId: t.building_id ?? t.buildingId ?? '',
-          amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount ?? '0')),
-          descriptionTemplate: t.description_template ?? t.descriptionTemplate ?? '',
-          dayOfMonth: typeof t.day_of_month === 'number' ? t.day_of_month : parseInt(String(t.day_of_month ?? t.dayOfMonth ?? '1')),
-          nextDueDate: t.next_due_date ?? t.nextDueDate ?? '',
-          active: t.active === true || t.active === 1 || t.active === 'true',
-          agreementId: t.agreement_id ?? t.agreementId ?? undefined,
-          invoiceType: t.invoice_type ?? t.invoiceType ?? 'Rental',
-          frequency: t.frequency ?? 'Monthly',
-          autoGenerate: t.auto_generate === true || t.auto_generate === 1 || t.autoGenerate === true,
-          maxOccurrences: t.max_occurrences ?? t.maxOccurrences ?? undefined,
-          generatedCount: typeof t.generated_count === 'number' ? t.generated_count : (typeof t.generatedCount === 'number' ? t.generatedCount : parseInt(String(t.generated_count ?? t.generatedCount ?? '0'))),
-          lastGeneratedDate: t.last_generated_date ?? t.lastGeneratedDate ?? undefined,
-        })),
-        pmCycleAllocations: pmCycleAllocations || [],
-        transactionLog: transactionLog || [],
-        vendors: normalizedVendors || [],
-      };
     } catch (error) {
       logger.errorCategory('sync', '❌ Error loading state from API:', error);
       throw error;
     }
+  }
+
+  /** Shared normalizer for loadState() and loadStateBulk() raw response */
+  private normalizeLoadedState(raw: Record<string, any>): Partial<AppState> {
+    const accounts = raw.accounts || [];
+    const contacts = raw.contacts || [];
+    const transactions = raw.transactions || [];
+    const categories = raw.categories || [];
+    const projects = raw.projects || [];
+    const buildings = raw.buildings || [];
+    const properties = raw.properties || [];
+    const units = raw.units || [];
+    const invoices = raw.invoices || [];
+    const bills = raw.bills || [];
+    const budgets = raw.budgets || [];
+    const planAmenities = raw.planAmenities || [];
+    const installmentPlans = raw.installmentPlans || [];
+    const rentalAgreements = raw.rentalAgreements || [];
+    const projectAgreements = raw.projectAgreements || [];
+    const contracts = raw.contracts || [];
+    const salesReturns = raw.salesReturns || [];
+    const quotations = raw.quotations || [];
+    const documents = raw.documents || [];
+    const recurringInvoiceTemplates = raw.recurringInvoiceTemplates || [];
+    const pmCycleAllocations = raw.pmCycleAllocations || [];
+    const transactionLog = raw.transactionLog || [];
+    const vendors = raw.vendors || [];
+
+    const parseJsonSafe = <T,>(value: any, fallback: T): T => {
+      if (value == null) return fallback;
+      if (typeof value === 'string') {
+        try {
+          return JSON.parse(value) as T;
+        } catch {
+          return fallback;
+        }
+      }
+      return value as T;
+    };
+
+    // Normalize properties from API (transform snake_case to camelCase)
+    // The server returns snake_case fields, but the client expects camelCase
+    const normalizedProperties = properties.map((p: any) => {
+      // Normalize property to ensure all fields are properly mapped
+      // Handle both camelCase and snake_case field names for backward compatibility
+      // Preserve null/undefined values explicitly to prevent data loss
+      const normalizedProperty = {
+        id: p.id || '',
+        name: p.name ?? p.name ?? '',
+        ownerId: p.ownerId ?? p.owner_id ?? '',
+        buildingId: p.buildingId ?? p.building_id ?? '',
+        description: (p.description) || undefined,
+        monthlyServiceCharge: (() => {
+          const charge = p.monthlyServiceCharge ?? p.monthly_service_charge;
+          if (charge == null) return undefined;
+          return typeof charge === 'number' ? charge : parseFloat(String(charge));
+        })()
+      };
+
+      // Debug: Log properties that seem to be missing critical data
+      if (!normalizedProperty.name || !normalizedProperty.ownerId || !normalizedProperty.buildingId) {
+        console.warn('⚠️ Property normalization warning - missing critical fields:', {
+          id: normalizedProperty.id,
+          name: normalizedProperty.name,
+          ownerId: normalizedProperty.ownerId,
+          buildingId: normalizedProperty.buildingId,
+          rawProperty: p
+        });
+      }
+
+      return normalizedProperty;
+    });
+
+    // Normalize units from API (transform snake_case to camelCase)
+    // The server returns snake_case fields, but the client expects camelCase
+    const normalizedUnits = units.map((u: any) => ({
+      id: u.id,
+      name: u.name || '',
+      projectId: u.project_id || u.projectId || '',
+      contactId: u.contact_id || u.contactId || undefined,
+      salePrice: (() => {
+        const price = u.sale_price || u.salePrice;
+        if (price == null) return undefined;
+        return typeof price === 'number' ? price : parseFloat(String(price));
+      })(),
+      description: u.description || undefined,
+      type: u.type || undefined,
+      area: (() => {
+        const areaValue = u.area;
+        if (areaValue == null) return undefined;
+        return typeof areaValue === 'number' ? areaValue : parseFloat(String(areaValue));
+      })(),
+      floor: u.floor || undefined
+    }));
+
+    // Normalize plan amenities from API (transform snake_case to camelCase)
+    const normalizedPlanAmenities = planAmenities.map((a: any) => ({
+      id: a.id,
+      name: a.name || '',
+      price: typeof a.price === 'number' ? a.price : parseFloat(String(a.price || '0')),
+      isPercentage: a.is_percentage ?? a.isPercentage ?? false,
+      isActive: a.is_active ?? a.isActive ?? true,
+      description: a.description ?? undefined,
+      createdAt: a.created_at ?? a.createdAt ?? undefined,
+      updatedAt: a.updated_at ?? a.updatedAt ?? undefined
+    }));
+
+    // Normalize categories from API (transform snake_case to camelCase)
+    // The server returns snake_case fields, but the client expects camelCase
+    const normalizedCategories = categories.map((c: any) => ({
+      id: c.id,
+      name: c.name || '',
+      type: c.type,
+      description: c.description || undefined,
+      isPermanent: c.is_permanent === true || c.is_permanent === 1 || c.isPermanent === true || false,
+      isRental: c.is_rental === true || c.is_rental === 1 || c.isRental === true || false,
+      parentCategoryId: c.parent_category_id || c.parentCategoryId || undefined
+    }));
+
+    // Normalize project agreements from API (transform snake_case to camelCase)
+    // The server returns snake_case fields, but the client expects camelCase
+    const normalizedProjectAgreements = projectAgreements.map((pa: any) => ({
+      id: pa.id,
+      agreementNumber: pa.agreement_number || pa.agreementNumber || '',
+      clientId: pa.client_id || pa.clientId || '',
+      projectId: pa.project_id || pa.projectId || '',
+      unitIds: (() => {
+        const ids = pa.unit_ids || pa.unitIds;
+        if (!ids) return [];
+        if (Array.isArray(ids)) return ids;
+        if (typeof ids === 'string') {
+          try {
+            return JSON.parse(ids);
+          } catch {
+            return [];
+          }
+        }
+        return [];
+      })(),
+      listPrice: typeof pa.list_price === 'number' ? pa.list_price : (typeof pa.listPrice === 'number' ? pa.listPrice : parseFloat(pa.list_price || pa.listPrice || '0')),
+      customerDiscount: typeof pa.customer_discount === 'number' ? pa.customer_discount : (typeof pa.customerDiscount === 'number' ? pa.customerDiscount : parseFloat(pa.customer_discount || pa.customerDiscount || '0')),
+      floorDiscount: typeof pa.floor_discount === 'number' ? pa.floor_discount : (typeof pa.floorDiscount === 'number' ? pa.floorDiscount : parseFloat(pa.floor_discount || pa.floorDiscount || '0')),
+      lumpSumDiscount: typeof pa.lump_sum_discount === 'number' ? pa.lump_sum_discount : (typeof pa.lumpSumDiscount === 'number' ? pa.lumpSumDiscount : parseFloat(pa.lump_sum_discount || pa.lumpSumDiscount || '0')),
+      miscDiscount: typeof pa.misc_discount === 'number' ? pa.misc_discount : (typeof pa.miscDiscount === 'number' ? pa.miscDiscount : parseFloat(pa.misc_discount || pa.miscDiscount || '0')),
+      sellingPrice: typeof pa.selling_price === 'number' ? pa.selling_price : (typeof pa.sellingPrice === 'number' ? pa.sellingPrice : parseFloat(pa.selling_price || pa.sellingPrice || '0')),
+      rebateAmount: (() => {
+        const amount = pa.rebate_amount || pa.rebateAmount;
+        if (amount == null) return undefined;
+        return typeof amount === 'number' ? amount : parseFloat(String(amount));
+      })(),
+      rebateBrokerId: pa.rebate_broker_id || pa.rebateBrokerId || undefined,
+      issueDate: pa.issue_date || pa.issueDate || new Date().toISOString().split('T')[0],
+      description: pa.description || undefined,
+      status: pa.status || 'Active',
+      cancellationDetails: (() => {
+        const details = pa.cancellation_details || pa.cancellationDetails;
+        if (!details) return undefined;
+        if (typeof details === 'string') {
+          try {
+            return JSON.parse(details);
+          } catch {
+            return undefined;
+          }
+        }
+        if (typeof details === 'object') return details;
+        return undefined;
+      })(),
+      listPriceCategoryId: pa.list_price_category_id || pa.listPriceCategoryId || undefined,
+      customerDiscountCategoryId: pa.customer_discount_category_id || pa.customerDiscountCategoryId || undefined,
+      floorDiscountCategoryId: pa.floor_discount_category_id || pa.floorDiscountCategoryId || undefined,
+      lumpSumDiscountCategoryId: pa.lump_sum_discount_category_id || pa.lumpSumDiscountCategoryId || undefined,
+      miscDiscountCategoryId: pa.misc_discount_category_id || pa.miscDiscountCategoryId || undefined,
+      sellingPriceCategoryId: pa.selling_price_category_id || pa.sellingPriceCategoryId || undefined,
+      rebateCategoryId: pa.rebate_category_id || pa.rebateCategoryId || undefined,
+      userId: pa.user_id || pa.userId || undefined,
+      createdAt: pa.created_at || pa.createdAt || undefined,
+      updatedAt: pa.updated_at || pa.updatedAt || undefined
+    }));
+
+    // Normalize bills from API (transform snake_case to camelCase)
+    // The server returns snake_case fields, but the client expects camelCase
+    const normalizedBills = bills.map((b: any) => ({
+      id: b.id,
+      billNumber: b.bill_number || b.billNumber,
+      contactId: b.contact_id || b.contactId,
+      amount: typeof b.amount === 'number' ? b.amount : parseFloat(b.amount || '0'),
+      paidAmount: typeof b.paid_amount === 'number' ? b.paid_amount : (typeof b.paidAmount === 'number' ? b.paidAmount : parseFloat(b.paid_amount || b.paidAmount || '0')),
+      status: b.status || 'Unpaid',
+      issueDate: b.issue_date || b.issueDate,
+      dueDate: b.due_date || b.dueDate || undefined,
+      description: b.description || undefined,
+      categoryId: b.category_id || b.categoryId || undefined,
+      projectId: b.project_id || b.projectId || undefined,
+      buildingId: b.building_id || b.buildingId || undefined,
+      propertyId: b.property_id || b.propertyId || undefined,
+      projectAgreementId: b.project_agreement_id || b.projectAgreementId || undefined,
+      contractId: b.contract_id || b.contractId || undefined,
+      staffId: b.staff_id || b.staffId || undefined,
+      expenseBearerType: b.expense_bearer_type || b.expenseBearerType || undefined,
+      documentPath: b.document_path || b.documentPath || undefined,
+      documentId: b.document_id || b.documentId || undefined,
+      vendorId: b.vendor_id || b.vendorId || undefined,
+      expenseCategoryItems: (() => {
+        const items = b.expense_category_items || b.expenseCategoryItems;
+        if (!items) return undefined;
+        if (typeof items === 'string' && items.trim().length > 0) {
+          try {
+            return JSON.parse(items);
+          } catch {
+            return undefined;
+          }
+        }
+        if (Array.isArray(items)) return items;
+        return undefined;
+      })()
+    }));
+
+    // Normalize invoices from API (transform snake_case to camelCase)
+    // The server returns snake_case fields, but the client expects camelCase
+    const normalizedInvoices = invoices.map((inv: any) => ({
+      id: inv.id,
+      invoiceNumber: inv.invoice_number || inv.invoiceNumber || `INV-${inv.id}`,
+      contactId: inv.contact_id || inv.contactId || '',
+      amount: typeof inv.amount === 'number' ? inv.amount : parseFloat(inv.amount || '0'),
+      paidAmount: typeof inv.paid_amount === 'number' ? inv.paid_amount : (typeof inv.paidAmount === 'number' ? inv.paidAmount : parseFloat(inv.paid_amount || inv.paidAmount || '0')),
+      status: inv.status || 'Unpaid',
+      issueDate: inv.issue_date || inv.issueDate || new Date().toISOString().split('T')[0],
+      dueDate: inv.due_date || inv.dueDate || undefined,
+      invoiceType: inv.invoice_type || inv.invoiceType || 'Rental',
+      description: inv.description || undefined,
+      projectId: inv.project_id || inv.projectId || undefined,
+      buildingId: inv.building_id || inv.buildingId || undefined,
+      propertyId: inv.property_id || inv.propertyId || undefined,
+      unitId: inv.unit_id || inv.unitId || undefined,
+      categoryId: inv.category_id || inv.categoryId || undefined,
+      agreementId: inv.agreement_id || inv.agreementId || undefined,
+      securityDepositCharge: inv.security_deposit_charge !== undefined && inv.security_deposit_charge !== null
+        ? (typeof inv.security_deposit_charge === 'number' ? inv.security_deposit_charge : (typeof inv.securityDepositCharge === 'number' ? inv.securityDepositCharge : parseFloat(inv.security_deposit_charge || inv.securityDepositCharge || '0')))
+        : undefined,
+      serviceCharges: inv.service_charges !== undefined && inv.service_charges !== null
+        ? (typeof inv.service_charges === 'number' ? inv.service_charges : (typeof inv.serviceCharges === 'number' ? inv.serviceCharges : parseFloat(inv.service_charges || inv.serviceCharges || '0')))
+        : undefined,
+      rentalMonth: inv.rental_month || inv.rentalMonth || undefined
+    }));
+
+    // Normalize sales returns from API (transform snake_case to camelCase)
+    // The server returns snake_case fields, but the client expects camelCase
+    const normalizedSalesReturns = salesReturns.map((sr: any) => ({
+      id: sr.id,
+      returnNumber: sr.return_number || sr.returnNumber || '',
+      agreementId: sr.agreement_id || sr.agreementId || '',
+      returnDate: sr.return_date || sr.returnDate || new Date().toISOString().split('T')[0],
+      reason: sr.reason || '',
+      reasonNotes: sr.reason_notes || sr.reasonNotes || undefined,
+      penaltyPercentage: typeof sr.penalty_percentage === 'number' ? sr.penalty_percentage : (typeof sr.penaltyPercentage === 'number' ? sr.penaltyPercentage : parseFloat(sr.penalty_percentage || sr.penaltyPercentage || '0')),
+      penaltyAmount: typeof sr.penalty_amount === 'number' ? sr.penalty_amount : (typeof sr.penaltyAmount === 'number' ? sr.penaltyAmount : parseFloat(sr.penalty_amount || sr.penaltyAmount || '0')),
+      refundAmount: typeof sr.refund_amount === 'number' ? sr.refund_amount : (typeof sr.refundAmount === 'number' ? sr.refundAmount : parseFloat(sr.refund_amount || sr.refundAmount || '0')),
+      status: sr.status || 'Pending',
+      processedDate: sr.processed_date || sr.processedDate || undefined,
+      refundedDate: sr.refunded_date || sr.refundedDate || undefined,
+      refundBillId: sr.refund_bill_id || sr.refundBillId || undefined,
+      createdBy: sr.created_by || sr.createdBy || undefined,
+      notes: sr.notes || undefined
+    }));
+
+    // Normalize contracts from API (transform snake_case to camelCase)
+    // The server returns snake_case fields, but the client expects camelCase
+    const normalizedContracts = contracts.map((c: any) => ({
+      id: c.id,
+      contractNumber: c.contract_number || c.contractNumber,
+      name: c.name || '',
+      projectId: c.project_id || c.projectId || '',
+      vendorId: c.vendor_id || c.vendorId || '',
+      totalAmount: typeof c.total_amount === 'number' ? c.total_amount : (typeof c.totalAmount === 'number' ? c.totalAmount : parseFloat(c.total_amount || c.totalAmount || '0')),
+      area: c.area !== undefined && c.area !== null
+        ? (typeof c.area === 'number' ? c.area : parseFloat(c.area || '0'))
+        : undefined,
+      rate: c.rate !== undefined && c.rate !== null
+        ? (typeof c.rate === 'number' ? c.rate : parseFloat(c.rate || '0'))
+        : undefined,
+      startDate: c.start_date || c.startDate,
+      endDate: c.end_date || c.endDate,
+      status: c.status || 'Active',
+      categoryIds: (() => {
+        const ids = c.category_ids || c.categoryIds;
+        if (!ids) return [];
+        if (typeof ids === 'string' && ids.trim().length > 0) {
+          try {
+            return JSON.parse(ids);
+          } catch {
+            return [];
+          }
+        }
+        if (Array.isArray(ids)) return ids;
+        return [];
+      })(),
+      expenseCategoryItems: (() => {
+        const items = c.expense_category_items || c.expenseCategoryItems;
+        if (!items) return undefined;
+        if (typeof items === 'string' && items.trim().length > 0) {
+          try {
+            return JSON.parse(items);
+          } catch {
+            return undefined;
+          }
+        }
+        if (Array.isArray(items)) return items;
+        return undefined;
+      })(),
+      termsAndConditions: c.terms_and_conditions || c.termsAndConditions || undefined,
+      paymentTerms: c.payment_terms || c.paymentTerms || undefined,
+      description: c.description || undefined,
+      documentPath: c.document_path || c.documentPath || undefined,
+      documentId: c.document_id || c.documentId || undefined
+    }));
+
+    // Normalize transactions from API (transform snake_case to camelCase)
+    // The server returns snake_case fields, but the client expects camelCase
+    const normalizedTransactions = transactions.map((t: any) => ({
+      id: t.id,
+      type: t.type,
+      subtype: t.subtype || undefined,
+      amount: typeof t.amount === 'number' ? t.amount : parseFloat(t.amount || '0'),
+      date: t.date,
+      description: t.description || undefined,
+      accountId: t.account_id || t.accountId,
+      fromAccountId: t.from_account_id || t.fromAccountId || undefined,
+      toAccountId: t.to_account_id || t.toAccountId || undefined,
+      categoryId: t.category_id || t.categoryId || undefined,
+      contactId: t.contact_id || t.contactId || undefined,
+      vendorId: t.vendor_id || t.vendorId || undefined,
+      projectId: t.project_id || t.projectId || undefined,
+      buildingId: t.building_id || t.buildingId || undefined,
+      propertyId: t.property_id || t.propertyId || undefined,
+      unitId: t.unit_id || t.unitId || undefined,
+      invoiceId: t.invoice_id || t.invoiceId || undefined,
+      billId: t.bill_id || t.billId || undefined,
+      contractId: t.contract_id || t.contractId || undefined,
+      agreementId: t.agreement_id || t.agreementId || undefined,
+      batchId: t.batch_id || t.batchId || undefined,
+      isSystem: t.is_system === true || t.is_system === 1 || t.isSystem === true || false,
+      userId: t.user_id || t.userId || undefined,
+      payslipId: t.payslip_id || t.payslipId || undefined,
+      reference: t.reference || undefined,
+      children: t.children || undefined
+    }));
+
+    // Normalize accounts from API
+    const normalizedAccounts = accounts.map((a: any) => ({
+      id: a.id,
+      name: a.name || '',
+      type: a.type,
+      balance: typeof a.balance === 'number' ? a.balance : parseFloat(String(a.balance || '0')),
+      isPermanent: a.is_permanent === true || a.is_permanent === 1 || a.isPermanent === true || false,
+      description: a.description || undefined,
+      parentAccountId: a.parent_account_id || a.parentAccountId || undefined
+    }));
+
+    // Normalize contacts from API
+    const normalizedContacts = contacts.map((c: any) => ({
+      id: c.id,
+      name: c.name || '',
+      type: c.type,
+      description: c.description || undefined,
+      contactNo: c.contact_no || c.contactNo || undefined,
+      companyName: c.company_name || c.companyName || undefined,
+      address: c.address || undefined,
+      userId: c.user_id || c.userId || undefined,
+      createdAt: c.created_at || c.createdAt || undefined,
+      updatedAt: c.updated_at || c.updatedAt || undefined
+    }));
+
+    // Normalize vendors from API (transform snake_case to camelCase)
+    const normalizedVendors = vendors.map((v: any) => ({
+      id: v.id,
+      name: v.name || '',
+      description: v.description || undefined,
+      contactNo: v.contact_no || v.contactNo || undefined,
+      companyName: v.company_name || v.companyName || undefined,
+      isActive: v.is_active ?? v.isActive ?? true,
+      address: v.address || undefined,
+      tenantId: v.tenant_id || v.tenantId || undefined,
+      userId: v.user_id || v.userId || undefined,
+      createdAt: v.created_at || v.createdAt || undefined,
+      updatedAt: v.updated_at || v.updatedAt || undefined
+    }));
+
+    // Normalize projects from API
+    const normalizedProjects = projects.map((p: any) => ({
+      id: p.id,
+      name: p.name || '',
+      description: p.description || undefined,
+      color: p.color || undefined,
+      status: p.status || 'Active',
+      installmentConfig: (() => {
+        const config = p.installment_config || p.installmentConfig;
+        if (!config) return undefined;
+        if (typeof config === 'string') {
+          try {
+            return JSON.parse(config);
+          } catch {
+            return undefined;
+          }
+        }
+        return config;
+      })(),
+      pmConfig: (() => {
+        const config = p.pm_config || p.pmConfig;
+        if (!config) return undefined;
+        if (typeof config === 'string') {
+          try {
+            return JSON.parse(config);
+          } catch {
+            return undefined;
+          }
+        }
+        return config;
+      })()
+    }));
+
+    // Normalize buildings from API
+    const normalizedBuildings = buildings.map((b: any) => ({
+      id: b.id,
+      name: b.name || '',
+      description: b.description || undefined,
+      color: b.color || undefined
+    }));
+
+    // Normalize budgets from API
+    const normalizedBudgets = budgets.map((b: any) => ({
+      id: b.id,
+      categoryId: b.category_id || b.categoryId || '',
+      amount: typeof b.amount === 'number' ? b.amount : parseFloat(String(b.amount || '0')),
+      projectId: b.project_id || b.projectId || undefined
+    }));
+
+    // Normalize installment plans from API (transform snake_case to camelCase)
+    const normalizedInstallmentPlans = installmentPlans.map((p: any) => ({
+      id: p.id,
+      projectId: p.project_id || p.projectId || '',
+      leadId: p.lead_id || p.leadId || '',
+      unitId: p.unit_id || p.unitId || '',
+      durationYears: p.duration_years || p.durationYears || 1,
+      downPaymentPercentage: typeof p.down_payment_percentage === 'number' ? p.down_payment_percentage : (typeof p.downPaymentPercentage === 'number' ? p.downPaymentPercentage : parseFloat(String(p.down_payment_percentage || p.downPaymentPercentage || '0'))),
+      frequency: p.frequency || 'Monthly',
+      listPrice: typeof p.list_price === 'number' ? p.list_price : (typeof p.listPrice === 'number' ? p.listPrice : parseFloat(String(p.list_price || p.listPrice || '0'))),
+      discounts: (() => {
+        if (p.discounts) {
+          if (typeof p.discounts === 'string') {
+            try {
+              return JSON.parse(p.discounts);
+            } catch {
+              return [];
+            }
+          }
+          return Array.isArray(p.discounts) ? p.discounts : [];
+        }
+        return [];
+      })(),
+      netValue: typeof p.net_value === 'number' ? p.net_value : (typeof p.netValue === 'number' ? p.netValue : parseFloat(String(p.net_value || p.netValue || '0'))),
+      downPaymentAmount: typeof p.down_payment_amount === 'number' ? p.down_payment_amount : (typeof p.downPaymentAmount === 'number' ? p.downPaymentAmount : parseFloat(String(p.down_payment_amount || p.downPaymentAmount || '0'))),
+      installmentAmount: typeof p.installment_amount === 'number' ? p.installment_amount : (typeof p.installmentAmount === 'number' ? p.installmentAmount : parseFloat(String(p.installment_amount || p.installmentAmount || '0'))),
+      totalInstallments: p.total_installments || p.totalInstallments || 0,
+      description: p.description || undefined,
+      introText: p.intro_text || p.introText || undefined,
+      version: p.version || 1,
+      rootId: p.root_id || p.rootId || undefined,
+      status: p.status || 'Draft',
+      approvalRequestedById: p.approval_requested_by || p.approvalRequestedById || undefined,
+      approvalRequestedToId: p.approval_requested_to || p.approvalRequestedToId || undefined,
+      approvalRequestedAt: p.approval_requested_at || p.approvalRequestedAt || undefined,
+      approvalReviewedById: p.approval_reviewed_by || p.approvalReviewedById || undefined,
+      approvalReviewedAt: p.approval_reviewed_at || p.approvalReviewedAt || undefined,
+      userId: p.user_id || p.userId || undefined,
+      selectedAmenities: (() => {
+        if (p.selected_amenities) {
+          if (typeof p.selected_amenities === 'string') {
+            try {
+              return JSON.parse(p.selected_amenities);
+            } catch {
+              return [];
+            }
+          }
+          return Array.isArray(p.selected_amenities) ? p.selected_amenities : (p.selectedAmenities || []);
+        }
+        return p.selectedAmenities || [];
+      })(),
+      amenitiesTotal: typeof p.amenities_total === 'number' ? p.amenities_total : (typeof p.amenitiesTotal === 'number' ? p.amenitiesTotal : parseFloat(String(p.amenities_total || p.amenitiesTotal || '0'))),
+      createdAt: p.created_at || p.createdAt,
+      updatedAt: p.updated_at || p.updatedAt
+    }));
+
+    // Normalize rental agreements from API (transform snake_case to camelCase)
+    const normalizedRentalAgreements = rentalAgreements.map((ra: any) => this.normalizeRentalAgreement(ra));
+
+
+    // Return partial state with API-loaded data
+    // Other entities will remain from initial state or be loaded separately
+    return {
+      accounts: normalizedAccounts,
+      contacts: normalizedContacts,
+      transactions: normalizedTransactions,
+      categories: normalizedCategories,
+      projects: normalizedProjects,
+      buildings: normalizedBuildings,
+      properties: normalizedProperties,
+      units: normalizedUnits,
+      invoices: normalizedInvoices,
+      bills: normalizedBills,
+      budgets: normalizedBudgets,
+      planAmenities: normalizedPlanAmenities || [],
+      installmentPlans: normalizedInstallmentPlans,
+      rentalAgreements: normalizedRentalAgreements,
+      projectAgreements: normalizedProjectAgreements,
+      contracts: normalizedContracts,
+      salesReturns: normalizedSalesReturns,
+      quotations: quotations || [],
+      documents: (documents || []).map((d: any) => ({
+        id: d.id,
+        name: d.name,
+        type: d.type,
+        entityId: d.entity_id ?? d.entityId,
+        entityType: d.entity_type ?? d.entityType,
+        fileData: d.file_data ?? d.fileData,
+        fileName: d.file_name ?? d.fileName,
+        fileSize: d.file_size ?? d.fileSize,
+        mimeType: d.mime_type ?? d.mimeType,
+        uploadedAt: d.uploaded_at ?? d.uploadedAt,
+        uploadedBy: d.uploaded_by ?? d.uploadedBy ?? d.user_id ?? d.userId,
+      })),
+      // Normalize recurring invoice templates from API (transform snake_case to camelCase)
+      // The server returns snake_case fields, but the client expects camelCase
+      // Ensure we always have an array (API may return [] or wrapped format)
+      recurringInvoiceTemplates: (Array.isArray(recurringInvoiceTemplates) ? recurringInvoiceTemplates : []).map((t: any) => ({
+        id: t.id,
+        contactId: t.contact_id ?? t.contactId ?? '',
+        propertyId: t.property_id ?? t.propertyId ?? '',
+        buildingId: t.building_id ?? t.buildingId ?? '',
+        amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount ?? '0')),
+        descriptionTemplate: t.description_template ?? t.descriptionTemplate ?? '',
+        dayOfMonth: typeof t.day_of_month === 'number' ? t.day_of_month : parseInt(String(t.day_of_month ?? t.dayOfMonth ?? '1')),
+        nextDueDate: t.next_due_date ?? t.nextDueDate ?? '',
+        active: t.active === true || t.active === 1 || t.active === 'true',
+        agreementId: t.agreement_id ?? t.agreementId ?? undefined,
+        invoiceType: t.invoice_type ?? t.invoiceType ?? 'Rental',
+        frequency: t.frequency ?? 'Monthly',
+        autoGenerate: t.auto_generate === true || t.auto_generate === 1 || t.autoGenerate === true,
+        maxOccurrences: t.max_occurrences ?? t.maxOccurrences ?? undefined,
+        generatedCount: typeof t.generated_count === 'number' ? t.generated_count : (typeof t.generatedCount === 'number' ? t.generatedCount : parseInt(String(t.generated_count ?? t.generatedCount ?? '0'))),
+        lastGeneratedDate: t.last_generated_date ?? t.lastGeneratedDate ?? undefined,
+      })),
+      pmCycleAllocations: pmCycleAllocations || [],
+      transactionLog: transactionLog || [],
+      vendors: normalizedVendors || [],
+    };
   }
 
   /**

@@ -15,8 +15,6 @@ import { getSyncQueue } from '../services/syncQueue';
 import { getConnectionMonitor } from '../services/connectionMonitor';
 import { SyncOperationType } from '../types/sync';
 import { getLastSyncTimestamp, setLastSyncTimestamp, isLastSyncRecent, clearLastSyncTimestamp } from '../utils/lastSyncStorage';
-import { devLogger } from '../utils/devLogger';
-
 // PERFORMANCE: Module-level constant set of action types that trigger API sync.
 // Previously this 60+ entry Set was re-created on EVERY dispatch call inside useCallback.
 const SYNC_TO_API_ACTIONS = new Set<string>([
@@ -328,7 +326,7 @@ const initialState: AppState = {
 
 // Create context - use any temporarily to avoid TDZ issues, then cast to proper type
 // This ensures the context is created even if types aren't fully initialized yet
-const AppContext = createContext<any>(undefined) as React.Context<{ state: AppState; dispatch: React.Dispatch<AppAction> } | undefined>;
+const AppContext = createContext<any>(undefined) as React.Context<{ state: AppState; dispatch: React.Dispatch<AppAction>; isInitialDataLoading?: boolean } | undefined>;
 
 // Helper to auto-update contract status based on payments
 const updateContractStatus = (state: AppState, contractId: string | undefined): AppState => {
@@ -1066,22 +1064,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, [isAuthenticated]);
 
     const [isInitializing, setIsInitializing] = useState(true);
+    const [isInitialDataLoading, setIsInitialDataLoading] = useState(false);
     const [initMessage, setInitMessage] = useState('Initializing application...');
     const [initProgress, setInitProgress] = useState(0);
     const [useFallback, setUseFallback] = useState(false);
     const [initError, setInitError] = useState<string | null>(null);
+    const [loadProgress, setLoadProgress] = useState<{ loaded: number; total: number } | null>(null);
 
     // 1. Initialize State with Database (with fallback to localStorage)
     // Hooks must be called unconditionally - always call both hooks
     // Then use the appropriate one based on useFallback state
     // Add error boundary logging before hooks
-    devLogger.log('[AppContext] About to initialize database hooks...');
-    devLogger.log('[AppContext] initialState keys:', Object.keys(initialState));
 
     const [dbState, setDbState, dbStateHelpers] = useDatabaseState<AppState>('finance_app_state_v4', initialState);
     const [fallbackState, setFallbackState] = useDatabaseStateFallback<AppState>('finance_app_state_v4', initialState);
 
-    devLogger.log('[AppContext] Database hooks initialized successfully');
 
     // Initialize storedState safely - use initialState as fallback if hooks aren't ready
     const storedState = (useFallback ? fallbackState : dbState) || initialState;
@@ -1120,7 +1117,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setStoredState(prev => {
             if (prev.currentUser && (isAppRelaunched || versionChanged)) {
                 const reason = versionChanged ? `Version changed (${storedVersion} -> ${currentVersion})` : 'Application relaunched';
-                devLogger.log(`🔄 ${reason} - logging out user`);
                 return { ...prev, currentUser: null };
             }
             return prev;
@@ -1169,7 +1165,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const runMigration = async () => {
             try {
-                devLogger.log('🚀 Starting app initialization...');
 
                 // Safety timeout - if initialization takes more than 30 seconds, show error
                 timeoutId = setTimeout(() => {
@@ -1215,7 +1210,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             if (isMounted) setIsInitializing(false);
                         }, 2000);
                     } else if (result.migrated) {
-                        devLogger.log('Migration completed successfully:', result.recordCounts);
                         const recordCount = Object.values(result.recordCounts || {}).reduce((a, b) => a + b, 0);
 
                         // Reload state after migration
@@ -1245,17 +1239,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
                     // Check if user is authenticated (cloud mode)
                     if (isAuthenticated) {
-                        // Load from API (cloud mode)
-                        setInitMessage('Loading data from cloud...');
-                        setInitProgress(60);
-
+                        // OFFLINE-FIRST: Load from local DB first, show UI, then sync with cloud in background
                         try {
-                            // Get current tenant ID to detect tenant switches
                             const { apiClient } = await import('../services/api/client');
                             const currentTenantId = apiClient.getTenantId();
 
-                            // CRITICAL: Before clearing local data, restore offline transactions from sync queue
-                            // This ensures offline data is not lost on logout/login
+                            // CRITICAL: Restore offline transactions from sync queue before any load
                             let offlineTransactions: Transaction[] = [];
                             let offlineContacts: Contact[] = [];
                             let offlineInvoices: Invoice[] = [];
@@ -1268,11 +1257,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             try {
                                 const syncQueue = getSyncQueue();
                                 if (currentTenantId) {
-                                    // Get all pending items from sync queue (these are offline operations)
                                     const pendingItems = await syncQueue.getPendingItems(currentTenantId);
                                     logger.logCategory('sync', `📦 Found ${pendingItems.length} pending sync items to restore`);
-
-                                    // Extract transactions and other entities from sync queue
                                     for (const item of pendingItems) {
                                         if (item.type === 'transaction' && item.action === 'create') {
                                             offlineTransactions.push(item.data as Transaction);
@@ -1292,7 +1278,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                             offlineRecurringTemplates.push(item.data as RecurringInvoiceTemplate);
                                         }
                                     }
-
                                     logger.logCategory('sync', `✅ Extracted offline data from sync queue:`, {
                                         transactions: offlineTransactions.length,
                                         contacts: offlineContacts.length,
@@ -1306,23 +1291,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 }
                             } catch (syncQueueError) {
                                 logger.warnCategory('sync', '⚠️ Could not load sync queue items:', syncQueueError);
-                                // Continue anyway - offline data might be lost but app should still work
                             }
 
-                            // Clear local database data for previous tenant ONLY if tenant changed
-                            // This prevents cross-tenant data leakage while preserving local data on refresh
+                            // Clear local database for previous tenant ONLY if tenant changed
                             try {
                                 const dbService = getDatabaseService();
                                 if (dbService.isReady()) {
                                     const { SettingsRepository } = await import('../services/database/repositories/index');
                                     const settingsRepo = new SettingsRepository();
-
                                     const localTenantId = await settingsRepo.get('tenantId');
-                                    const currentTenantId = auth.tenant?.id || auth.user?.tenantId;
+                                    const effectiveTenantId = auth.tenant?.id || auth.user?.tenantId;
 
-                                    if (currentTenantId && localTenantId && currentTenantId !== localTenantId) {
-                                        devLogger.log(`🔄 Tenant switch detected: ${localTenantId} -> ${currentTenantId}. Clearing local data...`);
-
+                                    if (effectiveTenantId && localTenantId && effectiveTenantId !== localTenantId) {
                                         const { ContactsRepository, TransactionsRepository, AccountsRepository,
                                             CategoriesRepository, ProjectsRepository, BuildingsRepository,
                                             PropertiesRepository, UnitsRepository, InvoicesRepository,
@@ -1331,8 +1311,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                             QuotationsRepository, DocumentsRepository,
                                             RecurringTemplatesRepository, PMCycleAllocationsRepository,
                                             VendorsRepository } = await import('../services/database/repositories/index');
-
-                                        // Clear all tenant-specific data to start fresh
                                         const repos = [
                                             new ContactsRepository(), new TransactionsRepository(), new AccountsRepository(),
                                             new CategoriesRepository(), new ProjectsRepository(), new BuildingsRepository(),
@@ -1343,193 +1321,166 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                             new RecurringTemplatesRepository(), new PMCycleAllocationsRepository(),
                                             new VendorsRepository()
                                         ];
-
                                         for (const repo of repos) {
                                             await repo.deleteAllUnfiltered();
                                         }
-
-                                        await settingsRepo.set('tenantId', currentTenantId);
-                                        devLogger.log('🗑️ Cleared local database data to prevent cross-tenant leakage');
-                                    } else if (currentTenantId && !localTenantId) {
-                                        // First time initialization - set the tenant ID
-                                        await settingsRepo.set('tenantId', currentTenantId);
+                                        await settingsRepo.set('tenantId', effectiveTenantId);
+                                    } else if (effectiveTenantId && !localTenantId) {
+                                        await settingsRepo.set('tenantId', effectiveTenantId);
                                     }
                                 }
                             } catch (clearError) {
                                 console.warn('⚠️ Could not check/clear local database data:', clearError);
                             }
 
-                            const apiService = getAppStateApiService();
-                            let apiState: Partial<AppState>;
-
-                            // Incremental sync: use when we have local baseline and recent lastSync (< 24h)
+                            // STEP 1 (offline-first): Load from local DB and show UI immediately
                             try {
                                 const dbService = getDatabaseService();
-                                let baseline: Partial<AppState> | null = null;
-                                if (dbService.isReady()) {
-                                    const appStateRepo = await getAppStateRepository();
-                                    baseline = await appStateRepo.loadState();
+                                if (!dbService.isReady()) {
+                                    setInitMessage('Initializing database...');
+                                    setInitProgress(60);
+                                    await dbService.initialize();
+                                    logger.logCategory('database', '✅ Database ready');
                                 }
-                                const lastSync = currentTenantId ? getLastSyncTimestamp(currentTenantId) : null;
-                                const hasBaseline = baseline && (
-                                    (baseline.projects?.length ?? 0) > 0 ||
-                                    (baseline.transactions?.length ?? 0) > 0 ||
-                                    (baseline.contacts?.length ?? 0) > 0
-                                );
+                            } catch (dbError) {
+                                logger.warnCategory('database', '⚠️ Database initialization failed, using localStorage fallback:', dbError);
+                                setUseFallback(true);
+                                setInitMessage('Using localStorage (database unavailable)...');
+                            }
 
-                                if (
-                                    currentTenantId &&
-                                    lastSync &&
-                                    hasBaseline &&
-                                    isLastSyncRecent(currentTenantId)
-                                ) {
-                                    apiState = await apiService.loadStateViaIncrementalSync(lastSync, baseline as Partial<AppState>);
-                                    logger.logCategory('sync', '📥 Used incremental sync (returning user)');
-                                } else {
-                                    apiState = await apiService.loadState();
+                            setInitMessage('Loading application data from database...');
+                            setInitProgress(70);
+                            try {
+                                const appStateRepo = await getAppStateRepository();
+                                const loadedState = await appStateRepo.loadState();
+                                if (isMounted) {
+                                    setStoredState(loadedState as AppState);
+                                    logger.logCategory('database', '✅ Database state loaded (offline-first), UI will show from local');
                                 }
-                            } catch (incrementalError) {
-                                logger.warnCategory('sync', '⚠️ Incremental sync failed, falling back to full load:', incrementalError);
-                                if (currentTenantId) clearLastSyncTimestamp(currentTenantId);
-                                apiState = await apiService.loadState();
+                            } catch (loadErr) {
+                                logger.warnCategory('database', '⚠️ Load from local failed, continuing with current state:', loadErr);
                             }
 
-                            if (currentTenantId) {
-                                setLastSyncTimestamp(currentTenantId, new Date().toISOString());
-                            }
+                            if (!isMounted) return;
+                            if (timeoutId) clearTimeout(timeoutId);
+                            if (forceTimeoutId) clearTimeout(forceTimeoutId);
+                            setInitProgress(100);
+                            setInitMessage('Ready!');
+                            setTimeout(() => {
+                                if (isMounted) setIsInitializing(false);
+                            }, 300);
 
-                            // Merge offline data with API data - offline data takes precedence for conflicts
-                            // Create maps for efficient lookup
-                            const apiTransactionsMap = new Map((apiState.transactions || []).map(tx => [tx.id, tx]));
-                            const apiContactsMap = new Map((apiState.contacts || []).map(c => [c.id, c]));
-                            const apiInvoicesMap = new Map((apiState.invoices || []).map(i => [i.id, i]));
-                            const apiBillsMap = new Map((apiState.bills || []).map(b => [b.id, b]));
-                            const apiAccountsMap = new Map((apiState.accounts || []).map(a => [a.id, a]));
-                            const apiCategoriesMap = new Map((apiState.categories || []).map(c => [c.id, c]));
-                            const apiVendorsMap = new Map((apiState.vendors || []).map(v => [v.id, v]));
-
-                            // Merge offline transactions (offline takes precedence)
-                            for (const offlineTx of offlineTransactions) {
-                                apiTransactionsMap.set(offlineTx.id, offlineTx);
-                            }
-
-                            // Merge offline contacts
-                            for (const offlineContact of offlineContacts) {
-                                apiContactsMap.set(offlineContact.id, offlineContact);
-                            }
-
-                            // Merge offline invoices
-                            for (const offlineInvoice of offlineInvoices) {
-                                apiInvoicesMap.set(offlineInvoice.id, offlineInvoice);
-                            }
-
-                            // Merge offline bills
-                            for (const offlineBill of offlineBills) {
-                                apiBillsMap.set(offlineBill.id, offlineBill);
-                            }
-
-                            // Merge offline accounts
-                            for (const offlineAccount of offlineAccounts) {
-                                apiAccountsMap.set(offlineAccount.id, offlineAccount);
-                            }
-
-                            // Merge offline categories
-                            for (const offlineCategory of offlineCategories) {
-                                apiCategoriesMap.set(offlineCategory.id, offlineCategory);
-                            }
-
-                            // Merge offline vendors
-                            for (const offlineVendor of offlineVendors) {
-                                apiVendorsMap.set(offlineVendor.id, offlineVendor);
-                            }
-
-                            // Merge offline recurring templates with API data (offline takes precedence)
-                            const apiRecurringTemplatesMap = new Map((apiState.recurringInvoiceTemplates || []).map(t => [t.id, t]));
-                            for (const offlineTemplate of offlineRecurringTemplates) {
-                                apiRecurringTemplatesMap.set(offlineTemplate.id, offlineTemplate);
-                            }
-                            const mergedRecurringTemplates = Array.from(apiRecurringTemplatesMap.values());
-
-                            logger.logCategory('sync', `✅ Merged offline data with API data:`, {
-                                transactions: apiTransactionsMap.size,
-                                contacts: apiContactsMap.size,
-                                invoices: apiInvoicesMap.size,
-                                bills: apiBillsMap.size,
-                                accounts: apiAccountsMap.size,
-                                categories: apiCategoriesMap.size,
-                                vendors: apiVendorsMap.size
-                            });
-
-                            // Replace state with merged data using functional update
-                            // This ensures we access the current state value correctly
-                            if (isMounted) {
-                                const fullState: AppState = {
-                                    ...storedStateRef.current,
-                                    accounts: Array.from(apiAccountsMap.values()),
-                                    contacts: Array.from(apiContactsMap.values()),
-                                    transactions: Array.from(apiTransactionsMap.values()),
-                                    categories: Array.from(apiCategoriesMap.values()),
-                                    projects: apiState.projects || [],
-                                    buildings: apiState.buildings || [],
-                                    properties: apiState.properties || [],
-                                    units: apiState.units || [],
-                                    invoices: Array.from(apiInvoicesMap.values()),
-                                    bills: Array.from(apiBillsMap.values()),
-                                    budgets: apiState.budgets || [],
-                                    rentalAgreements: apiState.rentalAgreements || [],
-                                    projectAgreements: apiState.projectAgreements || [],
-                                    installmentPlans: apiState.installmentPlans || [],
-                                    planAmenities: apiState.planAmenities || [],
-                                    contracts: apiState.contracts || [],
-                                    salesReturns: apiState.salesReturns || [],
-                                    quotations: apiState.quotations || [],
-                                    documents: apiState.documents || [],
-                                    recurringInvoiceTemplates: mergedRecurringTemplates,
-                                    pmCycleAllocations: apiState.pmCycleAllocations || [],
-                                    vendors: Array.from(apiVendorsMap.values()),
-                                    transactionLog: apiState.transactionLog || [],
-                                };
-
-                                const vendorsInState = Array.from(apiVendorsMap.values());
-                                logger.logCategory('sync', `📦 Vendors in merged state: ${vendorsInState.length}`);
-                                if (vendorsInState.length > 0) {
-                                    logger.logCategory('sync', '📋 Sample vendors:', vendorsInState.slice(0, 3).map(v => ({ id: v.id, name: v.name })));
-                                } else {
-                                    logger.warnCategory('sync', '⚠️ No vendors in merged state after API load');
-                                }
-
-                                setStoredState(fullState);
-                                if (!useFallback && getDatabaseService().isReady() && saveNow) {
+                            // STEP 2: Background sync with cloud — delay start so UI stays responsive, then defer heavy updates
+                            const BACKGROUND_SYNC_DELAY_MS = 2000;
+                            setTimeout(() => {
+                                (async function runBackgroundCloudSync() {
                                     try {
-                                        await saveNow(fullState, { disableSyncQueueing: true });
-                                    } catch (saveError) {
-                                        console.warn('⚠️ Could not save API data to local database:', saveError);
+                                        const apiService = getAppStateApiService();
+                                        let apiState: Partial<AppState>;
+                                        try {
+                                            const dbService = getDatabaseService();
+                                            let baseline: Partial<AppState> | null = null;
+                                            if (dbService.isReady()) {
+                                                const appStateRepo = await getAppStateRepository();
+                                                baseline = await appStateRepo.loadState();
+                                            }
+                                            const lastSync = currentTenantId ? getLastSyncTimestamp(currentTenantId) : null;
+                                            const hasBaseline = baseline && (
+                                                (baseline.projects?.length ?? 0) > 0 ||
+                                                (baseline.transactions?.length ?? 0) > 0 ||
+                                                (baseline.contacts?.length ?? 0) > 0
+                                            );
+                                            if (currentTenantId && lastSync && hasBaseline && isLastSyncRecent(currentTenantId)) {
+                                                apiState = await apiService.loadStateViaIncrementalSync(lastSync, baseline as Partial<AppState>);
+                                                logger.logCategory('sync', '📥 Background: used incremental sync');
+                                            } else {
+                                                apiState = await apiService.loadState();
+                                            }
+                                        } catch (incErr) {
+                                            logger.warnCategory('sync', '⚠️ Background incremental sync failed, full load:', incErr);
+                                            if (currentTenantId) clearLastSyncTimestamp(currentTenantId);
+                                            apiState = await apiService.loadState();
+                                        }
+                                        if (currentTenantId) {
+                                            setLastSyncTimestamp(currentTenantId, new Date().toISOString());
+                                        }
+
+                                        const apiTransactionsMap = new Map((apiState.transactions || []).map(tx => [tx.id, tx]));
+                                        const apiContactsMap = new Map((apiState.contacts || []).map(c => [c.id, c]));
+                                        const apiInvoicesMap = new Map((apiState.invoices || []).map(i => [i.id, i]));
+                                        const apiBillsMap = new Map((apiState.bills || []).map(b => [b.id, b]));
+                                        const apiAccountsMap = new Map((apiState.accounts || []).map(a => [a.id, a]));
+                                        const apiCategoriesMap = new Map((apiState.categories || []).map(c => [c.id, c]));
+                                        const apiVendorsMap = new Map((apiState.vendors || []).map(v => [v.id, v]));
+                                        for (const t of offlineTransactions) apiTransactionsMap.set(t.id, t);
+                                        for (const c of offlineContacts) apiContactsMap.set(c.id, c);
+                                        for (const i of offlineInvoices) apiInvoicesMap.set(i.id, i);
+                                        for (const b of offlineBills) apiBillsMap.set(b.id, b);
+                                        for (const a of offlineAccounts) apiAccountsMap.set(a.id, a);
+                                        for (const c of offlineCategories) apiCategoriesMap.set(c.id, c);
+                                        for (const v of offlineVendors) apiVendorsMap.set(v.id, v);
+                                        const apiRecurringTemplatesMap = new Map((apiState.recurringInvoiceTemplates || []).map(t => [t.id, t]));
+                                        for (const t of offlineRecurringTemplates) apiRecurringTemplatesMap.set(t.id, t);
+                                        const mergedRecurringTemplates = Array.from(apiRecurringTemplatesMap.values());
+
+                                        const fullState: AppState = {
+                                            ...storedStateRef.current,
+                                            accounts: Array.from(apiAccountsMap.values()),
+                                            contacts: Array.from(apiContactsMap.values()),
+                                            transactions: Array.from(apiTransactionsMap.values()),
+                                            categories: Array.from(apiCategoriesMap.values()),
+                                            projects: apiState.projects || [],
+                                            buildings: apiState.buildings || [],
+                                            properties: apiState.properties || [],
+                                            units: apiState.units || [],
+                                            invoices: Array.from(apiInvoicesMap.values()),
+                                            bills: Array.from(apiBillsMap.values()),
+                                            budgets: apiState.budgets || [],
+                                            rentalAgreements: apiState.rentalAgreements || [],
+                                            projectAgreements: apiState.projectAgreements || [],
+                                            installmentPlans: apiState.installmentPlans || [],
+                                            planAmenities: apiState.planAmenities || [],
+                                            contracts: apiState.contracts || [],
+                                            salesReturns: apiState.salesReturns || [],
+                                            quotations: apiState.quotations || [],
+                                            documents: apiState.documents || [],
+                                            recurringInvoiceTemplates: mergedRecurringTemplates,
+                                            pmCycleAllocations: apiState.pmCycleAllocations || [],
+                                            vendors: Array.from(apiVendorsMap.values()),
+                                            transactionLog: apiState.transactionLog || [],
+                                        };
+
+                                        // Defer heavy state update and save so main thread stays responsive
+                                        const applyUpdate = () => {
+                                            setStoredState(fullState);
+                                            if (!useFallback && getDatabaseService().isReady() && saveNow) {
+                                                saveNow(fullState, { disableSyncQueueing: true }).catch((saveError: unknown) => {
+                                                    console.warn('⚠️ Background sync: could not save to local database:', saveError);
+                                                });
+                                            }
+                                            logger.logCategory('sync', '✅ Background cloud sync completed');
+                                        };
+                                        if (typeof requestIdleCallback !== 'undefined') {
+                                            requestIdleCallback(applyUpdate, { timeout: 200 });
+                                        } else {
+                                            setTimeout(applyUpdate, 0);
+                                        }
+                                    } catch (bgError) {
+                                        logger.warnCategory('sync', '⚠️ Background cloud sync failed (app continues with local data):', bgError);
                                     }
-                                }
-                                devLogger.log('✅ Loaded and merged data from API + offline sync queue:', {
-                                    accounts: Array.from(apiAccountsMap.values()).length,
-                                    contacts: Array.from(apiContactsMap.values()).length,
-                                    transactions: Array.from(apiTransactionsMap.values()).length,
-                                    offlineTransactionsRestored: offlineTransactions.length,
-                                    categories: Array.from(apiCategoriesMap.values()).length,
-                                    projects: apiState.projects?.length || 0,
-                                    buildings: apiState.buildings?.length || 0,
-                                    properties: apiState.properties?.length || 0,
-                                    units: apiState.units?.length || 0,
-                                    invoices: Array.from(apiInvoicesMap.values()).length,
-                                    bills: Array.from(apiBillsMap.values()).length,
-                                    budgets: apiState.budgets?.length || 0,
-                                    vendors: Array.from(apiVendorsMap.values()).length,
-                                    rentalAgreements: apiState.rentalAgreements?.length || 0,
-                                    projectAgreements: apiState.projectAgreements?.length || 0,
-                                    contracts: apiState.contracts?.length || 0,
-                                });
-                                setInitProgress(80);
-                            }
-                        } catch (apiError) {
-                            console.error('⚠️ Failed to load from API:', apiError);
-                            // Continue with local database as fallback
-                            setInitMessage('API unavailable, using local data...');
+                                })();
+                            }, BACKGROUND_SYNC_DELAY_MS);
+                        } catch (initError) {
+                            console.error('⚠️ Authenticated init error:', initError);
+                            setInitMessage('Using local data...');
+                            if (!isMounted) return;
+                            if (timeoutId) clearTimeout(timeoutId);
+                            if (forceTimeoutId) clearTimeout(forceTimeoutId);
+                            setInitProgress(100);
+                            setInitMessage('Ready!');
+                            setTimeout(() => {
+                                if (isMounted) setIsInitializing(false);
+                            }, 300);
                         }
                     } else {
                         // Load from local database (offline mode)
@@ -1602,7 +1553,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 setTimeout(() => {
                     if (isMounted) {
                         setIsInitializing(false);
-                        devLogger.log('✅ App continuing with localStorage fallback');
                     }
                 }, 2000);
             }
@@ -2626,14 +2576,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // Sync if database has more data or has user data when current doesn't
             // Only sync once during initialization to avoid infinite loops
             if ((storedHasMoreData || (storedHasUserData && !currentHasUserData)) && !reducerInitializedRef.current) {
-                devLogger.log('🔄 Syncing reducer state with loaded database state:', {
-                    storedContacts: currentStoredState.contacts.length,
-                    currentContacts: state.contacts.length,
-                    storedTransactions: currentStoredState.transactions.length,
-                    currentTransactions: state.transactions.length,
-                    storedInvoices: currentStoredState.invoices.length,
-                    currentInvoices: state.invoices.length
-                });
                 dispatch({ type: 'SET_STATE', payload: currentStoredState, _isRemote: true } as any);
                 reducerInitializedRef.current = true;
             } else if (storedHasUserData && currentHasUserData) {
@@ -2656,35 +2598,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         stateRef.current = state;
     }, [state]);
 
-    const refreshFromApi = useCallback(async () => {
+    const refreshFromApi = useCallback(async (onCriticalLoaded?: () => void) => {
         if (!isAuthenticated) return;
-        try {
-            const apiService = getAppStateApiService();
-            const apiState = await apiService.loadState();
+        const apiService = getAppStateApiService();
 
-            // Helper function to merge arrays by ID (preserves local changes that haven't been synced)
-            const mergeById = <T extends { id: string }>(current: T[], api: T[]): T[] => {
-                if (!api || api.length === 0) return current;
-                const apiMap = new Map(api.map(item => [item.id, item]));
-                const currentMap = new Map(current.map(item => [item.id, item]));
+        const mergeById = <T extends { id: string }>(current: T[], api: T[]): T[] => {
+            if (!api || api.length === 0) return current;
+            const merged = new Map<string, T>();
+            current.forEach(item => merged.set(item.id, item));
+            api.forEach(item => merged.set(item.id, item));
+            return Array.from(merged.values());
+        };
 
-                // Merge: API data takes precedence for existing items, but keep local items not in API
-                const merged = new Map<string, T>();
-
-                // First, add all current items (preserves local changes)
-                current.forEach(item => merged.set(item.id, item));
-
-                // Then, update with API data (overwrites with server version)
-                api.forEach(item => merged.set(item.id, item));
-
-                return Array.from(merged.values());
-            };
-
-            // Only apply slices we received, keep navigation/current page intact
-            // Merge arrays by ID to preserve local changes that haven't been synced yet
+        const applyApiState = (apiState: Partial<AppState>) => {
             const updates: Partial<AppState> = {};
             const currentState = stateRef.current;
-
             if (apiState.contacts) updates.contacts = mergeById(currentState.contacts, apiState.contacts);
             if (apiState.transactions) updates.transactions = mergeById(currentState.transactions, apiState.transactions);
             if (apiState.bills) updates.bills = mergeById(currentState.bills, apiState.bills);
@@ -2696,18 +2624,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (apiState.salesReturns) updates.salesReturns = mergeById(currentState.salesReturns, apiState.salesReturns);
             if (apiState.installmentPlans) updates.installmentPlans = mergeById(currentState.installmentPlans, apiState.installmentPlans);
             if (apiState.planAmenities) updates.planAmenities = mergeById(currentState.planAmenities || [], apiState.planAmenities);
-            // Merge categories: ensure system categories are always included
             if (apiState.categories) {
-                // First merge API categories with local
                 const mergedApiLocal = mergeById(currentState.categories, apiState.categories);
-                // Then ensure all system categories are included (they may be missing if not synced yet)
                 const systemCategoryIds = new Set(SYSTEM_CATEGORIES.map(c => c.id));
                 const userCategories = mergedApiLocal.filter(c => !systemCategoryIds.has(c.id));
                 const existingSystemCategories = mergedApiLocal.filter(c => systemCategoryIds.has(c.id));
-                // Combine: existing system categories (from API with latest data) + all defined system categories (in case API is missing some) + user categories
                 const allSystemCategories = SYSTEM_CATEGORIES.map(sysCat => {
                     const existing = existingSystemCategories.find(c => c.id === sysCat.id);
-                    return existing || sysCat; // Use API version if exists, otherwise use local definition
+                    return existing || sysCat;
                 });
                 updates.categories = [...allSystemCategories, ...userCategories];
             }
@@ -2718,22 +2642,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (apiState.units) updates.units = mergeById(currentState.units, apiState.units);
             if (apiState.vendors) updates.vendors = mergeById(currentState.vendors || [], apiState.vendors);
             if (apiState.recurringInvoiceTemplates) updates.recurringInvoiceTemplates = mergeById(currentState.recurringInvoiceTemplates || [], apiState.recurringInvoiceTemplates);
-
             if (Object.keys(updates).length === 0) return;
-
-            const mergedState = { ...currentState, ...updates };
-
-            dispatch({
-                type: 'SET_STATE',
-                payload: mergedState,
-                _isRemote: true
-            } as any);
-
+            const mergedState = { ...stateRef.current, ...updates };
+            dispatch({ type: 'SET_STATE', payload: mergedState, _isRemote: true } as any);
             setStoredState(prev => ({ ...prev, ...updates }));
+        };
+
+        try {
+            // STEP 1: Load critical entities FIRST (accounts, contacts, categories, projects, buildings, properties, units)
+            // This allows the UI to become interactive in <10 seconds even with large datasets
+            setInitMessage('Loading critical data...');
+            try {
+                const critical = await apiService.loadStateBulk('accounts,contacts,categories,projects,buildings,properties,units,vendors');
+                if (critical && Object.keys(critical).length > 0) {
+                    applyApiState(critical);
+                    onCriticalLoaded?.(); // UI becomes interactive here
+
+                    // STEP 2: Load remaining data in background (chunked, non-blocking)
+                    setInitMessage('Loading additional data...');
+                    apiService.loadStateBulkChunked((loaded, total) => {
+                        setLoadProgress({ loaded, total });
+                        setInitMessage(`Loading data: ${loaded}/${total} records`);
+                        if (total > 0) {
+                            setInitProgress(Math.round((loaded / total) * 100));
+                        }
+                    }, 200) // 200 records per chunk
+                        .then(full => {
+                            applyApiState(full);
+                            setLoadProgress(null);
+                            setInitMessage('Data loaded');
+                            setInitProgress(100);
+                            logger.logCategory('sync', '✅ Background data load complete');
+                        })
+                        .catch(err => {
+                            console.error('⚠️ Background chunked load failed:', err);
+                            setLoadProgress(null);
+                            // Fallback to regular bulk load if chunked fails
+                            logger.logCategory('sync', '⚠️ Chunked load failed, falling back to bulk');
+                            apiService.loadStateBulk()
+                                .then(full => applyApiState(full))
+                                .catch(bulkErr => console.error('⚠️ Bulk fallback also failed:', bulkErr));
+                        });
+                    return;
+                }
+            } catch (criticalErr: any) {
+                console.warn('⚠️ Critical load failed, falling back to full load:', criticalErr);
+            }
+
+            // STEP 3: Fallback to old behavior if critical endpoint fails
+            let apiState: Partial<AppState>;
+            try {
+                apiState = await apiService.loadStateBulk();
+            } catch (bulkErr: any) {
+                if (bulkErr?.status === 404 || bulkErr?.message?.includes('404')) {
+                    apiState = await apiService.loadState();
+                } else {
+                    throw bulkErr;
+                }
+            }
+            applyApiState(apiState);
+            onCriticalLoaded?.();
         } catch (err) {
             console.error('⚠️ Failed to refresh data from API:', err);
+            onCriticalLoaded?.();
         }
-    }, [dispatch, isAuthenticated, setStoredState]);
+    }, [dispatch, isAuthenticated, setStoredState, setInitMessage, setInitProgress, setLoadProgress]);
 
     // Store refreshFromApi in a ref so WebSocket handlers always use the latest version
     const refreshFromApiRef = useRef(refreshFromApi);
@@ -2741,14 +2714,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         refreshFromApiRef.current = refreshFromApi;
     }, [refreshFromApi]);
 
-    // Initial/rehydration sync when auth status changes
+    // Run refreshFromApi only after user logs in (not on initial load with existing session — init background sync handles that)
     useEffect(() => {
-        // Only refresh when authenticated to prevent unnecessary API calls
-        if (isAuthenticated) {
-            // Use ref to get latest refreshFromApi without adding it as dependency
-            refreshFromApiRef.current();
-        }
-    }, [isAuthenticated]); // Only depend on isAuthenticated, not refreshFromApi
+        const handleLoginSuccess = () => {
+            refreshFromApiRef.current(undefined);
+        };
+        window.addEventListener('auth:login-success', handleLoginSuccess);
+        return () => window.removeEventListener('auth:login-success', handleLoginSuccess);
+    }, []);
 
     // Listen for cloud settings loaded after login
     useEffect(() => {
@@ -2756,7 +2729,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const cloudSettings = event.detail;
             if (!cloudSettings || typeof cloudSettings !== 'object') return;
 
-            devLogger.log('📥 Received cloud settings, applying to state...');
 
             // Apply settings to state
             if (cloudSettings.printSettings) {
@@ -2796,7 +2768,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 dispatch({ type: 'UPDATE_PROJECT_INVOICE_SETTINGS', payload: cloudSettings.projectInvoiceSettings });
             }
 
-            devLogger.log('✅ Cloud settings applied to state');
         };
 
         window.addEventListener('load-cloud-settings', handleCloudSettingsLoaded as EventListener);
@@ -2828,10 +2799,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const syncStatus = await apiClient.get<{ shouldEnableSync: boolean; userCount: number }>('/tenants/should-enable-sync');
                     shouldEnableSync = syncStatus.shouldEnableSync;
                     if (!shouldEnableSync) {
-                        devLogger.log(`⏭️ Skipping WebSocket connection - organization has only ${syncStatus.userCount} user(s). Real-time sync is disabled for single-user organizations.`);
                         return;
                     }
-                    devLogger.log(`✅ Enabling real-time sync - organization has ${syncStatus.userCount} active user(s)`);
                 } catch (syncCheckError) {
                     // If check fails, log warning but don't block - allow connection to proceed
                     // This ensures sync still works even if the endpoint is temporarily unavailable
@@ -2853,7 +2822,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const currentUser = stateRef.current.currentUser;
                     if (eventData?.userId && currentUser?.id) {
                         if (eventData.userId === currentUser.id) {
-                            devLogger.log('🔄 Skipping WebSocket refresh - event from current user:', eventData.userId);
                             return;
                         }
                     }
@@ -3026,8 +2994,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     'recurring_invoice_template:created', 'recurring_invoice_template:updated', 'recurring_invoice_template:deleted'
                 ];
 
-                // Generic fallback subscription → schedule a full refresh
-                const unsubFallback = events.map(evt => ws.on(evt, (data: any) => scheduleRefresh(data)));
+                // Events that have specific handlers below → we dispatch directly, no full refresh.
+                // Only schedule a full refresh for event types we don't handle specifically (avoids re-sync on every WS event / navigation).
+                const eventsWithSpecificHandlers = new Set([
+                    'bill:created', 'bill:updated', 'bill:deleted',
+                    'transaction:created', 'transaction:updated', 'transaction:deleted',
+                    'invoice:created', 'invoice:updated', 'invoice:deleted',
+                    'rental_agreement:created', 'rental_agreement:updated', 'rental_agreement:deleted',
+                    'recurring_invoice_template:created', 'recurring_invoice_template:updated', 'recurring_invoice_template:deleted',
+                    'contact:created', 'contact:updated', 'contact:deleted',
+                    'vendor:created', 'vendor:updated', 'vendor:deleted'
+                ]);
+                const fallbackEvents = events.filter(evt => !eventsWithSpecificHandlers.has(evt));
+                const unsubFallback = fallbackEvents.map(evt => ws.on(evt, (data: any) => scheduleRefresh(data)));
 
                 // Direct, immediate handlers to reflect payments across users without waiting for refresh
                 const currentUserId = stateRef.current.currentUser?.id;
@@ -3503,12 +3482,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const doSave = async () => {
                         try {
                             await saveNow(state);
-                            devLogger.log('✅ State saved immediately after data change:', {
-                                contacts: state.contacts.length,
-                                transactions: state.transactions.length,
-                                bills: state.bills.length,
-                                invoices: state.invoices.length,
-                            });
                         } catch (error) {
                             console.error('❌ Failed to save state after data change:', error);
                             const { getErrorLogger } = await import('../services/errorLogger');
@@ -3539,11 +3512,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (auth.user && auth.isAuthenticated) {
             // User is authenticated - sync to state if not already synced
             if (!state.currentUser || state.currentUser.id !== auth.user.id) {
-                devLogger.log('[AppContext] 🔄 Syncing authenticated user to state:', {
-                    authUserId: auth.user.id,
-                    authUsername: auth.user.username,
-                    currentStateUserId: state.currentUser?.id
-                });
                 dispatch({
                     type: 'LOGIN',
                     payload: {
@@ -3556,7 +3524,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
         } else if (!auth.isAuthenticated && state.currentUser) {
             // User logged out - clear from state
-            devLogger.log('[AppContext] 🚪 User logged out, clearing from state');
             dispatch({ type: 'LOGOUT' });
         }
     }, [auth.user, auth.isAuthenticated, state.currentUser]);
@@ -3566,14 +3533,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const saveTimer = setTimeout(async () => {
                 try {
                     await saveNow(state);
-                    devLogger.log('✅ State saved after login');
                 } catch (error) {
                     console.error('Failed to save state after login:', error);
                     // Check if it's a missing table error
                     const errorMsg = error instanceof Error ? error.message : String(error);
                     if (errorMsg.includes('no such table')) {
                         console.error('❌ CRITICAL: Missing database table!', errorMsg);
-                        devLogger.log('💡 To fix this issue, clear both localStorage AND OPFS storage');
 
                         // Show user-friendly error
                         const errorDiv = document.createElement('div');
@@ -3601,22 +3566,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 fixButton.style.cursor = 'wait';
 
                                 try {
-                                    // Clear localStorage
-                                    localStorage.removeItem('finance_db');
-                                    devLogger.log('✅ localStorage cleared');
+                                    const { clearAllDatabaseStorage } = await import('../services/database/databaseService');
+                                    await clearAllDatabaseStorage();
 
-                                    // Clear OPFS if supported
-                                    if (navigator.storage && navigator.storage.getDirectory) {
-                                        try {
-                                            const root = await navigator.storage.getDirectory();
-                                            await root.removeEntry('finance_db.sqlite');
-                                            devLogger.log('✅ OPFS database cleared');
-                                        } catch (opfsError) {
-                                            devLogger.log('ℹ️ OPFS file not found or already cleared');
-                                        }
-                                    }
-
-                                    devLogger.log('🔄 Reloading to recreate database...');
                                     setTimeout(() => location.reload(), 500);
                                 } catch (error) {
                                     console.error('Error during fix:', error);
@@ -3796,7 +3748,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // causing ALL 155+ context consumers to re-render even when nothing changed.
     // IMPORTANT: This useMemo MUST be called before any conditional returns below,
     // because React hooks must be called in the same order on every render.
-    const contextValue = useMemo(() => ({ state, dispatch }), [state, dispatch]);
+    const contextValue = useMemo(() => ({ state, dispatch, isInitialDataLoading }), [state, dispatch, isInitialDataLoading]);
 
     // Show loading/initialization state
     if (isInitializing) {

@@ -289,12 +289,12 @@ const RentalBillsPage: React.FC = () => {
   };
 
   const filterInputClass =
-    'w-full pl-3 py-2 text-sm border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-accent/50 focus:border-accent bg-white';
+    'w-full pl-2.5 py-1.5 text-sm border border-slate-300 rounded-md shadow-sm focus:ring-2 focus:ring-accent/50 focus:border-accent bg-white';
 
   return (
-    <div className="flex flex-col h-full bg-slate-50/50 p-4 sm:p-6 gap-4">
+    <div className="flex flex-col h-full min-h-0 bg-slate-50/50 pt-2 px-3 sm:pt-3 sm:px-4 pb-1 gap-2">
       {/* Action Bar */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-1.5">
         <Button onClick={() => { setDuplicateBillData(null); setBillToEdit(null); setIsCreateModalOpen(true); }} size="sm">
           <div className="w-4 h-4 mr-2">{ICONS.plus}</div>
           New Bill
@@ -317,46 +317,45 @@ const RentalBillsPage: React.FC = () => {
         )}
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-          <p className="text-xs font-semibold text-slate-500 uppercase">Unpaid</p>
-          <p className="text-lg font-bold text-slate-800">{summaryStats.unpaidCount}</p>
-          <p className="text-sm text-slate-600">
+      {/* Summary Cards - compact (match invoices page) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
+        <div className="bg-white rounded-lg border border-slate-200 px-2.5 py-1.5 shadow-sm">
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Unpaid</p>
+          <p className="text-sm font-bold text-slate-800 leading-tight">{summaryStats.unpaidCount}</p>
+          <p className="text-xs text-slate-600 truncate">
             {CURRENCY} {summaryStats.unpaidAmount.toLocaleString()}
           </p>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-          <p className="text-xs font-semibold text-slate-500 uppercase">Paid</p>
-          <p className="text-lg font-bold text-emerald-700">{summaryStats.paidCount}</p>
-          <p className="text-sm text-slate-600">
+        <div className="bg-white rounded-lg border border-slate-200 px-2.5 py-1.5 shadow-sm">
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Paid</p>
+          <p className="text-sm font-bold text-emerald-700 leading-tight">{summaryStats.paidCount}</p>
+          <p className="text-xs text-slate-600 truncate">
             {CURRENCY} {summaryStats.paidAmount.toLocaleString()}
           </p>
         </div>
-        <div className="bg-white rounded-xl border border-rose-200 p-4 shadow-sm">
-          <p className="text-xs font-semibold text-rose-600 uppercase">Overdue</p>
-          <p className="text-lg font-bold text-rose-700">{summaryStats.overdueCount}</p>
-          <p className="text-sm text-slate-600">
+        <div className="bg-white rounded-lg border border-rose-200 px-2.5 py-1.5 shadow-sm">
+          <p className="text-[10px] font-semibold text-rose-600 uppercase tracking-wide">Overdue</p>
+          <p className="text-sm font-bold text-rose-700 leading-tight">{summaryStats.overdueCount}</p>
+          <p className="text-xs text-slate-600 truncate">
             {CURRENCY} {summaryStats.overdueAmount.toLocaleString()}
           </p>
         </div>
-        <div className="bg-white rounded-xl border border-indigo-200 p-4 shadow-sm">
-          <p className="text-xs font-semibold text-indigo-600 uppercase">Total Pending</p>
-          <p className="text-lg font-bold text-indigo-700">
+        <div className="bg-white rounded-lg border border-indigo-200 px-2.5 py-1.5 shadow-sm">
+          <p className="text-[10px] font-semibold text-indigo-600 uppercase tracking-wide">Total Pending</p>
+          <p className="text-sm font-bold text-indigo-700 leading-tight truncate">
             {CURRENCY} {summaryStats.totalPending.toLocaleString()}
           </p>
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 flex-wrap">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold text-slate-500 uppercase">Status:</span>
+      {/* Filter Bar - compact (match invoices page) */}
+      <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm flex flex-col md:flex-row gap-2 flex-wrap">
+        <div className="flex flex-wrap items-center gap-1.5">
           {['All', 'Unpaid', 'Paid', 'Partially Paid', 'Overdue'].map(s => (
             <button
               key={s}
               onClick={() => setStatusFilter(s === 'All' ? 'all' : s)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
                 (s === 'All' && statusFilter === 'all') || statusFilter === s
                   ? 'bg-accent text-white'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -366,8 +365,7 @@ const RentalBillsPage: React.FC = () => {
             </button>
           ))}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold text-slate-500 uppercase">Bearer:</span>
+        <div className="flex flex-wrap items-center gap-1.5">
           {[
             { id: 'all', label: 'All' },
             { id: 'owner', label: 'Owner' },
@@ -377,7 +375,7 @@ const RentalBillsPage: React.FC = () => {
             <button
               key={opt.id}
               onClick={() => setExpenseBearerFilter(opt.id as ExpenseBearerFilter)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
                 expenseBearerFilter === opt.id
                   ? 'bg-accent text-white'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -420,14 +418,14 @@ const RentalBillsPage: React.FC = () => {
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <input
             type="date"
             value={dateRangeStart}
             onChange={e => setDateRangeStart(e.target.value)}
             placeholder="From"
             className={filterInputClass}
-            style={{ width: '140px' }}
+            style={{ width: '130px' }}
           />
           <input
             type="date"
@@ -435,11 +433,11 @@ const RentalBillsPage: React.FC = () => {
             onChange={e => setDateRangeEnd(e.target.value)}
             placeholder="To"
             className={filterInputClass}
-            style={{ width: '140px' }}
+            style={{ width: '130px' }}
           />
         </div>
         <div className="relative flex-1 min-w-[200px]">
-          <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">
+          <div className="absolute inset-y-0 left-2.5 flex items-center pointer-events-none text-slate-400">
             <div className="w-4 h-4">{ICONS.search}</div>
           </div>
           <input
@@ -447,7 +445,7 @@ const RentalBillsPage: React.FC = () => {
             placeholder="Search bill #, vendor, property..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="pl-9 pr-4 py-2 w-full text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-accent/50 focus:border-accent"
+            className="pl-9 pr-3 py-1.5 w-full text-sm border border-slate-300 rounded-md focus:ring-2 focus:ring-accent/50 focus:border-accent"
           />
         </div>
       </div>
@@ -455,21 +453,21 @@ const RentalBillsPage: React.FC = () => {
       {/* Bills Table */}
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
         <div className="flex-1 overflow-auto bg-white rounded-xl border border-slate-200 shadow-sm">
-          <table className="min-w-full divide-y divide-slate-100 text-sm">
+          <table className="min-w-full divide-y divide-slate-100 text-xs border-separate border-spacing-0" style={{ tableLayout: 'fixed' }}>
             <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
               <tr>
-                <th className="px-4 py-3 w-10"></th>
-                <th onClick={() => handleSort('issueDate')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Date <SortIcon column="issueDate" /></th>
-                <th onClick={() => handleSort('billNumber')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Bill # <SortIcon column="billNumber" /></th>
-                <th onClick={() => handleSort('vendorName')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Vendor <SortIcon column="vendorName" /></th>
-                <th onClick={() => handleSort('expenseBearer')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Bearer <SortIcon column="expenseBearer" /></th>
-                <th onClick={() => handleSort('propertyName')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Property <SortIcon column="propertyName" /></th>
-                <th onClick={() => handleSort('buildingName')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Building <SortIcon column="buildingName" /></th>
-                <th onClick={() => handleSort('amount')} className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Amount <SortIcon column="amount" /></th>
-                <th className="px-4 py-3 text-right font-semibold text-slate-600">Paid</th>
-                <th onClick={() => handleSort('balance')} className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Balance <SortIcon column="balance" /></th>
-                <th onClick={() => handleSort('status')} className="px-4 py-3 text-center font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Status <SortIcon column="status" /></th>
-                <th className="px-4 py-3 text-center font-semibold text-slate-600 w-28">Actions</th>
+                <th className="px-3 py-1.5 w-10 text-center border-b border-slate-200 bg-slate-50"></th>
+                <th onClick={() => handleSort('issueDate')} className="px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Date <SortIcon column="issueDate" /></th>
+                <th onClick={() => handleSort('billNumber')} className="px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Bill # <SortIcon column="billNumber" /></th>
+                <th onClick={() => handleSort('vendorName')} className="px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Vendor <SortIcon column="vendorName" /></th>
+                <th onClick={() => handleSort('expenseBearer')} className="px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Bearer <SortIcon column="expenseBearer" /></th>
+                <th onClick={() => handleSort('propertyName')} className="px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Property <SortIcon column="propertyName" /></th>
+                <th onClick={() => handleSort('buildingName')} className="px-3 py-1.5 text-left text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Building <SortIcon column="buildingName" /></th>
+                <th onClick={() => handleSort('amount')} className="px-3 py-1.5 text-right text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Amount <SortIcon column="amount" /></th>
+                <th className="px-3 py-1.5 text-right text-[10px] uppercase font-bold tracking-wider text-slate-500 border-b border-slate-200 bg-slate-50">Paid</th>
+                <th onClick={() => handleSort('balance')} className="px-3 py-1.5 text-right text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Balance <SortIcon column="balance" /></th>
+                <th onClick={() => handleSort('status')} className="px-3 py-1.5 text-center text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer select-none border-b border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors">Status <SortIcon column="status" /></th>
+                <th className="px-3 py-1.5 text-center text-[10px] uppercase font-bold tracking-wider text-slate-500 border-b border-slate-200 bg-slate-50 w-28">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -484,30 +482,30 @@ const RentalBillsPage: React.FC = () => {
 
                 return (
                   <React.Fragment key={bill.id}>
-                    <tr className={`cursor-pointer transition-colors group ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-slate-100`} onClick={() => handleEdit(bill)}>
-                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <tr className={`cursor-pointer transition-colors group border-b border-slate-50 last:border-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-slate-100`} onClick={() => handleEdit(bill)}>
+                      <td className="px-3 py-1.5 text-center w-10 overflow-hidden" onClick={(e) => e.stopPropagation()}>
                         <input type="checkbox" className="rounded text-accent focus:ring-accent w-4 h-4 border-gray-300 cursor-pointer" checked={selectedBillIds.has(bill.id)}
                           onChange={(e) => { e.stopPropagation(); setSelectedBillIds(prev => { const n = new Set(prev); n.has(bill.id) ? n.delete(bill.id) : n.add(bill.id); return n; }); }} />
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-slate-700">
+                      <td className="px-3 py-1.5 whitespace-nowrap text-xs text-slate-500 overflow-hidden text-ellipsis">
                         <div className="flex items-center gap-1">
-                          {hasPayments && <button onClick={(e) => toggleExpand(e, bill.id)} className={`p-1 rounded hover:bg-slate-200 text-slate-400 inline-flex ${isExpanded ? 'rotate-90' : ''}`}><span className="w-3.5 h-3.5">{ICONS.chevronRight}</span></button>}
+                          {hasPayments && <button onClick={(e) => toggleExpand(e, bill.id)} className={`p-0.5 rounded hover:bg-slate-200 text-slate-400 inline-flex ${isExpanded ? 'rotate-90' : ''}`}><span className="w-3 h-3">{ICONS.chevronRight}</span></button>}
                           {formatDate(bill.issueDate)}
                         </div>
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs">{bill.billNumber}</td>
-                      <td className="px-4 py-3 truncate max-w-[120px]">{vendor?.name || '-'}</td>
-                      <td className="px-4 py-3">{getExpenseBearerBadge(bearer)}</td>
-                      <td className="px-4 py-3 text-slate-600">{getPropertyOrUnitLabel(bill)}</td>
-                      <td className="px-4 py-3 text-slate-600">{getBuildingName(bill)}</td>
-                      <td className="px-4 py-3 text-right font-mono font-semibold">{CURRENCY} {bill.amount.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right font-mono text-emerald-600">{CURRENCY} {bill.paidAmount.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right">
-                        <span className={`font-mono font-bold ${balance > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{CURRENCY} {balance.toLocaleString()}</span>
+                      <td className="px-3 py-1.5 text-xs font-bold text-slate-700 tabular-nums overflow-hidden text-ellipsis">{bill.billNumber}</td>
+                      <td className="px-3 py-1.5 text-xs text-slate-600 truncate max-w-[120px] overflow-hidden text-ellipsis">{vendor?.name || '-'}</td>
+                      <td className="px-3 py-1.5">{getExpenseBearerBadge(bearer)}</td>
+                      <td className="px-3 py-1.5 text-xs text-slate-600 truncate max-w-[120px] overflow-hidden text-ellipsis">{getPropertyOrUnitLabel(bill)}</td>
+                      <td className="px-3 py-1.5 text-xs text-slate-600 truncate overflow-hidden text-ellipsis">{getBuildingName(bill)}</td>
+                      <td className="px-3 py-1.5 text-right text-xs font-bold text-slate-700 tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">{CURRENCY} {bill.amount.toLocaleString()}</td>
+                      <td className="px-3 py-1.5 text-right text-xs font-bold text-slate-700 tabular-nums whitespace-nowrap overflow-hidden text-ellipsis text-emerald-600">{CURRENCY} {bill.paidAmount.toLocaleString()}</td>
+                      <td className="px-3 py-1.5 text-right">
+                        <span className={`text-xs font-bold tabular-nums whitespace-nowrap ${balance > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{CURRENCY} {balance.toLocaleString()}</span>
                         {balance > 0 && <Button size="sm" onClick={(e) => { e.stopPropagation(); handleRecordPayment(bill); }} className="ml-2 opacity-0 group-hover:opacity-100 h-6 text-[10px] px-2">Pay</Button>}
                       </td>
-                      <td className="px-4 py-3 text-center">{getStatusBadge(bill.status)}</td>
-                      <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-3 py-1.5 text-center">{getStatusBadge(bill.status)}</td>
+                      <td className="px-3 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1">
                           <button onClick={() => handleEdit(bill)} className="p-1.5 rounded hover:bg-slate-200 text-slate-500" title="Edit"><span className="w-4 h-4">{ICONS.edit}</span></button>
                           {whatsAppOpts.length > 0 && (
@@ -545,12 +543,12 @@ const RentalBillsPage: React.FC = () => {
                   </React.Fragment>
                 );
               }) : (
-                <tr><td colSpan={12} className="px-4 py-12 text-center text-slate-500">No bills found matching selected criteria.</td></tr>
+                <tr><td colSpan={12} className="px-4 py-8 text-center text-slate-500 text-xs">No bills found matching selected criteria.</td></tr>
               )}
             </tbody>
           </table>
         </div>
-        <div className="p-3 border-t border-slate-200 bg-white rounded-b-xl flex justify-between items-center text-sm font-bold text-slate-700">
+        <div className="px-3 py-1.5 border-t border-slate-200 bg-slate-50/80 flex justify-between items-center text-xs font-semibold text-slate-600">
           <span>Total Bills: {filteredBills.length}</span>
           <span>Total Amount: {CURRENCY} {filteredBills.reduce((s, b) => s + b.amount, 0).toLocaleString()}</span>
           <span>Total Payable: {CURRENCY} {filteredBills.reduce((s, b) => s + Math.max(0, b.amount - b.paidAmount), 0).toLocaleString()}</span>

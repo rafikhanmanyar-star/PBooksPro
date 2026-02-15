@@ -76,17 +76,14 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
    */
   const startSync = useCallback(async () => {
     if (!isAuthenticated || !user?.tenant?.id) {
-      console.warn('⚠️ Cannot sync: User not authenticated');
       return;
     }
 
     if (connectionStatus !== 'online') {
-      console.warn('⚠️ Cannot sync: Device is offline');
       return;
     }
 
     if (isSyncing) {
-      console.warn('⚠️ Sync already in progress');
       return;
     }
 
@@ -94,7 +91,6 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
     setPendingCount(currentPending);
 
     if (currentPending === 0) {
-      console.log('✅ No pending items to sync');
       return;
     }
 
@@ -117,12 +113,10 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     // Subscribe to connection changes
     const unsubscribe = monitor.subscribe((status) => {
-      console.log('🌐 Connection status changed:', status);
       setConnectionStatus(status);
 
       // Auto-sync when connection is restored
       if (status === 'online') {
-        console.log('🔄 Connection restored, starting auto-sync...');
         startSync();
       }
     });
@@ -143,11 +137,9 @@ export const OfflineProvider: React.FC<{ children: ReactNode }> = ({ children })
   useEffect(() => {
     const unsubscribeProgress = syncEngine.onProgress((progress) => {
       setSyncProgress(progress);
-      console.log(`🔄 Sync progress: ${progress.completed}/${progress.total}`);
     });
 
     const unsubscribeComplete = syncEngine.onComplete((success, progress) => {
-      console.log(`${success ? '✅' : '⚠️'} Sync complete:`, progress);
       setIsSyncing(false);
       setSyncProgress(null);
       

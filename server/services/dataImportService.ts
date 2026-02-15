@@ -39,6 +39,7 @@ export interface ImportResult {
     units: { count: number; skipped: number };
     categories: { count: number; skipped: number };
     accounts: { count: number; skipped: number };
+    projectSellingAgreements: { count: number; skipped: number };
   };
   summary: {
     totalRows: number;
@@ -50,8 +51,10 @@ export interface ImportResult {
 }
 
 /**
- * Import data from Excel file with all-or-nothing validation
- * Returns detailed results including validation errors and duplicates
+ * Import data from Excel file with all-or-nothing validation.
+ * Writes to the tenant's cloud DB (same as POST /transactions).
+ * Imported transactions are returned by GET /transactions and loaded on relogin/refresh.
+ * Returns detailed results including validation errors and duplicates.
  * @param sheetName - If provided, imports only this sheet
  */
 export async function importData(
@@ -61,7 +64,7 @@ export async function importData(
   sheetName?: string
 ): Promise<ImportResult> {
   const db = getDatabaseService();
-  
+
   // Parse Excel file
   const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
   const validationErrors: ValidationError[] = [];
@@ -71,7 +74,7 @@ export async function importData(
   let duplicateRows = 0;
 
   // Define import order with dependencies
-  // Order: Accounts → Contacts → Categories → Projects → Buildings → Units → Properties → RentalAgreements → RentalInvoices
+  // Order: Accounts → Contacts → ... → RentalInvoices → LoanTransactions
   const importOrder = [
     { name: 'Accounts', dependencies: [] },
     { name: 'Contacts', dependencies: [] },
@@ -81,11 +84,13 @@ export async function importData(
     { name: 'Units', dependencies: ['Projects', 'Contacts'] }, // Contacts is optional
     { name: 'Properties', dependencies: ['Contacts', 'Buildings'] },
     { name: 'RentalAgreements', dependencies: ['Properties', 'Contacts'] },
-    { name: 'RentalInvoices', dependencies: ['RentalAgreements', 'Contacts', 'Properties'] }
+    { name: 'ProjectSellingAgreements', dependencies: ['Projects', 'Units', 'Contacts'] },
+    { name: 'RentalInvoices', dependencies: ['RentalAgreements', 'Contacts', 'Properties'] },
+    { name: 'LoanTransactions', dependencies: ['Accounts'] }
   ];
 
   // If single sheet import, filter to that sheet only
-  const sheetsToProcess = sheetName 
+  const sheetsToProcess = sheetName
     ? importOrder.filter(s => s.name === sheetName)
     : importOrder;
 
@@ -109,7 +114,7 @@ export async function importData(
       }
     };
   }
-  
+
   // Validate sheet structure
   for (const sheet of sheetsToProcess) {
     if (!workbook.SheetNames.includes(sheet.name)) {
@@ -150,7 +155,9 @@ export async function importData(
     categories: any[];
     accounts: any[];
     rentalAgreements: any[];
+    projectSellingAgreements: any[];
     rentalInvoices: any[];
+    loanTransactions: any[];
   } = {
     contacts: [],
     projects: [],
@@ -160,7 +167,9 @@ export async function importData(
     categories: [],
     accounts: [],
     rentalAgreements: [],
-    rentalInvoices: []
+    projectSellingAgreements: [],
+    rentalInvoices: [],
+    loanTransactions: []
   };
 
   const sheetErrors: { [sheetName: string]: ValidationError[] } = {};
@@ -187,7 +196,7 @@ export async function importData(
     // Validate this sheet
     const beforeErrorCount = validationErrors.length;
     await validateSheet(sheet.name, workbook, db, tenantId, validatedData, validationErrors, duplicates);
-    
+
     // Check if this sheet has errors
     const sheetErrorCount = validationErrors.length - beforeErrorCount;
     if (sheetErrorCount > 0) {
@@ -242,7 +251,9 @@ export async function importData(
     categories: { count: 0, skipped: 0 },
     accounts: { count: 0, skipped: 0 },
     rentalAgreements: { count: 0, skipped: 0 },
-    rentalInvoices: { count: 0, skipped: 0 }
+    projectSellingAgreements: { count: 0, skipped: 0 },
+    rentalInvoices: { count: 0, skipped: 0 },
+    loanTransactions: { count: 0, skipped: 0 }
   };
 
   const sheetResults: SheetResult[] = [];
@@ -251,6 +262,9 @@ export async function importData(
 
   // Use transaction for atomicity
   await db.transaction(async (client) => {
+    // Initialize counters
+    imported.projectSellingAgreements = { count: 0, skipped: 0 };
+
     // Import in order: Accounts → Contacts → Categories → Projects → Buildings → Units → Properties
     for (const sheet of sheetsToProcess) {
       // Check if dependencies failed
@@ -488,6 +502,72 @@ export async function importData(
               importedRows++;
             }
             break;
+
+          case 'ProjectSellingAgreements':
+            for (const plan of validatedData.projectSellingAgreements) {
+              const id = `plan_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+              // Process discounts if strings provided
+              let discounts: any[] = [];
+              if (plan.discount_names && plan.discount_amounts) {
+                const names = plan.discount_names.split('|');
+                const amounts = plan.discount_amounts.split('|');
+                const catNames = plan.discount_category_names ? plan.discount_category_names.split('|') : [];
+
+                for (let i = 0; i < names.length; i++) {
+                  if (names[i] && amounts[i]) {
+                    discounts.push({
+                      id: `discount_${Date.now()}_${i}`,
+                      name: names[i].trim(),
+                      amount: parseFloat(amounts[i]) || 0,
+                      categoryName: catNames[i] ? catNames[i].trim() : null
+                    });
+                  }
+                }
+              }
+
+              await client.query(
+                `INSERT INTO installment_plans (
+                  id, tenant_id, project_id, unit_id, lead_id, 
+                  duration_years, down_payment_percentage, frequency, 
+                  list_price, net_value, status, description, intro_text,
+                  discounts, created_at, updated_at, version
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW(), 1)`,
+                [
+                  id, tenantId, plan.project_id, plan.unit_id, plan.lead_id,
+                  plan.duration_years, plan.down_payment_percentage, plan.frequency,
+                  plan.list_price, plan.net_value, plan.status, plan.description || null, plan.intro_text || null,
+                  JSON.stringify(discounts)
+                ]
+              );
+              imported.projectSellingAgreements.count++;
+              sheetImported++;
+              importedRows++;
+            }
+            break;
+
+          case 'LoanTransactions':
+            for (const tx of validatedData.loanTransactions) {
+              const txId = `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              await client.query(
+                `INSERT INTO transactions (
+                  id, tenant_id, user_id, type, subtype, amount, date, description, account_id, contact_id,
+                  from_account_id, to_account_id, category_id, vendor_id, project_id, building_id, property_id, unit_id,
+                  invoice_id, bill_id, payslip_id, contract_id, agreement_id, batch_id, is_system, created_at, updated_at
+                ) VALUES ($1, $2, $3, 'Loan', $4, $5, $6, $7, $8, $9, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, false, NOW(), NOW())`,
+                [txId, tenantId, userId, tx.subtype, tx.amount, tx.date, tx.description, tx.account_id, tx.contact_id]
+              );
+              const isPositive = tx.subtype === 'Receive Loan' || tx.subtype === 'Collect Loan';
+              const delta = isPositive ? tx.amount : -tx.amount;
+              await client.query(
+                'UPDATE accounts SET balance = balance + $1, updated_at = NOW() WHERE id = $2 AND (tenant_id = $3 OR tenant_id IS NULL)',
+                [delta, tx.account_id, tenantId]
+              );
+              imported.loanTransactions.count++;
+              sheetImported++;
+              importedRows++;
+            }
+            break;
         }
 
         // Record sheet result
@@ -559,7 +639,7 @@ async function validateSheet(
   if (!worksheet) return;
 
   const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
-  
+
   for (let i = 0; i < jsonData.length; i++) {
     const row = jsonData[i] as any;
     const excelRow = i + 2; // +2 because: 1 for header, 1 for 0-index to 1-index
@@ -592,6 +672,12 @@ async function validateSheet(
         break;
       case 'RentalInvoices':
         await validateRentalInvoiceRow(row, excelRow, db, tenantId, validatedData.rentalInvoices, validationErrors, duplicates);
+        break;
+      case 'ProjectSellingAgreements':
+        await validateProjectSellingAgreementRow(row, excelRow, db, tenantId, validatedData.projectSellingAgreements, validationErrors, duplicates);
+        break;
+      case 'LoanTransactions':
+        await validateLoanTransactionRow(row, excelRow, db, tenantId, validatedData.loanTransactions, validationErrors);
         break;
     }
   }
@@ -1516,5 +1602,208 @@ async function validateRentalInvoiceRow(
     security_deposit_charge: row.security_deposit_charge ? parseFloat(row.security_deposit_charge.toString()) || null : null,
     service_charges: row.service_charges ? parseFloat(row.service_charges.toString()) || null : null,
     description: row.description ? row.description.toString().trim() : null
+  });
+}
+
+const VALID_LOAN_SUBTYPES = ['Give Loan', 'Receive Loan', 'Repay Loan', 'Collect Loan'];
+
+async function validateLoanTransactionRow(
+  row: any,
+  excelRow: number,
+  db: any,
+  tenantId: string,
+  validatedData: any[],
+  errors: ValidationError[]
+): Promise<void> {
+  const subtypeRaw = (row.subtype ?? row.Subtype ?? '').toString().trim();
+  if (!subtypeRaw) {
+    errors.push({
+      sheet: 'LoanTransactions',
+      row: excelRow,
+      field: 'subtype',
+      value: row.subtype,
+      message: 'Subtype is required (Give Loan, Receive Loan, Repay Loan, or Collect Loan)'
+    });
+    return;
+  }
+  if (!VALID_LOAN_SUBTYPES.includes(subtypeRaw)) {
+    errors.push({
+      sheet: 'LoanTransactions',
+      row: excelRow,
+      field: 'subtype',
+      value: subtypeRaw,
+      message: `Invalid subtype. Use one of: ${VALID_LOAN_SUBTYPES.join(', ')}`
+    });
+    return;
+  }
+
+  const amount = parseFloat((row.amount ?? row.Amount ?? '').toString());
+  if (isNaN(amount) || amount <= 0) {
+    errors.push({
+      sheet: 'LoanTransactions',
+      row: excelRow,
+      field: 'amount',
+      value: row.amount,
+      message: 'Amount is required and must be a positive number'
+    });
+    return;
+  }
+
+  if (!row.date && row.Date === undefined) {
+    errors.push({
+      sheet: 'LoanTransactions',
+      row: excelRow,
+      field: 'date',
+      value: row.date,
+      message: 'Date is required (YYYY-MM-DD)'
+    });
+    return;
+  }
+  const dateVal = new Date((row.date ?? row.Date).toString());
+  if (isNaN(dateVal.getTime())) {
+    errors.push({
+      sheet: 'LoanTransactions',
+      row: excelRow,
+      field: 'date',
+      value: row.date,
+      message: 'Invalid date format (use YYYY-MM-DD)'
+    });
+    return;
+  }
+
+  const bankAccountName = (row.bankAccountName ?? row.BankAccountName ?? row.accountName ?? row.AccountName ?? '').toString().trim();
+  const contactName = (row.contactName ?? row.ContactName ?? '').toString().trim();
+  let account_id: string | null = null;
+  let contact_id: string | null = null;
+
+  if (!bankAccountName) {
+    errors.push({
+      sheet: 'LoanTransactions',
+      row: excelRow,
+      field: 'bankAccountName',
+      value: null,
+      message: 'Bank account is required. Use the name of a Bank-type account (import Accounts first if needed).'
+    });
+    return;
+  }
+
+  const acc = await db.query(
+    'SELECT id, type FROM accounts WHERE (tenant_id = $1 OR tenant_id IS NULL) AND LOWER(TRIM(name)) = LOWER($2)',
+    [tenantId, bankAccountName]
+  );
+  if (acc.length === 0) {
+    errors.push({
+      sheet: 'LoanTransactions',
+      row: excelRow,
+      field: 'bankAccountName',
+      value: bankAccountName,
+      message: `Account "${bankAccountName}" not found. Import Accounts first and use a Bank-type account name.`
+    });
+    return;
+  }
+  if (acc[0].type !== 'Bank') {
+    errors.push({
+      sheet: 'LoanTransactions',
+      row: excelRow,
+      field: 'bankAccountName',
+      value: bankAccountName,
+      message: `Account "${bankAccountName}" is not a Bank account. Loan transactions must use a Bank-type account.`
+    });
+    return;
+  }
+  account_id = acc[0].id;
+
+  if (contactName) {
+    const contact = await db.query(
+      'SELECT id FROM contacts WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)',
+      [tenantId, contactName]
+    );
+    if (contact.length === 0) {
+      errors.push({
+        sheet: 'LoanTransactions',
+        row: excelRow,
+        field: 'contactName',
+        value: contactName,
+        message: `Contact "${contactName}" not found. Import Contacts first or leave contact blank.`
+      });
+      return;
+    }
+    contact_id = contact[0].id;
+  }
+
+  validatedData.push({
+    subtype: subtypeRaw,
+    amount,
+    date: dateVal.toISOString().split('T')[0],
+    description: (row.description ?? row.Description ?? '').toString().trim() || null,
+    account_id,
+    contact_id
+  });
+}
+
+async function validateProjectSellingAgreementRow(
+  row: any,
+  excelRow: number,
+  db: any,
+  tenantId: string,
+  validatedData: any[],
+  errors: ValidationError[],
+  duplicates: DuplicateEntry[]
+): Promise<void> {
+  const projectName = (row.project_name || row.ProjectName || '').toString().trim();
+  const unitName = (row.unit_name || row.UnitName || '').toString().trim();
+  const leadName = (row.lead_name || row.LeadName || '').toString().trim();
+  const durationYears = parseInt(row.duration_years || row.DurationYears);
+  const downPaymentPercentage = parseFloat(row.down_payment_percentage || row.DownPaymentPercentage);
+  const frequency = (row.frequency || row.Frequency || 'Monthly').toString().trim();
+  const listPrice = parseFloat(row.list_price || row.ListPrice);
+  const netValue = parseFloat(row.net_value || row.NetValue);
+  const status = (row.status || row.Status || 'Draft').toString().trim();
+
+  // Basic validation
+  if (!projectName) errors.push({ sheet: 'ProjectSellingAgreements', row: excelRow, field: 'project_name', value: projectName, message: 'Project name is required' });
+  if (!unitName) errors.push({ sheet: 'ProjectSellingAgreements', row: excelRow, field: 'unit_name', value: unitName, message: 'Unit name is required' });
+  if (!leadName) errors.push({ sheet: 'ProjectSellingAgreements', row: excelRow, field: 'lead_name', value: leadName, message: 'Lead name is required' });
+  if (isNaN(durationYears)) errors.push({ sheet: 'ProjectSellingAgreements', row: excelRow, field: 'duration_years', value: row.duration_years, message: 'Duration Years must be a number' });
+  if (isNaN(downPaymentPercentage)) errors.push({ sheet: 'ProjectSellingAgreements', row: excelRow, field: 'down_payment_percentage', value: row.down_payment_percentage, message: 'Down Payment Percentage must be a number' });
+  if (isNaN(listPrice)) errors.push({ sheet: 'ProjectSellingAgreements', row: excelRow, field: 'list_price', value: row.list_price, message: 'List Price must be a number' });
+  if (isNaN(netValue)) errors.push({ sheet: 'ProjectSellingAgreements', row: excelRow, field: 'net_value', value: row.net_value, message: 'Net Value must be a number' });
+
+  if (errors.filter(e => e.sheet === 'ProjectSellingAgreements' && e.row === excelRow).length > 0) return;
+
+  // Resolve dependencies
+  const project = await db.query('SELECT id FROM projects WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)', [tenantId, projectName]);
+  if (project.length === 0) {
+    errors.push({ sheet: 'ProjectSellingAgreements', row: excelRow, field: 'project_name', value: projectName, message: `Project "${projectName}" not found` });
+    return;
+  }
+
+  const unit = await db.query('SELECT id FROM units WHERE tenant_id = $1 AND project_id = $2 AND LOWER(TRIM(name)) = LOWER($3)', [tenantId, project[0].id, unitName]);
+  if (unit.length === 0) {
+    errors.push({ sheet: 'ProjectSellingAgreements', row: excelRow, field: 'unit_name', value: unitName, message: `Unit "${unitName}" not found in project "${projectName}"` });
+    return;
+  }
+
+  const lead = await db.query('SELECT id FROM contacts WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER($2)', [tenantId, leadName]);
+  if (lead.length === 0) {
+    errors.push({ sheet: 'ProjectSellingAgreements', row: excelRow, field: 'lead_name', value: leadName, message: `Contact/Lead "${leadName}" not found` });
+    return;
+  }
+
+  validatedData.push({
+    project_id: project[0].id,
+    unit_id: unit[0].id,
+    lead_id: lead[0].id,
+    duration_years: durationYears,
+    down_payment_percentage: downPaymentPercentage,
+    frequency,
+    list_price: listPrice,
+    net_value: netValue,
+    status,
+    description: (row.description || row.Description || '').toString().trim() || null,
+    intro_text: (row.intro_text || row.IntroText || '').toString().trim() || null,
+    discount_names: (row.discount_names || row.DiscountNames || '').toString().trim(),
+    discount_amounts: (row.discount_amounts || row.DiscountAmounts || '').toString().trim(),
+    discount_category_names: (row.discount_category_names || row.DiscountCategoryNames || '').toString().trim()
   });
 }

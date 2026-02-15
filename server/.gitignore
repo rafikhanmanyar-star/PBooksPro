@@ -17,4 +17,5 @@ logs/
 # Temporary files
 *.tmp
 .cache/
+.production-to-staging.dump
 

@@ -55,7 +55,6 @@ async function ensureDatabaseInitialized(): Promise<void> {
 
     initializationPromise = (async () => {
         try {
-            console.log('[useDatabaseState] Getting database service...');
 
             // Initialize unified service first
             const unifiedService = getUnifiedDatabaseService();
@@ -64,11 +63,8 @@ async function ensureDatabaseInitialized(): Promise<void> {
             // For desktop, also initialize local SQLite
             if (!isMobileDevice()) {
                 const dbService = getDatabaseService();
-                console.log('[useDatabaseState] Database service obtained, initializing...');
                 await dbService.initialize();
-                console.log('[useDatabaseState] Database initialized successfully');
             } else {
-                console.log('[useDatabaseState] Mobile platform: Using API repositories only');
             }
 
             dbInitialized = true;
@@ -109,7 +105,6 @@ export function useDatabaseState<T extends AppState>(
                 // Add timeout to prevent infinite loading
                 timeoutId = setTimeout(() => {
                     if (isMounted) {
-                        console.warn('⚠️ Database load timeout - using initial state');
                         setStoredValue(initialValue);
                         setIsLoading(false);
                     }
@@ -143,18 +138,10 @@ export function useDatabaseState<T extends AppState>(
                         // Only update if the state hasn't been modified by the user in the meantime
                         if (!hasModifiedRef.current) {
                             // Always use loaded state from database (it's the source of truth)
-                            console.log('✅ Loaded state from database:', {
-                                users: state.users.length,
-                                accounts: state.accounts.length,
-                                transactions: state.transactions.length,
-                                invoices: state.invoices.length,
-                                contacts: state.contacts.length
-                            });
                             setStoredValue(state as T);
                             setIsLoading(false);
                         } else {
                             // Preserve user changes; persist current state so DB is not left stale
-                            console.log('⚠️ Database loaded but state was already modified by user - preserving user changes and flushing to DB');
                             setIsLoading(false);
                             const valueToSave = pendingSaveRef.current ?? (storedValue as T);
                             if (valueToSave && valueToSave !== initialValue) {
@@ -162,9 +149,8 @@ export function useDatabaseState<T extends AppState>(
                                     .then(async () => {
                                         const appStateRepo = await getAppStateRepository();
                                         await appStateRepo.saveState(valueToSave as AppState);
-                                        console.log('✅ User-modified state saved after skipping load');
                                     })
-                                    .catch((err) => console.warn('⚠️ Failed to save user-modified state after skip load:', err));
+                                    .catch(() => {});
                             }
                         }
                     }
@@ -233,14 +219,12 @@ export function useDatabaseState<T extends AppState>(
                     try {
                         await ensureDatabaseInitialized();
                     } catch (initError) {
-                        console.warn('⚠️ Database not available for save, state will be lost on reload:', initError);
                         return; // Don't try to save if database isn't available
                     }
 
                     const appStateRepo = await getAppStateRepository();
                     await appStateRepo.saveState(valueToSave as AppState);
                     if (typeof localStorage !== 'undefined') localStorage.removeItem(DB_STATE_DIRTY_KEY);
-                    console.log('✅ State saved to database');
                     pendingSaveRef.current = null;
                 } catch (error) {
                     console.error('⚠️ Failed to save state to database:', error);
@@ -277,7 +261,6 @@ export function useDatabaseState<T extends AppState>(
             const appStateRepo = await getAppStateRepository();
             await appStateRepo.saveState(valueToSave as AppState, options?.disableSyncQueueing ?? false);
             if (typeof localStorage !== 'undefined') localStorage.removeItem(DB_STATE_DIRTY_KEY);
-            console.log('✅ State saved to database (saveNow)');
             pendingSaveRef.current = null;
         } catch (error) {
             console.error('⚠️ Failed to save state (saveNow):', error);
@@ -302,12 +285,10 @@ export function useDatabaseState<T extends AppState>(
                     .then(async () => {
                         const appStateRepo = await getAppStateRepository();
                         await appStateRepo.saveState(valueToSave as AppState);
-                        console.log('✅ State saved on unmount');
                     })
                     .catch((error) => {
                         const errorMsg = error?.message || String(error);
                         if (!errorMsg.includes('UNIQUE constraint')) {
-                            console.warn('⚠️ Failed to save state on unmount:', error);
                         }
                     })
                     .finally(() => {

@@ -65,13 +65,23 @@ class SyncOutboxService {
 
   /**
    * Get all pending items for a tenant (oldest first).
+   * Applies exponential backoff for failed items: retry_count N waits 2^N seconds before retry.
    */
   getPending(tenantId: string): SyncOutboxItem[] {
     if (!this.db.isReady()) return [];
     const rows = this.db.query<SyncOutboxItem>(
-      `SELECT * FROM sync_outbox WHERE tenant_id = ? AND status IN ('pending', 'failed') ORDER BY created_at ASC`
+      `SELECT * FROM sync_outbox WHERE tenant_id = ? AND status IN ('pending', 'failed') ORDER BY created_at ASC`,
+      [tenantId]
     );
-    return rows;
+    const now = Date.now() / 1000; // seconds
+    return rows.filter((item) => {
+      if (item.status === 'pending') return true;
+      // Exponential backoff for failed: wait 2^retry_count seconds
+      const backoffSeconds = Math.pow(2, Math.min(item.retry_count || 0, 10));
+      const updatedAt = item.updated_at ? new Date(item.updated_at).getTime() / 1000 : 0;
+      const elapsed = now - updatedAt;
+      return elapsed >= backoffSeconds;
+    });
   }
 
   /**

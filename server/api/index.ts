@@ -1,4 +1,4 @@
-﻿// Load environment variables FIRST, before any other imports
+// Load environment variables FIRST, before any other imports
 import dotenv from 'dotenv';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -115,6 +115,7 @@ import vendorsRouter from './routes/vendors.js';
 import { tenantMiddleware } from '../middleware/tenantMiddleware.js';
 import { licenseMiddleware } from '../middleware/licenseMiddleware.js';
 import { trackRequestMetrics } from './routes/admin/system-metrics.js';
+import timeout from 'connect-timeout';
 
 const app = express();
 const httpServer = createServer(app);
@@ -212,7 +213,7 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID', 'Accept'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID', 'Accept', 'idempotency-key'],
   exposedHeaders: ['Content-Type', 'Authorization'],
   maxAge: 86400 // 24 hours
 }));
@@ -230,6 +231,17 @@ app.use(express.urlencoded({
     (req as any).rawBody = buf;
   }
 }));
+
+// Add request timeout middleware (30 seconds max)
+// This prevents requests from hanging indefinitely
+app.use(timeout('30s'));
+
+// Timeout error handler - must be before route handlers
+app.use((req, res, next) => {
+  if (!(req as any).timedout) {
+    next();
+  }
+});
 
 // Track system metrics (request stats)
 app.use(trackRequestMetrics);
@@ -650,9 +662,9 @@ app.get('/mock-payment', (req, res) => {
 // Protected routes (tenant + license authentication required)
 app.use('/api', tenantMiddleware(pool));
 
-// Idempotency middleware: prevent duplicate processing of sync push operations
+// Idempotency middleware: prevent duplicate processing of sync push operations (durable via PostgreSQL)
 import { idempotencyMiddleware } from '../middleware/idempotencyMiddleware.js';
-app.use('/api', idempotencyMiddleware);
+app.use('/api', idempotencyMiddleware(pool));
 
 // Payment routes (require tenant context but allow expired licenses)
 app.use('/api/payments', (req: any, res: Response, next: NextFunction) => {
@@ -722,7 +734,28 @@ app.use('/api/state', stateChangesRouter); // Incremental sync: GET /api/state/c
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Error:', err);
+  // Log error with context
+  console.error('❌ Unhandled error:', {
+    error: err.message,
+    code: err.code,
+    path: req.path,
+    method: req.method,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
+
+  // Handle specific error types
+  if (err.code === 'ETIMEDOUT' || (req as any).timedout) {
+    return res.status(504).json({
+      error: 'Request timeout',
+      message: 'The server took too long to process your request. Please try again.'
+    });
+  }
+
+  // Don't send response if headers already sent
+  if (res.headersSent) {
+    return next(err);
+  }
+
   res.status(err.status || 500).json({
     error: err.message || 'Internal server error',
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })

@@ -93,10 +93,19 @@ router.post('/', async (req: TenantRequest, res) => {
 
     // Check if bill exists to determine if this is a create or update
     const existing = await db.query(
-      'SELECT id FROM bills WHERE id = $1 AND tenant_id = $2',
+      'SELECT id, status FROM bills WHERE id = $1 AND tenant_id = $2',
       [billId, req.tenantId]
     );
     const isUpdate = existing.length > 0;
+
+    // Immutability: reject updates to paid bills (financial data safety)
+    if (isUpdate && existing[0].status === 'Paid') {
+      return res.status(403).json({
+        error: 'Immutable record',
+        message: 'Cannot modify a paid bill. Posted financial records are immutable.',
+        code: 'BILL_PAID_IMMUTABLE',
+      });
+    }
 
     // Check if bill number already exists for this tenant (only for new bills or when bill number is being changed)
     if (!isUpdate || (isUpdate && existing[0].bill_number !== bill.billNumber)) {
@@ -215,6 +224,20 @@ router.put('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
     const bill = req.body;
+
+    // Immutability: reject updates to paid bills
+    const current = await db.query(
+      'SELECT status FROM bills WHERE id = $1 AND tenant_id = $2',
+      [req.params.id, req.tenantId]
+    );
+    if (current.length > 0 && current[0].status === 'Paid') {
+      return res.status(403).json({
+        error: 'Immutable record',
+        message: 'Cannot modify a paid bill. Posted financial records are immutable.',
+        code: 'BILL_PAID_IMMUTABLE',
+      });
+    }
+
     const result = await db.query(
       `UPDATE bills 
        SET bill_number = $1, contact_id = $2, vendor_id = $3, amount = $4, paid_amount = $5, 
@@ -452,6 +475,20 @@ router.post('/:id/pay', async (req: TenantRequest, res) => {
 router.delete('/:id', async (req: TenantRequest, res) => {
   try {
     const db = getDb();
+
+    // Immutability: reject deletion of paid bills
+    const current = await db.query(
+      'SELECT status FROM bills WHERE id = $1 AND tenant_id = $2',
+      [req.params.id, req.tenantId]
+    );
+    if (current.length > 0 && current[0].status === 'Paid') {
+      return res.status(403).json({
+        error: 'Immutable record',
+        message: 'Cannot delete a paid bill. Posted financial records are immutable.',
+        code: 'BILL_PAID_IMMUTABLE',
+      });
+    }
+
     const result = await db.query(
       'DELETE FROM bills WHERE id = $1 AND tenant_id = $2 RETURNING id',
       [req.params.id, req.tenantId]

@@ -430,13 +430,13 @@ const createImportSchemas = (): Record<string, ImportSchema> => {
         allowedFields: new Set(['amount', 'date', 'description', 'accountName', 'AccountName', 'billNumber', 'BillNumber', 'contactName', 'ContactName', 'categoryName', 'CategoryName', 'projectName', 'ProjectName', 'buildingName', 'BuildingName', 'propertyName', 'PropertyName', 'unitName', 'UnitName', 'contractNumber', 'ContractNumber', 'agreementNumber', 'AgreementNumber'])
     };
 
-    // LoanTransactions
+    // LoanTransactions (bank account required; use Bank-type account name)
     schemas.LoanTransactions = {
         sheetName: 'LoanTransactions',
         version: '1.0',
-        requiredFields: ['subtype', 'amount', 'date'],
-        optionalFields: ['description', 'accountName', 'AccountName', 'contactName', 'ContactName'],
-        allowedFields: new Set(['subtype', 'amount', 'date', 'description', 'accountName', 'AccountName', 'contactName', 'ContactName'])
+        requiredFields: ['subtype', 'amount', 'date', 'bankAccountName'],
+        optionalFields: ['description', 'contactName', 'ContactName'],
+        allowedFields: new Set(['subtype', 'amount', 'date', 'description', 'bankAccountName', 'BankAccountName', 'accountName', 'AccountName', 'contactName', 'ContactName'])
     };
 
     // EquityTransactions

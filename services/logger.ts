@@ -37,12 +37,12 @@ class Logger {
   ]);
 
   /**
-   * Check if a log message should be displayed
-   * In production, only errors and critical warnings are shown (no sync/auth/db success logs)
+   * Check if a log message should be displayed.
+   * In production, suppress all non-error logs.
    */
   private shouldLog(message: string, category?: string): boolean {
     if (!this.enabled) return false;
-    if (isProduction) return false;
+    if (isProduction) return false; // Suppress log/warn in production
 
     const lowerMessage = message.toLowerCase();
     

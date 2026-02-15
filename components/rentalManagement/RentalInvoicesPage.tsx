@@ -1,12 +1,17 @@
 import React, { useState } from 'react';
+import { useAppContext } from '../../context/AppContext';
+import { ImportType } from '../../services/importService';
+import { ICONS } from '../../constants';
 import RentalInvoicesContent from './RentalInvoicesContent';
 import CreateRentalInvoiceModal from './CreateRentalInvoiceModal';
 import RecurringInvoicesList from './RecurringInvoicesList';
 import MonthlyServiceChargesPage from './MonthlyServiceChargesPage';
+import Button from '../ui/Button';
 
 const TABS = ['Invoices', 'Recurring Templates', 'Monthly Service Charges'] as const;
 
 const RentalInvoicesPage: React.FC = () => {
+  const { dispatch } = useAppContext();
   const [activeTab, setActiveTab] = useState<typeof TABS[number]>('Invoices');
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createModalType, setCreateModalType] = useState<'rental' | 'security'>('rental');
@@ -23,6 +28,11 @@ const RentalInvoicesPage: React.FC = () => {
 
   const handleSchedulesClick = () => {
     setActiveTab('Recurring Templates');
+  };
+
+  const handleBulkImport = () => {
+    dispatch({ type: 'SET_INITIAL_IMPORT_TYPE', payload: ImportType.INVOICES });
+    dispatch({ type: 'SET_PAGE', payload: 'import' });
   };
 
   const renderContent = () => {
@@ -50,8 +60,8 @@ const RentalInvoicesPage: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex flex-shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-4 py-2">
-        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+      <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2">
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar min-w-0">
           {TABS.map(tab => (
             <button
               key={tab}
@@ -67,6 +77,25 @@ const RentalInvoicesPage: React.FC = () => {
             </button>
           ))}
         </div>
+        {activeTab === 'Invoices' && (
+          <div className="flex flex-shrink-0 items-center gap-2 ml-2">
+            <Button onClick={handleCreateRental} size="sm">
+              <div className="w-4 h-4 mr-2">{ICONS.plus}</div>
+              New Rental Invoice
+            </Button>
+            <Button variant="secondary" onClick={handleCreateSecurity} size="sm">
+              <div className="w-4 h-4 mr-2">{ICONS.plus}</div>
+              New Security Deposit
+            </Button>
+            <Button variant="secondary" onClick={handleBulkImport} size="sm">
+              <div className="w-4 h-4 mr-2">{ICONS.download}</div>
+              Bulk Import
+            </Button>
+            <Button variant="ghost" onClick={handleSchedulesClick} size="sm">
+              Manage Schedules
+            </Button>
+          </div>
+        )}
       </div>
       <div className="flex-grow overflow-hidden min-h-0">
         {renderContent()}

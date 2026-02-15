@@ -72,10 +72,103 @@ class OpfsStorage {
             await writable.write(buffer);
             await writable.close();
         } catch (error) {
-            logger.warnCategory('database', 'OPFS save failed:', error);
+            // Re-throw only; caller logs when falling back to avoid duplicate logs
             throw error;
         }
     }
+}
+
+const IDB_DB_NAME = 'PBooksPro_DB';
+const IDB_STORE_NAME = 'finance';
+const IDB_KEY = 'finance_db';
+
+/**
+ * IndexedDB storage adapter.
+ * Provides much larger quota than localStorage (~50MB+ vs ~5MB).
+ * Use as fallback when OPFS fails to avoid QuotaExceededError.
+ */
+class IndexedDBStorage {
+    private dbPromise: Promise<IDBDatabase> | null = null;
+
+    private getDb(): Promise<IDBDatabase> {
+        if (!this.dbPromise) {
+            this.dbPromise = new Promise((resolve, reject) => {
+                if (typeof indexedDB === 'undefined') {
+                    reject(new Error('IndexedDB not supported'));
+                    return;
+                }
+                const req = indexedDB.open(IDB_DB_NAME, 1);
+                req.onerror = () => reject(req.error);
+                req.onsuccess = () => resolve(req.result);
+                req.onupgradeneeded = (e) => {
+                    (e.target as IDBOpenDBRequest).result.createObjectStore(IDB_STORE_NAME);
+                };
+            });
+        }
+        return this.dbPromise;
+    }
+
+    async isSupported(): Promise<boolean> {
+        return typeof indexedDB !== 'undefined';
+    }
+
+    async load(): Promise<Uint8Array | null> {
+        if (!(await this.isSupported())) return null;
+        try {
+            const db = await this.getDb();
+            const result = await new Promise<ArrayBuffer | Blob | undefined>((resolve, reject) => {
+                const tx = db.transaction(IDB_STORE_NAME, 'readonly');
+                const req = tx.objectStore(IDB_STORE_NAME).get(IDB_KEY);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+            if (!result) return null;
+            let arr: Uint8Array;
+            if (result instanceof Blob) {
+                arr = new Uint8Array(await result.arrayBuffer());
+            } else if (result instanceof ArrayBuffer) {
+                arr = new Uint8Array(result);
+            } else {
+                return null;
+            }
+            return arr.length > 0 ? arr : null;
+        } catch {
+            return null;
+        }
+    }
+
+    async save(data: Uint8Array): Promise<void> {
+        if (!(await this.isSupported())) return;
+        const db = await this.getDb();
+        // Use Blob instead of ArrayBuffer - better large-data support in Safari/private mode
+        const blob = new Blob([data]);
+        await new Promise<void>((resolve, reject) => {
+            const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+            const req = tx.objectStore(IDB_STORE_NAME).put(blob, IDB_KEY);
+            req.onsuccess = () => resolve();
+            req.onerror = () => reject(req.error);
+        });
+    }
+
+    async clear(): Promise<void> {
+        if (!(await this.isSupported())) return;
+        try {
+            const db = await this.getDb();
+            await new Promise<void>((resolve, reject) => {
+                const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+                const req = tx.objectStore(IDB_STORE_NAME).delete(IDB_KEY);
+                req.onsuccess = () => resolve();
+                req.onerror = () => reject(req.error);
+            });
+        } catch {
+            // Ignore
+        }
+    }
+}
+
+function errorToString(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    return String(error ?? 'Unknown error');
 }
 
 export interface DatabaseConfig {
@@ -94,8 +187,12 @@ class DatabaseService {
     private inTransaction = false;
     private sqlJsModule: any = null;
     private opfs = new OpfsStorage();
-    private storageMode: 'opfs' | 'localStorage' = 'localStorage';
+    private indexedDBStorage = new IndexedDBStorage();
+    private storageMode: 'opfs' | 'indexedDB' | 'localStorage' = 'localStorage';
     private saveLock: Promise<void> = Promise.resolve(); // Lock to prevent concurrent saves
+    private lastPersistenceError: string | null = null;
+    private lastPersistenceErrorTime = 0;
+    private static readonly PERSISTENCE_ERROR_THROTTLE_MS = 60_000;
 
     constructor(config: DatabaseConfig = {}) {
         this.config = {
@@ -134,7 +231,6 @@ class DatabaseService {
             if (!this.sqlJsModule) {
                 try {
                     this.sqlJsModule = await loadSqlJs();
-                    console.log('✅ sql.js loaded successfully');
                 } catch (loadError) {
                     const errorMsg = loadError instanceof Error ? loadError.message : String(loadError);
                     console.error('❌ Failed to load sql.js:', errorMsg);
@@ -170,7 +266,6 @@ class DatabaseService {
 
             const SQL = await Promise.race([initPromise, timeoutPromise]);
             this.sqlJs = SQL;
-            console.log('✅ SQL.js loaded successfully');
 
             // Priority order: OPFS > localStorage
             let loadedData: Uint8Array | null = null;
@@ -190,7 +285,22 @@ class DatabaseService {
                 }
             }
 
-            // 2. Fallback to localStorage
+            // 2. Fallback to IndexedDB (larger quota than localStorage)
+            if (!this.db && (await this.indexedDBStorage.isSupported())) {
+                const idbData = await this.indexedDBStorage.load();
+                if (idbData) {
+                    try {
+                        this.db = new SQL.Database(idbData);
+                        this.storageMode = 'indexedDB';
+                        logger.logCategory('database', '✅ Loaded existing database from IndexedDB');
+                        loadedData = idbData;
+                    } catch (parseError) {
+                        logger.warnCategory('database', '⚠️ Failed to parse IndexedDB database, trying localStorage:', parseError);
+                    }
+                }
+            }
+
+            // 3. Fallback to localStorage
             if (!this.db) {
                 const savedDb = localStorage.getItem('finance_db');
                 if (typeof savedDb === 'string') {
@@ -278,35 +388,49 @@ class DatabaseService {
                         throw recreateError;
                     }
 
-                    // Clear old storage
+                    // Clear old storage (OPFS, IndexedDB, localStorage)
                     try {
                         localStorage.removeItem('finance_db');
                         if (await this.opfs.isSupported()) {
-                            // Clear OPFS storage by overwriting with empty file
-                            const root = await (navigator as any).storage.getDirectory();
                             try {
+                                const root = await (navigator as any).storage.getDirectory();
                                 const handle = await root.getFileHandle('finance_db.sqlite', { create: true });
                                 const writable = await handle.createWritable();
                                 await writable.write(new Uint8Array(0));
                                 await writable.close();
-                            } catch (opfsClearError) {
+                            } catch {
                                 // Ignore - will be overwritten on save anyway
                             }
                         }
-                    } catch (clearError) {
+                        if (await this.indexedDBStorage.isSupported()) {
+                            await this.indexedDBStorage.clear();
+                        }
+                    } catch {
                         // Ignore - will be overwritten anyway
                     }
                 }
             }
 
-            // Migrate to OPFS if available
-            if (this.storageMode === 'localStorage' && (await this.opfs.isSupported())) {
-                try {
-                    await this.opfs.save(this.db.export());
-                    this.storageMode = 'opfs';
-                    logger.logCategory('database', '✅ Copied database to OPFS for durability');
-                } catch (copyError) {
-                    logger.warnCategory('database', '⚠️ Failed to copy database to OPFS, continuing with localStorage:', copyError);
+            // Migrate to OPFS or IndexedDB if available (both have larger quota than localStorage)
+            if (this.storageMode === 'localStorage') {
+                const exported = this.db.export();
+                if (await this.opfs.isSupported()) {
+                    try {
+                        await this.opfs.save(exported);
+                        this.storageMode = 'opfs';
+                        logger.logCategory('database', '✅ Copied database to OPFS for durability');
+                    } catch (copyError) {
+                        logger.warnCategory('database', '⚠️ Failed to copy database to OPFS, trying IndexedDB:', copyError);
+                    }
+                }
+                if (this.storageMode === 'localStorage' && (await this.indexedDBStorage.isSupported())) {
+                    try {
+                        await this.indexedDBStorage.save(exported);
+                        this.storageMode = 'indexedDB';
+                        logger.logCategory('database', '✅ Copied database to IndexedDB (avoids localStorage quota)');
+                    } catch (copyError) {
+                        logger.warnCategory('database', '⚠️ Failed to copy database to IndexedDB, continuing with localStorage:', copyError);
+                    }
                 }
             }
 
@@ -423,7 +547,6 @@ class DatabaseService {
             // Only log warnings for other queries that might indicate a real issue
             const isCountQuery = sql.trim().toUpperCase().startsWith('SELECT COUNT(*)');
             if (!isCountQuery) {
-                console.warn(`⚠️ Database not ready for query: ${sql.substring(0, 50)}...`);
             }
             return [];
         }
@@ -443,7 +566,6 @@ class DatabaseService {
      */
     execute(sql: string, params: any[] = []): void {
         if (!this.isReady()) {
-            console.warn(`⚠️ Database not ready for execution: ${sql.substring(0, 50)}...`);
             return;
         }
         try {
@@ -487,7 +609,6 @@ class DatabaseService {
             db.run('BEGIN TRANSACTION');
             begun = true;
             this.inTransaction = true;
-            console.log('✅ Transaction started successfully');
         } catch (beginError) {
             // If we cannot start a transaction, surface the error immediately
             this.inTransaction = false;
@@ -496,19 +617,15 @@ class DatabaseService {
         }
 
         try {
-            console.log(`🔄 Executing ${operations.length} operations in transaction...`);
             let operationError: any = null;
 
             // Execute all operations, catching any errors
             operations.forEach((op, index) => {
                 if (operationError) {
-                    // Skip remaining operations if one failed
                     return;
                 }
                 try {
-                    console.log(`  → Executing operation ${index + 1}/${operations.length}`);
                     op();
-                    console.log(`  ✅ Operation ${index + 1} completed without throwing error`);
                 } catch (opError) {
                     console.error(`❌ Operation ${index + 1} failed:`, opError);
                     operationError = opError;
@@ -518,7 +635,6 @@ class DatabaseService {
 
             // If any operation failed, rollback and throw
             if (operationError) {
-                console.error('❌ One or more operations failed, rolling back transaction...');
                 // Clear pending sync operations on rollback
                 try {
                     // Use require for synchronous access (BaseRepository is already loaded)
@@ -529,15 +645,11 @@ class DatabaseService {
                 }
                 if (begun) {
                     try {
-                        // Check if transaction is still active before rolling back
                         db.run('ROLLBACK');
-                        console.log('✅ Rollback completed');
                     } catch (rollbackError: any) {
                         const rollbackMsg = (rollbackError?.message || String(rollbackError)).toLowerCase();
-                        if (rollbackMsg.includes('no transaction is active')) {
-                            console.warn('⚠️ Transaction already rolled back (likely auto-rolled back by sql.js)');
-                        } else {
-                            console.warn('❌ Rollback failed:', rollbackError);
+                        if (!rollbackMsg.includes('no transaction is active')) {
+                            console.error('Rollback failed:', rollbackError);
                         }
                     }
                 }
@@ -545,7 +657,6 @@ class DatabaseService {
             }
 
             // All operations succeeded, check if transaction is still active before committing
-            console.log('✅ All operations completed, checking transaction state...');
             let transactionStillActive = false;
             try {
                 // Try to prepare a statement - if transaction is active, this should work
@@ -553,16 +664,13 @@ class DatabaseService {
                 testStmt.step();
                 testStmt.free();
                 transactionStillActive = true;
-                console.log('✅ Transaction is still active, proceeding to commit...');
             } catch (checkError: any) {
                 const checkMsg = (checkError?.message || String(checkError)).toLowerCase();
                 if (checkMsg.includes('no transaction') || checkMsg.includes('transaction')) {
                     console.error('❌ Transaction was already rolled back! Checking which operation caused it...');
                     transactionStillActive = false;
                 } else {
-                    // Some other error, assume transaction is still active
                     transactionStillActive = true;
-                    console.log('⚠️ Could not verify transaction state, assuming it is active');
                 }
             }
 
@@ -574,20 +682,16 @@ class DatabaseService {
                 throw new Error('Transaction was auto-rolled back by sql.js - check for SQL errors in the logs above');
             }
 
-            // Transaction is still active, commit it
-            console.log('🔄 Committing transaction...');
             try {
                 db.run('COMMIT');
                 committed = true;
-                console.log('✅ Transaction committed successfully');
 
                 // Call post-commit callback if provided (before clearing inTransaction flag)
                 if (onCommit) {
                     try {
                         onCommit();
                     } catch (callbackError) {
-                        console.error('❌ Error in post-commit callback:', callbackError);
-                        // Don't fail the transaction if callback errors
+                        console.error('Post-commit callback error:', callbackError);
                     }
                 }
             } catch (commitError: any) {
@@ -603,16 +707,14 @@ class DatabaseService {
                     if (begun) {
                         try {
                             db.run('ROLLBACK');
-                            console.log('✅ Rollback completed after failed commit');
-                        } catch (rollbackError) {
-                            console.warn('❌ Rollback after failed commit also failed:', rollbackError);
+                        } catch {
+                            // Ignore
                         }
                     }
                     throw commitError;
                 }
             }
         } catch (error) {
-            console.error('❌ Error during transaction operations:', error);
             if (!committed) {
                 // Clear pending sync operations on rollback
                 try {
@@ -622,17 +724,13 @@ class DatabaseService {
                 } catch (e) {
                     // Ignore if BaseRepository not available (may cause circular dependency warning)
                 }
-                console.log('🔄 Attempting to rollback transaction due to error...');
                 if (begun) {
                     try {
                         db.run('ROLLBACK');
-                        console.log('✅ Rollback completed');
                     } catch (rollbackError: any) {
                         const rollbackMsg = (rollbackError?.message || String(rollbackError)).toLowerCase();
-                        if (rollbackMsg.includes('no transaction is active')) {
-                            console.warn('⚠️ Transaction already rolled back (likely auto-rolled back by sql.js)');
-                        } else {
-                            console.warn('❌ Rollback failed (transaction may already be inactive):', rollbackError);
+                        if (!rollbackMsg.includes('no transaction is active')) {
+                            console.error('Rollback failed:', rollbackError);
                         }
                     }
                 }
@@ -640,7 +738,6 @@ class DatabaseService {
             throw error;
         } finally {
             this.inTransaction = false;
-            console.log('🏁 Transaction finished, inTransaction flag cleared');
         }
     }
 
@@ -649,10 +746,8 @@ class DatabaseService {
      */
     save(): void {
         if (!this.db || !this.isInitialized) return;
-        // Fire and forget, but ensure it completes
-        this.persistToStorage().catch((error) => {
-            console.error('Failed to persist database:', error);
-        });
+        // Fire and forget; persistToStorage handles its own error logging (throttled)
+        this.persistToStorage().catch(() => { /* already logged in persistToStorage */ });
     }
 
     /**
@@ -673,7 +768,6 @@ class DatabaseService {
         // CRITICAL: Wait for any active transaction to complete before exporting
         // Exporting during a transaction can cause database corruption
         if (this.inTransaction) {
-            console.warn('⚠️ Attempting to export database during active transaction - this may cause corruption');
             // Wait a bit for transaction to complete (not ideal, but safer than corrupting)
             // In practice, this should not happen if save is called after transactions complete
         }
@@ -789,9 +883,7 @@ class DatabaseService {
                     } else {
                         db.run(`DELETE FROM ${table}`);
                     }
-                    console.log(`✓ Cleared ${table}${tenantId ? ` for tenant ${tenantId}` : ''}`);
                 } catch (error) {
-                    console.warn(`⚠️ Could not clear ${table}:`, error);
                 }
             });
 
@@ -812,8 +904,6 @@ class DatabaseService {
             db.run('COMMIT');
             this.save();
 
-            console.log(`✅ Successfully cleared all transaction data from local database${tenantId ? ` for tenant ${tenantId}` : ''}`);
-            console.log('ℹ️  Accounts will be reloaded from cloud on next sync');
         } catch (error) {
             db.run('ROLLBACK');
             console.error('❌ Error clearing transaction data:', error);
@@ -855,10 +945,8 @@ class DatabaseService {
                     } else {
                         db.run(`DELETE FROM ${table}`);
                     }
-                    console.log(`✓ Cleared ${table}${tenantId ? ` for tenant ${tenantId}` : ''}`);
                 } catch (error) {
                     // Table might not exist in older local DBs; don't fail the whole clear
-                    console.warn(`⚠️ Could not clear ${table}:`, error);
                 }
             });
 
@@ -878,7 +966,6 @@ class DatabaseService {
 
             db.run('COMMIT');
             this.save();
-            console.log(`✅ Successfully cleared POS data from local database${tenantId ? ` for tenant ${tenantId}` : ''}`);
         } catch (error) {
             db.run('ROLLBACK');
             console.error('❌ Error clearing POS data:', error);
@@ -1049,7 +1136,6 @@ class DatabaseService {
             const latestVersion = SCHEMA_VERSION;
 
             if (currentVersion < latestVersion) {
-                console.log(`🔄 Schema migration needed: ${currentVersion} -> ${latestVersion}`);
 
                 // Temporarily set isInitialized so that helper methods (ensureAllTablesExist,
                 // ensureContractColumnsExist, ensureVendorIdColumnsExist, migrateTenantColumns)
@@ -1064,7 +1150,6 @@ class DatabaseService {
                         const { migrateTenantColumns } = await import('./tenantMigration');
                         migrateTenantColumns();
                     } catch (migrationError) {
-                        console.warn('⚠️ Tenant migration failed, continuing anyway:', migrationError);
                     }
 
                     // Ensure all tables exist (this will create any missing tables AND indexes)
@@ -1085,14 +1170,12 @@ class DatabaseService {
                             const { migrateAddDocumentPathToBills } = await import('./migrations/add-document-path-to-bills');
                             await migrateAddDocumentPathToBills();
                         } catch (migrationError) {
-                            console.warn('⚠️ document_path migration failed, continuing anyway:', migrationError);
                         }
                     }
 
                     if (currentVersion < 7) {
                         // Migration to v7: Add version, deleted_at columns to all entity tables
                         // and ensure sync_conflicts table exists
-                        console.log('🔄 Running v7 migration: Adding version, deleted_at, sync_conflicts...');
                         try {
                             const entityTables = [
                                 'accounts', 'contacts', 'vendors', 'categories', 'projects',
@@ -1111,14 +1194,11 @@ class DatabaseService {
 
                                     if (!colNames.has('version')) {
                                         this.rawExecute(`ALTER TABLE ${table} ADD COLUMN version INTEGER NOT NULL DEFAULT 1`);
-                                        console.log(`  Added version to ${table}`);
                                     }
                                     if (!colNames.has('deleted_at')) {
                                         this.rawExecute(`ALTER TABLE ${table} ADD COLUMN deleted_at TEXT`);
-                                        console.log(`  Added deleted_at to ${table}`);
                                     }
                                 } catch (tableError) {
-                                    console.warn(`  ⚠️ Migration for ${table} failed:`, tableError);
                                 }
                             }
 
@@ -1128,10 +1208,8 @@ class DatabaseService {
                                 const raColNames = new Set(raCols.map(c => c.name));
                                 if (raColNames.has('org_id') && !raColNames.has('tenant_id')) {
                                     this.rawExecute('ALTER TABLE rental_agreements RENAME COLUMN org_id TO tenant_id');
-                                    console.log('  Renamed org_id to tenant_id in rental_agreements');
                                 }
                             } catch (renameError) {
-                                console.warn('  ⚠️ rental_agreements org_id rename failed:', renameError);
                             }
 
                             // Backfill NULL tenant_id values with empty string
@@ -1141,9 +1219,7 @@ class DatabaseService {
                                 } catch (_) { /* ignore if table doesn't have tenant_id */ }
                             }
 
-                            console.log('✅ v7 migration completed');
                         } catch (v7Error) {
-                            console.warn('⚠️ v7 migration partially failed:', v7Error);
                         }
                     }
 
@@ -1162,20 +1238,15 @@ class DatabaseService {
                             const buffer = Array.from(data);
                             localStorage.setItem('finance_db', JSON.stringify(buffer));
                         }
-                        console.log('💾 Database saved after migration');
                     } catch (saveError) {
-                        console.warn('⚠️ Could not save database after migration:', saveError);
                     }
 
-                    console.log('✅ Schema migration completed successfully');
                 } finally {
                     // Reset isInitialized - it will be set to true properly at the end of _doInitialize
                     this.isInitialized = false;
                 }
             } else if (currentVersion > latestVersion) {
-                console.warn(`⚠️ Database schema version (${currentVersion}) is newer than app version (${latestVersion}). This may cause issues.`);
             } else {
-                console.log(`✅ Database schema is up to date (version ${currentVersion})`);
             }
         } catch (error) {
             console.error('❌ Error during schema migration check:', error);
@@ -1205,19 +1276,16 @@ class DatabaseService {
 
                 // Add expense_category_items column if missing
                 if (!contractColumnNames.has('expense_category_items')) {
-                    console.log('🔄 Adding expense_category_items column to contracts table...');
                     this.execute('ALTER TABLE contracts ADD COLUMN expense_category_items TEXT');
                 }
 
                 // Add payment_terms column if missing
                 if (!contractColumnNames.has('payment_terms')) {
-                    console.log('🔄 Adding payment_terms column to contracts table...');
                     this.execute('ALTER TABLE contracts ADD COLUMN payment_terms TEXT');
                 }
 
                 // Add status column if missing (required for old backups)
                 if (!contractColumnNames.has('status')) {
-                    console.log('🔄 Adding status column to contracts table...');
                     this.execute('ALTER TABLE contracts ADD COLUMN status TEXT DEFAULT \'Active\'');
                     // Update existing rows to have a status if they don't have one
                     this.execute('UPDATE contracts SET status = \'Active\' WHERE status IS NULL');
@@ -1236,13 +1304,11 @@ class DatabaseService {
 
                 // Add expense_category_items column if missing
                 if (!billColumnNames.has('expense_category_items')) {
-                    console.log('🔄 Adding expense_category_items column to bills table...');
                     this.execute('ALTER TABLE bills ADD COLUMN expense_category_items TEXT');
                 }
 
                 // Add status column if missing (required for old backups)
                 if (!billColumnNames.has('status')) {
-                    console.log('🔄 Adding status column to bills table...');
                     this.execute('ALTER TABLE bills ADD COLUMN status TEXT DEFAULT \'Unpaid\'');
                     // Update existing rows to have a status if they don't have one
                     // Calculate status based on paid_amount vs amount
@@ -1284,12 +1350,10 @@ class DatabaseService {
 
                 if (table === 'vendors') {
                     if (!columnNames.has('is_active')) {
-                        console.log('🔄 Adding is_active column to vendors table...');
                         this.execute('ALTER TABLE vendors ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1');
                     }
                 } else {
                     if (!columnNames.has('vendor_id')) {
-                        console.log(`🔄 Adding vendor_id column to ${table} table...`);
                         // Add REFERENCES vendors(id) for foreign key constraint
                         this.execute(`ALTER TABLE ${table} ADD COLUMN vendor_id TEXT REFERENCES vendors(id)`);
                     }
@@ -1298,7 +1362,6 @@ class DatabaseService {
 
             // DATA MIGRATION: Move data from contact_id to vendor_id if contact_id is actually a vendor ID
             // This ensures existing data is correctly linked after schema change
-            console.log('🔄 Migrating vendor links from contact_id to vendor_id...');
 
             // For Bills
             // Check if bills table exists and has contact_id
@@ -1328,7 +1391,6 @@ class DatabaseService {
                 `);
             }
 
-            console.log('✅ Vendor link migration completed');
 
         } catch (error) {
             console.error('❌ Error ensuring vendor_id columns exist:', error);
@@ -1353,11 +1415,9 @@ class DatabaseService {
             const columnNames = new Set(columns.map(col => col.name));
 
             if (!columnNames.has('invoice_type')) {
-                console.log('🔄 Adding invoice_type column to recurring_invoice_templates table...');
                 this.execute("ALTER TABLE recurring_invoice_templates ADD COLUMN invoice_type TEXT DEFAULT 'Rental'");
                 // Update existing rows to have the default value
                 this.execute("UPDATE recurring_invoice_templates SET invoice_type = 'Rental' WHERE invoice_type IS NULL");
-                console.log('✅ Added invoice_type column to recurring_invoice_templates');
             }
         } catch (error) {
             console.error('❌ Error ensuring recurring template columns exist:', error);
@@ -1440,11 +1500,9 @@ class DatabaseService {
             const missingTables = requiredTables.filter(table => !existingTables.includes(table.toLowerCase()));
 
             if (missingTables.length > 0) {
-                console.log(`⚠️ Found ${missingTables.length} missing tables, creating them...`, missingTables);
                 // Re-run schema creation (CREATE TABLE IF NOT EXISTS will only create missing tables)
                 // Execute each statement separately to handle index creation failures gracefully
                 this.executeSchemaStatements(CREATE_SCHEMA_SQL);
-                console.log('✅ Missing tables created successfully');
 
                 // Verify tables were created
                 const verifyResult = this.db.exec(`SELECT name FROM sqlite_master WHERE type='table'`);
@@ -1453,7 +1511,6 @@ class DatabaseService {
                 if (stillMissing.length > 0) {
                     console.error('❌ Failed to create some tables:', stillMissing);
                 } else {
-                    console.log('✅ All missing tables verified created:', missingTables);
                 }
             }
         } catch (error) {
@@ -1487,7 +1544,6 @@ class DatabaseService {
                 // Silently skip index creation failures on missing columns
                 // This can happen when tenant_id columns haven't been added yet
                 if (errorMsg.includes('no such column') && statement.toUpperCase().includes('CREATE INDEX')) {
-                    console.warn(`⚠️ Skipping index creation (column not found): ${statement.substring(0, 80)}...`);
                 } else {
                     // Re-throw other errors
                     throw error;
@@ -1538,8 +1594,21 @@ class DatabaseService {
                 billsRepo.clearColumnCache();
             }
         } catch (e) {
-            console.warn('Could not clear repository column caches:', e);
         }
+    }
+
+    /**
+     * Throttle persistence error logs to avoid console spam when saves keep failing.
+     * Logs at most once per PERSISTENCE_ERROR_THROTTLE_MS for the same error.
+     */
+    private shouldLogPersistenceError(errMsg: string): boolean {
+        const now = Date.now();
+        const isSameError = this.lastPersistenceError === errMsg;
+        const throttleExpired = now - this.lastPersistenceErrorTime >= DatabaseService.PERSISTENCE_ERROR_THROTTLE_MS;
+        if (isSameError && !throttleExpired) return false;
+        this.lastPersistenceError = errMsg;
+        this.lastPersistenceErrorTime = now;
+        return true;
     }
 
     /**
@@ -1563,7 +1632,6 @@ class DatabaseService {
             // Exporting during a transaction will cause corruption
             let waitCount = 0;
             while (this.inTransaction && waitCount < 50) {
-                console.log('⏳ Waiting for transaction to complete before saving...');
                 await new Promise(resolve => setTimeout(resolve, 100));
                 waitCount++;
             }
@@ -1590,26 +1658,73 @@ class DatabaseService {
                 try {
                     await this.opfs.save(data);
                     this.storageMode = 'opfs';
+                    this.lastPersistenceError = null; // Clear on success
                     logger.logCategory('database', '✅ Database saved to OPFS storage');
                     resolveLock!();
                     return;
                 } catch (opfsError) {
-                    logger.warnCategory('database', 'OPFS persistence failed, falling back to localStorage:', opfsError);
+                    const errMsg = errorToString(opfsError);
+                    if (this.shouldLogPersistenceError(`OPFS: ${errMsg}`)) {
+                        logger.warnCategory('database', `OPFS unavailable, trying IndexedDB: ${errMsg}`);
+                    }
                 }
             }
 
-            // Fallback: localStorage
+            // Try IndexedDB (much larger quota than localStorage, avoids QuotaExceededError)
+            if (await this.indexedDBStorage.isSupported()) {
+                try {
+                    await this.indexedDBStorage.save(data);
+                    this.storageMode = 'indexedDB';
+                    this.lastPersistenceError = null; // Clear on success
+                    logger.logCategory('database', '✅ Database saved to IndexedDB');
+                    resolveLock!();
+                    return;
+                } catch (idbError) {
+                    const errMsg = errorToString(idbError);
+                    const isQuotaError = errMsg.includes('QuotaExceeded') || errMsg.includes('quota');
+                    if (this.shouldLogPersistenceError(`IndexedDB: ${errMsg}`)) {
+                        logger.warnCategory('database', `IndexedDB save failed: ${errMsg}`);
+                    }
+                    // If IndexedDB hit quota, localStorage will fail too - skip it and throw
+                    if (isQuotaError) {
+                        const sizeMB = (data.length / (1024 * 1024)).toFixed(1);
+                        throw new Error(
+                            `Storage quota exceeded (DB ~${sizeMB}MB). Please clear site data: DevTools → Application → Storage → Clear site data, then reload.`
+                        );
+                    }
+                }
+            }
+
+            // Fallback: localStorage only for small DBs (~4MB limit typical)
+            const estimatedJsonSize = data.length * 2.5; // JSON overhead for number array
+            const localStorageLimit = 4 * 1024 * 1024; // ~4MB
+            if (estimatedJsonSize > localStorageLimit) {
+                const sizeMB = (data.length / (1024 * 1024)).toFixed(1);
+                throw new Error(
+                    `Database too large for localStorage (~${sizeMB}MB). IndexedDB failed. Clear site data and reload, or use a different browser.`
+                );
+            }
+
             try {
                 const buffer = Array.from(data);
                 localStorage.setItem('finance_db', JSON.stringify(buffer));
                 this.storageMode = 'localStorage';
+                this.lastPersistenceError = null; // Clear on success
                 logger.logCategory('database', '✅ Database saved to localStorage');
-            } catch (error) {
-                logger.errorCategory('database', 'Failed to save database:', error);
-                throw error;
+            } catch (lsError) {
+                const errMsg = errorToString(lsError);
+                if (errMsg.includes('QuotaExceeded') || errMsg.includes('quota')) {
+                    throw new Error(
+                        'Storage quota exceeded. Clear site data: DevTools → Application → Storage → Clear site data, then reload.'
+                    );
+                }
+                throw lsError;
             }
         } catch (error) {
-            logger.errorCategory('database', '❌ Database persistence failed:', error);
+            const errMsg = errorToString(error);
+            if (this.shouldLogPersistenceError(errMsg)) {
+                logger.errorCategory('database', `Database persistence failed: ${errMsg}`);
+            }
             throw error;
         } finally {
             resolveLock!();
@@ -1626,5 +1741,42 @@ export const getDatabaseService = (config?: DatabaseConfig): DatabaseService => 
     }
     return dbServiceInstance;
 };
+
+/**
+ * Clear all database storage (localStorage, OPFS, IndexedDB).
+ * Used by Fix button and console commands to fully reset local DB.
+ */
+export async function clearAllDatabaseStorage(): Promise<void> {
+    localStorage.removeItem('finance_db');
+    if (typeof navigator !== 'undefined' && navigator.storage?.getDirectory) {
+        try {
+            const root = await navigator.storage.getDirectory();
+            await root.removeEntry('finance_db.sqlite');
+        } catch {
+            // Ignore
+        }
+    }
+    if (typeof indexedDB !== 'undefined') {
+        try {
+            const db = await new Promise<IDBDatabase>((resolve, reject) => {
+                const req = indexedDB.open(IDB_DB_NAME, 1);
+                req.onerror = () => reject(req.error);
+                req.onsuccess = () => resolve(req.result);
+                req.onupgradeneeded = (e) => {
+                    (e.target as IDBOpenDBRequest).result.createObjectStore(IDB_STORE_NAME);
+                };
+            });
+            await new Promise<void>((resolve, reject) => {
+                const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+                const req = tx.objectStore(IDB_STORE_NAME).delete(IDB_KEY);
+                req.onsuccess = () => resolve();
+                req.onerror = () => reject(req.error);
+            });
+            db.close();
+        } catch {
+            // Ignore
+        }
+    }
+}
 
 export default DatabaseService;

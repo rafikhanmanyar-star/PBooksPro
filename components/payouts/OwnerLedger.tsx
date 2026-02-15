@@ -11,13 +11,14 @@ import { useWhatsApp } from '../../context/WhatsAppContext';
 interface OwnerLedgerProps {
     ownerId: string | null;
     ledgerType?: 'Rent' | 'Security';
-    buildingId?: string; // New Optional Prop
+    buildingId?: string;
+    propertyId?: string; // When set, ledger shows only this unit (property)
     onPayoutClick?: (transaction: any) => void; // Callback when payout record is clicked
 }
 
 type SortKey = 'date' | 'particulars' | 'credit' | 'debit' | 'balance';
 
-const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent', buildingId, onPayoutClick }) => {
+const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent', buildingId, propertyId, onPayoutClick }) => {
     const { state } = useAppContext();
     const { openChat } = useWhatsApp();
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
@@ -32,10 +33,13 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
     const ledgerItems = useMemo(() => {
         if (!ownerId) return [];
         
-        // Filter properties by Owner AND Building (if provided)
-        const ownerProperties = state.properties
-            .filter(p => p.ownerId === ownerId && (!buildingId || p.buildingId === buildingId));
-        
+        // Filter properties by Owner, Building (if provided), and Unit (if provided)
+        let ownerProperties = state.properties.filter(
+            p => p.ownerId === ownerId && (!buildingId || p.buildingId === buildingId)
+        );
+        if (propertyId) {
+            ownerProperties = ownerProperties.filter(p => p.id === propertyId);
+        }
         const ownerPropertyIds = new Set(ownerProperties.map(p => p.id));
         
         let items: any[] = [];
@@ -79,8 +83,8 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                 }
             });
 
-            // 1b. Owner Service Charge Payments (Credit) - money received from owner to cover service charges
-            if (ownerSvcPayCategory) {
+            // 1b. Owner Service Charge Payments (Credit) - skip when filtering by single unit (not unit-specific)
+            if (ownerSvcPayCategory && !propertyId) {
                 const ownerPayments = state.transactions.filter(tx =>
                     tx.type === TransactionType.INCOME &&
                     tx.categoryId === ownerSvcPayCategory.id &&
@@ -104,27 +108,29 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             }
 
             // 2. Expenses (Debit)
-            // A. Direct Payouts to Owner
-            const payouts = state.transactions.filter(tx => 
-                tx.type === TransactionType.EXPENSE && 
-                tx.contactId === ownerId && 
-                tx.categoryId === ownerPayoutCategory?.id &&
-                (!buildingId || tx.buildingId === buildingId)
-            );
+            // A. Direct Payouts to Owner - skip when filtering by single unit (payouts are not per-unit)
+            if (!propertyId) {
+                const payouts = state.transactions.filter(tx => 
+                    tx.type === TransactionType.EXPENSE && 
+                    tx.contactId === ownerId && 
+                    tx.categoryId === ownerPayoutCategory?.id &&
+                    (!buildingId || tx.buildingId === buildingId)
+                );
 
-            payouts.forEach(tx => {
-                const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
-                items.push({
-                    id: `pay-${tx.id}`,
-                    date: tx.date,
-                    particulars: tx.description || 'Owner Payout',
-                    debit: isNaN(amount) ? 0 : amount,
-                    credit: 0,
-                    type: 'Payout',
-                    transactionId: tx.id, // Store transaction ID for editing
-                    transaction: tx // Store full transaction for editing
+                payouts.forEach(tx => {
+                    const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    items.push({
+                        id: `pay-${tx.id}`,
+                        date: tx.date,
+                        particulars: tx.description || 'Owner Payout',
+                        debit: isNaN(amount) ? 0 : amount,
+                        credit: 0,
+                        type: 'Payout',
+                        transactionId: tx.id, // Store transaction ID for editing
+                        transaction: tx // Store full transaction for editing
+                    });
                 });
-            });
+            }
 
             // B. Property Expenses (Bills, Repairs, Broker Fees) - Deductible from Owner Income
             const expenses = state.transactions.filter(tx => {
@@ -186,25 +192,27 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
                     });
                 });
 
-                // Debits
-                const payouts = state.transactions.filter(tx => 
-                    tx.type === TransactionType.EXPENSE && 
-                    tx.contactId === ownerId && 
-                    ownerSecPayoutCategory && tx.categoryId === ownerSecPayoutCategory.id &&
-                    (!buildingId || tx.buildingId === buildingId)
-                );
-                payouts.forEach(tx => {
-                    items.push({
-                         id: `sec-pay-${tx.id}`,
-                         date: tx.date,
-                         particulars: tx.description || 'Security Payout',
-                         debit: tx.amount,
-                         credit: 0,
-                         type: 'Payout',
-                         transactionId: tx.id, // Store transaction ID for editing
-                         transaction: tx // Store full transaction for editing
+                // Debits - Security Payouts (exclude when filtering by single unit)
+                if (!propertyId) {
+                    const payouts = state.transactions.filter(tx => 
+                        tx.type === TransactionType.EXPENSE && 
+                        tx.contactId === ownerId && 
+                        ownerSecPayoutCategory && tx.categoryId === ownerSecPayoutCategory.id &&
+                        (!buildingId || tx.buildingId === buildingId)
+                    );
+                    payouts.forEach(tx => {
+                        items.push({
+                             id: `sec-pay-${tx.id}`,
+                             date: tx.date,
+                             particulars: tx.description || 'Security Payout',
+                             debit: tx.amount,
+                             credit: 0,
+                             type: 'Payout',
+                             transactionId: tx.id, // Store transaction ID for editing
+                             transaction: tx // Store full transaction for editing
+                        });
                     });
-                });
+                }
 
                 // Refunds/Deductions linked to properties
                 const refunds = state.transactions.filter(tx => 
@@ -255,7 +263,7 @@ const OwnerLedger: React.FC<OwnerLedgerProps> = ({ ownerId, ledgerType = 'Rent',
             return { ...item, balance: runningBalance };
         });
 
-    }, [ownerId, ledgerType, buildingId, state.transactions, state.properties, state.categories, sortConfig]);
+    }, [ownerId, ledgerType, buildingId, propertyId, state.transactions, state.properties, state.categories, sortConfig]);
 
     const SortIcon = ({ column }: { column: SortKey }) => (
         <span className="ml-1 text-[10px] text-slate-400">

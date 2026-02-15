@@ -138,6 +138,36 @@ async function runMigrations() {
   try {
     console.log('🔄 Running database migrations (Consolidated Flow)...');
 
+    // 0. Ensure schema_migrations table exists and has unique constraint
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        id SERIAL PRIMARY KEY,
+        migration_name TEXT NOT NULL UNIQUE,
+        applied_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        execution_time_ms INTEGER,
+        notes TEXT
+      );
+    `);
+
+    // Ensure the unique constraint exists (in case table was created without it)
+    await pool.query(`
+      DO $$ 
+      BEGIN
+          IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint 
+              WHERE conrelid = 'schema_migrations'::regclass 
+              AND contype = 'u' 
+              AND conname = 'schema_migrations_migration_name_key'
+          ) THEN
+              -- Clean up duplicates if any before adding constraint
+              DELETE FROM schema_migrations a USING schema_migrations b 
+              WHERE a.id > b.id AND a.migration_name = b.migration_name;
+              
+              ALTER TABLE schema_migrations ADD CONSTRAINT schema_migrations_migration_name_key UNIQUE (migration_name);
+          END IF;
+      END $$;
+    `);
+
     // 1. Find and run the base schema
     const cwd = process.cwd();
     // If running from the root, use 'server/migrations', otherwise use 'migrations'

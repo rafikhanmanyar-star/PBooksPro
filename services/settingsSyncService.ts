@@ -49,92 +49,57 @@ class SettingsSyncService {
   }
 
   /**
-   * Load settings from cloud DB, with fallback to local DB
+   * Map raw cloud/local record to SettingsToSync (shared helper)
    */
-  async loadSettings(): Promise<SettingsToSync> {
+  private mapToSettings(raw: Record<string, any>): SettingsToSync {
     const settings: SettingsToSync = {};
-
-    // Try to load from cloud first if authenticated
-    if (this.isCloudAvailable()) {
+    const keys = [
+      'showSystemTransactions', 'enableColorCoding', 'enableBeepOnSave', 'enableDatePreservation',
+      'defaultProjectId', 'dashboardConfig', 'printSettings', 'whatsAppTemplates',
+      'agreementSettings', 'projectAgreementSettings', 'rentalInvoiceSettings', 'projectInvoiceSettings',
+      'installmentPlans', 'invoiceHtmlTemplate', 'pmCostPercentage', 'lastServiceChargeRun'
+    ];
+    keys.forEach(key => {
+      if (raw[key] === undefined) return;
       try {
-        console.log('📡 Loading settings from cloud database...');
-        const cloudSettings = await this.cloudRepo.findAll();
-        
-        // Map cloud settings to our settings object
-        if (cloudSettings) {
-          Object.keys(cloudSettings).forEach(key => {
-            try {
-              const value = typeof cloudSettings[key] === 'string' 
-                ? JSON.parse(cloudSettings[key]) 
-                : cloudSettings[key];
-              
-              // Map keys to settings object
-              switch (key) {
-                case 'showSystemTransactions':
-                case 'enableColorCoding':
-                case 'enableBeepOnSave':
-                case 'enableDatePreservation':
-                case 'defaultProjectId':
-                case 'dashboardConfig':
-                case 'printSettings':
-                case 'whatsAppTemplates':
-                case 'agreementSettings':
-                case 'projectAgreementSettings':
-                case 'rentalInvoiceSettings':
-                case 'projectInvoiceSettings':
-                case 'installmentPlans':
-                case 'invoiceHtmlTemplate':
-                case 'pmCostPercentage':
-                case 'lastServiceChargeRun':
-                  (settings as any)[key] = value;
-                  break;
-              }
-            } catch (e) {
-              console.warn(`⚠️ Failed to parse setting ${key}:`, e);
-            }
-          });
-          
-          console.log('✅ Loaded settings from cloud database');
-          
-          // Also save to local DB for offline access
-          this.saveSettingsToLocal(settings);
-          
-          return settings;
-        }
-      } catch (error) {
-        console.warn('⚠️ Failed to load settings from cloud, falling back to local:', error);
-      }
-    }
-
-    // Fallback to local DB
-    console.log('💾 Loading settings from local database...');
-    const localSettings = this.localRepo.loadAllSettings();
-    
-    // Map local settings to our settings object
-    Object.keys(localSettings).forEach(key => {
-      switch (key) {
-        case 'showSystemTransactions':
-        case 'enableColorCoding':
-        case 'enableBeepOnSave':
-        case 'enableDatePreservation':
-        case 'defaultProjectId':
-        case 'dashboardConfig':
-        case 'printSettings':
-        case 'whatsAppTemplates':
-        case 'agreementSettings':
-        case 'projectAgreementSettings':
-        case 'rentalInvoiceSettings':
-        case 'projectInvoiceSettings':
-        case 'installmentPlans':
-        case 'invoiceHtmlTemplate':
-        case 'pmCostPercentage':
-        case 'lastServiceChargeRun':
-          (settings as any)[key] = localSettings[key];
-          break;
+        (settings as any)[key] = typeof raw[key] === 'string' ? JSON.parse(raw[key]) : raw[key];
+      } catch (e) {
+        console.warn(`⚠️ Failed to parse setting ${key}:`, e);
       }
     });
-    
+    return settings;
+  }
+
+  /**
+   * Load settings (offline-first): load from local DB immediately, then refresh from cloud in background
+   */
+  async loadSettings(): Promise<SettingsToSync> {
+    // Step 1: Load from local first so UI can render immediately
+    console.log('💾 Loading settings from local database...');
+    const localSettings = this.localRepo.loadAllSettings();
+    const settings = this.mapToSettings(localSettings);
     console.log('✅ Loaded settings from local database');
+
+    // Step 2: Refresh from cloud in background; persist to local and notify if changed
+    if (this.isCloudAvailable()) {
+      (async () => {
+        try {
+          console.log('📡 Refreshing settings from cloud (background)...');
+          const cloudSettings = await this.cloudRepo.findAll();
+          if (cloudSettings && Object.keys(cloudSettings).length > 0) {
+            const cloudMapped = this.mapToSettings(cloudSettings);
+            this.saveSettingsToLocal(cloudMapped);
+            console.log('✅ Settings refreshed from cloud and saved locally');
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('load-cloud-settings', { detail: cloudMapped }));
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ Failed to refresh settings from cloud (using local):', error);
+        }
+      })();
+    }
+
     return settings;
   }
 

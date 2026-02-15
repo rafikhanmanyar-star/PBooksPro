@@ -49,6 +49,7 @@ const OwnerPayoutsReport: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [selectedOwnerId, setSelectedOwnerId] = useState<string>('all');
+    const [selectedUnitId, setSelectedUnitId] = useState<string>('all');
 
     // Sorting State
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'asc' });
@@ -63,15 +64,39 @@ const OwnerPayoutsReport: React.FC = () => {
         action: null
     });
 
-    // Grouping State
-    const [groupBy, setGroupBy] = useState<'' | 'owner'>('');
-
     const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...state.buildings], [state.buildings]);
 
     const owners = useMemo(() => {
         const relevantContacts = state.contacts.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
         return [{ id: 'all', name: 'All Owners' }, ...relevantContacts];
     }, [state.contacts]);
+
+    const units = useMemo(() => {
+        let filtered = state.properties;
+        if (selectedBuildingId !== 'all') {
+            filtered = filtered.filter(p => p.buildingId === selectedBuildingId);
+        }
+        if (selectedOwnerId !== 'all') {
+            filtered = filtered.filter(p => p.ownerId === selectedOwnerId);
+        }
+        return [{ id: 'all', name: 'All Units' }, ...filtered];
+    }, [state.properties, selectedBuildingId, selectedOwnerId]);
+
+    // Reset unit when building or owner changes and current selected unit is no longer compatible
+    React.useEffect(() => {
+        if (selectedUnitId !== 'all') {
+            const unit = state.properties.find(p => p.id === selectedUnitId);
+            if (!unit) {
+                setSelectedUnitId('all');
+                return;
+            }
+            if (selectedBuildingId !== 'all' && unit.buildingId !== selectedBuildingId) {
+                setSelectedUnitId('all');
+            } else if (selectedOwnerId !== 'all' && unit.ownerId !== selectedOwnerId) {
+                setSelectedUnitId('all');
+            }
+        }
+    }, [selectedBuildingId, selectedOwnerId, state.properties, selectedUnitId]);
 
     const handleRangeChange = (option: DateRangeOption) => {
         setDateRange(option);
@@ -139,6 +164,7 @@ const OwnerPayoutsReport: React.FC = () => {
                     // Filters
                     if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
                     if (selectedOwnerId !== 'all' && owner?.id !== selectedOwnerId) return;
+                    if (selectedUnitId !== 'all' && tx.propertyId !== selectedUnitId) return;
 
                     const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
                     if (isNaN(amount)) return;
@@ -220,9 +246,8 @@ const OwnerPayoutsReport: React.FC = () => {
 
                         // Apply Filters
                         if (selectedOwnerId !== 'all' && ownerId !== selectedOwnerId) return;
-                        if (selectedBuildingId !== 'all') {
-                            if (buildingId !== selectedBuildingId) return;
-                        }
+                        if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
+                        if (selectedUnitId !== 'all' && propertyId !== selectedUnitId) return;
 
                         const owner = state.contacts.find(c => c.id === ownerId);
 
@@ -260,6 +285,7 @@ const OwnerPayoutsReport: React.FC = () => {
             // Apply Filters
             if (selectedOwnerId !== 'all' && ownerId !== selectedOwnerId) return;
             if (selectedBuildingId !== 'all' && buildingId !== selectedBuildingId) return;
+            if (selectedUnitId !== 'all' && ra.propertyId !== selectedUnitId) return;
 
             const brokerFeeAmount = typeof ra.brokerFee === 'string' ? parseFloat(ra.brokerFee) : Number(ra.brokerFee);
             items.push({
@@ -293,18 +319,8 @@ const OwnerPayoutsReport: React.FC = () => {
             return 0;
         });
 
-        // Grouping Logic
-        if (groupBy === 'owner') {
-            items.sort((a, b) => a.ownerName.localeCompare(b.ownerName) || new Date(a.date).getTime() - new Date(b.date).getTime());
-        }
-
         let runningBalance = 0;
-        let currentGroupKey = '';
-        let rows = items.map((item, index) => {
-            if (groupBy === 'owner' && item.ownerName !== currentGroupKey) {
-                currentGroupKey = item.ownerName;
-                runningBalance = 0;
-            }
+        let rows = items.map((item) => {
             runningBalance += item.rentIn - item.paidOut;
             return { ...item, balance: runningBalance };
         });
@@ -319,7 +335,7 @@ const OwnerPayoutsReport: React.FC = () => {
         }
 
         return rows;
-    }, [state, startDate, endDate, searchQuery, selectedBuildingId, selectedOwnerId, sortConfig, groupBy]);
+    }, [state, startDate, endDate, searchQuery, selectedBuildingId, selectedOwnerId, selectedUnitId, sortConfig]);
 
     const totals = useMemo(() => {
         return reportData.reduce((acc, curr) => ({
@@ -446,16 +462,15 @@ const OwnerPayoutsReport: React.FC = () => {
                         />
                     </div>
 
-                    {/* Group By Filter */}
+                    {/* Unit Filter */}
                     <div className="w-48 flex-shrink-0">
-                        <Select
-                            value={groupBy}
-                            onChange={(e) => setGroupBy(e.target.value as any)}
-                            className="text-sm py-1.5"
-                        >
-                            <option value="">No Grouping</option>
-                            <option value="owner">Group by Owner</option>
-                        </Select>
+                        <ComboBox
+                            items={units}
+                            selectedId={selectedUnitId}
+                            onSelect={(item) => setSelectedUnitId(item?.id || 'all')}
+                            allowAddNew={false}
+                            placeholder="Filter Unit"
+                        />
                     </div>
 
                     {/* Search Input */}
@@ -502,12 +517,12 @@ const OwnerPayoutsReport: React.FC = () => {
                         <p className="text-sm text-slate-500 mt-1">
                             {formatDate(startDate)} - {formatDate(endDate)}
                         </p>
-                        {(selectedBuildingId !== 'all' || selectedOwnerId !== 'all') && (
+                        {(selectedBuildingId !== 'all' || selectedOwnerId !== 'all' || selectedUnitId !== 'all') && (
                             <p className="text-xs text-slate-400 mt-1">
                                 Filters:
                                 {selectedBuildingId !== 'all' && ` Building: ${state.buildings.find(b => b.id === selectedBuildingId)?.name} `}
-                                {selectedOwnerId !== 'all' && ` Owner: ${state.contacts.find(c => c.id === selectedOwnerId)?.name}`}
-                                {groupBy && ` Grouped by: ${groupBy.charAt(0).toUpperCase() + groupBy.slice(1)}`}
+                                {selectedOwnerId !== 'all' && ` Owner: ${state.contacts.find(c => c.id === selectedOwnerId)?.name} `}
+                                {selectedUnitId !== 'all' && ` Unit: ${state.properties.find(p => p.id === selectedUnitId)?.name}`}
                             </p>
                         )}
                     </div>
@@ -526,77 +541,25 @@ const OwnerPayoutsReport: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
-                                {(() => {
-                                    let lastGroupKey = '';
-                                    let groupRentIn = 0;
-                                    let groupPaidOut = 0;
-                                    const rows: React.ReactNode[] = [];
-
-                                    reportData.forEach((item, index) => {
-                                        const isNewGroup = groupBy === 'owner' && item.ownerName !== lastGroupKey;
-
-                                        // If it's a new group and not the first item, add the subtotal for the previous group
-                                        if (isNewGroup && index > 0) {
-                                            rows.push(
-                                                <tr key={`subtotal-${lastGroupKey}`} className="bg-slate-50 font-bold border-t-2 border-slate-200">
-                                                    <td colSpan={4} className="px-3 py-2 text-right text-slate-600">Subtotal for {lastGroupKey}</td>
-                                                    <td className="px-3 py-2 text-right text-success whitespace-nowrap">{CURRENCY} {formatCurrency(groupRentIn)}</td>
-                                                    <td className="px-3 py-2 text-right text-danger whitespace-nowrap">{CURRENCY} {formatCurrency(groupPaidOut)}</td>
-                                                    <td className="px-3 py-2 text-right text-slate-800 whitespace-nowrap">{CURRENCY} {formatCurrency(groupRentIn - groupPaidOut)}</td>
-                                                </tr>
-                                            );
-                                            // Reset group totals
-                                            groupRentIn = 0;
-                                            groupPaidOut = 0;
-                                        }
-
-                                        if (isNewGroup) {
-                                            lastGroupKey = item.ownerName;
-                                            rows.push(
-                                                <tr key={`header-${item.ownerName}`} className="bg-indigo-50/50">
-                                                    <td colSpan={7} className="px-3 py-2 font-bold text-accent border-b border-indigo-100">
-                                                        Owner: {item.ownerName}
-                                                    </td>
-                                                </tr>
-                                            );
-                                        }
-
-                                        groupRentIn += item.rentIn;
-                                        groupPaidOut += item.paidOut;
-
-                                        const transaction = state.transactions.find(t => t.id === item.entityId);
-                                        rows.push(
-                                            <tr
-                                                key={item.id}
-                                                className="hover:bg-slate-50 cursor-pointer transition-colors"
-                                                onClick={() => transaction && setTransactionToEdit(transaction)}
-                                                title="Click to edit"
-                                            >
-                                                <td className="px-3 py-2 whitespace-nowrap text-slate-700">{formatDate(item.date)}</td>
-                                                <td className="px-3 py-2 whitespace-normal break-words text-slate-700 max-w-[150px]">{item.ownerName}</td>
-                                                <td className="px-3 py-2 whitespace-normal break-words text-slate-700 max-w-[150px]">{item.propertyName}</td>
-                                                <td className="px-3 py-2 whitespace-normal break-words text-slate-600 max-w-xs" title={item.particulars}>{item.particulars}</td>
-                                                <td className="px-3 py-2 text-right text-success whitespace-nowrap">{item.rentIn > 0 ? `${CURRENCY} ${formatCurrency(item.rentIn || 0)}` : '-'}</td>
-                                                <td className="px-3 py-2 text-right text-danger whitespace-nowrap">{item.paidOut > 0 ? `${CURRENCY} ${formatCurrency(item.paidOut || 0)}` : '-'}</td>
-                                                <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${item.balance >= 0 ? 'text-slate-800' : 'text-danger'}`}>{CURRENCY} {formatCurrency(item.balance || 0)}</td>
-                                            </tr>
-                                        );
-
-                                        // If it's the last item, add the subtotal for the final group
-                                        if (index === reportData.length - 1 && groupBy === 'owner') {
-                                            rows.push(
-                                                <tr key={`subtotal-final-${lastGroupKey}`} className="bg-slate-50 font-bold border-t-2 border-slate-200">
-                                                    <td colSpan={4} className="px-3 py-2 text-right text-slate-600">Subtotal for {lastGroupKey}</td>
-                                                    <td className="px-3 py-2 text-right text-success whitespace-nowrap">{CURRENCY} {formatCurrency(groupRentIn)}</td>
-                                                    <td className="px-3 py-2 text-right text-danger whitespace-nowrap">{CURRENCY} {formatCurrency(groupPaidOut)}</td>
-                                                    <td className="px-3 py-2 text-right text-slate-800 whitespace-nowrap">{CURRENCY} {formatCurrency(groupRentIn - groupPaidOut)}</td>
-                                                </tr>
-                                            );
-                                        }
-                                    });
-
-                                    return rows;
-                                })()}
+                                {reportData.map((item) => {
+                                    const transaction = state.transactions.find(t => t.id === item.entityId);
+                                    return (
+                                        <tr
+                                            key={item.id}
+                                            className="hover:bg-slate-50 cursor-pointer transition-colors"
+                                            onClick={() => transaction && setTransactionToEdit(transaction)}
+                                            title="Click to edit"
+                                        >
+                                            <td className="px-3 py-2 whitespace-nowrap text-slate-700">{formatDate(item.date)}</td>
+                                            <td className="px-3 py-2 whitespace-normal break-words text-slate-700 max-w-[150px]">{item.ownerName}</td>
+                                            <td className="px-3 py-2 whitespace-normal break-words text-slate-700 max-w-[150px]">{item.propertyName}</td>
+                                            <td className="px-3 py-2 whitespace-normal break-words text-slate-600 max-w-xs" title={item.particulars}>{item.particulars}</td>
+                                            <td className="px-3 py-2 text-right text-success whitespace-nowrap">{item.rentIn > 0 ? `${CURRENCY} ${formatCurrency(item.rentIn || 0)}` : '-'}</td>
+                                            <td className="px-3 py-2 text-right text-danger whitespace-nowrap">{item.paidOut > 0 ? `${CURRENCY} ${formatCurrency(item.paidOut || 0)}` : '-'}</td>
+                                            <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${item.balance >= 0 ? 'text-slate-800' : 'text-danger'}`}>{CURRENCY} {formatCurrency(item.balance || 0)}</td>
+                                        </tr>
+                                    );
+                                })}
                                 {reportData.length === 0 && (
                                     <tr>
                                         <td colSpan={7} className="px-3 py-8 text-center text-slate-500">No records found for the selected period.</td>
