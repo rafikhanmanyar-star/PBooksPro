@@ -66,9 +66,11 @@ router.get('/export', async (req: TenantRequest, res) => {
 
 /**
  * POST /api/data-import-export/import
- * Import Excel file with validation and duplicate checking
+ * Import Excel file with validation and duplicate checking.
+ * Data is persisted to the tenant's cloud DB (same as POST /transactions);
+ * imported records are returned by GET /transactions and loaded on relogin/refresh.
  * Accepts file as base64 string in JSON body: { file: "base64string", sheetName?: "SheetName" }
- * If sheetName is provided, imports only that sheet
+ * If sheetName is provided, imports only that sheet.
  */
 router.post('/import', async (req: TenantRequest, res) => {
   try {

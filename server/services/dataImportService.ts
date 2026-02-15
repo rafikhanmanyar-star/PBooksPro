@@ -50,8 +50,10 @@ export interface ImportResult {
 }
 
 /**
- * Import data from Excel file with all-or-nothing validation
- * Returns detailed results including validation errors and duplicates
+ * Import data from Excel file with all-or-nothing validation.
+ * Writes to the tenant's cloud DB (same as POST /transactions).
+ * Imported transactions are returned by GET /transactions and loaded on relogin/refresh.
+ * Returns detailed results including validation errors and duplicates.
  * @param sheetName - If provided, imports only this sheet
  */
 export async function importData(
@@ -504,14 +506,12 @@ export async function importData(
                 ) VALUES ($1, $2, $3, 'Loan', $4, $5, $6, $7, $8, $9, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, false, NOW(), NOW())`,
                 [txId, tenantId, userId, tx.subtype, tx.amount, tx.date, tx.description, tx.account_id, tx.contact_id]
               );
-              if (tx.account_id) {
-                const isPositive = tx.subtype === 'Receive Loan' || tx.subtype === 'Collect Loan';
-                const delta = isPositive ? tx.amount : -tx.amount;
-                await client.query(
-                  'UPDATE accounts SET balance = balance + $1, updated_at = NOW() WHERE id = $2 AND (tenant_id = $3 OR tenant_id IS NULL)',
-                  [delta, tx.account_id, tenantId]
-                );
-              }
+              const isPositive = tx.subtype === 'Receive Loan' || tx.subtype === 'Collect Loan';
+              const delta = isPositive ? tx.amount : -tx.amount;
+              await client.query(
+                'UPDATE accounts SET balance = balance + $1, updated_at = NOW() WHERE id = $2 AND (tenant_id = $3 OR tenant_id IS NULL)',
+                [delta, tx.account_id, tenantId]
+              );
               imported.loanTransactions.count++;
               sheetImported++;
               importedRows++;
@@ -1617,28 +1617,47 @@ async function validateLoanTransactionRow(
     return;
   }
 
-  const accountName = (row.accountName ?? row.AccountName ?? '').toString().trim();
+  const bankAccountName = (row.bankAccountName ?? row.BankAccountName ?? row.accountName ?? row.AccountName ?? '').toString().trim();
   const contactName = (row.contactName ?? row.ContactName ?? '').toString().trim();
   let account_id: string | null = null;
   let contact_id: string | null = null;
 
-  if (accountName) {
-    const acc = await db.query(
-      'SELECT id FROM accounts WHERE (tenant_id = $1 OR tenant_id IS NULL) AND LOWER(TRIM(name)) = LOWER($2)',
-      [tenantId, accountName]
-    );
-    if (acc.length === 0) {
-      errors.push({
-        sheet: 'LoanTransactions',
-        row: excelRow,
-        field: 'accountName',
-        value: accountName,
-        message: `Account "${accountName}" not found. Import Accounts first or use an existing account name.`
-      });
-      return;
-    }
-    account_id = acc[0].id;
+  if (!bankAccountName) {
+    errors.push({
+      sheet: 'LoanTransactions',
+      row: excelRow,
+      field: 'bankAccountName',
+      value: null,
+      message: 'Bank account is required. Use the name of a Bank-type account (import Accounts first if needed).'
+    });
+    return;
   }
+
+  const acc = await db.query(
+    'SELECT id, type FROM accounts WHERE (tenant_id = $1 OR tenant_id IS NULL) AND LOWER(TRIM(name)) = LOWER($2)',
+    [tenantId, bankAccountName]
+  );
+  if (acc.length === 0) {
+    errors.push({
+      sheet: 'LoanTransactions',
+      row: excelRow,
+      field: 'bankAccountName',
+      value: bankAccountName,
+      message: `Account "${bankAccountName}" not found. Import Accounts first and use a Bank-type account name.`
+    });
+    return;
+  }
+  if (acc[0].type !== 'Bank') {
+    errors.push({
+      sheet: 'LoanTransactions',
+      row: excelRow,
+      field: 'bankAccountName',
+      value: bankAccountName,
+      message: `Account "${bankAccountName}" is not a Bank account. Loan transactions must use a Bank-type account.`
+    });
+    return;
+  }
+  account_id = acc[0].id;
 
   if (contactName) {
     const contact = await db.query(

@@ -18,7 +18,7 @@ export const IMPORT_ORDER = [
   { name: 'Properties', dependencies: ['Contacts', 'Buildings'], description: 'Import properties (depends on Contacts and Buildings)' },
   { name: 'RentalAgreements', dependencies: ['Properties', 'Contacts'], description: 'Import rental agreements (depends on Properties and Contacts)' },
   { name: 'RentalInvoices', dependencies: ['RentalAgreements', 'Contacts', 'Properties'], description: 'Import rental invoices (depends on Rental Agreements, Contacts, and Properties)' },
-  { name: 'LoanTransactions', dependencies: ['Accounts'], description: 'Import loan transactions (Give/Receive/Repay/Collect); optionally link account and contact by name' }
+  { name: 'LoanTransactions', dependencies: ['Accounts'], description: 'Import loan transactions (Give/Receive/Repay/Collect); bank account required (Bank-type account name)' }
 ];
 
 /**
@@ -224,8 +224,8 @@ export async function generateTemplate(options: TemplateOptions): Promise<Buffer
     },
     {
       name: 'LoanTransactions',
-      headers: ['subtype', 'amount', 'date', 'description', 'accountName', 'contactName'],
-      required: ['subtype', 'amount', 'date'],
+      headers: ['subtype', 'amount', 'date', 'description', 'bankAccountName', 'contactName'],
+      required: ['subtype', 'amount', 'date', 'bankAccountName'],
       getSampleData: async () => {
         if (!options.includeSampleData) return [];
         const rows = await db.query(
@@ -234,21 +234,35 @@ export async function generateTemplate(options: TemplateOptions): Promise<Buffer
             t.amount,
             t.date,
             t.description,
-            a.name as account_name,
+            a.name as bank_account_name,
             c.name as contact_name
           FROM transactions t
-          LEFT JOIN accounts a ON t.account_id = a.id
+          LEFT JOIN accounts a ON t.account_id = a.id AND a.type = 'Bank'
           LEFT JOIN contacts c ON t.contact_id = c.id
           WHERE t.tenant_id = $1 AND t.type = 'Loan' LIMIT 1`,
           [options.tenantId]
         );
-        if (rows.length === 0) return [];
+        if (rows.length === 0) {
+          const bankAccount = await db.query(
+            `SELECT name FROM accounts WHERE (tenant_id = $1 OR tenant_id IS NULL) AND type = 'Bank' LIMIT 1`,
+            [options.tenantId]
+          );
+          if (bankAccount.length === 0) return [];
+          return [{
+            subtype: 'Receive Loan',
+            amount: 0,
+            date: new Date().toISOString().split('T')[0],
+            description: '',
+            bankAccountName: bankAccount[0].name,
+            contactName: ''
+          }];
+        }
         return [{
           subtype: rows[0].subtype,
           amount: rows[0].amount,
           date: rows[0].date,
           description: rows[0].description || '',
-          accountName: rows[0].account_name || '',
+          bankAccountName: rows[0].bank_account_name || '',
           contactName: rows[0].contact_name || ''
         }];
       }

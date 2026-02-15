@@ -70,7 +70,7 @@ const IMPORT_ORDER = [
   { name: 'Properties', dependencies: ['Contacts', 'Buildings'], description: 'Import properties (depends on Contacts and Buildings)' },
   { name: 'RentalAgreements', dependencies: ['Properties', 'Contacts'], description: 'Import rental agreements (depends on Properties and Contacts)' },
   { name: 'RentalInvoices', dependencies: ['RentalAgreements', 'Contacts', 'Properties'], description: 'Import rental invoices (depends on Rental Agreements, Contacts, and Properties)' },
-  { name: 'LoanTransactions', dependencies: ['Accounts'], description: 'Import loan transactions (Give/Receive/Repay/Collect); link account and contact by name' }
+  { name: 'LoanTransactions', dependencies: ['Accounts'], description: 'Import loan transactions (Give/Receive/Repay/Collect); bank account required (Bank-type account name). Data is saved to your cloud account and will appear on refresh or next login.' }
 ];
 
 const ImportExportWizard: React.FC = () => {
@@ -361,6 +361,7 @@ const ImportExportWizard: React.FC = () => {
           if (apiState.units) updates.units = mergeById(currentState.units, apiState.units);
           if (apiState.rentalAgreements) updates.rentalAgreements = mergeById(currentState.rentalAgreements, apiState.rentalAgreements);
           if (apiState.invoices) updates.invoices = mergeById(currentState.invoices, apiState.invoices);
+          if (apiState.transactions) updates.transactions = mergeById(currentState.transactions, apiState.transactions);
 
           if (Object.keys(updates).length > 0) {
             dispatch({
@@ -508,7 +509,8 @@ const ImportExportWizard: React.FC = () => {
               <h3 className="font-semibold text-blue-900 mb-2">Template Information</h3>
               <p className="text-sm text-blue-800">
                 The template includes sheets for: Contacts, Projects, Buildings, Properties, Units, Categories, Accounts, and Loan Transactions.
-                Each sheet contains column headers. Fill in your data and import the file.
+                Each sheet contains column headers. For <strong>Loan Transactions</strong>, use the <strong>bankAccountName</strong> column with a Bank-type account name (required).
+                Fill in your data and import the file. Imported data is saved to your cloud account and will appear on refresh or next login.
               </p>
             </div>
 
