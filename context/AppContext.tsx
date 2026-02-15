@@ -1239,17 +1239,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
                     // Check if user is authenticated (cloud mode)
                     if (isAuthenticated) {
-                        // Load from API (cloud mode)
-                        setInitMessage('Loading data from cloud...');
-                        setInitProgress(60);
-
+                        // OFFLINE-FIRST: Load from local DB first, show UI, then sync with cloud in background
                         try {
-                            // Get current tenant ID to detect tenant switches
                             const { apiClient } = await import('../services/api/client');
                             const currentTenantId = apiClient.getTenantId();
 
-                            // CRITICAL: Before clearing local data, restore offline transactions from sync queue
-                            // This ensures offline data is not lost on logout/login
+                            // CRITICAL: Restore offline transactions from sync queue before any load
                             let offlineTransactions: Transaction[] = [];
                             let offlineContacts: Contact[] = [];
                             let offlineInvoices: Invoice[] = [];
@@ -1262,11 +1257,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             try {
                                 const syncQueue = getSyncQueue();
                                 if (currentTenantId) {
-                                    // Get all pending items from sync queue (these are offline operations)
                                     const pendingItems = await syncQueue.getPendingItems(currentTenantId);
                                     logger.logCategory('sync', `📦 Found ${pendingItems.length} pending sync items to restore`);
-
-                                    // Extract transactions and other entities from sync queue
                                     for (const item of pendingItems) {
                                         if (item.type === 'transaction' && item.action === 'create') {
                                             offlineTransactions.push(item.data as Transaction);
@@ -1286,7 +1278,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                             offlineRecurringTemplates.push(item.data as RecurringInvoiceTemplate);
                                         }
                                     }
-
                                     logger.logCategory('sync', `✅ Extracted offline data from sync queue:`, {
                                         transactions: offlineTransactions.length,
                                         contacts: offlineContacts.length,
@@ -1300,22 +1291,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 }
                             } catch (syncQueueError) {
                                 logger.warnCategory('sync', '⚠️ Could not load sync queue items:', syncQueueError);
-                                // Continue anyway - offline data might be lost but app should still work
                             }
 
-                            // Clear local database data for previous tenant ONLY if tenant changed
-                            // This prevents cross-tenant data leakage while preserving local data on refresh
+                            // Clear local database for previous tenant ONLY if tenant changed
                             try {
                                 const dbService = getDatabaseService();
                                 if (dbService.isReady()) {
                                     const { SettingsRepository } = await import('../services/database/repositories/index');
                                     const settingsRepo = new SettingsRepository();
-
                                     const localTenantId = await settingsRepo.get('tenantId');
-                                    const currentTenantId = auth.tenant?.id || auth.user?.tenantId;
+                                    const effectiveTenantId = auth.tenant?.id || auth.user?.tenantId;
 
-                                    if (currentTenantId && localTenantId && currentTenantId !== localTenantId) {
-
+                                    if (effectiveTenantId && localTenantId && effectiveTenantId !== localTenantId) {
                                         const { ContactsRepository, TransactionsRepository, AccountsRepository,
                                             CategoriesRepository, ProjectsRepository, BuildingsRepository,
                                             PropertiesRepository, UnitsRepository, InvoicesRepository,
@@ -1324,8 +1311,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                             QuotationsRepository, DocumentsRepository,
                                             RecurringTemplatesRepository, PMCycleAllocationsRepository,
                                             VendorsRepository } = await import('../services/database/repositories/index');
-
-                                        // Clear all tenant-specific data to start fresh
                                         const repos = [
                                             new ContactsRepository(), new TransactionsRepository(), new AccountsRepository(),
                                             new CategoriesRepository(), new ProjectsRepository(), new BuildingsRepository(),
@@ -1336,174 +1321,166 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                             new RecurringTemplatesRepository(), new PMCycleAllocationsRepository(),
                                             new VendorsRepository()
                                         ];
-
                                         for (const repo of repos) {
                                             await repo.deleteAllUnfiltered();
                                         }
-
-                                        await settingsRepo.set('tenantId', currentTenantId);
-                                    } else if (currentTenantId && !localTenantId) {
-                                        // First time initialization - set the tenant ID
-                                        await settingsRepo.set('tenantId', currentTenantId);
+                                        await settingsRepo.set('tenantId', effectiveTenantId);
+                                    } else if (effectiveTenantId && !localTenantId) {
+                                        await settingsRepo.set('tenantId', effectiveTenantId);
                                     }
                                 }
                             } catch (clearError) {
                                 console.warn('⚠️ Could not check/clear local database data:', clearError);
                             }
 
-                            const apiService = getAppStateApiService();
-                            let apiState: Partial<AppState>;
-
-                            // Incremental sync: use when we have local baseline and recent lastSync (< 24h)
+                            // STEP 1 (offline-first): Load from local DB and show UI immediately
                             try {
                                 const dbService = getDatabaseService();
-                                let baseline: Partial<AppState> | null = null;
-                                if (dbService.isReady()) {
-                                    const appStateRepo = await getAppStateRepository();
-                                    baseline = await appStateRepo.loadState();
+                                if (!dbService.isReady()) {
+                                    setInitMessage('Initializing database...');
+                                    setInitProgress(60);
+                                    await dbService.initialize();
+                                    logger.logCategory('database', '✅ Database ready');
                                 }
-                                const lastSync = currentTenantId ? getLastSyncTimestamp(currentTenantId) : null;
-                                const hasBaseline = baseline && (
-                                    (baseline.projects?.length ?? 0) > 0 ||
-                                    (baseline.transactions?.length ?? 0) > 0 ||
-                                    (baseline.contacts?.length ?? 0) > 0
-                                );
+                            } catch (dbError) {
+                                logger.warnCategory('database', '⚠️ Database initialization failed, using localStorage fallback:', dbError);
+                                setUseFallback(true);
+                                setInitMessage('Using localStorage (database unavailable)...');
+                            }
 
-                                if (
-                                    currentTenantId &&
-                                    lastSync &&
-                                    hasBaseline &&
-                                    isLastSyncRecent(currentTenantId)
-                                ) {
-                                    apiState = await apiService.loadStateViaIncrementalSync(lastSync, baseline as Partial<AppState>);
-                                    logger.logCategory('sync', '📥 Used incremental sync (returning user)');
-                                } else {
-                                    apiState = await apiService.loadState();
+                            setInitMessage('Loading application data from database...');
+                            setInitProgress(70);
+                            try {
+                                const appStateRepo = await getAppStateRepository();
+                                const loadedState = await appStateRepo.loadState();
+                                if (isMounted) {
+                                    setStoredState(loadedState as AppState);
+                                    logger.logCategory('database', '✅ Database state loaded (offline-first), UI will show from local');
                                 }
-                            } catch (incrementalError) {
-                                logger.warnCategory('sync', '⚠️ Incremental sync failed, falling back to full load:', incrementalError);
-                                if (currentTenantId) clearLastSyncTimestamp(currentTenantId);
-                                apiState = await apiService.loadState();
+                            } catch (loadErr) {
+                                logger.warnCategory('database', '⚠️ Load from local failed, continuing with current state:', loadErr);
                             }
 
-                            if (currentTenantId) {
-                                setLastSyncTimestamp(currentTenantId, new Date().toISOString());
-                            }
+                            if (!isMounted) return;
+                            if (timeoutId) clearTimeout(timeoutId);
+                            if (forceTimeoutId) clearTimeout(forceTimeoutId);
+                            setInitProgress(100);
+                            setInitMessage('Ready!');
+                            setTimeout(() => {
+                                if (isMounted) setIsInitializing(false);
+                            }, 300);
 
-                            // Merge offline data with API data - offline data takes precedence for conflicts
-                            // Create maps for efficient lookup
-                            const apiTransactionsMap = new Map((apiState.transactions || []).map(tx => [tx.id, tx]));
-                            const apiContactsMap = new Map((apiState.contacts || []).map(c => [c.id, c]));
-                            const apiInvoicesMap = new Map((apiState.invoices || []).map(i => [i.id, i]));
-                            const apiBillsMap = new Map((apiState.bills || []).map(b => [b.id, b]));
-                            const apiAccountsMap = new Map((apiState.accounts || []).map(a => [a.id, a]));
-                            const apiCategoriesMap = new Map((apiState.categories || []).map(c => [c.id, c]));
-                            const apiVendorsMap = new Map((apiState.vendors || []).map(v => [v.id, v]));
-
-                            // Merge offline transactions (offline takes precedence)
-                            for (const offlineTx of offlineTransactions) {
-                                apiTransactionsMap.set(offlineTx.id, offlineTx);
-                            }
-
-                            // Merge offline contacts
-                            for (const offlineContact of offlineContacts) {
-                                apiContactsMap.set(offlineContact.id, offlineContact);
-                            }
-
-                            // Merge offline invoices
-                            for (const offlineInvoice of offlineInvoices) {
-                                apiInvoicesMap.set(offlineInvoice.id, offlineInvoice);
-                            }
-
-                            // Merge offline bills
-                            for (const offlineBill of offlineBills) {
-                                apiBillsMap.set(offlineBill.id, offlineBill);
-                            }
-
-                            // Merge offline accounts
-                            for (const offlineAccount of offlineAccounts) {
-                                apiAccountsMap.set(offlineAccount.id, offlineAccount);
-                            }
-
-                            // Merge offline categories
-                            for (const offlineCategory of offlineCategories) {
-                                apiCategoriesMap.set(offlineCategory.id, offlineCategory);
-                            }
-
-                            // Merge offline vendors
-                            for (const offlineVendor of offlineVendors) {
-                                apiVendorsMap.set(offlineVendor.id, offlineVendor);
-                            }
-
-                            // Merge offline recurring templates with API data (offline takes precedence)
-                            const apiRecurringTemplatesMap = new Map((apiState.recurringInvoiceTemplates || []).map(t => [t.id, t]));
-                            for (const offlineTemplate of offlineRecurringTemplates) {
-                                apiRecurringTemplatesMap.set(offlineTemplate.id, offlineTemplate);
-                            }
-                            const mergedRecurringTemplates = Array.from(apiRecurringTemplatesMap.values());
-
-                            logger.logCategory('sync', `✅ Merged offline data with API data:`, {
-                                transactions: apiTransactionsMap.size,
-                                contacts: apiContactsMap.size,
-                                invoices: apiInvoicesMap.size,
-                                bills: apiBillsMap.size,
-                                accounts: apiAccountsMap.size,
-                                categories: apiCategoriesMap.size,
-                                vendors: apiVendorsMap.size
-                            });
-
-                            // Replace state with merged data using functional update
-                            // This ensures we access the current state value correctly
-                            if (isMounted) {
-                                const fullState: AppState = {
-                                    ...storedStateRef.current,
-                                    accounts: Array.from(apiAccountsMap.values()),
-                                    contacts: Array.from(apiContactsMap.values()),
-                                    transactions: Array.from(apiTransactionsMap.values()),
-                                    categories: Array.from(apiCategoriesMap.values()),
-                                    projects: apiState.projects || [],
-                                    buildings: apiState.buildings || [],
-                                    properties: apiState.properties || [],
-                                    units: apiState.units || [],
-                                    invoices: Array.from(apiInvoicesMap.values()),
-                                    bills: Array.from(apiBillsMap.values()),
-                                    budgets: apiState.budgets || [],
-                                    rentalAgreements: apiState.rentalAgreements || [],
-                                    projectAgreements: apiState.projectAgreements || [],
-                                    installmentPlans: apiState.installmentPlans || [],
-                                    planAmenities: apiState.planAmenities || [],
-                                    contracts: apiState.contracts || [],
-                                    salesReturns: apiState.salesReturns || [],
-                                    quotations: apiState.quotations || [],
-                                    documents: apiState.documents || [],
-                                    recurringInvoiceTemplates: mergedRecurringTemplates,
-                                    pmCycleAllocations: apiState.pmCycleAllocations || [],
-                                    vendors: Array.from(apiVendorsMap.values()),
-                                    transactionLog: apiState.transactionLog || [],
-                                };
-
-                                const vendorsInState = Array.from(apiVendorsMap.values());
-                                logger.logCategory('sync', `📦 Vendors in merged state: ${vendorsInState.length}`);
-                                if (vendorsInState.length > 0) {
-                                    logger.logCategory('sync', '📋 Sample vendors:', vendorsInState.slice(0, 3).map(v => ({ id: v.id, name: v.name })));
-                                } else {
-                                    logger.warnCategory('sync', '⚠️ No vendors in merged state after API load');
-                                }
-
-                                setStoredState(fullState);
-                                if (!useFallback && getDatabaseService().isReady() && saveNow) {
+                            // STEP 2: Background sync with cloud — delay start so UI stays responsive, then defer heavy updates
+                            const BACKGROUND_SYNC_DELAY_MS = 2000;
+                            setTimeout(() => {
+                                (async function runBackgroundCloudSync() {
                                     try {
-                                        await saveNow(fullState, { disableSyncQueueing: true });
-                                    } catch (saveError) {
-                                        console.warn('⚠️ Could not save API data to local database:', saveError);
+                                        const apiService = getAppStateApiService();
+                                        let apiState: Partial<AppState>;
+                                        try {
+                                            const dbService = getDatabaseService();
+                                            let baseline: Partial<AppState> | null = null;
+                                            if (dbService.isReady()) {
+                                                const appStateRepo = await getAppStateRepository();
+                                                baseline = await appStateRepo.loadState();
+                                            }
+                                            const lastSync = currentTenantId ? getLastSyncTimestamp(currentTenantId) : null;
+                                            const hasBaseline = baseline && (
+                                                (baseline.projects?.length ?? 0) > 0 ||
+                                                (baseline.transactions?.length ?? 0) > 0 ||
+                                                (baseline.contacts?.length ?? 0) > 0
+                                            );
+                                            if (currentTenantId && lastSync && hasBaseline && isLastSyncRecent(currentTenantId)) {
+                                                apiState = await apiService.loadStateViaIncrementalSync(lastSync, baseline as Partial<AppState>);
+                                                logger.logCategory('sync', '📥 Background: used incremental sync');
+                                            } else {
+                                                apiState = await apiService.loadState();
+                                            }
+                                        } catch (incErr) {
+                                            logger.warnCategory('sync', '⚠️ Background incremental sync failed, full load:', incErr);
+                                            if (currentTenantId) clearLastSyncTimestamp(currentTenantId);
+                                            apiState = await apiService.loadState();
+                                        }
+                                        if (currentTenantId) {
+                                            setLastSyncTimestamp(currentTenantId, new Date().toISOString());
+                                        }
+
+                                        const apiTransactionsMap = new Map((apiState.transactions || []).map(tx => [tx.id, tx]));
+                                        const apiContactsMap = new Map((apiState.contacts || []).map(c => [c.id, c]));
+                                        const apiInvoicesMap = new Map((apiState.invoices || []).map(i => [i.id, i]));
+                                        const apiBillsMap = new Map((apiState.bills || []).map(b => [b.id, b]));
+                                        const apiAccountsMap = new Map((apiState.accounts || []).map(a => [a.id, a]));
+                                        const apiCategoriesMap = new Map((apiState.categories || []).map(c => [c.id, c]));
+                                        const apiVendorsMap = new Map((apiState.vendors || []).map(v => [v.id, v]));
+                                        for (const t of offlineTransactions) apiTransactionsMap.set(t.id, t);
+                                        for (const c of offlineContacts) apiContactsMap.set(c.id, c);
+                                        for (const i of offlineInvoices) apiInvoicesMap.set(i.id, i);
+                                        for (const b of offlineBills) apiBillsMap.set(b.id, b);
+                                        for (const a of offlineAccounts) apiAccountsMap.set(a.id, a);
+                                        for (const c of offlineCategories) apiCategoriesMap.set(c.id, c);
+                                        for (const v of offlineVendors) apiVendorsMap.set(v.id, v);
+                                        const apiRecurringTemplatesMap = new Map((apiState.recurringInvoiceTemplates || []).map(t => [t.id, t]));
+                                        for (const t of offlineRecurringTemplates) apiRecurringTemplatesMap.set(t.id, t);
+                                        const mergedRecurringTemplates = Array.from(apiRecurringTemplatesMap.values());
+
+                                        const fullState: AppState = {
+                                            ...storedStateRef.current,
+                                            accounts: Array.from(apiAccountsMap.values()),
+                                            contacts: Array.from(apiContactsMap.values()),
+                                            transactions: Array.from(apiTransactionsMap.values()),
+                                            categories: Array.from(apiCategoriesMap.values()),
+                                            projects: apiState.projects || [],
+                                            buildings: apiState.buildings || [],
+                                            properties: apiState.properties || [],
+                                            units: apiState.units || [],
+                                            invoices: Array.from(apiInvoicesMap.values()),
+                                            bills: Array.from(apiBillsMap.values()),
+                                            budgets: apiState.budgets || [],
+                                            rentalAgreements: apiState.rentalAgreements || [],
+                                            projectAgreements: apiState.projectAgreements || [],
+                                            installmentPlans: apiState.installmentPlans || [],
+                                            planAmenities: apiState.planAmenities || [],
+                                            contracts: apiState.contracts || [],
+                                            salesReturns: apiState.salesReturns || [],
+                                            quotations: apiState.quotations || [],
+                                            documents: apiState.documents || [],
+                                            recurringInvoiceTemplates: mergedRecurringTemplates,
+                                            pmCycleAllocations: apiState.pmCycleAllocations || [],
+                                            vendors: Array.from(apiVendorsMap.values()),
+                                            transactionLog: apiState.transactionLog || [],
+                                        };
+
+                                        // Defer heavy state update and save so main thread stays responsive
+                                        const applyUpdate = () => {
+                                            setStoredState(fullState);
+                                            if (!useFallback && getDatabaseService().isReady() && saveNow) {
+                                                saveNow(fullState, { disableSyncQueueing: true }).catch((saveError: unknown) => {
+                                                    console.warn('⚠️ Background sync: could not save to local database:', saveError);
+                                                });
+                                            }
+                                            logger.logCategory('sync', '✅ Background cloud sync completed');
+                                        };
+                                        if (typeof requestIdleCallback !== 'undefined') {
+                                            requestIdleCallback(applyUpdate, { timeout: 200 });
+                                        } else {
+                                            setTimeout(applyUpdate, 0);
+                                        }
+                                    } catch (bgError) {
+                                        logger.warnCategory('sync', '⚠️ Background cloud sync failed (app continues with local data):', bgError);
                                     }
-                                }
-                                setInitProgress(80);
-                            }
-                        } catch (apiError) {
-                            console.error('⚠️ Failed to load from API:', apiError);
-                            // Continue with local database as fallback
-                            setInitMessage('API unavailable, using local data...');
+                                })();
+                            }, BACKGROUND_SYNC_DELAY_MS);
+                        } catch (initError) {
+                            console.error('⚠️ Authenticated init error:', initError);
+                            setInitMessage('Using local data...');
+                            if (!isMounted) return;
+                            if (timeoutId) clearTimeout(timeoutId);
+                            if (forceTimeoutId) clearTimeout(forceTimeoutId);
+                            setInitProgress(100);
+                            setInitMessage('Ready!');
+                            setTimeout(() => {
+                                if (isMounted) setIsInitializing(false);
+                            }, 300);
                         }
                     } else {
                         // Load from local database (offline mode)
@@ -2737,20 +2714,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         refreshFromApiRef.current = refreshFromApi;
     }, [refreshFromApi]);
 
-    // Initial/rehydration sync when auth status changes (show shell until critical/full data loaded for LCP/INP)
+    // Run refreshFromApi only after user logs in (not on initial load with existing session — init background sync handles that)
     useEffect(() => {
-        if (!isAuthenticated) {
-            setIsInitialDataLoading(false);
-            return;
-        }
-        setIsInitialDataLoading(true);
-        const promise = refreshFromApiRef.current(() => setIsInitialDataLoading(false));
-        if (promise && typeof (promise as Promise<void>).then === 'function') {
-            (promise as Promise<void>).finally(() => setIsInitialDataLoading(false));
-        } else {
-            setIsInitialDataLoading(false);
-        }
-    }, [isAuthenticated]);
+        const handleLoginSuccess = () => {
+            refreshFromApiRef.current(undefined);
+        };
+        window.addEventListener('auth:login-success', handleLoginSuccess);
+        return () => window.removeEventListener('auth:login-success', handleLoginSuccess);
+    }, []);
 
     // Listen for cloud settings loaded after login
     useEffect(() => {

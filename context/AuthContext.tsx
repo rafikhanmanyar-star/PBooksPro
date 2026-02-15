@@ -213,7 +213,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [state.isAuthenticated]);
 
   /**
-   * Start bi-directional sync when authenticated (connectivity-driven + run once)
+   * Start bi-directional sync when authenticated (connectivity-driven + run once).
+   * Fire-and-forget runSync so this effect does not block; sync runs in background.
    */
   useEffect(() => {
     if (!state.isAuthenticated || !state.tenant?.id) return;
@@ -224,7 +225,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { getBidirectionalSyncService } = await import('../services/sync/bidirectionalSyncService');
         const bidir = getBidirectionalSyncService();
         bidir.start(state.tenant!.id);
-        await bidir.runSync(state.tenant!.id);
+        void bidir.runSync(state.tenant!.id);
       } catch (_) { }
     })();
   }, [state.isAuthenticated, state.tenant?.id]);
@@ -457,15 +458,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 error: null,
               });
             } else if (errorMessage.includes('Network') || errorMessage.includes('Failed to fetch')) {
-              // Network error - keep token but mark as not authenticated
-              // User can retry when network is back
-              setState({
-                isAuthenticated: false,
-                user: null,
-                tenant: null,
-                isLoading: false,
-                error: 'Unable to verify authentication. Please check your connection.',
-              });
+              // Offline-first: allow authenticated offline when token is valid but network unavailable
+              // Decode user/tenant from JWT so app can show UI from local data
+              let userInfo: { id: string; username: string; name: string; role: string; tenantId: string } = {
+                id: localStorage.getItem('user_id') || 'current-user',
+                username: 'user',
+                name: 'User',
+                role: 'User',
+                tenantId: tenantId,
+              };
+              try {
+                const parts = token.split('.');
+                if (parts.length === 3) {
+                  const payload = JSON.parse(atob(parts[1]));
+                  userInfo = {
+                    id: payload.userId || payload.sub || userInfo.id,
+                    username: payload.username || userInfo.username,
+                    name: payload.name || userInfo.name,
+                    role: payload.role || userInfo.role,
+                    tenantId: payload.tenantId || tenantId,
+                  };
+                }
+              } catch (_) { /* use defaults */ }
+              if (isMounted) {
+                logger.logCategory('auth', 'Offline: using stored token (network unavailable)');
+                setState({
+                  isAuthenticated: true,
+                  user: userInfo,
+                  tenant: { id: tenantId, name: '', companyName: '' },
+                  isLoading: false,
+                  error: null,
+                });
+              }
             } else {
               // Other error - clear auth
               logger.warnCategory('auth', 'Token verification failed with unexpected error:', error);
@@ -596,6 +620,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         logger.logCategory('auth', '✅ Login completed successfully');
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('auth:login-success'));
+        }
 
         // Sync pending operations after successful login
         try {
@@ -717,6 +744,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         logger.logCategory('auth', '✅ Unified login completed successfully');
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('auth:login-success'));
+        }
 
         // Load license immediately so features enable without waiting for LicenseContext effect.
         // Defer dispatch so LicenseContext has committed and can receive the event.
@@ -834,6 +864,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading: false,
         error: null,
       });
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('auth:login-success'));
+      }
 
       // Load license immediately so features enable without waiting for LicenseContext effect
       checkLicenseStatus()
