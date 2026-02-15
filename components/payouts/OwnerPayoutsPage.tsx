@@ -45,6 +45,8 @@ const OwnerPayoutsPage: React.FC = () => {
     const [activeCategory, setActiveCategory] = useState<PayoutCategory>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
+    const [selectedOwnerId, setSelectedOwnerId] = useState<string>('all');
+    const [selectedUnitId, setSelectedUnitId] = useState<string>('all');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'balance', direction: 'desc' });
     const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
@@ -74,6 +76,37 @@ const OwnerPayoutsPage: React.FC = () => {
     useEffect(() => {
         setExpandedRowId(null);
     }, [activeCategory]);
+
+    // Cascade: when building changes, reset owner and unit
+    useEffect(() => {
+        setSelectedOwnerId('all');
+        setSelectedUnitId('all');
+    }, [selectedBuildingId]);
+
+    // Cascade: when owner changes, reset unit
+    useEffect(() => {
+        setSelectedUnitId('all');
+    }, [selectedOwnerId]);
+
+    // Owner options: after building selection (owners with properties in that building, or all owners with properties)
+    const ownerFilterOptions = useMemo(() => {
+        const owners = state.contacts.filter(c => c.type === ContactType.OWNER);
+        if (selectedBuildingId === 'all') {
+            return owners.filter(o => state.properties.some(p => p.ownerId === o.id));
+        }
+        return owners.filter(o =>
+            state.properties.some(p => p.ownerId === o.id && p.buildingId === selectedBuildingId)
+        );
+    }, [state.contacts, state.properties, selectedBuildingId]);
+
+    // Unit options: after owner selection (properties of that owner, optionally in selected building)
+    const unitFilterOptions = useMemo(() => {
+        if (selectedOwnerId === 'all') return [];
+        return state.properties.filter(
+            p => p.ownerId === selectedOwnerId &&
+                (selectedBuildingId === 'all' || p.buildingId === selectedBuildingId)
+        );
+    }, [state.properties, selectedOwnerId, selectedBuildingId]);
 
     // --- Owner Rental Income Balances ---
     const ownerRentalBalances = useMemo(() => {
@@ -306,27 +339,134 @@ const OwnerPayoutsPage: React.FC = () => {
         return rows;
     }, [ownerRentalBalances, brokerCommissionBalances, ownerSecurityBalances, state.contacts, state.properties, state.rentalAgreements]);
 
+    // --- Unit-scoped balances (when a unit is selected, totals for that unit only) ---
+    const unitScopedBalances = useMemo(() => {
+        if (selectedUnitId === 'all') return null;
+        const rentalIncomeCategory = state.categories.find(c => c.name === 'Rental Income');
+        const ownerPayoutCategory = state.categories.find(c => c.name === 'Owner Payout');
+        const secDepCategory = state.categories.find(c => c.name === 'Security Deposit');
+        const secRefCategory = state.categories.find(c => c.name === 'Security Deposit Refund');
+        const prop = state.properties.find(p => p.id === selectedUnitId);
+        if (!prop) return null;
+
+        const result: {
+            ownerId: string;
+            ownerIncome: { collected: number; paid: number; balance: number };
+            securityDeposit: { collected: number; paid: number; balance: number };
+        } = {
+            ownerId: prop.ownerId,
+            ownerIncome: { collected: 0, paid: 0, balance: 0 },
+            securityDeposit: { collected: 0, paid: 0, balance: 0 },
+        };
+
+        if (rentalIncomeCategory) {
+            let collected = 0;
+            let paid = 0;
+            state.transactions
+                .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === rentalIncomeCategory.id && tx.propertyId === selectedUnitId)
+                .forEach(tx => {
+                    const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    if (isNaN(amount)) return;
+                    if (amount > 0) collected += amount;
+                    else paid += Math.abs(amount);
+                });
+            state.transactions
+                .filter(tx => tx.type === TransactionType.EXPENSE && tx.propertyId === selectedUnitId)
+                .forEach(tx => {
+                    if (tx.categoryId === ownerPayoutCategory?.id) return;
+                    const category = state.categories.find(c => c.id === tx.categoryId);
+                    const catName = category?.name || '';
+                    if (catName === 'Security Deposit Refund' || catName === 'Owner Security Payout' || catName.includes('(Tenant)')) return;
+                    const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    if (!isNaN(amount) && amount > 0) paid += amount;
+                });
+            result.ownerIncome = { collected, paid, balance: collected - paid };
+        }
+
+        if (secDepCategory) {
+            let collected = 0;
+            let paid = 0;
+            state.transactions
+                .filter(tx => tx.type === TransactionType.INCOME && tx.categoryId === secDepCategory.id && tx.propertyId === selectedUnitId)
+                .forEach(tx => {
+                    const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                    if (!isNaN(amount) && amount > 0) collected += amount;
+                });
+            // Refunds/deductions for this property only (not owner security payout - that's not per-unit)
+            state.transactions
+                .filter(tx => tx.type === TransactionType.EXPENSE && tx.propertyId === selectedUnitId)
+                .forEach(tx => {
+                    const category = state.categories.find(c => c.id === tx.categoryId);
+                    if (category && (category.id === secRefCategory?.id || category.name.includes('(Tenant)'))) {
+                        const amount = typeof tx.amount === 'string' ? parseFloat(tx.amount) : Number(tx.amount);
+                        if (!isNaN(amount) && amount > 0) paid += amount;
+                    }
+                });
+            result.securityDeposit = { collected, paid, balance: collected - paid };
+        }
+
+        return result;
+    }, [selectedUnitId, state.transactions, state.properties, state.categories]);
+
     // --- Filtering ---
     const filteredRows = useMemo(() => {
-        let rows = allPayeeRows;
+        let rows = [...allPayeeRows];
+        const sid = (id: string) => String(id || '');
 
         // Category filter
         if (activeCategory !== 'all') {
             rows = rows.filter(r => r.category === activeCategory);
         }
 
-        // Building filter (applies to owner rows only)
+        // Building filter: only owner rows in this building; brokers excluded when building is selected
         if (selectedBuildingId !== 'all') {
-            const propertiesInBuilding = new Set(
-                state.properties.filter(p => p.buildingId === selectedBuildingId).map(p => p.id)
-            );
             const ownerIdsInBuilding = new Set(
-                state.properties.filter(p => p.buildingId === selectedBuildingId && p.ownerId).map(p => p.ownerId)
+                state.properties
+                    .filter(p => p.buildingId && sid(p.buildingId) === sid(selectedBuildingId) && p.ownerId)
+                    .map(p => sid(p.ownerId))
             );
             rows = rows.filter(r => {
-                if (r.type === 'Broker') return true; // brokers not filtered by building
-                return ownerIdsInBuilding.has(r.contact.id);
+                if (r.type === 'Broker') return false; // hide brokers when filtering by building
+                return ownerIdsInBuilding.has(sid(r.contact?.id));
             });
+        }
+
+        // Owner filter: only this owner's rows; hide brokers when owner is selected
+        if (selectedOwnerId !== 'all') {
+            rows = rows.filter(r => {
+                if (r.type === 'Broker') return false;
+                return sid(r.contact?.id) === sid(selectedOwnerId);
+            });
+        }
+
+        // Unit filter: only the owner who owns this unit
+        if (selectedUnitId !== 'all') {
+            const prop = state.properties.find(p => sid(p.id) === sid(selectedUnitId));
+            const unitOwnerId = prop?.ownerId;
+            if (unitOwnerId) {
+                rows = rows.filter(r => {
+                    if (r.type === 'Broker') return false;
+                    return sid(r.contact?.id) === sid(unitOwnerId);
+                });
+                // Apply unit-scoped totals and property label so summary row shows filtered unit only
+                if (unitScopedBalances && prop) {
+                    const unitName = prop.name || 'Unit';
+                    rows = rows.map(r => {
+                        if (r.type !== 'Owner' || sid(r.contact?.id) !== sid(unitScopedBalances.ownerId)) return r;
+                        if (r.category === 'ownerIncome') {
+                            const u = unitScopedBalances.ownerIncome;
+                            return { ...r, collected: u.collected, paid: u.paid, balance: u.balance, properties: unitName };
+                        }
+                        if (r.category === 'securityDeposit') {
+                            const u = unitScopedBalances.securityDeposit;
+                            return { ...r, collected: u.collected, paid: u.paid, balance: u.balance, properties: unitName };
+                        }
+                        return r;
+                    });
+                }
+            } else {
+                rows = [];
+            }
         }
 
         // Search filter
@@ -351,7 +491,7 @@ const OwnerPayoutsPage: React.FC = () => {
         });
 
         return rows;
-    }, [allPayeeRows, activeCategory, selectedBuildingId, searchQuery, sortConfig, state.properties]);
+    }, [allPayeeRows, activeCategory, selectedBuildingId, selectedOwnerId, selectedUnitId, searchQuery, sortConfig, state.properties, unitScopedBalances]);
 
     // --- Summary Totals ---
     const summaryTotals = useMemo(() => {
@@ -463,6 +603,7 @@ const OwnerPayoutsPage: React.FC = () => {
 
         const ledgerType = row.category === 'securityDeposit' ? 'Security' : 'Rent';
         const buildingIdForLedger = selectedBuildingId === 'all' ? undefined : selectedBuildingId;
+        const propertyIdForLedger = selectedUnitId !== 'all' ? selectedUnitId : undefined;
 
         return (
             <div className="p-4 bg-slate-50 border-t border-slate-200">
@@ -475,6 +616,7 @@ const OwnerPayoutsPage: React.FC = () => {
                     ownerId={ownerId}
                     ledgerType={ledgerType}
                     buildingId={buildingIdForLedger}
+                    propertyId={propertyIdForLedger}
                     onPayoutClick={(transaction) => {
                         setOwnerPayoutModal({
                             isOpen: true,
@@ -596,7 +738,7 @@ const OwnerPayoutsPage: React.FC = () => {
 
                 <div className="h-5 w-px bg-slate-200 hidden md:block" />
 
-                {/* Building filter */}
+                {/* Building → Owner → Unit filters (cascading) */}
                 <div className="w-44">
                     <Select
                         value={selectedBuildingId}
@@ -606,6 +748,32 @@ const OwnerPayoutsPage: React.FC = () => {
                         <option value="all">All Buildings</option>
                         {state.buildings.map(b => (
                             <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                    </Select>
+                </div>
+                <div className="w-44">
+                    <Select
+                        value={selectedOwnerId}
+                        onChange={(e) => setSelectedOwnerId(e.target.value)}
+                        className="text-xs py-1"
+                        disabled={ownerFilterOptions.length === 0}
+                    >
+                        <option value="all">All Owners</option>
+                        {ownerFilterOptions.map(o => (
+                            <option key={o.id} value={o.id}>{o.name}</option>
+                        ))}
+                    </Select>
+                </div>
+                <div className="w-44">
+                    <Select
+                        value={selectedUnitId}
+                        onChange={(e) => setSelectedUnitId(e.target.value)}
+                        className="text-xs py-1"
+                        disabled={unitFilterOptions.length === 0}
+                    >
+                        <option value="all">All Units</option>
+                        {unitFilterOptions.map(p => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
                         ))}
                     </Select>
                 </div>
@@ -764,6 +932,8 @@ const OwnerPayoutsPage: React.FC = () => {
                                             <p className="text-slate-400 text-sm">
                                                 {searchQuery
                                                     ? 'No payees match your search.'
+                                                    : selectedBuildingId !== 'all' || selectedOwnerId !== 'all' || selectedUnitId !== 'all'
+                                                        ? 'No payees match the selected Building / Owner / Unit filters.'
                                                     : activeCategory !== 'all'
                                                         ? 'No pending payouts in this category.'
                                                         : 'No pending payouts found.'

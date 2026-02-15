@@ -69,6 +69,7 @@ const IMPORT_ORDER = [
   { name: 'Units', dependencies: ['Projects', 'Contacts'], description: 'Import units (depends on Projects and Contacts)' },
   { name: 'Properties', dependencies: ['Contacts', 'Buildings'], description: 'Import properties (depends on Contacts and Buildings)' },
   { name: 'RentalAgreements', dependencies: ['Properties', 'Contacts'], description: 'Import rental agreements (depends on Properties and Contacts)' },
+  { name: 'ProjectSellingAgreements', dependencies: ['Projects', 'Units', 'Contacts'], description: 'Import project selling agreements / installment plans (depends on Projects, Units, and Contacts)' },
   { name: 'RentalInvoices', dependencies: ['RentalAgreements', 'Contacts', 'Properties'], description: 'Import rental invoices (depends on Rental Agreements, Contacts, and Properties)' },
   { name: 'LoanTransactions', dependencies: ['Accounts'], description: 'Import loan transactions (Give/Receive/Repay/Collect); bank account required (Bank-type account name). Data is saved to your cloud account and will appear on refresh or next login.' }
 ];
@@ -148,12 +149,12 @@ const ImportExportWizard: React.FC = () => {
       const baseUrl = getApiBaseUrl();
       const token = localStorage.getItem('auth_token') || '';
       const tenantId = localStorage.getItem('tenant_id') || '';
-      
+
       if (!token || !tenantId) {
         throw new Error('Authentication required. Please login again.');
       }
 
-      const url = sheetName 
+      const url = sheetName
         ? `${baseUrl}/data-import-export/template?sheet=${encodeURIComponent(sheetName)}`
         : `${baseUrl}/data-import-export/template`;
 
@@ -179,7 +180,7 @@ const ImportExportWizard: React.FC = () => {
       }
 
       const blob = await response.blob();
-      
+
       // Check if blob is actually an error (sometimes server returns JSON error as blob)
       if (blob.type === 'application/json') {
         const text = await blob.text();
@@ -190,7 +191,7 @@ const ImportExportWizard: React.FC = () => {
       const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = blobUrl;
-      a.download = sheetName 
+      a.download = sheetName
         ? `import-template-${sheetName.toLowerCase()}.xlsx`
         : 'import-template.xlsx';
       document.body.appendChild(a);
@@ -212,7 +213,7 @@ const ImportExportWizard: React.FC = () => {
       const baseUrl = getApiBaseUrl();
       const token = localStorage.getItem('auth_token') || '';
       const tenantId = localStorage.getItem('tenant_id') || '';
-      
+
       if (!token || !tenantId) {
         throw new Error('Authentication required. Please login again.');
       }
@@ -239,7 +240,7 @@ const ImportExportWizard: React.FC = () => {
       }
 
       const blob = await response.blob();
-      
+
       // Check if blob is actually an error (sometimes server returns JSON error as blob)
       if (blob.type === 'application/json') {
         const text = await blob.text();
@@ -317,10 +318,10 @@ const ImportExportWizard: React.FC = () => {
 
     try {
       setIsLoading(true);
-      
+
       // Convert file to base64
       const base64Data = await convertFileToBase64(selectedFile);
-      
+
       // Send to API with sheet name
       const result = await apiClient.post<ImportResult>('/data-import-export/import', {
         file: base64Data,
@@ -328,16 +329,16 @@ const ImportExportWizard: React.FC = () => {
       });
 
       setImportResult(result);
-      
+
       // If successful, mark sheet as imported
       if (result.success) {
         setImportedSheets(prev => new Set([...prev, currentSheet.name]));
-        
+
         // Refresh app state to show newly imported data
         try {
           const apiService = getAppStateApiService();
           const apiState = await apiService.loadState();
-          
+
           // Merge the new data into the current state
           const mergeById = <T extends { id: string }>(current: T[], api: T[]): T[] => {
             if (!api || api.length === 0) return current;
@@ -351,7 +352,7 @@ const ImportExportWizard: React.FC = () => {
 
           const updates: any = {};
           const currentState = state;
-          
+
           if (apiState.contacts) updates.contacts = mergeById(currentState.contacts, apiState.contacts);
           if (apiState.accounts) updates.accounts = mergeById(currentState.accounts, apiState.accounts);
           if (apiState.categories) updates.categories = mergeById(currentState.categories, apiState.categories);
@@ -360,6 +361,7 @@ const ImportExportWizard: React.FC = () => {
           if (apiState.properties) updates.properties = mergeById(currentState.properties, apiState.properties);
           if (apiState.units) updates.units = mergeById(currentState.units, apiState.units);
           if (apiState.rentalAgreements) updates.rentalAgreements = mergeById(currentState.rentalAgreements, apiState.rentalAgreements);
+          if (apiState.installmentPlans) updates.installmentPlans = mergeById(currentState.installmentPlans, apiState.installmentPlans);
           if (apiState.invoices) updates.invoices = mergeById(currentState.invoices, apiState.invoices);
           if (apiState.transactions) updates.transactions = mergeById(currentState.transactions, apiState.transactions);
 
@@ -373,7 +375,7 @@ const ImportExportWizard: React.FC = () => {
           console.error('Failed to refresh data after import:', refreshError);
           // Don't block the import success flow if refresh fails
         }
-        
+
         // Clear selection and file, show success
         setSelectedFile(null);
         setFileName('');
@@ -475,8 +477,8 @@ const ImportExportWizard: React.FC = () => {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <h4 className="font-semibold text-blue-900 mb-2">💡 Quick Start</h4>
               <p className="text-sm text-blue-800">
-                You can <strong>directly import your Excel file</strong> without downloading a template first. 
-                Just make sure your Excel file has sheets named: <strong>Contacts, Projects, Buildings, Properties, Units, Categories, Accounts, LoanTransactions</strong> 
+                You can <strong>directly import your Excel file</strong> without downloading a template first.
+                Just make sure your Excel file has sheets named: <strong>Contacts, Projects, Buildings, Properties, Units, Categories, Accounts, LoanTransactions</strong>
                 with the correct column headers. Click "Import Data" to get started.
               </p>
             </div>
@@ -602,30 +604,27 @@ const ImportExportWizard: React.FC = () => {
                     <div
                       key={idx}
                       onClick={() => !isImported && handleSheetSelect(sheet.name)}
-                      className={`flex items-center p-3 rounded-lg border transition-all ${
-                        isImported
-                          ? 'bg-green-50 border-green-300 cursor-default'
-                          : isSelected
+                      className={`flex items-center p-3 rounded-lg border transition-all ${isImported
+                        ? 'bg-green-50 border-green-300 cursor-default'
+                        : isSelected
                           ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-400 cursor-pointer'
                           : 'bg-slate-50 border-slate-200 hover:bg-slate-100 cursor-pointer'
-                      }`}
+                        }`}
                     >
-                      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-3 font-semibold text-sm ${
-                        isSelected
-                          ? 'bg-blue-600 text-white'
-                          : isImported
+                      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-3 font-semibold text-sm ${isSelected
+                        ? 'bg-blue-600 text-white'
+                        : isImported
                           ? 'bg-green-600 text-white'
                           : 'bg-slate-400 text-white'
-                      }`}>
+                        }`}>
                         {isImported ? '✓' : idx + 1}
                       </div>
                       <div className="flex-1">
                         <div className="font-semibold text-slate-800">{sheet.name}</div>
                         <div className="text-xs text-slate-600">{sheet.description}</div>
                         {sheet.dependencies.length > 0 && (
-                          <div className={`text-xs mt-1 ${
-                            hasUnmetDependencies ? 'text-amber-600' : 'text-green-600'
-                          }`}>
+                          <div className={`text-xs mt-1 ${hasUnmetDependencies ? 'text-amber-600' : 'text-green-600'
+                            }`}>
                             Depends on: {sheet.dependencies.join(', ')}
                             {hasUnmetDependencies && (
                               <span className="text-amber-700 font-semibold ml-1">
@@ -716,7 +715,7 @@ const ImportExportWizard: React.FC = () => {
                 {selectedSheetData && selectedSheetData.dependencies.length > 0 && !selectedSheetData.dependencies.every(dep => importedSheets.has(dep)) && (
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
                     <p className="text-sm text-amber-800">
-                      <strong>⚠️ Warning:</strong> This sheet depends on: {selectedSheetData.dependencies.join(', ')}. 
+                      <strong>⚠️ Warning:</strong> This sheet depends on: {selectedSheetData.dependencies.join(', ')}.
                       Make sure these are imported first, otherwise the import may fail with validation errors.
                     </p>
                   </div>
@@ -766,20 +765,18 @@ const ImportExportWizard: React.FC = () => {
                   {importResult.sheetResults.map((sheetResult, idx) => (
                     <div
                       key={idx}
-                      className={`border rounded-lg p-4 ${
-                        sheetResult.success
-                          ? 'bg-green-50 border-green-200'
-                          : 'bg-red-50 border-red-200'
-                      }`}
+                      className={`border rounded-lg p-4 ${sheetResult.success
+                        ? 'bg-green-50 border-green-200'
+                        : 'bg-red-50 border-red-200'
+                        }`}
                     >
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="font-semibold text-slate-800">{sheetResult.sheet}</h4>
                         <span
-                          className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                            sheetResult.success
-                              ? 'bg-green-200 text-green-800'
-                              : 'bg-red-200 text-red-800'
-                          }`}
+                          className={`px-3 py-1 rounded-full text-xs font-semibold ${sheetResult.success
+                            ? 'bg-green-200 text-green-800'
+                            : 'bg-red-200 text-red-800'
+                            }`}
                         >
                           {sheetResult.success ? '✓ Success' : '✗ Failed'}
                         </span>

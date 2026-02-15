@@ -43,8 +43,8 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
     setEntityFilterId('all');
   }, [setGroupBy]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateRangeStart, setDateRangeStart] = useState('');
-  const [dateRangeEnd, setDateRangeEnd] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string>('All');
+  const [dateFilter, setDateFilter] = useState<string>('All');
 
   const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null);
   const [invoiceToEdit, setInvoiceToEdit] = useState<Invoice | null>(null);
@@ -120,13 +120,6 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
       });
     }
 
-    if (dateRangeStart) {
-      invoices = invoices.filter(inv => inv.issueDate >= dateRangeStart);
-    }
-    if (dateRangeEnd) {
-      invoices = invoices.filter(inv => inv.issueDate <= dateRangeEnd);
-    }
-
     if (statusFilter !== 'All') {
       invoices = invoices.filter(inv => inv.status === statusFilter);
     }
@@ -150,8 +143,6 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
     state.contacts,
     state.properties,
     searchQuery,
-    dateRangeStart,
-    dateRangeEnd,
     statusFilter,
     groupBy,
     entityFilterId,
@@ -185,8 +176,6 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
         return false;
       });
     }
-    if (dateRangeStart) invoices = invoices.filter(inv => inv.issueDate >= dateRangeStart);
-    if (dateRangeEnd) invoices = invoices.filter(inv => inv.issueDate <= dateRangeEnd);
     if (entityFilterId && entityFilterId !== 'all') {
       if (groupBy === 'tenant') invoices = invoices.filter(inv => inv.contactId === entityFilterId);
       else if (groupBy === 'owner') invoices = invoices.filter(inv => (state.properties.find(p => p.id === inv.propertyId)?.ownerId) === entityFilterId);
@@ -200,7 +189,7 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
       }
     }
     return invoices;
-  }, [state.invoices, state.contacts, state.properties, searchQuery, dateRangeStart, dateRangeEnd, groupBy, entityFilterId]);
+  }, [state.invoices, state.contacts, state.properties, searchQuery, groupBy, entityFilterId]);
 
   const financialRecords = useMemo<FinancialRecord[]>(() => {
     const records: FinancialRecord[] = [];
@@ -357,14 +346,19 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
     [state.invoices, selectedInvoiceIds]
   );
 
+  const availableTypeOptions = useMemo(() => {
+    const types = new Set(financialRecords.map(r => r.type));
+    return ['All', ...Array.from(types)];
+  }, [financialRecords]);
+
   const filterInputClass =
-    'w-full pl-3 py-2 text-sm border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-accent/50 focus:border-accent bg-white';
+    'w-full pl-2.5 py-1.5 text-sm border border-slate-300 rounded-md shadow-sm focus:ring-2 focus:ring-accent/50 focus:border-accent bg-white';
 
   return (
-    <div className="flex flex-col h-full bg-slate-50/50 p-4 sm:p-6 gap-4">
+    <div className="flex flex-col h-full min-h-0 bg-slate-50/50 pt-2 px-3 sm:pt-3 sm:px-4 pb-1 gap-2">
       {/* Due for Generation Banner */}
       {overdueCount > 0 && (
-        <div className="flex items-center justify-between px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg flex-shrink-0">
+        <div className="flex items-center justify-between px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg flex-shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-amber-800">
               {overdueCount} invoice{overdueCount > 1 ? 's are' : ' is'} due for generation
@@ -388,75 +382,46 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
         </div>
       )}
 
-      {/* Action Bar */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={onCreateRentalClick} size="sm">
-          <div className="w-4 h-4 mr-2">{ICONS.plus}</div>
-          New Rental Invoice
-        </Button>
-        <Button variant="secondary" onClick={onCreateSecurityClick} size="sm">
-          <div className="w-4 h-4 mr-2">{ICONS.plus}</div>
-          New Security Deposit
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={() => {
-            dispatch({ type: 'SET_INITIAL_IMPORT_TYPE', payload: ImportType.INVOICES });
-            dispatch({ type: 'SET_PAGE', payload: 'import' });
-          }}
-          size="sm"
-        >
-          <div className="w-4 h-4 mr-2">{ICONS.download}</div>
-          Bulk Import
-        </Button>
-        {onSchedulesClick && (
-          <Button variant="ghost" onClick={onSchedulesClick} size="sm">
-            Manage Schedules
-          </Button>
-        )}
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-          <p className="text-xs font-semibold text-slate-500 uppercase">Unpaid</p>
-          <p className="text-lg font-bold text-slate-800">{summaryStats.unpaidCount}</p>
-          <p className="text-sm text-slate-600">
+      {/* Summary Cards - compact height */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
+        <div className="bg-white rounded-lg border border-slate-200 px-2.5 py-1.5 shadow-sm">
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Unpaid</p>
+          <p className="text-sm font-bold text-slate-800 leading-tight">{summaryStats.unpaidCount}</p>
+          <p className="text-xs text-slate-600 truncate">
             {CURRENCY} {summaryStats.unpaidAmount.toLocaleString()}
           </p>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-          <p className="text-xs font-semibold text-slate-500 uppercase">Paid</p>
-          <p className="text-lg font-bold text-emerald-700">{summaryStats.paidCount}</p>
-          <p className="text-sm text-slate-600">
+        <div className="bg-white rounded-lg border border-slate-200 px-3 py-2 shadow-sm">
+          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Paid</p>
+          <p className="text-sm font-bold text-emerald-700 leading-tight">{summaryStats.paidCount}</p>
+          <p className="text-xs text-slate-600 truncate">
             {CURRENCY} {summaryStats.paidAmount.toLocaleString()}
           </p>
         </div>
-        <div className="bg-white rounded-xl border border-rose-200 p-4 shadow-sm">
-          <p className="text-xs font-semibold text-rose-600 uppercase">Overdue</p>
-          <p className="text-lg font-bold text-rose-700">{summaryStats.overdueCount}</p>
-          <p className="text-sm text-slate-600">
+        <div className="bg-white rounded-lg border border-rose-200 px-2.5 py-1.5 shadow-sm">
+          <p className="text-[10px] font-semibold text-rose-600 uppercase tracking-wide">Overdue</p>
+          <p className="text-sm font-bold text-rose-700 leading-tight">{summaryStats.overdueCount}</p>
+          <p className="text-xs text-slate-600 truncate">
             {CURRENCY} {summaryStats.overdueAmount.toLocaleString()}
           </p>
         </div>
-        <div className="bg-white rounded-xl border border-indigo-200 p-4 shadow-sm">
-          <p className="text-xs font-semibold text-indigo-600 uppercase">Total Pending</p>
-          <p className="text-lg font-bold text-indigo-700">
+        <div className="bg-white rounded-lg border border-indigo-200 px-2.5 py-1.5 shadow-sm">
+          <p className="text-[10px] font-semibold text-indigo-600 uppercase tracking-wide">Total Pending</p>
+          <p className="text-sm font-bold text-indigo-700 leading-tight truncate">
             {CURRENCY} {summaryStats.totalPending.toLocaleString()}
           </p>
         </div>
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 flex-wrap">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold text-slate-500 uppercase">Status:</span>
+      <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm flex flex-col md:flex-row gap-2 flex-wrap">
+        <div className="flex flex-wrap items-center gap-1.5">
           {['All', InvoiceStatus.UNPAID, InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE].map(
             s => (
               <button
                 key={s}
                 onClick={() => setStatusFilter(s)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
                   statusFilter === s
                     ? 'bg-accent text-white'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -467,14 +432,14 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
             )
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs font-semibold text-slate-500 uppercase">View by:</span>
           {['tenant', 'owner', 'property', 'building'].map(g => (
             <button
               key={g}
               type="button"
               onClick={() => handleSetGroupBy(g as typeof groupBy)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors capitalize ${
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors capitalize ${
                 groupBy === g
                   ? 'bg-accent text-white'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -510,24 +475,26 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
               <option key={b.id} value={b.id}>{b.name}</option>
             ))}
         </select>
-        <div className="flex items-center gap-2">
-          <input
-            type="date"
-            value={dateRangeStart}
-            onChange={e => setDateRangeStart(e.target.value)}
-            placeholder="From"
-            className={filterInputClass}
-            style={{ width: '140px' }}
-          />
-          <input
-            type="date"
-            value={dateRangeEnd}
-            onChange={e => setDateRangeEnd(e.target.value)}
-            placeholder="To"
-            className={filterInputClass}
-            style={{ width: '140px' }}
-          />
-        </div>
+        <select
+          value={typeFilter}
+          onChange={e => setTypeFilter(e.target.value)}
+          className={filterInputClass}
+          style={{ width: '130px' }}
+        >
+          {availableTypeOptions.map(t => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </select>
+        <select
+          value={dateFilter}
+          onChange={e => setDateFilter(e.target.value)}
+          className={filterInputClass}
+          style={{ width: '130px' }}
+        >
+          <option value="All">All Dates</option>
+          <option value="This Month">This Month</option>
+          <option value="Last Month">Last Month</option>
+        </select>
         <div className="relative flex-1 min-w-[200px]">
           <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">
             <div className="w-4 h-4">{ICONS.search}</div>
@@ -537,12 +504,12 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
             placeholder="Search invoice #, tenant, property..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="pl-9 pr-4 py-2 w-full text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-accent/50 focus:border-accent"
+            className="pl-9 pr-3 py-1.5 w-full text-sm border border-slate-300 rounded-md focus:ring-2 focus:ring-accent/50 focus:border-accent"
           />
         </div>
       </div>
 
-      {/* Invoice Grid */}
+      {/* Invoice Grid - fills remaining space so footer sits at bottom */}
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
         <RentalFinancialGrid
           records={financialRecords}
@@ -561,6 +528,11 @@ const RentalInvoicesContent: React.FC<RentalInvoicesContentProps> = ({
           onEditInvoice={handleEditInvoice}
           onReceivePayment={handleRecordPayment}
           onEditPayment={handlePaymentClick}
+          typeFilter={typeFilter}
+          dateFilter={dateFilter}
+          onTypeFilterChange={setTypeFilter}
+          onDateFilterChange={setDateFilter}
+          hideTypeDateFiltersInToolbar
         />
       </div>
 

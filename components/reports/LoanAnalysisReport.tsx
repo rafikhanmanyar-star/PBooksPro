@@ -10,6 +10,7 @@ import ReportFooter from './ReportFooter';
 import ReportToolbar from './ReportToolbar';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import type { ReportDateRange } from './ReportToolbar';
 
 interface LoanReportRow {
     contactId: string;
@@ -22,8 +23,16 @@ interface LoanReportRow {
 const LoanAnalysisReport: React.FC = () => {
     const { state } = useAppContext();
     const { print: triggerPrint } = usePrintContext();
-    const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+
+    const [dateRange, setDateRange] = useState<ReportDateRange>('thisMonth');
+    const [startDate, setStartDate] = useState(() => {
+        const now = new Date();
+        return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    });
+    const [endDate, setEndDate] = useState(() => {
+        const now = new Date();
+        return new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    });
     const [searchQuery, setSearchQuery] = useState('');
 
     const reportData = useMemo<LoanReportRow[]>(() => {
@@ -62,7 +71,7 @@ const LoanAnalysisReport: React.FC = () => {
             }
         });
 
-        let rows = Object.values(contactMap).filter(r => 
+        let rows = Object.values(contactMap).filter(r =>
             r.totalReceived > 0 || r.totalGiven > 0 || Math.abs(r.netBalance) > 0
         );
 
@@ -83,6 +92,28 @@ const LoanAnalysisReport: React.FC = () => {
         }), { totalReceived: 0, totalGiven: 0, netPayable: 0, netReceivable: 0 });
     }, [reportData]);
 
+    const handleRangeChange = (option: ReportDateRange) => {
+        setDateRange(option);
+        const now = new Date();
+
+        if (option === 'all') {
+            setStartDate('2000-01-01');
+            setEndDate('2100-12-31');
+        } else if (option === 'thisMonth') {
+            setStartDate(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]);
+            setEndDate(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]);
+        } else if (option === 'lastMonth') {
+            setStartDate(new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0]);
+            setEndDate(new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0]);
+        }
+    };
+
+    const handleCustomDateChange = (start: string, end: string) => {
+        setStartDate(start);
+        setEndDate(end);
+        setDateRange('custom');
+    };
+
     const handleExport = () => {
         const data = reportData.map(r => ({
             Contact: r.contactName,
@@ -102,19 +133,22 @@ const LoanAnalysisReport: React.FC = () => {
                 <ReportToolbar
                     startDate={startDate}
                     endDate={endDate}
-                    onDateChange={(s, e) => { setStartDate(s); setEndDate(e); }}
+                    onDateChange={handleCustomDateChange}
                     searchQuery={searchQuery}
                     onSearchChange={setSearchQuery}
                     onExport={handleExport}
                     onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
                     hideGroup={true}
+                    showDateFilterPills={true}
+                    activeDateRange={dateRange}
+                    onRangeChange={handleRangeChange}
                 />
             </div>
             <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
                 <Card className="min-h-full">
                     <ReportHeader />
                     <h3 className="text-2xl font-bold text-center mb-6">Loan Analysis Report</h3>
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                         <div className="p-4 bg-rose-50 rounded-xl border border-rose-100 text-center">
                             <p className="text-xs font-bold text-rose-600 uppercase tracking-wider mb-1">Total Payable (You Owe)</p>
